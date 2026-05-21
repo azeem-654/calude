@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Vite cache
+.vite/
+
+# Stray build artifacts at repo root
+/assets/
+/favicon.svg
+/icons.svg
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
