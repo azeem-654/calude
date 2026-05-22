@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, ChevronRight, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Inbox, Phone } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
+import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
+import type { EmailProviderConfig } from '../../services/emailService';
 
 /* ─── helpers ─── */
 
@@ -75,6 +77,143 @@ function loadSMS() {
 interface SmtpConfig { host: string; port: string; user: string; pass: string; fromName: string; fromEmail: string; encryption: string; }
 interface ImapConfig { host: string; port: string; user: string; pass: string; folder: string; }
 interface SmsConfig { provider: string; accountSid: string; authToken: string; fromNumber: string; }
+
+/* ─── Email Provider (API-based sending for campaigns) ─── */
+
+function EmailProviderCard() {
+  const { addNotification } = useApp();
+  const [cfg, setCfg] = useState<EmailProviderConfig>(loadEmailConfig);
+  const [testAddr, setTestAddr] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
+  const [lastResult, setLastResult] = useState('');
+
+  const save = () => { saveEmailConfig(cfg); addNotification('Email provider saved!'); };
+
+  const runTest = async () => {
+    if (!testAddr.trim()) { addNotification('Enter a test recipient address', 'error'); return; }
+    if (cfg.provider === 'none') { addNotification('Select a provider first', 'error'); return; }
+    setStatus('sending'); setLastResult('');
+    const result = await sendEmail(cfg, {
+      to: testAddr.trim(),
+      toName: 'Test Recipient',
+      subject: '✅ CRM Email Test',
+      html: `<h2>Email provider working!</h2><p>This test was sent from your CRM at ${new Date().toLocaleString()}.</p><p>Provider: <strong>${cfg.provider}</strong></p>`,
+    });
+    if (result.success) {
+      setStatus('ok');
+      setLastResult(`Sent! Message ID: ${result.id}`);
+      addNotification(`Test email delivered to ${testAddr}!`);
+    } else {
+      setStatus('fail');
+      setLastResult(result.error || 'Unknown error');
+      addNotification(result.error || 'Send failed', 'error');
+    }
+  };
+
+  const statusColors: Record<string, string> = { idle: '#64748b', sending: '#2563eb', ok: '#16a34a', fail: '#dc2626' };
+  const providerDocs: Record<string, { label: string; url: string; hint: string }> = {
+    mailtrap: { label: 'Mailtrap', url: 'https://mailtrap.io', hint: 'Free test sandbox · Captures all emails · No real delivery · Perfect for testing' },
+    resend:   { label: 'Resend',   url: 'https://resend.com',  hint: 'Real email delivery · Free tier: 3,000/mo · Requires verified domain for production' },
+  };
+
+  return (
+    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
+        <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Zap size={20} color="#6366f1" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Email Sending Provider</h4>
+            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#6366f115', color: '#6366f1', fontWeight: 600 }}>Campaign Sending</span>
+          </div>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>API-based sending used by campaigns and sequences</p>
+        </div>
+      </div>
+
+      {/* Provider selector */}
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Provider</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+          {[
+            { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test sandbox' },
+            { id: 'resend',   label: '⚡ Resend',   desc: 'Real sending' },
+            { id: 'none',     label: '🚫 None',     desc: 'Disabled' },
+          ].map(p => (
+            <button key={p.id} onClick={() => setCfg(prev => ({ ...prev, provider: p.id as EmailProviderConfig['provider'] }))}
+              style={{ padding: '10px', border: `2px solid ${cfg.provider === p.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === p.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: cfg.provider === p.id ? '#6366f1' : '#374151' }}>{p.label}</div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{p.desc}</div>
+            </button>
+          ))}
+        </div>
+        {cfg.provider !== 'none' && providerDocs[cfg.provider] && (
+          <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0, flex: 1 }}>{providerDocs[cfg.provider].hint}</p>
+            <a href={providerDocs[cfg.provider].url} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#6366f1', fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+              Get free API key <ExternalLink size={11} />
+            </a>
+          </div>
+        )}
+      </div>
+
+      {cfg.provider !== 'none' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>API Key *</label>
+              <input type="password" value={cfg.apiKey} onChange={e => setCfg(prev => ({ ...prev, apiKey: e.target.value }))} placeholder="Paste your API key here"
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            {cfg.provider === 'mailtrap' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Inbox ID *</label>
+                <input value={cfg.inboxId} onChange={e => setCfg(prev => ({ ...prev, inboxId: e.target.value }))} placeholder="e.g. 1234567"
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            )}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>From Name</label>
+              <input value={cfg.fromName} onChange={e => setCfg(prev => ({ ...prev, fromName: e.target.value }))} placeholder="CRM Pro"
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>From Email</label>
+              <input value={cfg.fromEmail} onChange={e => setCfg(prev => ({ ...prev, fromEmail: e.target.value }))} placeholder="hello@yourdomain.com"
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+
+          {/* Test send */}
+          <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 10px' }}>Send test email</p>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
+                style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+              <button onClick={runTest} disabled={status === 'sending'}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#6366f1', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
+                {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
+              </button>
+            </div>
+            {lastResult && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '8px 10px', backgroundColor: status === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: '7px', border: `1px solid ${status === 'ok' ? '#bbf7d0' : '#fecaca'}` }}>
+                {status === 'ok' ? <CheckCircle size={14} color="#16a34a" style={{ marginTop: 1, flexShrink: 0 }} /> : <XCircle size={14} color="#dc2626" style={{ marginTop: 1, flexShrink: 0 }} />}
+                <p style={{ fontSize: '12px', color: statusColors[status], margin: 0, lineHeight: 1.5, wordBreak: 'break-word' }}>{lastResult}</p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+          <Save size={14} /> Save Provider
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function EmailSMSTab() {
   const { addNotification } = useApp();
@@ -158,10 +297,13 @@ function EmailSMSTab() {
 
   return (
     <div>
+      {/* API Email Provider — for campaigns */}
+      <EmailProviderCard />
+
       {/* Quick-preset bar */}
       {card(
         <>
-          {sectionHead(<Mail size={20} color="#6366f1" />, 'Outgoing Email (SMTP)', 'Configure how emails are sent from your CRM')}
+          {sectionHead(<Mail size={20} color="#6366f1" />, 'Outgoing Email (SMTP)', 'Traditional SMTP for transactional emails')}
           <div style={{ marginBottom: '16px' }}>
             <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '8px' }}>Quick-fill presets</p>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

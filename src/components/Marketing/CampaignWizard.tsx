@@ -5,8 +5,9 @@ import {
   Link2, List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
   Smartphone, Monitor, CheckCircle, ChevronRight, ChevronLeft,
   Sparkles, RotateCcw, Plus, Trash2, Send, Eye, EyeOff,
-  Clock, Calendar, Users, Settings, ChevronDown, ChevronUp,
+  Clock, Calendar, Users, Settings, ChevronDown, ChevronUp, Loader, XCircle,
 } from 'lucide-react';
+import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 
 /* ─── Types ─── */
 type CampaignGoal = 'announce' | 'promote' | 'nurture' | 'welcome' | 'reengage' | 'custom';
@@ -652,28 +653,120 @@ function StepSequenceBuilder({ state, onChange }: { state: WizardState; onChange
 }
 
 /* ─── Step 5: Review & Launch ─── */
-function StepReview({ state, counts, onLaunch }: { state: WizardState; counts: Record<AudienceSegment, number>; onLaunch: (sendNow: boolean, scheduledAt: string) => void }) {
+interface SendLog { email: string; name: string; status: 'pending' | 'sent' | 'failed'; error?: string; }
+
+function StepReview({ state, counts, contacts, onLaunch }: { state: WizardState; counts: Record<AudienceSegment, number>; contacts: Contact[]; onLaunch: (sendNow: boolean, scheduledAt: string, sentCount: number) => void }) {
   const [sendTime, setSendTime] = useState<'now' | 'scheduled'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
+  const [testAddr, setTestAddr] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
+  const [testMsg, setTestMsg] = useState('');
   const [launching, setLaunching] = useState(false);
   const [launched, setLaunched] = useState(false);
+  const [sendLogs, setSendLogs] = useState<SendLog[]>([]);
+  const [sendProgress, setSendProgress] = useState(0);
+
+  const emailConfig = loadEmailConfig();
+  const hasProvider = emailConfig.provider !== 'none' && !!emailConfig.apiKey;
 
   const goalLabel = GOALS.find(g => g.id === state.goal)?.label || 'Custom';
   const typeLabel = ({ email: 'Email', sms: 'SMS', sequence: 'Email Sequence' } as const)[state.type];
   const dayLabels: Record<string, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
 
-  const handleLaunch = () => {
+  const getAudienceContacts = (): Contact[] => {
+    if (state.audience === 'all') return contacts;
+    const statusMap: Record<string, string> = { leads: 'lead', customers: 'customer', prospects: 'prospect' };
+    const status = statusMap[state.audience];
+    return contacts.filter(c => c.status === status);
+  };
+
+  const sendTestEmail = async () => {
+    if (!testAddr.trim()) return;
+    setTestStatus('sending'); setTestMsg('');
+    const cfg = loadEmailConfig();
+    const subject = state.subject || `Test: ${state.name}`;
+    const html = state.emailBody || '<p>Test email from your CRM.</p>';
+    const result = await sendEmail(cfg, { to: testAddr.trim(), toName: 'Test', subject, html: personalizeHtml(html, { name: 'Test User', email: testAddr.trim() }) });
+    if (result.success) {
+      setTestStatus('ok');
+      setTestMsg(`Delivered! ${result.id ? `ID: ${result.id}` : ''}`);
+    } else {
+      setTestStatus('fail');
+      setTestMsg(result.error || 'Send failed');
+    }
+  };
+
+  const handleLaunch = async () => {
+    if (!state.name) return;
     setLaunching(true);
-    setTimeout(() => { setLaunching(false); setLaunched(true); setTimeout(() => onLaunch(sendTime === 'now', scheduledAt), 1600); }, 1800);
+
+    let sentCount = 0;
+
+    if (sendTime === 'now' && hasProvider && state.type !== 'sms') {
+      const audience = getAudienceContacts();
+      const subject = state.subject || state.name;
+      const body = state.type === 'sequence' ? (state.steps[0]?.body || state.emailBody) : state.emailBody;
+      const cfg = loadEmailConfig();
+
+      const logs: SendLog[] = audience.map(c => ({ email: c.email, name: c.name, status: 'pending' as const }));
+      setSendLogs(logs);
+
+      for (let i = 0; i < audience.length; i++) {
+        const contact = audience[i];
+        const result = await sendEmail(cfg, {
+          to: contact.email,
+          toName: contact.name,
+          subject: personalizeHtml(subject, contact),
+          html: personalizeHtml(body || '', contact),
+        });
+        setSendLogs(prev => prev.map((l, idx) => idx === i ? { ...l, status: result.success ? 'sent' : 'failed', error: result.error } : l));
+        setSendProgress(Math.round(((i + 1) / audience.length) * 100));
+        if (result.success) sentCount++;
+        await new Promise(r => setTimeout(r, 120));
+      }
+    } else {
+      await new Promise(r => setTimeout(r, 1200));
+      sentCount = sendTime === 'now' ? getAudienceContacts().length : 0;
+    }
+
+    setLaunching(false);
+    setLaunched(true);
+    setTimeout(() => onLaunch(sendTime === 'now', scheduledAt, sentCount), 1400);
   };
 
   if (launched) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
-      <div style={{ width: 70, height: 70, borderRadius: '50%', backgroundColor: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '50px 20px', textAlign: 'center' }}>
+      <div style={{ width: 70, height: 70, borderRadius: '50%', backgroundColor: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
         <CheckCircle size={34} color="#16a34a" />
       </div>
       <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Campaign {sendTime === 'now' ? 'Launched' : 'Scheduled'}! 🎉</h2>
-      <p style={{ color: '#64748b', fontSize: 14 }}><strong>{state.name}</strong> will reach {counts[state.audience].toLocaleString()} contacts.</p>
+      {sendLogs.length > 0 && (
+        <p style={{ color: '#64748b', fontSize: 14 }}>
+          {sendLogs.filter(l => l.status === 'sent').length} sent · {sendLogs.filter(l => l.status === 'failed').length} failed
+        </p>
+      )}
+    </div>
+  );
+
+  if (launching && sendLogs.length > 0) return (
+    <div style={{ padding: '10px 0' }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Sending in progress…</h2>
+      <div style={{ height: 6, backgroundColor: '#e2e8f0', borderRadius: 3, marginBottom: 16 }}>
+        <div style={{ height: '100%', width: `${sendProgress}%`, backgroundColor: '#6366f1', borderRadius: 3, transition: 'width 0.3s' }} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+        {sendLogs.map((log, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', backgroundColor: '#f8fafc', borderRadius: 7, border: '1px solid #f1f5f9' }}>
+            <div style={{ width: 16, height: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {log.status === 'pending' && <Loader size={12} color="#94a3b8" style={{ animation: 'spin 1s linear infinite' }} />}
+              {log.status === 'sent' && <CheckCircle size={13} color="#16a34a" />}
+              {log.status === 'failed' && <XCircle size={13} color="#dc2626" />}
+            </div>
+            <span style={{ flex: 1, fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.name} · {log.email}</span>
+            {log.error && <span style={{ fontSize: 10, color: '#dc2626', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.error}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -684,70 +777,80 @@ function StepReview({ state, counts, onLaunch }: { state: WizardState; counts: R
     { label: 'Audience', value: `${counts[state.audience].toLocaleString()} contacts` },
     ...(state.fromEmail ? [{ label: 'From', value: `${state.fromName} <${state.fromEmail}>` }] : []),
     ...(state.sendDays.length > 0 ? [{ label: 'Send days', value: state.sendDays.map(d => dayLabels[d]).join(', ') }] : []),
-    ...(state.sendHoursFrom && state.sendHoursTo ? [{ label: 'Send window', value: `${state.sendHoursFrom} – ${state.sendHoursTo}` }] : []),
   ];
 
   return (
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Review & launch</h2>
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 18 }}>Everything looks good? Hit launch when ready.</p>
+      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>Review your campaign, send a test, then launch.</p>
 
-      <div style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: '16px 18px', marginBottom: 16, border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', marginBottom: 14 }}>
+      {/* Summary */}
+      <div style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: '14px 16px', marginBottom: 14, border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', marginBottom: 10 }}>
           {rows.map(r => (
             <div key={r.label}>
-              <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{r.label}</p>
+              <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{r.label}</p>
               <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>{r.value}</p>
             </div>
           ))}
         </div>
-
-        {/* Tracking flags */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {state.openTracking && <span style={{ fontSize: 10, padding: '2px 7px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: 20, fontWeight: 600 }}>Open tracking</span>}
-          {state.clickTracking && <span style={{ fontSize: 10, padding: '2px 7px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: 20, fontWeight: 600 }}>Click tracking</span>}
-          {state.stopOnReply && <span style={{ fontSize: 10, padding: '2px 7px', backgroundColor: '#ecfdf5', color: '#16a34a', borderRadius: 20, fontWeight: 600 }}>Stop on reply</span>}
-          {state.stopOnBounce && <span style={{ fontSize: 10, padding: '2px 7px', backgroundColor: '#ecfdf5', color: '#16a34a', borderRadius: 20, fontWeight: 600 }}>Stop on bounce</span>}
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {state.openTracking && <span style={{ fontSize: 10, padding: '2px 6px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: 20, fontWeight: 600 }}>Open tracking</span>}
+          {state.clickTracking && <span style={{ fontSize: 10, padding: '2px 6px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: 20, fontWeight: 600 }}>Click tracking</span>}
+          {state.stopOnReply && <span style={{ fontSize: 10, padding: '2px 6px', backgroundColor: '#ecfdf5', color: '#16a34a', borderRadius: 20, fontWeight: 600 }}>Stop on reply</span>}
         </div>
-
-        {/* Subject preview */}
-        {state.type !== 'sms' && state.type !== 'sequence' && state.subject && (
-          <div style={{ marginTop: 12, padding: '10px 12px', backgroundColor: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 3px', textTransform: 'uppercase' }}>Subject preview</p>
-            <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: '0 0 2px' }}>{state.subject}</p>
-            {state.abTest && state.subjectB && <p style={{ fontSize: 12, color: '#d97706', margin: '0 0 2px' }}>B: {state.subjectB}</p>}
-            {state.previewText && <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{state.previewText}</p>}
+        {state.type !== 'sms' && state.subject && (
+          <div style={{ marginTop: 10, padding: '8px 10px', backgroundColor: 'white', borderRadius: 7, border: '1px solid #e2e8f0' }}>
+            <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 2px', textTransform: 'uppercase' }}>Subject</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>{state.subject}</p>
+            {state.abTest && state.subjectB && <p style={{ fontSize: 11, color: '#d97706', margin: '2px 0 0' }}>B: {state.subjectB}</p>}
           </div>
         )}
-
-        {/* SMS preview */}
-        {state.type === 'sms' && state.smsBody && (
-          <div style={{ marginTop: 12, padding: '10px 12px', backgroundColor: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 6px', textTransform: 'uppercase' }}>SMS preview</p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ maxWidth: '80%', padding: '9px 12px', backgroundColor: '#3b82f6', color: 'white', borderRadius: '14px 14px 4px 14px', fontSize: 12 }}>{state.smsBody}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Sequence steps summary */}
         {state.type === 'sequence' && state.steps.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 8px', textTransform: 'uppercase' }}>Sequence ({state.steps.length} steps)</p>
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 10 }}>
+            <p style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, margin: '0 0 6px', textTransform: 'uppercase' }}>Sequence</p>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
               {state.steps.map((s, i) => (
                 <React.Fragment key={s.id}>
-                  <span style={{ padding: '3px 9px', backgroundColor: i === 0 ? '#6366f1' : '#f1f5f9', color: i === 0 ? 'white' : '#374151', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>Day {s.day}</span>
-                  {i < state.steps.length - 1 && <ChevronRight size={12} color="#94a3b8" style={{ alignSelf: 'center' }} />}
+                  <span style={{ padding: '2px 7px', backgroundColor: i === 0 ? '#6366f1' : '#f1f5f9', color: i === 0 ? 'white' : '#374151', borderRadius: 6, fontSize: 10, fontWeight: 600 }}>Day {s.day}</span>
+                  {i < state.steps.length - 1 && <ChevronRight size={10} color="#94a3b8" />}
                 </React.Fragment>
               ))}
-              <ChevronRight size={12} color="#94a3b8" style={{ alignSelf: 'center' }} />
-              <span style={{ padding: '3px 9px', backgroundColor: '#ecfdf5', color: '#16a34a', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>End</span>
             </div>
           </div>
         )}
       </div>
 
+      {/* Test send */}
+      {state.type !== 'sms' && (
+        <div style={{ padding: '14px', backgroundColor: hasProvider ? '#f0fdf4' : '#fef9c3', borderRadius: 10, border: `1px solid ${hasProvider ? '#bbf7d0' : '#fde68a'}`, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Send size={13} color={hasProvider ? '#16a34a' : '#d97706'} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: hasProvider ? '#166534' : '#92400e' }}>
+              {hasProvider ? 'Test email — send a preview first' : '⚠️ No email provider configured — go to Settings → Email & SMS to set up Mailtrap or Resend'}
+            </span>
+          </div>
+          {hasProvider && (
+            <div style={{ display: 'flex', gap: 7 }}>
+              <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="your@email.com"
+                style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1fae5', borderRadius: 7, fontSize: 13, outline: 'none' }} />
+              <button onClick={sendTestEmail} disabled={testStatus === 'sending' || !testAddr.trim()}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                {testStatus === 'sending' ? <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={12} />}
+                {testStatus === 'sending' ? 'Sending…' : 'Send Test'}
+              </button>
+            </div>
+          )}
+          {testMsg && (
+            <div style={{ marginTop: 7, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', backgroundColor: testStatus === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: 6 }}>
+              {testStatus === 'ok' ? <CheckCircle size={13} color="#16a34a" style={{ marginTop: 1 }} /> : <XCircle size={13} color="#dc2626" style={{ marginTop: 1 }} />}
+              <span style={{ fontSize: 11, color: testStatus === 'ok' ? '#166534' : '#991b1b', lineHeight: 1.5, wordBreak: 'break-word' }}>{testMsg}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Send timing */}
       <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>When to send</p>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {[
@@ -755,7 +858,7 @@ function StepReview({ state, counts, onLaunch }: { state: WizardState; counts: R
           { id: 'scheduled' as const, label: '📅 Schedule',  desc: 'Pick a date & time'   },
         ].map(opt => (
           <button key={opt.id} onClick={() => setSendTime(opt.id)}
-            style={{ flex: 1, padding: '10px', border: `2px solid ${sendTime === opt.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: sendTime === opt.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
+            style={{ flex: 1, padding: '9px', border: `2px solid ${sendTime === opt.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: sendTime === opt.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: sendTime === opt.id ? '#6366f1' : '#0f172a', marginBottom: 1 }}>{opt.label}</div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>{opt.desc}</div>
           </button>
@@ -770,8 +873,8 @@ function StepReview({ state, counts, onLaunch }: { state: WizardState; counts: R
       )}
 
       <button onClick={handleLaunch} disabled={launching || !state.name}
-        style={{ width: '100%', padding: 13, backgroundColor: (launching || !state.name) ? (launching ? '#c4b5fd' : '#e2e8f0') : '#6366f1', color: (launching || !state.name) ? '#9ca3af' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-        {launching ? <><span>⚙️</span> Launching…</> : <><Send size={16} /> {sendTime === 'now' ? 'Launch Campaign' : 'Schedule Campaign'}</>}
+        style={{ width: '100%', padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#6366f1', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+        {launching ? <><Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> {hasProvider && sendTime === 'now' ? 'Sending…' : 'Launching…'}</> : <><Send size={16} /> {sendTime === 'now' ? (hasProvider ? `Launch & Send to ${counts[state.audience]} contacts` : 'Launch Campaign') : 'Schedule Campaign'}</>}
       </button>
       {!state.name && <p style={{ fontSize: 12, color: '#f59e0b', textAlign: 'center', marginTop: 8 }}>⚠️ Add a campaign name in step 1 first</p>}
     </div>
@@ -852,13 +955,13 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       if (step === 1) return <StepSetup state={state} onChange={update} />;
       if (step === 2) return <StepAudience state={state} onChange={update} counts={counts} />;
       if (step === 3) return <StepSMSContent state={state} onChange={update} />;
-      return <StepReview state={state} counts={counts} onLaunch={handleLaunch} />;
+      return <StepReview state={state} counts={counts} contacts={contacts} onLaunch={handleLaunch} />;
     }
     if (step === 1) return <StepSetup state={state} onChange={update} />;
     if (step === 2) return <StepSenderSettings state={state} onChange={update} />;
     if (step === 3) return <StepAudience state={state} onChange={update} counts={counts} />;
     if (step === 4) return isSeq ? <StepSequenceBuilder state={state} onChange={update} /> : <StepEmailContent state={state} onChange={update} />;
-    return <StepReview state={state} counts={counts} onLaunch={handleLaunch} />;
+    return <StepReview state={state} counts={counts} contacts={contacts} onLaunch={handleLaunch} />;
   };
 
   const canNext = (): boolean => {
@@ -870,7 +973,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     return true;
   };
 
-  const handleLaunch = (sendNow: boolean, scheduledAt: string) => {
+  const handleLaunch = (sendNow: boolean, scheduledAt: string, sentCount: number) => {
     onAdd({
       name: state.name, description: state.description, type: state.type,
       status: sendNow ? 'active' : 'draft',
@@ -882,7 +985,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       subject: state.subject, previewText: state.previewText,
       emailBody: state.emailBody, smsBody: state.smsBody,
       steps: isSeq ? state.steps : undefined,
-      sent: sendNow ? (Math.floor(Math.random() * 400) + 50) : 0,
+      sent: sentCount,
       opened: 0, clicked: 0, replied: 0, bounced: 0, unsubscribed: 0,
       createdAt: new Date().toISOString().split('T')[0],
       scheduledAt: scheduledAt || undefined,
