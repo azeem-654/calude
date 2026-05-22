@@ -14,7 +14,7 @@ import Settings from './components/Settings/Settings';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/calude">
       <AppProvider>
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
           <Sidebar />
