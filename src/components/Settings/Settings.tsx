@@ -90,8 +90,21 @@ function EmailProviderCard() {
   const save = () => { saveEmailConfig(cfg); addNotification('Email provider saved!'); };
 
   const runTest = async () => {
-    if (!testAddr.trim()) { addNotification('Enter a test recipient address', 'error'); return; }
     if (cfg.provider === 'none') { addNotification('Select a provider first', 'error'); return; }
+    if (cfg.provider === 'demo') {
+      setStatus('sending'); setLastResult('');
+      const result = await sendEmail(cfg, {
+        to: 'demo-test@yourcrm.local',
+        toName: 'Demo Test Recipient',
+        subject: '✅ Demo Mode Test Email',
+        html: `<h2 style="color:#0284c7">Demo Mode is working! 📬</h2><p>This test was captured in your Demo Inbox at <strong>${new Date().toLocaleString()}</strong>.</p><p>No real email was sent. Go to <strong>Marketing → Demo Inbox</strong> to see captured emails.</p><p style="background:#f0f9ff;padding:12px;border-radius:8px;border-left:4px solid #0284c7">Switch to <strong>Mailtrap</strong> or <strong>Resend</strong> provider when you're ready to send real emails.</p>`,
+      });
+      setStatus('ok');
+      setLastResult('Captured in Demo Inbox! Go to Marketing → Demo Inbox to view it.');
+      addNotification('Test email captured in Demo Inbox!');
+      return;
+    }
+    if (!testAddr.trim()) { addNotification('Enter a test recipient address', 'error'); return; }
     setStatus('sending'); setLastResult('');
     const result = await sendEmail(cfg, {
       to: testAddr.trim(),
@@ -134,6 +147,26 @@ function EmailProviderCard() {
       {/* Provider selector */}
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Provider</label>
+
+        {/* Demo mode — featured first */}
+        <button onClick={() => setCfg(prev => ({ ...prev, provider: 'demo', fromName: prev.fromName || 'Demo Sender', fromEmail: prev.fromEmail || 'demo@yourcrm.local' }))}
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 14px', border: `2px solid ${cfg.provider === 'demo' ? '#0284c7' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === 'demo' ? '#f0f9ff' : 'white', cursor: 'pointer', textAlign: 'left', marginBottom: '8px', transition: 'all 0.12s' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 18 }}>📬</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 1 }}>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: cfg.provider === 'demo' ? '#0284c7' : '#0f172a' }}>Demo Mode</span>
+              <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: 20, backgroundColor: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>NO SETUP REQUIRED</span>
+              <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: 20, backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: 600 }}>DEFAULT</span>
+            </div>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Emails are captured in a built-in inbox — nothing is sent to real recipients. Perfect for testing your campaigns.</p>
+          </div>
+          <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${cfg.provider === 'demo' ? '#0284c7' : '#cbd5e1'}`, backgroundColor: cfg.provider === 'demo' ? '#0284c7' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {cfg.provider === 'demo' && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'white' }} />}
+          </div>
+        </button>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
           {[
             { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test sandbox' },
@@ -147,7 +180,7 @@ function EmailProviderCard() {
             </button>
           ))}
         </div>
-        {cfg.provider !== 'none' && providerDocs[cfg.provider] && (
+        {cfg.provider !== 'none' && cfg.provider !== 'demo' && providerDocs[cfg.provider] && (
           <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <p style={{ fontSize: '12px', color: '#64748b', margin: 0, flex: 1 }}>{providerDocs[cfg.provider].hint}</p>
             <a href={providerDocs[cfg.provider].url} target="_blank" rel="noopener noreferrer"
@@ -158,14 +191,31 @@ function EmailProviderCard() {
         )}
       </div>
 
+      {/* Demo mode info box */}
+      {cfg.provider === 'demo' && (
+        <div style={{ padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '10px', border: '1px solid #bae6fd', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ fontSize: 20, flexShrink: 0 }}>📬</span>
+            <div>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#0284c7', margin: '0 0 4px' }}>Demo Mode is active</p>
+              <p style={{ fontSize: '12px', color: '#0369a1', margin: 0, lineHeight: 1.6 }}>
+                All campaign emails are captured in the built-in <strong>Demo Inbox</strong> (Marketing → Demo Inbox button). No real emails are sent to your contacts. You can test your full campaign flow — send timing, personalization, and email preview — without any configuration.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {cfg.provider !== 'none' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-            <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>API Key *</label>
-              <input type="password" value={cfg.apiKey} onChange={e => setCfg(prev => ({ ...prev, apiKey: e.target.value }))} placeholder="Paste your API key here"
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-            </div>
+            {cfg.provider !== 'demo' && (
+              <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>API Key *</label>
+                <input type="password" value={cfg.apiKey} onChange={e => setCfg(prev => ({ ...prev, apiKey: e.target.value }))} placeholder="Paste your API key here"
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            )}
             {cfg.provider === 'mailtrap' && (
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Inbox ID *</label>
@@ -186,18 +236,24 @@ function EmailProviderCard() {
           </div>
 
           {/* Test send */}
-          <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 10px' }}>Send test email</p>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-              <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
-                style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
-              <button onClick={runTest} disabled={status === 'sending'}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#6366f1', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
-                {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
-              </button>
-            </div>
+          <div style={{ padding: '16px', backgroundColor: cfg.provider === 'demo' ? '#f0f9ff' : '#f8fafc', borderRadius: '10px', border: `1px solid ${cfg.provider === 'demo' ? '#bae6fd' : '#e2e8f0'}` }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>
+              {cfg.provider === 'demo' ? '📬 Send a test to Demo Inbox' : 'Send test email'}
+            </p>
+            {cfg.provider === 'demo' ? (
+              <p style={{ fontSize: '12px', color: '#0369a1', margin: '0 0 10px' }}>Click below — the test email will appear in Marketing → Demo Inbox instantly.</p>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
+                  style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+              </div>
+            )}
+            <button onClick={runTest} disabled={status === 'sending'}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : (cfg.provider === 'demo' ? '#0284c7' : '#6366f1'), color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
+              {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> {cfg.provider === 'demo' ? 'Capture Test Email' : 'Send Test'}</>}
+            </button>
             {lastResult && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '8px 10px', backgroundColor: status === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: '7px', border: `1px solid ${status === 'ok' ? '#bbf7d0' : '#fecaca'}` }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '8px 10px', backgroundColor: status === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: '7px', border: `1px solid ${status === 'ok' ? '#bbf7d0' : '#fecaca'}`, marginTop: '8px' }}>
                 {status === 'ok' ? <CheckCircle size={14} color="#16a34a" style={{ marginTop: 1, flexShrink: 0 }} /> : <XCircle size={14} color="#dc2626" style={{ marginTop: 1, flexShrink: 0 }} />}
                 <p style={{ fontSize: '12px', color: statusColors[status], margin: 0, lineHeight: 1.5, wordBreak: 'break-word' }}>{lastResult}</p>
               </div>

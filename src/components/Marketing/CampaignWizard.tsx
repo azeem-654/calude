@@ -835,7 +835,8 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   const [sendProgress, setSendProgress] = useState(0);
 
   const emailConfig = loadEmailConfig();
-  const hasProvider = emailConfig.provider !== 'none' && !!emailConfig.apiKey;
+  const isDemo = emailConfig.provider === 'demo';
+  const hasProvider = isDemo || (emailConfig.provider !== 'none' && !!emailConfig.apiKey);
   const isSMS = state.type === 'sms';
 
   const goalLabel = GOALS.find(g => g.id === state.goal)?.label || 'Custom';
@@ -971,33 +972,45 @@ function StepReview({ state, counts, contacts, onLaunch }: {
         )}
       </div>
 
-      {/* Test send */}
+      {/* Test send / Demo mode notice */}
       {!isSMS && (
-        <div style={{ padding: '14px', backgroundColor: hasProvider ? '#f0fdf4' : '#fef9c3', borderRadius: 10, border: `1px solid ${hasProvider ? '#bbf7d0' : '#fde68a'}`, marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <Send size={13} color={hasProvider ? '#16a34a' : '#d97706'} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: hasProvider ? '#166534' : '#92400e' }}>
-              {hasProvider ? 'Send a test email before launching' : '⚠️ No email provider — go to Settings → Email & SMS to configure Mailtrap or Resend'}
-            </span>
-          </div>
-          {hasProvider && (
-            <div style={{ display: 'flex', gap: 7 }}>
-              <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="your@email.com"
-                style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1fae5', borderRadius: 7, fontSize: 13, outline: 'none' }} />
-              <button onClick={sendTestEmail} disabled={testStatus === 'sending' || !testAddr.trim()}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                {testStatus === 'sending' ? <Loader size={12} /> : <Send size={12} />}
-                {testStatus === 'sending' ? 'Sending…' : 'Send Test'}
-              </button>
+        <>
+          {isDemo ? (
+            <div style={{ padding: '12px 14px', backgroundColor: '#f0f9ff', borderRadius: 10, border: '1px solid #bae6fd', marginBottom: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>📬</span>
+              <div>
+                <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 700, color: '#0284c7' }}>Demo Mode — all emails go to Demo Inbox</p>
+                <p style={{ margin: 0, fontSize: 12, color: '#0369a1', lineHeight: 1.5 }}>No real emails will be sent to your contacts. After launching, go to <strong>Marketing → Demo Inbox</strong> to preview all captured emails. Switch to Mailtrap or Resend in Settings when ready for real sending.</p>
+              </div>
+            </div>
+          ) : hasProvider ? (
+            <div style={{ padding: '14px', backgroundColor: '#f0fdf4', borderRadius: 10, border: '1px solid #bbf7d0', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Send size={13} color="#16a34a" />
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>Send a test email before launching</span>
+              </div>
+              <div style={{ display: 'flex', gap: 7 }}>
+                <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="your@email.com"
+                  style={{ flex: 1, padding: '7px 10px', border: '1px solid #d1fae5', borderRadius: 7, fontSize: 13, outline: 'none' }} />
+                <button onClick={sendTestEmail} disabled={testStatus === 'sending' || !testAddr.trim()}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                  {testStatus === 'sending' ? <Loader size={12} /> : <Send size={12} />}
+                  {testStatus === 'sending' ? 'Sending…' : 'Send Test'}
+                </button>
+              </div>
+              {testMsg && (
+                <div style={{ marginTop: 7, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', backgroundColor: testStatus === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: 6 }}>
+                  {testStatus === 'ok' ? <CheckCircle size={13} color="#16a34a" style={{ marginTop: 1 }} /> : <XCircle size={13} color="#dc2626" style={{ marginTop: 1 }} />}
+                  <span style={{ fontSize: 11, color: testStatus === 'ok' ? '#166534' : '#991b1b', lineHeight: 1.5, wordBreak: 'break-word' }}>{testMsg}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ padding: '12px 14px', backgroundColor: '#fef9c3', borderRadius: 10, border: '1px solid #fde68a', marginBottom: 14 }}>
+              <span style={{ fontSize: 13, color: '#92400e', fontWeight: 500 }}>⚠️ No email provider configured — go to <strong>Settings → Email & SMS</strong> to set up Demo Mode, Mailtrap, or Resend.</span>
             </div>
           )}
-          {testMsg && (
-            <div style={{ marginTop: 7, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', backgroundColor: testStatus === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: 6 }}>
-              {testStatus === 'ok' ? <CheckCircle size={13} color="#16a34a" style={{ marginTop: 1 }} /> : <XCircle size={13} color="#dc2626" style={{ marginTop: 1 }} />}
-              <span style={{ fontSize: 11, color: testStatus === 'ok' ? '#166534' : '#991b1b', lineHeight: 1.5, wordBreak: 'break-word' }}>{testMsg}</span>
-            </div>
-          )}
-        </div>
+        </>
       )}
 
       {/* Timing */}
@@ -1024,7 +1037,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
 
       <button onClick={handleLaunch} disabled={launching || !state.name}
         style={{ width: '100%', padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#6366f1', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-        {launching ? <><Loader size={15} /> {hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…'}</> : <><Send size={16} /> {sendTime === 'now' ? (hasProvider && !isSMS ? `Launch & Send to ${counts[state.audience]} contacts` : 'Launch Campaign') : 'Schedule Campaign'}</>}
+        {launching ? <><Loader size={15} /> {isDemo ? 'Capturing to Demo Inbox…' : (hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…')}</> : <><Send size={16} /> {sendTime === 'now' ? (isDemo ? `Launch → Demo Inbox (${counts[state.audience]} emails)` : (hasProvider && !isSMS ? `Launch & Send to ${counts[state.audience]} contacts` : 'Launch Campaign')) : 'Schedule Campaign'}</>}
       </button>
       {!state.name && <p style={{ fontSize: 12, color: '#f59e0b', textAlign: 'center', marginTop: 8 }}>⚠️ Add a campaign name in step 1 first</p>}
     </div>

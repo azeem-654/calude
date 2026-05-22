@@ -1,5 +1,5 @@
 export interface EmailProviderConfig {
-  provider: 'mailtrap' | 'resend' | 'none';
+  provider: 'mailtrap' | 'resend' | 'demo' | 'none';
   apiKey: string;
   inboxId: string;
   fromName: string;
@@ -19,7 +19,20 @@ export interface SendResult {
   error?: string;
 }
 
+export interface DemoEmail {
+  id: string;
+  to: string;
+  toName?: string;
+  from: string;
+  fromName: string;
+  subject: string;
+  html: string;
+  timestamp: string;
+  campaignName?: string;
+}
+
 const LS_KEY = 'crm_email_provider';
+const DEMO_LS_KEY = 'crm_demo_inbox';
 
 export function loadEmailConfig(): EmailProviderConfig {
   try {
@@ -28,14 +41,45 @@ export function loadEmailConfig(): EmailProviderConfig {
 }
 
 function defaultConfig(): EmailProviderConfig {
-  return { provider: 'none', apiKey: '', inboxId: '', fromName: '', fromEmail: '' };
+  return { provider: 'demo', apiKey: '', inboxId: '', fromName: 'Demo Sender', fromEmail: 'demo@yourcrm.local' };
 }
 
 export function saveEmailConfig(cfg: EmailProviderConfig) {
   localStorage.setItem(LS_KEY, JSON.stringify(cfg));
 }
 
+/* ─── Demo inbox ─── */
+export function loadDemoEmails(): DemoEmail[] {
+  try { return JSON.parse(localStorage.getItem(DEMO_LS_KEY) || '[]'); } catch { return []; }
+}
+
+export function saveDemoEmail(email: DemoEmail): void {
+  const emails = loadDemoEmails();
+  emails.unshift(email);
+  localStorage.setItem(DEMO_LS_KEY, JSON.stringify(emails.slice(0, 200)));
+}
+
+export function clearDemoEmails(): void {
+  localStorage.removeItem(DEMO_LS_KEY);
+}
+
+/* ─── Send ─── */
 export async function sendEmail(config: EmailProviderConfig, payload: EmailPayload): Promise<SendResult> {
+  if (config.provider === 'demo') {
+    const email: DemoEmail = {
+      id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      to: payload.to,
+      toName: payload.toName,
+      from: config.fromEmail || 'demo@yourcrm.local',
+      fromName: config.fromName || 'Demo Sender',
+      subject: payload.subject,
+      html: payload.html,
+      timestamp: new Date().toISOString(),
+    };
+    saveDemoEmail(email);
+    return { success: true, id: email.id };
+  }
+
   if (config.provider === 'none' || !config.apiKey) {
     return { success: false, error: 'No email provider configured. Go to Settings → Email & SMS → Email Provider.' };
   }
