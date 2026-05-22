@@ -71,15 +71,46 @@ export interface Stage {
   deals: Deal[];
 }
 
+export interface CampaignStep {
+  id: string;
+  day: number;
+  waitUnit: 'hours' | 'days';
+  subject: string;
+  subjectB?: string;
+  abTest: boolean;
+  body: string;
+  condition: string;
+}
+
 export interface Campaign {
   id: string;
   name: string;
+  description?: string;
   type: 'email' | 'sms' | 'sequence';
   status: 'draft' | 'active' | 'paused' | 'completed';
+  goal?: string;
+  audience?: string;
+  fromName?: string;
+  fromEmail?: string;
+  replyTo?: string;
+  openTracking?: boolean;
+  clickTracking?: boolean;
+  stopOnReply?: boolean;
+  stopOnBounce?: boolean;
+  sendDays?: string[];
+  sendHoursFrom?: string;
+  sendHoursTo?: string;
+  subject?: string;
+  previewText?: string;
+  emailBody?: string;
+  smsBody?: string;
+  steps?: CampaignStep[];
   sent: number;
   opened: number;
   clicked: number;
   replied: number;
+  bounced?: number;
+  unsubscribed?: number;
   createdAt: string;
   scheduledAt?: string;
 }

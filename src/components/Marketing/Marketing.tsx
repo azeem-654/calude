@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ContactImport from './ContactImport';
 import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
 import CampaignWizard from './CampaignWizard';
+import CampaignDetailPanel from './CampaignDetailPanel';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
 
@@ -39,38 +40,50 @@ function MetricBar({ label, value, total, color }: { label: string; value: numbe
 }
 
 function CampaignsTab() {
-  const { campaigns, addCampaign, toggleCampaignStatus, contacts } = useApp();
+  const { campaigns, addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus, contacts } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+
   const filtered = campaigns.filter(c => typeFilter === 'all' || c.type === typeFilter);
   const totalSent = campaigns.reduce((s, c) => s + c.sent, 0);
   const withSent = campaigns.filter(c => c.sent > 0);
   const avgOpen = withSent.length > 0 ? withSent.reduce((s, c) => s + c.opened / c.sent, 0) / withSent.length * 100 : 0;
+
+  const handleEditFromPanel = () => {
+    setEditingCampaign(selectedCampaign);
+    setSelectedCampaign(null);
+  };
+
   return (
     <div style={{ padding: '24px 28px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
         {[
           { label: 'Total Campaigns', value: campaigns.length, icon: Mail, color: '#6366f1' },
           { label: 'Total Sent', value: totalSent.toLocaleString(), icon: Users, color: '#3b82f6' },
           { label: 'Avg Open Rate', value: `${avgOpen.toFixed(1)}%`, icon: BarChart2, color: '#22c55e' },
-          { label: 'Active Campaigns', value: campaigns.filter(c => c.status === 'active').length, icon: Play, color: '#f59e0b' },
+          { label: 'Active', value: campaigns.filter(c => c.status === 'active').length, icon: Play, color: '#f59e0b' },
         ].map(item => (
-          <div key={item.label} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '18px 20px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <item.icon size={22} color={item.color} />
+          <div key={item.label} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <item.icon size={20} color={item.color} />
             </div>
             <div>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 4px', fontWeight: 500 }}>{item.label}</p>
-              <p style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{item.value}</p>
+              <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 3px', fontWeight: 500 }}>{item.label}</p>
+              <p style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{item.value}</p>
             </div>
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', gap: '6px' }}>
           {['all', 'email', 'sms', 'sequence'].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
-              style={{ padding: '7px 14px', borderRadius: '8px', border: `1px solid ${typeFilter === t ? '#6366f1' : '#e2e8f0'}`, backgroundColor: typeFilter === t ? '#6366f1' : 'white', color: typeFilter === t ? 'white' : '#64748b', fontSize: '13px', cursor: 'pointer', textTransform: 'capitalize', fontWeight: 500 }}>
+              style={{ padding: '6px 13px', borderRadius: '8px', border: `1px solid ${typeFilter === t ? '#6366f1' : '#e2e8f0'}`, backgroundColor: typeFilter === t ? '#6366f1' : 'white', color: typeFilter === t ? 'white' : '#64748b', fontSize: '12px', cursor: 'pointer', textTransform: 'capitalize', fontWeight: 500 }}>
               {t === 'all' ? 'All' : t.toUpperCase()}
             </button>
           ))}
@@ -80,52 +93,98 @@ function CampaignsTab() {
           <Plus size={15} /> Create Campaign
         </button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+      {/* Campaign list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: '40px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center', color: '#94a3b8' }}>
+            <p style={{ fontSize: 14, margin: 0 }}>No campaigns yet. Click "Create Campaign" to get started.</p>
+          </div>
+        )}
         {filtered.map(campaign => {
-          const sc = campaignStatusColors[campaign.status];
+          const sc = campaignStatusColors[campaign.status] || campaignStatusColors.draft;
           const tc = typeColors[campaign.type];
           return (
-            <div key={campaign.id} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '20px 24px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: `${tc}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tc }}>
+            <div key={campaign.id} onClick={() => setSelectedCampaign(campaign)}
+              style={{ backgroundColor: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #e2e8f0', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.1)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c4b5fd'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = ''; (e.currentTarget as HTMLDivElement).style.borderColor = '#e2e8f0'; }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: campaign.sent > 0 ? '14px' : '0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: `${tc}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tc, flexShrink: 0 }}>
                     {typeIcons[campaign.type]}
                   </div>
-                  <div>
-                    <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{campaign.name}</p>
-                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>Created {campaign.createdAt} · {campaign.type.toUpperCase()}</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.name}</p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>
+                      {campaign.createdAt} · {campaign.type.toUpperCase()}
+                      {campaign.goal ? ` · ${campaign.goal}` : ''}
+                      {campaign.audience ? ` · ${campaign.audience}` : ''}
+                    </p>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, backgroundColor: sc.bg, color: sc.color }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 12 }}>
+                  <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, backgroundColor: sc.bg, color: sc.color }}>
                     {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
                   </span>
-                  <button onClick={() => toggleCampaignStatus(campaign.id)}
-                    style={{ padding: '7px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}>
-                    {campaign.status === 'active' ? <Pause size={14} color="#64748b" /> : <Play size={14} color="#64748b" />}
+                  <button onClick={e => { e.stopPropagation(); toggleCampaignStatus(campaign.id); }}
+                    style={{ padding: '6px', borderRadius: '7px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}>
+                    {campaign.status === 'active' ? <Pause size={13} color="#64748b" /> : <Play size={13} color="#64748b" />}
                   </button>
+                  <ChevronRight size={15} color="#cbd5e1" />
                 </div>
               </div>
-              {campaign.sent > 0 ? (
-                <div style={{ display: 'flex', gap: '20px' }}>
-                  <MetricBar label="Open Rate" value={campaign.opened} total={campaign.sent} color="#6366f1" />
-                  <MetricBar label="Click Rate" value={campaign.clicked} total={campaign.sent} color="#3b82f6" />
-                  <MetricBar label="Reply Rate" value={campaign.replied} total={campaign.sent} color="#22c55e" />
+              {campaign.sent > 0 && (
+                <div style={{ display: 'flex', gap: '16px', paddingTop: '12px', borderTop: '1px solid #f8fafc' }}>
+                  <MetricBar label="Open" value={campaign.opened} total={campaign.sent} color="#6366f1" />
+                  <MetricBar label="Click" value={campaign.clicked} total={campaign.sent} color="#3b82f6" />
+                  <MetricBar label="Reply" value={campaign.replied} total={campaign.sent} color="#22c55e" />
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>Total Sent</p>
-                    <p style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{campaign.sent.toLocaleString()}</p>
+                    <p style={{ fontSize: '10px', color: '#64748b', marginBottom: '3px', fontWeight: 500 }}>Sent</p>
+                    <p style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{campaign.sent.toLocaleString()}</p>
                   </div>
-                </div>
-              ) : (
-                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                  Draft — no messages sent yet. Click play to launch.
                 </div>
               )}
             </div>
           );
         })}
       </div>
-      {showModal && <CampaignWizard contacts={contacts} onClose={() => setShowModal(false)} onAdd={addCampaign} />}
+
+      {/* Create wizard */}
+      {showModal && (
+        <CampaignWizard contacts={contacts} onClose={() => setShowModal(false)} onAdd={addCampaign} />
+      )}
+
+      {/* Edit wizard */}
+      {editingCampaign && (
+        <CampaignWizard
+          contacts={contacts}
+          editCampaign={editingCampaign}
+          onClose={() => setEditingCampaign(null)}
+          onAdd={data => {
+            updateCampaign(editingCampaign.id, data);
+            setEditingCampaign(null);
+          }}
+        />
+      )}
+
+      {/* Detail panel */}
+      {selectedCampaign && (
+        <CampaignDetailPanel
+          campaign={selectedCampaign}
+          contacts={contacts}
+          onClose={() => setSelectedCampaign(null)}
+          onEdit={handleEditFromPanel}
+          onToggleStatus={() => {
+            toggleCampaignStatus(selectedCampaign.id);
+            setSelectedCampaign(prev => prev ? { ...prev, status: prev.status === 'active' ? 'paused' : 'active' } : null);
+          }}
+          onDelete={() => {
+            deleteCampaign(selectedCampaign.id);
+            setSelectedCampaign(null);
+          }}
+        />
+      )}
     </div>
   );
 }

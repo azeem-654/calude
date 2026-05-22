@@ -28,6 +28,8 @@ interface AppContextType {
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   sendMessage: (conversationId: string, content: string) => void;
   addCampaign: (campaign: Omit<Campaign, 'id'>) => void;
+  updateCampaign: (id: string, updates: Partial<Campaign>) => void;
+  deleteCampaign: (id: string) => void;
   toggleCampaignStatus: (id: string) => void;
   replyToReview: (id: string, replyText: string) => void;
   addSequence: (seq: Omit<EmailSequence, 'id'>) => void;
@@ -114,6 +116,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addNotification(`Campaign "${campaign.name}" created!`);
   };
 
+  const updateCampaign = (id: string, updates: Partial<Campaign>) => {
+    setCampaigns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  const deleteCampaign = (id: string) => {
+    setCampaigns(prev => prev.filter(c => c.id !== id));
+    addNotification('Campaign deleted', 'info');
+  };
+
   const toggleCampaignStatus = (id: string) => {
     setCampaigns(prev => prev.map(c => {
       if (c.id !== id) return c;
@@ -161,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       contacts, conversations, appointments, pipelines, campaigns, funnels, reviews, sequences, automations,
       addContact, updateContact, deleteContact, bulkImportContacts,
       addAppointment, updateAppointment, sendMessage,
-      addCampaign, toggleCampaignStatus, replyToReview,
+      addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus, replyToReview,
       addSequence, updateSequence, deleteSequence,
       addAutomation, updateAutomation, deleteAutomation,
       notifications, addNotification, dismissNotification,
