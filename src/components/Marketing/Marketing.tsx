@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, X, Upload, GitBranch } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ContactImport from './ContactImport';
 import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
+import CampaignWizard from './CampaignWizard';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
 
-/* ─── Campaign tab (original, preserved) ─── */
+/* ─── Campaign tab ─── */
 
 const typeIcons: Record<string, React.ReactElement> = {
   email: <Mail size={14} />, sms: <MessageSquare size={14} />, sequence: <Zap size={14} />,
@@ -20,48 +21,6 @@ const campaignStatusColors: Record<string, { bg: string; color: string }> = {
   paused: { bg: '#fef3c7', color: '#d97706' },
   completed: { bg: '#eff6ff', color: '#2563eb' },
 };
-
-function NewCampaignModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Omit<Campaign, 'id'>) => void }) {
-  const [form, setForm] = useState({ name: '', type: 'email' as Campaign['type'], status: 'draft' as Campaign['status'] });
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onAdd({ ...form, sent: 0, opened: 0, clicked: 0, replied: 0, createdAt: new Date().toISOString().split('T')[0] });
-    onClose();
-  };
-  return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Create Campaign</h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} color="#94a3b8" /></button>
-        </div>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Campaign Name</label>
-            <input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Summer Newsletter"
-              style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Campaign Type</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              {(['email', 'sms', 'sequence'] as Campaign['type'][]).map(t => (
-                <button key={t} type="button" onClick={() => setForm(p => ({ ...p, type: t }))}
-                  style={{ padding: '12px', border: `2px solid ${form.type === t ? typeColors[t] : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: form.type === t ? `${typeColors[t]}10` : 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: typeColors[t] }}>{typeIcons[t]}</span>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: form.type === t ? typeColors[t] : '#374151', textTransform: 'capitalize' }}>{t}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
-            <button type="button" onClick={onClose} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white' }}>Cancel</button>
-            <button type="submit" style={{ padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Create Campaign</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 function MetricBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
@@ -80,7 +39,7 @@ function MetricBar({ label, value, total, color }: { label: string; value: numbe
 }
 
 function CampaignsTab() {
-  const { campaigns, addCampaign, toggleCampaignStatus } = useApp();
+  const { campaigns, addCampaign, toggleCampaignStatus, contacts } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const filtered = campaigns.filter(c => typeFilter === 'all' || c.type === typeFilter);
@@ -166,7 +125,7 @@ function CampaignsTab() {
           );
         })}
       </div>
-      {showModal && <NewCampaignModal onClose={() => setShowModal(false)} onAdd={addCampaign} />}
+      {showModal && <CampaignWizard contacts={contacts} onClose={() => setShowModal(false)} onAdd={addCampaign} />}
     </div>
   );
 }
