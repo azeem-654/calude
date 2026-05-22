@@ -45,6 +45,18 @@ export interface Appointment {
   notes?: string;
 }
 
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface DealActivity {
+  id: string;
+  text: string;
+  timestamp: string;
+}
+
 export interface Deal {
   id: string;
   title: string;
@@ -56,6 +68,11 @@ export interface Deal {
   expectedClose: string;
   assignedTo: string;
   createdAt: string;
+  priority?: 'urgent' | 'high' | 'normal' | 'low';
+  labels?: { color: string; text: string }[];
+  description?: string;
+  checklist?: ChecklistItem[];
+  activity?: DealActivity[];
 }
 
 export interface Pipeline {
