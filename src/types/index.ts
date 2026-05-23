@@ -125,21 +125,53 @@ export interface Booking {
 
 export interface FunnelBlock {
   id: string;
-  type: 'heading' | 'text' | 'image' | 'button' | 'form' | 'divider' | 'video' | 'countdown' | 'spacer';
+  type:
+    | 'heading' | 'text' | 'image' | 'button' | 'form' | 'divider' | 'video' | 'countdown' | 'spacer'
+    | 'hero' | 'features' | 'testimonials' | 'pricing' | 'columns' | 'cta' | 'stats' | 'faq' | 'navbar' | 'footer' | 'gallery';
   content: string;
   settings: {
     align?: 'left' | 'center' | 'right';
     size?: 'sm' | 'md' | 'lg' | 'xl';
     color?: string;
     bgColor?: string;
+    bgGradient?: string;
+    bgImage?: string;
+    textColor?: string;
     url?: string;
     buttonText?: string;
     buttonColor?: string;
+    buttonTextColor?: string;
+    secondaryButtonText?: string;
+    secondaryButtonUrl?: string;
     formFields?: { label: string; type: string; required: boolean }[];
     redirectUrl?: string;
     imageUrl?: string;
+    imageAlt?: string;
     padding?: number;
     fontWeight?: string;
+    subheading?: string;
+    subtitle?: string;
+    minHeight?: number;
+    overlay?: boolean;
+    overlayOpacity?: number;
+    columns?: number;
+    iconColor?: string;
+    imagePosition?: 'left' | 'right';
+    listItems?: string[];
+    layout?: string;
+    borderRadius?: number;
+    shadow?: boolean;
+    fullWidth?: boolean;
+    featureItems?: { icon: string; title: string; desc: string }[];
+    testimonialItems?: { quote: string; author: string; role: string; stars?: number; avatar?: string }[];
+    pricingPlans?: { name: string; price: string; period: string; features: string[]; highlighted?: boolean; buttonText?: string }[];
+    statItems?: { value: string; label: string; icon?: string }[];
+    faqItems?: { q: string; a: string }[];
+    galleryImages?: string[];
+    navLogo?: string;
+    navLinks?: { label: string; url: string }[];
+    footerColumns?: { heading: string; links: { label: string; url: string }[] }[];
+    footerCopyright?: string;
   };
 }
 
