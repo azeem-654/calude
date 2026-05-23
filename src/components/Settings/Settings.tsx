@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
 import type { EmailProviderConfig } from '../../services/emailService';
+import { validate } from '../../services/validationService';
+import type { ValidationResult } from '../../services/validationService';
+import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
 
 /* ─── helpers ─── */
 
@@ -533,12 +536,260 @@ function EmailSMSTab() {
   );
 }
 
+/* ─── API Validation Tab ─── */
+
+type ValidStatus = 'idle' | 'testing' | 'ok' | 'fail';
+
+function IntegrationsTab() {
+  const { addNotification } = useApp();
+
+  const [resendKey, setResendKey] = useState('');
+  const [resendStatus, setResendStatus] = useState<ValidStatus>('idle');
+  const [resendResult, setResendResult] = useState<ValidationResult | null>(null);
+  const [showResendPopup, setShowResendPopup] = useState(false);
+
+  const [mailtrapKey, setMailtrapKey] = useState('');
+  const [mailtrapInboxId, setMailtrapInboxId] = useState('');
+  const [mailtrapStatus, setMailtrapStatus] = useState<ValidStatus>('idle');
+  const [mailtrapResult, setMailtrapResult] = useState<ValidationResult | null>(null);
+  const [showMailtrapPopup, setShowMailtrapPopup] = useState(false);
+
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [openaiStatus, setOpenaiStatus] = useState<ValidStatus>('idle');
+  const [openaiResult, setOpenaiResult] = useState<ValidationResult | null>(null);
+  const [showOpenaiPopup, setShowOpenaiPopup] = useState(false);
+
+  const [apolloKey, setApolloKey] = useState('');
+  const [apolloStatus, setApolloStatus] = useState<ValidStatus>('idle');
+  const [apolloResult, setApolloResult] = useState<ValidationResult | null>(null);
+  const [showApolloPopup, setShowApolloPopup] = useState(false);
+
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookStatus, setWebhookStatus] = useState<ValidStatus>('idle');
+  const [webhookResult, setWebhookResult] = useState<ValidationResult | null>(null);
+  const [showWebhookPopup, setShowWebhookPopup] = useState(false);
+
+  const [smtpHost, setSmtpHost] = useState('');
+  const [smtpPort, setSmtpPort] = useState('587');
+  const [smtpUser, setSmtpUser] = useState('');
+  const [smtpPass, setSmtpPass] = useState('');
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpStatus, setSmtpStatus] = useState<ValidStatus>('idle');
+  const [smtpResult, setSmtpResult] = useState<ValidationResult | null>(null);
+  const [showSmtpPopup, setShowSmtpPopup] = useState(false);
+
+  const runValidation = async (
+    type: 'resend' | 'mailtrap' | 'openai' | 'apollo' | 'webhook' | 'smtp',
+    params: Record<string, string | number | boolean>,
+    setStatus: (s: ValidStatus) => void,
+    setResult: (r: ValidationResult) => void,
+    setShow: (v: boolean) => void,
+  ) => {
+    setStatus('testing');
+    try {
+      const result = await validate(type, params);
+      setResult(result);
+      setStatus(result.success ? 'ok' : 'fail');
+      setShow(true);
+      if (result.success) addNotification(`${type.charAt(0).toUpperCase() + type.slice(1)} validated successfully!`);
+    } catch (e) {
+      const r: ValidationResult = { success: false, message: 'Unexpected error', details: String(e), suggestions: ['Check your network connection and try again.'] };
+      setResult(r);
+      setStatus('fail');
+      setShow(true);
+    }
+  };
+
+  const card = (children: React.ReactNode) => (
+    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '16px' }}>
+      {children}
+    </div>
+  );
+
+  const cardHeader = (icon: React.ReactNode, title: string, desc: string, badge?: string) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {icon}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{title}</h4>
+          {badge && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#ecfdf5', color: '#15803d', fontWeight: 600 }}>{badge}</span>}
+        </div>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>{desc}</p>
+      </div>
+    </div>
+  );
+
+  const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const };
+
+  return (
+    <div>
+      {/* Resend */}
+      {card(<>
+        {cardHeader(<Mail size={20} color="#6366f1" />, 'Resend Email API', 'Validate your Resend API key for email delivery', 'CORS-safe')}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Resend API Key</label>
+          <input type="password" value={resendKey} onChange={e => setResendKey(e.target.value)} placeholder="re_xxxxxxxxxxxxxxxxxxxx" style={inputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => runValidation('resend', { apiKey: resendKey }, setResendStatus, setResendResult, setShowResendPopup)}
+            disabled={resendStatus === 'testing' || !resendKey.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: resendStatus === 'testing' || !resendKey.trim() ? '#e2e8f0' : '#6366f1', color: resendStatus === 'testing' || !resendKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: resendStatus === 'testing' || !resendKey.trim() ? 'not-allowed' : 'pointer' }}>
+            {resendStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {resendStatus === 'testing' ? 'Validating…' : 'Validate Key'}
+          </button>
+          <ValidationStatusIndicator status={resendStatus === 'idle' ? 'idle' : resendStatus === 'testing' ? 'testing' : resendStatus === 'ok' ? 'success' : 'error'} message={resendResult?.message} />
+        </div>
+        {showResendPopup && resendResult && <ValidationPopup result={resendResult} title="Resend" onClose={() => setShowResendPopup(false)} />}
+      </>)}
+
+      {/* Mailtrap */}
+      {card(<>
+        {cardHeader(<Inbox size={20} color="#0891b2" />, 'Mailtrap Sandbox API', 'Validate Mailtrap API key for email testing', 'CORS-safe')}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Mailtrap API Key</label>
+            <input type="password" value={mailtrapKey} onChange={e => setMailtrapKey(e.target.value)} placeholder="API key from mailtrap.io" style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Inbox ID</label>
+            <input value={mailtrapInboxId} onChange={e => setMailtrapInboxId(e.target.value)} placeholder="e.g. 1234567" style={inputStyle} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => runValidation('mailtrap', { apiKey: mailtrapKey, inboxId: mailtrapInboxId }, setMailtrapStatus, setMailtrapResult, setShowMailtrapPopup)}
+            disabled={mailtrapStatus === 'testing' || !mailtrapKey.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#e2e8f0' : '#0891b2', color: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? 'not-allowed' : 'pointer' }}>
+            {mailtrapStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {mailtrapStatus === 'testing' ? 'Validating…' : 'Validate Key'}
+          </button>
+          <ValidationStatusIndicator status={mailtrapStatus === 'idle' ? 'idle' : mailtrapStatus === 'testing' ? 'testing' : mailtrapStatus === 'ok' ? 'success' : 'error'} message={mailtrapResult?.message} />
+        </div>
+        {showMailtrapPopup && mailtrapResult && <ValidationPopup result={mailtrapResult} title="Mailtrap" onClose={() => setShowMailtrapPopup(false)} />}
+      </>)}
+
+      {/* OpenAI */}
+      {card(<>
+        {cardHeader(<Zap size={20} color="#10a37f" />, 'OpenAI API', 'Validate your OpenAI API key for AI features')}
+        <div style={{ padding: '10px 14px', backgroundColor: '#fefce8', borderRadius: '8px', border: '1px solid #fef08a', marginBottom: '14px' }}>
+          <p style={{ fontSize: '12px', color: '#a16207', margin: 0 }}>
+            <strong>Note:</strong> OpenAI API requires a backend proxy due to CORS restrictions. Start the local backend server (<code>npm start</code> in the <code>server/</code> directory) for full validation. Without the backend, key format will be checked only.
+          </p>
+        </div>
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>OpenAI API Key</label>
+          <input type="password" value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-xxxxxxxxxxxxxxxxxxxx" style={inputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => runValidation('openai', { apiKey: openaiKey }, setOpenaiStatus, setOpenaiResult, setShowOpenaiPopup)}
+            disabled={openaiStatus === 'testing' || !openaiKey.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: openaiStatus === 'testing' || !openaiKey.trim() ? '#e2e8f0' : '#10a37f', color: openaiStatus === 'testing' || !openaiKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: openaiStatus === 'testing' || !openaiKey.trim() ? 'not-allowed' : 'pointer' }}>
+            {openaiStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {openaiStatus === 'testing' ? 'Validating…' : 'Validate Key'}
+          </button>
+          <ValidationStatusIndicator status={openaiStatus === 'idle' ? 'idle' : openaiStatus === 'testing' ? 'testing' : openaiStatus === 'ok' ? 'success' : 'error'} message={openaiResult?.message} />
+        </div>
+        {showOpenaiPopup && openaiResult && <ValidationPopup result={openaiResult} title="OpenAI" onClose={() => setShowOpenaiPopup(false)} />}
+      </>)}
+
+      {/* Apollo.io */}
+      {card(<>
+        {cardHeader(<Globe size={20} color="#6366f1" />, 'Apollo.io API', 'Validate your Apollo.io API key for contact enrichment')}
+        <div style={{ padding: '10px 14px', backgroundColor: '#fefce8', borderRadius: '8px', border: '1px solid #fef08a', marginBottom: '14px' }}>
+          <p style={{ fontSize: '12px', color: '#a16207', margin: 0 }}>
+            <strong>Note:</strong> Apollo.io API requires a backend proxy. Start the local backend server for full validation.
+          </p>
+        </div>
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Apollo.io API Key</label>
+          <input type="password" value={apolloKey} onChange={e => setApolloKey(e.target.value)} placeholder="Your Apollo.io API key" style={inputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => runValidation('apollo', { apiKey: apolloKey }, setApolloStatus, setApolloResult, setShowApolloPopup)}
+            disabled={apolloStatus === 'testing' || !apolloKey.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: apolloStatus === 'testing' || !apolloKey.trim() ? '#e2e8f0' : '#6366f1', color: apolloStatus === 'testing' || !apolloKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: apolloStatus === 'testing' || !apolloKey.trim() ? 'not-allowed' : 'pointer' }}>
+            {apolloStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {apolloStatus === 'testing' ? 'Validating…' : 'Validate Key'}
+          </button>
+          <ValidationStatusIndicator status={apolloStatus === 'idle' ? 'idle' : apolloStatus === 'testing' ? 'testing' : apolloStatus === 'ok' ? 'success' : 'error'} message={apolloResult?.message} />
+        </div>
+        {showApolloPopup && apolloResult && <ValidationPopup result={apolloResult} title="Apollo.io" onClose={() => setShowApolloPopup(false)} />}
+      </>)}
+
+      {/* Webhook */}
+      {card(<>
+        {cardHeader(<Send size={20} color="#f59e0b" />, 'Webhook URL', 'Test that your webhook endpoint is reachable')}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Webhook URL</label>
+          <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/trigger/..." style={inputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => runValidation('webhook', { url: webhookUrl }, setWebhookStatus, setWebhookResult, setShowWebhookPopup)}
+            disabled={webhookStatus === 'testing' || !webhookUrl.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: webhookStatus === 'testing' || !webhookUrl.trim() ? '#e2e8f0' : '#f59e0b', color: webhookStatus === 'testing' || !webhookUrl.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: webhookStatus === 'testing' || !webhookUrl.trim() ? 'not-allowed' : 'pointer' }}>
+            {webhookStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {webhookStatus === 'testing' ? 'Testing…' : 'Test Webhook'}
+          </button>
+          <ValidationStatusIndicator status={webhookStatus === 'idle' ? 'idle' : webhookStatus === 'testing' ? 'testing' : webhookStatus === 'ok' ? 'success' : 'error'} message={webhookResult?.message} />
+        </div>
+        {showWebhookPopup && webhookResult && <ValidationPopup result={webhookResult} title="Webhook" onClose={() => setShowWebhookPopup(false)} />}
+      </>)}
+
+      {/* SMTP */}
+      {card(<>
+        {cardHeader(<Mail size={20} color="#374151" />, 'SMTP Server', 'Test SMTP credentials via backend proxy')}
+        <div style={{ padding: '10px 14px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '14px' }}>
+          <p style={{ fontSize: '12px', color: '#1d4ed8', margin: 0 }}>
+            <strong>Requires backend:</strong> SMTP testing uses Nodemailer and needs the local server running (<code>cd server && npm install && npm start</code>). The backend connects on <code>localhost:3001</code>.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>SMTP Host</label>
+            <input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Port</label>
+            <input value={smtpPort} onChange={e => setSmtpPort(e.target.value)} placeholder="587" style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Username</label>
+            <input value={smtpUser} onChange={e => setSmtpUser(e.target.value)} placeholder="you@example.com" style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Password / App Key</label>
+            <input type="password" value={smtpPass} onChange={e => setSmtpPass(e.target.value)} placeholder="••••••••" style={inputStyle} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+            <input type="checkbox" checked={smtpSecure} onChange={e => setSmtpSecure(e.target.checked)} style={{ width: '14px', height: '14px' }} />
+            Use SSL/TLS (port 465)
+          </label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => runValidation('smtp', { host: smtpHost, port: parseInt(smtpPort) || 587, username: smtpUser, password: smtpPass, secure: smtpSecure }, setSmtpStatus, setSmtpResult, setShowSmtpPopup)}
+            disabled={smtpStatus === 'testing' || !smtpHost.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: smtpStatus === 'testing' || !smtpHost.trim() ? '#e2e8f0' : '#374151', color: smtpStatus === 'testing' || !smtpHost.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: smtpStatus === 'testing' || !smtpHost.trim() ? 'not-allowed' : 'pointer' }}>
+            {smtpStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {smtpStatus === 'testing' ? 'Testing…' : 'Test SMTP'}
+          </button>
+          <ValidationStatusIndicator status={smtpStatus === 'idle' ? 'idle' : smtpStatus === 'testing' ? 'testing' : smtpStatus === 'ok' ? 'success' : 'error'} message={smtpResult?.message} />
+        </div>
+        {showSmtpPopup && smtpResult && <ValidationPopup result={smtpResult} title="SMTP" onClose={() => setShowSmtpPopup(false)} />}
+      </>)}
+    </div>
+  );
+}
+
 /* ─── Main Settings ─── */
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'email-sms', label: 'Email & SMS', icon: Mail },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'api-validation', label: 'API Validation', icon: FlaskConical },
   { id: 'integrations', label: 'Integrations', icon: Globe },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'security', label: 'Security', icon: Shield },
@@ -574,8 +825,8 @@ export default function Settings() {
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', border: 'none', backgroundColor: activeTab === tab.id ? '#f0f4ff' : 'white', color: activeTab === tab.id ? '#6366f1' : '#374151', fontSize: '14px', fontWeight: activeTab === tab.id ? 600 : 400, cursor: 'pointer', textAlign: 'left', borderLeft: activeTab === tab.id ? '3px solid #6366f1' : '3px solid transparent', transition: 'all 0.1s', borderBottom: '1px solid #f1f5f9' }}>
                 <tab.icon size={16} />
                 {tab.label}
-                {tab.id === 'email-sms' && <span style={{ marginLeft: 'auto', fontSize: '9px', padding: '2px 6px', borderRadius: '8px', backgroundColor: '#6366f1', color: 'white', fontWeight: 700 }}>NEW</span>}
-                {tab.id !== 'email-sms' && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.4 }} />}
+                {(tab.id === 'email-sms' || tab.id === 'api-validation') && <span style={{ marginLeft: 'auto', fontSize: '9px', padding: '2px 6px', borderRadius: '8px', backgroundColor: '#6366f1', color: 'white', fontWeight: 700 }}>NEW</span>}
+                {tab.id !== 'email-sms' && tab.id !== 'api-validation' && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.4 }} />}
               </button>
             ))}
           </div>
@@ -584,6 +835,7 @@ export default function Settings() {
         {/* Content */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {activeTab === 'email-sms' && <EmailSMSTab />}
+          {activeTab === 'api-validation' && <IntegrationsTab />}
 
           {activeTab === 'profile' && (
             <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>

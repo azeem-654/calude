@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Review } from '../types';
+import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
 import { mockPipelines } from '../data/mockData';
 
@@ -35,7 +35,7 @@ interface AppContextType {
   deleteCampaign: (id: string) => void;
   toggleCampaignStatus: (id: string) => void;
   updatePipeline: (id: string, updates: Partial<Pipeline>) => void;
-  addFunnel: (funnel: Omit<Funnel, 'id'>) => void;
+  addFunnel: (funnel: Funnel | Omit<Funnel, 'id'>) => void;
   updateFunnel: (id: string, updates: Partial<Funnel>) => void;
   deleteFunnel: (id: string) => void;
   addReview: (review: Omit<Review, 'id'>) => void;
@@ -46,6 +46,18 @@ interface AppContextType {
   addAutomation: (auto: Omit<Automation, 'id'>) => void;
   updateAutomation: (id: string, updates: Partial<Automation>) => void;
   deleteAutomation: (id: string) => void;
+  schedule: ScheduleAvailability;
+  updateSchedule: (updates: Partial<ScheduleAvailability>) => void;
+  bookings: Booking[];
+  addBooking: (booking: Omit<Booking, 'id'>) => void;
+  updateBooking: (id: string, updates: Partial<Booking>) => void;
+  deleteBooking: (id: string) => void;
+  addContactNote: (contactId: string, note: Omit<ContactNote, 'id'>) => void;
+  deleteContactNote: (contactId: string, noteId: string) => void;
+  addContactTask: (contactId: string, task: Omit<ContactTask, 'id'>) => void;
+  updateContactTask: (contactId: string, taskId: string, updates: Partial<ContactTask>) => void;
+  deleteContactTask: (contactId: string, taskId: string) => void;
+  addContactActivity: (contactId: string, activity: Omit<ContactActivity, 'id'>) => void;
   notifications: Notification[];
   addNotification: (msg: string, type?: 'success' | 'error' | 'info') => void;
   dismissNotification: (id: string) => void;
@@ -72,6 +84,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sequences, setSequences]       = useState<EmailSequence[]>(() => loadLS('crm_sequences',   []));
   const [automations, setAutomations]   = useState<Automation[]>(()   => loadLS('crm_automations',  []));
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const defaultSchedule: ScheduleAvailability = {
+    userId: 'user-1', title: '30 Minute Meeting', duration: 30, bufferBefore: 0, bufferAfter: 0,
+    dailyLimit: 8, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, slug: 'meeting',
+    description: 'Schedule a meeting with me.', location: 'Video Call',
+    weekly: {
+      mon: { enabled: true, from: '09:00', to: '17:00' }, tue: { enabled: true, from: '09:00', to: '17:00' },
+      wed: { enabled: true, from: '09:00', to: '17:00' }, thu: { enabled: true, from: '09:00', to: '17:00' },
+      fri: { enabled: true, from: '09:00', to: '17:00' }, sat: { enabled: false, from: '09:00', to: '17:00' },
+      sun: { enabled: false, from: '09:00', to: '17:00' },
+    },
+  };
+
+  const [schedule, setSchedule] = useState<ScheduleAvailability>(() => loadLS('crm_schedule', defaultSchedule));
+  const [bookings, setBookings] = useState<Booking[]>(() => loadLS('crm_bookings', []));
 
   const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Date.now().toString();
@@ -162,8 +189,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Funnels ── */
-  const addFunnel = (funnel: Omit<Funnel, 'id'>) => {
-    const f = { ...funnel, id: `funnel-${Date.now()}` };
+  const addFunnel = (funnel: Funnel | Omit<Funnel, 'id'>) => {
+    const f: Funnel = 'id' in funnel ? (funnel as Funnel) : { ...funnel, id: `funnel-${Date.now()}` };
     setFunnels(prev => { const next = [f, ...prev]; saveLS('crm_funnels', next); return next; });
     notify(`Funnel "${funnel.name}" created!`);
   };
@@ -183,6 +210,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const replyToReview = (id: string, _replyText: string) => {
     setReviews(prev => { const next = prev.map(r => r.id === id ? { ...r, replied: true } : r); saveLS('crm_reviews', next); return next; });
     notify('Reply published!');
+  };
+
+  /* ── Schedule & Bookings ── */
+  const updateSchedule = (updates: Partial<ScheduleAvailability>) => {
+    setSchedule(prev => { const next = { ...prev, ...updates }; saveLS('crm_schedule', next); return next; });
+  };
+  const addBooking = (booking: Omit<Booking, 'id'>) => {
+    const b = { ...booking, id: `book-${Date.now()}` };
+    setBookings(prev => { const next = [b, ...prev]; saveLS('crm_bookings', next); return next; });
+    notify(`Booking confirmed for ${booking.guestName}!`);
+  };
+  const updateBooking = (id: string, updates: Partial<Booking>) => {
+    setBookings(prev => { const next = prev.map(b => b.id === id ? { ...b, ...updates } : b); saveLS('crm_bookings', next); return next; });
+  };
+  const deleteBooking = (id: string) => {
+    setBookings(prev => { const next = prev.filter(b => b.id !== id); saveLS('crm_bookings', next); return next; });
+    notify('Booking cancelled', 'info');
+  };
+
+  /* ── Contact Activities ── */
+  const addContactNote = (contactId: string, note: Omit<ContactNote, 'id'>) => {
+    const n = { ...note, id: `note-${Date.now()}` };
+    setContacts(prev => { const next = prev.map(c => c.id === contactId ? { ...c, notes: [n, ...(c.notes ?? [])] } : c); saveLS('crm_contacts', next); return next; });
+  };
+  const deleteContactNote = (contactId: string, noteId: string) => {
+    setContacts(prev => { const next = prev.map(c => c.id === contactId ? { ...c, notes: (c.notes ?? []).filter(n => n.id !== noteId) } : c); saveLS('crm_contacts', next); return next; });
+  };
+  const addContactTask = (contactId: string, task: Omit<ContactTask, 'id'>) => {
+    const t = { ...task, id: `task-${Date.now()}` };
+    setContacts(prev => { const next = prev.map(c => c.id === contactId ? { ...c, tasks: [...(c.tasks ?? []), t] } : c); saveLS('crm_contacts', next); return next; });
+  };
+  const updateContactTask = (contactId: string, taskId: string, updates: Partial<ContactTask>) => {
+    setContacts(prev => { const next = prev.map(c => c.id === contactId ? { ...c, tasks: (c.tasks ?? []).map(t => t.id === taskId ? { ...t, ...updates } : t) } : c); saveLS('crm_contacts', next); return next; });
+  };
+  const deleteContactTask = (contactId: string, taskId: string) => {
+    setContacts(prev => { const next = prev.map(c => c.id === contactId ? { ...c, tasks: (c.tasks ?? []).filter(t => t.id !== taskId) } : c); saveLS('crm_contacts', next); return next; });
+  };
+  const addContactActivity = (contactId: string, activity: Omit<ContactActivity, 'id'>) => {
+    const a = { ...activity, id: `act-${Date.now()}` };
+    setContacts(prev => { const next = prev.map(c => c.id === contactId ? { ...c, activities: [a, ...(c.activities ?? [])], lastActivity: new Date().toISOString().split('T')[0] } : c); saveLS('crm_contacts', next); return next; });
   };
 
   /* ── Sequences ── */
@@ -219,6 +286,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addAppointment, updateAppointment, deleteAppointment,
       addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus,
       updatePipeline,
+      schedule, updateSchedule, bookings, addBooking, updateBooking, deleteBooking,
+      addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity,
       addFunnel, updateFunnel, deleteFunnel,
       addReview, replyToReview,
       addSequence, updateSequence, deleteSequence,

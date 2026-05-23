@@ -10,6 +10,20 @@ export interface Contact {
   lastActivity: string;
   value: number;
   avatar?: string;
+  firstName?: string;
+  lastName?: string;
+  company?: string;
+  jobTitle?: string;
+  linkedin?: string;
+  twitter?: string;
+  website?: string;
+  address?: string;
+  notes?: ContactNote[];
+  tasks?: ContactTask[];
+  activities?: ContactActivity[];
+  customFields?: Record<string, string>;
+  timezone?: string;
+  assignedTo?: string;
 }
 
 export interface Conversation {
@@ -43,6 +57,100 @@ export interface Appointment {
   status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
   type: string;
   notes?: string;
+}
+
+export interface ContactActivity {
+  id: string;
+  type: 'email_sent' | 'email_opened' | 'note' | 'task_completed' | 'meeting' | 'tag_added' | 'stage_change' | 'form_submitted' | 'link_clicked' | 'call';
+  description: string;
+  timestamp: string;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface ContactNote {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ContactTask {
+  id: string;
+  title: string;
+  dueDate: string;
+  done: boolean;
+  createdAt: string;
+}
+
+export interface DayAvailability {
+  enabled: boolean;
+  from: string;
+  to: string;
+}
+
+export interface ScheduleAvailability {
+  userId: string;
+  title: string;
+  duration: number;
+  bufferBefore: number;
+  bufferAfter: number;
+  dailyLimit: number;
+  timezone: string;
+  slug: string;
+  description: string;
+  location: string;
+  weekly: {
+    mon: DayAvailability;
+    tue: DayAvailability;
+    wed: DayAvailability;
+    thu: DayAvailability;
+    fri: DayAvailability;
+    sat: DayAvailability;
+    sun: DayAvailability;
+  };
+}
+
+export interface Booking {
+  id: string;
+  slotDate: string;
+  slotTime: string;
+  guestName: string;
+  guestEmail: string;
+  guestPhone?: string;
+  notes?: string;
+  status: 'confirmed' | 'cancelled' | 'completed' | 'rescheduled';
+  timezone: string;
+  createdAt: string;
+  appointmentId?: string;
+}
+
+export interface FunnelBlock {
+  id: string;
+  type: 'heading' | 'text' | 'image' | 'button' | 'form' | 'divider' | 'video' | 'countdown' | 'spacer';
+  content: string;
+  settings: {
+    align?: 'left' | 'center' | 'right';
+    size?: 'sm' | 'md' | 'lg' | 'xl';
+    color?: string;
+    bgColor?: string;
+    url?: string;
+    buttonText?: string;
+    buttonColor?: string;
+    formFields?: { label: string; type: string; required: boolean }[];
+    redirectUrl?: string;
+    imageUrl?: string;
+    padding?: number;
+    fontWeight?: string;
+  };
+}
+
+export interface FunnelStep {
+  id: string;
+  name: string;
+  type: 'landing' | 'optin' | 'sales' | 'thankyou' | 'order' | 'webinar' | 'custom';
+  slug: string;
+  blocks: FunnelBlock[];
+  visitors: number;
+  conversions: number;
 }
 
 export interface ChecklistItem {
@@ -135,11 +243,15 @@ export interface Campaign {
 export interface Funnel {
   id: string;
   name: string;
+  goal?: string;
   steps: number;
   visitors: number;
   conversions: number;
   revenue: number;
   status: 'active' | 'draft';
+  slug?: string;
+  pages?: FunnelStep[];
+  createdAt?: string;
 }
 
 export interface Review {
