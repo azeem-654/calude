@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity } from '../types';
+import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
 import { mockPipelines } from '../data/mockData';
 
@@ -17,6 +17,7 @@ interface AppContextType {
   pipelines: Pipeline[];
   campaigns: Campaign[];
   funnels: Funnel[];
+  websites: Website[];
   reviews: Review[];
   sequences: EmailSequence[];
   automations: Automation[];
@@ -38,6 +39,9 @@ interface AppContextType {
   addFunnel: (funnel: Funnel | Omit<Funnel, 'id'>) => void;
   updateFunnel: (id: string, updates: Partial<Funnel>) => void;
   deleteFunnel: (id: string) => void;
+  addWebsite: (w: Website | Omit<Website, 'id'>) => void;
+  updateWebsite: (id: string, updates: Partial<Website>) => void;
+  deleteWebsite: (id: string) => void;
   addReview: (review: Omit<Review, 'id'>) => void;
   replyToReview: (id: string, replyText: string) => void;
   addSequence: (seq: Omit<EmailSequence, 'id'>) => void;
@@ -80,6 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pipelines, setPipelines]       = useState<Pipeline[]>(()     => loadLS('crm_pipelines',     mockPipelines));
   const [campaigns, setCampaigns]       = useState<Campaign[]>(()     => loadLS('crm_campaigns',     []));
   const [funnels, setFunnels]           = useState<Funnel[]>(()       => loadLS('crm_funnels',       []));
+  const [websites, setWebsites]         = useState<Website[]>(()      => loadLS('crm_websites',      []));
   const [reviews, setReviews]           = useState<Review[]>(()       => loadLS('crm_reviews',       []));
   const [sequences, setSequences]       = useState<EmailSequence[]>(() => loadLS('crm_sequences',   []));
   const [automations, setAutomations]   = useState<Automation[]>(()   => loadLS('crm_automations',  []));
@@ -278,9 +283,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify('Automation deleted', 'info');
   };
 
+  /* ── Websites ── */
+  const addWebsite = (w: Website | Omit<Website, 'id'>) => {
+    const site: Website = 'id' in w ? (w as Website) : { ...w, id: `site-${Date.now()}` };
+    setWebsites(prev => { const next = [site, ...prev]; saveLS('crm_websites', next); return next; });
+    notify(`Website "${w.name}" created!`);
+  };
+  const updateWebsite = (id: string, updates: Partial<Website>) => {
+    setWebsites(prev => { const next = prev.map(s => s.id === id ? { ...s, ...updates } : s); saveLS('crm_websites', next); return next; });
+  };
+  const deleteWebsite = (id: string) => {
+    setWebsites(prev => { const next = prev.filter(s => s.id !== id); saveLS('crm_websites', next); return next; });
+    notify('Website deleted', 'info');
+  };
+
   return (
     <AppContext.Provider value={{
-      contacts, conversations, appointments, pipelines, campaigns, funnels, reviews, sequences, automations,
+      contacts, conversations, appointments, pipelines, campaigns, funnels, websites, reviews, sequences, automations,
       addContact, updateContact, deleteContact, bulkImportContacts,
       addConversation, sendMessage, updateConversationStatus,
       addAppointment, updateAppointment, deleteAppointment,
@@ -289,6 +308,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       schedule, updateSchedule, bookings, addBooking, updateBooking, deleteBooking,
       addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity,
       addFunnel, updateFunnel, deleteFunnel,
+      addWebsite, updateWebsite, deleteWebsite,
       addReview, replyToReview,
       addSequence, updateSequence, deleteSequence,
       addAutomation, updateAutomation, deleteAutomation,

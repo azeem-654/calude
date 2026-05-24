@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, MessageSquare, Calendar, TrendingUp,
-  Mail, Funnel, BarChart3, Star, Settings, ChevronRight, Zap, CalendarCheck
+  Mail, Funnel, BarChart3, Star, Settings, ChevronRight, Zap, CalendarCheck, Globe
 } from 'lucide-react';
 
 const navItems = [
@@ -14,6 +14,7 @@ const navItems = [
   { path: '/pipelines', icon: TrendingUp, label: 'Pipelines' },
   { path: '/marketing', icon: Mail, label: 'Marketing' },
   { path: '/funnels', icon: Funnel, label: 'Funnels' },
+  { path: '/websites', icon: Globe, label: 'Websites' },
   { path: '/analytics', icon: BarChart3, label: 'Analytics' },
   { path: '/reputation', icon: Star, label: 'Reputation' },
   { path: '/settings', icon: Settings, label: 'Settings' },

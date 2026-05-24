@@ -286,6 +286,25 @@ export interface Funnel {
   createdAt?: string;
 }
 
+export interface Website {
+  id: string;
+  name: string;
+  description?: string;
+  domain?: string;
+  subdomain?: string;
+  status: 'published' | 'draft';
+  template?: string;
+  pages?: FunnelStep[];
+  favicon?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
+  ogImage?: string;
+  visitors: number;
+  pageViews: number;
+  createdAt?: string;
+}
+
 export interface Review {
   id: string;
   platform: 'google' | 'facebook' | 'yelp';

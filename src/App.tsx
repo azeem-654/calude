@@ -8,6 +8,7 @@ import CalendarView from './components/Calendar/CalendarView';
 import Pipelines from './components/Pipelines/Pipelines';
 import Marketing from './components/Marketing/Marketing';
 import Funnels from './components/Funnels/Funnels';
+import Websites from './components/Websites/Websites';
 import Scheduling from './components/Scheduling/Scheduling';
 import BookingPage from './components/Scheduling/BookingPage';
 import Analytics from './components/Analytics/Analytics';
@@ -39,6 +40,7 @@ function AppLayout() {
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/marketing" element={<Marketing />} />
           <Route path="/funnels" element={<Funnels />} />
+          <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reputation" element={<Reputation />} />
