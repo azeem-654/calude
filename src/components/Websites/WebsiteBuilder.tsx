@@ -1,7 +1,8 @@
-import { useState, useRef, Fragment } from 'react';
+import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
-import { Globe, Search, Smartphone, Tablet, Monitor } from 'lucide-react';
+import { Globe, Search, Smartphone, Tablet, Monitor, Undo2, Redo2 } from 'lucide-react';
 import type { Website, FunnelStep, FunnelBlock } from '../../types';
+import { useHistory } from '../../hooks/useHistory';
 
 // ── Reuse block types and uid from shared patterns ───────────────────────────
 let DRAG_TYPE: 'new' | 'move' | null = null;
@@ -316,6 +317,30 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
   const lbl: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 };
   const row: CSSProperties = { marginBottom: 12 };
   const sec: CSSProperties = { borderBottom: '1px solid #f1f5f9', paddingBottom: 14, marginBottom: 14 };
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [showAiInput, setShowAiInput] = useState(false);
+
+  async function generateAiContent() {
+    const apiKey = localStorage.getItem('openai_api_key') || localStorage.getItem('crm_openai_key') || localStorage.getItem('settings_openai');
+    if (!apiKey) { alert('Add your OpenAI API key in Settings → API Validation first.'); return; }
+    setAiLoading(true);
+    try {
+      const systemPrompt = `You are a professional copywriter. Write compelling website copy for a ${block.type} section. Be concise, benefit-focused, and conversion-optimized. Return only the text, no quotes or explanations.`;
+      const userPrompt = aiPrompt || `Write a great ${block.type} headline/text for a professional website.`;
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], max_tokens: 200 }),
+      });
+      const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+      const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+      if (text) onChange({ ...block, content: text });
+      setShowAiInput(false);
+      setAiPrompt('');
+    } catch { alert('Failed to generate content. Check your API key.'); }
+    finally { setAiLoading(false); }
+  }
 
   return (
     <div style={{ padding: 16, overflowY: 'auto', height: '100%' }}>
@@ -323,7 +348,22 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
       {!['features','testimonials','pricing','stats','faq','gallery','navbar','footer'].includes(block.type) && (
         <div style={sec}>
           <label style={lbl}>Content</label>
-          <textarea value={block.content} onChange={e => onChange({ ...block, content: e.target.value })} style={{ ...inp, minHeight: 56, resize: 'vertical', fontFamily: 'inherit' }} />
+          <textarea value={block.content} onChange={e => onChange({ ...block, content: e.target.value })} style={{ ...inp, minHeight: 56, resize: 'vertical', fontFamily: 'inherit', marginBottom: 6 }} />
+          {!showAiInput ? (
+            <button onClick={() => setShowAiInput(true)} style={{ width: '100%', padding: '6px 0', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              ✨ Generate with AI
+            </button>
+          ) : (
+            <div style={{ background: '#f5f3ff', borderRadius: 8, padding: 10 }}>
+              <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder={`Describe what you want for this ${block.type}...`} rows={2} style={{ ...inp, marginBottom: 6, fontSize: 12, background: '#fff', resize: 'none', fontFamily: 'inherit' }} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={generateAiContent} disabled={aiLoading} style={{ flex: 1, padding: '6px 0', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: aiLoading ? 'not-allowed' : 'pointer' }}>
+                  {aiLoading ? '⏳ Generating...' : '✨ Generate'}
+                </button>
+                <button onClick={() => { setShowAiInput(false); setAiPrompt(''); }} style={{ padding: '6px 10px', background: '#fff', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div style={sec}>
@@ -440,11 +480,17 @@ interface WebsiteBuilderProps {
 }
 
 export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuilderProps) {
-  const [pages, setPages] = useState<FunnelStep[]>(
-    website.pages && website.pages.length > 0 ? website.pages : [mkPage('Home', 'landing')]
-  );
+  const initialPages = website.pages && website.pages.length > 0 ? website.pages : [mkPage('Home', 'landing')];
+  const { state: pages, push: pushHistory, undo, redo, canUndo, canRedo } = useHistory<FunnelStep[]>(initialPages);
+  const setPages = useCallback((updater: FunnelStep[] | ((prev: FunnelStep[]) => FunnelStep[])) => {
+    if (typeof updater === 'function') {
+      pushHistory(updater(pages));
+    } else {
+      pushHistory(updater);
+    }
+  }, [pages, pushHistory]);
   const [siteData, setSiteData] = useState<Omit<Website, 'pages'>>({ ...website });
-  const [activePageId, setActivePageId] = useState(pages[0].id);
+  const [activePageId, setActivePageId] = useState(initialPages[0].id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<number>(-1);
@@ -454,14 +500,25 @@ export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuil
   const [rightTab, setRightTab] = useState<'properties' | 'seo'>('properties');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
+  const [blockSearch, setBlockSearch] = useState('');
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const activePage = pages.find(p => p.id === activePageId) ?? pages[0];
   const blocks = activePage.blocks;
   const selectedBlock = blocks.find(b => b.id === selectedId) ?? null;
 
+  // Keyboard undo/redo
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
   function updateBlocks(next: FunnelBlock[]) {
-    setPages(prev => prev.map(p => p.id === activePage.id ? { ...p, blocks: next } : p));
+    pushHistory(pages.map(p => p.id === activePage.id ? { ...p, blocks: next } : p));
   }
 
   function handleDrop(index: number) {
@@ -502,6 +559,9 @@ export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuil
         <Globe size={16} color="#6366f1" />
         <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 14, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{siteData.name}</span>
         <div style={{ flex: 1 }} />
+        <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" style={{ ...tbBtn(), opacity: canUndo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4 }}><Undo2 size={13} /></button>
+        <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" style={{ ...tbBtn(), opacity: canRedo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4 }}><Redo2 size={13} /></button>
+        <div style={{ width: 1, height: 24, background: '#334155', margin: '0 4px' }} />
         <button onClick={() => setDevice('desktop')} style={tbBtn(device === 'desktop')}><Monitor size={13} /></button>
         <button onClick={() => setDevice('tablet')} style={tbBtn(device === 'tablet')}><Tablet size={13} /></button>
         <button onClick={() => setDevice('mobile')} style={tbBtn(device === 'mobile')}><Smartphone size={13} /></button>
@@ -521,11 +581,19 @@ export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuil
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {leftTab === 'elements' && (
                 <div style={{ padding: 10 }}>
-                  {WS_CATALOG.map(cat => (
+                  <div style={{ position: 'relative', marginBottom: 10 }}>
+                    <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input value={blockSearch} onChange={e => setBlockSearch(e.target.value)} placeholder="Search blocks..."
+                      style={{ width: '100%', padding: '6px 8px 6px 26px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  {WS_CATALOG.map(cat => {
+                    const filtered = blockSearch ? cat.blocks.filter(b => b.label.toLowerCase().includes(blockSearch.toLowerCase()) || b.type.toLowerCase().includes(blockSearch.toLowerCase())) : cat.blocks;
+                    if (filtered.length === 0) return null;
+                    return (
                     <div key={cat.category} style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6 }}>{cat.category}</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-                        {cat.blocks.map(item => (
+                        {filtered.map(item => (
                           <div key={item.type} draggable
                             onDragStart={() => { DRAG_TYPE = 'new'; DRAG_PAYLOAD = item.type; }}
                             onDragEnd={() => { if (DRAG_TYPE === 'new') { DRAG_TYPE = null; DRAG_PAYLOAD = ''; setDropTarget(-1); } }}
@@ -539,7 +607,8 @@ export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuil
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               {leftTab === 'templates' && (

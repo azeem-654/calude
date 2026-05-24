@@ -9,6 +9,7 @@ import Pipelines from './components/Pipelines/Pipelines';
 import Marketing from './components/Marketing/Marketing';
 import Funnels from './components/Funnels/Funnels';
 import Websites from './components/Websites/Websites';
+import SitePreview from './components/Websites/SitePreview';
 import Scheduling from './components/Scheduling/Scheduling';
 import BookingPage from './components/Scheduling/BookingPage';
 import Analytics from './components/Analytics/Analytics';
@@ -18,12 +19,21 @@ import Settings from './components/Settings/Settings';
 function AppLayout() {
   const location = useLocation();
   const isBooking = location.pathname.startsWith('/book');
+  const isPreview = location.pathname.startsWith('/preview');
 
   if (isBooking) {
     return (
       <Routes>
         <Route path="/book/:slug" element={<BookingPage />} />
         <Route path="/book" element={<BookingPage />} />
+      </Routes>
+    );
+  }
+
+  if (isPreview) {
+    return (
+      <Routes>
+        <Route path="/preview/:siteId" element={<SitePreview />} />
       </Routes>
     );
   }

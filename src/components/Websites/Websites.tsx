@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import type { Website } from '../../types';
 import WebsiteBuilder from './WebsiteBuilder';
@@ -109,6 +110,7 @@ function DeleteConfirm({ name, onConfirm, onCancel }: { name: string; onConfirm:
 
 export default function Websites() {
   const { websites, addWebsite, updateWebsite, deleteWebsite } = useApp();
+  const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -255,6 +257,10 @@ export default function Websites() {
                       style={{ flex: 1, padding: '8px 0', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                       <Edit3 size={14} /> Open Builder
                     </button>
+                    <button title="Preview site" onClick={() => navigate(`/preview/${w.id}`)}
+                      style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#6366f1' }}>
+                      <ExternalLink size={15} />
+                    </button>
                     <button title="Toggle published" onClick={() => updateWebsite(w.id, { status: w.status === 'published' ? 'draft' : 'published' })}
                       style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: w.status === 'published' ? '#22c55e' : '#94a3b8' }}>
                       <Eye size={15} />
@@ -263,12 +269,6 @@ export default function Websites() {
                       style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
                       <Copy size={15} />
                     </button>
-                    {w.domain && (
-                      <button title="Open site" onClick={() => window.open(`https://${w.domain}`, '_blank')}
-                        style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
-                        <ExternalLink size={15} />
-                      </button>
-                    )}
                     <button title="Analytics" style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
                       <BarChart3 size={15} />
                     </button>

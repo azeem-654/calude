@@ -1,13 +1,14 @@
-import { useState, useRef, Fragment } from 'react';
+import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import {
   X, Save, Eye, EyeOff, Monitor, Tablet, Smartphone,
   Plus, Trash2, Copy, ChevronUp, ChevronDown,
   Type, AlignLeft, MousePointerClick, Minus,
   Layers, Star, Check, Undo2, Redo2,
-  Settings, Navigation, Timer, Layout,
+  Settings, Navigation, Timer, Layout, Search,
 } from 'lucide-react';
 import type { Funnel, FunnelStep, FunnelBlock } from '../../types';
+import { useHistory } from '../../hooks/useHistory';
 
 let DRAG_TYPE: 'new' | 'move' | null = null;
 let DRAG_PAYLOAD = '';
@@ -692,10 +693,12 @@ interface FunnelBuilderProps {
 }
 
 export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilderProps) {
-  const [pages, setPages] = useState<FunnelStep[]>(
-    funnel.pages && funnel.pages.length > 0 ? funnel.pages : [mkPage('Home')]
-  );
-  const [activePageId, setActivePageId] = useState(pages[0].id);
+  const initialPages = funnel.pages && funnel.pages.length > 0 ? funnel.pages : [mkPage('Home')];
+  const { state: pages, push: pushHistory, undo, redo, canUndo, canRedo } = useHistory<FunnelStep[]>(initialPages);
+  const setPages = useCallback((updater: FunnelStep[] | ((prev: FunnelStep[]) => FunnelStep[])) => {
+    if (typeof updater === 'function') { pushHistory(updater(pages)); } else { pushHistory(updater); }
+  }, [pages, pushHistory]);
+  const [activePageId, setActivePageId] = useState(initialPages[0].id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
@@ -705,13 +708,23 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
   const [showTemplates, setShowTemplates] = useState(false);
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
+  const [blockSearch, setBlockSearch] = useState('');
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const activePage = pages.find(p => p.id === activePageId) ?? pages[0];
   const blocks = activePage.blocks;
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
   function updateBlocks(newBlocks: FunnelBlock[]) {
-    setPages(prev => prev.map(p => p.id === activePage.id ? { ...p, blocks: newBlocks } : p));
+    pushHistory(pages.map(p => p.id === activePage.id ? { ...p, blocks: newBlocks } : p));
   }
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
@@ -802,9 +815,9 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
   const selectedBlock = blocks.find(b => b.id === selectedId) ?? null;
 
   // ── Styles ────────────────────────────────────────────────────────────────
-  const toolbarBtn = (active?: boolean): React.CSSProperties => ({
-    padding: '6px 12px', borderRadius: 6, border: active ? '2px solid #6366f1' : '1px solid #e2e8f0',
-    background: active ? '#eef2ff' : '#fff', color: active ? '#4f46e5' : '#475569',
+  const toolbarBtn = (active?: boolean): CSSProperties => ({
+    padding: '6px 12px', borderRadius: 6, border: active ? '1px solid #6366f1' : '1px solid #334155',
+    background: active ? '#1e293b' : 'transparent', color: active ? '#a5b4fc' : '#94a3b8',
     fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
   });
 
@@ -815,6 +828,9 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
         <button onClick={onClose} style={{ ...toolbarBtn(), background: 'transparent', border: '1px solid #334155', color: '#94a3b8' }}>← Back</button>
         <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{funnel.name}</span>
         <div style={{ flex: 1 }} />
+        <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" style={{ ...toolbarBtn(), opacity: canUndo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px' }}><Undo2 size={13} /></button>
+        <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" style={{ ...toolbarBtn(), opacity: canRedo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px' }}><Redo2 size={13} /></button>
+        <div style={{ width: 1, height: 24, background: '#334155', margin: '0 2px' }} />
         {/* Device toggles */}
         {(['desktop','tablet','mobile'] as const).map(d => (
           <button key={d} onClick={() => setDevice(d)} style={{ ...toolbarBtn(device === d), background: device === d ? '#1e293b' : 'transparent', border: device === d ? '1px solid #6366f1' : '1px solid #334155', color: device === d ? '#a5b4fc' : '#94a3b8' }}>
@@ -845,11 +861,19 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
               {/* Elements tab */}
               {leftTab === 'elements' && (
                 <div style={{ padding: 10 }}>
-                  {CATALOG.map(cat => (
+                  <div style={{ position: 'relative', marginBottom: 10 }}>
+                    <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input value={blockSearch} onChange={e => setBlockSearch(e.target.value)} placeholder="Search blocks..."
+                      style={{ width: '100%', padding: '6px 8px 6px 26px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  {CATALOG.map(cat => {
+                    const filtered = blockSearch ? cat.blocks.filter(b => b.label.toLowerCase().includes(blockSearch.toLowerCase()) || b.type.toLowerCase().includes(blockSearch.toLowerCase())) : cat.blocks;
+                    if (filtered.length === 0) return null;
+                    return (
                     <div key={cat.category} style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6, paddingLeft: 2 }}>{cat.category}</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-                        {cat.blocks.map(item => (
+                        {filtered.map(item => (
                           <div key={item.type}
                             draggable
                             onDragStart={() => { DRAG_TYPE = 'new'; DRAG_PAYLOAD = item.type; }}
@@ -864,7 +888,8 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

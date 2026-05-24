@@ -1,0 +1,245 @@
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useApp } from '../../context/AppContext';
+import type { FunnelBlock, FunnelStep } from '../../types';
+import type { CSSProperties } from 'react';
+
+// ── Block renderer (same logic as WebsiteBuilder, self-contained) ─────────────
+function BlockRender({ block }: { block: FunnelBlock }) {
+  const s = block.settings;
+  const bg: CSSProperties = s.bgGradient
+    ? { background: s.bgGradient }
+    : s.bgImage
+    ? { backgroundImage: `url(${s.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: s.bgColor ?? '#fff' };
+  const pad = s.padding ?? 40;
+
+  switch (block.type) {
+    case 'navbar': return (
+      <nav style={{ ...bg, padding: '0 40px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', position: 'sticky', top: 0, zIndex: 100 }}>
+        <span style={{ fontWeight: 900, fontSize: 20, color: s.textColor ?? '#0f172a' }}>{s.navLogo ?? 'MySite'}</span>
+        <div style={{ display: 'flex', gap: 28 }}>{(s.navLinks ?? []).map((l, i) => <a key={i} href={l.url} style={{ color: s.textColor ?? '#0f172a', textDecoration: 'none', fontSize: 14, fontWeight: 500 }}>{l.label}</a>)}</div>
+        {s.buttonText && <button style={{ padding: '8px 18px', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
+      </nav>
+    );
+    case 'hero': return (
+      <section style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center', minHeight: s.minHeight ?? 420, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <h1 style={{ fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 900, color: s.textColor ?? '#fff', margin: '0 0 18px', maxWidth: 800, lineHeight: 1.12 }}>{block.content}</h1>
+        {s.subheading && <p style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: `${s.textColor ?? '#fff'}cc`, margin: '0 0 36px', maxWidth: 600, lineHeight: 1.65 }}>{s.subheading}</p>}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {s.buttonText && <button style={{ padding: '14px 30px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#1e3a5f', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
+          {s.secondaryButtonText && <button style={{ padding: '14px 30px', background: 'transparent', color: s.textColor ?? '#fff', border: `2px solid ${s.textColor ?? '#fff'}66`, borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
+        </div>
+      </section>
+    );
+    case 'features': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        {block.content && <h2 style={{ textAlign: s.align ?? 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 8px' }}>{block.content}</h2>}
+        {s.subtitle && <p style={{ textAlign: 'center', fontSize: 17, color: `${s.textColor ?? '#0f172a'}99`, margin: '0 0 44px' }}>{s.subtitle}</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(s.columns ?? 3, 3)}, 1fr)`, gap: 28, maxWidth: 1100, margin: '0 auto' }}>
+          {(s.featureItems ?? []).map((f, i) => (
+            <div key={i} style={{ padding: 28, borderRadius: 14, background: 'rgba(255,255,255,0.7)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.06)' }}>
+              <div style={{ fontSize: 36, marginBottom: 14 }}>{f.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: 18, color: s.textColor ?? '#0f172a', marginBottom: 8 }}>{f.title}</div>
+              <div style={{ fontSize: 14, color: `${s.textColor ?? '#0f172a'}99`, lineHeight: 1.7 }}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+    case 'testimonials': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        {block.content && <h2 style={{ textAlign: 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 8px' }}>{block.content}</h2>}
+        {s.subtitle && <p style={{ textAlign: 'center', fontSize: 17, color: `${s.textColor ?? '#0f172a'}99`, margin: '0 0 44px' }}>{s.subtitle}</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 24, maxWidth: 1100, margin: '0 auto' }}>
+          {(s.testimonialItems ?? []).map((t, i) => (
+            <div key={i} style={{ padding: 30, borderRadius: 14, background: '#fff', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', border: '1px solid #f1f5f9' }}>
+              <div style={{ color: '#f59e0b', fontSize: 18, marginBottom: 14 }}>{'★'.repeat(t.stars ?? 5)}</div>
+              <p style={{ fontSize: 15, color: '#475569', lineHeight: 1.75, margin: '0 0 18px', fontStyle: 'italic' }}>"{t.quote}"</p>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{t.author}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8' }}>{t.role}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+    case 'pricing': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        {block.content && <h2 style={{ textAlign: 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 8px' }}>{block.content}</h2>}
+        {s.subtitle && <p style={{ textAlign: 'center', fontSize: 17, color: `${s.textColor ?? '#0f172a'}99`, margin: '0 0 44px' }}>{s.subtitle}</p>}
+        <div style={{ display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {(s.pricingPlans ?? []).map((p, i) => (
+            <div key={i} style={{ padding: '36px 28px', borderRadius: 18, background: p.highlighted ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#fff', color: p.highlighted ? '#fff' : '#0f172a', boxShadow: p.highlighted ? '0 8px 40px rgba(99,102,241,0.3)' : '0 2px 16px rgba(0,0,0,0.08)', minWidth: 240, transform: p.highlighted ? 'scale(1.04)' : 'none' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, opacity: 0.8 }}>{p.name}</div>
+              <div style={{ fontSize: 44, fontWeight: 900, marginBottom: 4 }}>{p.price}<span style={{ fontSize: 16, fontWeight: 400, opacity: 0.7 }}>{p.period}</span></div>
+              <ul style={{ padding: '16px 0', margin: '0 0 22px', listStyle: 'none' }}>{p.features.map((f, j) => <li key={j} style={{ fontSize: 14, marginBottom: 10, display: 'flex', gap: 8 }}><span>✓</span>{f}</li>)}</ul>
+              <button style={{ width: '100%', padding: '12px 0', border: p.highlighted ? '2px solid rgba(255,255,255,0.5)' : '2px solid #6366f1', borderRadius: 8, background: p.highlighted ? 'rgba(255,255,255,0.15)' : '#6366f1', color: p.highlighted ? '#fff' : '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>{p.buttonText ?? 'Get Started'}</button>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+    case 'columns': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        <div style={{ display: 'flex', gap: 64, alignItems: 'center', flexDirection: s.imagePosition === 'left' ? 'row-reverse' : 'row', maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 36, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 16px', lineHeight: 1.2 }}>{block.content}</h2>
+            <p style={{ fontSize: 17, color: `${s.textColor ?? '#0f172a'}99`, margin: '0 0 24px', lineHeight: 1.7 }}>{s.subheading}</p>
+            {(s.listItems ?? []).map((li, i) => <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 13, fontSize: 15, color: s.textColor ?? '#0f172a' }}><span style={{ color: '#22c55e', fontWeight: 700 }}>✓</span>{li}</div>)}
+            {s.buttonText && <button style={{ marginTop: 24, padding: '13px 28px', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
+          </div>
+          <div style={{ width: 380, height: 300, borderRadius: 18, background: s.imageUrl ? `url(${s.imageUrl}) center/cover` : 'linear-gradient(135deg,#6366f1,#8b5cf6)', flexShrink: 0 }} />
+        </div>
+      </section>
+    );
+    case 'cta': return (
+      <section style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}>
+        <h2 style={{ fontSize: 38, fontWeight: 900, color: s.textColor ?? '#fff', margin: '0 0 12px' }}>{block.content}</h2>
+        {s.subheading && <p style={{ fontSize: 18, color: `${s.textColor ?? '#fff'}cc`, margin: '0 0 32px' }}>{s.subheading}</p>}
+        <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {s.buttonText && <button style={{ padding: '15px 36px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
+          {s.secondaryButtonText && <button style={{ padding: '15px 36px', background: 'transparent', color: s.textColor ?? '#fff', border: `2px solid ${s.textColor ?? '#fff'}66`, borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
+        </div>
+      </section>
+    );
+    case 'stats': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 64, flexWrap: 'wrap', maxWidth: 1100, margin: '0 auto' }}>
+          {(s.statItems ?? []).map((st, i) => (
+            <div key={i} style={{ textAlign: 'center' }}>
+              {st.icon && <div style={{ fontSize: 32, marginBottom: 8 }}>{st.icon}</div>}
+              <div style={{ fontSize: 48, fontWeight: 900, color: s.textColor ?? '#fff', lineHeight: 1 }}>{st.value}</div>
+              <div style={{ fontSize: 14, color: `${s.textColor ?? '#fff'}aa`, marginTop: 6 }}>{st.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+    case 'faq': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        {block.content && <h2 style={{ textAlign: 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 40px' }}>{block.content}</h2>}
+        <div style={{ maxWidth: 760, margin: '0 auto' }}>
+          {(s.faqItems ?? []).map((f, i) => (
+            <div key={i} style={{ borderBottom: '1px solid #f1f5f9', padding: '22px 0' }}>
+              <div style={{ fontWeight: 700, fontSize: 17, color: s.textColor ?? '#0f172a', marginBottom: 8 }}>{f.q}</div>
+              <div style={{ fontSize: 15, color: `${s.textColor ?? '#0f172a'}99`, lineHeight: 1.75 }}>{f.a}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+    case 'gallery': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        {block.content && <h2 style={{ textAlign: 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 8px' }}>{block.content}</h2>}
+        {s.subtitle && <p style={{ textAlign: 'center', color: `${s.textColor ?? '#0f172a'}99`, margin: '0 0 40px' }}>{s.subtitle}</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${s.columns ?? 3}, 1fr)`, gap: 16, maxWidth: 1100, margin: '0 auto' }}>
+          {(s.galleryImages ?? []).map((c, i) => <div key={i} style={{ aspectRatio: '4/3', borderRadius: 12, background: c.startsWith('#') ? c : `url(${c}) center/cover`, boxShadow: '0 2px 12px rgba(0,0,0,0.1)' }} />)}
+        </div>
+      </section>
+    );
+    case 'footer': return (
+      <footer style={{ ...bg, padding: `${pad}px 60px` }}>
+        <div style={{ display: 'flex', gap: 64, flexWrap: 'wrap', marginBottom: 40, maxWidth: 1100, margin: '0 auto 40px' }}>
+          <div style={{ flex: 2 }}>
+            <div style={{ fontWeight: 900, fontSize: 24, color: '#fff', marginBottom: 12 }}>{s.navLogo ?? 'MySite'}</div>
+            <p style={{ fontSize: 14, color: s.textColor ?? '#94a3b8', lineHeight: 1.7, maxWidth: 300 }}>Building better businesses through design and strategy.</p>
+          </div>
+          {(s.footerColumns ?? []).map((col, i) => (
+            <div key={i} style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#fff', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 }}>{col.heading}</div>
+              {col.links.map((l, j) => <div key={j} style={{ marginBottom: 10 }}><a href={l.url} style={{ color: s.textColor ?? '#94a3b8', fontSize: 14, textDecoration: 'none' }}>{l.label}</a></div>)}
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 24, textAlign: 'center', fontSize: 13, color: s.textColor ?? '#64748b' }}>{s.footerCopyright}</div>
+      </footer>
+    );
+    case 'heading': return <div style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}><h2 style={{ margin: 0, fontSize: s.size === 'xl' ? 44 : s.size === 'lg' ? 34 : s.size === 'sm' ? 22 : 28, fontWeight: parseInt(s.fontWeight ?? '700'), color: s.color ?? s.textColor ?? '#0f172a' }}>{block.content}</h2></div>;
+    case 'text': return <div style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'left' }}><p style={{ margin: 0, fontSize: s.size === 'lg' ? 18 : s.size === 'sm' ? 13 : 15, color: s.color ?? s.textColor ?? '#475569', lineHeight: 1.8, maxWidth: 760 }}>{block.content}</p></div>;
+    case 'button': return <div style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}><button style={{ padding: '13px 30px', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: s.borderRadius ?? 8, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText ?? block.content}</button></div>;
+    case 'image': return <div style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}>{s.imageUrl ? <img src={s.imageUrl} alt={s.imageAlt ?? ''} style={{ maxWidth: '100%', borderRadius: s.borderRadius ?? 0, boxShadow: s.shadow ? '0 8px 32px rgba(0,0,0,0.15)' : 'none' }} /> : null}</div>;
+    case 'video': return <div style={{ ...bg, padding: `${pad}px 60px` }}>{s.url ? <div style={{ position: 'relative', paddingBottom: '56.25%', maxWidth: 900, margin: '0 auto', borderRadius: 12, overflow: 'hidden' }}><iframe src={s.url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }} allowFullScreen /></div> : null}</div>;
+    case 'form': return (
+      <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        {block.content && <h2 style={{ textAlign: s.align ?? 'center', fontSize: 30, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 30px' }}>{block.content}</h2>}
+        <div style={{ maxWidth: 540, margin: '0 auto' }}>
+          {(s.formFields ?? []).map((f, i) => (
+            <div key={i} style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{f.label}{f.required && <span style={{ color: '#ef4444' }}> *</span>}</label>
+              {f.type === 'textarea' ? <textarea rows={4} style={{ width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} /> : <input type={f.type} style={{ width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />}
+            </div>
+          ))}
+          <button style={{ width: '100%', padding: '13px 0', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>{s.buttonText ?? 'Submit'}</button>
+        </div>
+      </section>
+    );
+    case 'divider': return <div style={{ padding: `${pad}px 60px` }}><hr style={{ border: 'none', borderTop: `2px solid ${s.color ?? '#e2e8f0'}`, margin: 0 }} /></div>;
+    case 'spacer': return <div style={{ height: pad }} />;
+    default: return null;
+  }
+}
+
+function PageContent({ page }: { page: FunnelStep }) {
+  return (
+    <>
+      {page.blocks.map(block => <BlockRender key={block.id} block={block} />)}
+    </>
+  );
+}
+
+export default function SitePreview() {
+  const { siteId } = useParams<{ siteId: string }>();
+  const { websites } = useApp();
+  const site = websites.find(w => w.id === siteId);
+  const [activePage, setActivePage] = useState(0);
+
+  if (!site) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, system-ui, sans-serif', background: '#f8fafc' }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🔍</div>
+        <h2 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Site not found</h2>
+        <p style={{ color: '#64748b', marginBottom: 24 }}>The website you're looking for doesn't exist or has been removed.</p>
+        <Link to="/websites" style={{ padding: '10px 24px', background: '#6366f1', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 }}>← Back to Websites</Link>
+      </div>
+    );
+  }
+
+  const pages = site.pages ?? [];
+  const currentPage = pages[activePage] ?? null;
+
+  return (
+    <div style={{ minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {/* Preview bar */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 40, background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, zIndex: 200, borderBottom: '1px solid #1e293b' }}>
+        <Link to="/websites" style={{ color: '#94a3b8', textDecoration: 'none', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>← Back</Link>
+        <div style={{ width: 1, height: 16, background: '#334155' }} />
+        <span style={{ color: '#f8fafc', fontSize: 12, fontWeight: 700 }}>{site.name}</span>
+        <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: site.status === 'published' ? '#dcfce7' : '#f1f5f9', color: site.status === 'published' ? '#16a34a' : '#64748b' }}>{site.status}</span>
+        {pages.length > 1 && (
+          <>
+            <div style={{ flex: 1 }} />
+            {pages.map((p, i) => (
+              <button key={p.id} onClick={() => setActivePage(i)}
+                style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: activePage === i ? '#6366f1' : 'transparent', color: activePage === i ? '#fff' : '#94a3b8', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                {p.name}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Site content */}
+      <div style={{ paddingTop: 40 }}>
+        {currentPage ? (
+          <PageContent page={currentPage} />
+        ) : (
+          <div style={{ padding: '120px 60px', textAlign: 'center', color: '#94a3b8' }}>
+            <div style={{ fontSize: 56, marginBottom: 16 }}>🌐</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#475569', marginBottom: 8 }}>No content yet</div>
+            <div style={{ fontSize: 14 }}>Open the Website Builder to add blocks to this page.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
