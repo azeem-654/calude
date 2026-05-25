@@ -152,6 +152,44 @@ app.post('/api/validate/apollo', async (req, res) => {
   }
 });
 
+/* ── Send Email ── */
+app.post('/api/send-email', async (req, res) => {
+  const { host, port, username, password, secure, fromName, fromEmail, to, subject, html, text } = req.body;
+
+  if (!host || !username || !password || !to || !subject) {
+    return res.json({ success: false, message: 'Missing required fields: host, username, password, to, subject.' });
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port: parseInt(port) || 587,
+    secure: !!secure,
+    auth: { user: username, pass: password },
+    connectionTimeout: 10000,
+    greetingTimeout: 8000,
+  });
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromName ? `"${fromName}" <${fromEmail || username}>` : (fromEmail || username),
+      to,
+      subject,
+      html: html || `<p>${text || subject}</p>`,
+      text: text || subject,
+    });
+
+    res.json({
+      success: true,
+      message: `Email sent successfully to ${to}`,
+      messageId: info.messageId,
+      // Ethereal preview URL (only for ethereal.email)
+      previewUrl: nodemailer.getTestMessageUrl(info) || null,
+    });
+  } catch (err) {
+    res.json({ success: false, message: err.message, details: String(err) });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`CRMPro backend running on http://localhost:${PORT}`);
   console.log('Endpoints:');
@@ -159,4 +197,5 @@ app.listen(PORT, () => {
   console.log('  POST /api/validate/smtp');
   console.log('  POST /api/validate/openai');
   console.log('  POST /api/validate/apollo');
+  console.log('  POST /api/send-email');
 });

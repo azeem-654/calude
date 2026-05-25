@@ -65,12 +65,14 @@ function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestSt
 /* ─── SMTP tab ─── */
 
 function loadSMTP() {
-  try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null') ?? { host: '', port: '587', user: '', pass: '', fromName: '', fromEmail: '', encryption: 'tls' }; }
-  catch { return { host: '', port: '587', user: '', pass: '', fromName: '', fromEmail: '', encryption: 'tls' }; }
+  const ETHEREAL_DEFAULT = { host: 'smtp.ethereal.email', port: '587', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', fromName: 'Raegan Denesik', fromEmail: 'raegan.denesik@ethereal.email', encryption: 'tls' };
+  try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null') ?? ETHEREAL_DEFAULT; }
+  catch { return ETHEREAL_DEFAULT; }
 }
 function loadIMAP() {
-  try { return JSON.parse(localStorage.getItem('crm_imap') || 'null') ?? { host: '', port: '993', user: '', pass: '', folder: 'INBOX' }; }
-  catch { return { host: '', port: '993', user: '', pass: '', folder: 'INBOX' }; }
+  const ETHEREAL_IMAP = { host: 'imap.ethereal.email', port: '993', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', folder: 'INBOX' };
+  try { return JSON.parse(localStorage.getItem('crm_imap') || 'null') ?? ETHEREAL_IMAP; }
+  catch { return ETHEREAL_IMAP; }
 }
 function loadSMS() {
   try { return JSON.parse(localStorage.getItem('crm_sms') || 'null') ?? { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
@@ -315,13 +317,52 @@ function EmailSMSTab() {
     addNotification('Email & SMS settings saved!');
   };
 
-  const sendTest = () => {
+  const [sendResult, setSendResult] = useState<{ previewUrl?: string; message: string; success: boolean } | null>(null);
+
+  const sendTest = async () => {
     if (!testEmail) { addNotification('Enter a recipient email address', 'error'); return; }
+    if (!smtp.host || !smtp.user || !smtp.pass) { addNotification('Configure SMTP credentials first', 'error'); return; }
     setSendingTest(true);
-    setTimeout(() => {
+    setSendResult(null);
+    try {
+      const res = await fetch('http://localhost:3001/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: smtp.host, port: smtp.port,
+          username: smtp.user, password: smtp.pass,
+          secure: smtp.encryption === 'ssl',
+          fromName: smtp.fromName || 'CRMPro',
+          fromEmail: smtp.fromEmail || smtp.user,
+          to: testEmail,
+          subject: '✅ Test Email from CRMPro',
+          html: `<div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto;padding:32px">
+            <h2 style="color:#6366f1;margin:0 0 16px">✅ Test Email from CRMPro</h2>
+            <p style="color:#374151;font-size:15px;line-height:1.6">Your SMTP connection is working correctly.</p>
+            <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:13px">
+              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;width:120px">Sent from</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.fromEmail || smtp.user}</td></tr>
+              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Sent to</td><td style="padding:8px;border:1px solid #e2e8f0">${testEmail}</td></tr>
+              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">SMTP host</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.host}:${smtp.port}</td></tr>
+              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Timestamp</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date().toLocaleString()}</td></tr>
+            </table>
+            <p style="color:#94a3b8;font-size:12px;margin-top:24px">Sent via CRMPro SMTP Test</p>
+          </div>`,
+        }),
+      });
+      const data = await res.json() as { success: boolean; message: string; previewUrl?: string };
+      setSendResult(data);
+      if (data.success) {
+        addNotification(`Test email sent to ${testEmail}!`);
+        if (data.previewUrl) addNotification(`Ethereal preview ready — click "View Email" below`, 'info');
+      } else {
+        addNotification(data.message || 'Failed to send email', 'error');
+      }
+    } catch {
+      setSendResult({ success: false, message: 'Could not reach backend server (localhost:3001). Run the server with: cd server && node index.js' });
+      addNotification('Backend server not reachable on port 3001', 'error');
+    } finally {
       setSendingTest(false);
-      addNotification(`Test email sent to ${testEmail}!`);
-    }, 1500);
+    }
   };
 
   const sectionHead = (icon: React.ReactElement, title: string, desc: string, badge?: string) => (
@@ -346,12 +387,13 @@ function EmailSMSTab() {
   );
 
   const presets = [
-    { label: 'Gmail', host: 'smtp.gmail.com', port: '587', encryption: 'tls', imapHost: 'imap.gmail.com', imapPort: '993' },
-    { label: 'Outlook', host: 'smtp-mail.outlook.com', port: '587', encryption: 'tls', imapHost: 'outlook.office365.com', imapPort: '993' },
-    { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', encryption: 'tls', imapHost: '', imapPort: '' },
-    { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', encryption: 'tls', imapHost: '', imapPort: '' },
-    { label: 'AWS SES', host: 'email-smtp.us-east-1.amazonaws.com', port: '587', encryption: 'tls', imapHost: '', imapPort: '' },
-    { label: 'Zoho', host: 'smtp.zoho.com', port: '587', encryption: 'tls', imapHost: 'imap.zoho.com', imapPort: '993' },
+    { label: '🧪 Ethereal (Test)', host: 'smtp.ethereal.email', port: '587', encryption: 'tls', imapHost: 'imap.ethereal.email', imapPort: '993', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', fromName: 'Raegan Denesik', fromEmail: 'raegan.denesik@ethereal.email' },
+    { label: 'Gmail', host: 'smtp.gmail.com', port: '587', encryption: 'tls', imapHost: 'imap.gmail.com', imapPort: '993', user: '', pass: '', fromName: '', fromEmail: '' },
+    { label: 'Outlook', host: 'smtp-mail.outlook.com', port: '587', encryption: 'tls', imapHost: 'outlook.office365.com', imapPort: '993', user: '', pass: '', fromName: '', fromEmail: '' },
+    { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', encryption: 'tls', imapHost: '', imapPort: '', user: '', pass: '', fromName: '', fromEmail: '' },
+    { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', encryption: 'tls', imapHost: '', imapPort: '', user: '', pass: '', fromName: '', fromEmail: '' },
+    { label: 'AWS SES', host: 'email-smtp.us-east-1.amazonaws.com', port: '587', encryption: 'tls', imapHost: '', imapPort: '', user: '', pass: '', fromName: '', fromEmail: '' },
+    { label: 'Zoho', host: 'smtp.zoho.com', port: '587', encryption: 'tls', imapHost: 'imap.zoho.com', imapPort: '993', user: '', pass: '', fromName: '', fromEmail: '' },
   ];
 
   return (
@@ -368,8 +410,8 @@ function EmailSMSTab() {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {presets.map(p => (
                 <button key={p.label} onClick={() => {
-                  setSMTP(prev => ({ ...prev, host: p.host, port: p.port, encryption: p.encryption }));
-                  setIMAP(prev => ({ ...prev, host: p.imapHost, port: p.imapPort }));
+                  setSMTP(prev => ({ ...prev, host: p.host, port: p.port, encryption: p.encryption, ...(p.user ? { user: p.user, pass: p.pass, fromName: p.fromName, fromEmail: p.fromEmail } : {}) }));
+                  setIMAP(prev => ({ ...prev, host: p.imapHost, port: p.imapPort, ...(p.user ? { user: p.user, pass: p.pass } : {}) }));
                 }}
                   style={{ padding: '6px 14px', border: '1px solid #e2e8f0', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', backgroundColor: smtp.host === p.host ? '#f5f3ff' : 'white', color: smtp.host === p.host ? '#6366f1' : '#374151', fontWeight: 500 }}>
                   {p.label}
@@ -398,17 +440,34 @@ function EmailSMSTab() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <TestBtn status={smtpStatus} onTest={() => runTest('smtp')} />
-            {smtpStatus === 'ok' && (
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}>
-                <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Send test email to…"
-                  style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', width: '220px' }} />
-                <button onClick={sendTest} disabled={sendingTest}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: sendingTest ? 'not-allowed' : 'pointer', opacity: sendingTest ? 0.7 : 1 }}>
-                  {sendingTest ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />} Send Test
-                </button>
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}>
+              <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Send test email to…"
+                style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', width: '220px' }} />
+              <button onClick={sendTest} disabled={sendingTest}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: sendingTest ? 'not-allowed' : 'pointer', opacity: sendingTest ? 0.7 : 1 }}>
+                {sendingTest ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />} Send Test
+              </button>
+            </div>
           </div>
+          {sendResult && (
+            <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', background: sendResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${sendResult.success ? '#bbf7d0' : '#fecaca'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: sendResult.previewUrl ? '8px' : 0 }}>
+                <span style={{ fontSize: '14px' }}>{sendResult.success ? '✅' : '❌'}</span>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: sendResult.success ? '#15803d' : '#dc2626' }}>{sendResult.message}</span>
+              </div>
+              {sendResult.previewUrl && (
+                <a href={sendResult.previewUrl} target="_blank" rel="noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', background: '#6366f1', color: '#fff', borderRadius: '6px', fontSize: '12px', fontWeight: 700, textDecoration: 'none', marginTop: '4px' }}>
+                  🔍 View Email on Ethereal →
+                </a>
+              )}
+              {sendResult.success && smtp.host.includes('ethereal') && !sendResult.previewUrl && (
+                <p style={{ fontSize: '12px', color: '#15803d', margin: '4px 0 0' }}>
+                  Note: Ethereal captures emails — they don't arrive in real inboxes. Visit <a href="https://ethereal.email" target="_blank" rel="noreferrer" style={{ color: '#6366f1' }}>ethereal.email</a> to view captured messages.
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
 
