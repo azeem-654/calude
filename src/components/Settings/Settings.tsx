@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode, ReactElement } from 'react';
 import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -7,6 +8,8 @@ import type { EmailProviderConfig } from '../../services/emailService';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
+import SMTPWizard from './SMTPWizard';
+import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
 /* ─── helpers ─── */
 
@@ -47,7 +50,7 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: { la
 type TestStatus = 'idle' | 'testing' | 'ok' | 'fail';
 
 function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestStatus; onTest: () => void; label?: string }) {
-  const map: Record<TestStatus, { bg: string; color: string; text: string; icon: React.ReactElement }> = {
+  const map: Record<TestStatus, { bg: string; color: string; text: string; icon: ReactElement }> = {
     idle: { bg: '#f1f5f9', color: '#374151', text: label, icon: <RefreshCw size={14} /> },
     testing: { bg: '#eff6ff', color: '#2563eb', text: 'Testing…', icon: <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> },
     ok: { bg: '#ecfdf5', color: '#16a34a', text: 'Connected!', icon: <CheckCircle size={14} /> },
@@ -278,94 +281,38 @@ function EmailProviderCard() {
 
 function EmailSMSTab() {
   const { addNotification } = useApp();
-  const [smtp, setSMTP] = useState<SmtpConfig>(loadSMTP);
-  const [imap, setIMAP] = useState<ImapConfig>(loadIMAP);
   const [sms, setSMS] = useState<SmsConfig>(loadSMS);
-  const [smtpStatus, setSmtpStatus] = useState<TestStatus>('idle');
-  const [imapStatus, setImapStatus] = useState<TestStatus>('idle');
   const [smsStatus, setSmsStatus] = useState<TestStatus>('idle');
-  const [testEmail, setTestEmail] = useState('');
-  const [sendingTest, setSendingTest] = useState(false);
 
-  const setS = <T extends object>(setter: React.Dispatch<React.SetStateAction<T>>) =>
-    (k: keyof T, v: string) => setter(p => ({ ...p, [k]: v }));
+  const setSsf = (k: keyof SmsConfig, v: string) => setSMS(p => ({ ...p, [k]: v }));
 
-  const setSf = setS(setSMTP);
-  const setIf = setS(setIMAP);
-  const setSsf = setS(setSMS);
-
-  const runTest = (which: 'smtp' | 'imap' | 'sms') => {
-    const setStatus = which === 'smtp' ? setSmtpStatus : which === 'imap' ? setImapStatus : setSmsStatus;
-    setStatus('testing');
+  const runSmsTest = () => {
+    setSmsStatus('testing');
     setTimeout(() => {
-      const cfg = which === 'smtp' ? smtp : which === 'imap' ? imap : sms;
-      const hasConfig = Object.values(cfg).filter(v => v && v !== '587' && v !== '993' && v !== 'INBOX' && v !== 'tls' && v !== 'twilio').some(Boolean);
-      setStatus(hasConfig ? 'ok' : 'fail');
+      const hasConfig = Object.values(sms).filter(v => v && v !== 'twilio').some(Boolean);
+      setSmsStatus(hasConfig ? 'ok' : 'fail');
       if (hasConfig) {
-        localStorage.setItem(`crm_${which}`, JSON.stringify(cfg));
-        addNotification(`${which.toUpperCase()} connection verified!`);
+        localStorage.setItem('crm_sms', JSON.stringify(sms));
+        addNotification('SMS configuration verified!');
       } else {
-        addNotification(`${which.toUpperCase()} test failed — fill in all required fields`, 'error');
+        addNotification('SMS test failed — fill in all required fields', 'error');
       }
     }, 1800);
   };
 
-  const handleSave = () => {
-    localStorage.setItem('crm_smtp', JSON.stringify(smtp));
-    localStorage.setItem('crm_imap', JSON.stringify(imap));
-    localStorage.setItem('crm_sms', JSON.stringify(sms));
-    addNotification('Email & SMS settings saved!');
+  const handleSMTPSave = (smtp: SMTPConfig, imap: IMAPConfig) => {
+    localStorage.setItem('crm_smtp', JSON.stringify({ host: smtp.host, port: smtp.port, user: smtp.user, pass: smtp.pass, fromName: smtp.fromName, fromEmail: smtp.fromEmail, encryption: smtp.encryption }));
+    localStorage.setItem('crm_imap', JSON.stringify({ host: imap.host, port: imap.port, user: imap.user, pass: imap.pass, folder: imap.folder }));
+    addNotification('SMTP & IMAP settings saved!');
   };
 
-  const [sendResult, setSendResult] = useState<{ previewUrl?: string; message: string; success: boolean } | null>(null);
+  const savedSMTP = loadSMTP();
+  const savedIMAP = loadIMAP();
 
-  const sendTest = async () => {
-    if (!testEmail) { addNotification('Enter a recipient email address', 'error'); return; }
-    if (!smtp.host || !smtp.user || !smtp.pass) { addNotification('Configure SMTP credentials first', 'error'); return; }
-    setSendingTest(true);
-    setSendResult(null);
-    try {
-      const res = await fetch('http://localhost:3001/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host: smtp.host, port: smtp.port,
-          username: smtp.user, password: smtp.pass,
-          secure: smtp.encryption === 'ssl',
-          fromName: smtp.fromName || 'CRMPro',
-          fromEmail: smtp.fromEmail || smtp.user,
-          to: testEmail,
-          subject: '✅ Test Email from CRMPro',
-          html: `<div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto;padding:32px">
-            <h2 style="color:#6366f1;margin:0 0 16px">✅ Test Email from CRMPro</h2>
-            <p style="color:#374151;font-size:15px;line-height:1.6">Your SMTP connection is working correctly.</p>
-            <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:13px">
-              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;width:120px">Sent from</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.fromEmail || smtp.user}</td></tr>
-              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Sent to</td><td style="padding:8px;border:1px solid #e2e8f0">${testEmail}</td></tr>
-              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">SMTP host</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.host}:${smtp.port}</td></tr>
-              <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Timestamp</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date().toLocaleString()}</td></tr>
-            </table>
-            <p style="color:#94a3b8;font-size:12px;margin-top:24px">Sent via CRMPro SMTP Test</p>
-          </div>`,
-        }),
-      });
-      const data = await res.json() as { success: boolean; message: string; previewUrl?: string };
-      setSendResult(data);
-      if (data.success) {
-        addNotification(`Test email sent to ${testEmail}!`);
-        if (data.previewUrl) addNotification(`Ethereal preview ready — click "View Email" below`, 'info');
-      } else {
-        addNotification(data.message || 'Failed to send email', 'error');
-      }
-    } catch {
-      setSendResult({ success: false, message: 'Could not reach backend server (localhost:3001). Run the server with: cd server && node index.js' });
-      addNotification('Backend server not reachable on port 3001', 'error');
-    } finally {
-      setSendingTest(false);
-    }
-  };
+  const initialSMTP: SMTPConfig = { host: savedSMTP.host, port: savedSMTP.port, user: savedSMTP.user, pass: savedSMTP.pass, fromName: savedSMTP.fromName, fromEmail: savedSMTP.fromEmail, encryption: savedSMTP.encryption as 'tls' | 'ssl' | 'none' };
+  const initialIMAP: IMAPConfig = { host: savedIMAP.host, port: savedIMAP.port, user: savedIMAP.user, pass: savedIMAP.pass, folder: savedIMAP.folder };
 
-  const sectionHead = (icon: React.ReactElement, title: string, desc: string, badge?: string) => (
+  const sectionHead = (icon: ReactElement, title: string, desc: string, badge?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
       <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
@@ -380,121 +327,19 @@ function EmailSMSTab() {
     </div>
   );
 
-  const card = (children: React.ReactNode) => (
+  const card = (children: ReactElement) => (
     <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '20px' }}>
       {children}
     </div>
   );
-
-  const presets = [
-    { label: '🧪 Ethereal (Test)', host: 'smtp.ethereal.email', port: '587', encryption: 'tls', imapHost: 'imap.ethereal.email', imapPort: '993', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', fromName: 'Raegan Denesik', fromEmail: 'raegan.denesik@ethereal.email' },
-    { label: 'Gmail', host: 'smtp.gmail.com', port: '587', encryption: 'tls', imapHost: 'imap.gmail.com', imapPort: '993', user: '', pass: '', fromName: '', fromEmail: '' },
-    { label: 'Outlook', host: 'smtp-mail.outlook.com', port: '587', encryption: 'tls', imapHost: 'outlook.office365.com', imapPort: '993', user: '', pass: '', fromName: '', fromEmail: '' },
-    { label: 'Mailgun', host: 'smtp.mailgun.org', port: '587', encryption: 'tls', imapHost: '', imapPort: '', user: '', pass: '', fromName: '', fromEmail: '' },
-    { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', encryption: 'tls', imapHost: '', imapPort: '', user: '', pass: '', fromName: '', fromEmail: '' },
-    { label: 'AWS SES', host: 'email-smtp.us-east-1.amazonaws.com', port: '587', encryption: 'tls', imapHost: '', imapPort: '', user: '', pass: '', fromName: '', fromEmail: '' },
-    { label: 'Zoho', host: 'smtp.zoho.com', port: '587', encryption: 'tls', imapHost: 'imap.zoho.com', imapPort: '993', user: '', pass: '', fromName: '', fromEmail: '' },
-  ];
 
   return (
     <div>
       {/* API Email Provider — for campaigns */}
       <EmailProviderCard />
 
-      {/* Quick-preset bar */}
-      {card(
-        <>
-          {sectionHead(<Mail size={20} color="#6366f1" />, 'Outgoing Email (SMTP)', 'Traditional SMTP for transactional emails')}
-          <div style={{ marginBottom: '16px' }}>
-            <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '8px' }}>Quick-fill presets</p>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {presets.map(p => (
-                <button key={p.label} onClick={() => {
-                  setSMTP(prev => ({ ...prev, host: p.host, port: p.port, encryption: p.encryption, ...(p.user ? { user: p.user, pass: p.pass, fromName: p.fromName, fromEmail: p.fromEmail } : {}) }));
-                  setIMAP(prev => ({ ...prev, host: p.imapHost, port: p.imapPort, ...(p.user ? { user: p.user, pass: p.pass } : {}) }));
-                }}
-                  style={{ padding: '6px 14px', border: '1px solid #e2e8f0', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', backgroundColor: smtp.host === p.host ? '#f5f3ff' : 'white', color: smtp.host === p.host ? '#6366f1' : '#374151', fontWeight: 500 }}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-            <Field label="SMTP Host" value={smtp.host} onChange={v => setSf('host', v)} placeholder="smtp.gmail.com" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <Field label="Port" value={smtp.port} onChange={v => setSf('port', v)} placeholder="587" />
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Encryption</label>
-                <select value={smtp.encryption} onChange={e => setSf('encryption', e.target.value)}
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', backgroundColor: 'white', boxSizing: 'border-box' }}>
-                  <option value="tls">STARTTLS</option>
-                  <option value="ssl">SSL/TLS</option>
-                  <option value="none">None</option>
-                </select>
-              </div>
-            </div>
-            <Field label="SMTP Username" value={smtp.user} onChange={v => setSf('user', v)} placeholder="you@example.com" />
-            <Field label="SMTP Password / App Key" value={smtp.pass} onChange={v => setSf('pass', v)} type="password" placeholder="••••••••" />
-            <Field label="From Name" value={smtp.fromName} onChange={v => setSf('fromName', v)} placeholder="CRMPro Sales" />
-            <Field label="From Email Address" value={smtp.fromEmail} onChange={v => setSf('fromEmail', v)} placeholder="hello@yourdomain.com" />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <TestBtn status={smtpStatus} onTest={() => runTest('smtp')} />
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}>
-              <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Send test email to…"
-                style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', width: '220px' }} />
-              <button onClick={sendTest} disabled={sendingTest}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: sendingTest ? 'not-allowed' : 'pointer', opacity: sendingTest ? 0.7 : 1 }}>
-                {sendingTest ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />} Send Test
-              </button>
-            </div>
-          </div>
-          {sendResult && (
-            <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', background: sendResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${sendResult.success ? '#bbf7d0' : '#fecaca'}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: sendResult.previewUrl ? '8px' : 0 }}>
-                <span style={{ fontSize: '14px' }}>{sendResult.success ? '✅' : '❌'}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: sendResult.success ? '#15803d' : '#dc2626' }}>{sendResult.message}</span>
-              </div>
-              {sendResult.previewUrl && (
-                <a href={sendResult.previewUrl} target="_blank" rel="noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', background: '#6366f1', color: '#fff', borderRadius: '6px', fontSize: '12px', fontWeight: 700, textDecoration: 'none', marginTop: '4px' }}>
-                  🔍 View Email on Ethereal →
-                </a>
-              )}
-              {sendResult.success && smtp.host.includes('ethereal') && !sendResult.previewUrl && (
-                <p style={{ fontSize: '12px', color: '#15803d', margin: '4px 0 0' }}>
-                  Note: Ethereal captures emails — they don't arrive in real inboxes. Visit <a href="https://ethereal.email" target="_blank" rel="noreferrer" style={{ color: '#6366f1' }}>ethereal.email</a> to view captured messages.
-                </p>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {card(
-        <>
-          {sectionHead(<Inbox size={20} color="#0891b2" />, 'Incoming Email (IMAP)', 'Sync replies and incoming emails into Conversations', 'Bi-directional')}
-          <div style={{ padding: '12px 16px', backgroundColor: '#f0f9ff', borderRadius: '10px', border: '1px solid #bae6fd', marginBottom: '16px' }}>
-            <p style={{ fontSize: '12px', color: '#0369a1', margin: 0 }}>
-              <strong>How it works:</strong> The CRM polls this mailbox every 5 minutes. Replies from contacts are automatically matched to their conversation thread and appear in the Conversations tab in real-time.
-            </p>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-            <Field label="IMAP Host" value={imap.host} onChange={v => setIf('host', v)} placeholder="imap.gmail.com" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <Field label="Port" value={imap.port} onChange={v => setIf('port', v)} placeholder="993" />
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Folder</label>
-                <input value={imap.folder} onChange={e => setIf('folder', e.target.value)} placeholder="INBOX"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            </div>
-            <Field label="IMAP Username" value={imap.user} onChange={v => setIf('user', v)} placeholder="you@example.com" />
-            <Field label="IMAP Password / App Key" value={imap.pass} onChange={v => setIf('pass', v)} type="password" placeholder="••••••••" />
-          </div>
-          <TestBtn status={imapStatus} onTest={() => runTest('imap')} label="Test IMAP Connection" />
-        </>
-      )}
+      {/* SMTP Integration Wizard */}
+      <SMTPWizard onSave={handleSMTPSave} initialSMTP={initialSMTP} initialIMAP={initialIMAP} />
 
       {card(
         <>
@@ -542,7 +387,7 @@ function EmailSMSTab() {
               <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>Paste this URL in your SMS provider's webhook settings</p>
             </div>
           </div>
-          <TestBtn status={smsStatus} onTest={() => runTest('sms')} label="Test SMS Provider" />
+          <TestBtn status={smsStatus} onTest={runSmsTest} label="Test SMS Provider" />
         </>
       )}
 
@@ -586,9 +431,9 @@ function EmailSMSTab() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-        <button onClick={handleSave}
+        <button onClick={() => { localStorage.setItem('crm_sms', JSON.stringify(sms)); addNotification('SMS settings saved!'); }}
           style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
-          <Save size={16} /> Save All Settings
+          <Save size={16} /> Save SMS Settings
         </button>
       </div>
     </div>
@@ -659,13 +504,13 @@ function IntegrationsTab() {
     }
   };
 
-  const card = (children: React.ReactNode) => (
+  const card = (children: ReactNode) => (
     <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '16px' }}>
       {children}
     </div>
   );
 
-  const cardHeader = (icon: React.ReactNode, title: string, desc: string, badge?: string) => (
+  const cardHeader = (icon: ReactNode, title: string, desc: string, badge?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
       <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
