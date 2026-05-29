@@ -65,6 +65,8 @@ interface AppContextType {
   notifications: Notification[];
   addNotification: (msg: string, type?: 'success' | 'error' | 'info') => void;
   dismissNotification: (id: string) => void;
+  sidebarMode: 'full' | 'icons' | 'hidden';
+  setSidebarMode: (mode: 'full' | 'icons' | 'hidden') => void;
 }
 
 function loadLS<T>(key: string, fallback: T): T {
@@ -89,6 +91,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sequences, setSequences]       = useState<EmailSequence[]>(() => loadLS('crm_sequences',   []));
   const [automations, setAutomations]   = useState<Automation[]>(()   => loadLS('crm_automations',  []));
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [sidebarMode, setSidebarModeState] = useState<'full' | 'icons' | 'hidden'>(() => (loadLS('crm_sidebar_mode', 'full') as 'full' | 'icons' | 'hidden'));
+  const setSidebarMode = (mode: 'full' | 'icons' | 'hidden') => { setSidebarModeState(mode); saveLS('crm_sidebar_mode', mode); };
 
   const defaultSchedule: ScheduleAvailability = {
     userId: 'user-1', title: '30 Minute Meeting', duration: 30, bufferBefore: 0, bufferAfter: 0,
@@ -313,6 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addSequence, updateSequence, deleteSequence,
       addAutomation, updateAutomation, deleteAutomation,
       notifications, addNotification: notify, dismissNotification: id => setNotifications(prev => prev.filter(n => n.id !== id)),
+      sidebarMode, setSidebarMode,
     }}>
       {children}
     </AppContext.Provider>

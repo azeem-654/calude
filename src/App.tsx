@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import Sidebar from './components/Layout/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
@@ -16,8 +16,11 @@ import Analytics from './components/Analytics/Analytics';
 import Reputation from './components/Reputation/Reputation';
 import Settings from './components/Settings/Settings';
 
+const SIDEBAR_WIDTHS = { full: 240, icons: 64, hidden: 0 };
+
 function AppLayout() {
   const location = useLocation();
+  const { sidebarMode } = useApp();
   const isBooking = location.pathname.startsWith('/book');
   const isPreview = location.pathname.startsWith('/preview');
 
@@ -41,7 +44,13 @@ function AppLayout() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       <Sidebar />
-      <main style={{ marginLeft: '240px', flex: 1, minHeight: '100vh', overflow: 'auto' }}>
+      <main style={{
+        marginLeft: `${SIDEBAR_WIDTHS[sidebarMode]}px`,
+        flex: 1,
+        minHeight: '100vh',
+        overflow: 'auto',
+        transition: 'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',
+      }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
