@@ -164,7 +164,7 @@ export default function Dashboard() {
   const publishedSites = websites.filter(w => w.status === 'published').length;
   const avgRating = reviews.length ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : '—';
   const fiveStars = reviews.filter(r => r.rating === 5).length;
-  const todayBookings = bookings.filter(b => b.date === new Date().toISOString().split('T')[0]).length;
+  const todayBookings = bookings.filter(b => b.slotDate === new Date().toISOString().split('T')[0]).length;
   const emailRate = activeCampaigns > 0 ? 42 : 0;
 
   const weekRevData = [12, 19, 15, 28, 24, 35, 30].map((v, i) => ({ d: ['M','T','W','T','F','S','S'][i], v }));
@@ -267,7 +267,7 @@ export default function Dashboard() {
               stats={[
                 { label: 'Reviews', value: reviews.length || 47 },
                 { label: '5-star', value: fiveStars || 38 },
-                { label: 'Replied', value: `${reviews.length ? Math.round((reviews.filter(r => r.reply).length / reviews.length) * 100) : 82}%` },
+                { label: 'Replied', value: `${reviews.length ? Math.round((reviews.filter(r => r.replied).length / reviews.length) * 100) : 82}%` },
               ]}
               sparkData={[60, 72, 68, 80, 75, 85, 82, 90, 88, 95]}
             />
