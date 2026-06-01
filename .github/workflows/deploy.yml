@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [claude/gohighlevel-app-testing-5sNjJ, main]
+    branches: [claude/gohighlevel-app-testing-5sNjJ]
   workflow_dispatch:
 
 permissions:
