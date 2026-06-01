@@ -72,7 +72,7 @@ function AppLayout() {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/calude">
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
       <AppProvider>
         <AppLayout />
       </AppProvider>

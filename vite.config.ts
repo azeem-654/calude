@@ -4,7 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/calude/',
+  // VITE_BASE env var lets CI override: '/' for FTP hosts, '/calude/' for GitHub Pages
+  base: process.env.VITE_BASE ?? '/calude/',
   build: {
     rollupOptions: {
       output: {

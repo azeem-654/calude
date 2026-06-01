@@ -1,0 +1,99 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# FTP Deploy to Freehostia
+#
+# Branches → Targets:
+#   testing  →  /public_html/testing.protectedcentral.com/
+#   main     →  /public_html/protectedcentral.com/   (go.protectedcentral.com)
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   FTP_HOST      ftp.protectedcentral.com
+#   FTP_USER      main654_protectedcentral.com
+#   FTP_PASSWORD  ckDIk297D#
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: FTP Deploy to Freehostia
+
+on:
+  push:
+    branches:
+      - testing
+      - main
+  workflow_dispatch:
+    inputs:
+      branch_override:
+        description: 'Force deploy target (testing | live)'
+        required: false
+        default: ''
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Node setup ────────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── 3. Install ───────────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── 4. Determine deploy target ───────────────────────────────────────────
+      - name: Resolve deploy target directory
+        id: target
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          if [ "$BRANCH" = "main" ]; then
+            echo "dir=/public_html/protectedcentral.com/" >> "$GITHUB_OUTPUT"
+            echo "env=live"                               >> "$GITHUB_OUTPUT"
+            echo "label=LIVE → go.protectedcentral.com"  >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=/public_html/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
+            echo "env=testing"                                     >> "$GITHUB_OUTPUT"
+            echo "label=TESTING → testing.protectedcentral.com"   >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 5. Build ─────────────────────────────────────────────────────────────
+      - name: Build frontend
+        run: npm run build
+        env:
+          # Deploy to domain root on Freehostia (not /calude/ sub-path)
+          VITE_BASE: /
+
+      # ── 6. FTP Upload ────────────────────────────────────────────────────────
+      - name: Deploy via FTP → ${{ steps.target.outputs.label }}
+        uses: SamKirkland/FTP-Deploy-Action@4.3.4
+        with:
+          server:      ${{ secrets.FTP_HOST }}
+          username:    ${{ secrets.FTP_USER }}
+          password:    ${{ secrets.FTP_PASSWORD }}
+          local-dir:   ./dist/
+          server-dir:  ${{ steps.target.outputs.dir }}
+          # Only upload changed files (mirrors local dist/ state to server)
+          dangerous-clean-slate: false
+          # Exclude source maps and git artifacts
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/*.map
+
+      # ── 7. Summary ───────────────────────────────────────────────────────────
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Deployment complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | **${{ steps.target.outputs.env }}** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| FTP target | \`${{ steps.target.outputs.dir }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Triggered by | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
