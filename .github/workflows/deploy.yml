@@ -2,12 +2,12 @@
 # FTP Deploy to Freehostia
 #
 # Branches → Targets:
-#   testing  →  /public_html/testing.protectedcentral.com/
-#   main     →  /public_html/protectedcentral.com/   (go.protectedcentral.com)
+#   testing  →  /www/testing.protectedcentral.com/
+#   main     →  /www/protectedcentral.com/   (go.protectedcentral.com)
 #
 # Required GitHub Secrets (Settings → Secrets → Actions):
 #   FTP_HOST      ftp.protectedcentral.com
-#   FTP_USER      main654_protectedcentral.com
+#   FTP_USER      main654_protectedcentral.com@protectedcentral.com
 #   FTP_PASSWORD  <your password>
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -51,25 +51,24 @@ jobs:
         run: |
           BRANCH="${{ github.ref_name }}"
           if [ "$BRANCH" = "main" ]; then
-            echo "dir=/public_html/protectedcentral.com/" >> "$GITHUB_OUTPUT"
-            echo "env=live"                               >> "$GITHUB_OUTPUT"
-            echo "label=LIVE → go.protectedcentral.com"  >> "$GITHUB_OUTPUT"
+            echo "dir=/www/protectedcentral.com/" >> "$GITHUB_OUTPUT"
+            echo "env=live"                        >> "$GITHUB_OUTPUT"
+            echo "label=LIVE → go.protectedcentral.com" >> "$GITHUB_OUTPUT"
           else
-            echo "dir=/public_html/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
-            echo "env=testing"                                     >> "$GITHUB_OUTPUT"
-            echo "label=TESTING → testing.protectedcentral.com"   >> "$GITHUB_OUTPUT"
+            echo "dir=/www/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
+            echo "env=testing"                             >> "$GITHUB_OUTPUT"
+            echo "label=TESTING → testing.protectedcentral.com" >> "$GITHUB_OUTPUT"
           fi
 
       # ── 5. Build ─────────────────────────────────────────────────────────────
       - name: Build frontend
         run: npm run build
         env:
-          # Deploy to domain root on Freehostia (not /calude/ sub-path)
           VITE_BASE: /
 
       # ── 6. FTP Upload ────────────────────────────────────────────────────────
       - name: Deploy via FTP → ${{ steps.target.outputs.label }}
-        uses: SamKirkland/FTP-Deploy-Action@4.3.4
+        uses: SamKirkland/FTP-Deploy-Action@v4.0.0
         with:
           server:      ${{ secrets.FTP_HOST }}
           username:    ${{ secrets.FTP_USER }}
