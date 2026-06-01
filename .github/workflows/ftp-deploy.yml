@@ -33,12 +33,12 @@ jobs:
         id: target
         run: |
           if [ "${{ github.event.inputs.target }}" = "live" ]; then
-            echo "dir=/public_html/protectedcentral.com/" >> "$GITHUB_OUTPUT"
+            echo "dir=/www/protectedcentral.com/" >> "$GITHUB_OUTPUT"
           else
-            echo "dir=/public_html/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
+            echo "dir=/www/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
           fi
       - name: FTP Upload
-        uses: SamKirkland/FTP-Deploy-Action@4.3.4
+        uses: SamKirkland/FTP-Deploy-Action@v4.0.0
         with:
           server:      ${{ secrets.FTP_HOST }}
           username:    ${{ secrets.FTP_USER }}
