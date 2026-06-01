@@ -6,7 +6,7 @@
 #   main     →  /www/protectedcentral.com/   (go.protectedcentral.com)
 #
 # Required GitHub Secrets (Settings → Secrets → Actions):
-#   FTP_HOST      ftp.protectedcentral.com
+#   FTP_HOST      198.23.57.183
 #   FTP_USER      main654_protectedcentral.com@protectedcentral.com
 #   FTP_PASSWORD  <your password>
 # ──────────────────────────────────────────────────────────────────────────────
@@ -73,6 +73,8 @@ jobs:
           server:      ${{ secrets.FTP_HOST }}
           username:    ${{ secrets.FTP_USER }}
           password:    ${{ secrets.FTP_PASSWORD }}
+          port:        21
+          security:    loose
           local-dir:   ./dist/
           server-dir:  ${{ steps.target.outputs.dir }}
           dangerous-clean-slate: false
