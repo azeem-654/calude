@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle, XCircle, Loader, Eye, EyeOff, Send, RefreshCw, ChevronRight, ChevronLeft, Mail, Inbox, Wifi, WifiOff, AlertCircle, Info } from 'lucide-react';
 
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 /* ── types ── */
 export interface SMTPConfig {
   host: string; port: string; user: string; pass: string;
@@ -176,15 +178,15 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
   const testSMTP = async () => {
     setSmtpState('running'); setSmtpMsg('');
     try {
-      const r = await fetch('http://localhost:3001/api/validate/smtp', {
+      const r = await fetch(`${API_BASE}/api/smtp-test.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, secure: smtp.encryption === 'ssl' }),
+        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, secure: smtp.encryption === 'ssl', encryption: smtp.encryption }),
       });
       const d = await r.json() as { success: boolean; message: string };
       setSmtpState(d.success ? 'ok' : 'fail');
       setSmtpMsg(d.message);
     } catch {
-      setSmtpState('fail'); setSmtpMsg('Cannot reach backend (localhost:3001). Run: cd server && node index.js');
+      setSmtpState('fail'); setSmtpMsg('Cannot reach SMTP test endpoint. Check server connectivity.');
     }
   };
 
@@ -201,11 +203,12 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
     if (!sendTo.trim()) { setSendMsg('Enter a recipient address'); return; }
     setSendState('running'); setSendMsg(''); setPreviewUrl('');
     try {
-      const r = await fetch('http://localhost:3001/api/send-email', {
+      const r = await fetch(`${API_BASE}/api/smtp-send.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           host: smtp.host, port: smtp.port, username: smtp.user, password: smtp.pass,
-          secure: smtp.encryption === 'ssl', fromName: smtp.fromName || 'CRMPro',
+          secure: smtp.encryption === 'ssl', encryption: smtp.encryption,
+          fromName: smtp.fromName || 'CRMPro',
           fromEmail: smtp.fromEmail || smtp.user, to: sendTo.trim(),
           subject: '✅ CRMPro SMTP Test',
           html: `<div style="font-family:Inter,sans-serif;max-width:560px;padding:32px"><h2 style="color:#6366f1">✅ SMTP Connection Verified</h2><p>Your SMTP integration is working correctly.</p><table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0"><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Host</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.host}:${smtp.port}</td></tr><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Sent at</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date().toLocaleString()}</td></tr></table></div>`,
@@ -216,7 +219,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
       setSendMsg(d.message);
       if (d.previewUrl) setPreviewUrl(d.previewUrl);
     } catch {
-      setSendState('fail'); setSendMsg('Backend not reachable. Run: cd server && node index.js');
+      setSendState('fail'); setSendMsg('Cannot reach send endpoint. Check server connectivity.');
     }
   };
 
@@ -383,9 +386,9 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
   const runConnectionTest = async () => {
     setTestState('running'); setTestMsg(''); setTestDetails([]);
     try {
-      const r = await fetch('http://localhost:3001/api/validate/smtp', {
+      const r = await fetch(`${API_BASE}/api/smtp-test.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, secure: smtp.encryption === 'ssl' }),
+        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, secure: smtp.encryption === 'ssl', encryption: smtp.encryption }),
       });
       const d = await r.json() as { success: boolean; message: string; details?: string; suggestions?: string[] };
       setTestState(d.success ? 'ok' : 'fail');
@@ -393,8 +396,8 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
       setTestDetails(d.suggestions ?? []);
     } catch {
       setTestState('fail');
-      setTestMsg('Cannot reach backend server on localhost:3001');
-      setTestDetails(['Run the backend with: cd server && node index.js', 'The backend must be running to test SMTP connections.']);
+      setTestMsg('Cannot reach SMTP test endpoint');
+      setTestDetails(['Ensure the server is reachable', 'In local dev run: cd server && node index.js']);
     }
   };
 
