@@ -11,102 +11,130 @@ $host      = trim($data['host']      ?? '');
 $port      = intval($data['port']    ?? 587);
 $user      = trim($data['username']  ?? '');
 $pass      = $data['password']       ?? '';
-$enc       = $data['encryption']     ?? ($data['secure'] ? 'ssl' : 'tls');
+$enc       = $data['encryption']     ?? 'tls';
 $fromName  = $data['fromName']       ?? 'CRMPro';
 $fromEmail = $data['fromEmail']      ?? $user;
 $to        = trim($data['to']        ?? '');
-$subject   = $data['subject']        ?? 'CRMPro SMTP Test';
+$subject   = $data['subject']        ?? 'CRMPro Test';
 $html      = $data['html']           ?? '<p>Test email from CRMPro.</p>';
 
-if (!$host || !$user || !$pass || !$to) {
-    echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+if (!$to) {
+    echo json_encode(['success' => false, 'message' => 'Recipient address is required']);
     exit;
 }
 
-$ctx = stream_context_create([
-    'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
-]);
-
-$wrapper = $enc === 'ssl' ? "ssl://{$host}" : $host;
-$conn = @stream_socket_client("{$wrapper}:{$port}", $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $ctx);
-if (!$conn) {
-    echo json_encode(['success' => false, 'message' => "Cannot connect to {$host}:{$port} — {$errstr}"]);
-    exit;
-}
-stream_set_timeout($conn, 10);
-
-function r($conn) {
+/* ── helper functions ── */
+function smtp_r($conn) {
     $buf = '';
     while ($line = fgets($conn, 1024)) {
         $buf .= $line;
-        if (substr($line, 3, 1) === ' ') break;
+        if (isset($line[3]) && $line[3] === ' ') break;
     }
     return $buf;
 }
-function code($s) { return (int)substr(trim($s), 0, 3); }
-function w($conn, $s) { fwrite($conn, $s . "\r\n"); }
+function smtp_code($s) { return (int)substr(trim($s), 0, 3); }
+function smtp_w($conn, $s) { fwrite($conn, $s . "\r\n"); }
 
-$greeting = r($conn);
-if (code($greeting) !== 220) { fclose($conn); echo json_encode(['success'=>false,'message'=>'Bad greeting']); exit; }
+/* ── build MIME message ── */
+function build_mime($fromName, $fromEmail, $to, $subject, $html, $host) {
+    $msgId = md5(uniqid('', true)) . '@' . preg_replace('/[^a-z0-9\.\-]/i', '', $host);
+    $date  = date('r');
+    $enc_subject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    $enc_from    = '=?UTF-8?B?' . base64_encode($fromName) . '?=';
+    $body = "From: {$enc_from} <{$fromEmail}>\r\n"
+          . "To: <{$to}>\r\n"
+          . "Subject: {$enc_subject}\r\n"
+          . "Date: {$date}\r\n"
+          . "Message-ID: <{$msgId}>\r\n"
+          . "MIME-Version: 1.0\r\n"
+          . "Content-Type: text/html; charset=UTF-8\r\n"
+          . "Content-Transfer-Encoding: base64\r\n"
+          . "\r\n"
+          . chunk_split(base64_encode($html));
+    // Dot-stuffing
+    return preg_replace('/^\.$/m', '..', $body);
+}
 
-w($conn, "EHLO mail.test"); r($conn);
+/* ── attempt socket SMTP ── */
+$smtpError = '';
+if ($host && $user && $pass) {
+    $ctx = stream_context_create([
+        'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
+    ]);
+    $wrapper = $enc === 'ssl' ? "ssl://{$host}" : $host;
+    $conn = @stream_socket_client("{$wrapper}:{$port}", $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
 
-if ($enc === 'tls') {
-    w($conn, "STARTTLS");
-    if (code(r($conn)) === 220) {
-        stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT);
-        w($conn, "EHLO mail.test"); r($conn);
+    if ($conn) {
+        stream_set_timeout($conn, 15);
+        $greeting = smtp_r($conn);
+        if (smtp_code($greeting) === 220) {
+            smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
+
+            if ($enc === 'tls') {
+                smtp_w($conn, "STARTTLS");
+                if (smtp_code(smtp_r($conn)) === 220) {
+                    @stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT);
+                    smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
+                }
+            }
+
+            smtp_w($conn, "AUTH LOGIN");
+            $ap = smtp_r($conn);
+            if (smtp_code($ap) === 334) {
+                smtp_w($conn, base64_encode($user)); smtp_r($conn);
+                smtp_w($conn, base64_encode($pass));
+                $ar = smtp_r($conn);
+            } else {
+                smtp_w($conn, 'AUTH PLAIN ' . base64_encode("\0{$user}\0{$pass}"));
+                $ar = smtp_r($conn);
+            }
+
+            if (smtp_code($ar) === 235) {
+                smtp_w($conn, "MAIL FROM: <{$fromEmail}>");
+                if (smtp_code(smtp_r($conn)) === 250) {
+                    smtp_w($conn, "RCPT TO: <{$to}>");
+                    if (smtp_code(smtp_r($conn)) === 250) {
+                        smtp_w($conn, "DATA");
+                        if (smtp_code(smtp_r($conn)) === 354) {
+                            $body = build_mime($fromName, $fromEmail, $to, $subject, $html, $host);
+                            fwrite($conn, $body . "\r\n.\r\n");
+                            $sent = smtp_r($conn);
+                            smtp_w($conn, "QUIT");
+                            fclose($conn);
+                            if (smtp_code($sent) === 250) {
+                                echo json_encode(['success' => true, 'message' => "Email sent via {$host}:{$port}"]);
+                                exit;
+                            }
+                            $smtpError = 'DATA rejected: ' . trim($sent);
+                        } else { $smtpError = 'RCPT rejected'; fclose($conn); }
+                    } else { $smtpError = 'MAIL FROM rejected'; fclose($conn); }
+                } else { $smtpError = 'Auth failed: ' . trim($ar); fclose($conn); }
+            } else { $smtpError = 'Auth failed: ' . trim($ar); fclose($conn); }
+        } else { $smtpError = 'Bad greeting: ' . trim($greeting); fclose($conn); }
+    } else {
+        $smtpError = "Cannot connect to {$host}:{$port} ({$errstr})";
     }
 }
 
-w($conn, "AUTH LOGIN");
-$ap = r($conn);
-if (code($ap) === 334) {
-    w($conn, base64_encode($user)); r($conn);
-    w($conn, base64_encode($pass));
-    $ar = r($conn);
-} else {
-    w($conn, 'AUTH PLAIN ' . base64_encode("\0{$user}\0{$pass}"));
-    $ar = r($conn);
+/* ── fallback: PHP mail() via server sendmail ── */
+if (function_exists('mail') && $fromEmail) {
+    $headers  = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <{$fromEmail}>\r\n";
+    $headers .= "Reply-To: {$fromEmail}\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $headers .= "Content-Transfer-Encoding: base64\r\n";
+    $headers .= "X-Mailer: CRMPro";
+
+    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    $encodedBody    = chunk_split(base64_encode($html));
+
+    $ok = @mail($to, $encodedSubject, $encodedBody, $headers, "-f{$fromEmail}");
+    if ($ok) {
+        $note = $smtpError ? " (SMTP failed: {$smtpError}; used server mail)" : '';
+        echo json_encode(['success' => true, 'message' => "Email queued via server mail{$note}"]);
+        exit;
+    }
+    $smtpError .= ($smtpError ? '; ' : '') . 'PHP mail() also failed';
 }
-if (code($ar) !== 235) {
-    fclose($conn);
-    echo json_encode(['success' => false, 'message' => 'Auth failed: ' . trim($ar)]);
-    exit;
-}
 
-w($conn, "MAIL FROM: <{$fromEmail}>");
-if (code(r($conn)) !== 250) { fclose($conn); echo json_encode(['success'=>false,'message'=>'MAIL FROM rejected']); exit; }
-
-w($conn, "RCPT TO: <{$to}>");
-if (code(r($conn)) !== 250) { fclose($conn); echo json_encode(['success'=>false,'message'=>"Recipient {$to} rejected"]); exit; }
-
-w($conn, "DATA");
-if (code(r($conn)) !== 354) { fclose($conn); echo json_encode(['success'=>false,'message'=>'DATA command failed']); exit; }
-
-$msgId = md5(uniqid('', true)) . '@' . $host;
-$date  = date('r');
-$encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
-$body = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <{$fromEmail}>\r\n"
-      . "To: <{$to}>\r\n"
-      . "Subject: {$encodedSubject}\r\n"
-      . "Date: {$date}\r\n"
-      . "Message-ID: <{$msgId}>\r\n"
-      . "MIME-Version: 1.0\r\n"
-      . "Content-Type: text/html; charset=UTF-8\r\n"
-      . "Content-Transfer-Encoding: base64\r\n"
-      . "\r\n"
-      . chunk_split(base64_encode($html));
-// Dot-stuffing: lines starting with . must be doubled
-$body = preg_replace('/^\.$/m', '..', $body);
-fwrite($conn, $body . "\r\n.\r\n");
-$sent = r($conn);
-
-w($conn, "QUIT");
-fclose($conn);
-
-if (code($sent) === 250) {
-    echo json_encode(['success' => true, 'message' => "Email sent to {$to} via {$host}:{$port}"]);
-} else {
-    echo json_encode(['success' => false, 'message' => 'Send failed: ' . trim($sent)]);
-}
+echo json_encode(['success' => false, 'message' => $smtpError ?: 'No sending method available — configure SMTP host/user/pass']);
