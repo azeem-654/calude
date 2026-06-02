@@ -68,14 +68,14 @@ function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestSt
 /* ─── SMTP tab ─── */
 
 function loadSMTP() {
-  const ETHEREAL_DEFAULT = { host: 'smtp.ethereal.email', port: '587', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', fromName: 'Raegan Denesik', fromEmail: 'raegan.denesik@ethereal.email', encryption: 'tls' };
-  try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null') ?? ETHEREAL_DEFAULT; }
-  catch { return ETHEREAL_DEFAULT; }
+  const EMPTY: SmtpConfig = { host: '', port: '587', user: '', pass: '', fromName: '', fromEmail: '', encryption: 'tls' };
+  try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null') ?? EMPTY; }
+  catch { return EMPTY; }
 }
 function loadIMAP() {
-  const ETHEREAL_IMAP = { host: 'imap.ethereal.email', port: '993', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', folder: 'INBOX' };
-  try { return JSON.parse(localStorage.getItem('crm_imap') || 'null') ?? ETHEREAL_IMAP; }
-  catch { return ETHEREAL_IMAP; }
+  const EMPTY: ImapConfig = { host: '', port: '993', user: '', pass: '', folder: 'INBOX' };
+  try { return JSON.parse(localStorage.getItem('crm_imap') || 'null') ?? EMPTY; }
+  catch { return EMPTY; }
 }
 function loadSMS() {
   try { return JSON.parse(localStorage.getItem('crm_sms') || 'null') ?? { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
@@ -99,19 +99,6 @@ function EmailProviderCard() {
 
   const runTest = async () => {
     if (cfg.provider === 'none') { addNotification('Select a provider first', 'error'); return; }
-    if (cfg.provider === 'demo') {
-      setStatus('sending'); setLastResult('');
-      const result = await sendEmail(cfg, {
-        to: 'demo-test@yourcrm.local',
-        toName: 'Demo Test Recipient',
-        subject: '✅ Demo Mode Test Email',
-        html: `<h2 style="color:#0284c7">Demo Mode is working! 📬</h2><p>This test was captured in your Demo Inbox at <strong>${new Date().toLocaleString()}</strong>.</p><p>No real email was sent. Go to <strong>Marketing → Demo Inbox</strong> to see captured emails.</p><p style="background:#f0f9ff;padding:12px;border-radius:8px;border-left:4px solid #0284c7">Switch to <strong>Mailtrap</strong> or <strong>Resend</strong> provider when you're ready to send real emails.</p>`,
-      });
-      setStatus('ok');
-      setLastResult('Captured in Demo Inbox! Go to Marketing → Demo Inbox to view it.');
-      addNotification('Test email captured in Demo Inbox!');
-      return;
-    }
     if (!testAddr.trim()) { addNotification('Enter a test recipient address', 'error'); return; }
     setStatus('sending'); setLastResult('');
     const result = await sendEmail(cfg, {
@@ -133,7 +120,8 @@ function EmailProviderCard() {
 
   const statusColors: Record<string, string> = { idle: '#64748b', sending: '#2563eb', ok: '#16a34a', fail: '#dc2626' };
   const providerDocs: Record<string, { label: string; url: string; hint: string }> = {
-    mailtrap: { label: 'Mailtrap', url: 'https://mailtrap.io', hint: 'Free test sandbox · Captures all emails · No real delivery · Perfect for testing' },
+    smtp:     { label: 'SMTP',     url: '',                    hint: 'Uses your SMTP server configured in the wizard above — works with Gmail, Outlook, any provider' },
+    mailtrap: { label: 'Mailtrap', url: 'https://mailtrap.io', hint: 'Test sandbox — captures emails without delivery. Free tier available.' },
     resend:   { label: 'Resend',   url: 'https://resend.com',  hint: 'Real email delivery · Free tier: 3,000/mo · Requires verified domain for production' },
   };
 
@@ -154,41 +142,23 @@ function EmailProviderCard() {
 
       {/* Provider selector */}
       <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Provider</label>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Campaign Sending Provider</label>
 
-        {/* Demo mode — featured first */}
-        <button onClick={() => setCfg(prev => ({ ...prev, provider: 'demo', fromName: prev.fromName || 'Demo Sender', fromEmail: prev.fromEmail || 'demo@yourcrm.local' }))}
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 14px', border: `2px solid ${cfg.provider === 'demo' ? '#0284c7' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === 'demo' ? '#f0f9ff' : 'white', cursor: 'pointer', textAlign: 'left', marginBottom: '8px', transition: 'all 0.12s' }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 18 }}>📬</span>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 1 }}>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: cfg.provider === 'demo' ? '#0284c7' : '#0f172a' }}>Demo Mode</span>
-              <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: 20, backgroundColor: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>NO SETUP REQUIRED</span>
-              <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: 20, backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: 600 }}>DEFAULT</span>
-            </div>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Emails are captured in a built-in inbox — nothing is sent to real recipients. Perfect for testing your campaigns.</p>
-          </div>
-          <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${cfg.provider === 'demo' ? '#0284c7' : '#cbd5e1'}`, backgroundColor: cfg.provider === 'demo' ? '#0284c7' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {cfg.provider === 'demo' && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'white' }} />}
-          </div>
-        </button>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '10px' }}>
           {[
+            { id: 'smtp',     label: '🔐 SMTP',     desc: 'Your server (recommended)' },
             { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test sandbox' },
-            { id: 'resend',   label: '⚡ Resend',   desc: 'Real sending' },
+            { id: 'resend',   label: '⚡ Resend',   desc: 'High-volume' },
             { id: 'none',     label: '🚫 None',     desc: 'Disabled' },
           ].map(p => (
             <button key={p.id} onClick={() => setCfg(prev => ({ ...prev, provider: p.id as EmailProviderConfig['provider'] }))}
-              style={{ padding: '10px', border: `2px solid ${cfg.provider === p.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === p.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
+              style={{ padding: '10px', border: `2px solid ${cfg.provider === p.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === p.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
               <div style={{ fontSize: '13px', fontWeight: 600, color: cfg.provider === p.id ? '#6366f1' : '#374151' }}>{p.label}</div>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{p.desc}</div>
             </button>
           ))}
         </div>
-        {cfg.provider !== 'none' && cfg.provider !== 'demo' && providerDocs[cfg.provider] && (
+        {cfg.provider !== 'none' && providerDocs[cfg.provider] && (
           <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <p style={{ fontSize: '12px', color: '#64748b', margin: 0, flex: 1 }}>{providerDocs[cfg.provider].hint}</p>
             <a href={providerDocs[cfg.provider].url} target="_blank" rel="noopener noreferrer"
@@ -199,25 +169,17 @@ function EmailProviderCard() {
         )}
       </div>
 
-      {/* Demo mode info box */}
-      {cfg.provider === 'demo' && (
-        <div style={{ padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '10px', border: '1px solid #bae6fd', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <span style={{ fontSize: 20, flexShrink: 0 }}>📬</span>
-            <div>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: '#0284c7', margin: '0 0 4px' }}>Demo Mode is active</p>
-              <p style={{ fontSize: '12px', color: '#0369a1', margin: 0, lineHeight: 1.6 }}>
-                All campaign emails are captured in the built-in <strong>Demo Inbox</strong> (Marketing → Demo Inbox button). No real emails are sent to your contacts. You can test your full campaign flow — send timing, personalization, and email preview — without any configuration.
-              </p>
-            </div>
-          </div>
+      {cfg.provider === 'smtp' && (
+        <div style={{ padding: '12px 14px', backgroundColor: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
+          <p style={{ fontSize: '13px', fontWeight: 600, color: '#16a34a', margin: '0 0 3px' }}>✓ Uses SMTP Wizard credentials</p>
+          <p style={{ fontSize: '12px', color: '#15803d', margin: 0 }}>Campaigns will send via the SMTP server configured in the wizard above. No API key needed.</p>
         </div>
       )}
 
       {cfg.provider !== 'none' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-            {cfg.provider !== 'demo' && (
+            {cfg.provider !== 'smtp' && (
               <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>API Key *</label>
                 <input type="password" value={cfg.apiKey} onChange={e => setCfg(prev => ({ ...prev, apiKey: e.target.value }))} placeholder="Paste your API key here"
@@ -244,21 +206,15 @@ function EmailProviderCard() {
           </div>
 
           {/* Test send */}
-          <div style={{ padding: '16px', backgroundColor: cfg.provider === 'demo' ? '#f0f9ff' : '#f8fafc', borderRadius: '10px', border: `1px solid ${cfg.provider === 'demo' ? '#bae6fd' : '#e2e8f0'}` }}>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>
-              {cfg.provider === 'demo' ? '📬 Send a test to Demo Inbox' : 'Send test email'}
-            </p>
-            {cfg.provider === 'demo' ? (
-              <p style={{ fontSize: '12px', color: '#0369a1', margin: '0 0 10px' }}>Click below — the test email will appear in Marketing → Demo Inbox instantly.</p>
-            ) : (
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
-                  style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
-              </div>
-            )}
+          <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>Send test email</p>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
+                style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+            </div>
             <button onClick={runTest} disabled={status === 'sending'}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : (cfg.provider === 'demo' ? '#0284c7' : '#6366f1'), color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
-              {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> {cfg.provider === 'demo' ? 'Capture Test Email' : 'Send Test'}</>}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#6366f1', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
+              {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
             </button>
             {lastResult && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '8px 10px', backgroundColor: status === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: '7px', border: `1px solid ${status === 'ok' ? '#bbf7d0' : '#fecaca'}`, marginTop: '8px' }}>
