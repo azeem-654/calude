@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CheckCircle, XCircle, Loader, Eye, EyeOff, Send, RefreshCw, ChevronRight, ChevronLeft, Mail, Inbox, Wifi, WifiOff, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle, XCircle, Loader, Eye, EyeOff, Send, RefreshCw, ChevronRight, ChevronLeft, Mail, Inbox, Wifi, WifiOff, AlertCircle, Info, Pencil } from 'lucide-react';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
@@ -699,9 +699,14 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 </div>
               )}
             </div>
-            <button onClick={() => setStep('provider')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: 'white', color: '#6366f1', border: '1px solid #c7d2fe', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '20px' }}>
-              <RefreshCw size={13} /> Reconfigure
-            </button>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
+              <button onClick={() => setStep('outgoing')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+                <Pencil size={13} /> Edit Settings
+              </button>
+              <button onClick={() => setStep('provider')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>
+                <RefreshCw size={13} /> Change Provider
+              </button>
+            </div>
           </div>
         )}
       </div>

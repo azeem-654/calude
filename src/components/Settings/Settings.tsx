@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
@@ -235,6 +235,203 @@ function EmailProviderCard() {
   );
 }
 
+/* ─── Mailbox Warmup ─── */
+
+interface WarmupConfig {
+  enabled: boolean;
+  startVolume: number;
+  dailyIncrease: number;
+  maxVolume: number;
+  delaySeconds: number;
+  sendWindowStart: number;
+  sendWindowEnd: number;
+  startedAt: string | null;
+}
+
+function loadWarmup(): WarmupConfig {
+  const DEF: WarmupConfig = { enabled: false, startVolume: 5, dailyIncrease: 5, maxVolume: 50, delaySeconds: 120, sendWindowStart: 8, sendWindowEnd: 18, startedAt: null };
+  try { return JSON.parse(localStorage.getItem('crm_mailbox_warmup') || 'null') ?? DEF; }
+  catch { return DEF; }
+}
+
+function MailboxWarmupCard() {
+  const { addNotification } = useApp();
+  const [cfg, setCfg] = useState<WarmupConfig>(loadWarmup);
+  const set = <K extends keyof WarmupConfig>(k: K, v: WarmupConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
+
+  const save = () => { localStorage.setItem('crm_mailbox_warmup', JSON.stringify(cfg)); addNotification('Mailbox warmup settings saved!'); };
+
+  const startWarmup = () => {
+    const updated = { ...cfg, enabled: true, startedAt: new Date().toISOString() };
+    setCfg(updated);
+    localStorage.setItem('crm_mailbox_warmup', JSON.stringify(updated));
+    addNotification('Mailbox warmup started — sending gradually increases each day');
+  };
+
+  const stopWarmup = () => {
+    const updated = { ...cfg, enabled: false, startedAt: null };
+    setCfg(updated);
+    localStorage.setItem('crm_mailbox_warmup', JSON.stringify(updated));
+    addNotification('Mailbox warmup stopped');
+  };
+
+  const daysToMax = cfg.dailyIncrease > 0
+    ? Math.ceil((cfg.maxVolume - cfg.startVolume) / cfg.dailyIncrease) + 1
+    : 999;
+
+  const currentDay = cfg.startedAt
+    ? Math.max(1, Math.floor((Date.now() - new Date(cfg.startedAt).getTime()) / 86400000) + 1)
+    : null;
+  const todayVolume = currentDay
+    ? Math.min(cfg.startVolume + (currentDay - 1) * cfg.dailyIncrease, cfg.maxVolume)
+    : null;
+  const pct = todayVolume ? Math.round((todayVolume / cfg.maxVolume) * 100) : 0;
+
+  const DELAY_OPTIONS = [
+    { value: 30, label: '30 seconds' }, { value: 60, label: '1 minute' },
+    { value: 120, label: '2 minutes' }, { value: 300, label: '5 minutes' },
+    { value: 600, label: '10 minutes' }, { value: 1800, label: '30 minutes' },
+    { value: 3600, label: '1 hour' },
+  ];
+
+  const HOURS = Array.from({ length: 24 }, (_, i) => {
+    const h = i % 12 || 12; const ampm = i < 12 ? 'AM' : 'PM';
+    return { value: i, label: `${h}:00 ${ampm}` };
+  });
+
+  // Build schedule preview (max 8 rows)
+  const preview: { day: number; vol: number }[] = [];
+  for (let d = 1; d <= daysToMax && preview.length < 8; d++) {
+    const vol = Math.min(cfg.startVolume + (d - 1) * cfg.dailyIncrease, cfg.maxVolume);
+    preview.push({ day: d, vol });
+    if (vol >= cfg.maxVolume && d > 1) break;
+  }
+
+  const numInput = (label: string, key: keyof WarmupConfig, min: number, max: number, suffix = '') => (
+    <div>
+      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>{label}</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <input
+          type="number" min={min} max={max} value={cfg[key] as number}
+          onChange={e => set(key, Math.max(min, Math.min(max, Number(e.target.value))) as WarmupConfig[typeof key])}
+          style={{ width: '80px', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', textAlign: 'center' }}
+        />
+        {suffix && <span style={{ fontSize: '12px', color: '#94a3b8' }}>{suffix}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '20px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
+        <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Flame size={20} color="#f97316" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Mailbox Warmup</h4>
+            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: cfg.enabled ? '#fef3c7' : '#f1f5f9', color: cfg.enabled ? '#d97706' : '#64748b', fontWeight: 600 }}>
+              {cfg.enabled ? `Day ${currentDay ?? 1} · ${todayVolume ?? cfg.startVolume} emails/day` : 'Inactive'}
+            </span>
+          </div>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>Gradually increase sending volume to build domain reputation</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {cfg.enabled ? (
+            <button onClick={stopWarmup} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+              <Square size={11} /> Stop Warmup
+            </button>
+          ) : (
+            <button onClick={startWarmup} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+              <Play size={11} /> Start Warmup
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Live status bar when active */}
+      {cfg.enabled && todayVolume !== null && (
+        <div style={{ padding: '14px 16px', backgroundColor: '#fff7ed', borderRadius: '10px', border: '1px solid #fed7aa', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#9a3412' }}>Day {currentDay} · {todayVolume} / {cfg.maxVolume} emails/day</span>
+            <span style={{ fontSize: '12px', color: '#c2410c' }}>{pct}% of max</span>
+          </div>
+          <div style={{ height: '6px', backgroundColor: '#fed7aa', borderRadius: '3px' }}>
+            <div style={{ height: '100%', width: `${pct}%`, backgroundColor: '#f97316', borderRadius: '3px', transition: 'width 0.4s' }} />
+          </div>
+          <p style={{ fontSize: '11px', color: '#c2410c', margin: '6px 0 0' }}>
+            {todayVolume < cfg.maxVolume
+              ? `Reaches max (${cfg.maxVolume}/day) in ~${daysToMax - (currentDay ?? 1)} more days`
+              : 'Warmup complete — sending at max volume'}
+          </p>
+        </div>
+      )}
+
+      {/* Settings grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
+        {numInput('Start Volume', 'startVolume', 1, 100, 'emails/day')}
+        {numInput('Daily Increase', 'dailyIncrease', 1, 50, 'per day')}
+        {numInput('Max Volume', 'maxVolume', 10, 500, 'emails/day')}
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>Delay Between Emails</label>
+          <select value={cfg.delaySeconds} onChange={e => set('delaySeconds', Number(e.target.value))}
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: 'white' }}>
+            {DELAY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Send window */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+        <Clock size={16} color="#6366f1" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151', flexShrink: 0 }}>Send Window</span>
+        <select value={cfg.sendWindowStart} onChange={e => set('sendWindowStart', Number(e.target.value))}
+          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: 'white' }}>
+          {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+        </select>
+        <span style={{ fontSize: '13px', color: '#94a3b8' }}>to</span>
+        <select value={cfg.sendWindowEnd} onChange={e => set('sendWindowEnd', Number(e.target.value))}
+          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: 'white' }}>
+          {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+        </select>
+        <span style={{ fontSize: '12px', color: '#94a3b8', flex: 1 }}>Emails only sent during this window (server local time)</span>
+      </div>
+
+      {/* Schedule preview */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
+          <TrendingUp size={14} color="#6366f1" />
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Warmup Schedule Preview</span>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>reaches {cfg.maxVolume}/day in {daysToMax} days</span>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end', height: '60px' }}>
+          {preview.map(p => {
+            const h = Math.round((p.vol / cfg.maxVolume) * 100);
+            const isToday = cfg.enabled && p.day === currentDay;
+            return (
+              <div key={p.day} title={`Day ${p.day}: ${p.vol} emails`}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', minWidth: 0 }}>
+                <span style={{ fontSize: '9px', color: isToday ? '#f97316' : '#94a3b8', fontWeight: isToday ? 700 : 400 }}>{p.vol}</span>
+                <div style={{ width: '100%', height: `${Math.max(h, 6)}%`, backgroundColor: isToday ? '#f97316' : '#c4b5fd', borderRadius: '3px 3px 0 0', transition: 'height 0.3s' }} />
+                <span style={{ fontSize: '9px', color: isToday ? '#f97316' : '#94a3b8', fontWeight: isToday ? 700 : 400 }}>D{p.day}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+          <Save size={14} /> Save Warmup Settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Email & SMS tab ─── */
+
 function EmailSMSTab() {
   const { addNotification } = useApp();
   const [sms, setSMS] = useState<SmsConfig>(loadSMS);
@@ -296,6 +493,9 @@ function EmailSMSTab() {
 
       {/* SMTP Integration Wizard */}
       <SMTPWizard onSave={handleSMTPSave} initialSMTP={initialSMTP} initialIMAP={initialIMAP} />
+
+      {/* Mailbox Warmup */}
+      <MailboxWarmupCard />
 
       {card(
         <>
