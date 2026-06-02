@@ -1,11 +1,13 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # FTP Deploy to Freehostia
 #
-# Branches → Targets:
-#   testing  →  /www/testing.protectedcentral.com/
-#   main     →  /www/protectedcentral.com/   (go.protectedcentral.com)
+# FTP chroot root = /www/protectedcentral.com/ (filesystem)
 #
-# Required GitHub Secrets (Settings → Secrets → Actions):
+# Branches → FTP server-dir → serves at
+#   testing  →  /www/testing.protectedcentral.com/  →  testing.protectedcentral.com
+#   main     →  /                                   →  protectedcentral.com / go.protectedcentral.com
+#
+# Required GitHub Secrets:
 #   FTP_HOST      protectedcentral.com
 #   FTP_USER      main654_protectedcentral.com
 #   FTP_PASSWORD  <your password>
@@ -53,12 +55,12 @@ jobs:
         run: |
           BRANCH="${{ github.ref_name }}"
           if [ "$BRANCH" = "main" ]; then
-            echo "dir=/www/protectedcentral.com/" >> "$GITHUB_OUTPUT"
-            echo "env=live"                        >> "$GITHUB_OUTPUT"
-            echo "label=LIVE → go.protectedcentral.com" >> "$GITHUB_OUTPUT"
+            echo "dir=/"                                      >> "$GITHUB_OUTPUT"
+            echo "env=live"                                   >> "$GITHUB_OUTPUT"
+            echo "label=LIVE → protectedcentral.com"         >> "$GITHUB_OUTPUT"
           else
-            echo "dir=/www/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
-            echo "env=testing"                             >> "$GITHUB_OUTPUT"
+            echo "dir=/www/testing.protectedcentral.com/"    >> "$GITHUB_OUTPUT"
+            echo "env=testing"                               >> "$GITHUB_OUTPUT"
             echo "label=TESTING → testing.protectedcentral.com" >> "$GITHUB_OUTPUT"
           fi
 
