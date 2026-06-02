@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ContactImport from './ContactImport';
@@ -7,8 +7,6 @@ import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
 import CampaignWizard from './CampaignWizard';
 import CampaignDetailPanel from './CampaignDetailPanel';
-import DemoInbox from './DemoInbox';
-import { loadDemoEmails } from '../../services/emailService';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
 
@@ -44,11 +42,9 @@ function MetricBar({ label, value, total, color }: { label: string; value: numbe
 function CampaignsTab() {
   const { campaigns, addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus, contacts } = useApp();
   const [showModal, setShowModal] = useState(false);
-  const [showDemoInbox, setShowDemoInbox] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
-  const demoCount = loadDemoEmails().length;
 
   const filtered = campaigns.filter(c => typeFilter === 'all' || c.type === typeFilter);
   const totalSent = campaigns.reduce((s, c) => s + c.sent, 0);
@@ -93,15 +89,6 @@ function CampaignsTab() {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowDemoInbox(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', backgroundColor: 'white', color: '#0284c7', border: '1px solid #bae6fd', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', position: 'relative' }}>
-            <Inbox size={14} /> Demo Inbox
-            {demoCount > 0 && (
-              <span style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', backgroundColor: '#6366f1', color: 'white', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {demoCount > 99 ? '99+' : demoCount}
-              </span>
-            )}
-          </button>
           <button onClick={() => setShowModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
             <Plus size={15} /> Create Campaign
@@ -183,9 +170,6 @@ function CampaignsTab() {
         />
       )}
 
-      {/* Demo Inbox */}
-      {showDemoInbox && <DemoInbox onClose={() => setShowDemoInbox(false)} />}
-
       {/* Detail panel */}
       {selectedCampaign && (
         <CampaignDetailPanel
@@ -221,11 +205,10 @@ export default function Marketing() {
   const handleActivateSequence = (seq: EmailSequence) => {
     addCampaign({
       name: seq.name, type: 'sequence', status: 'active',
-      sent: Math.floor(Math.random() * 200) + 20,
-      opened: 0, clicked: 0, replied: 0,
+      sent: 0, opened: 0, clicked: 0, replied: 0,
       createdAt: new Date().toISOString().split('T')[0],
     });
-    addNotification(`Sequence "${seq.name}" pushed live as active campaign!`);
+    addNotification(`Sequence "${seq.name}" is now live!`);
   };
 
   const activeSeqCount = sequences.filter(s => s.status === 'active').length;
