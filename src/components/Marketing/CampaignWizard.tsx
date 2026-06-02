@@ -8,7 +8,7 @@ import {
   Clock, Calendar, Users, Settings, ChevronDown, ChevronUp,
   Loader, XCircle, RefreshCw, Wand2, Target,
 } from 'lucide-react';
-import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
+import { loadEmailConfig, sendEmail, personalizeHtml, isEmailConfigured } from '../../services/emailService';
 
 /* ─── Types ─── */
 type CampaignGoal = 'announce' | 'promote' | 'nurture' | 'welcome' | 'reengage' | 'custom';
@@ -835,8 +835,8 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   const [sendProgress, setSendProgress] = useState(0);
 
   const emailConfig = loadEmailConfig();
-  const isDemo = emailConfig.provider === 'demo';
-  const hasProvider = isDemo || (emailConfig.provider !== 'none' && !!emailConfig.apiKey);
+  const isDemo = false;
+  const hasProvider = emailConfig.provider === 'smtp' || (emailConfig.provider !== 'none' && !!emailConfig.apiKey);
   const isSMS = state.type === 'sms';
 
   const goalLabel = GOALS.find(g => g.id === state.goal)?.label || 'Custom';
@@ -1097,6 +1097,37 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
 
   const STEP_LABELS = ['Brief', 'Campaign Flow', 'Sender & Settings', 'Audience', 'Review'];
   const TOTAL_STEPS = 5;
+
+  /* ── SMTP gate: block email/sequence campaigns if no provider is configured ── */
+  const emailReady = isEmailConfigured();
+  if ((state.type === 'email' || state.type === 'sequence') && !emailReady) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '48px 40px', maxWidth: 480, width: '100%', textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.18)' }}>
+          <div style={{ width: 72, height: 72, borderRadius: '50%', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 32 }}>📧</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 10px' }}>Email Provider Required</h2>
+          <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 8px', lineHeight: 1.7 }}>
+            Email campaigns require a real email provider before you can send.
+          </p>
+          <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 28px', lineHeight: 1.6 }}>
+            Go to <strong style={{ color: '#6366f1' }}>Settings → Email &amp; SMS</strong> and complete the SMTP setup wizard, then return here to create your campaign.
+          </p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button onClick={onClose}
+              style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button
+              onClick={() => { onClose(); window.location.hash = '#/settings'; }}
+              style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              Go to Settings →
+            </button>
+          </div>
+          <p style={{ fontSize: 12, color: '#cbd5e1', marginTop: 16 }}>SMS campaigns don't require email setup — select SMS type to continue.</p>
+        </div>
+      </div>
+    );
+  }
   const isLastStep = step === TOTAL_STEPS;
 
   const canNext = (): boolean => {

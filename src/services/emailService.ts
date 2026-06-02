@@ -1,5 +1,5 @@
 export interface EmailProviderConfig {
-  provider: 'mailtrap' | 'resend' | 'demo' | 'none';
+  provider: 'smtp' | 'mailtrap' | 'resend' | 'none';
   apiKey: string;
   inboxId: string;
   fromName: string;
@@ -19,72 +19,73 @@ export interface SendResult {
   error?: string;
 }
 
-export interface DemoEmail {
-  id: string;
-  to: string;
-  toName?: string;
-  from: string;
-  fromName: string;
-  subject: string;
-  html: string;
-  timestamp: string;
-  campaignName?: string;
-}
-
 const LS_KEY = 'crm_email_provider';
-const DEMO_LS_KEY = 'crm_demo_inbox';
 
 export function loadEmailConfig(): EmailProviderConfig {
   try {
-    return JSON.parse(localStorage.getItem(LS_KEY) || 'null') ?? defaultConfig();
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    // Migrate old demo configs to none
+    if (!saved || saved.provider === 'demo') return defaultConfig();
+    return saved;
   } catch { return defaultConfig(); }
 }
 
 function defaultConfig(): EmailProviderConfig {
-  return { provider: 'demo', apiKey: '', inboxId: '', fromName: 'Demo Sender', fromEmail: 'demo@yourcrm.local' };
+  // Pre-fill from SMTP wizard config if available
+  try {
+    const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
+    if (smtp?.host && smtp?.user) {
+      return { provider: 'smtp', apiKey: '', inboxId: '', fromName: smtp.fromName || '', fromEmail: smtp.fromEmail || smtp.user };
+    }
+  } catch { /* ignore */ }
+  return { provider: 'none', apiKey: '', inboxId: '', fromName: '', fromEmail: '' };
 }
 
 export function saveEmailConfig(cfg: EmailProviderConfig) {
   localStorage.setItem(LS_KEY, JSON.stringify(cfg));
 }
 
-/* ─── Demo inbox ─── */
-export function loadDemoEmails(): DemoEmail[] {
-  try { return JSON.parse(localStorage.getItem(DEMO_LS_KEY) || '[]'); } catch { return []; }
-}
-
-export function saveDemoEmail(email: DemoEmail): void {
-  const emails = loadDemoEmails();
-  emails.unshift(email);
-  localStorage.setItem(DEMO_LS_KEY, JSON.stringify(emails.slice(0, 200)));
-}
-
-export function clearDemoEmails(): void {
-  localStorage.removeItem(DEMO_LS_KEY);
+/** Returns true if a real sending provider is configured */
+export function isEmailConfigured(): boolean {
+  const cfg = loadEmailConfig();
+  if (cfg.provider === 'smtp') {
+    try {
+      const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
+      return !!(smtp?.host && smtp?.user && smtp?.pass);
+    } catch { return false; }
+  }
+  return cfg.provider !== 'none' && !!cfg.apiKey;
 }
 
 /* ─── Send ─── */
 export async function sendEmail(config: EmailProviderConfig, payload: EmailPayload): Promise<SendResult> {
-  if (config.provider === 'demo') {
-    const email: DemoEmail = {
-      id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      to: payload.to,
-      toName: payload.toName,
-      from: config.fromEmail || 'demo@yourcrm.local',
-      fromName: config.fromName || 'Demo Sender',
-      subject: payload.subject,
-      html: payload.html,
-      timestamp: new Date().toISOString(),
-    };
-    saveDemoEmail(email);
-    return { success: true, id: email.id };
-  }
-
-  if (config.provider === 'none' || !config.apiKey) {
-    return { success: false, error: 'No email provider configured. Go to Settings → Email & SMS → Email Provider.' };
+  if (config.provider === 'none' || (!config.apiKey && config.provider !== 'smtp')) {
+    return { success: false, error: 'No email provider configured. Go to Settings → Email & SMS.' };
   }
 
   try {
+    if (config.provider === 'smtp') {
+      const smtpCfg = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
+      if (!smtpCfg?.host || !smtpCfg?.user) {
+        return { success: false, error: 'SMTP not configured. Go to Settings → Email & SMS → SMTP Setup.' };
+      }
+      const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      const resp = await fetch(`${API_BASE}/api/smtp-send.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: smtpCfg.host, port: smtpCfg.port, username: smtpCfg.user,
+          password: smtpCfg.pass, encryption: smtpCfg.encryption,
+          fromName: config.fromName || smtpCfg.fromName,
+          fromEmail: config.fromEmail || smtpCfg.fromEmail,
+          to: payload.to, toName: payload.toName,
+          subject: payload.subject, html: payload.html,
+        }),
+      });
+      const data = await resp.json() as { success: boolean; message: string };
+      return data.success ? { success: true, id: 'smtp-sent' } : { success: false, error: data.message };
+    }
+
     if (config.provider === 'mailtrap') {
       if (!config.inboxId) return { success: false, error: 'Mailtrap Inbox ID is required.' };
       const resp = await fetch(`https://sandbox.api.mailtrap.io/api/send/${config.inboxId}`, {
@@ -99,10 +100,10 @@ export async function sendEmail(config: EmailProviderConfig, payload: EmailPaylo
       });
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}));
-        return { success: true, id: data.message_ids?.[0] || 'sent' };
+        return { success: true, id: (data as { message_ids?: string[] }).message_ids?.[0] || 'sent' };
       }
       let msg = `HTTP ${resp.status}`;
-      try { const e = await resp.json(); msg = e.errors?.join(', ') || e.message || msg; } catch { /* ignore */ }
+      try { const e = await resp.json() as { errors?: string[]; message?: string }; msg = e.errors?.join(', ') || e.message || msg; } catch { /* ignore */ }
       return { success: false, error: msg };
     }
 
@@ -117,10 +118,10 @@ export async function sendEmail(config: EmailProviderConfig, payload: EmailPaylo
       });
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}));
-        return { success: true, id: data.id || 'sent' };
+        return { success: true, id: (data as { id?: string }).id || 'sent' };
       }
       let msg = `HTTP ${resp.status}`;
-      try { const e = await resp.json(); msg = e.message || msg; } catch { /* ignore */ }
+      try { const e = await resp.json() as { message?: string }; msg = e.message || msg; } catch { /* ignore */ }
       return { success: false, error: msg };
     }
 
@@ -128,10 +129,7 @@ export async function sendEmail(config: EmailProviderConfig, payload: EmailPaylo
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.toLowerCase().includes('cors')) {
-      return {
-        success: false,
-        error: 'Network/CORS error. For Mailtrap: ensure your API token is valid. For Resend: CORS is blocked in-browser — emails work from a server/backend.',
-      };
+      return { success: false, error: 'Network error. Check your connection and provider settings.' };
     }
     return { success: false, error: msg };
   }
