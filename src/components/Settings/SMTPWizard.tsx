@@ -23,9 +23,9 @@ interface FormErrors {
 
 /* ── providers ── */
 const PROVIDERS = [
-  { id: 'ethereal', label: 'Ethereal', emoji: '🧪', desc: 'Free test sandbox · no real delivery', color: '#6366f1',
-    smtp: { host: 'smtp.ethereal.email', port: '587', encryption: 'tls' as const, user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', fromName: 'Raegan Denesik', fromEmail: 'raegan.denesik@ethereal.email' },
-    imap: { host: 'imap.ethereal.email', port: '993', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', folder: 'INBOX' } },
+  { id: 'cpanel', label: 'cPanel / Freehostia', emoji: '🏠', desc: 'Hosting account email · mail.yourdomain.com', color: '#6366f1',
+    smtp: { host: '', port: '465', encryption: 'ssl' as const, user: '', pass: '', fromName: '', fromEmail: '' },
+    imap: { host: '', port: '993', user: '', pass: '', folder: 'INBOX' } },
   { id: 'gmail', label: 'Gmail', emoji: '📧', desc: 'smtp.gmail.com · App Password required', color: '#ea4335',
     smtp: { host: 'smtp.gmail.com', port: '587', encryption: 'tls' as const, user: '', pass: '', fromName: '', fromEmail: '' },
     imap: { host: 'imap.gmail.com', port: '993', user: '', pass: '', folder: 'INBOX' } },
@@ -180,11 +180,14 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
     try {
       const r = await fetch(`${API_BASE}/api/smtp-test.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, secure: smtp.encryption === 'ssl', encryption: smtp.encryption }),
+        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
       });
-      const d = await r.json() as { success: boolean; message: string };
+      const d = await r.json() as { success: boolean; message: string; note?: string; suggestions?: string[] };
       setSmtpState(d.success ? 'ok' : 'fail');
-      setSmtpMsg(d.message);
+      // Show note if SMTP socket fails but server mail() is available
+      const extra = (!d.success && d.note) ? `\n${d.note}` : '';
+      const hints = (!d.success && d.suggestions?.length) ? `\n• ${d.suggestions.join('\n• ')}` : '';
+      setSmtpMsg(d.message + extra + hints);
     } catch {
       setSmtpState('fail'); setSmtpMsg('Cannot reach SMTP test endpoint. Check server connectivity.');
     }
@@ -268,7 +271,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
             </button>
           </div>
           {smtpMsg && (
-            <div style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: stateBg[smtpState], border: `1px solid ${stateColor[smtpState]}30`, fontSize: '12px', color: stateColor[smtpState] }}>
+            <div style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: stateBg[smtpState], border: `1px solid ${stateColor[smtpState]}30`, fontSize: '12px', color: stateColor[smtpState], whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
               {smtpMsg}
             </div>
           )}
@@ -342,12 +345,12 @@ const STEPS: { id: StepId; label: string }[] = [
   { id: 'done', label: 'Done' },
 ];
 
-const DEFAULT_SMTP: SMTPConfig = { host: 'smtp.ethereal.email', port: '587', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', fromName: 'Raegan Denesik', fromEmail: 'raegan.denesik@ethereal.email', encryption: 'tls' };
-const DEFAULT_IMAP: IMAPConfig = { host: 'imap.ethereal.email', port: '993', user: 'raegan.denesik@ethereal.email', pass: 'zytXh5QemMDpbcgyGP', folder: 'INBOX' };
+const DEFAULT_SMTP: SMTPConfig = { host: '', port: '465', user: '', pass: '', fromName: '', fromEmail: '', encryption: 'ssl' };
+const DEFAULT_IMAP: IMAPConfig = { host: '', port: '993', user: '', pass: '', folder: 'INBOX' };
 
 export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) {
   const [step, setStep] = useState<StepId>('provider');
-  const [selectedProvider, setSelectedProvider] = useState('ethereal');
+  const [selectedProvider, setSelectedProvider] = useState('cpanel');
   const [smtp, setSMTP] = useState<SMTPConfig>(initialSMTP ?? DEFAULT_SMTP);
   const [imap, setIMAP] = useState<IMAPConfig>(initialIMAP ?? DEFAULT_IMAP);
   const [smtpErrors, setSmtpErrors] = useState<FormErrors>({});
@@ -388,11 +391,12 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
     try {
       const r = await fetch(`${API_BASE}/api/smtp-test.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, secure: smtp.encryption === 'ssl', encryption: smtp.encryption }),
+        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
       });
-      const d = await r.json() as { success: boolean; message: string; details?: string; suggestions?: string[] };
+      const d = await r.json() as { success: boolean; message: string; note?: string; suggestions?: string[] };
       setTestState(d.success ? 'ok' : 'fail');
-      setTestMsg(d.message);
+      const extra = (!d.success && d.note) ? `\n${d.note}` : '';
+      setTestMsg(d.message + extra);
       setTestDetails(d.suggestions ?? []);
     } catch {
       setTestState('fail');
@@ -472,6 +476,17 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 </button>
               ))}
             </div>
+            {selectedProvider === 'cpanel' && (
+              <div style={{ padding: '12px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px', border: '1px solid #c4b5fd', marginBottom: '16px', display: 'flex', gap: '8px' }}>
+                <Info size={14} color="#6366f1" style={{ flexShrink: 0, marginTop: '1px' }} />
+                <div style={{ fontSize: '12px', color: '#4338ca', margin: 0, lineHeight: 1.6 }}>
+                  <strong>Freehostia / cPanel setup:</strong><br />
+                  Host: <code>mail.protectedcentral.com</code> · Port: <code>465</code> · Encryption: <code>SSL</code><br />
+                  Username: your full email address (e.g. <code>admin@protectedcentral.com</code>)<br />
+                  Password: the email account password (set in cPanel → Email Accounts)
+                </div>
+              </div>
+            )}
             {selectedProvider === 'gmail' && (
               <div style={{ padding: '12px 14px', backgroundColor: '#fef9c3', borderRadius: '8px', border: '1px solid #fde047', marginBottom: '16px', display: 'flex', gap: '8px' }}>
                 <Info size={14} color="#a16207" style={{ flexShrink: 0, marginTop: '1px' }} />
