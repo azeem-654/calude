@@ -4,15 +4,45 @@ import {
   Plus, Search, X, Check, Edit2, Trash2, User,
   LayoutGrid, List, MessageSquare, Send, Flag, ChevronDown,
   ChevronLeft, ChevronRight, Trophy, ThumbsDown, MoreVertical,
-  Settings,
+  Settings, Clock, SlidersHorizontal, TrendingUp, Phone, Mail,
+  FileText, CheckSquare,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { Deal, Stage, ChecklistItem, DealActivity } from '../../types';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
-type ViewMode = 'board' | 'list' | 'table';
-type SortKey = 'title' | 'value' | 'close' | 'priority';
+type ViewMode = 'board' | 'list' | 'table' | 'funnel';
+type SortKey = 'title' | 'value' | 'close' | 'priority' | 'days';
+
+const SOURCES = ['Website', 'Referral', 'Cold Outreach', 'Social Media', 'Event', 'Paid Ads', 'Email Campaign', 'Phone', 'Walk-in', 'Other'];
+const DEFAULT_ROTTING_DAYS = 14;
+
+type CardFieldKey = 'priority' | 'source' | 'contact' | 'value' | 'probability' | 'labels' | 'daysInStage' | 'closeDate' | 'assignedTo' | 'checklist' | 'quickActions';
+const ALL_CARD_FIELDS: { key: CardFieldKey; label: string; defaultOn: boolean }[] = [
+  { key: 'priority',    label: 'Priority',      defaultOn: true  },
+  { key: 'contact',     label: 'Contact',        defaultOn: true  },
+  { key: 'value',       label: 'Value',          defaultOn: true  },
+  { key: 'probability', label: 'Probability',    defaultOn: true  },
+  { key: 'labels',      label: 'Labels',         defaultOn: true  },
+  { key: 'daysInStage', label: 'Days in Stage',  defaultOn: true  },
+  { key: 'source',      label: 'Source',         defaultOn: false },
+  { key: 'closeDate',   label: 'Close Date',     defaultOn: true  },
+  { key: 'assignedTo',  label: 'Assigned To',    defaultOn: false },
+  { key: 'checklist',   label: 'Checklist',      defaultOn: true  },
+  { key: 'quickActions',label: 'Quick Actions',  defaultOn: true  },
+];
+function loadCardFields(): Set<CardFieldKey> {
+  try {
+    const saved = localStorage.getItem('crm_card_fields');
+    if (saved) return new Set(JSON.parse(saved) as CardFieldKey[]);
+  } catch { /* ignore */ }
+  return new Set(ALL_CARD_FIELDS.filter(f => f.defaultOn).map(f => f.key));
+}
+function daysInStage(deal: Deal): number {
+  const from = deal.lastStageChangedAt ?? deal.createdAt;
+  return Math.floor((Date.now() - new Date(from).getTime()) / 86400000);
+}
 
 const PRIORITY: Record<Priority, { color: string; bg: string; label: string; border: string }> = {
   urgent: { color: '#dc2626', bg: '#fef2f2', label: 'Urgent', border: '#dc2626' },
@@ -49,6 +79,8 @@ function fmtRelTime(iso: string) {
 interface DealCardProps {
   deal: Deal;
   stageId: string;
+  visibleFields: Set<CardFieldKey>;
+  rottingDays: number;
   onEdit: (deal: Deal) => void;
   onDelete: (deal: Deal) => void;
   onOpen: (deal: Deal) => void;
@@ -57,7 +89,7 @@ interface DealCardProps {
   onMarkLost: (deal: Deal) => void;
 }
 
-function DealCard({ deal, stageId, onEdit, onDelete, onOpen, onDragStart, onMarkWon, onMarkLost }: DealCardProps) {
+function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDelete, onOpen, onDragStart, onMarkWon, onMarkLost }: DealCardProps) {
   const p = (deal.priority ?? 'normal') as Priority;
   const pc = PRIORITY[p];
   const checklist = deal.checklist ?? [];
@@ -67,10 +99,13 @@ function DealCard({ deal, stageId, onEdit, onDelete, onOpen, onDragStart, onMark
   const status = deal.status ?? 'active';
   const isWon = status === 'won';
   const isLost = status === 'lost';
+  const days = daysInStage(deal);
+  const isRotting = status === 'active' && days >= rottingDays;
 
   const cardBg = isWon ? '#f0fdf4' : isLost ? '#fafafa' : 'white';
-  const cardBorder = isWon ? '#bbf7d0' : isLost ? '#e2e8f0' : '#e2e8f0';
+  const cardBorder = isRotting ? '#f97316' : isWon ? '#bbf7d0' : isLost ? '#e2e8f0' : '#e2e8f0';
   const leftBorder = isWon ? '#22c55e' : isLost ? '#94a3b8' : pc.border;
+  const rottingGlow = isRotting ? '0 0 0 2px #fed7aa, 0 1px 3px rgba(0,0,0,0.05)' : '0 1px 3px rgba(0,0,0,0.05)';
 
   return (
     <div
@@ -83,77 +118,79 @@ function DealCard({ deal, stageId, onEdit, onDelete, onOpen, onDragStart, onMark
         padding: '12px 14px',
         border: `1px solid ${cardBorder}`,
         borderLeft: `4px solid ${leftBorder}`,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        boxShadow: rottingGlow,
         cursor: 'pointer',
         transition: 'all 0.12s',
         marginBottom: 8,
         userSelect: 'none',
         opacity: isLost ? 0.7 : 1,
       }}
-      onMouseEnter={e => { if (!isLost) { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.1)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; e.currentTarget.style.transform = 'none'; }}
+      onMouseEnter={e => { if (!isLost) { e.currentTarget.style.boxShadow = `0 4px 14px rgba(0,0,0,0.1)`; e.currentTarget.style.transform = 'translateY(-1px)'; }}}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = rottingGlow; e.currentTarget.style.transform = 'none'; }}
     >
+      {/* Top row: status/priority + actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {isWon && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: '#dcfce7', color: '#16a34a' }}>WON</span>}
           {isLost && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: '#94a3b8' }}>LOST</span>}
-          {status === 'active' && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: pc.bg, color: pc.color }}>{pc.label.toUpperCase()}</span>}
+          {status === 'active' && vf.has('priority') && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: pc.bg, color: pc.color }}>{pc.label.toUpperCase()}</span>}
+          {isRotting && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: '#fff7ed', color: '#ea580c' }}>ROTTING</span>}
         </div>
         <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
-          {status === 'active' && (
-            <>
-              <button onClick={() => onMarkWon(deal)} title="Mark Won"
-                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#22c55e', display: 'flex' }}>
-                <Trophy size={11} />
-              </button>
-              <button onClick={() => onMarkLost(deal)} title="Mark Lost"
-                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}>
-                <ThumbsDown size={11} />
-              </button>
-            </>
-          )}
-          {(isWon || isLost) && (
-            <button onClick={() => onEdit(deal)} title="Reactivate"
-              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#6366f1', fontSize: 10, fontWeight: 600 }}>
-              Reopen
-            </button>
-          )}
-          <button onClick={() => onEdit(deal)}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}>
-            <Edit2 size={12} />
-          </button>
-          <button onClick={() => onDelete(deal)}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}>
-            <Trash2 size={12} />
-          </button>
+          {status === 'active' && <>
+            <button onClick={() => onMarkWon(deal)} title="Mark Won" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#22c55e', display: 'flex' }}><Trophy size={11} /></button>
+            <button onClick={() => onMarkLost(deal)} title="Mark Lost" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><ThumbsDown size={11} /></button>
+          </>}
+          {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#6366f1', fontSize: 10, fontWeight: 600 }}>Reopen</button>}
+          <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><Edit2 size={12} /></button>
+          <button onClick={() => onDelete(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><Trash2 size={12} /></button>
         </div>
       </div>
 
+      {/* Title */}
       <p style={{ fontSize: 13, fontWeight: 600, color: isLost ? '#94a3b8' : '#0f172a', margin: '0 0 6px', lineHeight: 1.4, textDecoration: isLost ? 'line-through' : 'none' }}>{deal.title}</p>
 
-      {labels.length > 0 && (
+      {/* Labels */}
+      {vf.has('labels') && labels.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {labels.map((l, i) => (
-            <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>
-              {l.text}
-            </span>
+            <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>{l.text}</span>
           ))}
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
-        <User size={11} color="#94a3b8" />
-        <span style={{ fontSize: 11, color: '#64748b' }}>{deal.contactName}</span>
+      {/* Contact */}
+      {vf.has('contact') && deal.contactName && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+          <User size={11} color="#94a3b8" />
+          <span style={{ fontSize: 11, color: '#64748b' }}>{deal.contactName}</span>
+        </div>
+      )}
+
+      {/* Source */}
+      {vf.has('source') && deal.source && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+          <TrendingUp size={11} color="#94a3b8" />
+          <span style={{ fontSize: 11, color: '#64748b' }}>{deal.source}</span>
+        </div>
+      )}
+
+      {/* Assigned to */}
+      {vf.has('assignedTo') && deal.assignedTo && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+          <Flag size={11} color="#94a3b8" />
+          <span style={{ fontSize: 11, color: '#64748b' }}>{deal.assignedTo}</span>
+        </div>
+      )}
+
+      {/* Value + Probability */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+        {vf.has('value') && <span style={{ fontSize: 14, fontWeight: 700, color: isWon ? '#16a34a' : '#0f172a' }}>{fmt(deal.value)}</span>}
+        {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 20, backgroundColor: '#f0f9ff', color: '#0ea5e9', fontWeight: 600 }}>{deal.probability}%</span>}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: isWon ? '#16a34a' : '#0f172a' }}>{fmt(deal.value)}</span>
-        <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 20, backgroundColor: '#f0f9ff', color: '#0ea5e9', fontWeight: 600 }}>
-          {deal.probability}%
-        </span>
-      </div>
-
-      {checklist.length > 0 && (
+      {/* Checklist */}
+      {vf.has('checklist') && checklist.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
             <span style={{ fontSize: 10, color: '#94a3b8' }}>Checklist</span>
@@ -165,13 +202,161 @@ function DealCard({ deal, stageId, onEdit, onDelete, onOpen, onDragStart, onMark
         </div>
       )}
 
-      {deal.expectedClose && (
+      {/* Close date */}
+      {vf.has('closeDate') && deal.expectedClose && (
         <div style={{ marginTop: 6 }}>
           <span style={{ fontSize: 10, color: overdue && status === 'active' ? '#dc2626' : '#94a3b8', fontWeight: overdue && status === 'active' ? 700 : 400 }}>
             {overdue && status === 'active' ? '⚠ Overdue: ' : '📅 '}{deal.expectedClose}
           </span>
         </div>
       )}
+
+      {/* Bottom row: days in stage + quick actions */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
+        {vf.has('daysInStage') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Clock size={10} color={isRotting ? '#ea580c' : '#94a3b8'} />
+            <span style={{ fontSize: 10, color: isRotting ? '#ea580c' : '#94a3b8', fontWeight: isRotting ? 700 : 400 }}>{days}d in stage</span>
+          </div>
+        )}
+        {vf.has('quickActions') && (
+          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }} onClick={e => e.stopPropagation()}>
+            {(deal.activity ?? []).length > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#94a3b8' }}>
+                <MessageSquare size={10} />{(deal.activity ?? []).length}
+              </span>
+            )}
+            {checklist.length > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: done === checklist.length ? '#22c55e' : '#94a3b8' }}>
+                <CheckSquare size={10} />{done}/{checklist.length}
+              </span>
+            )}
+            {deal.description && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#94a3b8' }}>
+                <FileText size={10} />
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Manage Fields Modal ───────────────────────────────────────────────────────
+interface ManageFieldsProps {
+  visible: Set<CardFieldKey>;
+  rottingDays: number;
+  onChange: (fields: Set<CardFieldKey>) => void;
+  onRottingChange: (days: number) => void;
+  onClose: () => void;
+}
+function ManageFieldsModal({ visible, rottingDays, onChange, onRottingChange, onClose }: ManageFieldsProps) {
+  const [draft, setDraft] = useState(new Set(visible));
+  const [rotting, setRotting] = useState(rottingDays);
+  const toggle = (k: CardFieldKey) => setDraft(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const save = () => { onChange(draft); onRottingChange(rotting); onClose(); };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.5)' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Manage Card Fields</h3>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={18} /></button>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          <p style={{ margin: '0 0 12px', fontSize: 12, color: '#64748b' }}>Choose which fields appear on deal cards:</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {ALL_CARD_FIELDS.map(f => (
+              <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 10px', borderRadius: 8, backgroundColor: draft.has(f.key) ? '#eef2ff' : '#f8fafc', border: `1px solid ${draft.has(f.key) ? '#c7d2fe' : '#e2e8f0'}` }}>
+                <input type="checkbox" checked={draft.has(f.key)} onChange={() => toggle(f.key)} style={{ cursor: 'pointer' }} />
+                <span style={{ fontSize: 13, fontWeight: draft.has(f.key) ? 600 : 400, color: draft.has(f.key) ? '#4f46e5' : '#374151' }}>{f.label}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+              Deal Rotting Threshold
+              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>days in stage</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="range" min={1} max={60} value={rotting} onChange={e => setRotting(Number(e.target.value))} style={{ flex: 1 }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#ea580c', minWidth: 36, textAlign: 'right' }}>{rotting}d</span>
+            </div>
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#94a3b8' }}>Cards stale longer than {rotting} days get an orange "ROTTING" badge</p>
+          </div>
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>Cancel</button>
+          <button onClick={save} style={{ padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Funnel View ───────────────────────────────────────────────────────────────
+interface FunnelViewProps {
+  stages: Stage[];
+  allDeals: Deal[];
+}
+function FunnelView({ stages, allDeals }: FunnelViewProps) {
+  const maxVal = Math.max(...stages.map(s => s.deals.filter(d => (d.status ?? 'active') === 'active').reduce((v, d) => v + d.value, 0)), 1);
+  const totalActive = allDeals.filter(d => (d.status ?? 'active') === 'active').length;
+  return (
+    <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', padding: '24px 28px' }}>
+      <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Stage Distribution</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {stages.map(stage => {
+          const activeDeals = stage.deals.filter(d => (d.status ?? 'active') === 'active');
+          const stageVal = activeDeals.reduce((v, d) => v + d.value, 0);
+          const pct = totalActive > 0 ? Math.round(activeDeals.length / totalActive * 100) : 0;
+          const barW = maxVal > 0 ? (stageVal / maxVal) * 100 : 0;
+          const wonCount = stage.deals.filter(d => d.status === 'won').length;
+          const lostCount = stage.deals.filter(d => d.status === 'lost').length;
+          return (
+            <div key={stage.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: stage.color }} />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>{stage.name}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{activeDeals.length} active · {pct}%</span>
+                  {wonCount > 0 && <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>+{wonCount} won</span>}
+                  {lostCount > 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>{lostCount} lost</span>}
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{fmt(stageVal)}</span>
+              </div>
+              <div style={{ height: 28, backgroundColor: '#f1f5f9', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                <div style={{ height: '100%', width: `${barW}%`, backgroundColor: stage.color, borderRadius: 6, transition: 'width 0.4s', opacity: 0.85 }} />
+                {activeDeals.length > 0 && (
+                  <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 6 }}>
+                    {activeDeals.slice(0, 5).map(d => {
+                      const ds = daysInStage(d);
+                      return (
+                        <span key={d.id} style={{ fontSize: 10, backgroundColor: 'rgba(255,255,255,0.9)', padding: '1px 6px', borderRadius: 10, fontWeight: 600, color: ds >= DEFAULT_ROTTING_DAYS ? '#ea580c' : '#374151' }}>
+                          {d.title.length > 12 ? d.title.slice(0, 12) + '…' : d.title}
+                        </span>
+                      );
+                    })}
+                    {activeDeals.length > 5 && <span style={{ fontSize: 10, backgroundColor: 'rgba(255,255,255,0.9)', padding: '1px 6px', borderRadius: 10, color: '#64748b' }}>+{activeDeals.length - 5}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+        {[
+          { label: 'Total Stages', value: stages.length },
+          { label: 'Active Deals', value: totalActive },
+          { label: 'Avg per Stage', value: stages.length > 0 ? (totalActive / stages.length).toFixed(1) : '0' },
+        ].map(m => (
+          <div key={m.label} style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{m.value}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{m.label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -439,6 +624,7 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
   const [customLabel, setCustomLabel] = useState('');
   const [customLabelColor, setCustomLabelColor] = useState(LABEL_COLORS[0]);
   const [status, setStatus] = useState<'active' | 'won' | 'lost'>((deal?.status ?? 'active') as 'active' | 'won' | 'lost');
+  const [source, setSource] = useState(deal?.source ?? '');
 
   const toggleLabel = (label: { color: string; text: string }) => {
     setLabels(prev => prev.some(l => l.text === label.text) ? prev.filter(l => l.text !== label.text) : [...prev, label]);
@@ -472,6 +658,7 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
       labels,
       checklist,
       status,
+      source,
       activity: deal?.activity ?? [],
     }, stageId);
   };
@@ -515,6 +702,20 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
+              <label style={lbl}>Source</label>
+              <select value={source} onChange={e => setSource(e.target.value)} style={{ ...inp }}>
+                <option value="">Select source...</option>
+                {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Assigned To</label>
+              <input value={assignedTo} onChange={e => setAssignedTo(e.target.value)} placeholder="Name or email" style={inp} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
               <label style={lbl}>Deal Value ($)</label>
               <input type="number" value={value} onChange={e => setValue(e.target.value)} style={inp} />
             </div>
@@ -548,15 +749,9 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={lbl}>Expected Close</label>
-              <input type="date" value={expectedClose} onChange={e => setExpectedClose(e.target.value)} style={inp} />
-            </div>
-            <div>
-              <label style={lbl}>Assigned To</label>
-              <input value={assignedTo} onChange={e => setAssignedTo(e.target.value)} placeholder="Name or email" style={inp} />
-            </div>
+          <div>
+            <label style={lbl}>Expected Close</label>
+            <input type="date" value={expectedClose} onChange={e => setExpectedClose(e.target.value)} style={inp} />
           </div>
 
           <div>
@@ -978,6 +1173,11 @@ export default function Pipelines() {
   const [addingStage, setAddingStage] = useState(false);
   const [newStageName, setNewStageName] = useState('');
   const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [showManageFields, setShowManageFields] = useState(false);
+  const [cardFields, setCardFields] = useState<Set<CardFieldKey>>(loadCardFields);
+  const [rottingDays, setRottingDays] = useState<number>(() => {
+    try { return Number(localStorage.getItem('crm_rotting_days') ?? DEFAULT_ROTTING_DAYS); } catch { return DEFAULT_ROTTING_DAYS; }
+  });
 
   const selected = pipelines.find(p => p.id === selectedId) ?? pipelines[0];
   const allDeals = selected?.stages.flatMap(s => s.deals) ?? [];
@@ -1026,7 +1226,7 @@ export default function Pipelines() {
       return s;
     });
     if (!moving) return;
-    const updated = { ...moving, stage: toStage.name };
+    const updated = { ...moving, stage: toStage.name, lastStageChangedAt: new Date().toISOString() };
     updatePipeline(selected.id, { stages: without.map(s => s.id === toStageId ? { ...s, deals: [...s.deals, updated] } : s) });
   };
 
@@ -1060,6 +1260,8 @@ export default function Pipelines() {
         description: data.description ?? '',
         checklist: data.checklist ?? [],
         status: data.status ?? 'active',
+        source: data.source ?? '',
+        lastStageChangedAt: new Date().toISOString(),
         activity: [],
       };
       updatePipeline(selected.id, { stages: selected.stages.map(s => s.id === targetStageId ? { ...s, deals: [...s.deals, newDeal] } : s) });
@@ -1218,7 +1420,16 @@ export default function Pipelines() {
   const closedTotal = wonDeals.length + lostDeals.length;
   const winRate = closedTotal > 0 ? Math.round(wonDeals.length / closedTotal * 100) : 0;
 
-  const SORT_LABELS: Record<SortKey, string> = { title: 'Name', value: 'Value', close: 'Close Date', priority: 'Priority' };
+  const SORT_LABELS: Record<SortKey, string> = { title: 'Name', value: 'Value', close: 'Close Date', priority: 'Priority', days: 'Days in Stage' };
+
+  const saveCardFields = (fields: Set<CardFieldKey>) => {
+    setCardFields(fields);
+    try { localStorage.setItem('crm_card_fields', JSON.stringify([...fields])); } catch { /* ignore */ }
+  };
+  const saveRottingDays = (days: number) => {
+    setRottingDays(days);
+    try { localStorage.setItem('crm_rotting_days', String(days)); } catch { /* ignore */ }
+  };
 
   return (
     <div>
@@ -1257,7 +1468,7 @@ export default function Pipelines() {
 
           {/* View toggle */}
           <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
-            {([['board', <LayoutGrid size={14} />], ['list', <List size={14} />], ['table', '≡']] as const).map(([v, icon]) => (
+            {([['board', <LayoutGrid size={14} />], ['list', <List size={14} />], ['table', '≡'], ['funnel', <TrendingUp size={14} />]] as const).map(([v, icon]) => (
               <button key={v} onClick={() => setView(v as ViewMode)}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: view === v ? 700 : 500, cursor: 'pointer', boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', textTransform: 'capitalize' }}>
                 {icon} {v}
@@ -1308,6 +1519,12 @@ export default function Pipelines() {
             )}
           </div>
 
+          {/* Manage Fields */}
+          <button onClick={() => setShowManageFields(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <SlidersHorizontal size={14} /> Fields
+          </button>
+
           {/* Add Deal */}
           <button onClick={() => openAddDeal()}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -1345,6 +1562,8 @@ export default function Pipelines() {
                         key={deal.id}
                         deal={deal}
                         stageId={stage.id}
+                        visibleFields={cardFields}
+                        rottingDays={rottingDays}
                         onEdit={openEditDeal}
                         onDelete={deleteDeal}
                         onOpen={d => setDetailDealId(d.id)}
@@ -1527,10 +1746,26 @@ export default function Pipelines() {
             </table>
           </div>
         )}
+
+        {/* ── Funnel View ────────────────────────────────────────────────────── */}
+        {view === 'funnel' && (
+          <FunnelView stages={selected.stages} allDeals={allDeals} />
+        )}
       </div>
 
       {/* Sort menu backdrop */}
       {showSortMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 100 }} onClick={() => setShowSortMenu(false)} />}
+
+      {/* Manage Card Fields Modal */}
+      {showManageFields && (
+        <ManageFieldsModal
+          visible={cardFields}
+          rottingDays={rottingDays}
+          onChange={saveCardFields}
+          onRottingChange={saveRottingDays}
+          onClose={() => setShowManageFields(false)}
+        />
+      )}
 
       {/* Pipeline Manage Modal */}
       {showPipelineModal && (
