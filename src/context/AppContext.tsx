@@ -36,6 +36,8 @@ interface AppContextType {
   deleteCampaign: (id: string) => void;
   toggleCampaignStatus: (id: string) => void;
   updatePipeline: (id: string, updates: Partial<Pipeline>) => void;
+  createPipeline: (name: string) => Pipeline;
+  deletePipeline: (id: string) => void;
   addFunnel: (funnel: Funnel | Omit<Funnel, 'id'>) => void;
   updateFunnel: (id: string, updates: Partial<Funnel>) => void;
   deleteFunnel: (id: string) => void;
@@ -196,6 +198,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updatePipeline = (id: string, updates: Partial<Pipeline>) => {
     setPipelines(prev => { const next = prev.map(p => p.id === id ? { ...p, ...updates } : p); saveLS('crm_pipelines', next); return next; });
   };
+  const createPipeline = (name: string): Pipeline => {
+    const p: Pipeline = { id: `pipeline-${Date.now()}`, name, stages: [] };
+    setPipelines(prev => { const next = [...prev, p]; saveLS('crm_pipelines', next); return next; });
+    return p;
+  };
+  const deletePipeline = (id: string) => {
+    setPipelines(prev => { const next = prev.filter(p => p.id !== id); saveLS('crm_pipelines', next); return next; });
+  };
 
   /* ── Funnels ── */
   const addFunnel = (funnel: Funnel | Omit<Funnel, 'id'>) => {
@@ -308,7 +318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addConversation, sendMessage, updateConversationStatus,
       addAppointment, updateAppointment, deleteAppointment,
       addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus,
-      updatePipeline,
+      updatePipeline, createPipeline, deletePipeline,
       schedule, updateSchedule, bookings, addBooking, updateBooking, deleteBooking,
       addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity,
       addFunnel, updateFunnel, deleteFunnel,

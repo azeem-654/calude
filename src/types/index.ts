@@ -213,6 +213,9 @@ export interface Deal {
   description?: string;
   checklist?: ChecklistItem[];
   activity?: DealActivity[];
+  status?: 'active' | 'won' | 'lost';
+  lostReason?: string;
+  closedAt?: string;
 }
 
 export interface Pipeline {
