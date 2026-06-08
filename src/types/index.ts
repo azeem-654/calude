@@ -185,6 +185,16 @@ export interface FunnelStep {
   conversions: number;
 }
 
+export interface SubTask {
+  id: string;
+  title: string;
+  done: boolean;
+  assignedTo?: string;
+  dueDate?: string;
+  priority?: 'urgent' | 'high' | 'normal' | 'low';
+  createdAt: string;
+}
+
 export interface ChecklistItem {
   id: string;
   text: string;
@@ -220,6 +230,9 @@ export interface Deal {
   lastStageChangedAt?: string;
   contactPhone?: string;
   contactEmail?: string;
+  subtasks?: SubTask[];
+  timeTracked?: number;
+  relationships?: string[];
 }
 
 export interface Pipeline {

@@ -5,14 +5,14 @@ import {
   LayoutGrid, List, MessageSquare, Send, Flag, ChevronDown,
   ChevronLeft, ChevronRight, Trophy, ThumbsDown, MoreVertical,
   Settings, Clock, SlidersHorizontal, TrendingUp, Phone, Mail,
-  FileText, CheckSquare,
+  FileText, CheckSquare, Timer, Link2, GitBranch, CalendarDays,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
-import type { Deal, Stage, ChecklistItem, DealActivity } from '../../types';
+import type { Deal, Stage, ChecklistItem, DealActivity, SubTask } from '../../types';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
-type ViewMode = 'board' | 'list' | 'table' | 'funnel';
+type ViewMode = 'board' | 'list' | 'table' | 'funnel' | 'gantt';
 type SortKey = 'title' | 'value' | 'close' | 'priority' | 'days';
 
 const SOURCES = ['Website', 'Referral', 'Cold Outreach', 'Social Media', 'Event', 'Paid Ads', 'Email Campaign', 'Phone', 'Walk-in', 'Other'];
@@ -357,6 +357,135 @@ function FunnelView({ stages, allDeals }: FunnelViewProps) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Gantt View ────────────────────────────────────────────────────────────────
+interface GanttViewProps {
+  stages: Stage[];
+  allDeals: Deal[];
+}
+function GanttView({ stages, allDeals }: GanttViewProps) {
+  const activeDeals = allDeals.filter(d => (d.status ?? 'active') !== 'lost');
+  const today = new Date();
+
+  // Build date range: from earliest createdAt to latest expectedClose (or +90 days)
+  let minDate = new Date(today.getFullYear(), today.getMonth(), 1);
+  let maxDate = new Date(today.getFullYear(), today.getMonth() + 3, 0);
+  for (const d of activeDeals) {
+    const start = new Date(d.createdAt);
+    if (start < minDate) minDate = start;
+    if (d.expectedClose) {
+      const end = new Date(d.expectedClose);
+      if (end > maxDate) maxDate = end;
+    }
+  }
+  // Pad a bit
+  minDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0);
+
+  const totalMs = maxDate.getTime() - minDate.getTime();
+  const pct = (date: Date) => Math.max(0, Math.min(100, (date.getTime() - minDate.getTime()) / totalMs * 100));
+
+  // Build month headers
+  const months: { label: string; left: number; width: number }[] = [];
+  const cur = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  while (cur <= maxDate) {
+    const monthStart = new Date(cur);
+    const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+    const left = pct(monthStart);
+    const right = pct(monthEnd);
+    months.push({ label: monthStart.toLocaleString('default', { month: 'short', year: '2-digit' }), left, width: right - left });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const todayPct = pct(today);
+
+  return (
+    <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <CalendarDays size={14} color="#6366f1" />
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Timeline / Gantt</span>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>({activeDeals.length} deals)</span>
+      </div>
+
+      {activeDeals.length === 0 ? (
+        <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No active deals to display.</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 700, padding: '0 20px 20px' }}>
+            {/* Month headers */}
+            <div style={{ position: 'relative', height: 32, marginBottom: 4, marginLeft: 200 }}>
+              {months.map((m, i) => (
+                <div key={i} style={{ position: 'absolute', left: `${m.left}%`, width: `${m.width}%`, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#64748b', borderRight: '1px solid #e2e8f0' }}>
+                  {m.label}
+                </div>
+              ))}
+              {/* Today line in header */}
+              <div style={{ position: 'absolute', left: `${todayPct}%`, top: 0, bottom: 0, width: 2, backgroundColor: '#ef4444', zIndex: 2 }} />
+            </div>
+
+            {/* Rows grouped by stage */}
+            {stages.map(stage => {
+              const stageDeals = stage.deals.filter(d => (d.status ?? 'active') !== 'lost');
+              if (stageDeals.length === 0) return null;
+              return (
+                <div key={stage.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid #f1f5f9' }}>
+                    <div style={{ width: 200, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: stage.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{stage.name}</span>
+                      <span style={{ fontSize: 10, color: '#94a3b8' }}>({stageDeals.length})</span>
+                    </div>
+                    <div style={{ flex: 1, position: 'relative', height: 4, backgroundColor: stage.color + '22', borderRadius: 2 }}>
+                      {/* Today line */}
+                      <div style={{ position: 'absolute', left: `${todayPct}%`, top: -4, bottom: -4, width: 1, backgroundColor: '#ef444440', zIndex: 1 }} />
+                    </div>
+                  </div>
+                  {stageDeals.map(deal => {
+                    const start = new Date(deal.createdAt);
+                    const end = deal.expectedClose ? new Date(deal.expectedClose) : new Date(today.getTime() + 30 * 86400000);
+                    const left = pct(start);
+                    const right = pct(end);
+                    const width = Math.max(right - left, 2);
+                    const isOverdueBar = deal.expectedClose && new Date(deal.expectedClose) < today && (deal.status ?? 'active') === 'active';
+                    const days = daysInStage(deal);
+                    return (
+                      <div key={deal.id} style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                        <div style={{ width: 200, flexShrink: 0, paddingRight: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={deal.title}>{deal.title}</span>
+                          {deal.status === 'won' && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, backgroundColor: '#dcfce7', color: '#16a34a', flexShrink: 0 }}>WON</span>}
+                        </div>
+                        <div style={{ flex: 1, position: 'relative', height: 26 }}>
+                          {/* Today line */}
+                          <div style={{ position: 'absolute', left: `${todayPct}%`, top: 0, bottom: 0, width: 1, backgroundColor: '#ef444440', zIndex: 1 }} />
+                          {/* Bar */}
+                          <div style={{ position: 'absolute', left: `${left}%`, width: `${width}%`, top: 3, height: 20, borderRadius: 4, backgroundColor: isOverdueBar ? '#fecaca' : (deal.status === 'won' ? '#bbf7d0' : stage.color + 'cc'), border: `1px solid ${isOverdueBar ? '#ef4444' : (deal.status === 'won' ? '#22c55e' : stage.color)}`, display: 'flex', alignItems: 'center', paddingLeft: 6, overflow: 'hidden', cursor: 'pointer', zIndex: 2, transition: 'opacity 0.1s' }}
+                            title={`${deal.title} — ${fmt(deal.value)} — ${days}d in stage`}
+                          >
+                            <span style={{ fontSize: 10, fontWeight: 600, color: 'white', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>{fmt(deal.value)}</span>
+                          </div>
+                        </div>
+                        <div style={{ width: 60, flexShrink: 0, textAlign: 'right', paddingLeft: 8 }}>
+                          <span style={{ fontSize: 10, color: '#94a3b8' }}>{deal.expectedClose || '—'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+
+            {/* Today indicator label */}
+            <div style={{ position: 'relative', height: 20, marginLeft: 200 }}>
+              <div style={{ position: 'absolute', left: `${todayPct}%`, top: 0, transform: 'translateX(-50%)' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', backgroundColor: '#fff', padding: '1px 4px', borderRadius: 3, border: '1px solid #fecaca' }}>Today</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -836,19 +965,25 @@ interface DealDetailPanelProps {
 }
 
 function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDealToStage }: DealDetailPanelProps) {
-  const [tab, setTab] = useState<'overview' | 'checklist' | 'activity'>('overview');
+  const [tab, setTab] = useState<'overview' | 'checklist' | 'subtasks' | 'activity'>('overview');
   const [newActivity, setNewActivity] = useState('');
   const [newCheckItem, setNewCheckItem] = useState('');
   const [showLostModal, setShowLostModal] = useState(false);
   const [lostReason, setLostReason] = useState('');
+  const [newSubtask, setNewSubtask] = useState('');
+  const [showTimeLog, setShowTimeLog] = useState(false);
+  const [timeInput, setTimeInput] = useState('');
 
   const p = (deal.priority ?? 'normal') as Priority;
   const pc = PRIORITY[p];
   const checklist = deal.checklist ?? [];
   const activity = deal.activity ?? [];
   const labels = deal.labels ?? [];
+  const subtasks = deal.subtasks ?? [];
   const done = checklist.filter(c => c.done).length;
+  const subtasksDone = subtasks.filter(s => s.done).length;
   const status = deal.status ?? 'active';
+  const timeTracked = deal.timeTracked ?? 0;
 
   const currentStageIdx = stages.findIndex(s => s.name === deal.stage);
   const prevStage = currentStageIdx > 0 ? stages[currentStageIdx - 1] : null;
@@ -893,6 +1028,34 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
 
   const removeCheck = (id: string) => {
     onUpdateDeal(deal.id, { checklist: checklist.filter(c => c.id !== id) });
+  };
+
+  const addSubtask = () => {
+    if (!newSubtask.trim()) return;
+    const item: SubTask = { id: `st-${Date.now()}`, title: newSubtask.trim(), done: false, createdAt: new Date().toISOString() };
+    onUpdateDeal(deal.id, { subtasks: [...subtasks, item] });
+    setNewSubtask('');
+  };
+
+  const toggleSubtask = (id: string) => {
+    onUpdateDeal(deal.id, { subtasks: subtasks.map(s => s.id === id ? { ...s, done: !s.done } : s) });
+  };
+
+  const removeSubtask = (id: string) => {
+    onUpdateDeal(deal.id, { subtasks: subtasks.filter(s => s.id !== id) });
+  };
+
+  const logTime = () => {
+    const mins = parseFloat(timeInput);
+    if (isNaN(mins) || mins <= 0) return;
+    onUpdateDeal(deal.id, { timeTracked: timeTracked + Math.round(mins * 60) });
+    setTimeInput('');
+    setShowTimeLog(false);
+  };
+
+  const fmtTime = (minutes: number) => {
+    if (minutes < 60) return `${minutes}m`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   };
 
   return (
@@ -994,11 +1157,16 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: '#fafafa', flexShrink: 0 }}>
-          {(['overview', 'checklist', 'activity'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              style={{ flex: 1, padding: '11px 8px', border: 'none', borderBottom: `2px solid ${tab === t ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: tab === t ? 700 : 500, cursor: 'pointer', textTransform: 'capitalize' }}>
-              {t}{t === 'checklist' ? ` (${done}/${checklist.length})` : ''}{t === 'activity' ? ` (${activity.length})` : ''}
+        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: '#fafafa', flexShrink: 0, overflowX: 'auto' }}>
+          {([
+            { key: 'overview',  label: 'Overview' },
+            { key: 'subtasks',  label: `Subtasks${subtasks.length > 0 ? ` (${subtasksDone}/${subtasks.length})` : ''}` },
+            { key: 'checklist', label: `Checklist${checklist.length > 0 ? ` (${done}/${checklist.length})` : ''}` },
+            { key: 'activity',  label: `Activity${activity.length > 0 ? ` (${activity.length})` : ''}` },
+          ] as { key: typeof tab; label: string }[]).map(({ key, label }) => (
+            <button key={key} onClick={() => setTab(key)}
+              style={{ flexShrink: 0, padding: '11px 14px', border: 'none', borderBottom: `2px solid ${tab === key ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === key ? '#6366f1' : '#64748b', fontSize: 12, fontWeight: tab === key ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {label}
             </button>
           ))}
         </div>
@@ -1046,6 +1214,88 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                     <div style={{ height: '100%', width: `${deal.probability}%`, background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', borderRadius: 5, transition: 'width 0.3s' }} />
                   </div>
                 </div>
+              </div>
+
+              {/* Time Tracking */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Track Time</h4>
+                  <button onClick={() => setShowTimeLog(prev => !prev)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 6, backgroundColor: 'white', color: '#6366f1', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                    <Timer size={11} /> Log Time
+                  </button>
+                </div>
+                <div style={{ backgroundColor: '#f8fafc', borderRadius: 10, padding: '12px 14px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Timer size={16} color="#6366f1" />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{timeTracked > 0 ? fmtTime(timeTracked) : '—'}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>tracked</span>
+                </div>
+                {showTimeLog && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                    <input value={timeInput} onChange={e => setTimeInput(e.target.value)} placeholder="Hours (e.g. 1.5)"
+                      style={{ flex: 1, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+                      onKeyDown={e => e.key === 'Enter' && logTime()} autoFocus />
+                    <button onClick={logTime} style={{ padding: '8px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                    <button onClick={() => { setShowTimeLog(false); setTimeInput(''); }} style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, backgroundColor: 'white', fontSize: 12, cursor: 'pointer', color: '#64748b' }}>✕</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Relationships */}
+              {(deal.relationships ?? []).length > 0 && (
+                <div>
+                  <h4 style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Relationships</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {(deal.relationships ?? []).map(relId => (
+                      <div key={relId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                        <Link2 size={13} color="#94a3b8" />
+                        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'monospace' }}>{relId}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'subtasks' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Subtasks</span>
+                {subtasks.length > 0 && <span style={{ fontSize: 12, color: subtasksDone === subtasks.length ? '#22c55e' : '#6366f1', fontWeight: 700 }}>{subtasksDone}/{subtasks.length} done</span>}
+              </div>
+              {subtasks.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ height: 6, backgroundColor: '#e2e8f0', borderRadius: 3, marginBottom: 10 }}>
+                    <div style={{ height: '100%', width: `${subtasks.length > 0 ? (subtasksDone / subtasks.length) * 100 : 0}%`, backgroundColor: subtasksDone === subtasks.length ? '#22c55e' : '#6366f1', borderRadius: 3, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                {subtasks.map(st => (
+                  <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: st.done ? '#f0fdf4' : '#f8fafc', borderRadius: 8, border: `1px solid ${st.done ? '#bbf7d0' : '#e2e8f0'}` }}>
+                    <input type="checkbox" checked={st.done} onChange={() => toggleSubtask(st.id)} style={{ cursor: 'pointer', width: 15, height: 15, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: st.done ? '#94a3b8' : '#374151', textDecoration: st.done ? 'line-through' : 'none', fontWeight: 500 }}>{st.title}</div>
+                      {st.dueDate && <div style={{ fontSize: 11, color: new Date(st.dueDate) < new Date() && !st.done ? '#dc2626' : '#94a3b8', marginTop: 2 }}>Due {st.dueDate}</div>}
+                    </div>
+                    {st.done && <Check size={13} color="#22c55e" />}
+                    <button onClick={() => removeSubtask(st.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 2, flexShrink: 0 }}><X size={12} /></button>
+                  </div>
+                ))}
+                {subtasks.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8' }}>
+                    <GitBranch size={24} color="#e2e8f0" style={{ display: 'block', margin: '0 auto 8px' }} />
+                    <p style={{ margin: 0, fontSize: 13 }}>No subtasks yet.</p>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={newSubtask} onChange={e => setNewSubtask(e.target.value)} placeholder="Add subtask..."
+                  style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+                  onKeyDown={e => e.key === 'Enter' && addSubtask()} />
+                <button onClick={addSubtask}
+                  style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Add</button>
               </div>
             </div>
           )}
@@ -1468,10 +1718,16 @@ export default function Pipelines() {
 
           {/* View toggle */}
           <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
-            {([['board', <LayoutGrid size={14} />], ['list', <List size={14} />], ['table', '≡'], ['funnel', <TrendingUp size={14} />]] as const).map(([v, icon]) => (
+            {([
+              ['board',  <LayoutGrid size={13} />,  'Board'],
+              ['list',   <List size={13} />,         'List'],
+              ['table',  '≡',                        'Table'],
+              ['funnel', <TrendingUp size={13} />,   'Funnel'],
+              ['gantt',  <CalendarDays size={13} />, 'Gantt'],
+            ] as const).map(([v, icon, label]) => (
               <button key={v} onClick={() => setView(v as ViewMode)}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: view === v ? 700 : 500, cursor: 'pointer', boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', textTransform: 'capitalize' }}>
-                {icon} {v}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#6366f1' : '#64748b', fontSize: 12, fontWeight: view === v ? 700 : 500, cursor: 'pointer', boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', whiteSpace: 'nowrap' }}>
+                {icon} {label}
               </button>
             ))}
           </div>
@@ -1626,11 +1882,17 @@ export default function Pipelines() {
                 return (
                   <div key={deal.id}
                     onClick={() => setDetailDealId(deal.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 20px', borderBottom: i < arr.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer', borderLeft: `4px solid ${st === 'won' ? '#22c55e' : st === 'lost' ? '#94a3b8' : pc.border}`, opacity: st === 'lost' ? 0.7 : 1, transition: 'background 0.1s' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 20px', borderBottom: i < arr.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer', opacity: st === 'lost' ? 0.7 : 1, transition: 'background 0.1s' }}
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'white'; }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: st === 'won' ? '#dcfce7' : st === 'lost' ? '#f1f5f9' : pc.bg, color: st === 'won' ? '#16a34a' : st === 'lost' ? '#94a3b8' : pc.color, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {st === 'won' ? 'WON' : st === 'lost' ? 'LOST' : pc.label}
+                    {/* Prominent status badge — ClickUp-style */}
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 5, whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.4px',
+                      backgroundColor: st === 'won' ? '#16a34a' : st === 'lost' ? '#94a3b8' : pc.color,
+                      color: 'white',
+                      minWidth: 72, textAlign: 'center',
+                    }}>
+                      {st === 'won' ? 'WON' : st === 'lost' ? 'LOST' : pc.label.toUpperCase()}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: st === 'lost' ? '#94a3b8' : '#0f172a', marginBottom: 2, textDecoration: st === 'lost' ? 'line-through' : 'none' }}>{deal.title}</div>
@@ -1641,7 +1903,7 @@ export default function Pipelines() {
                         <span key={li} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color }}>{l.text}</span>
                       ))}
                     </div>
-                    <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 20, backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>{deal.stage}</span>
+                    <span style={{ fontSize: 10, padding: '3px 10px', borderRadius: 20, backgroundColor: (() => { const sc = selected.stages.find(s => s.name === deal.stage)?.color ?? '#64748b'; return sc + '22'; })(), color: selected.stages.find(s => s.name === deal.stage)?.color ?? '#64748b', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.3px' }}>{deal.stage}</span>
                     <span style={{ fontSize: 14, fontWeight: 700, color: st === 'won' ? '#16a34a' : '#0f172a', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmt(deal.value)}</span>
                     {cl.length > 0 && (
                       <span style={{ fontSize: 11, color: dn === cl.length ? '#22c55e' : '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>✓ {dn}/{cl.length}</span>
@@ -1750,6 +2012,11 @@ export default function Pipelines() {
         {/* ── Funnel View ────────────────────────────────────────────────────── */}
         {view === 'funnel' && (
           <FunnelView stages={selected.stages} allDeals={allDeals} />
+        )}
+
+        {/* ── Gantt View ─────────────────────────────────────────────────────── */}
+        {view === 'gantt' && (
+          <GanttView stages={selected.stages} allDeals={allDeals} />
         )}
       </div>
 
