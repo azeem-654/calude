@@ -213,6 +213,13 @@ export interface Deal {
   description?: string;
   checklist?: ChecklistItem[];
   activity?: DealActivity[];
+  status?: 'active' | 'won' | 'lost';
+  lostReason?: string;
+  closedAt?: string;
+  source?: string;
+  lastStageChangedAt?: string;
+  contactPhone?: string;
+  contactEmail?: string;
 }
 
 export interface Pipeline {
