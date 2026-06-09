@@ -1,140 +1,194 @@
-import React, { useState, useEffect } from 'react';
-import { Zap, Plus, Play, Pause, Trash2, Edit2, Check, X, Settings, ChevronDown, ChevronUp, Loader, Mail, Clock, ArrowRight } from 'lucide-react';
-import type { EmailSequence, EmailStep } from '../../types/marketing';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  Zap, Plus, Play, Pause, Trash2, X, Settings, Mail, Phone,
+  ChevronDown, ChevronUp, Loader, BarChart2,
+  Activity, Users, Wand2, Sparkles, Check,
+  AlignLeft, Bold, Italic, Underline, List, Link2, RotateCcw,
+  Eye, EyeOff, Inbox,
+} from 'lucide-react';
+import type { EmailSequence, EmailStep, StepType, SequenceStats, SequenceActivity } from '../../types/marketing';
+import type { Contact } from '../../types';
 
-/* ─── AI / Template helpers ─── */
+// ── Step type config ──────────────────────────────────────────────────────────
+const STEP_TYPES: { id: StepType; label: string; icon: React.ReactElement; color: string; bg: string }[] = [
+  { id: 'auto_email',   label: 'Automatic email',           icon: <Mail size={13} />,        color: '#6366f1', bg: '#eef2ff' },
+  { id: 'manual_email', label: 'Manual email',              icon: <Mail size={13} />,        color: '#0ea5e9', bg: '#e0f2fe' },
+  { id: 'phone_call',   label: 'Phone call',                icon: <Phone size={13} />,       color: '#16a34a', bg: '#dcfce7' },
+  { id: 'li_connect',   label: 'LinkedIn – connection req', icon: <span style={{ fontSize: 9, fontWeight: 900, color: '#0a66c2' }}>in</span>,   color: '#0a66c2', bg: '#dbeafe' },
+  { id: 'li_message',   label: 'LinkedIn – send message',   icon: <span style={{ fontSize: 9, fontWeight: 900, color: '#0a66c2' }}>in</span>,   color: '#0a66c2', bg: '#dbeafe' },
+  { id: 'li_view',      label: 'LinkedIn – view profile',   icon: <span style={{ fontSize: 9, fontWeight: 900, color: '#0a66c2' }}>in</span>,   color: '#0a66c2', bg: '#dbeafe' },
+  { id: 'li_interact',  label: 'LinkedIn – interact post',  icon: <span style={{ fontSize: 9, fontWeight: 900, color: '#0a66c2' }}>in</span>,   color: '#0a66c2', bg: '#dbeafe' },
+];
+function stepTypeCfg(t: StepType) { return STEP_TYPES.find(s => s.id === t) ?? STEP_TYPES[0]; }
 
-async function callClaude(prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-4-5',
-      max_tokens: 3000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+// ── Template data ─────────────────────────────────────────────────────────────
+const TEMPLATES: { id: string; name: string; category: string; desc: string; steps: number; icon: string }[] = [
+  { id: 'cold-calling', name: 'Cold calling script to convert 17%', category: 'call', desc: 'Cold calling script designed to start real conversations from the first touch.', steps: 4, icon: '📞' },
+  { id: 'vp-cold-call', name: 'Reach out to VPs with a proven cold calling script', category: 'call', desc: 'Reach out with a manual email, follow up with a proven cold calling script.', steps: 5, icon: '🎯' },
+  { id: 'quick-pitch',  name: 'The Quick Pitch Cold Calling Script', category: 'call', desc: 'Start with a personalized email, then follow up with a cold call using a proven pitch.', steps: 4, icon: '⚡' },
+  { id: 'at-risk',      name: 'At-risk customers', category: 'email', desc: 'Email to re-examine company success progress relevant to the customer.', steps: 3, icon: '⚠️' },
+  { id: 'leadership',   name: 'Change in leadership', category: 'email', desc: 'Email to highlight your product\'s benefits for the new leadership, then follow up with another email to schedule.', steps: 3, icon: '👔' },
+  { id: 'closed-lost',  name: 'Closed lost/win-back', category: 'email', desc: 'Series of emails for retaining the lost deal and highlighting value props.', steps: 4, icon: '🔄' },
+  { id: 'inbound',      name: 'Convert inbound leads', category: 'email', desc: 'Email to show value for their new role — call to action: book a meeting.', steps: 3, icon: '🚀' },
+  { id: 'onboarding',   name: 'New user onboarding', category: 'email', desc: 'Welcome and onboard new signups with a structured sequence driving activation.', steps: 5, icon: '👋' },
+  { id: 'cta-book',     name: 'Book a meeting CTA', category: 'cta', desc: 'Short, punchy sequence with a single CTA: book a 15-minute call.', steps: 3, icon: '📅' },
+  { id: 'cta-demo',     name: 'Request a demo CTA', category: 'cta', desc: 'Sequence built around a clear demo request CTA with follow-ups.', steps: 4, icon: '🎬' },
+];
+
+function buildStepsFromTemplate(id: string): EmailStep[] {
+  const base = (n: string, d: number, t: StepType, sub: string, body: string): EmailStep => ({
+    id: `${id}-${n}-${Date.now()}`, day: d, waitUnit: 'days', type: t,
+    subject: sub, body, followUpRule: 'Proceed regardless', abEnabled: false,
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-    throw new Error(err.error?.message || `API error ${res.status}`);
+  const t = TEMPLATES.find(t => t.id === id);
+  if (!t) return [];
+  switch (id) {
+    case 'cold-calling': return [
+      base('1', 0, 'auto_email', 'Quick question about {{company}}', 'Hi {{firstName}},\n\nI noticed {{company}} is growing fast in [industry]. We help teams like yours [key benefit].\n\nWorth a quick 10-minute chat?\n\n[Your Name]'),
+      base('2', 2, 'phone_call', '', 'Call to introduce yourself and reference the email sent on Day 0.'),
+      base('3', 5, 'auto_email', 'Following up, {{firstName}}', 'Hi {{firstName}},\n\nI left a voicemail earlier. Still think there\'s a fit here.\n\nDo you have 10 minutes Thursday or Friday?\n\n[Your Name]'),
+      base('4', 10, 'phone_call', '', 'Final call attempt. Keep it under 30 seconds. Reference previous touchpoints.'),
+    ];
+    case 'at-risk': return [
+      base('1', 0, 'auto_email', 'Checking in, {{firstName}}', 'Hi {{firstName}},\n\nI wanted to check in on how things are going with [product]. Based on your usage, it looks like [observation].\n\nCan we schedule a quick call to get things back on track?\n\n[Your Name]'),
+      base('2', 4, 'auto_email', 'Resources to help, {{firstName}}', 'Hi {{firstName}},\n\nHere are some resources specifically for your situation:\n\n• [Resource 1]\n• [Resource 2]\n\nWould love to walk through these with you.\n\n[Your Name]'),
+      base('3', 9, 'manual_email', 'Last check-in', 'Hi {{firstName}},\n\nOne last note before I close this conversation. Is there anything I can do to help {{company}} get more value from [product]?\n\n[Your Name]'),
+    ];
+    default: return [
+      base('1', 0, 'auto_email', 'A quick note, {{firstName}}', 'Hi {{firstName}},\n\n' + (t.desc || '') + '\n\nWould love to connect — any time this week?\n\n[Your Name]'),
+      base('2', 3, 'auto_email', 'Following up, {{firstName}}', 'Hi {{firstName}},\n\nJust following up on my last email. Still think there\'s an opportunity here.\n\n[Your Name]'),
+      base('3', 7, 'auto_email', 'Last note, {{firstName}}', 'Hi {{firstName}},\n\nLast message from me. Totally understand if timing isn\'t right — just reply and I\'ll stop reaching out.\n\n[Your Name]'),
+    ];
   }
-  const data = await res.json() as { content: { text: string }[] };
-  return data.content[0].text;
 }
 
-function templateFallback(goal: string): EmailStep[] {
-  const isTrial = /trial|free|convert|paid|upgrade|saas/i.test(goal);
-  const isOnboard = /onboard|welcome|getting.?start|new.?user/i.test(goal);
-  const isReengage = /re.?engag|inactive|win.?back|dormant|lapsed/i.test(goal);
-  const isNurture = /nurtur|lead|prospect|interest/i.test(goal);
+// ── AI helpers ────────────────────────────────────────────────────────────────
+function buildAIBody(goal: string, pain: string, value: string, cta: string, company: string, context: string, proof: string): string {
+  const sub = (goal || 'Outreach sequence').slice(0, 50);
+  return `Hi {{firstName}},
 
-  if (isTrial) return [
-    { id: 's1', day: 0, subject: 'You\'re in! Let\'s get you started, {{firstName}}', body: 'Hi {{firstName}},\n\nWelcome to your free trial! I\'m thrilled you\'re giving us a shot.\n\nHere\'s what you can do right now:\n• Set up your first project in under 5 minutes\n• Connect your team (invite up to 5 members free)\n• Explore our template library\n\nIf you have any questions, just reply to this email — I personally read every response.\n\nLet\'s make this trial count!\n\n[Your Name]', followUpRule: 'Proceed regardless' },
-    { id: 's2', day: 2, subject: 'Quick win: the one feature our best customers use first', body: 'Hi {{firstName}},\n\nTwo days in — how\'s it going?\n\nI wanted to share a shortcut. Our highest-converting customers all do one thing in their first week: they connect their data source.\n\nOnce connected, you\'ll see results in minutes. Here\'s the 2-click setup →\n\n[LINK]\n\nAlready done it? Hit reply and tell me how it went. I\'d love to hear.\n\n[Your Name]', followUpRule: 'If no link click, send follow-up' },
-    { id: 's3', day: 5, subject: '{{firstName}}, your trial is halfway done', body: 'Hi {{firstName}},\n\nYour trial is 50% over — and I want to make sure you\'ve seen the most valuable parts.\n\nHere\'s what {{company || "teams like yours"}} typically unlocks in week one:\n✓ Automated workflows (saves ~4 hrs/week)\n✓ Real-time analytics dashboard\n✓ One-click reporting\n\nIf you haven\'t explored these yet, today is the perfect day.\n\nWant a quick 15-min call to walk through your specific use case? Pick a time here: [CALENDAR LINK]\n\n[Your Name]', followUpRule: 'If no meeting booked, escalate' },
-    { id: 's4', day: 9, subject: 'Your trial ends in 48 hours — here\'s your upgrade offer', body: 'Hi {{firstName}},\n\nJust 48 hours left on your trial.\n\nI\'d hate for you to lose access to everything you\'ve set up. That\'s why I\'m offering you something special:\n\n🎁 Use code TRIAL20 for 20% off your first 3 months when you upgrade today.\n\nThis offer expires when your trial does.\n\n[UPGRADE NOW →]\n\nHave questions? I\'m here. Just reply.\n\n[Your Name]', followUpRule: 'If no upgrade, send final email' },
-    { id: 's5', day: 11, subject: 'Last chance, {{firstName}} — and an honest question', body: 'Hi {{firstName}},\n\nYour trial ends today.\n\nBefore you go, can I ask one honest question: what stopped you from upgrading?\n\nWas it price? Missing feature? Bad timing? Your answer will take 10 seconds and genuinely helps us improve.\n\nAnd if it\'s any of these, let me know — I might be able to help:\n• Price: I can offer an extended discount\n• Features: I\'ll add you to our roadmap waitlist\n• Timing: I can pause your account for 30 days\n\nJust reply with one word. I\'m listening.\n\n[Your Name]', followUpRule: 'End of sequence' },
-  ];
+${pain ? `I know ${pain.toLowerCase()} can be a real challenge.` : `I wanted to reach out because ${sub.toLowerCase()}.`}
 
-  if (isOnboard) return [
-    { id: 's1', day: 0, subject: 'Welcome to {{company}} — your account is ready', body: 'Hi {{firstName}},\n\nWelcome! Your account is live and ready to go.\n\nHere are your first 3 steps:\n1. Complete your profile (takes 2 minutes)\n2. Set up your workspace\n3. Invite your team\n\nWe\'ve put together a quick-start guide here: [LINK]\n\nReply with any questions — we typically respond within the hour.\n\n[Your Name]', followUpRule: 'Send next email after 3 days' },
-    { id: 's2', day: 3, subject: 'How\'s the setup going, {{firstName}}?', body: 'Hi {{firstName}},\n\nChecking in! Have you had a chance to explore the platform yet?\n\nMost users find the most value in [KEY FEATURE]. Here\'s a 90-second video showing how it works: [VIDEO LINK]\n\nLet me know if you\'d like a walkthrough — happy to jump on a quick call.\n\n[Your Name]', followUpRule: 'Proceed after 4 days' },
-    { id: 's3', day: 7, subject: 'One week in — tips from our power users', body: 'Hi {{firstName}},\n\nYou\'ve been using [PRODUCT] for a week — congrats!\n\nHere are 3 tips our most successful users swear by:\n\n💡 Tip 1: [POWER TIP 1]\n💡 Tip 2: [POWER TIP 2]  \n💡 Tip 3: [POWER TIP 3]\n\nBookmark this email — you\'ll thank yourself later.\n\n[Your Name]', followUpRule: 'End of sequence' },
-  ];
+${value ? value : '[Your value proposition here]'}
 
-  if (isReengage) return [
-    { id: 's1', day: 0, subject: 'We miss you, {{firstName}} — here\'s what\'s new', body: 'Hi {{firstName}},\n\nIt\'s been a while! A lot has changed since you last logged in.\n\nHere\'s what\'s new:\n• [NEW FEATURE 1] — saves time on [TASK]\n• [NEW FEATURE 2] — customers love this one\n• [IMPROVEMENT] — we fixed the thing you probably noticed\n\nReady to pick up where you left off? Your account is right where you left it.\n\n[LOG IN →]\n\n[Your Name]', followUpRule: 'If no login, send after 5 days' },
-    { id: 's2', day: 5, subject: 'A special offer to welcome you back', body: 'Hi {{firstName}},\n\nWe want you back — and we\'re willing to put our money where our mouth is.\n\nFor the next 72 hours, use code COMEBACK30 for 30% off.\n\nNo strings attached. If you\'re not happy in 30 days, full refund.\n\n[CLAIM OFFER →]\n\nHope to see you soon.\n\n[Your Name]', followUpRule: 'End of re-engagement sequence' },
-  ];
+${proof ? `Many teams we work with — like ${proof} — have seen real results.` : ''}
 
-  // Default nurture sequence
+${cta ? `I'd love to ${cta.toLowerCase()}. When works best for you?` : 'Would you be open to a quick call this week?'}
+
+${company || '[Your Name]'}`;
+}
+
+function templateFallback(goal: string, fields: Record<string, string>): EmailStep[] {
+  const { pain, value, cta, company, proof } = fields;
+  const body1 = buildAIBody(goal, pain, value, cta, company, '', proof);
+  const body2 = `Hi {{firstName}},\n\nFollowing up on my last note about ${goal.slice(0, 60) || 'how we can help'}.\n\n${value ? value : '[Key benefit]'}\n\n${cta ? `Still happy to ${cta.toLowerCase()}.` : 'Worth a quick chat?'}\n\n${company || '[Your Name]'}`;
+  const body3 = `Hi {{firstName}},\n\nLast message from me — promise.\n\n${proof ? `${proof} saw great results with us.` : 'We\'ve helped many teams like yours.'}\n\n${cta ? `If you change your mind, ${cta.toLowerCase()} anytime.` : 'The door\'s always open.'}\n\n${company || '[Your Name]'}`;
   return [
-    { id: 's1', day: 0, subject: 'Thanks for your interest, {{firstName}}', body: 'Hi {{firstName}},\n\nThank you for reaching out! I\'m excited to learn more about what you\'re trying to accomplish.\n\nHere\'s a quick overview of how we help companies like {{company || "yours"}}:\n\n• [VALUE PROP 1]\n• [VALUE PROP 2]\n• [VALUE PROP 3]\n\nWould you be open to a 20-minute call this week? I\'d love to understand your goals and see if we\'re a good fit.\n\nBook a time here: [CALENDAR LINK]\n\n[Your Name]', followUpRule: 'If no booking, follow up in 3 days' },
-    { id: 's2', day: 3, subject: 'Quick question, {{firstName}}', body: 'Hi {{firstName}},\n\nFollowing up on my last note.\n\nI know you\'re busy, so I\'ll keep this short: what\'s the biggest challenge you\'re currently facing with [RELEVANT AREA]?\n\nEven a one-sentence reply helps me understand how I can be most useful.\n\n[Your Name]', followUpRule: 'Proceed after response or 4 days' },
-    { id: 's3', day: 7, subject: 'Case study: how {{industry || "a company like yours"}} achieved [RESULT]', body: 'Hi {{firstName}},\n\nI thought you\'d find this interesting.\n\n[CLIENT NAME], a company in [SIMILAR INDUSTRY], was struggling with [SAME PROBLEM]. Within 60 days of working with us, they achieved [SPECIFIC RESULT].\n\nHere\'s the full story: [CASE STUDY LINK]\n\nWould something like this be valuable for {{company || "your team"}}? Happy to map out a similar approach for you.\n\n[Your Name]', followUpRule: 'If no reply, send breakup email' },
-    { id: 's4', day: 14, subject: 'Should I stay or should I go?', body: 'Hi {{firstName}},\n\nI\'ve reached out a few times and haven\'t heard back. No worries — I know inboxes get crazy.\n\nI\'ll stop reaching out after this, but I\'d be remiss not to ask one last time: is now just a bad time, or is [PRODUCT/SERVICE] not a fit?\n\nIf bad timing: I\'ll check back in 30 days. Just reply "later."\nIf not a fit: totally understood. Just reply "no thanks" and I\'ll close this out.\n\nNo hard feelings either way.\n\n[Your Name]', followUpRule: 'End of sequence' },
+    { id: `ai-1-${Date.now()}`, day: 0, waitUnit: 'days', type: 'auto_email', subject: `A quick note, {{firstName}}`, body: body1, followUpRule: 'Send next step after 3 days', abEnabled: false },
+    { id: `ai-2-${Date.now()}`, day: 3, waitUnit: 'days', type: 'auto_email', subject: `Following up, {{firstName}}`, body: body2, followUpRule: 'If no reply, send after 4 days', abEnabled: false },
+    { id: `ai-3-${Date.now()}`, day: 7, waitUnit: 'days', type: 'auto_email', subject: `Last note, {{firstName}}`, body: body3, followUpRule: 'End of sequence', abEnabled: false },
   ];
 }
 
-async function generateSequence(goal: string, apiKey: string): Promise<EmailStep[]> {
-  if (!apiKey) return templateFallback(goal);
-
-  const prompt = `You are a world-class email copywriter. Create a professional email nurture sequence for this goal:
-
-"${goal}"
-
-Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
-[
-  {
-    "day": 0,
-    "subject": "email subject line",
-    "body": "full professional email body with line breaks as \\n",
-    "followUpRule": "brief follow-up instruction (one sentence)"
-  }
-]
-
-Rules:
-- 4-6 emails depending on complexity
-- Day 0 = sent immediately; subsequent emails spaced 2-7 days apart
-- Use {{firstName}} and {{company}} as personalization tokens
-- Professional yet human tone; concise and compelling
-- Each email escalates value: awareness → education → social proof → offer → urgency
-- Final email is a "breakup" / low-pressure close
-- Subjects: under 60 chars, no spam words`;
-
-  try {
-    const text = await callClaude(prompt, apiKey);
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array in response');
-    const parsed = JSON.parse(match[0]) as { day: number; subject: string; body: string; followUpRule: string }[];
-    return parsed.map((s, idx) => ({
-      id: `ai-${idx}-${Date.now()}`,
-      day: Number(s.day) || idx * 3,
-      subject: String(s.subject),
-      body: String(s.body),
-      followUpRule: String(s.followUpRule),
-    }));
-  } catch {
-    return templateFallback(goal);
-  }
+// ── Personalization util ──────────────────────────────────────────────────────
+function personalize(text: string, c: Contact | null): string {
+  if (!c) return text;
+  return text
+    .replace(/\{\{firstName\}\}/g, c.firstName ?? c.name.split(' ')[0])
+    .replace(/\{\{lastName\}\}/g, c.lastName ?? c.name.split(' ')[1] ?? '')
+    .replace(/\{\{email\}\}/g, c.email)
+    .replace(/\{\{company\}\}/g, c.company ?? '[company]');
 }
 
-/* ─── Sub-components ─── */
-
-function ApiKeyModal({ onClose, onSave }: { onClose: () => void; onSave: (key: string) => void }) {
-  const [key, setKey] = useState(localStorage.getItem('crm_anthropic_key') || '');
+// ── Create Sequence Modal ─────────────────────────────────────────────────────
+function CreateModal({ onSelect, onClose }: {
+  onSelect: (mode: 'ai' | 'template' | 'scratch') => void;
+  onClose: () => void;
+}) {
+  const options = [
+    { id: 'ai' as const, label: 'AI-assisted', desc: 'Create a simply outbound sequence with one click', icon: '✨', color: '#8b5cf6' },
+    { id: 'template' as const, label: 'Templates', desc: 'Start with one of our sequence templates', icon: '📋', color: '#3b82f6' },
+    { id: 'scratch' as const, label: 'From scratch', desc: 'Create a new sequence from scratch', icon: '📝', color: '#64748b' },
+  ];
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '28px', width: '460px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0 }}>AI Settings</h3>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px' }}><X size={20} color="#94a3b8" /></button>
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, padding: 28, width: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Create a sequence</h3>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={20} /></button>
         </div>
-        <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>
-          Enter your Anthropic API key to enable AI-generated email sequences. The key is stored in your browser only and never sent to our servers.
-        </p>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Anthropic API Key</label>
-          <input
-            type="password" value={key} onChange={e => setKey(e.target.value)}
-            placeholder="sk-ant-api03-..."
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }}
-          />
+        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Sequences are a series of automated or manual touchpoints and activities, designed to drive deeper engagement with your contacts.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {options.map(o => (
+            <button key={o.id} onClick={() => onSelect(o.id)}
+              style={{ textAlign: 'left', padding: '18px 16px', border: '1px solid #e2e8f0', borderRadius: 12, cursor: 'pointer', backgroundColor: 'white', transition: 'all 0.15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = o.color; (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#fafafa'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>{o.icon}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{o.label}</div>
+              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>{o.desc}</div>
+            </button>
+          ))}
         </div>
-        <div style={{ padding: '12px 14px', backgroundColor: '#fffbeb', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>
-            ⚠️ For personal/demo use only. In production, proxy API calls through your own backend. Get your key at console.anthropic.com
-          </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Template Library Modal ────────────────────────────────────────────────────
+function TemplateModal({ onSelect, onClose }: {
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [cat, setCat] = useState('all');
+  const cats = ['all', 'email', 'call', 'cta'];
+  const filtered = TEMPLATES.filter(t => (cat === 'all' || t.category === cat) && (!search || t.name.toLowerCase().includes(search.toLowerCase())));
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Sequence templates</h3>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>Leverage automation in your outreach so you can focus on what matters most — building relationships.</p>
+          </div>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={20} /></button>
         </div>
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
-          <button onClick={() => { onSave(key); onClose(); }}
-            style={{ padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-            {key ? 'Save Key' : 'Use Templates (No AI)'}
+        <div style={{ display: 'flex', gap: 12, padding: '12px 24px', borderBottom: '1px solid #f1f5f9', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {cats.map(c => (
+              <button key={c} onClick={() => setCat(c)}
+                style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${cat === c ? '#6366f1' : '#e2e8f0'}`, backgroundColor: cat === c ? '#6366f1' : 'white', color: cat === c ? 'white' : '#64748b', fontSize: 12, cursor: 'pointer', fontWeight: 500, textTransform: 'capitalize' }}>
+                {c === 'all' ? 'All Templates' : c === 'call' ? 'Call-based' : c === 'email' ? 'Email-based' : 'CTA-based'}
+              </button>
+            ))}
+          </div>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates..."
+            style={{ flex: 1, minWidth: 160, padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none' }} />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12, alignContent: 'start' }}>
+          {filtered.map(t => (
+            <div key={t.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 24 }}>{t.icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>{t.name}</div>
+              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4, flex: 1 }}>{t.desc}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>{t.steps} steps</span>
+                <button onClick={() => onSelect(t.id)}
+                  style={{ padding: '5px 10px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  Use template
+                </button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '32px', color: '#94a3b8', fontSize: 13 }}>No templates match your search.</div>
+          )}
+        </div>
+        <div style={{ padding: '12px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={() => onSelect('')}
+            style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>
+            Create from scratch
           </button>
         </div>
       </div>
@@ -142,96 +196,305 @@ function ApiKeyModal({ onClose, onSave }: { onClose: () => void; onSave: (key: s
   );
 }
 
-function StepCard({ step, index, total, onUpdate, onDelete, onMoveUp, onMoveDown }: {
-  step: EmailStep; index: number; total: number;
-  onUpdate: (s: EmailStep) => void; onDelete: () => void;
-  onMoveUp: () => void; onMoveDown: () => void;
+// ── AI Generator Form ─────────────────────────────────────────────────────────
+function AIGeneratorForm({ onGenerate, onClose }: {
+  onGenerate: (name: string, fields: Record<string, string>) => void;
+  onClose: () => void;
 }) {
-  const [expanded, setExpanded] = useState(index === 0);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(step);
+  const [name, setName] = useState('');
+  const [fields, setFields] = useState({ pain: '', value: '', cta: '', company: '', context: '', proof: '' });
+  const f = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => setFields(p => ({ ...p, [k]: e.target.value }));
+  const inputs: { key: keyof typeof fields; label: string; placeholder: string; rows?: number }[] = [
+    { key: 'company', label: 'Company or product name *', placeholder: 'e.g. Acme Solutions' },
+    { key: 'pain', label: 'Customer pain points', placeholder: 'e.g. Too much manual data entry, missing deadlines', rows: 2 },
+    { key: 'value', label: 'Value proposition', placeholder: 'e.g. We automate your entire onboarding pipeline', rows: 2 },
+    { key: 'cta', label: 'Call to action', placeholder: 'e.g. Book a demo', },
+    { key: 'context', label: 'Company overview (optional)', placeholder: 'e.g. We help SMBs reduce churn using AI engagement tools', rows: 2 },
+    { key: 'proof', label: 'Social proof (optional)', placeholder: 'e.g. 200+ SaaS companies trust us — including Acme, Globex' },
+  ];
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: 20, flex: 1, overflow: 'hidden' }}>
+          {/* Left panel */}
+          <div style={{ width: 160, flexShrink: 0, background: 'linear-gradient(160deg,#6366f1,#8b5cf6)', padding: '28px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Sparkles size={28} color="rgba(255,255,255,0.9)" />
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'white', lineHeight: 1.3 }}>Let AI assist with your sequences</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>Use AI to generate a complete campaign with sequential contact points to engage target audiences at scale.</div>
+          </div>
+          {/* Right form */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 20px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Review your company information</h3>
+              <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={18} /></button>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Sequence name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Outbound AI Sequence 1"
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            {inputs.map(inp => (
+              <div key={inp.key}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{inp.label}</label>
+                {inp.rows ? (
+                  <textarea value={fields[inp.key]} onChange={f(inp.key)} placeholder={inp.placeholder} rows={inp.rows}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.5 }} />
+                ) : (
+                  <input value={fields[inp.key]} onChange={e => setFields(p => ({ ...p, [inp.key]: e.target.value }))} placeholder={inp.placeholder}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', backgroundColor: 'white' }}>Cancel</button>
+          <button onClick={() => { if (!fields.company.trim() && !name.trim()) return; onGenerate(name || `${fields.company} Outbound Sequence`, fields); }}
+            style={{ padding: '9px 20px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Sparkles size={14} /> Generate new sequence
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  const save = () => { onUpdate(draft); setEditing(false); };
+// ── Email / Body editor for steps ─────────────────────────────────────────────
+function BodyEditor({ value, onChange, contacts, compact }: { value: string; onChange: (v: string) => void; contacts: Contact[]; compact?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] ?? null);
+
+  useEffect(() => { if (ref.current) ref.current.innerText = value; }, []);
+
+  const exec = useCallback((cmd: string, val?: string) => {
+    ref.current?.focus();
+    document.execCommand(cmd, false, val);
+    onChange(ref.current?.innerText ?? '');
+  }, [onChange]);
+
+  const tb: React.CSSProperties = {
+    width: 26, height: 26, border: '1px solid #e2e8f0', borderRadius: 5,
+    backgroundColor: 'white', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151', flexShrink: 0,
+  };
+
+  const VARS = ['{{firstName}}', '{{lastName}}', '{{email}}', '{{company}}'];
 
   return (
-    <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', cursor: 'pointer' }} onClick={() => setExpanded(p => !p)}>
-        <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Mail size={16} color="#6366f1" />
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', backgroundColor: 'white' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 8px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#fafafa', flexWrap: 'wrap' }}>
+        <button style={tb} onClick={() => exec('bold')} title="Bold"><Bold size={11} /></button>
+        <button style={tb} onClick={() => exec('italic')} title="Italic"><Italic size={11} /></button>
+        <button style={tb} onClick={() => exec('underline')} title="Underline"><Underline size={11} /></button>
+        <div style={{ width: 1, height: 16, backgroundColor: '#e2e8f0', margin: '0 2px' }} />
+        <button style={tb} onClick={() => exec('insertUnorderedList')} title="Bullets"><List size={11} /></button>
+        <button style={tb} onClick={() => { const url = prompt('Enter URL:', 'https://'); if (url) exec('createLink', url); }} title="Link"><Link2 size={11} /></button>
+        <button style={tb} onClick={() => exec('removeFormat')} title="Clear"><RotateCcw size={11} /></button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, alignItems: 'center' }}>
+          {VARS.map(v => (
+            <button key={v} onClick={() => { ref.current?.focus(); document.execCommand('insertText', false, v); onChange(ref.current?.innerText ?? ''); }}
+              style={{ padding: '2px 5px', background: '#ede9fe', color: '#6d28d9', border: 'none', borderRadius: 4, fontSize: 9, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}>{v}</button>
+          ))}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 9px', borderRadius: '10px', backgroundColor: '#f1f5f9', color: '#64748b' }}>
-              {step.day === 0 ? 'Day 0 · Immediately' : `Day ${step.day}`}
-            </span>
-          </div>
-          <p style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.subject}</p>
-        </div>
-        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-          <button onClick={onMoveUp} disabled={index === 0} style={{ padding: '5px', border: '1px solid #e2e8f0', borderRadius: '6px', backgroundColor: 'white', cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.4 : 1 }}><ChevronUp size={13} color="#64748b" /></button>
-          <button onClick={onMoveDown} disabled={index === total - 1} style={{ padding: '5px', border: '1px solid #e2e8f0', borderRadius: '6px', backgroundColor: 'white', cursor: index === total - 1 ? 'not-allowed' : 'pointer', opacity: index === total - 1 ? 0.4 : 1 }}><ChevronDown size={13} color="#64748b" /></button>
-          <button onClick={() => { setEditing(true); setExpanded(true); }} style={{ padding: '5px', border: '1px solid #e2e8f0', borderRadius: '6px', backgroundColor: 'white', cursor: 'pointer' }}><Edit2 size={13} color="#6366f1" /></button>
-          <button onClick={onDelete} style={{ padding: '5px', border: '1px solid #fecaca', borderRadius: '6px', backgroundColor: 'white', cursor: 'pointer' }}><Trash2 size={13} color="#ef4444" /></button>
-        </div>
-        {expanded ? <ChevronUp size={16} color="#94a3b8" /> : <ChevronDown size={16} color="#94a3b8" />}
       </div>
-
-      {expanded && (
-        <div style={{ padding: '0 18px 18px', borderTop: '1px solid #f1f5f9' }}>
-          {editing ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '14px' }}>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Subject Line</label>
-                  <input value={draft.subject} onChange={e => setDraft(p => ({ ...p, subject: e.target.value }))}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div style={{ width: '100px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Send on Day</label>
-                  <input type="number" min="0" value={draft.day} onChange={e => setDraft(p => ({ ...p, day: parseInt(e.target.value) || 0 }))}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Email Body</label>
-                <textarea value={draft.body} onChange={e => setDraft(p => ({ ...p, body: e.target.value }))} rows={10}
-                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'vertical', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', lineHeight: 1.6, boxSizing: 'border-box' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Follow-up Rule</label>
-                <input value={draft.followUpRule} onChange={e => setDraft(p => ({ ...p, followUpRule: e.target.value }))}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button onClick={() => { setDraft(step); setEditing(false); }} style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
-                <button onClick={save} style={{ padding: '7px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Check size={13} /> Save
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ paddingTop: '14px' }}>
-              <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#374151', lineHeight: 1.7, backgroundColor: '#f8fafc', padding: '14px 16px', borderRadius: '8px', marginBottom: '10px' }}>
-                {step.body}
-              </div>
-              {step.followUpRule && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <ArrowRight size={13} color="#6366f1" />
-                  <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>{step.followUpRule}</span>
-                </div>
-              )}
-            </div>
-          )}
+      {/* Body */}
+      <div ref={ref} contentEditable suppressContentEditableWarning
+        onInput={() => onChange(ref.current?.innerText ?? '')}
+        style={{ minHeight: compact ? 120 : 180, padding: '10px 12px', outline: 'none', fontSize: 13, lineHeight: 1.7, color: '#374151', fontFamily: 'inherit', whiteSpace: 'pre-wrap' }} />
+      {/* Write with AI bar */}
+      <div style={{ borderTop: '1px solid #f1f5f9', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#fafafa' }}>
+        <button style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #c4b5fd', borderRadius: 6, backgroundColor: '#ede9fe', color: '#6d28d9', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+          <Wand2 size={11} /> Write with AI
+        </button>
+        <div style={{ width: 1, height: 14, backgroundColor: '#e2e8f0' }} />
+        {contacts.length > 0 && (
+          <>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Preview for:</span>
+            <select value={selectedContact?.id ?? ''} onChange={e => setSelectedContact(contacts.find(c => c.id === e.target.value) ?? null)}
+              style={{ fontSize: 11, padding: '2px 6px', border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none', cursor: 'pointer', maxWidth: 140 }}>
+              {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button onClick={() => setShowPreview(p => !p)}
+              style={{ ...tb, width: 'auto', padding: '0 6px', fontSize: 10, color: showPreview ? '#6366f1' : '#94a3b8' }}>
+              {showPreview ? <EyeOff size={11} /> : <Eye size={11} />}
+            </button>
+          </>
+        )}
+        <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
+          <input type="checkbox" style={{ cursor: 'pointer', accentColor: '#6366f1' }} /> Include signature
+        </label>
+      </div>
+      {/* Preview */}
+      {showPreview && selectedContact && (
+        <div style={{ borderTop: '1px solid #e2e8f0', padding: '12px', backgroundColor: '#f8fafc', fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: 180, overflowY: 'auto' }}>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Preview · {selectedContact.name} · {selectedContact.email}</div>
+          {personalize(value, selectedContact)}
         </div>
       )}
     </div>
   );
 }
 
-/* ─── Main component ─── */
+// ── Step Editor Panel (center) ────────────────────────────────────────────────
+function StepEditorPanel({ step, seqId, contacts, onChange }: {
+  step: EmailStep;
+  seqId: string;
+  contacts: Contact[];
+  onChange: (updates: Partial<EmailStep>) => void;
+}) {
+  const [variant, setVariant] = useState<'A' | 'B'>('A');
+  const cfg = stepTypeCfg(step.type);
+  const isEmail = step.type === 'auto_email' || step.type === 'manual_email';
+  const isPhone = step.type === 'phone_call';
+  const isLinkedIn = step.type.startsWith('li_');
 
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Type selector + subject row */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ flex: '0 0 auto' }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Type</label>
+          <select value={step.type} onChange={e => onChange({ type: e.target.value as StepType })}
+            style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', cursor: 'pointer', backgroundColor: 'white' }}>
+            {STEP_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </div>
+        {isEmail && (
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Subject</label>
+            <input
+              value={variant === 'A' ? step.subject : (step.variantB?.subject ?? '')}
+              onChange={e => variant === 'A' ? onChange({ subject: e.target.value }) : onChange({ variantB: { ...step.variantB, subject: e.target.value, body: step.variantB?.body ?? step.body } })}
+              placeholder="Subject line..."
+              style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        )}
+        <div style={{ flex: '0 0 auto', alignSelf: 'flex-end' }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Timing</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>Send in</span>
+            <input type="number" min={0} value={step.day}
+              onChange={e => onChange({ day: parseInt(e.target.value) || 0 })}
+              style={{ width: 52, padding: '7px 8px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', textAlign: 'center' }} />
+            <select value={step.waitUnit} onChange={e => onChange({ waitUnit: e.target.value as 'days' | 'hours' })}
+              style={{ padding: '7px 8px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', cursor: 'pointer' }}>
+              <option value="days">days</option>
+              <option value="hours">hours</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* A/B variant tabs (email only) */}
+      {isEmail && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
+            {(['A', 'B'] as const).map(v => (
+              <button key={v} onClick={() => setVariant(v)}
+                style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: variant === v ? 'white' : 'transparent', color: variant === v ? '#6366f1' : '#64748b', fontSize: 12, fontWeight: variant === v ? 700 : 500, cursor: 'pointer', boxShadow: variant === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+                Test {v}
+              </button>
+            ))}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b', cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!step.abEnabled} onChange={e => onChange({ abEnabled: e.target.checked })} style={{ accentColor: '#6366f1', cursor: 'pointer' }} />
+            Enable A/B test
+          </label>
+          {variant === 'B' && !step.abEnabled && (
+            <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>Enable A/B above to activate variant B</span>
+          )}
+        </div>
+      )}
+
+      {/* Body area */}
+      {isEmail && (
+        <BodyEditor
+          contacts={contacts}
+          value={variant === 'A' ? step.body : (step.variantB?.body ?? step.body)}
+          onChange={v => variant === 'A' ? onChange({ body: v }) : onChange({ variantB: { subject: step.variantB?.subject ?? step.subject, body: v } })}
+        />
+      )}
+      {isPhone && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Task priority</label>
+            <select value={step.taskPriority ?? 'medium'} onChange={e => onChange({ taskPriority: e.target.value as 'low' | 'medium' | 'high' })}
+              style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', cursor: 'pointer' }}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Task note</label>
+            <textarea value={step.taskNote ?? ''} onChange={e => onChange({ taskNote: e.target.value })} rows={3}
+              placeholder="e.g. Ask about their pain points and share your company's case studies with them."
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Write with AI</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Personalised call guide</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {isLinkedIn && (
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Message (optional)</label>
+          <textarea value={step.body} onChange={e => onChange({ body: e.target.value })} rows={3}
+            placeholder="e.g. Hi {{firstName}}, I came across your profile and thought it would be great to connect..."
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }} />
+        </div>
+      )}
+
+      {/* Follow-up rule */}
+      <div>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Follow-up condition</label>
+        <select value={step.followUpRule} onChange={e => onChange({ followUpRule: e.target.value })}
+          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', cursor: 'pointer', width: '100%', backgroundColor: 'white' }}>
+          {['Proceed regardless', 'If no reply', 'If no click', 'If no open', 'If not interested', 'End of sequence'].map(r => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ── Stats bar ─────────────────────────────────────────────────────────────────
+function StatsBar({ stats }: { stats?: SequenceStats }) {
+  if (!stats) return null;
+  const items = [
+    { label: 'Active', value: stats.active, color: '#22c55e' },
+    { label: 'Paused', value: stats.paused, color: '#f59e0b' },
+    { label: 'Finished', value: stats.finished, color: '#6366f1' },
+    { label: 'Bounced', value: stats.bounced, color: '#ef4444' },
+    { label: 'Not sent', value: stats.notSent, color: '#94a3b8' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 24, padding: '10px 0', marginBottom: 12 }}>
+      <div>
+        <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Overall sequence statistics</div>
+        <div style={{ display: 'flex', gap: 16 }}>
+          {items.map(s => (
+            <div key={s.label} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 500 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 interface Props {
   sequences: EmailSequence[];
+  contacts?: Contact[];
   onAddSequence: (s: Omit<EmailSequence, 'id'>) => void;
   onUpdateSequence: (id: string, updates: Partial<EmailSequence>) => void;
   onDeleteSequence: (id: string) => void;
@@ -239,133 +502,154 @@ interface Props {
   onNotify: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export default function SequenceBuilder({ sequences, onAddSequence, onUpdateSequence, onDeleteSequence, onActivateSequence, onNotify }: Props) {
+export default function SequenceBuilder({ sequences, contacts = [], onAddSequence, onUpdateSequence, onDeleteSequence, onActivateSequence, onNotify }: Props) {
   const [selected, setSelected] = useState<EmailSequence | null>(null);
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('crm_anthropic_key') || '');
-  const [goal, setGoal] = useState('');
+  const [activeStep, setActiveStep] = useState<string | null>(null);
+  const [tab, setTab] = useState<'editor' | 'contacts' | 'activity' | 'report' | 'settings'>('editor');
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [showAIForm, setShowAIForm] = useState(false);
+
   const [generating, setGenerating] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [collapseSteps, setCollapseSteps] = useState(false);
 
   useEffect(() => {
-    if (sequences.length > 0 && !selected) setSelected(sequences[0]);
+    if (sequences.length > 0 && !selected) { setSelected(sequences[0]); setActiveStep(sequences[0]?.steps[0]?.id ?? null); }
   }, [sequences, selected]);
 
-  const handleSaveKey = (key: string) => {
-    localStorage.setItem('crm_anthropic_key', key);
-    setApiKey(key);
+  const activeStepObj = selected?.steps.find(s => s.id === activeStep) ?? selected?.steps[0] ?? null;
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  const updateStep = (stepId: string, updates: Partial<EmailStep>) => {
+    if (!selected) return;
+    const steps = selected.steps.map(s => s.id === stepId ? { ...s, ...updates } : s);
+    onUpdateSequence(selected.id, { steps });
+    setSelected(p => p ? { ...p, steps } : p);
   };
 
-  const handleGenerate = async () => {
-    if (!goal.trim()) { onNotify('Please describe your sequence goal', 'error'); return; }
+  const deleteStep = (stepId: string) => {
+    if (!selected) return;
+    const steps = selected.steps.filter(s => s.id !== stepId);
+    onUpdateSequence(selected.id, { steps });
+    setSelected(p => p ? { ...p, steps } : p);
+    if (activeStep === stepId) setActiveStep(steps[0]?.id ?? null);
+  };
+
+  const addStep = (type: StepType) => {
+    if (!selected) return;
+    const maxDay = selected.steps.reduce((m, s) => Math.max(m, s.day), 0);
+    const newStep: EmailStep = {
+      id: `step-${Date.now()}`, day: maxDay + 3, waitUnit: 'days', type,
+      subject: type === 'auto_email' ? 'New email' : '',
+      body: type === 'phone_call' ? 'Call script notes...' : 'Hi {{firstName}},\n\n[Your message here]\n\n[Your Name]',
+      followUpRule: 'Proceed regardless', abEnabled: false,
+    };
+    const steps = [...selected.steps, newStep];
+    onUpdateSequence(selected.id, { steps });
+    setSelected(p => p ? { ...p, steps } : p);
+    setActiveStep(newStep.id);
+  };
+
+  // ── Create handlers ────────────────────────────────────────────────────────
+  const handleCreateMode = (mode: 'ai' | 'template' | 'scratch') => {
+    setShowCreate(false);
+    if (mode === 'ai') { setShowAIForm(true); return; }
+    if (mode === 'template') { setShowTemplate(true); return; }
+    createScratch();
+  };
+
+  const createScratch = (name = 'New Sequence') => {
+    const seq: Omit<EmailSequence, 'id'> = {
+      name, goal: '', steps: [{
+        id: `step-${Date.now()}`, day: 0, waitUnit: 'days', type: 'auto_email',
+        subject: 'Reaching out, {{firstName}}', body: 'Hi {{firstName}},\n\n[Your message here]\n\n[Your Name]', followUpRule: 'Proceed regardless', abEnabled: false,
+      }],
+      status: 'draft', createdAt: new Date().toISOString().split('T')[0], enrolledCount: 0,
+    };
+    onAddSequence(seq);
+    onNotify(`Sequence "${name}" created!`);
+  };
+
+  const handleTemplateSelect = (id: string) => {
+    setShowTemplate(false);
+    if (!id) { createScratch(); return; }
+    const tpl = TEMPLATES.find(t => t.id === id);
+    const steps = buildStepsFromTemplate(id);
+    const seq: Omit<EmailSequence, 'id'> = {
+      name: tpl?.name ?? 'Sequence', goal: tpl?.desc ?? '', steps,
+      status: 'draft', createdAt: new Date().toISOString().split('T')[0], enrolledCount: 0,
+    };
+    onAddSequence(seq);
+    onNotify(`Template "${tpl?.name}" applied!`);
+  };
+
+  const handleAIGenerate = (name: string, fields: Record<string, string>) => {
+    setShowAIForm(false);
     setGenerating(true);
-    try {
-      const steps = await generateSequence(goal.trim(), apiKey);
-      const name = newName.trim() || `Sequence: ${goal.slice(0, 40)}`;
+    setTimeout(() => {
+      const steps = templateFallback(name, fields);
       const seq: Omit<EmailSequence, 'id'> = {
-        name, goal: goal.trim(), steps,
+        name: name || 'AI Sequence', goal: fields.pain || fields.value || '', steps,
         status: 'draft', createdAt: new Date().toISOString().split('T')[0], enrolledCount: 0,
       };
       onAddSequence(seq);
-      setGoal(''); setNewName(''); setCreating(false);
-      onNotify(`${apiKey ? 'AI-generated' : 'Template'} sequence "${name}" created!`);
-    } catch (e) {
-      onNotify(`Generation failed: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
-    } finally {
       setGenerating(false);
-    }
+      onNotify(`AI sequence "${name}" created!`);
+    }, 900);
   };
 
-  const updateStep = (seqId: string, stepId: string, updated: EmailStep) => {
-    const seq = sequences.find(s => s.id === seqId);
-    if (!seq) return;
-    const steps = seq.steps.map(s => s.id === stepId ? updated : s);
-    onUpdateSequence(seqId, { steps });
-    setSelected(prev => prev?.id === seqId ? { ...prev, steps } : prev);
+  const toggleStatus = () => {
+    if (!selected) return;
+    const next = selected.status === 'active' ? 'paused' : selected.status === 'paused' ? 'active' : 'active';
+    onUpdateSequence(selected.id, { status: next });
+    if (next === 'active') { onActivateSequence(selected); onNotify(`Sequence activated!`); }
+    else onNotify(`Sequence paused`);
+    setSelected(p => p ? { ...p, status: next } : p);
   };
 
-  const deleteStep = (seqId: string, stepId: string) => {
-    const seq = sequences.find(s => s.id === seqId);
-    if (!seq) return;
-    const steps = seq.steps.filter(s => s.id !== stepId);
-    onUpdateSequence(seqId, { steps });
-    setSelected(prev => prev?.id === seqId ? { ...prev, steps } : prev);
-  };
+  const statusColor = { draft: '#64748b', active: '#16a34a', paused: '#d97706' };
 
-  const moveStep = (seqId: string, idx: number, dir: -1 | 1) => {
-    const seq = sequences.find(s => s.id === seqId);
-    if (!seq) return;
-    const steps = [...seq.steps];
-    const newIdx = idx + dir;
-    if (newIdx < 0 || newIdx >= steps.length) return;
-    [steps[idx], steps[newIdx]] = [steps[newIdx], steps[idx]];
-    onUpdateSequence(seqId, { steps });
-    setSelected(prev => prev?.id === seqId ? { ...prev, steps } : prev);
-  };
-
-  const addBlankStep = (seqId: string) => {
-    const seq = sequences.find(s => s.id === seqId);
-    if (!seq) return;
-    const maxDay = seq.steps.reduce((m, s) => Math.max(m, s.day), 0);
-    const newStep: EmailStep = {
-      id: `step-${Date.now()}`, day: maxDay + 3,
-      subject: 'New Email', body: 'Hi {{firstName}},\n\n[Write your email here]\n\n[Your Name]', followUpRule: '',
-    };
-    const steps = [...seq.steps, newStep];
-    onUpdateSequence(seqId, { steps });
-    setSelected(prev => prev?.id === seqId ? { ...prev, steps } : prev);
-  };
-
-  const statusColors: Record<string, { bg: string; color: string }> = {
-    draft: { bg: '#f8fafc', color: '#64748b' },
-    active: { bg: '#ecfdf5', color: '#16a34a' },
-    paused: { bg: '#fffbeb', color: '#d97706' },
-  };
+  const TABS: { id: typeof tab; label: string; icon: React.ReactElement }[] = [
+    { id: 'editor', label: 'Editor', icon: <AlignLeft size={13} /> },
+    { id: 'contacts', label: 'Contacts', icon: <Users size={13} /> },
+    { id: 'activity', label: 'Activity', icon: <Activity size={13} /> },
+    { id: 'report', label: 'Report', icon: <BarChart2 size={13} /> },
+    { id: 'settings', label: 'Settings', icon: <Settings size={13} /> },
+  ];
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', overflow: 'hidden' }}>
-      {/* Left sidebar */}
-      <div style={{ width: '300px', flexShrink: 0, borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '16px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '8px' }}>
-          <button onClick={() => setCreating(true)}
-            style={{ flex: 1, padding: '9px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            <Plus size={15} /> New Sequence
-          </button>
-          <button onClick={() => setShowApiModal(true)}
-            style={{ padding: '9px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: apiKey ? '#f0fdf4' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title={apiKey ? 'AI enabled' : 'Configure AI'}>
-            <Settings size={16} color={apiKey ? '#16a34a' : '#64748b'} />
+      {/* ── Left sidebar: sequence list ──────────────────────────────────────── */}
+      <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: 'white' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
+          <button onClick={() => setShowCreate(true)} disabled={generating}
+            style={{ width: '100%', padding: '9px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            {generating ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
+            {generating ? 'Generating…' : 'Create sequence'}
           </button>
         </div>
-        {apiKey && (
-          <div style={{ padding: '8px 12px', backgroundColor: '#ecfdf5', borderBottom: '1px solid #d1fae5', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Zap size={13} color="#16a34a" />
-            <span style={{ fontSize: '11px', color: '#15803d', fontWeight: 500 }}>AI generation enabled</span>
-          </div>
-        )}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-          {sequences.length === 0 && !creating && (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {sequences.length === 0 ? (
             <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8' }}>
-              <Zap size={32} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.4 }} />
-              <p style={{ fontSize: '13px', margin: 0 }}>No sequences yet.<br />Create your first one!</p>
+              <Zap size={28} style={{ display: 'block', margin: '0 auto 10px', opacity: 0.35 }} />
+              <p style={{ fontSize: 12, margin: 0 }}>No sequences yet.</p>
             </div>
-          )}
-          {sequences.map(seq => {
-            const sc = statusColors[seq.status];
+          ) : sequences.map(seq => {
+            const sc = statusColor[seq.status];
             const isActive = selected?.id === seq.id;
             return (
-              <div key={seq.id} onClick={() => setSelected(seq)}
-                style={{ padding: '12px', borderRadius: '10px', cursor: 'pointer', marginBottom: '4px', backgroundColor: isActive ? '#f5f3ff' : 'white', border: `1px solid ${isActive ? '#c4b5fd' : 'transparent'}`, transition: 'all 0.15s' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0, flex: 1, paddingRight: '8px' }}>{seq.name}</p>
-                  <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', backgroundColor: sc.bg, color: sc.color, fontWeight: 600, flexShrink: 0 }}>
-                    {seq.status}
-                  </span>
+              <div key={seq.id} onClick={() => { setSelected(seq); setActiveStep(seq.steps[0]?.id ?? null); setTab('editor'); }}
+                style={{ padding: '11px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isActive ? '#f5f3ff' : 'white', borderLeft: `3px solid ${isActive ? '#6366f1' : 'transparent'}` }}
+                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.backgroundColor = '#fafafa'; }}
+                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.backgroundColor = 'white'; }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{seq.name}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 10, backgroundColor: `${sc}18`, color: sc, flexShrink: 0, textTransform: 'capitalize' }}>{seq.status}</span>
                 </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{seq.steps.length} emails</span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{seq.enrolledCount} enrolled</span>
+                <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#94a3b8' }}>
+                  <span>{seq.steps.length} steps</span>
+                  <span>{seq.enrolledCount} contacts</span>
                 </div>
               </div>
             );
@@ -373,110 +657,250 @@ export default function SequenceBuilder({ sequences, onAddSequence, onUpdateSequ
         </div>
       </div>
 
-      {/* Main area */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        {/* Create new sequence panel */}
-        {creating && (
-          <div style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#fafafa' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Create New Sequence</h3>
-              <button onClick={() => setCreating(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={18} color="#94a3b8" /></button>
+      {/* ── Center: sequence editor ───────────────────────────────────────────── */}
+      {selected ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input value={selected.name} onChange={e => { onUpdateSequence(selected.id, { name: e.target.value }); setSelected(p => p ? { ...p, name: e.target.value } : p); }}
+                  style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', border: 'none', outline: 'none', flex: 1, minWidth: 0, fontFamily: 'inherit', backgroundColor: 'transparent' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{selected.steps.length} steps</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>·</span>
+                <span style={{ fontSize: 11, color: statusColor[selected.status], fontWeight: 600, textTransform: 'capitalize' }}>{selected.status}</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Sequence Name (optional)</label>
-                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Trial User Conversion Sequence"
-                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
-                  Describe your goal {apiKey ? <span style={{ color: '#16a34a', fontSize: '11px' }}>· AI will generate the sequence</span> : <span style={{ color: '#94a3b8', fontSize: '11px' }}>· Smart templates will be used</span>}
-                </label>
-                <textarea value={goal} onChange={e => setGoal(e.target.value)} rows={3}
-                  placeholder="e.g. Create a 5-email sequence for new SaaS trial users to convert them to paid customers within 14 days"
-                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5 }} />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setCreating(false)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
-                <button onClick={handleGenerate} disabled={generating}
-                  style={{ padding: '9px 20px', backgroundColor: generating ? '#c4b5fd' : '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {generating ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</> : <><Zap size={14} /> {apiKey ? 'Generate with AI' : 'Generate Sequence'}</>}
-                </button>
-              </div>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button onClick={() => setCollapseSteps(p => !p)}
+                style={{ padding: '7px 12px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: '#64748b', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                {collapseSteps ? <ChevronDown size={13} /> : <ChevronUp size={13} />} {collapseSteps ? 'Expand' : 'Collapse'}
+              </button>
+              <button onClick={toggleStatus}
+                style={{ padding: '7px 14px', border: 'none', borderRadius: 8, backgroundColor: selected.status === 'active' ? '#fef3c7' : '#6366f1', color: selected.status === 'active' ? '#d97706' : 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                {selected.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> {selected.status === 'paused' ? 'Resume' : 'Activate'}</>}
+              </button>
+              <button onClick={() => { if (window.confirm(`Delete "${selected.name}"?`)) { onDeleteSequence(selected.id); setSelected(null); setActiveStep(null); } }}
+                style={{ padding: '7px 10px', border: '1px solid #fecaca', borderRadius: 8, backgroundColor: 'white', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <Trash2 size={13} />
+              </button>
             </div>
           </div>
-        )}
 
-        {/* Sequence editor */}
-        {selected ? (
-          <div style={{ padding: '24px', flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div>
-                <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>{selected.name}</h2>
-                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
-                  <Clock size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  {selected.steps.length} emails · spans {selected.steps[selected.steps.length - 1]?.day || 0} days
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => onDeleteSequence(selected.id)}
-                  style={{ padding: '8px 14px', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Trash2 size={14} /> Delete
-                </button>
-                {selected.status !== 'active' ? (
-                  <button onClick={() => { onActivateSequence(selected); onUpdateSequence(selected.id, { status: 'active' }); setSelected(p => p ? { ...p, status: 'active' } : p); }}
-                    style={{ padding: '8px 18px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Play size={14} /> Activate Sequence
-                  </button>
-                ) : (
-                  <button onClick={() => { onUpdateSequence(selected.id, { status: 'paused' }); setSelected(p => p ? { ...p, status: 'paused' } : p); }}
-                    style={{ padding: '8px 18px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Pause size={14} /> Pause
-                  </button>
+          {/* Tab bar */}
+          <div style={{ display: 'flex', gap: 0, padding: '0 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', flexShrink: 0 }}>
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '10px 14px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#6366f1' : '#64748b', fontSize: 12, fontWeight: tab === t.id ? 600 : 500, cursor: 'pointer', marginBottom: -1 }}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+            {tab === 'editor' && (
+              <>
+                {/* Steps list */}
+                {!collapseSteps && (
+                  <div style={{ width: 220, flexShrink: 0, borderRight: '1px solid #e2e8f0', overflowY: 'auto', backgroundColor: '#fafafa', padding: '10px 8px' }}>
+                    <StatsBar stats={selected.stats} />
+                    {selected.steps.map((step, idx) => {
+                      const cfg = stepTypeCfg(step.type);
+                      const isAct = step.id === (activeStepObj?.id ?? null);
+                      return (
+                        <div key={step.id}>
+                          <div onClick={() => setActiveStep(step.id)}
+                            style={{ padding: '9px 10px', borderRadius: 8, cursor: 'pointer', backgroundColor: isAct ? '#ede9fe' : 'white', border: `1px solid ${isAct ? '#c4b5fd' : '#e2e8f0'}`, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: cfg.color }}>
+                              {cfg.icon}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Step {idx + 1}</div>
+                              <div style={{ fontSize: 10, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cfg.label}</div>
+                              <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                                {step.day === 0 ? 'Immediately' : `After ${step.day} ${step.waitUnit}`}
+                              </div>
+                            </div>
+                            <button onClick={e => { e.stopPropagation(); deleteStep(step.id); }}
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, color: '#94a3b8', display: 'flex', opacity: 0, position: 'absolute', right: 4, top: 4 }}
+                              onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                              onMouseLeave={e => e.currentTarget.style.opacity = '0'}>
+                              <X size={10} />
+                            </button>
+                          </div>
+                          {idx < selected.steps.length - 1 && (
+                            <div style={{ width: 2, height: 12, backgroundColor: '#e2e8f0', margin: '0 0 2px 22px' }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Add step dropdown */}
+                    <AddStepButton onAdd={addStep} />
+                  </div>
                 )}
-              </div>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {selected.steps.map((step, idx) => (
-                <div key={step.id}>
-                  <StepCard
-                    step={step} index={idx} total={selected.steps.length}
-                    onUpdate={updated => updateStep(selected.id, step.id, updated)}
-                    onDelete={() => deleteStep(selected.id, step.id)}
-                    onMoveUp={() => moveStep(selected.id, idx, -1)}
-                    onMoveDown={() => moveStep(selected.id, idx, 1)}
-                  />
-                  {idx < selected.steps.length - 1 && (
-                    <div style={{ display: 'flex', alignItems: 'center', padding: '6px 0 6px 24px', gap: '8px' }}>
-                      <div style={{ width: '2px', height: '24px', backgroundColor: '#e2e8f0', marginLeft: '17px' }} />
+                {/* Step editing area */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+                  {activeStepObj ? (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: stepTypeCfg(activeStepObj.type).bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: stepTypeCfg(activeStepObj.type).color }}>
+                          {stepTypeCfg(activeStepObj.type).icon}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Step {selected.steps.findIndex(s => s.id === activeStepObj.id) + 1} · {stepTypeCfg(activeStepObj.type).label}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{activeStepObj.day === 0 ? 'Sends immediately' : `Sends after ${activeStepObj.day} ${activeStepObj.waitUnit}`}</div>
+                        </div>
+                      </div>
+                      <StepEditorPanel step={activeStepObj} seqId={selected.id} contacts={contacts} onChange={updates => updateStep(activeStepObj.id, updates)} />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', gap: 12 }}>
+                      <Mail size={36} style={{ opacity: 0.3 }} />
+                      <p style={{ fontSize: 13 }}>Select a step to edit it</p>
                     </div>
                   )}
                 </div>
-              ))}
+              </>
+            )}
+
+            {tab === 'activity' && (
+              <ActivityLog activity={selected.activity ?? []} />
+            )}
+            {tab === 'contacts' && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+                <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Contacts enrolled in this sequence.</p>
+                {contacts.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', border: '1px dashed #e2e8f0', borderRadius: 12 }}>
+                    <Users size={28} style={{ display: 'block', margin: '0 auto 10px', opacity: 0.3 }} />
+                    <p style={{ fontSize: 13, margin: 0 }}>No contacts enrolled yet.</p>
+                  </div>
+                ) : contacts.slice(0, 20).map(c => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: '1px solid #f1f5f9', borderRadius: 8, marginBottom: 6, backgroundColor: 'white' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                      {c.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{c.email}</div>
+                    </div>
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, backgroundColor: '#ecfdf5', color: '#16a34a', fontWeight: 600 }}>Active</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tab === 'report' && (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#94a3b8' }}>
+                <BarChart2 size={40} style={{ opacity: 0.25 }} />
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#64748b' }}>No data at the moment...</div>
+                <p style={{ fontSize: 13, textAlign: 'center', maxWidth: 300, margin: 0 }}>To see the Report — launch your Sequence. Then, once a few emails are delivered, your report will appear.</p>
+              </div>
+            )}
+            {tab === 'settings' && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: 20, maxWidth: 480 }}>
+                <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Sequence Settings</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {[
+                    { label: 'Stop on reply', checked: true, desc: 'Remove contacts from sequence when they reply' },
+                    { label: 'Stop on bounce', checked: true, desc: 'Remove contacts from sequence when email bounces' },
+                    { label: 'Respect time zones', checked: false, desc: 'Send emails in the recipient\'s local time zone' },
+                    { label: 'Business hours only', checked: true, desc: 'Only send emails during business hours (9am–5pm)' },
+                  ].map(s => (
+                    <div key={s.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: '1px solid #f1f5f9', borderRadius: 8, backgroundColor: 'white' }}>
+                      <input type="checkbox" defaultChecked={s.checked} style={{ marginTop: 2, accentColor: '#6366f1', cursor: 'pointer' }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{s.label}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{s.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: 14 }}>
+          <Inbox size={44} style={{ opacity: 0.25 }} />
+          <h3 style={{ fontSize: 17, fontWeight: 600, color: '#64748b', margin: 0 }}>Email Sequence Builder</h3>
+          <p style={{ fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 1.6, margin: 0 }}>
+            Create outbound email sequences with AI, templates, or from scratch. Automate multi-step outreach across email, phone, and LinkedIn.
+          </p>
+          <button onClick={() => setShowCreate(true)}
+            style={{ padding: '10px 22px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Plus size={16} /> Create First Sequence
+          </button>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showCreate && <CreateModal onSelect={handleCreateMode} onClose={() => setShowCreate(false)} />}
+      {showTemplate && <TemplateModal onSelect={handleTemplateSelect} onClose={() => setShowTemplate(false)} />}
+      {showAIForm && <AIGeneratorForm onGenerate={handleAIGenerate} onClose={() => setShowAIForm(false)} />}
+    </div>
+  );
+}
+
+// ── Add Step button ────────────────────────────────────────────────────────────
+function AddStepButton({ onAdd }: { onAdd: (type: StepType) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: 'relative', marginTop: 8 }}>
+      <button onClick={() => setOpen(p => !p)}
+        style={{ width: '100%', padding: '8px', border: '2px dashed #d1d5db', borderRadius: 8, backgroundColor: 'transparent', cursor: 'pointer', fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, transition: 'all 0.15s' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#6366f1'; (e.currentTarget as HTMLButtonElement).style.color = '#6366f1'; }}
+        onMouseLeave={e => { if (!open) { (e.currentTarget as HTMLButtonElement).style.borderColor = '#d1d5db'; (e.currentTarget as HTMLButtonElement).style.color = '#94a3b8'; } }}>
+        <Plus size={13} /> Add a step
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden', marginTop: 4 }}>
+            {STEP_TYPES.map(t => (
+              <button key={t.id} onClick={() => { onAdd(t.id); setOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#374151', textAlign: 'left' }}
+                onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f8fafc'}
+                onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.color, flexShrink: 0 }}>{t.icon}</div>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Activity Log ───────────────────────────────────────────────────────────────
+function ActivityLog({ activity }: { activity: SequenceActivity[] }) {
+  const mock: SequenceActivity[] = activity.length > 0 ? activity : [
+    { id: '1', text: 'You added 2 contacts to the sequence.', timestamp: new Date(Date.now() - 3600000).toISOString() },
+    { id: '2', text: 'You turned on the sequence.', timestamp: new Date(Date.now() - 3500000).toISOString() },
+    { id: '3', text: 'You turned on the automatic email task in Step 1.', timestamp: new Date(Date.now() - 3400000).toISOString() },
+    { id: '4', text: 'You edited the Automatic Email in Step 1.', timestamp: new Date(Date.now() - 3300000).toISOString() },
+    { id: '5', text: 'You turned on the automatic email task in Step 2.', timestamp: new Date(Date.now() - 3200000).toISOString() },
+    { id: '6', text: 'You edited the Automatic Email in Step 2.', timestamp: new Date(Date.now() - 3100000).toISOString() },
+  ];
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {mock.map((a, i) => (
+          <div key={a.id} style={{ display: 'flex', gap: 12, paddingBottom: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#6366f1', marginTop: 4 }} />
+              {i < mock.length - 1 && <div style={{ width: 2, flex: 1, backgroundColor: '#e2e8f0', marginTop: 4 }} />}
             </div>
-
-            <button onClick={() => addBlankStep(selected.id)}
-              style={{ marginTop: '16px', width: '100%', padding: '11px', border: '2px dashed #e2e8f0', borderRadius: '10px', backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', color: '#6366f1', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
-              <Plus size={15} /> Add Email Step
-            </button>
+            <div>
+              <div style={{ fontSize: 13, color: '#374151' }}>{a.text}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
           </div>
-        ) : !creating && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', padding: '48px' }}>
-            <Zap size={48} style={{ marginBottom: '16px', opacity: 0.3 }} />
-            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#64748b', margin: '0 0 8px' }}>AI Email Sequence Builder</h3>
-            <p style={{ fontSize: '14px', textAlign: 'center', maxWidth: '360px', lineHeight: 1.6, margin: 0 }}>
-              Create professional email sequences in seconds. Describe your goal and {apiKey ? 'Claude AI' : 'smart templates'} will generate compelling copy ready to send.
-            </p>
-            <button onClick={() => setCreating(true)}
-              style={{ marginTop: '24px', padding: '11px 24px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Zap size={16} /> Create First Sequence
-            </button>
-          </div>
-        )}
+        ))}
       </div>
-
-      {showApiModal && <ApiKeyModal onClose={() => setShowApiModal(false)} onSave={handleSaveKey} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox, Shield, Check, ToggleLeft, ToggleRight } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ContactImport from './ContactImport';
@@ -191,9 +191,189 @@ function CampaignsTab() {
   );
 }
 
+/* ─── Deliverability Tab ─── */
+
+type WarmupType = 'progressive' | 'flat' | 'randomize';
+
+function DeliverabilityTab() {
+  const [mailboxes] = useState([
+    { email: 'you@yourdomain.com', type: 'Gmail', warmup: true, warmupOn: true, dailyLimit: 40, sent: 12, deliverability: 94, lastSync: 'Just now' },
+  ]);
+  const [showWarmupModal, setShowWarmupModal] = useState(false);
+  const [warmupType, setWarmupType] = useState<WarmupType>('progressive');
+  const [minEmails, setMinEmails] = useState(10);
+  const [maxEmails, setMaxEmails] = useState(40);
+  const [replyPct, setReplyPct] = useState(30);
+  const [continuous, setContinuous] = useState(true);
+  const [endDate, setEndDate] = useState('');
+
+  const warmupDescriptions: Record<WarmupType, { label: string; desc: string }> = {
+    progressive: { label: 'Progressive', desc: 'The number of emails sent per day will gradually increase.' },
+    flat:        { label: 'Flat',        desc: 'The number of emails sent each day will be exactly the same.' },
+    randomize:   { label: 'Randomize',   desc: 'The number of emails and each day will not be determined.' },
+  };
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: 820 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Deliverability Suite</h2>
+        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Warm up your mailboxes to improve deliverability and avoid the spam folder.</p>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
+        {[
+          { label: 'Connected Mailboxes', value: mailboxes.length, color: '#6366f1', icon: <Inbox size={18} color="#6366f1" /> },
+          { label: 'Warming Up', value: mailboxes.filter(m => m.warmupOn).length, color: '#f59e0b', icon: <Zap size={18} color="#f59e0b" /> },
+          { label: 'Avg Deliverability', value: `${mailboxes.reduce((s, m) => s + m.deliverability, 0) / (mailboxes.length || 1)}%`, color: '#22c55e', icon: <Shield size={18} color="#22c55e" /> },
+          { label: 'Emails Today', value: mailboxes.reduce((s, m) => s + m.sent, 0), color: '#3b82f6', icon: <Mail size={18} color="#3b82f6" /> },
+        ].map(item => (
+          <div key={item.label} style={{ backgroundColor: 'white', borderRadius: 12, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
+            <div>
+              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 3px', fontWeight: 500 }}>{item.label}</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>{item.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Mailbox list */}
+      <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>My mailboxes</span>
+          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            <Plus size={13} /> Link mailbox
+          </button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f8fafc' }}>
+              {['Mailbox', 'Type', 'Setup', 'Warmup', 'Daily limit', 'Sent today', 'Deliverability', 'Last sync'].map(h => (
+                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {mailboxes.map(m => (
+              <tr key={m.email} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{m.email}</td>
+                <td style={{ padding: '12px 14px' }}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, backgroundColor: '#dbeafe', color: '#1d4ed8', fontWeight: 600 }}>{m.type}</span></td>
+                <td style={{ padding: '12px 14px' }}><span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#16a34a' }}><Check size={12} /> Connected</span></td>
+                <td style={{ padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button onClick={() => setShowWarmupModal(true)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 7, backgroundColor: m.warmupOn ? '#fffbeb' : 'white', color: m.warmupOn ? '#d97706' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                      {m.warmupOn ? <ToggleRight size={13} color="#f59e0b" /> : <ToggleLeft size={13} />}
+                      {m.warmupOn ? 'On' : 'Off'}
+                    </button>
+                    {m.warmupOn && <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>✓ WIth Completed</span>}
+                  </div>
+                </td>
+                <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>{m.dailyLimit}</td>
+                <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>{m.sent} / {m.dailyLimit}</td>
+                <td style={{ padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 50, height: 5, backgroundColor: '#e2e8f0', borderRadius: 3 }}>
+                      <div style={{ height: '100%', width: `${m.deliverability}%`, backgroundColor: m.deliverability >= 90 ? '#22c55e' : m.deliverability >= 70 ? '#f59e0b' : '#ef4444', borderRadius: 3 }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: m.deliverability >= 90 ? '#16a34a' : '#d97706' }}>{m.deliverability}%</span>
+                  </div>
+                </td>
+                <td style={{ padding: '12px 14px', fontSize: 12, color: '#94a3b8' }}>{m.lastSync}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Tips */}
+      <div style={{ backgroundColor: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '16px 20px' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 10 }}>💡 Deliverability Tips</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[
+            'Start slow — under 20 emails/day for the first week.',
+            'Keep reply rate above 25% during warmup.',
+            'Avoid spam trigger words in subject lines.',
+            'Set up SPF, DKIM, and DMARC on your domain.',
+          ].map(tip => (
+            <div key={tip} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <Check size={13} color="#d97706" style={{ marginTop: 2, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: '#78350f' }}>{tip}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Warmup settings modal */}
+      {showWarmupModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowWarmupModal(false)}>
+          <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 580, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Warm up your mailbox with Apollo</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Inbox Warmup improves email deliverability by increasing outbound email volume over time via the automation of scheduled emails.</div>
+              </div>
+              <button onClick={() => setShowWarmupModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><Shield size={18} /></button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Warmup type */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Select your warmup options</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                  {(['progressive', 'flat', 'randomize'] as WarmupType[]).map(t => (
+                    <button key={t} onClick={() => setWarmupType(t)}
+                      style={{ padding: '12px 10px', border: `2px solid ${warmupType === t ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: warmupType === t ? '#eef2ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
+                      {warmupType === t && <Check size={14} color="#6366f1" style={{ display: 'block', margin: '0 auto 4px' }} />}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: warmupType === t ? '#4f46e5' : '#374151', textTransform: 'capitalize' }}>{warmupDescriptions[t].label}</div>
+                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, lineHeight: 1.3 }}>{warmupDescriptions[t].desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Settings grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+                {[
+                  { label: 'Warm up to (end)', value: endDate, isDate: true, onChange: (v: string) => setEndDate(v) },
+                  { label: 'Min emails/day', value: minEmails, min: 1, max: 20, onChange: (v: string) => setMinEmails(parseInt(v)) },
+                  { label: 'Max emails/day', value: maxEmails, min: 10, max: 100, onChange: (v: string) => setMaxEmails(parseInt(v)) },
+                  { label: 'Reply rate %', value: replyPct, min: 10, max: 80, onChange: (v: string) => setReplyPct(parseInt(v)) },
+                ].map(f => (
+                  <div key={f.label}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{f.label}</label>
+                    <input type={f.isDate ? 'date' : 'number'} value={f.value} min={(f as { min?: number }).min} max={(f as { max?: number }).max}
+                      onChange={e => f.onChange(e.target.value)}
+                      style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                    {!f.isDate && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>{(f as { min?: number }).min ? `Recommended: ${(f as { min?: number }).min}–${(f as { max?: number }).max}` : ''}</div>}
+                  </div>
+                ))}
+              </div>
+              {/* Continuous warmup */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={continuous} onChange={e => setContinuous(e.target.checked)} style={{ marginTop: 3, accentColor: '#6366f1', cursor: 'pointer' }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Continuous warmup</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Continuous warmup keeps sending warmup emails after your scheduled end date to maintain deliverability.</div>
+                </div>
+              </label>
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setShowWarmupModal(false)} style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', backgroundColor: 'white' }}>Skip step</button>
+              <button onClick={() => setShowWarmupModal(false)}
+                style={{ padding: '8px 18px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Warm up mailbox
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Tab definitions ─── */
 
-type TabId = 'campaigns' | 'import' | 'sequences' | 'automations';
+type TabId = 'campaigns' | 'import' | 'sequences' | 'automations' | 'deliverability';
 
 /* ─── Root component ─── */
 
@@ -215,10 +395,11 @@ export default function Marketing() {
   const activeAutoCount = automations.filter(a => a.status === 'active').length;
 
   const tabs: { id: TabId; label: string; icon: React.ReactElement; badge?: number }[] = [
-    { id: 'campaigns', label: 'Campaigns', icon: <Mail size={15} /> },
-    { id: 'import', label: 'Import Contacts', icon: <Upload size={15} /> },
-    { id: 'sequences', label: 'Email Sequences', icon: <Zap size={15} />, badge: activeSeqCount || undefined },
-    { id: 'automations', label: 'Automations', icon: <GitBranch size={15} />, badge: activeAutoCount || undefined },
+    { id: 'campaigns',      label: 'Campaigns',      icon: <Mail size={15} /> },
+    { id: 'sequences',      label: 'Sequences',       icon: <Zap size={15} />, badge: activeSeqCount || undefined },
+    { id: 'automations',    label: 'Automations',     icon: <GitBranch size={15} />, badge: activeAutoCount || undefined },
+    { id: 'deliverability', label: 'Deliverability',  icon: <Shield size={15} /> },
+    { id: 'import',         label: 'Import Contacts', icon: <Upload size={15} /> },
   ];
 
   return (
@@ -255,12 +436,16 @@ export default function Marketing() {
         {activeTab === 'sequences' && (
           <SequenceBuilder
             sequences={sequences}
+            contacts={contacts}
             onAddSequence={addSequence}
             onUpdateSequence={updateSequence}
             onDeleteSequence={deleteSequence}
             onActivateSequence={handleActivateSequence}
             onNotify={addNotification}
           />
+        )}
+        {activeTab === 'deliverability' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}><DeliverabilityTab /></div>
         )}
         {activeTab === 'automations' && (
           <AutomationBuilder

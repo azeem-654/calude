@@ -1,9 +1,41 @@
+export type StepType = 'auto_email' | 'manual_email' | 'phone_call' | 'li_connect' | 'li_message' | 'li_view' | 'li_interact';
+
+export interface StepVariant {
+  subject: string;
+  body: string;
+}
+
 export interface EmailStep {
   id: string;
   day: number;
+  waitUnit: 'hours' | 'days';
+  type: StepType;
   subject: string;
   body: string;
+  variantB?: StepVariant;
+  abEnabled?: boolean;
   followUpRule: string;
+  taskNote?: string;
+  taskPriority?: 'low' | 'medium' | 'high';
+}
+
+export interface SequenceStats {
+  active: number;
+  paused: number;
+  finished: number;
+  bounced: number;
+  notSent: number;
+  scheduled: number;
+  delivered: number;
+  replied: number;
+  interested: number;
+  optedOut: number;
+}
+
+export interface SequenceActivity {
+  id: string;
+  text: string;
+  timestamp: string;
 }
 
 export interface EmailSequence {
@@ -14,6 +46,8 @@ export interface EmailSequence {
   status: 'draft' | 'active' | 'paused';
   createdAt: string;
   enrolledCount: number;
+  stats?: SequenceStats;
+  activity?: SequenceActivity[];
 }
 
 export type AutomationNodeType =
