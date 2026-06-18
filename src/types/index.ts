@@ -178,7 +178,7 @@ export interface FunnelBlock {
 export interface FunnelStep {
   id: string;
   name: string;
-  type: 'landing' | 'optin' | 'sales' | 'thankyou' | 'order' | 'webinar' | 'custom';
+  type: 'landing' | 'optin' | 'sales' | 'thankyou' | 'order' | 'webinar' | 'custom' | 'checkout' | 'upsell' | 'downsell' | 'survey';
   slug: string;
   blocks: FunnelBlock[];
   visitors: number;

@@ -1,14 +1,326 @@
 import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  X, Save, Eye, EyeOff, Monitor, Tablet, Smartphone,
+  X, Save, Eye, EyeOff,
   Plus, Trash2, Copy, ChevronUp, ChevronDown,
-  Type, AlignLeft, MousePointerClick, Minus,
-  Layers, Star, Check, Undo2, Redo2,
-  Settings, Navigation, Timer, Layout, Search,
+  Check, Undo2, Redo2,
+  Settings, Search, GitBranch, BarChart2, Users, ShoppingCart,
+  Mail, Phone, MousePointerClick, Heart, ArrowRight, List,
 } from 'lucide-react';
 import type { Funnel, FunnelStep, FunnelBlock } from '../../types';
 import { useHistory } from '../../hooks/useHistory';
+
+/* ─── Step type config ─── */
+const STEP_TYPE_CONFIG: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
+  optin:    { emoji: '📧', color: '#6366f1', bg: '#f5f3ff', label: 'Opt-in' },
+  sales:    { emoji: '💰', color: '#22c55e', bg: '#f0fdf4', label: 'Sales Page' },
+  checkout: { emoji: '🛒', color: '#f59e0b', bg: '#fffbeb', label: 'Order Form' },
+  upsell:   { emoji: '⬆️', color: '#8b5cf6', bg: '#f5f3ff', label: 'Upsell' },
+  downsell: { emoji: '⬇️', color: '#64748b', bg: '#f8fafc', label: 'Downsell' },
+  thankyou: { emoji: '🎉', color: '#ec4899', bg: '#fdf2f8', label: 'Thank You' },
+  webinar:  { emoji: '🎤', color: '#0ea5e9', bg: '#f0f9ff', label: 'Webinar' },
+  survey:   { emoji: '📋', color: '#f97316', bg: '#fff7ed', label: 'Survey' },
+  landing:  { emoji: '🏠', color: '#14b8a6', bg: '#f0fdfa', label: 'Landing' },
+  custom:   { emoji: '📄', color: '#64748b', bg: '#f8fafc', label: 'Page' },
+};
+
+/* ─── Funnel Steps Overview (ClickFunnels-style) ─── */
+
+interface FunnelOverviewProps {
+  funnel: Funnel;
+  pages: FunnelStep[];
+  onEditPage: (pageId: string) => void;
+  onAddPage: () => void;
+  onDeletePage: (id: string) => void;
+  onRenamePage: (id: string, name: string) => void;
+  onReorderPage: (from: number, to: number) => void;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, onRenamePage, onClose, onSave }: FunnelOverviewProps) {
+  const [activeStep, setActiveStep] = useState(pages[0]?.id ?? '');
+  const [headerTab, setHeaderTab] = useState<'steps' | 'stats' | 'contacts' | 'sales' | 'settings'>('steps');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newStepName, setNewStepName] = useState('');
+  const [newStepType, setNewStepType] = useState<FunnelStep['type']>('landing');
+  const [splitTestPage, setSplitTestPage] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState('');
+
+  const step = pages.find(p => p.id === activeStep) ?? pages[0];
+  const stepConfig = step ? (STEP_TYPE_CONFIG[step.type] ?? STEP_TYPE_CONFIG.custom) : null;
+
+  const STEP_TYPES: { type: FunnelStep['type']; label: string }[] = [
+    { type: 'optin', label: 'Opt-in Page' },
+    { type: 'sales', label: 'Sales Page' },
+    { type: 'checkout', label: 'Order Form' },
+    { type: 'upsell', label: 'OTO / Upsell' },
+    { type: 'downsell', label: 'Downsell' },
+    { type: 'thankyou', label: 'Thank You' },
+    { type: 'webinar', label: 'Webinar' },
+    { type: 'survey', label: 'Survey' },
+    { type: 'landing', label: 'Content Page' },
+    { type: 'custom', label: 'Blank Page' },
+  ];
+
+  function handleAddStep() {
+    if (!newStepName.trim()) return;
+    onAddPage();
+    setShowAddModal(false);
+    setNewStepName('');
+    setNewStepType('landing');
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', flexDirection: 'column', background: '#f8fafc', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {/* Top bar */}
+      <div style={{ height: 52, background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12, flexShrink: 0 }}>
+        <button onClick={onClose} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>← Back</button>
+        <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15 }}>{funnel.name}</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onSave} style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Save size={13} /> Save
+        </button>
+      </div>
+
+      {/* Header tabs */}
+      <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', padding: '0 24px', gap: 0 }}>
+        {(['steps', 'stats', 'contacts', 'sales', 'settings'] as const).map(tab => (
+          <button key={tab} onClick={() => setHeaderTab(tab)}
+            style={{ padding: '12px 18px', border: 'none', borderBottom: `2px solid ${headerTab === tab ? '#6366f1' : 'transparent'}`, background: 'transparent', color: headerTab === tab ? '#6366f1' : '#64748b', fontSize: '13px', fontWeight: headerTab === tab ? 700 : 500, cursor: 'pointer', textTransform: 'capitalize', marginBottom: '-1px' }}>
+            {tab === 'steps' ? '⚡ Steps' : tab === 'stats' ? '📊 Stats' : tab === 'contacts' ? '👥 Contacts' : tab === 'sales' ? '💰 Sales' : '⚙️ Settings'}
+          </button>
+        ))}
+      </div>
+
+      {headerTab === 'steps' && (
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* Left: Steps sidebar */}
+          <div style={{ width: '240px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid #f1f5f9', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Funnel Steps
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+              {pages.map((page, idx) => {
+                const cfg = STEP_TYPE_CONFIG[page.type] ?? STEP_TYPE_CONFIG.custom;
+                const isActive = page.id === activeStep;
+                return (
+                  <div key={page.id} onClick={() => setActiveStep(page.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px', marginBottom: '4px', backgroundColor: isActive ? '#f5f3ff' : 'transparent', border: isActive ? `1px solid ${cfg.color}40` : '1px solid transparent', cursor: 'pointer' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0, border: `1px solid ${cfg.color}30` }}>
+                      {cfg.emoji}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {renamingId === page.id ? (
+                        <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                          onBlur={() => { onRenamePage(page.id, renameVal || page.name); setRenamingId(null); }}
+                          onKeyDown={e => { if (e.key === 'Enter') { onRenamePage(page.id, renameVal || page.name); setRenamingId(null); } }}
+                          onClick={e => e.stopPropagation()}
+                          style={{ width: '100%', border: 'none', background: 'transparent', fontSize: '12px', fontWeight: 700, outline: '1px solid #6366f1', borderRadius: '3px', padding: '1px 2px' }} />
+                      ) : (
+                        <div style={{ fontSize: '12px', fontWeight: isActive ? 700 : 500, color: isActive ? '#4f46e5' : '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.name}</div>
+                      )}
+                      <div style={{ fontSize: '10px', color: cfg.color, fontWeight: 600, marginTop: '1px' }}>{cfg.label}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                      <button onClick={e => { e.stopPropagation(); setRenamingId(page.id); setRenameVal(page.name); }}
+                        style={{ padding: '3px', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '12px' }}>✏️</button>
+                      {pages.length > 1 && (
+                        <button onClick={e => { e.stopPropagation(); onDeletePage(page.id); }}
+                          style={{ padding: '3px', border: 'none', background: 'none', cursor: 'pointer', color: '#f87171', fontSize: '12px' }}>🗑</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
+              <button onClick={() => setShowAddModal(true)}
+                style={{ width: '100%', padding: '9px', border: '2px dashed #c4b5fd', borderRadius: '8px', background: 'transparent', color: '#6366f1', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <Plus size={13} /> ADD NEW STEP
+              </button>
+            </div>
+          </div>
+
+          {/* Right: Step overview */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px' }}>
+            {step && stepConfig && (
+              <div>
+                {/* Step header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '28px' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: stepConfig.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', border: `1px solid ${stepConfig.color}30` }}>
+                    {stepConfig.emoji}
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{step.name}</h2>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '3px 0 0' }}>/{step.slug} · {stepConfig.label}</p>
+                  </div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+                    <button style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Eye size={14} /> Preview
+                    </button>
+                    <button onClick={() => onEditPage(step.id)}
+                      style={{ padding: '8px 20px', border: 'none', borderRadius: '8px', background: '#6366f1', color: 'white', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      ✏️ Edit Page
+                    </button>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '28px' }}>
+                  {[
+                    { label: 'Visitors', value: step.visitors.toLocaleString(), color: '#6366f1' },
+                    { label: 'Conversions', value: step.conversions.toLocaleString(), color: '#22c55e' },
+                    { label: 'Conversion Rate', value: step.visitors > 0 ? `${((step.conversions / step.visitors) * 100).toFixed(1)}%` : '0%', color: '#f59e0b' },
+                  ].map(m => (
+                    <div key={m.label} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                      <p style={{ fontSize: '22px', fontWeight: 800, color: m.color, margin: '0 0 4px' }}>{m.value}</p>
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>{m.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Variants panel */}
+                <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: '24px' }}>
+                  <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Page Variants</span>
+                      <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>Split test your page to maximize conversions</span>
+                    </div>
+                    {splitTestPage !== step.id && (
+                      <button onClick={() => setSplitTestPage(step.id)}
+                        style={{ padding: '7px 14px', border: '1px solid #6366f1', borderRadius: '7px', background: 'white', color: '#6366f1', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <GitBranch size={13} /> Start Split Test
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ padding: '20px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    {/* Control variant */}
+                    <div style={{ flex: '0 0 200px' }}>
+                      <div style={{ height: '130px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '2px solid #6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${stepConfig.bg}, white)`, opacity: 0.7 }} />
+                        <div style={{ position: 'relative', textAlign: 'center' }}>
+                          <div style={{ fontSize: '28px', marginBottom: '4px' }}>{stepConfig.emoji}</div>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: stepConfig.color }}>Control</div>
+                        </div>
+                        <div style={{ position: 'absolute', top: '6px', left: '6px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#6366f1', color: 'white', fontSize: '10px', fontWeight: 700 }}>100%</div>
+                      </div>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>Control</div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>{step.visitors} visitors</div>
+                    </div>
+
+                    {/* Variation (if split test active) */}
+                    {splitTestPage === step.id && (
+                      <div style={{ flex: '0 0 200px' }}>
+                        <div style={{ height: '130px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '2px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                          <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+                            <Plus size={24} style={{ marginBottom: '4px' }} />
+                            <div style={{ fontSize: '11px', fontWeight: 600 }}>Variation B</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>Variation B</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>0 visitors</div>
+                      </div>
+                    )}
+
+                    {splitTestPage !== step.id && (
+                      <div style={{ flex: '0 0 200px' }}>
+                        <div onClick={() => setSplitTestPage(step.id)} style={{ height: '130px', borderRadius: '8px', border: '2px dashed #c4b5fd', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '10px', backgroundColor: '#f5f3ff' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#ede9fe'}
+                          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f5f3ff'}>
+                          <div style={{ textAlign: 'center', color: '#7c3aed' }}>
+                            <Plus size={20} style={{ marginBottom: '4px' }} />
+                            <div style={{ fontSize: '11px', fontWeight: 700 }}>Create Variation</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>Add a B variant to split test</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Page blocks summary */}
+                <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '16px 20px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '12px' }}>Page Contents</div>
+                  {(step.blocks ?? []).length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                      <div style={{ fontSize: '24px', marginBottom: '8px' }}>📝</div>
+                      <div style={{ fontSize: '13px' }}>No content yet. Click "Edit Page" to start building.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(step.blocks ?? []).map((b, i) => (
+                        <span key={b.id} style={{ padding: '3px 10px', borderRadius: '20px', backgroundColor: '#f1f5f9', color: '#374151', fontSize: '12px', fontWeight: 500 }}>{b.type}</span>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => onEditPage(step.id)}
+                    style={{ marginTop: '14px', width: '100%', padding: '9px', border: '1px solid #6366f1', borderRadius: '8px', background: '#f5f3ff', color: '#6366f1', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+                    ✏️ Open Page Editor
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {headerTab !== 'steps' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '36px', marginBottom: '12px' }}>
+              {headerTab === 'stats' ? '📊' : headerTab === 'contacts' ? '👥' : headerTab === 'sales' ? '💰' : '⚙️'}
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
+              {headerTab.charAt(0).toUpperCase() + headerTab.slice(1)}
+            </div>
+            <div style={{ fontSize: '13px' }}>No data available yet</div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Step Modal */}
+      {showAddModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600 }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '28px', width: '460px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Add New Step</h3>
+              <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={18} /></button>
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Step Name</label>
+              <input autoFocus value={newStepName} onChange={e => setNewStepName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddStep()}
+                placeholder="e.g. Sales Page"
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Page Type</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                {STEP_TYPES.map(t => {
+                  const cfg = STEP_TYPE_CONFIG[t.type] ?? STEP_TYPE_CONFIG.custom;
+                  return (
+                    <button key={t.type} onClick={() => setNewStepType(t.type)}
+                      style={{ padding: '10px', border: `2px solid ${newStepType === t.type ? cfg.color : '#e2e8f0'}`, borderRadius: '8px', background: newStepType === t.type ? cfg.bg : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, color: newStepType === t.type ? cfg.color : '#374151' }}>
+                      <span style={{ fontSize: '16px' }}>{cfg.emoji}</span>{t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
+              <button onClick={handleAddStep} disabled={!newStepName.trim()}
+                style={{ flex: 2, padding: '10px', background: newStepName.trim() ? '#6366f1' : '#e2e8f0', color: newStepName.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: newStepName.trim() ? 'pointer' : 'not-allowed' }}>
+                Add Step
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 let DRAG_TYPE: 'new' | 'move' | null = null;
 let DRAG_PAYLOAD = '';
@@ -695,6 +1007,7 @@ interface FunnelBuilderProps {
 export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilderProps) {
   const initialPages = funnel.pages && funnel.pages.length > 0 ? funnel.pages : [mkPage('Home')];
   const { state: pages, push: pushHistory, undo, redo, canUndo, canRedo } = useHistory<FunnelStep[]>(initialPages);
+  const [editorMode, setEditorMode] = useState<'overview' | 'page-editor'>('overview');
   const setPages = useCallback((updater: FunnelStep[] | ((prev: FunnelStep[]) => FunnelStep[])) => {
     if (typeof updater === 'function') { pushHistory(updater(pages)); } else { pushHistory(updater); }
   }, [pages, pushHistory]);
@@ -814,6 +1127,27 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
   const deviceWidth = device === 'desktop' ? '100%' : device === 'tablet' ? 768 : 375;
   const selectedBlock = blocks.find(b => b.id === selectedId) ?? null;
 
+  if (editorMode === 'overview') {
+    return (
+      <FunnelOverview
+        funnel={funnel}
+        pages={pages}
+        onEditPage={(pageId) => { setActivePageId(pageId); setEditorMode('page-editor'); }}
+        onAddPage={addPage}
+        onDeletePage={deletePage}
+        onRenamePage={(id, name) => setPages(prev => prev.map(p => p.id === id ? { ...p, name } : p))}
+        onReorderPage={(from, to) => {
+          const next = [...pages];
+          const [moved] = next.splice(from, 1);
+          next.splice(to, 0, moved);
+          setPages(next);
+        }}
+        onClose={onClose}
+        onSave={handleSave}
+      />
+    );
+  }
+
   // ── Styles ────────────────────────────────────────────────────────────────
   const toolbarBtn = (active?: boolean): CSSProperties => ({
     padding: '6px 12px', borderRadius: 6, border: active ? '1px solid #6366f1' : '1px solid #334155',
@@ -825,8 +1159,8 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', flexDirection: 'column', background: '#f1f5f9', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* ── Toolbar ── */}
       <div style={{ height: 52, background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0, borderBottom: '1px solid #1e293b' }}>
-        <button onClick={onClose} style={{ ...toolbarBtn(), background: 'transparent', border: '1px solid #334155', color: '#94a3b8' }}>← Back</button>
-        <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{funnel.name}</span>
+        <button onClick={() => setEditorMode('overview')} style={{ ...toolbarBtn(), background: 'transparent', border: '1px solid #334155', color: '#94a3b8' }}>← Funnel</button>
+        <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activePage?.name ?? funnel.name}</span>
         <div style={{ flex: 1 }} />
         <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" style={{ ...toolbarBtn(), opacity: canUndo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px' }}><Undo2 size={13} /></button>
         <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" style={{ ...toolbarBtn(), opacity: canRedo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px' }}><Redo2 size={13} /></button>
