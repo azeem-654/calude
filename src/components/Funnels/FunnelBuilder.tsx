@@ -765,14 +765,119 @@ function PropertiesPanel({ block, onChange }: PropPanelProps) {
     <div style={{ height: '100%', overflowY: 'auto', padding: 16 }}>
       <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 16, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5 }}>{block.type} Settings</div>
 
-      {/* Common: content */}
-      {!['features','testimonials','pricing','stats','faq','gallery','navbar','footer','hero','columns'].includes(block.type) && (
+      {/* Common: content for simple blocks */}
+      {!['features','testimonials','pricing','stats','faq','gallery','navbar','footer','hero','columns','cta'].includes(block.type) && (
         <div style={section}>
           <div style={row}>
             <span style={label}>Content / Text</span>
             <textarea value={block.content} onChange={e => setContent(e.target.value)}
               style={{ ...input, minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} />
           </div>
+        </div>
+      )}
+
+      {/* Hero — full text editing */}
+      {block.type === 'hero' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Main Heading</span><textarea value={block.content} onChange={e => setContent(e.target.value)} style={{ ...input, minHeight: 56, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+          <div style={row}><span style={label}>Subheading</span><textarea value={s.subheading ?? ''} onChange={e => set({ subheading: e.target.value })} style={{ ...input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+          <div style={row}><span style={label}>Min Height (px)</span><input type="number" value={s.minHeight ?? 520} onChange={e => set({ minHeight: parseInt(e.target.value) })} style={input} /></div>
+        </div>
+      )}
+
+      {/* CTA — full text editing */}
+      {block.type === 'cta' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Heading</span><textarea value={block.content} onChange={e => setContent(e.target.value)} style={{ ...input, minHeight: 56, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+          <div style={row}><span style={label}>Subheading</span><textarea value={s.subheading ?? ''} onChange={e => set({ subheading: e.target.value })} style={{ ...input, minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+        </div>
+      )}
+
+      {/* Columns — full text + list editing */}
+      {block.type === 'columns' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Heading</span><textarea value={block.content} onChange={e => setContent(e.target.value)} style={{ ...input, minHeight: 48, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+          <div style={row}><span style={label}>Subheading</span><textarea value={s.subheading ?? ''} onChange={e => set({ subheading: e.target.value })} style={{ ...input, minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+          <div style={row}><span style={label}>Button Text</span><input value={s.buttonText ?? ''} onChange={e => set({ buttonText: e.target.value })} style={input} /></div>
+          <div style={row}><span style={label}>Image Position</span>
+            <select value={s.imagePosition ?? 'right'} onChange={e => set({ imagePosition: e.target.value as 'left' | 'right' })} style={sel}>
+              <option value="left">Left</option><option value="right">Right</option>
+            </select>
+          </div>
+          <div style={row}><span style={label}>Image URL</span><input value={s.imageUrl ?? ''} onChange={e => set({ imageUrl: e.target.value })} placeholder="https://..." style={input} /></div>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: '#475569' }}>Bullet Points</div>
+          {(s.listItems ?? []).map((item: string, i: number) => (
+            <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <input value={item} onChange={e => { const li = [...(s.listItems ?? [])]; li[i] = e.target.value; set({ listItems: li }); }} style={{ ...input, flex: 1 }} />
+              <button onClick={() => { const li = [...(s.listItems ?? [])]; li.splice(i,1); set({ listItems: li }); }} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, padding: '0 6px', fontSize: 11, cursor: 'pointer' }}>✕</button>
+            </div>
+          ))}
+          <button onClick={() => set({ listItems: [...(s.listItems ?? []), 'New bullet point'] })} style={{ width: '100%', padding: '7px 0', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ Add Point</button>
+        </div>
+      )}
+
+      {/* Features — heading + subtitle + columns */}
+      {block.type === 'features' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Section Heading</span><input value={block.content} onChange={e => setContent(e.target.value)} style={input} /></div>
+          <div style={row}><span style={label}>Subtitle</span><textarea value={s.subtitle ?? ''} onChange={e => set({ subtitle: e.target.value })} style={{ ...input, minHeight: 48, resize: 'vertical', fontFamily: 'inherit' }} /></div>
+          <div style={row}><span style={label}>Columns</span>
+            <select value={s.columns ?? 3} onChange={e => set({ columns: parseInt(e.target.value) })} style={sel}>
+              <option value={1}>1 Column</option><option value={2}>2 Columns</option><option value={3}>3 Columns</option><option value={4}>4 Columns</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Testimonials — heading + subtitle */}
+      {block.type === 'testimonials' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Section Heading</span><input value={block.content} onChange={e => setContent(e.target.value)} style={input} /></div>
+          <div style={row}><span style={label}>Subtitle</span><input value={s.subtitle ?? ''} onChange={e => set({ subtitle: e.target.value })} style={input} /></div>
+        </div>
+      )}
+
+      {/* Pricing — heading + subtitle */}
+      {block.type === 'pricing' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Section Heading</span><input value={block.content} onChange={e => setContent(e.target.value)} style={input} /></div>
+          <div style={row}><span style={label}>Subtitle</span><input value={s.subtitle ?? ''} onChange={e => set({ subtitle: e.target.value })} style={input} /></div>
+        </div>
+      )}
+
+      {/* FAQ — heading + subtitle */}
+      {block.type === 'faq' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Section Heading</span><input value={block.content} onChange={e => setContent(e.target.value)} style={input} /></div>
+          <div style={row}><span style={label}>Subtitle / Intro</span><input value={s.subtitle ?? ''} onChange={e => set({ subtitle: e.target.value })} style={input} /></div>
+        </div>
+      )}
+
+      {/* Gallery — heading + subtitle + columns */}
+      {block.type === 'gallery' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Section Heading</span><input value={block.content} onChange={e => setContent(e.target.value)} style={input} /></div>
+          <div style={row}><span style={label}>Subtitle</span><input value={s.subtitle ?? ''} onChange={e => set({ subtitle: e.target.value })} style={input} /></div>
+          <div style={row}><span style={label}>Columns</span>
+            <select value={s.columns ?? 3} onChange={e => set({ columns: parseInt(e.target.value) })} style={sel}>
+              <option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Stats — items */}
+      {block.type === 'stats' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Section Label (optional)</span><input value={block.content} onChange={e => setContent(e.target.value)} placeholder="e.g. Our Results" style={input} /></div>
+        </div>
+      )}
+
+      {/* Countdown — heading + subheading */}
+      {block.type === 'countdown' && (
+        <div style={section}>
+          <div style={row}><span style={label}>Heading</span><input value={block.content} onChange={e => setContent(e.target.value)} style={input} /></div>
+          <div style={row}><span style={label}>Subheading</span><input value={s.subheading ?? ''} onChange={e => set({ subheading: e.target.value })} style={input} /></div>
         </div>
       )}
 
@@ -1047,6 +1152,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
   const [preview, setPreview] = useState(false);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [leftTab, setLeftTab] = useState<'elements' | 'sections' | 'templates' | 'pages'>('elements');
+  const [previewTemplate, setPreviewTemplate] = useState<typeof TEMPLATES[0] | null>(null);
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
   const [blockSearch, setBlockSearch] = useState('');
@@ -1327,29 +1433,48 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
               {/* Templates tab */}
               {(leftTab as string) === 'templates' && (
                 <div style={{ padding: '10px' }}>
-                  <p style={{ fontSize: '11px', color: '#64748b', marginBottom: 10, lineHeight: 1.5, margin: '0 0 10px' }}>Click a template to apply it to this page</p>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>Preview or apply a full page template</p>
                   {TEMPLATES.map(t => (
-                    <div key={t.name} onClick={() => applyTemplate(t)}
-                      style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #e8ecf0', cursor: 'pointer', transition: 'all 0.15s', background: '#fff' }}
-                      onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#6366f1'; el.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)'; el.style.transform = 'translateY(-2px)'; }}
-                      onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#e8ecf0'; el.style.boxShadow = 'none'; el.style.transform = ''; }}>
-                      {/* Visual preview */}
-                      <div style={{ height: 90, background: typeof t.heroColor === 'string' && t.heroColor.startsWith('linear') ? t.heroColor : t.heroColor, position: 'relative', overflow: 'hidden' }}>
-                        {/* Simulated page wireframe */}
+                    <div key={t.name}
+                      style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #e8ecf0', background: '#fff', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#6366f1'; el.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)'; }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#e8ecf0'; el.style.boxShadow = 'none'; }}>
+                      {/* Visual preview thumbnail */}
+                      <div style={{ height: 90, background: t.heroColor, position: 'relative', overflow: 'hidden', cursor: 'pointer' }} onClick={() => setPreviewTemplate(t)}>
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px' }}>
-                          <div style={{ width: '70%', height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.7)' }} />
-                          <div style={{ width: '50%', height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.5)' }} />
-                          <div style={{ width: '30%', height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.8)', marginTop: 4 }} />
+                          <div style={{ width: '65%', height: 7, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.8)' }} />
+                          <div style={{ width: '45%', height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.55)' }} />
+                          <div style={{ width: '28%', height: 11, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.85)', marginTop: 5 }} />
                           <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, display: 'flex', gap: 4 }}>
-                            {[1,2,3].map(i => <div key={i} style={{ flex: 1, height: 18, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)' }} />)}
+                            {[1,2,3].map(i => <div key={i} style={{ flex: 1, height: 16, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.18)' }} />)}
                           </div>
                         </div>
-                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '18px' }}>{t.emoji}</div>
-                        <div style={{ position: 'absolute', top: 6, right: 8, padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '10px', fontWeight: 700 }}>{t.category}</div>
+                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '16px' }}>{t.emoji}</div>
+                        <div style={{ position: 'absolute', top: 6, right: 8, padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.35)', color: 'white', fontSize: '10px', fontWeight: 700 }}>{t.category}</div>
+                        {/* Hover overlay */}
+                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(99,102,241,0)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0.25)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0)'}>
+                          <div style={{ opacity: 0, transition: 'opacity 0.15s', padding: '5px 10px', background: 'white', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#6366f1' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = '0'; }}>
+                            👁 Preview
+                          </div>
+                        </div>
                       </div>
                       <div style={{ padding: '8px 10px' }}>
                         <div style={{ fontWeight: 700, fontSize: '12px', color: '#0f172a', marginBottom: '2px' }}>{t.name}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>{t.desc}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4, marginBottom: 6 }}>{t.desc}</div>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button onClick={() => setPreviewTemplate(t)}
+                            style={{ flex: 1, padding: '5px 0', border: '1px solid #e2e8f0', borderRadius: 6, background: 'white', color: '#374151', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                            👁 Preview
+                          </button>
+                          <button onClick={() => applyTemplate(t)}
+                            style={{ flex: 1, padding: '5px 0', border: 'none', borderRadius: 6, background: '#6366f1', color: 'white', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                            Apply
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1451,6 +1576,37 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
           </div>
         )}
       </div>
+
+      {/* ── Template Preview Modal ── */}
+      {previewTemplate && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 600, display: 'flex', flexDirection: 'column' }} onClick={() => setPreviewTemplate(null)}>
+          {/* Modal header */}
+          <div style={{ height: 54, background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+            <span style={{ fontSize: '18px' }}>{previewTemplate.emoji}</span>
+            <div>
+              <div style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15 }}>{previewTemplate.name}</div>
+              <div style={{ color: '#94a3b8', fontSize: 11 }}>{previewTemplate.desc}</div>
+            </div>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => { applyTemplate(previewTemplate); setPreviewTemplate(null); }}
+              style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              Apply Template
+            </button>
+            <button onClick={() => setPreviewTemplate(null)}
+              style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer', marginLeft: 4 }}>
+              <X size={16} />
+            </button>
+          </div>
+          {/* Scrollable preview */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0', backgroundColor: '#e2e8f0' }} onClick={e => e.stopPropagation()}>
+            <div style={{ background: '#fff', maxWidth: 1100, margin: '0 auto', boxShadow: '0 0 40px rgba(0,0,0,0.3)', pointerEvents: 'none' }}>
+              {previewTemplate.pages[0].blocks.map((block, i) => (
+                <BlockRender key={i} block={block} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

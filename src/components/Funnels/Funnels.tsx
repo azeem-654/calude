@@ -121,19 +121,33 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                   {filtered.map(type => (
                     <button key={type.id} onClick={() => handleSelectType(type)}
-                      style={{ padding: '18px 16px', border: '2px solid #e2e8f0', borderRadius: '12px', backgroundColor: 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = type.color; (e.currentTarget as HTMLButtonElement).style.backgroundColor = type.bg; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: type.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', marginBottom: '10px', border: `1px solid ${type.color}30` }}>
-                        {type.emoji}
+                      style={{ padding: '0', border: '2px solid #e2e8f0', borderRadius: '12px', backgroundColor: 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', overflow: 'hidden' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = type.color; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${type.color}30`; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; (e.currentTarget as HTMLButtonElement).style.transform = ''; }}>
+                      {/* Visual preview header */}
+                      <div style={{ height: '80px', background: `linear-gradient(135deg, ${type.color}cc, ${type.color}66)`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {/* Wireframe simulation */}
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                          <div style={{ width: '55%', height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.7)' }} />
+                          <div style={{ width: '38%', height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.5)' }} />
+                          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                            {type.defaultSteps.slice(0, 3).map((_, i) => (
+                              <div key={i} style={{ width: 36, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.4)' }} />
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '20px' }}>{type.emoji}</div>
+                        <div style={{ position: 'absolute', bottom: 6, right: 8, padding: '2px 6px', borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.25)', color: 'white', fontSize: '10px', fontWeight: 700 }}>{type.defaultSteps.length} pages</div>
                       </div>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>{type.name}</div>
-                      <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.5 }}>{type.desc}</div>
-                      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {type.defaultSteps.slice(0, 3).map((s, i) => (
-                          <span key={i} style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: `${type.color}15`, color: type.color, fontWeight: 600 }}>{s.name}</span>
-                        ))}
-                        {type.defaultSteps.length > 3 && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 600 }}>+{type.defaultSteps.length - 3}</span>}
+                      <div style={{ padding: '12px 14px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '3px' }}>{type.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.5, marginBottom: '8px' }}>{type.desc}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                          {type.defaultSteps.slice(0, 3).map((s, i) => (
+                            <span key={i} style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: `${type.color}15`, color: type.color, fontWeight: 600 }}>{s.name}</span>
+                          ))}
+                          {type.defaultSteps.length > 3 && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 600 }}>+{type.defaultSteps.length - 3}</span>}
+                        </div>
                       </div>
                     </button>
                   ))}
