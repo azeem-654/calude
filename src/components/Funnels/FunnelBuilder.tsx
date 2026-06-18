@@ -391,10 +391,39 @@ const TEMPLATES: Template[] = [
 ];
 
 const CATALOG: { category: string; icon: string; blocks: { type: BlockType; label: string; emoji: string; color: string }[] }[] = [
-  { category: 'Sections', icon: '🏗️', blocks: [{ type: 'hero', label: 'Hero Banner', emoji: '🦸', color: '#6366f1' }, { type: 'features', label: 'Features Grid', emoji: '⚡', color: '#3b82f6' }, { type: 'testimonials', label: 'Testimonials', emoji: '💬', color: '#8b5cf6' }, { type: 'pricing', label: 'Pricing Table', emoji: '💰', color: '#22c55e' }, { type: 'columns', label: '2-Column Split', emoji: '◼◼', color: '#f59e0b' }, { type: 'cta', label: 'CTA Section', emoji: '📣', color: '#ec4899' }, { type: 'stats', label: 'Stats Counter', emoji: '📊', color: '#06b6d4' }, { type: 'faq', label: 'FAQ Accordion', emoji: '❓', color: '#84cc16' }, { type: 'gallery', label: 'Image Gallery', emoji: '🖼️', color: '#f97316' }] },
-  { category: 'Navigation', icon: '🧭', blocks: [{ type: 'navbar', label: 'Navigation Bar', emoji: '🔝', color: '#374151' }, { type: 'footer', label: 'Footer', emoji: '🔚', color: '#374151' }] },
-  { category: 'Elements', icon: '🔤', blocks: [{ type: 'heading', label: 'Heading', emoji: 'H', color: '#6366f1' }, { type: 'text', label: 'Text Block', emoji: 'T', color: '#64748b' }, { type: 'button', label: 'Button', emoji: '▶', color: '#22c55e' }, { type: 'image', label: 'Image', emoji: '🖼', color: '#f59e0b' }, { type: 'video', label: 'Video', emoji: '▶️', color: '#ef4444' }, { type: 'divider', label: 'Divider', emoji: '—', color: '#94a3b8' }, { type: 'spacer', label: 'Spacer', emoji: '↕', color: '#cbd5e1' }] },
-  { category: 'Forms & Tools', icon: '📋', blocks: [{ type: 'form', label: 'Lead Form', emoji: '📋', color: '#6366f1' }, { type: 'countdown', label: 'Countdown Timer', emoji: '⏱', color: '#ef4444' }] },
+  { category: 'Text', icon: '✍️', blocks: [
+    { type: 'heading', label: 'Heading', emoji: 'H1', color: '#0f172a' },
+    { type: 'text', label: 'Paragraph', emoji: '¶', color: '#64748b' },
+    { type: 'button', label: 'Button', emoji: '▶', color: '#6366f1' },
+  ]},
+  { category: 'Media', icon: '🎬', blocks: [
+    { type: 'image', label: 'Image', emoji: '🖼', color: '#f59e0b' },
+    { type: 'video', label: 'Video', emoji: '▶️', color: '#ef4444' },
+    { type: 'gallery', label: 'Gallery', emoji: '🗂', color: '#0891b2' },
+  ]},
+  { category: 'Sections', icon: '🏗️', blocks: [
+    { type: 'hero', label: 'Hero', emoji: '🦸', color: '#6366f1' },
+    { type: 'features', label: 'Features', emoji: '⚡', color: '#3b82f6' },
+    { type: 'testimonials', label: 'Testimonials', emoji: '💬', color: '#8b5cf6' },
+    { type: 'pricing', label: 'Pricing', emoji: '💰', color: '#22c55e' },
+    { type: 'columns', label: '2 Columns', emoji: '◼◼', color: '#f59e0b' },
+    { type: 'cta', label: 'CTA', emoji: '📣', color: '#ec4899' },
+    { type: 'stats', label: 'Stats', emoji: '📊', color: '#06b6d4' },
+    { type: 'faq', label: 'FAQ', emoji: '❓', color: '#84cc16' },
+    { type: 'gallery', label: 'Gallery', emoji: '🖼️', color: '#f97316' },
+  ]},
+  { category: 'Navigation', icon: '🧭', blocks: [
+    { type: 'navbar', label: 'Navbar', emoji: '🔝', color: '#374151' },
+    { type: 'footer', label: 'Footer', emoji: '🔚', color: '#374151' },
+  ]},
+  { category: 'Forms & Tools', icon: '📋', blocks: [
+    { type: 'form', label: 'Lead Form', emoji: '📋', color: '#6366f1' },
+    { type: 'countdown', label: 'Countdown', emoji: '⏱', color: '#ef4444' },
+  ]},
+  { category: 'Layout', icon: '📐', blocks: [
+    { type: 'divider', label: 'Divider', emoji: '—', color: '#94a3b8' },
+    { type: 'spacer', label: 'Spacer', emoji: '↕', color: '#cbd5e1' },
+  ]},
 ];
 
 // ─── DROP ZONE ────────────────────────────────────────────────────────────────
@@ -1017,8 +1046,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [preview, setPreview] = useState(false);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [leftTab, setLeftTab] = useState<'elements' | 'templates' | 'pages'>('elements');
-  const [showTemplates, setShowTemplates] = useState(false);
+  const [leftTab, setLeftTab] = useState<'elements' | 'sections' | 'templates' | 'pages'>('elements');
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
   const [blockSearch, setBlockSearch] = useState('');
@@ -1157,91 +1185,171 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', flexDirection: 'column', background: '#f1f5f9', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* ── Toolbar ── */}
-      <div style={{ height: 52, background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0, borderBottom: '1px solid #1e293b' }}>
-        <button onClick={() => setEditorMode('overview')} style={{ ...toolbarBtn(), background: 'transparent', border: '1px solid #334155', color: '#94a3b8' }}>← Funnel</button>
-        <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activePage?.name ?? funnel.name}</span>
-        <div style={{ flex: 1 }} />
-        <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" style={{ ...toolbarBtn(), opacity: canUndo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px' }}><Undo2 size={13} /></button>
-        <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" style={{ ...toolbarBtn(), opacity: canRedo ? 1 : 0.35, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px' }}><Redo2 size={13} /></button>
-        <div style={{ width: 1, height: 24, background: '#334155', margin: '0 2px' }} />
-        {/* Device toggles */}
-        {(['desktop','tablet','mobile'] as const).map(d => (
-          <button key={d} onClick={() => setDevice(d)} style={{ ...toolbarBtn(device === d), background: device === d ? '#1e293b' : 'transparent', border: device === d ? '1px solid #6366f1' : '1px solid #334155', color: device === d ? '#a5b4fc' : '#94a3b8' }}>
-            {d === 'desktop' ? '🖥' : d === 'tablet' ? '📱' : '📲'} {d}
-          </button>
-        ))}
-        <button onClick={() => { setPreview(p => !p); setSelectedId(null); }} style={{ ...toolbarBtn(preview), background: preview ? '#1e293b' : 'transparent', border: preview ? '1px solid #6366f1' : '1px solid #334155', color: preview ? '#a5b4fc' : '#94a3b8' }}>
-          {preview ? '✏️ Edit' : '👁 Preview'}
+      {/* ── Toolbar (Canva/Wix style) ── */}
+      <div style={{ height: 56, background: '#ffffff', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8, flexShrink: 0, borderBottom: '1px solid #e8ecf0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        {/* Left: back + funnel name */}
+        <button onClick={() => setEditorMode('overview')}
+          style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e8ecf0', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+          ← Funnel
         </button>
-        <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+        <div style={{ width: 1, height: 22, background: '#e8ecf0', margin: '0 4px' }} />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontWeight: 800, fontSize: 13, color: '#0f172a', lineHeight: 1.2 }}>{funnel.name}</span>
+          <span style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1 }}>{activePage?.name}</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        {/* Center: undo/redo + device */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={undo} disabled={!canUndo} title="Undo" style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid #e8ecf0', background: 'white', cursor: canUndo ? 'pointer' : 'not-allowed', opacity: canUndo ? 1 : 0.4, display: 'flex' }}><Undo2 size={14} color="#374151" /></button>
+          <button onClick={redo} disabled={!canRedo} title="Redo" style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid #e8ecf0', background: 'white', cursor: canRedo ? 'pointer' : 'not-allowed', opacity: canRedo ? 1 : 0.4, display: 'flex' }}><Redo2 size={14} color="#374151" /></button>
+        </div>
+        <div style={{ width: 1, height: 22, background: '#e8ecf0', margin: '0 4px' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#f8fafc', borderRadius: 8, padding: '3px', border: '1px solid #e8ecf0' }}>
+          {(['desktop','tablet','mobile'] as const).map(d => (
+            <button key={d} onClick={() => setDevice(d)}
+              style={{ padding: '5px 8px', borderRadius: 6, border: 'none', background: device === d ? '#fff' : 'transparent', color: device === d ? '#6366f1' : '#64748b', fontSize: 13, cursor: 'pointer', boxShadow: device === d ? '0 1px 4px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s' }}
+              title={d}>
+              {d === 'desktop' ? '🖥' : d === 'tablet' ? '📱' : '📲'}
+            </button>
+          ))}
+        </div>
+        <div style={{ width: 1, height: 22, background: '#e8ecf0', margin: '0 4px' }} />
+        {/* Right: preview + publish */}
+        <button onClick={() => { setPreview(p => !p); setSelectedId(null); }}
+          style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf0', background: preview ? '#f5f3ff' : 'white', color: preview ? '#6366f1' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <Eye size={14} /> {preview ? 'Edit' : 'Preview'}
+        </button>
+        <button onClick={handleSave}
+          style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }}>
+          <Save size={13} /> Publish
+        </button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* ── Left panel ── */}
         {!preview && (
-          <div style={{ width: 240, background: '#fff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+          <div style={{ width: 256, background: '#fff', borderRight: '1px solid #e8ecf0', display: 'flex', flexDirection: 'column', flexShrink: 0, boxShadow: '2px 0 8px rgba(0,0,0,0.04)' }}>
             {/* Tab bar */}
-            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
-              {(['elements','templates','pages'] as const).map(tab => (
-                <button key={tab} onClick={() => setLeftTab(tab)}
-                  style={{ flex: 1, padding: '10px 4px', border: 'none', background: 'transparent', fontSize: 11, fontWeight: leftTab === tab ? 700 : 500, color: leftTab === tab ? '#6366f1' : '#64748b', cursor: 'pointer', borderBottom: leftTab === tab ? '2px solid #6366f1' : '2px solid transparent', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                  {tab}
+            <div style={{ display: 'flex', borderBottom: '1px solid #e8ecf0', backgroundColor: '#fafbfc' }}>
+              {(['elements','sections','templates','pages'] as const).map(tab => (
+                <button key={tab} onClick={() => setLeftTab(tab as 'elements' | 'sections' | 'templates' | 'pages')}
+                  style={{ flex: 1, padding: '11px 2px', border: 'none', background: 'transparent', fontSize: '10px', fontWeight: (leftTab as string) === tab ? 700 : 500, color: (leftTab as string) === tab ? '#6366f1' : '#64748b', cursor: 'pointer', borderBottom: (leftTab as string) === tab ? '2px solid #6366f1' : '2px solid transparent', textTransform: 'uppercase', letterSpacing: 0.5, transition: 'all 0.15s' }}>
+                  {tab === 'elements' ? '🧩 Elements' : tab === 'sections' ? '🏗 Sections' : tab === 'templates' ? '🎨 Templates' : '📄 Pages'}
                 </button>
               ))}
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {/* Elements tab */}
-              {leftTab === 'elements' && (
-                <div style={{ padding: 10 }}>
-                  <div style={{ position: 'relative', marginBottom: 10 }}>
-                    <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                    <input value={blockSearch} onChange={e => setBlockSearch(e.target.value)} placeholder="Search blocks..."
-                      style={{ width: '100%', padding: '6px 8px 6px 26px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+              {(leftTab as string) === 'elements' && (
+                <div style={{ padding: '10px' }}>
+                  <div style={{ position: 'relative', marginBottom: 12 }}>
+                    <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input value={blockSearch} onChange={e => setBlockSearch(e.target.value)} placeholder="Search elements..."
+                      style={{ width: '100%', padding: '8px 10px 8px 28px', border: '1px solid #e8ecf0', borderRadius: 8, fontSize: 12, outline: 'none', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
                   </div>
                   {CATALOG.map(cat => {
-                    const filtered = blockSearch ? cat.blocks.filter(b => b.label.toLowerCase().includes(blockSearch.toLowerCase()) || b.type.toLowerCase().includes(blockSearch.toLowerCase())) : cat.blocks;
+                    const filtered = blockSearch ? cat.blocks.filter(b => b.label.toLowerCase().includes(blockSearch.toLowerCase())) : cat.blocks;
                     if (filtered.length === 0) return null;
                     return (
-                    <div key={cat.category} style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6, paddingLeft: 2 }}>{cat.category}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-                        {filtered.map(item => (
-                          <div key={item.type}
-                            draggable
-                            onDragStart={() => { DRAG_TYPE = 'new'; DRAG_PAYLOAD = item.type; }}
-                            onDragEnd={() => { if (DRAG_TYPE === 'new') { DRAG_TYPE = null; DRAG_PAYLOAD = ''; setDropTarget(null); } }}
-                            onClick={() => { const b = createBlock(item.type); updateBlocks([...blocks, b]); setSelectedId(b.id); }}
-                            style={{ padding: '10px 6px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'grab', textAlign: 'center', fontSize: 11, color: '#475569', transition: 'all 0.15s' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = '#eef2ff'; (e.currentTarget as HTMLDivElement).style.borderColor = '#a5b4fc'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#f8fafc'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e2e8f0'; }}>
-                            <div style={{ fontSize: 18, marginBottom: 3 }}>{item.emoji}</div>
-                            <div style={{ fontWeight: 600 }}>{item.label}</div>
-                          </div>
-                        ))}
+                      <div key={cat.category} style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6, paddingLeft: 2 }}>
+                          {cat.icon} {cat.category}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                          {filtered.map(item => (
+                            <div key={item.type + item.label}
+                              draggable
+                              onDragStart={() => { DRAG_TYPE = 'new'; DRAG_PAYLOAD = item.type; }}
+                              onDragEnd={() => { if (DRAG_TYPE === 'new') { DRAG_TYPE = null; DRAG_PAYLOAD = ''; setDropTarget(null); } }}
+                              onClick={() => { const b = createBlock(item.type); updateBlocks([...blocks, b]); setSelectedId(b.id); }}
+                              style={{ padding: '12px 8px', background: '#f8fafc', border: `1px solid #e8ecf0`, borderRadius: 10, cursor: 'grab', textAlign: 'center', fontSize: '11px', color: '#374151', transition: 'all 0.15s', userSelect: 'none' }}
+                              onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.background = `${item.color}10`; el.style.borderColor = `${item.color}60`; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'; }}
+                              onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.background = '#f8fafc'; el.style.borderColor = '#e8ecf0'; el.style.transform = ''; el.style.boxShadow = ''; }}>
+                              <div style={{ fontSize: 20, marginBottom: 4, lineHeight: 1 }}>{item.emoji}</div>
+                              <div style={{ fontWeight: 600, fontSize: '11px' }}>{item.label}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
                     );
                   })}
                 </div>
               )}
 
+              {/* Sections tab - ready-made pre-built sections */}
+              {(leftTab as string) === 'sections' && (
+                <div style={{ padding: '10px' }}>
+                  <p style={{ fontSize: '11px', color: '#64748b', marginBottom: 10, lineHeight: 1.5, margin: '0 0 10px' }}>Click to add a complete ready-made section</p>
+                  {[
+                    { label: 'Hero — Dark Gradient', preview: 'linear-gradient(135deg,#1e293b,#7c3aed)', type: 'hero' as BlockType, extra: { bgGradient: 'linear-gradient(135deg,#1e293b,#7c3aed)', textColor: '#fff', buttonText: 'Get Started', subheading: 'Transform your business today' } },
+                    { label: 'Hero — Ocean Blue', preview: 'linear-gradient(135deg,#0ea5e9,#6366f1)', type: 'hero' as BlockType, extra: { bgGradient: 'linear-gradient(135deg,#0ea5e9,#6366f1)', textColor: '#fff', buttonText: 'Start Free Trial', subheading: 'Built for teams that move fast' } },
+                    { label: 'Hero — Sunset', preview: 'linear-gradient(135deg,#f97316,#ec4899)', type: 'hero' as BlockType, extra: { bgGradient: 'linear-gradient(135deg,#f97316,#ec4899)', textColor: '#fff', buttonText: 'Explore Now', subheading: 'Join 50,000+ happy customers' } },
+                    { label: 'Hero — Mint', preview: 'linear-gradient(135deg,#22c55e,#0891b2)', type: 'hero' as BlockType, extra: { bgGradient: 'linear-gradient(135deg,#22c55e,#0891b2)', textColor: '#fff', buttonText: 'Get Access', subheading: 'Simple, powerful, and fast' } },
+                    { label: 'Features — 3 Cols', preview: 'linear-gradient(135deg,#f0f9ff,#e0e7ff)', type: 'features' as BlockType, extra: {} },
+                    { label: 'Features — 2 Cols', preview: 'linear-gradient(135deg,#f0fdf4,#ecfdf5)', type: 'features' as BlockType, extra: { columns: 2 } },
+                    { label: 'Testimonials — Light', preview: 'linear-gradient(135deg,#fff7ed,#fef3c7)', type: 'testimonials' as BlockType, extra: { bgColor: '#fffbeb' } },
+                    { label: 'Testimonials — Dark', preview: 'linear-gradient(135deg,#1e293b,#0f172a)', type: 'testimonials' as BlockType, extra: { bgColor: '#0f172a' } },
+                    { label: 'Pricing — 3 Plans', preview: 'linear-gradient(135deg,#f5f3ff,#ede9fe)', type: 'pricing' as BlockType, extra: {} },
+                    { label: 'CTA — Purple', preview: 'linear-gradient(135deg,#6366f1,#8b5cf6)', type: 'cta' as BlockType, extra: {} },
+                    { label: 'CTA — Orange', preview: 'linear-gradient(135deg,#f97316,#f59e0b)', type: 'cta' as BlockType, extra: { bgGradient: 'linear-gradient(135deg,#f97316,#f59e0b)', textColor: '#fff', buttonColor: '#fff', buttonTextColor: '#f97316' } },
+                    { label: 'Stats Counter', preview: 'linear-gradient(135deg,#0f172a,#1e293b)', type: 'stats' as BlockType, extra: {} },
+                    { label: 'FAQ Section', preview: 'linear-gradient(135deg,#f8fafc,#f1f5f9)', type: 'faq' as BlockType, extra: {} },
+                    { label: 'Contact Form', preview: 'linear-gradient(135deg,#eff6ff,#dbeafe)', type: 'form' as BlockType, extra: { bgColor: '#eff6ff', buttonColor: '#3b82f6' } },
+                    { label: 'Countdown Timer', preview: 'linear-gradient(135deg,#7f1d1d,#dc2626)', type: 'countdown' as BlockType, extra: { bgColor: '#dc2626' } },
+                    { label: '2-Col Split', preview: 'linear-gradient(135deg,#fff,#f1f5f9)', type: 'columns' as BlockType, extra: {} },
+                    { label: 'Image Gallery', preview: 'linear-gradient(135deg,#fdf4ff,#f0abfc)', type: 'gallery' as BlockType, extra: {} },
+                    { label: 'Navigation Bar', preview: 'linear-gradient(135deg,#fff,#f8fafc)', type: 'navbar' as BlockType, extra: {} },
+                    { label: 'Footer', preview: 'linear-gradient(135deg,#0f172a,#1e293b)', type: 'footer' as BlockType, extra: {} },
+                    { label: 'Video Embed', preview: 'linear-gradient(135deg,#0f172a,#18181b)', type: 'video' as BlockType, extra: {} },
+                  ].map((sec, i) => (
+                    <div key={i}
+                      onClick={() => { const b = createBlock(sec.type, '', sec.extra); updateBlocks([...blocks, b]); setSelectedId(b.id); }}
+                      style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #e8ecf0', cursor: 'pointer', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#6366f1'; el.style.boxShadow = '0 0 0 2px #e0e7ff'; el.style.transform = 'translateY(-1px)'; }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#e8ecf0'; el.style.boxShadow = 'none'; el.style.transform = ''; }}>
+                      <div style={{ height: 56, background: sec.preview, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', inset: 0, opacity: 0.3, background: 'repeating-linear-gradient(90deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 11px)' }} />
+                        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                          <div style={{ width: 60, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' }} />
+                          <div style={{ width: 40, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.4)' }} />
+                          <div style={{ width: 28, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.7)', marginTop: 2 }} />
+                        </div>
+                      </div>
+                      <div style={{ padding: '7px 10px', background: '#fff' }}>
+                        <div style={{ fontWeight: 600, fontSize: '11px', color: '#374151' }}>{sec.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Templates tab */}
-              {leftTab === 'templates' && (
-                <div style={{ padding: 10 }}>
-                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>Choose a template to replace the current page.</p>
+              {(leftTab as string) === 'templates' && (
+                <div style={{ padding: '10px' }}>
+                  <p style={{ fontSize: '11px', color: '#64748b', marginBottom: 10, lineHeight: 1.5, margin: '0 0 10px' }}>Click a template to apply it to this page</p>
                   {TEMPLATES.map(t => (
                     <div key={t.name} onClick={() => applyTemplate(t)}
-                      style={{ marginBottom: 8, borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', cursor: 'pointer', transition: 'all 0.15s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#6366f1'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 0 2px #e0e7ff'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'; }}>
-                      <div style={{ height: 72, background: t.heroColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 24 }}>{t.emoji}</span>
+                      style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #e8ecf0', cursor: 'pointer', transition: 'all 0.15s', background: '#fff' }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#6366f1'; el.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)'; el.style.transform = 'translateY(-2px)'; }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#e8ecf0'; el.style.boxShadow = 'none'; el.style.transform = ''; }}>
+                      {/* Visual preview */}
+                      <div style={{ height: 90, background: typeof t.heroColor === 'string' && t.heroColor.startsWith('linear') ? t.heroColor : t.heroColor, position: 'relative', overflow: 'hidden' }}>
+                        {/* Simulated page wireframe */}
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px' }}>
+                          <div style={{ width: '70%', height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.7)' }} />
+                          <div style={{ width: '50%', height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.5)' }} />
+                          <div style={{ width: '30%', height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.8)', marginTop: 4 }} />
+                          <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, display: 'flex', gap: 4 }}>
+                            {[1,2,3].map(i => <div key={i} style={{ flex: 1, height: 18, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)' }} />)}
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '18px' }}>{t.emoji}</div>
+                        <div style={{ position: 'absolute', top: 6, right: 8, padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '10px', fontWeight: 700 }}>{t.category}</div>
                       </div>
-                      <div style={{ padding: '8px 10px', background: '#fff' }}>
-                        <div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a' }}>{t.name}</div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{t.desc}</div>
+                      <div style={{ padding: '8px 10px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '12px', color: '#0f172a', marginBottom: '2px' }}>{t.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>{t.desc}</div>
                       </div>
                     </div>
                   ))}
@@ -1249,7 +1357,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
               )}
 
               {/* Pages tab */}
-              {leftTab === 'pages' && (
+              {(leftTab as string) === 'pages' && (
                 <div style={{ padding: 10 }}>
                   {pages.map(p => (
                     <div key={p.id}
