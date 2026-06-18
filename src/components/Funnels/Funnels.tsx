@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Eye, TrendingUp, DollarSign, MousePointer, ExternalLink, Edit2, Trash2, Copy, BarChart2, X, Search, Check } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -54,21 +54,144 @@ function defaultPages(steps: { name: string; type: FunnelStep['type'] }[]): Funn
   }));
 }
 
+/* ─── Page wireframe preview (used in wizard cards + side panel) ─── */
+
+function FunnelPageWireframe({ type }: { type: FunnelTypeConfig }) {
+  const c = type.color;
+  return (
+    <div>
+      {/* Navbar */}
+      <div style={{ height: 30, background: 'white', borderBottom: `1px solid ${c}20`, display: 'flex', alignItems: 'center', padding: '0 14px', gap: 8 }}>
+        <div style={{ width: 44, height: 8, borderRadius: 4, background: c, opacity: 0.8 }} />
+        <div style={{ flex: 1 }} />
+        {[0, 1, 2].map(i => <div key={i} style={{ width: 26, height: 6, borderRadius: 3, background: `${c}30` }} />)}
+        <div style={{ width: 44, height: 18, borderRadius: 9, background: c, opacity: 0.7 }} />
+      </div>
+      {/* Hero */}
+      <div style={{ background: `linear-gradient(135deg, ${c}ee, ${c}66)`, padding: '30px 20px', textAlign: 'center' }}>
+        <div style={{ width: '72%', height: 12, borderRadius: 6, background: 'rgba(255,255,255,0.92)', margin: '0 auto 10px' }} />
+        <div style={{ width: '52%', height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.65)', margin: '0 auto 6px' }} />
+        <div style={{ width: '40%', height: 7, borderRadius: 3, background: 'rgba(255,255,255,0.5)', margin: '0 auto 18px' }} />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <div style={{ width: 90, height: 26, borderRadius: 13, background: 'white', opacity: 0.95 }} />
+          <div style={{ width: 70, height: 26, borderRadius: 13, background: 'rgba(255,255,255,0.25)', border: '1.5px solid rgba(255,255,255,0.6)' }} />
+        </div>
+      </div>
+      {/* Stats bar */}
+      <div style={{ background: '#f8fafc', padding: '14px 16px', display: 'flex', justifyContent: 'space-around', borderBottom: '1px solid #e2e8f0' }}>
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            <div style={{ width: 34, height: 9, borderRadius: 4, background: c, opacity: 0.6, margin: '0 auto 4px' }} />
+            <div style={{ width: 28, height: 5, borderRadius: 2, background: '#e2e8f0', margin: '0 auto' }} />
+          </div>
+        ))}
+      </div>
+      {/* Features */}
+      <div style={{ background: 'white', padding: '22px 16px' }}>
+        <div style={{ width: '46%', height: 10, borderRadius: 5, background: '#1e293b', opacity: 0.75, margin: '0 auto 6px' }} />
+        <div style={{ width: '62%', height: 6, borderRadius: 3, background: '#e2e8f0', margin: '0 auto 18px' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ background: `${c}08`, borderRadius: 8, padding: '12px 8px', textAlign: 'center' }}>
+              <div style={{ width: 28, height: 28, borderRadius: 14, background: `${c}22`, margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 12, height: 12, borderRadius: 6, background: c, opacity: 0.55 }} />
+              </div>
+              <div style={{ width: '78%', height: 5, borderRadius: 2, background: '#64748b', opacity: 0.5, margin: '0 auto 4px' }} />
+              <div style={{ width: '58%', height: 4, borderRadius: 2, background: '#e2e8f0', margin: '0 auto 3px' }} />
+              <div style={{ width: '48%', height: 4, borderRadius: 2, background: '#f1f5f9', margin: '0 auto' }} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Testimonials */}
+      <div style={{ background: `${c}06`, padding: '18px 14px' }}>
+        <div style={{ width: '42%', height: 9, borderRadius: 4, background: '#1e293b', opacity: 0.65, margin: '0 auto 14px' }} />
+        {[0, 1, 2].map(i => (
+          <div key={i} style={{ background: 'white', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', gap: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 14, background: `${c}25`, flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 2, marginBottom: 5 }}>
+                {[0, 1, 2, 3, 4].map(s => <div key={s} style={{ width: 8, height: 8, borderRadius: 4, background: '#fbbf24' }} />)}
+              </div>
+              <div style={{ width: '88%', height: 4, borderRadius: 2, background: '#e2e8f0', marginBottom: 3 }} />
+              <div style={{ width: '70%', height: 4, borderRadius: 2, background: '#f1f5f9', marginBottom: 5 }} />
+              <div style={{ width: '38%', height: 4, borderRadius: 2, background: `${c}30` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Pricing */}
+      <div style={{ background: 'white', padding: '20px 14px' }}>
+        <div style={{ width: '36%', height: 9, borderRadius: 4, background: '#1e293b', opacity: 0.75, margin: '0 auto 6px' }} />
+        <div style={{ width: '52%', height: 6, borderRadius: 3, background: '#e2e8f0', margin: '0 auto 14px' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ borderRadius: 8, padding: '12px 8px', border: i === 1 ? `2px solid ${c}` : '1px solid #e2e8f0', background: i === 1 ? `${c}08` : 'white', textAlign: 'center' }}>
+              <div style={{ width: '62%', height: 5, borderRadius: 2, background: i === 1 ? c : '#94a3b8', margin: '0 auto 5px', opacity: i === 1 ? 0.8 : 0.6 }} />
+              <div style={{ width: '50%', height: 10, borderRadius: 5, background: i === 1 ? c : '#e2e8f0', margin: '0 auto 7px', opacity: i === 1 ? 0.75 : 1 }} />
+              {[0, 1, 2, 3].map(r => <div key={r} style={{ width: '82%', height: 4, borderRadius: 2, background: '#f1f5f9', margin: '0 auto 3px' }} />)}
+              <div style={{ width: '80%', height: 20, borderRadius: 10, background: i === 1 ? c : '#e2e8f0', margin: '8px auto 0', opacity: i === 1 ? 0.85 : 1 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* CTA */}
+      <div style={{ background: `linear-gradient(135deg, ${c}, ${c}cc)`, padding: '26px 20px', textAlign: 'center' }}>
+        <div style={{ width: '62%', height: 11, borderRadius: 5, background: 'rgba(255,255,255,0.9)', margin: '0 auto 8px' }} />
+        <div style={{ width: '46%', height: 7, borderRadius: 3, background: 'rgba(255,255,255,0.6)', margin: '0 auto 16px' }} />
+        <div style={{ width: 104, height: 28, borderRadius: 14, background: 'white', margin: '0 auto', opacity: 0.95 }} />
+      </div>
+      {/* Footer */}
+      <div style={{ background: '#0f172a', padding: '18px 16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          {[0, 1, 2, 3].map(i => (
+            <div key={i}>
+              <div style={{ width: 38, height: 5, borderRadius: 2, background: 'rgba(255,255,255,0.45)', marginBottom: 5 }} />
+              {[0, 1, 2].map(r => <div key={r} style={{ width: 28, height: 3, borderRadius: 1, background: 'rgba(255,255,255,0.2)', marginBottom: 4 }} />)}
+            </div>
+          ))}
+        </div>
+        <div style={{ width: '50%', height: 3, borderRadius: 1, background: 'rgba(255,255,255,0.15)', margin: '0 auto' }} />
+      </div>
+    </div>
+  );
+}
+
 /* ─── Funnel Type Wizard ─── */
 
 function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, type: FunnelTypeConfig) => void }) {
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedType, setSelectedType] = useState<FunnelTypeConfig | null>(null);
+  const [hoveredType, setHoveredType] = useState<FunnelTypeConfig | null>(null);
+  const [previewScrollY, setPreviewScrollY] = useState(0);
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [funnelName, setFunnelName] = useState('');
+  const animRef = useRef<number | null>(null);
+  const scrollYRef = useRef(0);
 
   const filtered = FUNNEL_TYPES.filter(f =>
     (category === 'All' || f.category === category) &&
     (search === '' || f.name.toLowerCase().includes(search.toLowerCase()) || f.desc.toLowerCase().includes(search.toLowerCase()))
   );
 
+  /* Auto-scroll the right preview panel when a type is hovered */
+  useEffect(() => {
+    if (animRef.current !== null) clearInterval(animRef.current);
+    scrollYRef.current = 0;
+    setPreviewScrollY(0);
+    if (hoveredType) {
+      animRef.current = window.setInterval(() => {
+        scrollYRef.current += 0.55;
+        if (scrollYRef.current > 560) scrollYRef.current = 0;
+        setPreviewScrollY(scrollYRef.current);
+      }, 20);
+    }
+    return () => { if (animRef.current !== null) clearInterval(animRef.current); };
+  }, [hoveredType?.id]);
+
   const handleSelectType = (t: FunnelTypeConfig) => {
+    if (animRef.current !== null) clearInterval(animRef.current);
     setSelectedType(t);
     setFunnelName(t.name + ' Funnel');
     setStep(2);
@@ -80,11 +203,11 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       {step === 1 ? (
-        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}>
+        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '1100px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
           {/* Header */}
-          <div style={{ padding: '24px 28px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div>
               <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Create New Funnel</h2>
               <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>Choose a funnel type to get started with pre-built pages</p>
@@ -94,19 +217,19 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
 
           <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
             {/* Left sidebar — categories */}
-            <div style={{ width: '180px', borderRight: '1px solid #e2e8f0', padding: '16px 12px', flexShrink: 0, overflowY: 'auto' }}>
-              <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px 4px' }}>Category</p>
+            <div style={{ width: '155px', borderRight: '1px solid #e2e8f0', padding: '14px 10px', flexShrink: 0, overflowY: 'auto' }}>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px 4px' }}>Category</p>
               {CATEGORIES.map(cat => (
                 <button key={cat} onClick={() => setCategory(cat)}
-                  style={{ width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: '8px', border: 'none', backgroundColor: category === cat ? '#f5f3ff' : 'transparent', color: category === cat ? '#6366f1' : '#374151', fontSize: '13px', fontWeight: category === cat ? 600 : 400, cursor: 'pointer', marginBottom: '2px' }}>
+                  style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: '8px', border: 'none', backgroundColor: category === cat ? '#f5f3ff' : 'transparent', color: category === cat ? '#6366f1' : '#374151', fontSize: '13px', fontWeight: category === cat ? 600 : 400, cursor: 'pointer', marginBottom: '2px' }}>
                   {cat}
                 </button>
               ))}
             </div>
 
-            {/* Right — type grid */}
+            {/* Center — type grid */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', flexShrink: 0 }}>
+              <div style={{ padding: '14px 16px', flexShrink: 0 }}>
                 <div style={{ position: 'relative' }}>
                   <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                   <input
@@ -117,42 +240,110 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
                   />
                 </div>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                  {filtered.map(type => (
-                    <button key={type.id} onClick={() => handleSelectType(type)}
-                      style={{ padding: '0', border: '2px solid #e2e8f0', borderRadius: '12px', backgroundColor: 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', overflow: 'hidden' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = type.color; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${type.color}30`; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; (e.currentTarget as HTMLButtonElement).style.transform = ''; }}>
-                      {/* Visual preview header */}
-                      <div style={{ height: '80px', background: `linear-gradient(135deg, ${type.color}cc, ${type.color}66)`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                        {/* Wireframe simulation */}
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                          <div style={{ width: '55%', height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.7)' }} />
-                          <div style={{ width: '38%', height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.5)' }} />
-                          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                            {type.defaultSteps.slice(0, 3).map((_, i) => (
-                              <div key={i} style={{ width: 36, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.4)' }} />
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                  {filtered.map(type => {
+                    const isHovered = hoveredType?.id === type.id;
+                    return (
+                      <button key={type.id}
+                        onClick={() => handleSelectType(type)}
+                        onMouseEnter={() => setHoveredType(type)}
+                        onMouseLeave={() => setHoveredType(null)}
+                        style={{ padding: 0, border: `2px solid ${isHovered ? type.color : '#e2e8f0'}`, borderRadius: '12px', backgroundColor: 'white', cursor: 'pointer', textAlign: 'left', overflow: 'hidden', transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.15s', boxShadow: isHovered ? `0 6px 24px ${type.color}35` : 'none', transform: isHovered ? 'translateY(-2px)' : 'none' }}>
+                        {/* Thumbnail — scrolls on hover to reveal full page */}
+                        <div style={{ height: '90px', overflow: 'hidden', position: 'relative', backgroundColor: '#f8fafc' }}>
+                          <div style={{ transform: isHovered ? 'translateY(-58%)' : 'translateY(0)', transition: isHovered ? 'transform 2.8s ease-in-out' : 'transform 0.4s ease-out', willChange: 'transform' }}>
+                            <FunnelPageWireframe type={type} />
+                          </div>
+                          {/* Gradient overlay at bottom for non-hovered */}
+                          {!isHovered && (
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(to top, #f8fafc, transparent)', pointerEvents: 'none' }} />
+                          )}
+                          <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '16px' }}>{type.emoji}</div>
+                          <div style={{ position: 'absolute', bottom: 6, right: 8, padding: '2px 6px', borderRadius: 4, background: 'rgba(0,0,0,0.45)', color: 'white', fontSize: '9px', fontWeight: 700, backdropFilter: 'blur(2px)' }}>
+                            {type.defaultSteps.length} pages
+                          </div>
+                          {!isHovered && (
+                            <div style={{ position: 'absolute', bottom: 6, left: 8, fontSize: '9px', color: '#94a3b8', background: 'rgba(255,255,255,0.85)', padding: '2px 5px', borderRadius: 3, fontWeight: 500 }}>
+                              Hover to scroll
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ padding: '10px 12px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '3px' }}>{type.name}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4, marginBottom: '8px' }}>{type.desc}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                            {type.defaultSteps.slice(0, 3).map((s, i) => (
+                              <span key={i} style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: `${type.color}15`, color: type.color, fontWeight: 600 }}>{s.name}</span>
                             ))}
+                            {type.defaultSteps.length > 3 && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 600 }}>+{type.defaultSteps.length - 3}</span>}
                           </div>
                         </div>
-                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '20px' }}>{type.emoji}</div>
-                        <div style={{ position: 'absolute', bottom: 6, right: 8, padding: '2px 6px', borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.25)', color: 'white', fontSize: '10px', fontWeight: 700 }}>{type.defaultSteps.length} pages</div>
-                      </div>
-                      <div style={{ padding: '12px 14px' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '3px' }}>{type.name}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.5, marginBottom: '8px' }}>{type.desc}</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                          {type.defaultSteps.slice(0, 3).map((s, i) => (
-                            <span key={i} style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: `${type.color}15`, color: type.color, fontWeight: 600 }}>{s.name}</span>
-                          ))}
-                          {type.defaultSteps.length > 3 && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 600 }}>+{type.defaultSteps.length - 3}</span>}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+            </div>
+
+            {/* Right — live preview panel */}
+            <div style={{ width: '295px', borderLeft: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flexShrink: 0, transition: 'background 0.2s', backgroundColor: hoveredType ? '#fafafa' : '#f8fafc' }}>
+              {hoveredType ? (
+                <>
+                  {/* Preview panel header */}
+                  <div style={{ background: `linear-gradient(135deg, ${hoveredType.color}, ${hoveredType.color}bb)`, padding: '16px 18px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '26px' }}>{hoveredType.emoji}</span>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'white', lineHeight: 1.2 }}>{hoveredType.name}</div>
+                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.75)', marginTop: '2px' }}>{hoveredType.category} · {hoveredType.defaultSteps.length} pages</div>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: 1.5 }}>{hoveredType.desc}</p>
+                  </div>
+
+                  {/* Auto-scrolling page preview */}
+                  <div style={{ flex: 1, position: 'relative', overflow: 'hidden', borderBottom: '1px solid #e2e8f0', minHeight: 0 }}>
+                    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+                      <div style={{ transform: `translateY(-${previewScrollY}px)`, willChange: 'transform' }}>
+                        <FunnelPageWireframe type={hoveredType} />
+                      </div>
+                    </div>
+                    {/* Top/bottom fade overlays */}
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '32px', background: 'linear-gradient(to bottom, #fafafa, transparent)', pointerEvents: 'none', zIndex: 1 }} />
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '32px', background: 'linear-gradient(to top, #fafafa, transparent)', pointerEvents: 'none', zIndex: 1 }} />
+                    {/* Live badge */}
+                    <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 2, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.92)', padding: '3px 7px', borderRadius: 5, fontSize: '10px', fontWeight: 600, color: '#64748b', backdropFilter: 'blur(4px)', boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+                      <div style={{ width: 6, height: 6, borderRadius: 3, background: '#22c55e', animation: 'none' }} />
+                      Live preview
+                    </div>
+                  </div>
+
+                  {/* Funnel steps list */}
+                  <div style={{ padding: '12px 14px 14px', flexShrink: 0 }}>
+                    <p style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 8px' }}>Funnel Steps</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '12px' }}>
+                      {hoveredType.defaultSteps.map((s, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '18px', height: '18px', borderRadius: '9px', background: `${hoveredType.color}20`, color: hoveredType.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 800, flexShrink: 0 }}>{i + 1}</div>
+                          <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500, flex: 1 }}>{s.name}</span>
+                          <span style={{ fontSize: '9px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: 3 }}>{s.type}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => handleSelectType(hoveredType)}
+                      style={{ width: '100%', padding: '9px', background: hoveredType.color, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <Check size={14} /> Use This Funnel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '44px', marginBottom: '12px', opacity: 0.2 }}>👈</div>
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8', margin: '0 0 6px' }}>Hover to Preview</p>
+                  <p style={{ fontSize: '12px', color: '#cbd5e1', margin: 0, lineHeight: 1.5 }}>Point at any funnel type to see a scrolling live preview of the page</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
