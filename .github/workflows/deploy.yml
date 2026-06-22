@@ -69,7 +69,7 @@ jobs:
         run: npm run build
         env:
           VITE_BASE: /
-          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_GEMINI_API_KEY: AIzaSyAb8RN6IebcpWdQqBpBlUbcD4_JSXNWEXx_DIWSyhjSILt5FNNtQ
 
       # ── 6. FTP Upload ────────────────────────────────────────────────────────
       - name: Deploy via FTP → ${{ steps.target.outputs.label }}
