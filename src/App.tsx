@@ -15,6 +15,7 @@ import BookingPage from './components/Scheduling/BookingPage';
 import Analytics from './components/Analytics/Analytics';
 import Reputation from './components/Reputation/Reputation';
 import Settings from './components/Settings/Settings';
+import VideoShorts from './components/VideoShorts/VideoShorts';
 
 const SIDEBAR_WIDTHS = { full: 240, icons: 64, hidden: 0 };
 
@@ -61,6 +62,7 @@ function AppLayout() {
           <Route path="/funnels" element={<Funnels />} />
           <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
+          <Route path="/ai-shorts" element={<VideoShorts />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reputation" element={<Reputation />} />
           <Route path="/settings" element={<Settings />} />

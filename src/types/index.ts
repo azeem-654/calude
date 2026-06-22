@@ -343,3 +343,79 @@ export interface Stats {
   appointments: number;
   conversionRate: number;
 }
+
+/* ─── AI Shorts Engine ─── */
+
+export interface Caption {
+  id: string;
+  startTime: number;
+  endTime: number;
+  text: string;
+  emoji?: string;
+  highlighted?: boolean;
+  style?: { fontSize?: number; color?: string; position?: 'top' | 'middle' | 'bottom'; fontWeight?: string };
+}
+
+export interface BRollClip {
+  id: string;
+  keyword: string;
+  thumbnail: string;
+  duration: number;
+  title: string;
+  source: string;
+}
+
+export interface VideoClip {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  hashtags: string[];
+  startTime: number;
+  endTime: number;
+  duration: number;
+  thumbnailGradient: string;
+  viralityScore: number;
+  transcript: string;
+  captions: Caption[];
+  aspectRatio: '9:16' | '1:1' | '16:9';
+  status: 'liked' | 'disliked' | 'neutral';
+  focus: 'emotional' | 'educational' | 'funny';
+  musicTrack: string;
+  hasVoiceover: boolean;
+  broll: BRollClip[];
+  publishedTo: {
+    platform: 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'linkedin';
+    scheduledAt?: string;
+    publishedAt?: string;
+    status: 'scheduled' | 'published' | 'failed';
+    title?: string;
+    description?: string;
+  }[];
+  views: number;
+  createdAt: string;
+}
+
+export interface VideoProject {
+  id: string;
+  name: string;
+  sourceType: 'upload' | 'youtube' | 'url';
+  sourceName: string;
+  sourceUrl?: string;
+  duration: number;
+  thumbnailGradient: string;
+  status: 'uploading' | 'processing' | 'ready' | 'failed';
+  progress: number;
+  processingStep: string;
+  clips: VideoClip[];
+  trashedClips: VideoClip[];
+  settings: {
+    maxClipDuration: 30 | 45 | 60;
+    focus: 'emotional' | 'educational' | 'funny' | 'all';
+    aspectRatio: '9:16' | '1:1' | '16:9';
+    autoCaption: boolean;
+  };
+  contactId?: string;
+  totalViews: number;
+  createdAt: string;
+}

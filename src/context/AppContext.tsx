@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity } from '../types';
+import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity, VideoProject, VideoClip } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
 import { mockPipelines } from '../data/mockData';
 
@@ -69,6 +69,14 @@ interface AppContextType {
   dismissNotification: (id: string) => void;
   sidebarMode: 'full' | 'icons' | 'hidden';
   setSidebarMode: (mode: 'full' | 'icons' | 'hidden') => void;
+  videoProjects: VideoProject[];
+  addVideoProject: (project: VideoProject) => void;
+  updateVideoProject: (id: string, updates: Partial<VideoProject>) => void;
+  deleteVideoProject: (id: string) => void;
+  updateVideoClip: (projectId: string, clipId: string, updates: Partial<VideoClip>) => void;
+  trashVideoClip: (projectId: string, clipId: string) => void;
+  restoreVideoClip: (projectId: string, clipId: string) => void;
+  deleteVideoClip: (projectId: string, clipId: string) => void;
 }
 
 function loadLS<T>(key: string, fallback: T): T {
@@ -94,6 +102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [automations, setAutomations]   = useState<Automation[]>(()   => loadLS('crm_automations',  []));
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [sidebarMode, setSidebarModeState] = useState<'full' | 'icons' | 'hidden'>(() => (loadLS('crm_sidebar_mode', 'full') as 'full' | 'icons' | 'hidden'));
+  const [videoProjects, setVideoProjects] = useState<VideoProject[]>(() => loadLS('crm_video_projects', []));
   const setSidebarMode = (mode: 'full' | 'icons' | 'hidden') => { setSidebarModeState(mode); saveLS('crm_sidebar_mode', mode); };
 
   const defaultSchedule: ScheduleAvailability = {
@@ -297,6 +306,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify('Automation deleted', 'info');
   };
 
+  /* ── Video Projects ── */
+  const addVideoProject = (project: VideoProject) => {
+    setVideoProjects(prev => { const next = [project, ...prev]; saveLS('crm_video_projects', next); return next; });
+    notify(`Project "${project.name}" created — AI is analyzing your video...`);
+  };
+  const updateVideoProject = (id: string, updates: Partial<VideoProject>) => {
+    setVideoProjects(prev => { const next = prev.map(p => p.id === id ? { ...p, ...updates } : p); saveLS('crm_video_projects', next); return next; });
+  };
+  const deleteVideoProject = (id: string) => {
+    setVideoProjects(prev => { const next = prev.filter(p => p.id !== id); saveLS('crm_video_projects', next); return next; });
+    notify('Project deleted', 'info');
+  };
+  const updateVideoClip = (projectId: string, clipId: string, updates: Partial<VideoClip>) => {
+    setVideoProjects(prev => { const next = prev.map(p => p.id === projectId ? { ...p, clips: p.clips.map(c => c.id === clipId ? { ...c, ...updates } : c) } : p); saveLS('crm_video_projects', next); return next; });
+  };
+  const trashVideoClip = (projectId: string, clipId: string) => {
+    setVideoProjects(prev => { const next = prev.map(p => { if (p.id !== projectId) return p; const clip = p.clips.find(c => c.id === clipId); if (!clip) return p; return { ...p, clips: p.clips.filter(c => c.id !== clipId), trashedClips: [...p.trashedClips, { ...clip, status: 'disliked' as const }] }; }); saveLS('crm_video_projects', next); return next; });
+    notify('Clip moved to trash', 'info');
+  };
+  const restoreVideoClip = (projectId: string, clipId: string) => {
+    setVideoProjects(prev => { const next = prev.map(p => { if (p.id !== projectId) return p; const clip = p.trashedClips.find(c => c.id === clipId); if (!clip) return p; return { ...p, trashedClips: p.trashedClips.filter(c => c.id !== clipId), clips: [...p.clips, { ...clip, status: 'neutral' as const }] }; }); saveLS('crm_video_projects', next); return next; });
+    notify('Clip restored');
+  };
+  const deleteVideoClip = (projectId: string, clipId: string) => {
+    setVideoProjects(prev => { const next = prev.map(p => p.id === projectId ? { ...p, clips: p.clips.filter(c => c.id !== clipId), trashedClips: p.trashedClips.filter(c => c.id !== clipId) } : p); saveLS('crm_video_projects', next); return next; });
+    notify('Clip permanently deleted', 'info');
+  };
+
   /* ── Websites ── */
   const addWebsite = (w: Website | Omit<Website, 'id'>) => {
     const site: Website = 'id' in w ? (w as Website) : { ...w, id: `site-${Date.now()}` };
@@ -328,6 +365,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addAutomation, updateAutomation, deleteAutomation,
       notifications, addNotification: notify, dismissNotification: id => setNotifications(prev => prev.filter(n => n.id !== id)),
       sidebarMode, setSidebarMode,
+      videoProjects, addVideoProject, updateVideoProject, deleteVideoProject,
+      updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip,
     }}>
       {children}
     </AppContext.Provider>

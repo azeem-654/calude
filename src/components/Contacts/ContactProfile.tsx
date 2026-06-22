@@ -42,8 +42,9 @@ interface Props {
 }
 
 export default function ContactProfile({ contact, onClose }: Props) {
-  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification } = useApp();
-  const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email'>('overview');
+  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects } = useApp();
+  const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'videos'>('overview');
+  const contactClips = videoProjects.filter(p => p.contactId === contact.id).flatMap(p => p.clips);
   const [activityFilter, setActivityFilter] = useState<ContactActivity['type'] | 'all'>('all');
 
   // Editing state
@@ -194,6 +195,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'tasks', label: `Tasks (${pendingTasks.length})`, icon: <CheckSquare size={14} /> },
             { id: 'notes', label: `Notes (${notes.length})`, icon: <FileText size={14} /> },
             { id: 'email', label: 'Send Email', icon: <Send size={14} /> },
+            { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 18px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -431,6 +433,44 @@ export default function ContactProfile({ contact, onClose }: Props) {
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── Videos Tab ── */}
+          {tab === 'videos' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>AI Shorts for {contact.name}</h3>
+                <a href="/ai-shorts" style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <ExternalLink size={12} /> Open AI Shorts
+                </a>
+              </div>
+              {contactClips.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', border: '2px dashed #e2e8f0', borderRadius: '10px', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>✂️</div>
+                  <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#374151' }}>No clips linked yet</p>
+                  <p style={{ margin: 0, fontSize: '12px' }}>Upload a meeting or webinar recording and link it to this contact in AI Shorts.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
+                  {contactClips.map(clip => (
+                    <div key={clip.id} style={{ borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                      <div style={{ height: '80px', background: clip.thumbnailGradient, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          ▶
+                        </div>
+                        <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '10px', background: 'rgba(0,0,0,0.5)', color: 'white', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>
+                          {clip.viralityScore}
+                        </div>
+                      </div>
+                      <div style={{ padding: '6px 8px' }}>
+                        <p style={{ margin: 0, fontSize: '11px', fontWeight: 600, color: '#0f172a', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{clip.title}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{clip.duration}s · {clip.aspectRatio}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
