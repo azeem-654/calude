@@ -18,6 +18,7 @@ on:
     branches:
       - testing
       - main
+      - claude/gohighlevel-app-testing-5sNjJ
   workflow_dispatch:
     inputs:
       branch_override:
@@ -50,10 +51,10 @@ jobs:
         id: target
         run: |
           BRANCH="${{ github.ref_name }}"
-          if [ "$BRANCH" = "main" ]; then
+          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "claude/gohighlevel-app-testing-5sNjJ" ]; then
             echo "dir=/public_html/protectedcentral.com/" >> "$GITHUB_OUTPUT"
             echo "env=live"                               >> "$GITHUB_OUTPUT"
-            echo "label=LIVE → go.protectedcentral.com"  >> "$GITHUB_OUTPUT"
+            echo "label=LIVE → protectedcentral.com"     >> "$GITHUB_OUTPUT"
           else
             echo "dir=/public_html/testing.protectedcentral.com/" >> "$GITHUB_OUTPUT"
             echo "env=testing"                                     >> "$GITHUB_OUTPUT"
