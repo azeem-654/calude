@@ -36,13 +36,13 @@ export default function Header({ title, subtitle }: HeaderProps) {
       </header>
 
       {notifications.length > 0 && (
-        <div style={{ position: 'fixed', top: '80px', right: '24px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ position: 'fixed', top: '80px', right: '24px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px', pointerEvents: 'none' }}>
           {notifications.map(n => (
             <div
               key={n.id}
               onClick={() => dismissNotification(n.id)}
               style={{
-                padding: '12px 16px', borderRadius: '10px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                padding: '12px 16px', borderRadius: '10px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', pointerEvents: 'auto',
                 backgroundColor: n.type === 'success' ? '#ecfdf5' : n.type === 'error' ? '#fef2f2' : '#eff6ff',
                 borderLeft: `4px solid ${n.type === 'success' ? '#22c55e' : n.type === 'error' ? '#ef4444' : '#3b82f6'}`,
                 color: '#1e293b', fontSize: '13px', fontWeight: 500, maxWidth: '320px',
