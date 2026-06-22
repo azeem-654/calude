@@ -70,7 +70,7 @@ jobs:
 
       # ── 6. FTP Upload ────────────────────────────────────────────────────────
       - name: Deploy via FTP → ${{ steps.target.outputs.label }}
-        uses: SamKirkland/FTP-Deploy-Action@4.3.4
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server:      ${{ secrets.FTP_HOST }}
           username:    ${{ secrets.FTP_USER }}
