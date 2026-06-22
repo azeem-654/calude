@@ -2,23 +2,24 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, MessageSquare, Calendar, TrendingUp,
   Mail, Funnel, BarChart3, Star, Settings, Zap, CalendarCheck, Globe,
-  PanelLeftClose, PanelLeftOpen, Menu, X,
+  PanelLeftClose, PanelLeftOpen, Menu, X, Scissors,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 const navItems = [
-  { path: '/',             icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/contacts',     icon: Users,           label: 'Contacts' },
-  { path: '/conversations',icon: MessageSquare,   label: 'Conversations' },
-  { path: '/calendar',     icon: Calendar,        label: 'Calendar' },
-  { path: '/scheduling',   icon: CalendarCheck,   label: 'Scheduling' },
-  { path: '/pipelines',    icon: TrendingUp,      label: 'Pipelines' },
-  { path: '/marketing',    icon: Mail,            label: 'Marketing' },
-  { path: '/funnels',      icon: Funnel,          label: 'Funnels' },
-  { path: '/websites',     icon: Globe,           label: 'Websites' },
-  { path: '/analytics',    icon: BarChart3,       label: 'Analytics' },
-  { path: '/reputation',   icon: Star,            label: 'Reputation' },
-  { path: '/settings',     icon: Settings,        label: 'Settings' },
+  { path: '/',              icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/contacts',      icon: Users,           label: 'Contacts' },
+  { path: '/conversations', icon: MessageSquare,   label: 'Conversations' },
+  { path: '/calendar',      icon: Calendar,        label: 'Calendar' },
+  { path: '/scheduling',    icon: CalendarCheck,   label: 'Scheduling' },
+  { path: '/pipelines',     icon: TrendingUp,      label: 'Pipelines' },
+  { path: '/marketing',     icon: Mail,            label: 'Marketing' },
+  { path: '/funnels',       icon: Funnel,          label: 'Funnels' },
+  { path: '/websites',      icon: Globe,           label: 'Websites' },
+  { path: '/ai-shorts',     icon: Scissors,        label: 'AI Shorts' },
+  { path: '/analytics',     icon: BarChart3,       label: 'Analytics' },
+  { path: '/reputation',    icon: Star,            label: 'Reputation' },
+  { path: '/settings',      icon: Settings,        label: 'Settings' },
 ];
 
 const MODE_CYCLE: Record<'full' | 'icons' | 'hidden', 'full' | 'icons' | 'hidden'> = {
