@@ -10,6 +10,8 @@ import {
 import type { VideoProject, VideoClip, Caption, BRollClip } from '../../types';
 import { useApp } from '../../context/AppContext';
 import Header from '../Layout/Header';
+import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini } from '../../lib/gemini';
+import type { GeminiAnalysis } from '../../lib/gemini';
 
 /* ── Constants ── */
 
@@ -148,6 +150,40 @@ function generateClips(project: VideoProject): VideoClip[] {
       aspectRatio: ratio,
       status: 'neutral' as const,
       focus: t.focus,
+      musicTrack: 'none',
+      hasVoiceover: false,
+      broll: [],
+      publishedTo: [],
+      views: 0,
+      createdAt: new Date().toISOString(),
+    };
+  });
+}
+
+/** Convert Gemini analysis into VideoClip objects. */
+function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject): VideoClip[] {
+  return analysis.clips.map((gc, i) => {
+    const dur = Math.round(gc.endTime - gc.startTime);
+    const captions = generateCaptions(gc.transcript, gc.startTime);
+    const focus = (['emotional', 'educational', 'funny'] as const).includes(gc.focus as never)
+      ? (gc.focus as 'emotional' | 'educational' | 'funny')
+      : 'educational';
+    return {
+      id: `clip-${project.id}-${i}`,
+      projectId: project.id,
+      title: gc.title,
+      description: `🔥 ${gc.title}\n\n${gc.transcript}\n\n${gc.reason}\n\n👉 Save this for later!`,
+      hashtags: gc.hashtags.slice(0, 8),
+      startTime: gc.startTime,
+      endTime: gc.endTime,
+      duration: Math.max(dur, 5),
+      thumbnailGradient: GRADIENTS[(i + 2) % GRADIENTS.length] as string,
+      viralityScore: Math.min(99, Math.max(55, gc.viralityScore)),
+      transcript: gc.transcript,
+      captions,
+      aspectRatio: project.settings.aspectRatio,
+      status: 'neutral' as const,
+      focus,
       musicTrack: 'none',
       hasVoiceover: false,
       broll: [],
@@ -1226,7 +1262,61 @@ export default function VideoShorts() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [startProcessing]);
 
-  const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; duration: number }) => {
+  /* ── Real Gemini processing ── */
+  const processWithGemini = useCallback(async (
+    projectId: string,
+    source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File }
+  ) => {
+    const upd = (patch: Partial<VideoProject>) => updateVideoProjectRef.current(projectId, patch);
+    try {
+      let fileUri: string;
+      let mimeType = 'video/mp4';
+
+      if (source.type === 'upload' && source.file) {
+        upd({ status: 'uploading', progress: 8, processingStep: 'Uploading video to Gemini AI...' });
+        fileUri = await uploadFileToGemini(source.file);
+        mimeType = source.file.type || 'video/mp4';
+        upd({ progress: 30, processingStep: 'Video uploaded — AI analyzing content...' });
+        await waitForFileActive(fileUri);
+      } else if (source.url) {
+        // YouTube or direct URL — Gemini 1.5 Flash can accept URLs directly
+        fileUri = source.url;
+        upd({ status: 'processing', progress: 20, processingStep: 'Connecting to video source...' });
+        await new Promise(r => setTimeout(r, 1000));
+        upd({ progress: 35, processingStep: 'AI analyzing content...' });
+      } else {
+        throw new Error('No video source provided');
+      }
+
+      upd({ status: 'processing', progress: 45, processingStep: 'Finding viral moments...' });
+      const project = videoProjectsRef.current.find(p => p.id === projectId);
+      if (!project) throw new Error('Project not found');
+
+      const analysis = await analyzeVideoWithGemini(fileUri, mimeType, project.settings);
+
+      upd({ progress: 80, processingStep: 'Generating captions & scoring virality...' });
+      await new Promise(r => setTimeout(r, 600));
+
+      const clips = geminiClipsToVideoClips(analysis, project);
+      const realDuration = analysis.totalDuration > 0 ? analysis.totalDuration : project.duration;
+
+      upd({
+        status: 'ready',
+        progress: 100,
+        processingStep: 'Done! Your clips are ready.',
+        clips,
+        duration: realDuration,
+      });
+      addNotificationRef.current(`AI Shorts ready! ${clips.length} clips generated from your video.`, 'success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[Gemini]', msg);
+      addNotificationRef.current(`AI processing failed: ${msg}. Falling back to demo mode.`, 'error');
+      startProcessing(projectId, 0);
+    }
+  }, [startProcessing]);
+
+  const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }) => {
     const id = `proj-${Date.now()}`;
     const project: VideoProject = {
       id, name,
@@ -1245,12 +1335,17 @@ export default function VideoShorts() {
       createdAt: new Date().toISOString(),
     };
     addVideoProject(project);
-    // Immediately seed the ref so startProcessing can find it before React flushes the state update
+    // Immediately seed the ref so processWithGemini / startProcessing can find it before React flushes
     videoProjectsRef.current = [project, ...videoProjectsRef.current];
     setShowUpload(false);
-    startProcessing(id, 0);
     setSelectedProjectId(id);
     setView('project');
+
+    if (hasGeminiKey()) {
+      processWithGemini(id, source);
+    } else {
+      startProcessing(id, 0);
+    }
   };
 
   /* Stats */
