@@ -1165,31 +1165,36 @@ export default function VideoShorts() {
   const [showUpload, setShowUpload] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const processingRefs = useRef<Map<string, number>>(new Map());
+  // Always-current ref so timers can read latest state without stale closures
+  const videoProjectsRef = useRef(videoProjects);
+  useEffect(() => { videoProjectsRef.current = videoProjects; }, [videoProjects]);
+  const updateVideoProjectRef = useRef(updateVideoProject);
+  useEffect(() => { updateVideoProjectRef.current = updateVideoProject; }, [updateVideoProject]);
+  const addNotificationRef = useRef(addNotification);
+  useEffect(() => { addNotificationRef.current = addNotification; }, [addNotification]);
 
   const selectedProject = videoProjects.find(p => p.id === selectedProjectId) ?? null;
   const selectedClip = selectedProject?.clips.find(c => c.id === selectedClipId) ?? null;
 
   /* ── Processing simulation ── */
-  const startProcessing = useCallback((projectId: string) => {
-    let stepIdx = 0;
+  const startProcessing = useCallback((projectId: string, fromProgress = 0) => {
+    // Resume from the right step so page-navigation doesn't restart from 0
+    let stepIdx = Math.max(0, PROCESSING_STEPS.findIndex(s => s.pct > fromProgress));
     const tick = () => {
       const step = PROCESSING_STEPS[stepIdx];
       if (!step) return;
-      updateVideoProject(projectId, { progress: step.pct, processingStep: step.label });
+      updateVideoProjectRef.current(projectId, { progress: step.pct, processingStep: step.label });
       if (step.pct >= 100) {
         processingRefs.current.delete(projectId);
-        // Generate clips
-        const project = videoProjects.find(p => p.id === projectId);
+        // Use the always-current ref so we never get stale videoProjects
+        const project = videoProjectsRef.current.find(p => p.id === projectId);
         if (project) {
           const clips = generateClips({ ...project, status: 'ready', progress: 100 });
-          updateVideoProject(projectId, { status: 'ready', progress: 100, processingStep: 'Done!', clips });
+          updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done!', clips });
         } else {
-          // Re-query from storage via a workaround: use a tiny state snapshot
-          setTimeout(() => {
-            updateVideoProject(projectId, { status: 'ready', progress: 100, processingStep: 'Done!' });
-          }, 200);
+          updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done! Your clips are ready.' });
         }
-        addNotification('AI Shorts ready! Your clips have been generated.', 'success');
+        addNotificationRef.current('AI Shorts ready! Your clips have been generated.', 'success');
         return;
       }
       stepIdx++;
@@ -1199,21 +1204,27 @@ export default function VideoShorts() {
     };
     const timer = window.setTimeout(tick, 800);
     processingRefs.current.set(projectId, timer);
-  }, [updateVideoProject, addNotification, videoProjects]);
-
-  /* Start processing for any processing projects on mount */
-  useEffect(() => {
-    videoProjects.forEach(p => {
-      if ((p.status === 'processing' || p.status === 'uploading') && !processingRefs.current.has(p.id)) {
-        startProcessing(p.id);
-      }
-    });
   }, []);
 
-  /* Cleanup timers */
+  /* Cleanup timers on unmount */
   useEffect(() => {
     return () => { processingRefs.current.forEach(t => clearTimeout(t)); };
   }, []);
+
+  /* Resume processing for any in-progress projects on mount.
+     Runs after the cleanup in StrictMode, so guard with a flag. */
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      videoProjectsRef.current.forEach(p => {
+        if ((p.status === 'processing' || p.status === 'uploading') && !processingRefs.current.has(p.id)) {
+          startProcessing(p.id, p.progress);
+        }
+      });
+    }, 100);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [startProcessing]);
 
   const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; duration: number }) => {
     const id = `proj-${Date.now()}`;
@@ -1234,8 +1245,10 @@ export default function VideoShorts() {
       createdAt: new Date().toISOString(),
     };
     addVideoProject(project);
+    // Immediately seed the ref so startProcessing can find it before React flushes the state update
+    videoProjectsRef.current = [project, ...videoProjectsRef.current];
     setShowUpload(false);
-    startProcessing(id);
+    startProcessing(id, 0);
     setSelectedProjectId(id);
     setView('project');
   };
