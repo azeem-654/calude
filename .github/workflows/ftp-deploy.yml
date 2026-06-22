@@ -65,8 +65,8 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          # Deploy to domain root on Freehostia (not /calude/ sub-path)
           VITE_BASE: /
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       # ── 6. FTP Upload ────────────────────────────────────────────────────────
       - name: Deploy via FTP → ${{ steps.target.outputs.label }}
