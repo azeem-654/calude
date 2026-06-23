@@ -402,6 +402,7 @@ export interface VideoProject {
   sourceType: 'upload' | 'youtube' | 'url';
   sourceName: string;
   sourceUrl?: string;
+  sourceBlobUrl?: string;
   duration: number;
   thumbnailGradient: string;
   status: 'uploading' | 'processing' | 'ready' | 'failed';

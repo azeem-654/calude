@@ -194,6 +194,60 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
   });
 }
 
+/* ── YouTube ID extractor ── */
+function getYouTubeId(url: string): string | null {
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+/* ── Clip thumbnail for card grid ── */
+function ClipThumbnail({
+  clip, sourceBlobUrl, sourceType, sourceUrl,
+}: {
+  clip: VideoClip;
+  sourceBlobUrl?: string;
+  sourceType: VideoProject['sourceType'];
+  sourceUrl?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const seek = () => { v.currentTime = clip.startTime; };
+    if (v.readyState >= 1) { seek(); } else { v.addEventListener('loadedmetadata', seek, { once: true }); }
+  }, [clip.startTime, sourceBlobUrl]);
+
+  if (sourceType === 'youtube' && sourceUrl) {
+    const ytId = getYouTubeId(sourceUrl);
+    if (ytId) {
+      return (
+        <img
+          src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          alt=""
+        />
+      );
+    }
+  }
+
+  if (sourceBlobUrl) {
+    return (
+      <video
+        ref={videoRef}
+        src={sourceBlobUrl}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        muted
+        playsInline
+        preload="metadata"
+        onError={() => { /* falls back to gradient bg */ }}
+      />
+    );
+  }
+
+  return null;
+}
+
 /* ── Score badge ── */
 function ScoreBadge({ score, size = 'md' }: { score: number; size?: 'sm' | 'md' | 'lg' }) {
   const c = viralityColor(score);
@@ -395,7 +449,7 @@ function ProcessingScreen({ project }: { project: VideoProject }) {
 }
 
 /* ── Clip Card ── */
-function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDuplicate }: {
+function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDuplicate, sourceBlobUrl, sourceType, sourceUrl }: {
   clip: VideoClip;
   onEdit: () => void;
   onLike: () => void;
@@ -403,6 +457,9 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
   onTrash: () => void;
   onPublish: () => void;
   onDuplicate: () => void;
+  sourceBlobUrl?: string;
+  sourceType: VideoProject['sourceType'];
+  sourceUrl?: string;
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const isLiked = clip.status === 'liked';
@@ -415,6 +472,7 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
       onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'}>
       {/* Thumbnail */}
       <div style={{ position: 'relative', paddingBottom: clip.aspectRatio === '9:16' ? '133%' : clip.aspectRatio === '1:1' ? '100%' : '56.25%', overflow: 'hidden', background: clip.thumbnailGradient, cursor: 'pointer' }} onClick={onEdit}>
+        <ClipThumbnail clip={clip} sourceBlobUrl={sourceBlobUrl} sourceType={sourceType} sourceUrl={sourceUrl} />
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,0.5)' }}>
             <Play size={18} color="white" fill="white" />
@@ -612,26 +670,40 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
   const [trimStart, setTrimStart] = useState(clip.startTime);
   const [trimEnd, setTrimEnd] = useState(clip.endTime);
   const [brollSearch, setBrollSearch] = useState('');
-  const timerRef = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const dur = localClip.duration;
+  const ytId = (project.sourceType === 'youtube' && project.sourceUrl) ? getYouTubeId(project.sourceUrl) : null;
+  const hasRealVideo = !!(project.sourceBlobUrl || ytId);
 
   const set = (updates: Partial<VideoClip>) => setLocalClip(prev => ({ ...prev, ...updates }));
 
-  // Simulate playhead
-  useEffect(() => {
-    if (playing) {
-      timerRef.current = window.setInterval(() => {
-        setPlayhead(prev => {
-          if (prev >= dur) { setPlaying(false); return 0; }
-          return prev + 0.1;
-        });
-      }, 100);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
+  // Seek real video to trim start when source loads
+  const handleVideoLoaded = () => {
+    if (videoRef.current) videoRef.current.currentTime = trimStart;
+  };
+
+  // Update playhead from real video and stop at trimEnd
+  const handleTimeUpdate = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const elapsed = v.currentTime - trimStart;
+    setPlayhead(Math.max(0, elapsed));
+    if (v.currentTime >= trimEnd) {
+      v.pause();
+      v.currentTime = trimStart;
+      setPlaying(false);
+      setPlayhead(0);
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [playing, dur]);
+  };
+
+  // Drive real video from playing state
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (playing) { v.play().catch(() => setPlaying(false)); }
+    else { v.pause(); }
+  }, [playing]);
 
   const handlePublish = (data: VideoClip['publishedTo'][0]) => {
     const publishedTo = [...localClip.publishedTo.filter(p => p.platform !== data.platform), data];
@@ -685,19 +757,42 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           {/* Phone/screen frame with video preview */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             <div style={{ position: 'relative', width: `${previewWidth}px`, height: `${previewHeight}px`, borderRadius: '12px', overflow: 'hidden', background: localClip.thumbnailGradient, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', flexShrink: 0 }}>
-              {/* Simulated video content */}
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Real video / YouTube embed */}
+              {ytId ? (
+                <iframe
+                  key={`${ytId}-${trimStart}`}
+                  src={`https://www.youtube.com/embed/${ytId}?start=${Math.floor(trimStart)}&end=${Math.ceil(trimEnd)}&autoplay=0&rel=0&modestbranding=1`}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : project.sourceBlobUrl ? (
+                <video
+                  ref={videoRef}
+                  src={project.sourceBlobUrl}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  playsInline
+                  muted={false}
+                  preload="auto"
+                  onLoadedMetadata={handleVideoLoaded}
+                  onTimeUpdate={handleTimeUpdate}
+                />
+              ) : null}
+              {/* Play/pause overlay — only for non-YouTube (YouTube has its own controls) */}
+              {!ytId && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: hasRealVideo ? 'none' : 'auto' }}>
                 {!playing && (
-                  <button onClick={() => setPlaying(true)} style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', border: '2px solid rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                  <button onClick={() => setPlaying(true)} style={{ pointerEvents: 'all', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', border: '2px solid rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
                     <Play size={22} fill="white" />
                   </button>
                 )}
                 {playing && (
-                  <button onClick={() => setPlaying(false)} style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', border: '2px solid rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                  <button onClick={() => setPlaying(false)} style={{ pointerEvents: 'all', width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', border: '2px solid rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
                     <Pause size={22} />
                   </button>
                 )}
               </div>
+              )}
 
               {/* Active caption overlay */}
               {activeCaptionIdx >= 0 && (
@@ -726,7 +821,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           <div style={{ width: '100%', maxWidth: '600px', background: '#1e293b', borderRadius: '12px', padding: '16px', flexShrink: 0 }}>
             {/* Playback controls */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '12px' }}>
-              <button onClick={() => setPlayhead(0)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><SkipBack size={16} /></button>
+              <button onClick={() => { setPlayhead(0); if (videoRef.current) videoRef.current.currentTime = trimStart; }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><SkipBack size={16} /></button>
               <button onClick={() => setPlaying(!playing)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', background: '#6366f1', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {playing ? <Pause size={16} /> : <Play size={16} fill="white" />}
               </button>
@@ -738,7 +833,9 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
             <div style={{ position: 'relative', height: '48px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer' }}
               onClick={e => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                setPlayhead(((e.clientX - rect.left) / rect.width) * dur);
+                const elapsed = ((e.clientX - rect.left) / rect.width) * dur;
+                setPlayhead(elapsed);
+                if (videoRef.current) videoRef.current.currentTime = trimStart + elapsed;
               }}>
               {/* Waveform bars */}
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: '1px', padding: '0 2px' }}>
@@ -1156,6 +1253,9 @@ function ProjectView({ project, onBack, onEditClip }: { project: VideoProject; o
                     onTrash={() => trashVideoClip(project.id, clip.id)}
                     onPublish={() => setPublishClip(clip)}
                     onDuplicate={() => handleDuplicate(clip)}
+                    sourceBlobUrl={project.sourceBlobUrl}
+                    sourceType={project.sourceType}
+                    sourceUrl={project.sourceUrl}
                   />
                 ))}
               </div>
@@ -1318,11 +1418,13 @@ export default function VideoShorts() {
 
   const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }) => {
     const id = `proj-${Date.now()}`;
+    const blobUrl = source.file ? URL.createObjectURL(source.file) : undefined;
     const project: VideoProject = {
       id, name,
       sourceType: source.type,
       sourceName: source.url ?? name,
       sourceUrl: source.url,
+      sourceBlobUrl: blobUrl,
       duration: source.duration,
       thumbnailGradient: GRADIENTS[videoProjects.length % GRADIENTS.length] as string,
       status: 'uploading',
