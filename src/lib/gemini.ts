@@ -110,17 +110,29 @@ Return ONLY valid JSON with NO markdown fences:
     },
   };
 
-  const res = await fetch(
-    `${BASE}/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  );
+  const MODELS = [
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+  ];
 
-  if (!res.ok) throw new Error(`Gemini API error: ${await res.text()}`);
-  const data = await res.json();
+  let lastError = '';
+  for (const model of MODELS) {
+    const res = await fetch(
+      `${BASE}/v1beta/models/${model}:generateContent?key=${API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
 
-  if (data.error) throw new Error(data.error.message ?? 'Gemini error');
-
-  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-  const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  return JSON.parse(json) as GeminiAnalysis;
+    if (res.status === 429 || res.status === 404) {
+      lastError = await res.text();
+      continue;
+    }
+    if (!res.ok) throw new Error(`Gemini API error: ${await res.text()}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message ?? 'Gemini error');
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    return JSON.parse(json) as GeminiAnalysis;
+  }
+  throw new Error(`All Gemini models quota exceeded or unavailable. ${lastError}`);
 }
