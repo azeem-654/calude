@@ -61,7 +61,7 @@ function renderShapeSVG(el: CanvasElement) {
 
 /* ── Canvas Element Renderer ── */
 function CanvasElementView({
-  el, selected, onSelect, onStartDrag, onStartResize, onStartRotate, editingId, onDblClick,
+  el, selected, onSelect, onStartDrag, onStartResize, onStartRotate, editingId, onDblClick, onTextChange,
 }: {
   el: CanvasElement;
   selected: boolean;
@@ -71,6 +71,7 @@ function CanvasElementView({
   onStartRotate: (id: string, e: React.PointerEvent) => void;
   editingId: string | null;
   onDblClick: (id: string) => void;
+  onTextChange: (id: string, text: string) => void;
 }) {
   const d = el.data;
 
@@ -94,24 +95,39 @@ function CanvasElementView({
     if (d.kind === 'text') {
       const td = d as TextElement;
       const isEditing = editingId === el.id;
+      const textStyle: React.CSSProperties = {
+        width: '100%', height: '100%', fontSize: td.fontSize, fontFamily: td.fontFamily,
+        color: td.color, fontWeight: td.fontWeight as any, fontStyle: td.fontStyle,
+        textAlign: td.textAlign, lineHeight: td.lineHeight, letterSpacing: td.letterSpacing,
+        textDecoration: td.textDecoration, whiteSpace: 'pre-wrap', overflow: 'hidden',
+        textTransform: td.uppercase ? 'uppercase' : 'none',
+        textShadow: td.textShadow ?? 'none',
+        backgroundColor: td.backgroundColor ?? 'transparent',
+        padding: td.padding ?? 0,
+        borderRadius: td.borderRadius ?? 0,
+        wordBreak: 'break-word',
+        boxSizing: 'border-box',
+      };
+      if (isEditing) {
+        // Use a textarea overlay when editing to avoid contentEditable sync issues
+        return (
+          <textarea
+            autoFocus
+            defaultValue={td.text}
+            onBlur={e => onTextChange(el.id, e.currentTarget.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { onTextChange(el.id, e.currentTarget.value); e.currentTarget.blur(); } e.stopPropagation(); }}
+            style={{
+              ...textStyle, resize: 'none', border: 'none', outline: '2px solid #a5b4fc',
+              cursor: 'text', background: td.backgroundColor ?? 'transparent',
+              overflowY: 'hidden', fontFamily: td.fontFamily,
+            }}
+          />
+        );
+      }
       return (
         <div
-          contentEditable={isEditing}
-          suppressContentEditableWarning
-          style={{
-            width: '100%', height: '100%', fontSize: td.fontSize, fontFamily: td.fontFamily,
-            color: td.color, fontWeight: td.fontWeight as any, fontStyle: td.fontStyle,
-            textAlign: td.textAlign, lineHeight: td.lineHeight, letterSpacing: td.letterSpacing,
-            textDecoration: td.textDecoration, whiteSpace: 'pre-wrap', overflow: 'hidden',
-            textTransform: td.uppercase ? 'uppercase' : 'none',
-            textShadow: td.textShadow ?? 'none',
-            backgroundColor: td.backgroundColor ?? 'transparent',
-            padding: td.padding ?? 0,
-            borderRadius: td.borderRadius ?? 0,
-            outline: 'none', cursor: isEditing ? 'text' : 'move',
-            wordBreak: 'break-word',
-          }}
-          onPointerDown={e => { if (!isEditing) e.preventDefault(); }}
+          style={{ ...textStyle, outline: 'none', cursor: 'move' }}
+          onPointerDown={e => e.preventDefault()}
         >
           {td.text}
         </div>
@@ -769,6 +785,7 @@ export default function PostEditor() {
     startY: number;
     origEl: CanvasElement;
   } | null>(null);
+  const didDragRef = useRef(false);
 
   if (!post) {
     return (
@@ -853,6 +870,7 @@ export default function PostEditor() {
     const next = elements.filter(e => e.id !== id);
     setElements(next);
     if (selectedId === id) setSelectedId(null);
+    if (editingId === id) setEditingId(null);
     pushHistory(next, background);
     setSaved(false);
   };
@@ -891,8 +909,9 @@ export default function PostEditor() {
     const el = elements.find(el => el.id === id);
     if (!el || el.locked) return;
     setSelectedId(id);
+    didDragRef.current = false;
     dragRef.current = { type: 'drag', id, startX: e.clientX, startY: e.clientY, origEl: { ...el } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handleResizeStart = (id: string, handle: string, e: React.PointerEvent) => {
@@ -900,8 +919,9 @@ export default function PostEditor() {
     e.stopPropagation();
     const el = elements.find(el => el.id === id);
     if (!el) return;
+    didDragRef.current = false;
     dragRef.current = { type: 'resize', id, handle, startX: e.clientX, startY: e.clientY, origEl: { ...el } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handleRotateStart = (id: string, e: React.PointerEvent) => {
@@ -909,13 +929,15 @@ export default function PostEditor() {
     e.stopPropagation();
     const el = elements.find(el => el.id === id);
     if (!el) return;
+    didDragRef.current = false;
     dragRef.current = { type: 'rotate', id, startX: e.clientX, startY: e.clientY, origEl: { ...el } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
     const dr = dragRef.current;
     if (!dr) return;
+    didDragRef.current = true;
     const dx = (e.clientX - dr.startX) / zoom;
     const dy = (e.clientY - dr.startY) / zoom;
     const orig = dr.origEl;
@@ -947,6 +969,8 @@ export default function PostEditor() {
       if (el) pushHistory(elements, background);
       dragRef.current = null;
     }
+    // Reset drag flag after a short delay so click handler can read it
+    setTimeout(() => { didDragRef.current = false; }, 50);
   };
 
   // ── Add elements ──
@@ -1006,11 +1030,13 @@ export default function PostEditor() {
   };
 
   const handleCanvasClick = (e: React.MouseEvent) => {
+    if (didDragRef.current) return; // Ignore click events after a drag
     if (editingId) { setEditingId(null); return; }
-    if (e.target === canvasRef.current || (e.target as HTMLElement).dataset?.canvas) {
+    const onBackground = e.target === canvasRef.current || (e.target as HTMLElement).dataset?.canvas === 'true';
+    if (onBackground) {
       setSelectedId(null);
+      if (tool === 'text') addText();
     }
-    if (tool === 'text') addText();
   };
 
   const selectedEl = elements.find(e => e.id === selectedId) ?? null;
@@ -1197,8 +1223,12 @@ export default function PostEditor() {
                 onStartResize={handleResizeStart}
                 onStartRotate={handleRotateStart}
                 onDblClick={id => {
-                  const el = elements.find(e => e.id === id);
-                  if (el?.data.kind === 'text') setEditingId(id);
+                  const found = elements.find(e => e.id === id);
+                  if (found?.data.kind === 'text') setEditingId(id);
+                }}
+                onTextChange={(id, text) => {
+                  updateElementAndHistory(id, { data: { ...(elements.find(e => e.id === id)?.data as any), text } });
+                  setEditingId(null);
                 }}
               />
             ))}
