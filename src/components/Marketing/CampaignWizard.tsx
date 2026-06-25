@@ -8,7 +8,7 @@ import {
   Clock, Calendar, Users, Settings, ChevronDown, ChevronUp,
   Loader, XCircle, RefreshCw, Wand2, Target,
 } from 'lucide-react';
-import { loadEmailConfig, sendEmail, personalizeHtml, isEmailConfigured } from '../../services/emailService';
+import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 
 /* ─── Types ─── */
 type CampaignGoal = 'announce' | 'promote' | 'nurture' | 'welcome' | 'reengage' | 'custom';
