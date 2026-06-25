@@ -136,3 +136,175 @@ Return ONLY valid JSON with NO markdown fences:
   }
   throw new Error(`All Gemini models quota exceeded or unavailable. ${lastError}`);
 }
+
+/** Shared helper: call Gemini text models with fallback chain. */
+async function callGemini(prompt: string, temperature = 0.7): Promise<string> {
+  const MODELS = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature },
+  };
+  let lastError = '';
+  for (const model of MODELS) {
+    const res = await fetch(
+      `${BASE}/v1beta/models/${model}:generateContent?key=${API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
+    if (res.status === 429 || res.status === 404) { lastError = await res.text(); continue; }
+    if (!res.ok) throw new Error(`Gemini error: ${await res.text()}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message ?? 'Gemini error');
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  }
+  throw new Error(`All Gemini models exhausted. ${lastError}`);
+}
+
+export interface AIDesignElement {
+  type: 'text' | 'shape' | 'sticker';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+  locked: boolean;
+  visible: boolean;
+  data: Record<string, unknown>;
+}
+
+export interface AIDesignResult {
+  name: string;
+  background: {
+    type: 'color' | 'gradient';
+    color: string;
+    gradientStart: string;
+    gradientEnd: string;
+    gradientAngle: number;
+  };
+  elements: AIDesignElement[];
+}
+
+/**
+ * Ask Gemini to generate a complete social media design from a text prompt.
+ * Returns structured JSON describing background + canvas elements.
+ */
+export async function generateSocialPostDesign(
+  userPrompt: string,
+  platform: string,
+  aspectRatio: string,
+  canvasWidth: number,
+  canvasHeight: number
+): Promise<AIDesignResult> {
+  const prompt = `You are an expert social media graphic designer. Create a stunning ${platform} post design (${aspectRatio}, ${canvasWidth}×${canvasHeight}px canvas) based on this description:
+
+"${userPrompt}"
+
+Design rules:
+- Use bold, eye-catching colors that match the mood
+- Place 3-6 elements: at least one headline text, optionally a subheading, decorative shapes, or emoji stickers
+- All x/y/width/height values must be numbers in pixels within the canvas (0 to ${canvasWidth} wide, 0 to ${canvasHeight} tall)
+- Text elements must not overflow the canvas; keep x+width ≤ ${canvasWidth} and y+height ≤ ${canvasHeight}
+- fontWeight must be one of: "normal", "bold", "300", "500", "600", "700", "800", "900"
+- fontFamily must be one of: "Inter", "Impact", "Georgia", "Arial", "Helvetica", "Verdana"
+- shapeType must be one of: "rect", "rounded-rect", "circle", "triangle", "star", "diamond", "line"
+- For sticker elements, emoji must be a single emoji character
+- Colors must be valid hex codes like "#ff0000"
+- Make it visually striking and professional
+
+Return ONLY valid JSON, no markdown fences:
+{
+  "name": "Short descriptive design name",
+  "background": {
+    "type": "gradient",
+    "color": "#hex",
+    "gradientStart": "#hex",
+    "gradientEnd": "#hex",
+    "gradientAngle": 135
+  },
+  "elements": [
+    {
+      "type": "text",
+      "x": 60,
+      "y": 180,
+      "width": ${canvasWidth - 120},
+      "height": 80,
+      "rotation": 0,
+      "zIndex": 1,
+      "locked": false,
+      "visible": true,
+      "data": {
+        "kind": "text",
+        "text": "YOUR HEADLINE",
+        "fontSize": 48,
+        "fontFamily": "Impact",
+        "color": "#ffffff",
+        "fontWeight": "900",
+        "fontStyle": "normal",
+        "textAlign": "center",
+        "lineHeight": 1.2,
+        "letterSpacing": 2,
+        "textDecoration": "none",
+        "uppercase": true
+      }
+    },
+    {
+      "type": "shape",
+      "x": 40,
+      "y": 40,
+      "width": ${canvasWidth - 80},
+      "height": ${canvasHeight - 80},
+      "rotation": 0,
+      "zIndex": 0,
+      "locked": false,
+      "visible": true,
+      "data": {
+        "kind": "shape",
+        "shapeType": "rounded-rect",
+        "fill": "transparent",
+        "stroke": "rgba(255,255,255,0.3)",
+        "strokeWidth": 2,
+        "opacity": 1
+      }
+    }
+  ]
+}`;
+
+  const json = await callGemini(prompt, 0.8);
+  const result = JSON.parse(json) as AIDesignResult;
+
+  // Ensure background has required fields with sensible defaults
+  result.background = {
+    type: result.background?.type ?? 'gradient',
+    color: result.background?.color ?? '#6366f1',
+    gradientStart: result.background?.gradientStart ?? '#6366f1',
+    gradientEnd: result.background?.gradientEnd ?? '#a855f7',
+    gradientAngle: result.background?.gradientAngle ?? 135,
+  };
+
+  return result;
+}
+
+/**
+ * Ask Gemini to rewrite / improve a text element's content.
+ */
+export async function improveTextWithAI(
+  currentText: string,
+  instruction: string,
+  platform: string
+): Promise<string> {
+  const prompt = `You are a social media copywriter. Rewrite the following text for ${platform} based on the instruction.
+
+Current text: "${currentText}"
+Instruction: "${instruction}"
+
+Rules:
+- Keep it concise (under 100 characters for headlines, under 200 for body)
+- Make it punchy, engaging, and platform-appropriate
+- Return ONLY a JSON object: {"text": "the rewritten text"}`;
+
+  const json = await callGemini(prompt, 0.9);
+  const result = JSON.parse(json) as { text: string };
+  return result.text ?? currentText;
+}
+

@@ -1,13 +1,14 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Trash2, Edit3, Copy, Share2,
   Image, LayoutGrid,
-  List, Clock, Eye, X, Wand2,
+  List, Clock, Eye, X, Wand2, AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import type { DesignPost, Platform } from './types';
+import type { DesignPost, Platform, CanvasElement } from './types';
 import { PLATFORM_PRESETS, RATIO_SIZES, TEMPLATES } from './templates';
+import { generateSocialPostDesign, hasGeminiKey } from '../../lib/gemini';
 
 const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   instagram: <span style={{ fontSize: 12, fontWeight: 700 }}>IG</span>,
@@ -203,8 +204,7 @@ function NewPostModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p
   const [name, setName] = useState('Untitled Design');
   const [aiPrompt, setAiPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
-
-  const { hasGeminiKey } = useApp() as any;
+  const [error, setError] = useState('');
 
   const ratioOptions = [
     { label: 'Square', value: '1:1', desc: '1080 × 1080' },
@@ -225,8 +225,48 @@ function NewPostModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p
       elements: [],
       status: 'draft',
       tags: [],
-      aiPrompt: step === 'ai' ? aiPrompt : undefined,
     });
+  };
+
+  const handleGenerate = async () => {
+    setError('');
+    if (step !== 'ai') { createBlank(); return; }
+    if (!aiPrompt.trim()) { setError('Please enter a prompt describing your design.'); return; }
+    if (!hasGeminiKey()) { setError('No Gemini API key configured. Add VITE_GEMINI_API_KEY to your environment.'); return; }
+    setGenerating(true);
+    try {
+      const sizes = RATIO_SIZES[ratio] ?? { width: 540, height: 540 };
+      const result = await generateSocialPostDesign(aiPrompt, platform, ratio, sizes.width, sizes.height);
+      const elements: CanvasElement[] = result.elements.map((el, i) => ({
+        id: `el-${Date.now()}-${i}`,
+        type: el.type,
+        x: el.x,
+        y: el.y,
+        width: el.width,
+        height: el.height,
+        rotation: el.rotation,
+        zIndex: el.zIndex,
+        locked: el.locked,
+        visible: el.visible,
+        data: el.data as any,
+      }));
+      onCreate({
+        name: result.name || name,
+        platform,
+        aspectRatio: ratio as any,
+        canvasWidth: sizes.width,
+        canvasHeight: sizes.height,
+        background: { ...result.background, imageFit: 'cover' },
+        elements,
+        status: 'draft',
+        tags: [],
+        aiPrompt,
+      });
+    } catch (e: any) {
+      setError(e.message ?? 'AI generation failed. Please try again.');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const createFromTemplate = (t: typeof TEMPLATES[0]) => {
@@ -352,15 +392,23 @@ function NewPostModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p
         </div>
 
         {step !== 'choose' && step !== 'template' && (
-          <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={() => setStep('choose')} style={{ padding: '10px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14 }}>Back</button>
-            <button
-              onClick={createBlank}
-              disabled={generating}
-              style={{ padding: '10px 24px', border: 'none', borderRadius: 8, background: '#6366f1', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, opacity: generating ? 0.7 : 1 }}
-            >
-              {step === 'ai' ? (generating ? '⟳ Generating…' : '✨ Generate & Edit') : 'Create Design'}
-            </button>
+          <div style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0' }}>
+            {error && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 12, color: '#dc2626', fontSize: 13 }}>
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setStep('choose'); setError(''); }} style={{ padding: '10px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14 }}>Back</button>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                style={{ padding: '10px 24px', border: 'none', borderRadius: 8, background: step === 'ai' ? 'linear-gradient(135deg,#a855f7,#6366f1)' : '#6366f1', color: '#fff', cursor: generating ? 'wait' : 'pointer', fontSize: 14, fontWeight: 600, opacity: generating ? 0.75 : 1 }}
+              >
+                {step === 'ai' ? (generating ? '⟳ Generating…' : '✨ Generate & Edit') : 'Create Design'}
+              </button>
+            </div>
           </div>
         )}
       </div>
