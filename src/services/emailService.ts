@@ -1,9 +1,11 @@
 export interface EmailProviderConfig {
-  provider: 'smtp' | 'mailtrap' | 'resend' | 'none';
+  provider: 'smtp' | 'mailtrap' | 'resend' | 'activecampaign' | 'none';
   apiKey: string;
   inboxId: string;
   fromName: string;
   fromEmail: string;
+  /** ActiveCampaign account URL, e.g. https://account.api-us1.com */
+  apiUrl?: string;
 }
 
 export interface EmailPayload {
@@ -54,6 +56,7 @@ export function isEmailConfigured(): boolean {
       return !!(smtp?.host && smtp?.user && smtp?.pass);
     } catch { return false; }
   }
+  if (cfg.provider === 'activecampaign') return !!(cfg.apiKey && cfg.apiUrl);
   return cfg.provider !== 'none' && !!cfg.apiKey;
 }
 
@@ -123,6 +126,34 @@ export async function sendEmail(config: EmailProviderConfig, payload: EmailPaylo
       let msg = `HTTP ${resp.status}`;
       try { const e = await resp.json() as { message?: string }; msg = e.message || msg; } catch { /* ignore */ }
       return { success: false, error: msg };
+    }
+
+    if (config.provider === 'activecampaign') {
+      if (!config.apiUrl) return { success: false, error: 'ActiveCampaign account URL is required.' };
+      const base = config.apiUrl.replace(/\/$/, '');
+      try {
+        // Create a transactional email via ActiveCampaign API
+        const resp = await fetch(`${base}/api/3/sendEmail`, {
+          method: 'POST',
+          headers: { 'Api-Token': config.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: {
+              subject: payload.subject,
+              html: payload.html,
+              from: config.fromEmail || 'noreply@yourcrm.com',
+              fromname: config.fromName || 'CRM',
+              reply_to: config.fromEmail || '',
+              to: payload.to,
+              sender: { name: config.fromName || 'CRM', email: config.fromEmail || 'noreply@yourcrm.com' },
+            },
+          }),
+        });
+        if (resp.ok) return { success: true, id: 'ac-sent' };
+        const txt = await resp.text().catch(() => `HTTP ${resp.status}`);
+        return { success: false, error: `ActiveCampaign error: ${txt}` };
+      } catch (err) {
+        return { success: false, error: `ActiveCampaign: ${err instanceof Error ? err.message : String(err)}` };
+      }
     }
 
     return { success: false, error: 'Unknown provider' };

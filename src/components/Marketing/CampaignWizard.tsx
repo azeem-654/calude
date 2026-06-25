@@ -1006,8 +1006,19 @@ function StepReview({ state, counts, contacts, onLaunch }: {
               )}
             </div>
           ) : (
-            <div style={{ padding: '12px 14px', backgroundColor: '#fef9c3', borderRadius: 10, border: '1px solid #fde68a', marginBottom: 14 }}>
-              <span style={{ fontSize: 13, color: '#92400e', fontWeight: 500 }}>⚠️ No email provider configured — go to <strong>Settings → Email & SMS</strong> to set up Demo Mode, Mailtrap, or Resend.</span>
+            <div style={{ padding: '12px 14px', backgroundColor: '#fef9c3', borderRadius: 10, border: '1px solid #fde68a', marginBottom: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#92400e' }}>No email provider configured</p>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: '#78350f', lineHeight: 1.5 }}>
+                  Go to <strong>Settings → Email & SMS</strong> and set up SMTP, Resend, or Mailtrap to send real emails.
+                  You can still <strong>save this campaign as a draft</strong> now and activate it after setup.
+                </p>
+                <button onClick={() => { window.location.hash = '#/settings'; }}
+                  style={{ padding: '5px 12px', background: '#d97706', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  Set up email provider →
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -1035,10 +1046,18 @@ function StepReview({ state, counts, contacts, onLaunch }: {
         </div>
       )}
 
-      <button onClick={handleLaunch} disabled={launching || !state.name}
-        style={{ width: '100%', padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#6366f1', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-        {launching ? <><Loader size={15} /> {isDemo ? 'Capturing to Demo Inbox…' : (hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…')}</> : <><Send size={16} /> {sendTime === 'now' ? (isDemo ? `Launch → Demo Inbox (${counts[state.audience]} emails)` : (hasProvider && !isSMS ? `Launch & Send to ${counts[state.audience]} contacts` : 'Launch Campaign')) : 'Schedule Campaign'}</>}
-      </button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {!isSMS && !hasProvider && (
+          <button onClick={() => onLaunch(false, '', 0)}
+            style={{ flex: 1, padding: 13, backgroundColor: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            💾 Save as Draft
+          </button>
+        )}
+        <button onClick={handleLaunch} disabled={launching || !state.name}
+          style={{ flex: 1, padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#6366f1', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          {launching ? <><Loader size={15} /> {isDemo ? 'Capturing to Demo Inbox…' : (hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…')}</> : <><Send size={16} /> {sendTime === 'now' ? (isDemo ? `Launch → Demo Inbox (${counts[state.audience]} emails)` : (hasProvider && !isSMS ? `Launch & Send to ${counts[state.audience]} contacts` : 'Save & Launch Campaign')) : 'Schedule Campaign'}</>}
+        </button>
+      </div>
       {!state.name && <p style={{ fontSize: 12, color: '#f59e0b', textAlign: 'center', marginTop: 8 }}>⚠️ Add a campaign name in step 1 first</p>}
     </div>
   );
@@ -1098,36 +1117,6 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
   const STEP_LABELS = ['Brief', 'Campaign Flow', 'Sender & Settings', 'Audience', 'Review'];
   const TOTAL_STEPS = 5;
 
-  /* ── SMTP gate: block email/sequence campaigns if no provider is configured ── */
-  const emailReady = isEmailConfigured();
-  if ((state.type === 'email' || state.type === 'sequence') && !emailReady) {
-    return (
-      <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '48px 40px', maxWidth: 480, width: '100%', textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.18)' }}>
-          <div style={{ width: 72, height: 72, borderRadius: '50%', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 32 }}>📧</div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 10px' }}>Email Provider Required</h2>
-          <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 8px', lineHeight: 1.7 }}>
-            Email campaigns require a real email provider before you can send.
-          </p>
-          <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 28px', lineHeight: 1.6 }}>
-            Go to <strong style={{ color: '#6366f1' }}>Settings → Email &amp; SMS</strong> and complete the SMTP setup wizard, then return here to create your campaign.
-          </p>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button onClick={onClose}
-              style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-              Cancel
-            </button>
-            <button
-              onClick={() => { onClose(); window.location.hash = '#/settings'; }}
-              style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-              Go to Settings →
-            </button>
-          </div>
-          <p style={{ fontSize: 12, color: '#cbd5e1', marginTop: 16 }}>SMS campaigns don't require email setup — select SMS type to continue.</p>
-        </div>
-      </div>
-    );
-  }
   const isLastStep = step === TOTAL_STEPS;
 
   const canNext = (): boolean => {

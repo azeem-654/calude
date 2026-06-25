@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox, Shield, Check, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox, Shield, Check, ToggleLeft, ToggleRight, Grid3x3, Settings } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
+import { isEmailConfigured } from '../../services/emailService';
 import ContactImport from './ContactImport';
 import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
 import CampaignWizard from './CampaignWizard';
 import CampaignDetailPanel from './CampaignDetailPanel';
+import EmailApps from './EmailApps';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
 
@@ -45,7 +47,9 @@ function CampaignsTab() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+  const [dismissedProviderBanner, setDismissedProviderBanner] = useState(false);
 
+  const emailReady = isEmailConfigured();
   const filtered = campaigns.filter(c => typeFilter === 'all' || c.type === typeFilter);
   const totalSent = campaigns.reduce((s, c) => s + c.sent, 0);
   const withSent = campaigns.filter(c => c.sent > 0);
@@ -58,6 +62,17 @@ function CampaignsTab() {
 
   return (
     <div style={{ padding: '24px 28px' }}>
+      {/* Email provider setup nudge — non-blocking */}
+      {!emailReady && !dismissedProviderBanner && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, marginBottom: 18 }}>
+          <Settings size={16} color="#d97706" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, fontSize: 13, color: '#92400e' }}>
+            <strong>Email provider not set up yet.</strong> You can create and draft campaigns now — connect SMTP, Resend, or Mailtrap in{' '}
+            <button onClick={() => { window.location.hash = '#/settings'; }} style={{ border: 'none', background: 'none', color: '#6366f1', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13 }}>Settings → Email & SMS</button> when ready to send.
+          </div>
+          <button onClick={() => setDismissedProviderBanner(true)} style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}>✕</button>
+        </div>
+      )}
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
         {[
@@ -267,7 +282,7 @@ function DeliverabilityTab() {
                       {m.warmupOn ? <ToggleRight size={13} color="#f59e0b" /> : <ToggleLeft size={13} />}
                       {m.warmupOn ? 'On' : 'Off'}
                     </button>
-                    {m.warmupOn && <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>✓ WIth Completed</span>}
+                    {m.warmupOn && <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>✓ Active</span>}
                   </div>
                 </td>
                 <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>{m.dailyLimit}</td>
@@ -311,8 +326,8 @@ function DeliverabilityTab() {
           <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 580, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Warm up your mailbox with Apollo</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Inbox Warmup improves email deliverability by increasing outbound email volume over time via the automation of scheduled emails.</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Mailbox Warmup Settings</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Inbox Warmup improves email deliverability by gradually increasing outbound volume over time to build sender reputation.</div>
               </div>
               <button onClick={() => setShowWarmupModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><Shield size={18} /></button>
             </div>
@@ -373,7 +388,7 @@ function DeliverabilityTab() {
 
 /* ─── Tab definitions ─── */
 
-type TabId = 'campaigns' | 'import' | 'sequences' | 'automations' | 'deliverability';
+type TabId = 'campaigns' | 'import' | 'sequences' | 'automations' | 'deliverability' | 'emailapps';
 
 /* ─── Root component ─── */
 
@@ -399,6 +414,7 @@ export default function Marketing() {
     { id: 'sequences',      label: 'Sequences',       icon: <Zap size={15} />, badge: activeSeqCount || undefined },
     { id: 'automations',    label: 'Automations',     icon: <GitBranch size={15} />, badge: activeAutoCount || undefined },
     { id: 'deliverability', label: 'Deliverability',  icon: <Shield size={15} /> },
+    { id: 'emailapps',      label: 'Email Apps',      icon: <Grid3x3 size={15} /> },
     { id: 'import',         label: 'Import Contacts', icon: <Upload size={15} /> },
   ];
 
@@ -446,6 +462,11 @@ export default function Marketing() {
         )}
         {activeTab === 'deliverability' && (
           <div style={{ height: '100%', overflowY: 'auto' }}><DeliverabilityTab /></div>
+        )}
+        {activeTab === 'emailapps' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <EmailApps contacts={contacts} />
+          </div>
         )}
         {activeTab === 'automations' && (
           <AutomationBuilder
