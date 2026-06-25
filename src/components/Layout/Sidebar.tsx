@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, MessageSquare, Calendar, TrendingUp,
-  Mail, Funnel, BarChart3, Star, Settings, Zap, CalendarCheck, Globe,
+  Mail, Funnel, BarChart3, Star, Settings, Zap, CalendarCheck,
   PanelLeftClose, PanelLeftOpen, Menu, X, Scissors, Palette,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -15,7 +15,6 @@ const navItems = [
   { path: '/pipelines',     icon: TrendingUp,      label: 'Pipelines' },
   { path: '/marketing',     icon: Mail,            label: 'Marketing' },
   { path: '/funnels',       icon: Funnel,          label: 'Funnels' },
-  { path: '/websites',      icon: Globe,           label: 'Websites' },
   { path: '/ai-shorts',       icon: Scissors,  label: 'AI Shorts' },
   { path: '/social-creator',  icon: Palette,   label: 'Social Creator' },
   { path: '/analytics',       icon: BarChart3, label: 'Analytics' },
