@@ -4,11 +4,29 @@ import {
   Mail, MessageSquare, Zap, X, Bold, Italic, Underline, Strikethrough,
   Link2, List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
   Smartphone, Monitor, CheckCircle, ChevronRight, ChevronLeft,
-  Sparkles, RotateCcw, Plus, Trash2, Send, Eye, EyeOff,
+  Sparkles, RotateCcw, Plus, Trash2, Send, Eye,
   Clock, Calendar, Users, Settings, ChevronDown, ChevronUp,
-  Loader, XCircle, RefreshCw, Wand2, Target,
+  Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target,
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
+import EmailTemplateGallery from './EmailTemplates';
+
+/* ─── Sender profile store ─── */
+export interface SenderProfileRecord {
+  id: string;
+  name: string;
+  email: string;
+  replyTo: string;
+  tag: string; // label like "Gmail", "Work", etc.
+}
+
+const SP_KEY = 'crm_sender_profiles';
+function loadSenderProfileRecords(): SenderProfileRecord[] {
+  try { return JSON.parse(localStorage.getItem(SP_KEY) || '[]'); } catch { return []; }
+}
+function saveSenderProfileRecords(list: SenderProfileRecord[]) {
+  localStorage.setItem(SP_KEY, JSON.stringify(list));
+}
 
 /* ─── Types ─── */
 type CampaignGoal = 'announce' | 'promote' | 'nurture' | 'welcome' | 'reengage' | 'custom';
@@ -170,6 +188,10 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
   const [preview, setPreview] = useState<'edit' | 'mobile' | 'desktop'>('edit');
   const [html, setHtml] = useState(initialValue);
   const [wordCount, setWordCount] = useState(0);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [fontSize, setFontSize] = useState('14');
+  const colorRef = useRef<HTMLInputElement>(null);
+  const bgColorRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = initialValue;
@@ -197,6 +219,26 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
     onInput();
   };
 
+  const applyFontSize = (size: string) => {
+    setFontSize(size);
+    exec('fontSize', '7');
+    if (editorRef.current) {
+      editorRef.current.querySelectorAll('font[size="7"]').forEach(el => {
+        (el as HTMLElement).removeAttribute('size');
+        (el as HTMLElement).style.fontSize = size + 'px';
+      });
+      onInput();
+    }
+  };
+
+  const applyTemplate = (templateHtml: string) => {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = templateHtml;
+      onInput();
+    }
+    setShowTemplates(false);
+  };
+
   const insertBlock = (blockHtml: string) => {
     editorRef.current?.focus();
     document.execCommand('insertHTML', false, blockHtml);
@@ -217,13 +259,53 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
 
   return (
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', backgroundColor: 'white' }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 8px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#fafafa', flexWrap: 'wrap' }}>
+      {/* Template picker modal */}
+      {showTemplates && <EmailTemplateGallery onApply={applyTemplate} onClose={() => setShowTemplates(false)} />}
+
+      {/* Toolbar row 1 — core formatting */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 8px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#fafafa', flexWrap: 'wrap' }}>
+        {/* Templates button */}
+        <button onClick={() => setShowTemplates(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+          <LayoutTemplate size={11} /> Templates
+        </button>
+        {sep}
         <button style={tb} onClick={() => exec('bold')} title="Bold"><Bold size={11} /></button>
         <button style={tb} onClick={() => exec('italic')} title="Italic"><Italic size={11} /></button>
         <button style={tb} onClick={() => exec('underline')} title="Underline"><Underline size={11} /></button>
         <button style={tb} onClick={() => exec('strikeThrough')} title="Strikethrough"><Strikethrough size={11} /></button>
         {sep}
+        {/* Font size */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 1, border: '1px solid #e2e8f0', borderRadius: 5, overflow: 'hidden', height: 26 }}>
+          <Type size={10} color="#94a3b8" style={{ marginLeft: 5, flexShrink: 0 }} />
+          <select value={fontSize} onChange={e => applyFontSize(e.target.value)}
+            style={{ border: 'none', background: 'transparent', fontSize: 11, color: '#374151', padding: '0 4px 0 2px', outline: 'none', cursor: 'pointer', height: '100%' }}>
+            {['10','12','13','14','16','18','20','24','28','32','36','48'].map(s => <option key={s} value={s}>{s}px</option>)}
+          </select>
+        </div>
+        {sep}
+        {/* Text color */}
+        <div title="Text color" style={{ position: 'relative' }}>
+          <button onClick={() => colorRef.current?.click()} style={{ ...tb, gap: 0, flexDirection: 'column', padding: 2 }}>
+            <Palette size={11} color="#374151" />
+            <div style={{ width: 14, height: 3, borderRadius: 1, background: '#ef4444', marginTop: 1 }} />
+          </button>
+          <input ref={colorRef} type="color" defaultValue="#ef4444"
+            onChange={e => exec('foreColor', e.target.value)}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, top: 0, left: 0, pointerEvents: 'none' }} />
+        </div>
+        {/* Highlight color */}
+        <div title="Highlight">
+          <button onClick={() => bgColorRef.current?.click()} style={{ ...tb, gap: 0, flexDirection: 'column', padding: 2 }}>
+            <PaintBucket size={11} color="#374151" />
+            <div style={{ width: 14, height: 3, borderRadius: 1, background: '#fde68a', marginTop: 1 }} />
+          </button>
+          <input ref={bgColorRef} type="color" defaultValue="#fde68a"
+            onChange={e => exec('hiliteColor', e.target.value)}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, top: 0, left: 0, pointerEvents: 'none' }} />
+        </div>
+        {sep}
+        <button style={{ ...tb, width: 'auto', padding: '0 6px', fontSize: 10, fontWeight: 700 }} onClick={() => exec('formatBlock', 'h1')}>H1</button>
         <button style={{ ...tb, width: 'auto', padding: '0 6px', fontSize: 10, fontWeight: 700 }} onClick={() => exec('formatBlock', 'h2')}>H2</button>
         <button style={{ ...tb, width: 'auto', padding: '0 6px', fontSize: 10, fontWeight: 700 }} onClick={() => exec('formatBlock', 'h3')}>H3</button>
         <button style={{ ...tb, width: 'auto', padding: '0 6px', fontSize: 10, fontWeight: 700 }} onClick={() => exec('formatBlock', 'p')}>¶</button>
@@ -247,20 +329,27 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
         </div>
       </div>
 
-      {/* Variables bar */}
+      {/* Toolbar row 2 — content blocks + personalization */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', backgroundColor: '#f8fafc', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Personalize:</span>
-        {['{{firstName}}', '{{lastName}}', '{{email}}', '{{company}}', '{{unsubscribe}}'].map(v => (
-          <button key={v} onClick={() => insertVar(v)}
-            style={{ padding: '2px 6px', background: '#ede9fe', color: '#6d28d9', border: 'none', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500 }}>{v}</button>
+        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Insert:</span>
+        {[
+          { label: 'CTA Button', html: '<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#6366f1;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Button Text →</a></div>' },
+          { label: 'Divider',    html: '<hr style="border:none;border-top:2px solid #e2e8f0;margin:24px 0" />' },
+          { label: 'Highlight',  html: '<div style="background:#f5f3ff;border-left:4px solid #6366f1;padding:16px 20px;border-radius:0 8px 8px 0;margin:16px 0"><p style="margin:0;color:#374151;font-weight:500">[Key message or quote]</p></div>' },
+          { label: 'Image',      html: '<div style="text-align:center;margin:20px 0;padding:40px;background:#f1f5f9;border-radius:8px;border:2px dashed #e2e8f0"><p style="margin:0;color:#94a3b8;font-size:13px">📷 [Replace with your image URL or paste img tag]</p></div>' },
+          { label: 'Callout',    html: '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin:16px 0;display:flex;gap:12px;align-items:flex-start"><span style="font-size:20px;flex-shrink:0">⚠️</span><p style="margin:0;color:#92400e;font-size:14px">[Important note or callout text here]</p></div>' },
+          { label: 'Signature',  html: '<div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:14px;color:#374151"><strong>[Your Name]</strong><br/><span style="color:#64748b">[Title] · [Company]</span><br/><a href="mailto:[email]" style="color:#6366f1">[email]</a></p></div>' },
+        ].map(b => (
+          <button key={b.label} onClick={() => insertBlock(b.html)}
+            style={{ padding: '2px 7px', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontWeight: 500, flexShrink: 0 }}>{b.label}</button>
         ))}
         <div style={{ width: 1, height: 14, backgroundColor: '#e2e8f0', margin: '0 2px' }} />
-        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Blocks:</span>
-        {CONTENT_BLOCKS.map(b => (
-          <button key={b.label} onClick={() => insertBlock(b.html)}
-            style={{ padding: '2px 6px', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>{b.label}</button>
+        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Variables:</span>
+        {['{{firstName}}', '{{lastName}}', '{{email}}', '{{company}}', '{{unsubscribe}}'].map(v => (
+          <button key={v} onClick={() => insertVar(v)}
+            style={{ padding: '2px 6px', background: '#ede9fe', color: '#6d28d9', border: 'none', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>{v}</button>
         ))}
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8' }}>{wordCount} words · ~{Math.ceil(wordCount / 200)}min read</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{wordCount}w · ~{Math.ceil(wordCount / 200)}min</span>
       </div>
 
       {/* Editor or Preview */}
@@ -716,7 +805,19 @@ function getSenderProfiles(): SenderProfile[] {
 
 /* ─── Step 3: Sender & Settings ─── */
 function StepSenderSettings({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
-  const profiles = getSenderProfiles();
+  const [customProfiles, setCustomProfiles] = React.useState<SenderProfileRecord[]>(loadSenderProfileRecords);
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const [newProfile, setNewProfile] = React.useState({ name: '', email: '', replyTo: '', tag: '' });
+  const [addError, setAddError] = React.useState('');
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  // Merge profiles from settings + manually added ones
+  const settingsProfiles = getSenderProfiles();
+  const customAsSenderProfiles: SenderProfile[] = customProfiles.map(r => ({
+    id: r.id, name: r.name, email: r.email, replyTo: r.replyTo,
+    provider: r.tag || 'Custom', providerIcon: '✉️',
+  }));
+  const profiles: SenderProfile[] = [...settingsProfiles, ...customAsSenderProfiles];
   const selectedProfile = profiles.find(p => p.email === state.fromEmail) ?? null;
 
   const selectProfile = (p: SenderProfile) => {
@@ -724,10 +825,43 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
   };
 
   // Auto-select first profile on mount if nothing is selected yet
-  if (profiles.length > 0 && !selectedProfile && !state.fromEmail) {
-    const first = profiles[0];
-    onChange({ fromName: first.name, fromEmail: first.email, replyTo: first.replyTo });
-  }
+  React.useEffect(() => {
+    if (profiles.length > 0 && !state.fromEmail) {
+      const first = profiles[0];
+      onChange({ fromName: first.name, fromEmail: first.email, replyTo: first.replyTo });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAddProfile = () => {
+    setAddError('');
+    if (!newProfile.name.trim()) { setAddError('Display name is required.'); return; }
+    if (!newProfile.email.trim() || !newProfile.email.includes('@')) { setAddError('Valid email address is required.'); return; }
+    const record: SenderProfileRecord = {
+      id: `sp-${Date.now()}`,
+      name: newProfile.name.trim(),
+      email: newProfile.email.trim().toLowerCase(),
+      replyTo: newProfile.replyTo.trim(),
+      tag: newProfile.tag.trim() || 'Custom',
+    };
+    const updated = [...customProfiles, record];
+    saveSenderProfileRecords(updated);
+    setCustomProfiles(updated);
+    setNewProfile({ name: '', email: '', replyTo: '', tag: '' });
+    setShowAddForm(false);
+    // Auto-select the newly added profile
+    onChange({ fromName: record.name, fromEmail: record.email, replyTo: record.replyTo });
+  };
+
+  const handleDeleteCustom = (id: string) => {
+    const updated = customProfiles.filter(r => r.id !== id);
+    saveSenderProfileRecords(updated);
+    setCustomProfiles(updated);
+    setDeletingId(null);
+    // Deselect if deleted profile was active
+    const deleted = customProfiles.find(r => r.id === id);
+    if (deleted && state.fromEmail === deleted.email) onChange({ fromName: '', fromEmail: '', replyTo: '' });
+  };
 
   const toggleDay = (day: string) => {
     const days = state.sendDays.includes(day) ? state.sendDays.filter(d => d !== day) : [...state.sendDays, day];
@@ -746,69 +880,158 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
             <Settings size={13} color="#6366f1" />
             <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sender profile</span>
           </div>
-          <button
-            onClick={() => { window.location.hash = '#/settings'; }}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6366f1', fontWeight: 600, background: 'none', border: '1px solid #e0e7ff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
-            <Settings size={11} /> Manage in Settings
-          </button>
-        </div>
-
-        {profiles.length === 0 ? (
-          /* Empty — no authenticated senders configured */
-          <div style={{ padding: '32px 20px', background: '#fafafa', border: '2px dashed #e2e8f0', borderRadius: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No sender profiles configured</div>
-            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px', lineHeight: 1.6 }}>
-              Add a verified email identity in <strong>Settings → Email &amp; SMS</strong> first.<br />
-              Your sender profile must be authenticated to avoid spam filters.
-            </p>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => { setShowAddForm(v => !v); setAddError(''); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6366f1', fontWeight: 600, background: '#f5f3ff', border: '1px solid #e0e7ff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+              <Plus size={11} /> Add profile
+            </button>
             <button
               onClick={() => { window.location.hash = '#/settings'; }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              Go to Settings → Email &amp; SMS
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6366f1', fontWeight: 600, background: 'none', border: '1px solid #e0e7ff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+              <Settings size={11} /> Settings
             </button>
           </div>
-        ) : (
+        </div>
+
+        {/* Inline add profile form */}
+        {showAddForm && (
+          <div style={{ padding: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 12 }}>Add Sender Profile</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Display name *</label>
+                <input
+                  value={newProfile.name} onChange={e => setNewProfile(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. John Smith"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Email address *</label>
+                <input
+                  value={newProfile.email} onChange={e => setNewProfile(p => ({ ...p, email: e.target.value }))}
+                  placeholder="e.g. john@company.com" type="email"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Reply-to <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
+                <input
+                  value={newProfile.replyTo} onChange={e => setNewProfile(p => ({ ...p, replyTo: e.target.value }))}
+                  placeholder="same as above" type="email"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Label <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
+                <input
+                  value={newProfile.tag} onChange={e => setNewProfile(p => ({ ...p, tag: e.target.value }))}
+                  placeholder="e.g. Work, Newsletter, Sales"
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+            {addError && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8 }}>{addError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleAddProfile}
+                style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Save Profile
+              </button>
+              <button onClick={() => { setShowAddForm(false); setAddError(''); setNewProfile({ name: '', email: '', replyTo: '', tag: '' }); }}
+                style={{ padding: '8px 14px', background: '#fff', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {profiles.length === 0 && !showAddForm ? (
+          /* Empty — no authenticated senders configured */
+          <div style={{ padding: '28px 20px', background: '#fafafa', border: '2px dashed #e2e8f0', borderRadius: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 38, marginBottom: 10 }}>📭</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No sender profiles yet</div>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px', lineHeight: 1.6 }}>
+              Add a sender profile here or configure email in <strong>Settings → Email &amp; SMS</strong>.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+              <button
+                onClick={() => setShowAddForm(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                <Plus size={14} /> Add Sender Profile
+              </button>
+              <button
+                onClick={() => { window.location.hash = '#/settings'; }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: '#fff', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Go to Settings
+              </button>
+            </div>
+          </div>
+        ) : profiles.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {profiles.map(p => {
               const isSelected = selectedProfile?.id === p.id;
+              const isCustom = customProfiles.some(r => r.id === p.id);
+              const isConfirmingDelete = deletingId === p.id;
               return (
-                <button
-                  key={p.id}
-                  onClick={() => selectProfile(p)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-                    border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
-                    borderRadius: 12, background: isSelected ? '#f5f3ff' : '#fff',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
-                  }}
-                >
-                  <div style={{
-                    width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                    background: isSelected ? '#ede9fe' : '#f1f5f9',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
-                  }}>
-                    {p.providerIcon}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{p.name}</span>
-                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, fontWeight: 700, background: '#ecfdf5', color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                        <CheckCircle size={10} /> Verified
-                      </span>
+                <div key={p.id} style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => selectProfile(p)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
+                      width: '100%', border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
+                      borderRadius: 12, background: isSelected ? '#f5f3ff' : '#fff',
+                      cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
+                    }}
+                  >
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                      background: isSelected ? '#ede9fe' : '#f1f5f9',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
+                    }}>
+                      {p.providerIcon}
                     </div>
-                    <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>via {p.provider}</div>
-                  </div>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                    border: `2px solid ${isSelected ? '#6366f1' : '#cbd5e1'}`,
-                    background: isSelected ? '#6366f1' : '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
-                  </div>
-                </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{p.name}</span>
+                        {isCustom ? (
+                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, fontWeight: 700, background: '#fef3c7', color: '#92400e' }}>{p.provider}</span>
+                        ) : (
+                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, fontWeight: 700, background: '#ecfdf5', color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <CheckCircle size={10} /> Verified
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>via {p.provider}</div>
+                    </div>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                      border: `2px solid ${isSelected ? '#6366f1' : '#cbd5e1'}`,
+                      background: isSelected ? '#6366f1' : '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+                    </div>
+                  </button>
+                  {isCustom && (
+                    <div style={{ position: 'absolute', top: 10, right: 48, display: 'flex', gap: 4 }}>
+                      {isConfirmingDelete ? (
+                        <>
+                          <button onClick={() => handleDeleteCustom(p.id)}
+                            style={{ fontSize: 10, padding: '2px 8px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontWeight: 700 }}>Delete</button>
+                          <button onClick={() => setDeletingId(null)}
+                            style={{ fontSize: 10, padding: '2px 8px', background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 5, cursor: 'pointer' }}>Cancel</button>
+                        </>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); setDeletingId(p.id); }}
+                          style={{ fontSize: 10, padding: '2px 8px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}>
+                          <Trash2 size={10} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
 
@@ -830,7 +1053,7 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
               </div>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Tracking */}
