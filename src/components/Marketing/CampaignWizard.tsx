@@ -632,16 +632,102 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
 }
 
 /* ─── Step 3: Sender & Settings ─── */
-function StepSenderSettings({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
-  const emailConfig = loadEmailConfig();
-  const hasSaved = emailConfig.provider !== 'none' && !!emailConfig.fromEmail;
-  const [useSaved, setUseSaved] = useState(() => hasSaved && !state.fromEmail);
+/* ─── Sender profiles (read from Settings configs) ─── */
+interface SenderProfile {
+  id: string;
+  name: string;
+  email: string;
+  replyTo: string;
+  provider: string;
+  providerIcon: string;
+}
 
-  const selectSaved = () => {
-    setUseSaved(true);
-    onChange({ fromName: emailConfig.fromName || '', fromEmail: emailConfig.fromEmail || '' });
+function getSenderProfiles(): SenderProfile[] {
+  const profiles: SenderProfile[] = [];
+  const seen = new Set<string>();
+
+  try {
+    const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
+    if (smtp?.host && smtp?.user) {
+      const email = smtp.fromEmail || smtp.user;
+      if (email && !seen.has(email)) {
+        seen.add(email);
+        const providerGuess =
+          smtp.host.includes('gmail') ? 'Gmail' :
+          smtp.host.includes('outlook') || smtp.host.includes('office365') ? 'Outlook' :
+          smtp.host.includes('mailgun') ? 'Mailgun' :
+          smtp.host.includes('sendgrid') ? 'SendGrid' :
+          smtp.host.includes('zoho') ? 'Zoho Mail' :
+          smtp.host.includes('amazonaws') ? 'AWS SES' : 'SMTP';
+        const icon =
+          smtp.host.includes('gmail') ? '📧' :
+          smtp.host.includes('outlook') ? '💼' :
+          smtp.host.includes('mailgun') ? '🔫' :
+          smtp.host.includes('sendgrid') ? '⚡' :
+          smtp.host.includes('zoho') ? '🟡' :
+          smtp.host.includes('amazonaws') ? '☁️' : '🏠';
+        profiles.push({
+          id: 'smtp',
+          name: smtp.fromName || email.split('@')[0],
+          email,
+          replyTo: email,
+          provider: providerGuess,
+          providerIcon: icon,
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const ep = JSON.parse(localStorage.getItem('crm_email_provider') || 'null');
+    if (ep && ep.provider !== 'none' && ep.fromEmail && !seen.has(ep.fromEmail)) {
+      seen.add(ep.fromEmail);
+      profiles.push({
+        id: `ep-${ep.provider}`,
+        name: ep.fromName || ep.fromEmail.split('@')[0],
+        email: ep.fromEmail,
+        replyTo: ep.fromEmail,
+        provider: ep.provider === 'resend' ? 'Resend' : ep.provider === 'mailtrap' ? 'Mailtrap' : ep.provider,
+        providerIcon: ep.provider === 'resend' ? '📨' : ep.provider === 'mailtrap' ? '🪤' : '📮',
+      });
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const ac = JSON.parse(localStorage.getItem('crm_email_apps') || 'null');
+    if (ac?.activecampaign?.apiKey && ac?.activecampaign?.apiUrl) {
+      const email = `noreply@${new URL(ac.activecampaign.apiUrl).hostname.replace(/^[^.]+\./, '')}`;
+      if (!seen.has(email)) {
+        seen.add(email);
+        profiles.push({
+          id: 'activecampaign',
+          name: 'ActiveCampaign',
+          email,
+          replyTo: email,
+          provider: 'ActiveCampaign',
+          providerIcon: '🔵',
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
+  return profiles;
+}
+
+/* ─── Step 3: Sender & Settings ─── */
+function StepSenderSettings({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
+  const profiles = getSenderProfiles();
+  const selectedProfile = profiles.find(p => p.email === state.fromEmail) ?? null;
+
+  const selectProfile = (p: SenderProfile) => {
+    onChange({ fromName: p.name, fromEmail: p.email, replyTo: state.replyTo || p.replyTo });
   };
-  const selectCustom = () => { setUseSaved(false); };
+
+  // Auto-select first profile on mount if nothing is selected yet
+  if (profiles.length > 0 && !selectedProfile && !state.fromEmail) {
+    const first = profiles[0];
+    onChange({ fromName: first.name, fromEmail: first.email, replyTo: first.replyTo });
+  }
 
   const toggleDay = (day: string) => {
     const days = state.sendDays.includes(day) ? state.sendDays.filter(d => d !== day) : [...state.sendDays, day];
@@ -653,76 +739,96 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Sender & settings</h2>
       <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>Choose who this campaign comes from and configure sending behavior.</p>
 
-      {/* Sender identity */}
+      {/* Sender profile picker */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <Settings size={13} color="#6366f1" />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sender identity</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Settings size={13} color="#6366f1" />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sender profile</span>
+          </div>
+          <button
+            onClick={() => { window.location.hash = '#/settings'; }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6366f1', fontWeight: 600, background: 'none', border: '1px solid #e0e7ff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+            <Settings size={11} /> Manage in Settings
+          </button>
         </div>
 
-        {hasSaved && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14 }}>
-            {/* Saved profile option */}
-            <button onClick={selectSaved}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: `2px solid ${useSaved ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: useSaved ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Mail size={16} color="#6366f1" />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{emailConfig.fromName || 'Saved Sender'}</div>
-                <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emailConfig.fromEmail} · via {emailConfig.provider === 'mailtrap' ? 'Mailtrap' : 'Resend'}</div>
-              </div>
-              <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${useSaved ? '#6366f1' : '#cbd5e1'}`, backgroundColor: useSaved ? '#6366f1' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {useSaved && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'white' }} />}
-              </div>
+        {profiles.length === 0 ? (
+          /* Empty — no authenticated senders configured */
+          <div style={{ padding: '32px 20px', background: '#fafafa', border: '2px dashed #e2e8f0', borderRadius: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No sender profiles configured</div>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px', lineHeight: 1.6 }}>
+              Add a verified email identity in <strong>Settings → Email &amp; SMS</strong> first.<br />
+              Your sender profile must be authenticated to avoid spam filters.
+            </p>
+            <button
+              onClick={() => { window.location.hash = '#/settings'; }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              Go to Settings → Email &amp; SMS
             </button>
-
-            {/* Custom option */}
-            <button onClick={selectCustom}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: `2px solid ${!useSaved ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: !useSaved ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: !useSaved ? '#ede9fe' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Settings size={16} color={!useSaved ? '#6366f1' : '#94a3b8'} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Custom sender</div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Use a different name and email address</div>
-              </div>
-              <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${!useSaved ? '#6366f1' : '#cbd5e1'}`, backgroundColor: !useSaved ? '#6366f1' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {!useSaved && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'white' }} />}
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Custom fields or confirmation */}
-        {useSaved && hasSaved ? (
-          <div style={{ padding: '10px 12px', backgroundColor: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0', marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: '#166534' }}>✅ Sending as <strong>{emailConfig.fromName}</strong> ({emailConfig.fromEmail})</span>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[
-              { label: 'From name', key: 'fromName' as const, placeholder: 'John at Acme Co.' },
-              { label: 'From email', key: 'fromEmail' as const, placeholder: 'john@acme.com' },
-            ].map(f => (
-              <div key={f.key}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 4 }}>{f.label}</label>
-                <input value={state[f.key] as string} onChange={e => onChange({ [f.key]: e.target.value })} placeholder={f.placeholder}
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {profiles.map(p => {
+              const isSelected = selectedProfile?.id === p.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => selectProfile(p)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
+                    border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
+                    borderRadius: 12, background: isSelected ? '#f5f3ff' : '#fff',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
+                  }}
+                >
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                    background: isSelected ? '#ede9fe' : '#f1f5f9',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
+                  }}>
+                    {p.providerIcon}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{p.name}</span>
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, fontWeight: 700, background: '#ecfdf5', color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        <CheckCircle size={10} /> Verified
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>via {p.provider}</div>
+                  </div>
+                  <div style={{
+                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                    border: `2px solid ${isSelected ? '#6366f1' : '#cbd5e1'}`,
+                    background: isSelected ? '#6366f1' : '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+                  </div>
+                </button>
+              );
+            })}
+
+            {selectedProfile && (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0', marginBottom: 12, fontSize: 12, color: '#166534' }}>
+                  ✅ Sending as <strong>{selectedProfile.name}</strong> &lt;{selectedProfile.email}&gt; via {selectedProfile.provider}
+                </div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Reply-to email <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    value={state.replyTo}
+                    onChange={e => onChange({ replyTo: e.target.value })}
+                    placeholder={`defaults to ${selectedProfile.email}`}
+                    style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>Replies go here. Leave blank to use the sender address above.</p>
               </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ marginTop: 10 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#64748b', marginBottom: 4 }}>Reply-to email</label>
-          <input value={state.replyTo} onChange={e => onChange({ replyTo: e.target.value })} placeholder="support@acme.com"
-            style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-
-        {!hasSaved && (
-          <div style={{ marginTop: 10, padding: '10px 12px', backgroundColor: '#fef9c3', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <span style={{ fontSize: 12, color: '#92400e' }}>💡 Configure an email provider in <strong>Settings → Email & SMS</strong> to enable one-click sender selection.</span>
+            )}
           </div>
         )}
       </div>
