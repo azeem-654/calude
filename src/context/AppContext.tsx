@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity, VideoProject, VideoClip } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
+import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
 
 interface Notification {
@@ -77,6 +78,10 @@ interface AppContextType {
   trashVideoClip: (projectId: string, clipId: string) => void;
   restoreVideoClip: (projectId: string, clipId: string) => void;
   deleteVideoClip: (projectId: string, clipId: string) => void;
+  socialPosts: DesignPost[];
+  addSocialPost: (post: DesignPost) => void;
+  updateSocialPost: (id: string, updates: Partial<DesignPost>) => void;
+  deleteSocialPost: (id: string) => void;
 }
 
 function loadLS<T>(key: string, fallback: T): T {
@@ -103,6 +108,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [sidebarMode, setSidebarModeState] = useState<'full' | 'icons' | 'hidden'>(() => (loadLS('crm_sidebar_mode', 'full') as 'full' | 'icons' | 'hidden'));
   const [videoProjects, setVideoProjects] = useState<VideoProject[]>(() => loadLS('crm_video_projects', []));
+  const [socialPosts, setSocialPosts] = useState<DesignPost[]>(() => loadLS('crm_social_posts', []));
   const setSidebarMode = (mode: 'full' | 'icons' | 'hidden') => { setSidebarModeState(mode); saveLS('crm_sidebar_mode', mode); };
 
   const defaultSchedule: ScheduleAvailability = {
@@ -334,6 +340,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify('Clip permanently deleted', 'info');
   };
 
+  /* ── Social Posts ── */
+  const addSocialPost = (post: DesignPost) => {
+    setSocialPosts(prev => { const next = [post, ...prev]; saveLS('crm_social_posts', next); return next; });
+  };
+  const updateSocialPost = (id: string, updates: Partial<DesignPost>) => {
+    setSocialPosts(prev => { const next = prev.map(p => p.id === id ? { ...p, ...updates } : p); saveLS('crm_social_posts', next); return next; });
+  };
+  const deleteSocialPost = (id: string) => {
+    setSocialPosts(prev => { const next = prev.filter(p => p.id !== id); saveLS('crm_social_posts', next); return next; });
+    notify('Design deleted', 'info');
+  };
+
   /* ── Websites ── */
   const addWebsite = (w: Website | Omit<Website, 'id'>) => {
     const site: Website = 'id' in w ? (w as Website) : { ...w, id: `site-${Date.now()}` };
@@ -367,6 +385,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sidebarMode, setSidebarMode,
       videoProjects, addVideoProject, updateVideoProject, deleteVideoProject,
       updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip,
+      socialPosts, addSocialPost, updateSocialPost, deleteSocialPost,
     }}>
       {children}
     </AppContext.Provider>

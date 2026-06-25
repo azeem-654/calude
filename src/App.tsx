@@ -16,6 +16,8 @@ import Analytics from './components/Analytics/Analytics';
 import Reputation from './components/Reputation/Reputation';
 import Settings from './components/Settings/Settings';
 import VideoShorts from './components/VideoShorts/VideoShorts';
+import SocialCreator from './components/SocialCreator/SocialCreator';
+import PostEditor from './components/SocialCreator/PostEditor';
 
 const SIDEBAR_WIDTHS = { full: 240, icons: 64, hidden: 0 };
 
@@ -24,6 +26,7 @@ function AppLayout() {
   const { sidebarMode } = useApp();
   const isBooking = location.pathname.startsWith('/book');
   const isPreview = location.pathname.startsWith('/preview');
+  const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   if (isBooking) {
     return (
@@ -38,6 +41,14 @@ function AppLayout() {
     return (
       <Routes>
         <Route path="/preview/:siteId" element={<SitePreview />} />
+      </Routes>
+    );
+  }
+
+  if (isEditor) {
+    return (
+      <Routes>
+        <Route path="/social-creator/editor/:id" element={<PostEditor />} />
       </Routes>
     );
   }
@@ -63,6 +74,8 @@ function AppLayout() {
           <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
           <Route path="/ai-shorts" element={<VideoShorts />} />
+          <Route path="/social-creator" element={<SocialCreator />} />
+          <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reputation" element={<Reputation />} />
           <Route path="/settings" element={<Settings />} />
