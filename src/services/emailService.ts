@@ -166,13 +166,29 @@ export async function sendEmail(config: EmailProviderConfig, payload: EmailPaylo
   }
 }
 
-export function personalizeHtml(html: string, contact: { name?: string; email?: string }): string {
+export function personalizeHtml(html: string, contact: {
+  name?: string; email?: string; company?: string; phone?: string;
+  jobTitle?: string; website?: string; customFields?: Record<string, string>;
+}): string {
   const firstName = contact.name?.split(' ')[0] || 'there';
   const lastName = contact.name?.split(' ').slice(1).join(' ') || '';
-  return html
+  let result = html
     .replace(/\{\{firstName\}\}/g, firstName)
     .replace(/\{\{lastName\}\}/g, lastName)
+    .replace(/\{\{fullName\}\}/g, contact.name || '')
     .replace(/\{\{email\}\}/g, contact.email || '')
-    .replace(/\{\{company\}\}/g, '')
+    .replace(/\{\{company\}\}/g, contact.company || '')
+    .replace(/\{\{phone\}\}/g, contact.phone || '')
+    .replace(/\{\{jobTitle\}\}/g, contact.jobTitle || '')
+    .replace(/\{\{website\}\}/g, contact.website || '')
     .replace(/\{\{unsubscribe\}\}/g, '#unsubscribe');
+
+  // Custom field variables
+  if (contact.customFields) {
+    for (const [key, val] of Object.entries(contact.customFields)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || '');
+    }
+  }
+
+  return result;
 }

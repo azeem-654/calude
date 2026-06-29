@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 import EmailTemplateGallery from './EmailTemplates';
+import { useApp } from '../../context/AppContext';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -184,6 +185,7 @@ const CONTENT_BLOCKS = [
 ];
 
 function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: string; onChange: (html: string) => void; compact?: boolean }) {
+  const { customFieldDefs } = useApp();
   const editorRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<'edit' | 'mobile' | 'desktop'>('edit');
   const [html, setHtml] = useState(initialValue);
@@ -345,9 +347,16 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
         ))}
         <div style={{ width: 1, height: 14, backgroundColor: '#e2e8f0', margin: '0 2px' }} />
         <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Variables:</span>
-        {['{{firstName}}', '{{lastName}}', '{{email}}', '{{company}}', '{{unsubscribe}}'].map(v => (
+        {['{{firstName}}', '{{lastName}}', '{{email}}', '{{company}}', '{{phone}}', '{{jobTitle}}', '{{unsubscribe}}'].map(v => (
           <button key={v} onClick={() => insertVar(v)}
             style={{ padding: '2px 6px', background: '#ede9fe', color: '#6d28d9', border: 'none', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>{v}</button>
+        ))}
+        {customFieldDefs.map(f => (
+          <button key={f.key} onClick={() => insertVar(`{{${f.key}}}`)}
+            title={f.label}
+            style={{ padding: '2px 6px', background: '#fdf4ff', color: '#7c3aed', border: '1px solid #e9d5ff', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>
+            {`{{${f.key}}}`}
+          </button>
         ))}
         <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{wordCount}w · ~{Math.ceil(wordCount / 200)}min</span>
       </div>
@@ -1185,7 +1194,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
     const cfg = loadEmailConfig();
     const subject = state.steps[0]?.subject || state.subject || `Test: ${state.name}`;
     const html = state.steps[0]?.body || state.emailBody || '<p>Test email from your CRM.</p>';
-    const result = await sendEmail(cfg, { to: testAddr.trim(), toName: 'Test', subject, html: personalizeHtml(html, { name: 'Test User', email: testAddr.trim() }) });
+    const result = await sendEmail(cfg, { to: testAddr.trim(), toName: 'Test', subject, html: personalizeHtml(html, { name: 'Test User', email: testAddr.trim(), company: 'Acme Corp', jobTitle: 'Manager' }) });
     setTestStatus(result.success ? 'ok' : 'fail');
     setTestMsg(result.success ? `Delivered! ${result.id ? `ID: ${result.id}` : ''}` : result.error || 'Send failed');
   };

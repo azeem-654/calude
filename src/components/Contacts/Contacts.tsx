@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import {
   Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
-  Filter, Download, Upload, Tag, CheckSquare, X, Eye,
+  Filter, Download, Upload, Tag, X, Eye,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { Contact } from '../../types';
 import ContactProfile from './ContactProfile';
+import ImportWizard from './ImportWizard';
 
 const statusColors: Record<string, { bg: string; color: string }> = {
   lead: { bg: '#eff6ff', color: '#2563eb' },
@@ -95,147 +96,6 @@ function ContactModal({ onClose, onSave, initial }: { onClose: () => void; onSav
   );
 }
 
-// ── CSV Import Modal ──────────────────────────────────────────────────────────
-function CSVImportModal({ onClose, onImport }: { onClose: () => void; onImport: (contacts: Omit<Contact, 'id'>[]) => void }) {
-  const [step, setStep] = useState<'upload' | 'map' | 'preview'>('upload');
-  const [rows, setRows] = useState<string[][]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ success: number; skipped: number } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const CRM_FIELDS = ['name', 'email', 'phone', 'company', 'jobTitle', 'source', 'status', 'tags', 'website', 'linkedin', '(skip)'];
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const text = ev.target?.result as string;
-      const lines = text.split('\n').filter(l => l.trim());
-      const parsed = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-      if (parsed.length < 2) return;
-      setHeaders(parsed[0]);
-      setRows(parsed.slice(1));
-      const autoMap: Record<string, string> = {};
-      parsed[0].forEach(h => {
-        const lower = h.toLowerCase();
-        if (lower.includes('name') && !lower.includes('company') && !lower.includes('job')) autoMap[h] = 'name';
-        else if (lower.includes('email')) autoMap[h] = 'email';
-        else if (lower.includes('phone') || lower.includes('mobile')) autoMap[h] = 'phone';
-        else if (lower.includes('company') || lower.includes('org')) autoMap[h] = 'company';
-        else if (lower.includes('title') || lower.includes('role') || lower.includes('position')) autoMap[h] = 'jobTitle';
-        else if (lower.includes('source')) autoMap[h] = 'source';
-        else if (lower.includes('status')) autoMap[h] = 'status';
-        else if (lower.includes('tag')) autoMap[h] = 'tags';
-        else if (lower.includes('website') || lower.includes('url')) autoMap[h] = 'website';
-        else if (lower.includes('linkedin')) autoMap[h] = 'linkedin';
-        else autoMap[h] = '(skip)';
-      });
-      setMapping(autoMap);
-      setStep('map');
-    };
-    reader.readAsText(file);
-  };
-
-  const doImport = () => {
-    setImporting(true);
-    const imported: Omit<Contact, 'id'>[] = [];
-    let skipped = 0;
-    rows.forEach(row => {
-      const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { if (mapping[h] && mapping[h] !== '(skip)') obj[mapping[h]] = row[i] || ''; });
-      if (!obj.name && !obj.email) { skipped++; return; }
-      imported.push({
-        name: obj.name || obj.email?.split('@')[0] || 'Unknown',
-        email: obj.email || '',
-        phone: obj.phone || '',
-        company: obj.company || '',
-        jobTitle: obj.jobTitle || '',
-        source: obj.source || 'CSV Import',
-        status: (['lead','prospect','customer','churned'].includes(obj.status) ? obj.status : 'lead') as Contact['status'],
-        tags: obj.tags ? obj.tags.split(';').map(t => t.trim()).filter(Boolean) : [],
-        website: obj.website || '',
-        linkedin: obj.linkedin || '',
-        value: 0,
-        createdAt: new Date().toISOString().split('T')[0],
-        lastActivity: new Date().toISOString().split('T')[0],
-        notes: [], tasks: [], activities: [],
-      });
-    });
-    onImport(imported);
-    setResult({ success: imported.length, skipped });
-    setImporting(false);
-    setStep('preview');
-  };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: 16, padding: 28, width: 600, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>Import Contacts from CSV</h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} color="#94a3b8" /></button>
-        </div>
-
-        {step === 'upload' && (
-          <div>
-            <div style={{ border: '2px dashed #e2e8f0', borderRadius: 12, padding: '40px 20px', textAlign: 'center', cursor: 'pointer', backgroundColor: '#f8fafc' }}
-              onClick={() => fileRef.current?.click()}>
-              <Upload size={32} color="#6366f1" style={{ margin: '0 auto 12px', display: 'block' }} />
-              <p style={{ fontSize: 15, fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>Click to upload CSV file</p>
-              <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Your CSV should have headers in the first row</p>
-              <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
-            </div>
-            <div style={{ marginTop: 16, padding: '12px 14px', backgroundColor: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd', fontSize: 13, color: '#0369a1' }}>
-              <strong>Expected columns:</strong> Name, Email, Phone, Company, Job Title, Status, Tags, Source, LinkedIn, Website
-            </div>
-          </div>
-        )}
-
-        {step === 'map' && (
-          <div>
-            <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>Map your CSV columns to CRM fields. We've auto-detected {Object.values(mapping).filter(v => v !== '(skip)').length} of {headers.length} columns.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-              {headers.map(h => (
-                <div key={h} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 13, color: '#374151', fontWeight: 500, width: 160, flexShrink: 0 }}>{h}</span>
-                  <span style={{ fontSize: 13, color: '#94a3b8' }}>→</span>
-                  <select value={mapping[h] || '(skip)'} onChange={e => setMapping(p => ({ ...p, [h]: e.target.value }))}
-                    style={{ flex: 1, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none' }}>
-                    {CRM_FIELDS.map(f => <option key={f} value={f}>{f === '(skip)' ? '— Skip this column —' : f}</option>)}
-                  </select>
-                </div>
-              ))}
-            </div>
-            <div style={{ padding: '10px 14px', backgroundColor: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              {rows.length} rows detected. {rows.slice(0, 2).map((r, i) => <div key={i} style={{ fontFamily: 'monospace', fontSize: 11, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.slice(0, 5).join(', ')}</div>)}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setStep('upload')} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Back</button>
-              <button onClick={doImport} disabled={importing} style={{ padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                {importing ? 'Importing...' : `Import ${rows.length} Contacts`}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'preview' && result && (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <CheckSquare size={28} color="#16a34a" />
-            </div>
-            <h3 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Import Complete!</h3>
-            <p style={{ fontSize: 15, color: '#374151', marginBottom: 6 }}>{result.success} contacts imported successfully</p>
-            {result.skipped > 0 && <p style={{ fontSize: 13, color: '#94a3b8' }}>{result.skipped} rows skipped (missing name and email)</p>}
-            <button onClick={onClose} style={{ marginTop: 20, padding: '10px 24px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Advanced Filter Builder ───────────────────────────────────────────────────
 interface FilterRule {
   field: string;
@@ -272,7 +132,7 @@ const FILTER_OPS = [
 ];
 
 export default function Contacts() {
-  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification } = useApp();
+  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs } = useApp();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -510,7 +370,17 @@ export default function Contacts() {
 
       {showModal && <ContactModal onClose={() => setShowModal(false)} onSave={addContact} />}
       {editContact && <ContactModal initial={editContact} onClose={() => setEditContact(null)} onSave={(updates) => { updateContact(editContact.id, updates); setEditContact(null); }} />}
-      {showImport && <CSVImportModal onClose={() => setShowImport(false)} onImport={bulkImportContacts} />}
+      {showImport && (
+        <ImportWizard
+          onClose={() => setShowImport(false)}
+          existingFields={customFieldDefs}
+          onImport={(contacts, newFields) => {
+            bulkImportContacts(contacts);
+            addCustomFieldDefs(newFields);
+            addNotification(`${contacts.length} contacts imported${newFields.length ? ` · ${newFields.length} new variable${newFields.length > 1 ? 's' : ''} created` : ''}`, 'success');
+          }}
+        />
+      )}
       {profileContact && <ContactProfile contact={contacts.find(c => c.id === profileContact.id) ?? profileContact} onClose={() => setProfileContact(null)} />}
     </div>
   );

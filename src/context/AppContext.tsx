@@ -11,6 +11,12 @@ interface Notification {
   type: 'success' | 'error' | 'info';
 }
 
+export interface CustomFieldDef {
+  key: string;
+  label: string;
+  createdAt: string;
+}
+
 interface AppContextType {
   contacts: Contact[];
   conversations: Conversation[];
@@ -82,6 +88,8 @@ interface AppContextType {
   addSocialPost: (post: DesignPost) => void;
   updateSocialPost: (id: string, updates: Partial<DesignPost>) => void;
   deleteSocialPost: (id: string) => void;
+  customFieldDefs: CustomFieldDef[];
+  addCustomFieldDefs: (defs: CustomFieldDef[]) => void;
 }
 
 function loadLS<T>(key: string, fallback: T): T {
@@ -109,6 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarMode, setSidebarModeState] = useState<'full' | 'icons' | 'hidden'>(() => (loadLS('crm_sidebar_mode', 'full') as 'full' | 'icons' | 'hidden'));
   const [videoProjects, setVideoProjects] = useState<VideoProject[]>(() => loadLS('crm_video_projects', []));
   const [socialPosts, setSocialPosts] = useState<DesignPost[]>(() => loadLS('crm_social_posts', []));
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>(() => loadLS('crm_custom_fields', []));
   const setSidebarMode = (mode: 'full' | 'icons' | 'hidden') => { setSidebarModeState(mode); saveLS('crm_sidebar_mode', mode); };
 
   const defaultSchedule: ScheduleAvailability = {
@@ -149,6 +158,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const bulkImportContacts = (newContacts: Omit<Contact, 'id'>[]) => {
     const withIds = newContacts.map((c, i) => ({ ...c, id: `imp-${Date.now()}-${i}` }));
     setContacts(prev => { const next = [...withIds, ...prev]; saveLS('crm_contacts', next); return next; });
+  };
+  const addCustomFieldDefs = (defs: CustomFieldDef[]) => {
+    if (!defs.length) return;
+    setCustomFieldDefs(prev => {
+      const existing = new Set(prev.map(f => f.key));
+      const fresh = defs.filter(d => !existing.has(d.key));
+      if (!fresh.length) return prev;
+      const next = [...prev, ...fresh];
+      saveLS('crm_custom_fields', next);
+      return next;
+    });
   };
 
   /* ── Conversations ── */
@@ -386,6 +406,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       videoProjects, addVideoProject, updateVideoProject, deleteVideoProject,
       updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip,
       socialPosts, addSocialPost, updateSocialPost, deleteSocialPost,
+      customFieldDefs, addCustomFieldDefs,
     }}>
       {children}
     </AppContext.Provider>
