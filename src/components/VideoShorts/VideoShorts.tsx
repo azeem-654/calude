@@ -12,6 +12,7 @@ import { useApp } from '../../context/AppContext';
 import Header from '../Layout/Header';
 import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
+import { exportClipToVideo, downloadBlob, canExportVideo } from '../../lib/videoExport';
 
 /* ── Constants ── */
 
@@ -415,9 +416,32 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
 }
 
 /* ── Processing Screen ── */
-function ProcessingScreen({ project }: { project: VideoProject }) {
+function ProcessingScreen({ project, onRetry }: { project: VideoProject; onRetry?: () => void }) {
   const stepIdx = PROCESSING_STEPS.findIndex(s => s.pct >= project.progress) ?? PROCESSING_STEPS.length - 1;
   const step = PROCESSING_STEPS[Math.max(0, stepIdx)];
+
+  if (project.status === 'failed') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', textAlign: 'center' }}>
+        <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+          <X size={36} color="#ef4444" />
+        </div>
+        <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>AI processing failed</h2>
+        <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 4px', maxWidth: '460px', lineHeight: 1.6 }}>
+          {project.error || 'Something went wrong while analyzing your video.'}
+        </p>
+        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 28px', maxWidth: '460px' }}>
+          No fake or placeholder clips were generated — only real AI analysis of your video is shown here.
+        </p>
+        {onRetry && (
+          <button onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+            <RefreshCw size={15} /> Retry
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', textAlign: 'center' }}>
       <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: project.thumbnailGradient, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', boxShadow: '0 8px 30px rgba(99,102,241,0.3)' }}>
@@ -461,10 +485,43 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
   sourceType: VideoProject['sourceType'];
   sourceUrl?: string;
 }) {
+  const { addNotification } = useApp();
   const [showMenu, setShowMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportPct, setExportPct] = useState(0);
   const isLiked = clip.status === 'liked';
   const isDisliked = clip.status === 'disliked';
   const ratio = clip.aspectRatio === '9:16' ? '56.25%' : clip.aspectRatio === '1:1' ? '100%' : '177.78%';
+
+  const handleDownload = async () => {
+    setShowMenu(false);
+    if (sourceType === 'youtube' || !sourceBlobUrl) {
+      addNotification('Download is only available for uploaded videos — YouTube-sourced clips can\'t be exported due to platform restrictions.', 'error');
+      return;
+    }
+    if (!canExportVideo()) {
+      addNotification('Your browser does not support in-browser video export. Try Chrome or Edge.', 'error');
+      return;
+    }
+    setExporting(true);
+    setExportPct(0);
+    try {
+      const result = await exportClipToVideo({
+        sourceBlobUrl,
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        aspectRatio: clip.aspectRatio,
+        captions: clip.captions,
+        onProgress: setExportPct,
+      });
+      downloadBlob(result.blob, `${clip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
+      addNotification('Clip downloaded!', 'success');
+    } catch (err) {
+      addNotification(err instanceof Error ? err.message : 'Export failed', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', transition: 'box-shadow 0.15s', cursor: 'default' }}
@@ -539,7 +596,7 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
             {showMenu && (
               <div style={{ position: 'absolute', bottom: '110%', right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '140px', padding: '4px' }}>
                 {[
-                  { icon: Download, label: 'Download HD', action: () => { setShowMenu(false); } },
+                  { icon: Download, label: 'Download HD', action: handleDownload },
                   { icon: Copy, label: 'Duplicate', action: () => { onDuplicate(); setShowMenu(false); } },
                   { icon: Trash2, label: 'Move to Trash', action: () => { onTrash(); setShowMenu(false); }, danger: true },
                 ].map(item => (
@@ -550,6 +607,16 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
                     <item.icon size={12} /> {item.label}
                   </button>
                 ))}
+              </div>
+            )}
+            {exporting && (
+              <div style={{ position: 'absolute', bottom: '110%', right: 0, background: '#0f172a', color: 'white', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', zIndex: 100, minWidth: '150px', padding: '10px 12px', fontSize: '11px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
+                  <span>Exporting…</span><span>{exportPct}%</span>
+                </div>
+                <div style={{ height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${exportPct}%`, background: '#6366f1', borderRadius: '3px', transition: 'width 0.2s' }} />
+                </div>
               </div>
             )}
           </div>
@@ -661,7 +728,10 @@ function PublishModal({ clip, onClose, onPublish }: { clip: VideoClip; onClose: 
 
 /* ── Clip Editor ── */
 function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; project: VideoProject; onBack: () => void; onSave: (updates: Partial<VideoClip>) => void }) {
+  const { addNotification } = useApp();
   const [localClip, setLocalClip] = useState(clip);
+  const [exporting, setExporting] = useState(false);
+  const [exportPct, setExportPct] = useState(0);
   const [activePanel, setActivePanel] = useState<'captions' | 'audio' | 'broll' | 'publish'>('captions');
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState(0);
@@ -677,6 +747,35 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
   const hasRealVideo = !!(project.sourceBlobUrl || ytId);
 
   const set = (updates: Partial<VideoClip>) => setLocalClip(prev => ({ ...prev, ...updates }));
+
+  const handleDownload = async () => {
+    if (!project.sourceBlobUrl) {
+      addNotification('Download is only available for uploaded videos — YouTube-sourced clips can\'t be exported due to platform restrictions.', 'error');
+      return;
+    }
+    if (!canExportVideo()) {
+      addNotification('Your browser does not support in-browser video export. Try Chrome or Edge.', 'error');
+      return;
+    }
+    setExporting(true);
+    setExportPct(0);
+    try {
+      const result = await exportClipToVideo({
+        sourceBlobUrl: project.sourceBlobUrl,
+        startTime: trimStart,
+        endTime: trimEnd,
+        aspectRatio: localClip.aspectRatio,
+        captions: localClip.captions,
+        onProgress: setExportPct,
+      });
+      downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
+      addNotification('Clip downloaded!', 'success');
+    } catch (err) {
+      addNotification(err instanceof Error ? err.message : 'Export failed', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Seek real video to trim start when source loads
   const handleVideoLoaded = () => {
@@ -1090,18 +1189,32 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
 
                 <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px' }}>
                   <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Export</p>
-                  {[
-                    { label: 'Download HD (1080p)', desc: '1080×1920 MP4', icon: Download },
-                    { label: 'Export XML', desc: 'Premiere Pro / DaVinci', icon: Layers },
-                  ].map(ex => (
-                    <button key={ex.label} style={{ width: '100%', padding: '10px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', color: 'white' }}>
-                      <ex.icon size={14} color="#94a3b8" />
-                      <div style={{ textAlign: 'left' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600 }}>{ex.label}</div>
-                        <div style={{ fontSize: '10px', color: '#64748b' }}>{ex.desc}</div>
+                  <button
+                    onClick={handleDownload}
+                    disabled={exporting || !project.sourceBlobUrl}
+                    title={!project.sourceBlobUrl ? 'Download is only available for uploaded videos' : undefined}
+                    style={{ width: '100%', padding: '10px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', cursor: (exporting || !project.sourceBlobUrl) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', color: 'white', opacity: (exporting || !project.sourceBlobUrl) ? 0.5 : 1 }}>
+                    <Download size={14} color="#94a3b8" />
+                    <div style={{ textAlign: 'left', flex: 1 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>{exporting ? `Exporting… ${exportPct}%` : 'Download HD (1080p)'}</div>
+                      <div style={{ fontSize: '10px', color: '#64748b' }}>
+                        {project.sourceBlobUrl ? `${localClip.aspectRatio === '9:16' ? '1080×1920' : localClip.aspectRatio === '1:1' ? '1080×1080' : '1920×1080'} · with burned-in captions` : 'Upload a video to enable export'}
                       </div>
-                    </button>
-                  ))}
+                    </div>
+                  </button>
+                  {exporting && (
+                    <div style={{ height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden', marginBottom: '6px' }}>
+                      <div style={{ height: '100%', width: `${exportPct}%`, background: '#6366f1', borderRadius: '3px', transition: 'width 0.2s' }} />
+                    </div>
+                  )}
+                  <button disabled title="Coming soon — requires a real source file path, not available for browser uploads yet"
+                    style={{ width: '100%', padding: '10px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: '8px', color: 'white', opacity: 0.4 }}>
+                    <Layers size={14} color="#94a3b8" />
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>Export XML</div>
+                      <div style={{ fontSize: '10px', color: '#64748b' }}>Premiere Pro / DaVinci — coming soon</div>
+                    </div>
+                  </button>
                 </div>
               </div>
             )}
@@ -1115,7 +1228,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
 }
 
 /* ── Project View ── */
-function ProjectView({ project, onBack, onEditClip }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip) => void }) {
+function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip) => void; onRetry: () => void }) {
   const { updateVideoProject, updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip, addNotification } = useApp();
   const [sortBy, setSortBy] = useState<'virality' | 'duration' | 'date'>('virality');
   const [filterFocus, setFilterFocus] = useState<'all' | 'emotional' | 'educational' | 'funny'>('all');
@@ -1124,6 +1237,8 @@ function ProjectView({ project, onBack, onEditClip }: { project: VideoProject; o
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState(project.name);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [exportingAll, setExportingAll] = useState(false);
+  const [exportAllStatus, setExportAllStatus] = useState('');
 
   const clips = [...project.clips]
     .filter(c => filterFocus === 'all' || c.focus === filterFocus)
@@ -1135,6 +1250,38 @@ function ProjectView({ project, onBack, onEditClip }: { project: VideoProject; o
 
   const likedCount = project.clips.filter(c => c.status === 'liked').length;
   const avgScore = project.clips.length ? Math.round(project.clips.reduce((s, c) => s + c.viralityScore, 0) / project.clips.length) : 0;
+
+  const handleExportAll = async () => {
+    if (!project.sourceBlobUrl) {
+      addNotification('Export All is only available for uploaded videos — YouTube-sourced clips can\'t be exported due to platform restrictions.', 'error');
+      return;
+    }
+    if (!canExportVideo()) {
+      addNotification('Your browser does not support in-browser video export. Try Chrome or Edge.', 'error');
+      return;
+    }
+    setExportingAll(true);
+    let done = 0;
+    for (const clip of clips) {
+      setExportAllStatus(`Exporting ${done + 1}/${clips.length}: ${clip.title}`);
+      try {
+        const result = await exportClipToVideo({
+          sourceBlobUrl: project.sourceBlobUrl,
+          startTime: clip.startTime,
+          endTime: clip.endTime,
+          aspectRatio: clip.aspectRatio,
+          captions: clip.captions,
+        });
+        downloadBlob(result.blob, `${clip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
+        done++;
+      } catch (err) {
+        addNotification(`Failed to export "${clip.title}": ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+      }
+    }
+    setExportingAll(false);
+    setExportAllStatus('');
+    addNotification(`Exported ${done} of ${clips.length} clips.`, done > 0 ? 'success' : 'error');
+  };
 
   const handleDuplicate = (clip: VideoClip) => {
     const dup: VideoClip = { ...clip, id: `clip-dup-${Date.now()}`, title: `${clip.title} (copy)`, createdAt: new Date().toISOString() };
@@ -1171,15 +1318,29 @@ function ProjectView({ project, onBack, onEditClip }: { project: VideoProject; o
             <button onClick={() => setShowTrash(!showTrash)} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: showTrash ? '#fef2f2' : 'white', color: showTrash ? '#dc2626' : '#64748b', cursor: 'pointer', fontSize: '13px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Trash2 size={13} /> Trash ({project.trashedClips.length})
             </button>
-            <button style={{ padding: '8px 14px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Download size={13} /> Export All
+            <button onClick={handleExportAll} disabled={exportingAll || project.status !== 'ready' || clips.length === 0}
+              title={!project.sourceBlobUrl ? 'Export is only available for uploaded videos' : undefined}
+              style={{ padding: '8px 14px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: (exportingAll || clips.length === 0) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px', opacity: (exportingAll || clips.length === 0) ? 0.6 : 1 }}>
+              <Download size={13} /> {exportingAll ? 'Exporting…' : 'Export All'}
             </button>
           </div>
         </div>
 
+        {exportingAll && (
+          <div style={{ padding: '8px 14px', background: '#f5f3ff', border: '1px solid #e0e7ff', borderRadius: '8px', marginBottom: '16px', fontSize: '12px', color: '#4f46e5', fontWeight: 500 }}>
+            {exportAllStatus}
+          </div>
+        )}
+
         {project.status !== 'ready' ? (
-          <ProcessingScreen project={project} />
-        ) : showTrash ? (
+          <ProcessingScreen project={project} onRetry={onRetry} />
+        ) : project.isDemo ? (
+          <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Zap size={14} />
+            <strong>Demo mode:</strong> no Gemini API key is configured, so these are sample clips — not analyzed from your actual video.
+          </div>
+        ) : null}
+        {project.status === 'ready' && (showTrash ? (
           /* TRASH VIEW */
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -1261,7 +1422,7 @@ function ProjectView({ project, onBack, onEditClip }: { project: VideoProject; o
               </div>
             )}
           </>
-        )}
+        ))}
       </div>
 
       {publishClip && (
@@ -1326,11 +1487,11 @@ export default function VideoShorts() {
         const project = videoProjectsRef.current.find(p => p.id === projectId);
         if (project) {
           const clips = generateClips({ ...project, status: 'ready', progress: 100 });
-          updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done!', clips });
+          updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done!', clips, isDemo: true });
         } else {
-          updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done! Your clips are ready.' });
+          updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done! Your clips are ready.', isDemo: true });
         }
-        addNotificationRef.current('AI Shorts ready! Your clips have been generated.', 'success');
+        addNotificationRef.current('Demo clips generated (no Gemini API key configured — these are sample clips, not analyzed from your video).', 'info');
         return;
       }
       stepIdx++;
@@ -1370,7 +1531,8 @@ export default function VideoShorts() {
     const upd = (patch: Partial<VideoProject>) => updateVideoProjectRef.current(projectId, patch);
     try {
       let fileUri: string;
-      let mimeType = 'video/mp4';
+      // null mimeType = YouTube URL (Gemini's YouTube understanding rejects a mimeType on the part)
+      let mimeType: string | null = 'video/mp4';
 
       if (source.type === 'upload' && source.file) {
         upd({ status: 'uploading', progress: 8, processingStep: 'Uploading video to Gemini AI...' });
@@ -1378,12 +1540,32 @@ export default function VideoShorts() {
         mimeType = source.file.type || 'video/mp4';
         upd({ progress: 30, processingStep: 'Video uploaded — AI analyzing content...' });
         await waitForFileActive(fileUri);
-      } else if (source.url) {
-        // YouTube or direct URL — Gemini 1.5 Flash can accept URLs directly
+      } else if (source.type === 'youtube' && source.url) {
+        if (!getYouTubeId(source.url)) {
+          throw new Error('That doesn\'t look like a valid YouTube URL.');
+        }
         fileUri = source.url;
-        upd({ status: 'processing', progress: 20, processingStep: 'Connecting to video source...' });
-        await new Promise(r => setTimeout(r, 1000));
-        upd({ progress: 35, processingStep: 'AI analyzing content...' });
+        mimeType = null;
+        upd({ status: 'processing', progress: 25, processingStep: 'Fetching video from YouTube...' });
+      } else if (source.type === 'url' && source.url) {
+        // Gemini's fileData.fileUri only reliably supports YouTube URLs and File API
+        // URIs — arbitrary direct video URLs must be fetched client-side and
+        // re-uploaded through the File API, same as a local upload.
+        upd({ status: 'uploading', progress: 10, processingStep: 'Fetching video from URL...' });
+        let blob: Blob;
+        try {
+          const res = await fetch(source.url, { mode: 'cors' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          blob = await res.blob();
+        } catch {
+          throw new Error('Could not download the video from that URL (likely blocked by CORS). Please download the file and upload it directly instead.');
+        }
+        const file = new File([blob], source.url.split('/').pop() || 'video.mp4', { type: blob.type || 'video/mp4' });
+        upd({ progress: 20, processingStep: 'Uploading video to Gemini AI...' });
+        fileUri = await uploadFileToGemini(file);
+        mimeType = file.type || 'video/mp4';
+        upd({ progress: 32, processingStep: 'Video uploaded — AI analyzing content...' });
+        await waitForFileActive(fileUri);
       } else {
         throw new Error('No video source provided');
       }
@@ -1393,6 +1575,9 @@ export default function VideoShorts() {
       if (!project) throw new Error('Project not found');
 
       const analysis = await analyzeVideoWithGemini(fileUri, mimeType, project.settings);
+      if (!analysis.clips || analysis.clips.length === 0) {
+        throw new Error('The AI could not find any clip-worthy moments in this video. Try a longer or more eventful video.');
+      }
 
       upd({ progress: 80, processingStep: 'Generating captions & scoring virality...' });
       await new Promise(r => setTimeout(r, 600));
@@ -1406,15 +1591,36 @@ export default function VideoShorts() {
         processingStep: 'Done! Your clips are ready.',
         clips,
         duration: realDuration,
+        error: undefined,
+        isDemo: false,
       });
       addNotificationRef.current(`AI Shorts ready! ${clips.length} clips generated from your video.`, 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       console.error('[Gemini]', msg);
-      addNotificationRef.current(`AI processing failed: ${msg}. Falling back to demo mode.`, 'error');
-      startProcessing(projectId, 0);
+      upd({ status: 'failed', processingStep: 'Failed', error: msg });
+      addNotificationRef.current(`AI processing failed: ${msg}`, 'error');
     }
-  }, [startProcessing]);
+  }, []);
+
+  /** Reconstructs the original source (file/url) from a stored project so it can be reprocessed. */
+  const retryProcessing = useCallback(async (projectId: string) => {
+    const project = videoProjectsRef.current.find(p => p.id === projectId);
+    if (!project) return;
+    updateVideoProjectRef.current(projectId, { status: 'uploading', progress: 0, processingStep: 'Retrying...', error: undefined });
+    try {
+      if (project.sourceType === 'upload' && project.sourceBlobUrl) {
+        const blob = await fetch(project.sourceBlobUrl).then(r => r.blob());
+        const file = new File([blob], project.sourceName || 'video.mp4', { type: blob.type || 'video/mp4' });
+        await processWithGemini(projectId, { type: 'upload', file });
+      } else {
+        await processWithGemini(projectId, { type: project.sourceType, url: project.sourceUrl });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      updateVideoProjectRef.current(projectId, { status: 'failed', processingStep: 'Failed', error: msg });
+    }
+  }, [processWithGemini]);
 
   const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }) => {
     const id = `proj-${Date.now()}`;
@@ -1480,6 +1686,7 @@ export default function VideoShorts() {
         project={selectedProject}
         onBack={() => setView('dashboard')}
         onEditClip={clip => { setSelectedClipId(clip.id); setView('editor'); }}
+        onRetry={() => retryProcessing(selectedProject.id)}
       />
     );
   }

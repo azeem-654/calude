@@ -55,10 +55,14 @@ export interface GeminiAnalysis {
   clips: GeminiClip[];
 }
 
-/** Ask Gemini to analyse the video and return clip suggestions. */
+/**
+ * Ask Gemini to analyse the video and return clip suggestions.
+ * Pass mimeType=null for YouTube URLs — Gemini's YouTube understanding feature
+ * rejects the request if a mimeType is attached to a youtube.com file_uri.
+ */
 export async function analyzeVideoWithGemini(
   fileUri: string,
-  mimeType: string,
+  mimeType: string | null,
   settings: { maxClipDuration: number; focus: string }
 ): Promise<GeminiAnalysis> {
   const focusHint = {
@@ -100,7 +104,7 @@ Return ONLY valid JSON with NO markdown fences:
   const body: Record<string, unknown> = {
     contents: [{
       parts: [
-        { fileData: { mimeType, fileUri } },
+        { fileData: mimeType ? { mimeType, fileUri } : { fileUri } },
         { text: prompt },
       ],
     }],

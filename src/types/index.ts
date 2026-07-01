@@ -408,6 +408,8 @@ export interface VideoProject {
   status: 'uploading' | 'processing' | 'ready' | 'failed';
   progress: number;
   processingStep: string;
+  error?: string;
+  isDemo?: boolean;
   clips: VideoClip[];
   trashedClips: VideoClip[];
   settings: {
