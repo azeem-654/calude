@@ -5,6 +5,44 @@ export function hasGeminiKey() {
   return !!API_KEY;
 }
 
+/** Transient errors worth retrying: rate limit, or Google's servers being overloaded. */
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+interface GeminiResponse {
+  error?: { message?: string };
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+}
+
+/**
+ * POSTs a generateContent body against each model in `models`, retrying transient
+ * failures (429/500/502/503/504) with backoff before falling through to the next
+ * model. Non-transient errors (bad request, permission, etc.) throw immediately.
+ */
+async function postGeminiWithFallback(models: string[], body: unknown): Promise<GeminiResponse> {
+  let lastError = '';
+  for (const model of models) {
+    const attempts = 3;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const res = await fetch(
+        `${BASE}/v1beta/models/${model}:generateContent?key=${API_KEY}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      );
+      if (res.ok) return await res.json();
+
+      lastError = await res.text().catch(() => `HTTP ${res.status}`);
+      if (!RETRYABLE_STATUS.has(res.status)) {
+        // Non-transient (e.g. 400 bad request) — retrying won't help, fail now.
+        throw new Error(`Gemini API error (${res.status}): ${lastError}`);
+      }
+      if (attempt < attempts) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+    // Exhausted retries for this model — fall through to the next one.
+  }
+  throw new Error(`All Gemini models are temporarily unavailable after retries. ${lastError}`);
+}
+
 /** Upload a video file to Gemini File API, returns the file URI. */
 export async function uploadFileToGemini(file: File): Promise<string> {
   const form = new FormData();
@@ -120,25 +158,11 @@ Return ONLY valid JSON with NO markdown fences:
     'gemini-2.5-flash',
   ];
 
-  let lastError = '';
-  for (const model of MODELS) {
-    const res = await fetch(
-      `${BASE}/v1beta/models/${model}:generateContent?key=${API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    );
-
-    if (res.status === 429 || res.status === 404) {
-      lastError = await res.text();
-      continue;
-    }
-    if (!res.ok) throw new Error(`Gemini API error: ${await res.text()}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message ?? 'Gemini error');
-    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-    return JSON.parse(json) as GeminiAnalysis;
-  }
-  throw new Error(`All Gemini models quota exceeded or unavailable. ${lastError}`);
+  const data = await postGeminiWithFallback(MODELS, body);
+  if (data.error) throw new Error(data.error.message ?? 'Gemini error');
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  return JSON.parse(json) as GeminiAnalysis;
 }
 
 /** Shared helper: call Gemini text models with fallback chain. */
@@ -148,20 +172,10 @@ async function callGemini(prompt: string, temperature = 0.7): Promise<string> {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', temperature },
   };
-  let lastError = '';
-  for (const model of MODELS) {
-    const res = await fetch(
-      `${BASE}/v1beta/models/${model}:generateContent?key=${API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    );
-    if (res.status === 429 || res.status === 404) { lastError = await res.text(); continue; }
-    if (!res.ok) throw new Error(`Gemini error: ${await res.text()}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message ?? 'Gemini error');
-    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  }
-  throw new Error(`All Gemini models exhausted. ${lastError}`);
+  const data = await postGeminiWithFallback(MODELS, body);
+  if (data.error) throw new Error(data.error.message ?? 'Gemini error');
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
 }
 
 export interface AIDesignElement {
