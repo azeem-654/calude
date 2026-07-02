@@ -370,6 +370,12 @@ export interface VideoClip {
   projectId: string;
   title: string;
   description: string;
+  /** Full English name of the language title/description/transcript are in, e.g. "Turkish". */
+  language?: string;
+  /** English translation of the title, present only when `language` isn't English. */
+  titleTranslated?: string;
+  /** English translation of the description, present only when `language` isn't English. */
+  descriptionTranslated?: string;
   hashtags: string[];
   startTime: number;
   endTime: number;
@@ -410,6 +416,8 @@ export interface VideoProject {
   processingStep: string;
   error?: string;
   isDemo?: boolean;
+  /** Full English name of the detected spoken language of the video, e.g. "Turkish". */
+  language?: string;
   clips: VideoClip[];
   trashedClips: VideoClip[];
   settings: {

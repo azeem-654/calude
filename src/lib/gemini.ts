@@ -78,6 +78,11 @@ export async function waitForFileActive(fileUri: string, maxWaitMs = 120_000): P
 
 export interface GeminiClip {
   title: string;
+  /** English translation of `title`, present only when the video's language isn't English. */
+  titleTranslated?: string;
+  description: string;
+  /** English translation of `description`, present only when the video's language isn't English. */
+  descriptionTranslated?: string;
   startTime: number;
   endTime: number;
   transcript: string;
@@ -90,6 +95,8 @@ export interface GeminiClip {
 export interface GeminiAnalysis {
   videoSummary: string;
   totalDuration: number;
+  /** Full English name of the video's primary spoken language, e.g. "English", "Turkish", "Arabic". */
+  videoLanguage: string;
   clips: GeminiClip[];
 }
 
@@ -114,27 +121,37 @@ export async function analyzeVideoWithGemini(
 
 ${focusHint}
 
+Language handling:
+- First detect the video's primary spoken language and report its full English name in "videoLanguage" (e.g. "English", "Turkish", "Arabic", "Spanish").
+- Write each clip's "title", "description", and "transcript" in that SAME original spoken language of the video — do not translate them to English.
+- If the detected language is NOT English, ALSO provide "titleTranslated" and "descriptionTranslated" fields with accurate English translations of the title and description. If the video IS English, omit "titleTranslated" and "descriptionTranslated" entirely (do not repeat the same text).
+
 Rules:
 - Clips must NOT overlap
 - Each clip must be at most ${settings.maxClipDuration} seconds long
 - Start and end times must be accurate to the actual video content
 - Find between 6 and 12 clips
 - viralityScore must be between 60 and 99
+- "description" should be a short, engaging 2-3 sentence caption suitable for a social media post (not just a repeat of the transcript)
 
 Return ONLY valid JSON with NO markdown fences:
 {
-  "videoSummary": "1-2 sentence summary of the video",
+  "videoSummary": "1-2 sentence summary of the video, in English",
   "totalDuration": <total video length in seconds as a number>,
+  "videoLanguage": "full English name of the video's primary spoken language",
   "clips": [
     {
-      "title": "engaging title under 70 chars",
+      "title": "engaging title under 70 chars, in the video's original language",
+      "titleTranslated": "English translation of title — OMIT this field entirely if videoLanguage is English",
+      "description": "engaging 2-3 sentence social caption, in the video's original language",
+      "descriptionTranslated": "English translation of description — OMIT this field entirely if videoLanguage is English",
       "startTime": <number, seconds>,
       "endTime": <number, seconds>,
-      "transcript": "verbatim quote of what is said in this segment",
+      "transcript": "verbatim quote of what is said in this segment, in the video's original language",
       "viralityScore": <number 60-99>,
       "focus": "emotional|educational|funny|motivational",
       "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4"],
-      "reason": "one sentence: why this will go viral"
+      "reason": "one sentence in English: why this will go viral"
     }
   ]
 }`;

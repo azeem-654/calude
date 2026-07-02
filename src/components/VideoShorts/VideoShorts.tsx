@@ -140,6 +140,7 @@ function generateClips(project: VideoProject): VideoClip[] {
       projectId: project.id,
       title: t.title,
       description: `🔥 ${t.title}\n\n${t.transcript}\n\n👉 Save this for later!`,
+      language: 'English',
       hashtags: ['#viral', '#shorts', '#tips', '#growth', '#mindset', `#${t.focus}`],
       startTime: start,
       endTime: start + dur,
@@ -169,11 +170,15 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
     const focus = (['emotional', 'educational', 'funny'] as const).includes(gc.focus as never)
       ? (gc.focus as 'emotional' | 'educational' | 'funny')
       : 'educational';
+    const isEnglish = analysis.videoLanguage?.trim().toLowerCase() === 'english';
     return {
       id: `clip-${project.id}-${i}`,
       projectId: project.id,
       title: gc.title,
-      description: `🔥 ${gc.title}\n\n${gc.transcript}\n\n${gc.reason}\n\n👉 Save this for later!`,
+      description: gc.description || `🔥 ${gc.title}\n\n${gc.transcript}\n\n${gc.reason}\n\n👉 Save this for later!`,
+      language: analysis.videoLanguage || 'English',
+      titleTranslated: !isEnglish ? gc.titleTranslated : undefined,
+      descriptionTranslated: !isEnglish ? gc.descriptionTranslated : undefined,
       hashtags: gc.hashtags.slice(0, 8),
       startTime: gc.startTime,
       endTime: gc.endTime,
@@ -489,9 +494,14 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
   const [showMenu, setShowMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
+  const [showTranslated, setShowTranslated] = useState(false);
   const isLiked = clip.status === 'liked';
   const isDisliked = clip.status === 'disliked';
   const ratio = clip.aspectRatio === '9:16' ? '56.25%' : clip.aspectRatio === '1:1' ? '100%' : '177.78%';
+  const isNonEnglish = !!clip.language && clip.language.toLowerCase() !== 'english';
+  const hasTranslation = isNonEnglish && !!(clip.titleTranslated || clip.descriptionTranslated);
+  const displayTitle = showTranslated && clip.titleTranslated ? clip.titleTranslated : clip.title;
+  const displayDescription = showTranslated && clip.descriptionTranslated ? clip.descriptionTranslated : clip.description;
 
   const handleDownload = async () => {
     setShowMenu(false);
@@ -557,12 +567,32 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
 
       {/* Card content */}
       <div style={{ padding: '10px 12px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px', marginBottom: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px', marginBottom: '4px' }}>
           <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: '#0f172a', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 }}>
-            {clip.title}
+            {displayTitle}
           </p>
           <ScoreBadge score={clip.viralityScore} size="sm" />
         </div>
+
+        {/* Description */}
+        <p style={{ margin: '0 0 6px', fontSize: '11px', color: '#64748b', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+          {displayDescription}
+        </p>
+
+        {/* Language badge + translation toggle */}
+        {isNonEnglish && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '8px' }}>
+            <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>
+              🌐 {clip.language}
+            </span>
+            {hasTranslation && (
+              <button onClick={() => setShowTranslated(v => !v)}
+                style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', border: '1px solid #e2e8f0', background: showTranslated ? '#6366f1' : 'white', color: showTranslated ? 'white' : '#64748b', fontWeight: 700, cursor: 'pointer' }}>
+                {showTranslated ? `Show ${clip.language}` : 'Show English'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Published platforms */}
         {clip.publishedTo.length > 0 && (
@@ -732,7 +762,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
   const [localClip, setLocalClip] = useState(clip);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
-  const [activePanel, setActivePanel] = useState<'captions' | 'audio' | 'broll' | 'publish'>('captions');
+  const [activePanel, setActivePanel] = useState<'details' | 'captions' | 'audio' | 'broll' | 'publish'>('details');
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [editingCapIdx, setEditingCapIdx] = useState<number | null>(null);
@@ -962,6 +992,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           {/* Panel tabs */}
           <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
             {([
+              { id: 'details', icon: Edit2, label: 'Details' },
               { id: 'captions', icon: AlignLeft, label: 'Captions' },
               { id: 'audio', icon: Music, label: 'Audio' },
               { id: 'broll', icon: Film, label: 'B-Roll' },
@@ -976,6 +1007,49 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+            {/* DETAILS PANEL */}
+            {activePanel === 'details' && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: '13px' }}>Title & Description</p>
+                  {localClip.language && (
+                    <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', background: localClip.language.toLowerCase() === 'english' ? 'rgba(34,197,94,0.15)' : 'rgba(99,102,241,0.15)', color: localClip.language.toLowerCase() === 'english' ? '#22c55e' : '#818cf8', fontWeight: 700 }}>
+                      🌐 {localClip.language}
+                    </span>
+                  )}
+                </div>
+
+                {/* Original-language title/description */}
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    Title {localClip.language && localClip.language.toLowerCase() !== 'english' ? `(${localClip.language})` : ''}
+                  </label>
+                  <input value={localClip.title} onChange={e => set({ title: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '10px' }} />
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    Description {localClip.language && localClip.language.toLowerCase() !== 'english' ? `(${localClip.language})` : ''}
+                  </label>
+                  <textarea value={localClip.description} onChange={e => set({ description: e.target.value })} rows={4}
+                    style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+
+                {/* English translation, only for non-English videos */}
+                {localClip.language && localClip.language.toLowerCase() !== 'english' && (
+                  <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '8px', padding: '12px' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🇬🇧 English Translation</p>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', marginBottom: '6px' }}>Title</label>
+                    <input value={localClip.titleTranslated ?? ''} onChange={e => set({ titleTranslated: e.target.value })}
+                      placeholder="English title translation"
+                      style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '10px' }} />
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', marginBottom: '6px' }}>Description</label>
+                    <textarea value={localClip.descriptionTranslated ?? ''} onChange={e => set({ descriptionTranslated: e.target.value })} rows={4}
+                      placeholder="English description translation"
+                      style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* CAPTIONS PANEL */}
             {activePanel === 'captions' && (
               <div>
@@ -1291,7 +1365,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoP
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <Header title={project.name} subtitle={`${fmtLongDuration(project.duration)} · ${project.clips.length} clips generated`} />
+      <Header title={project.name} subtitle={`${fmtLongDuration(project.duration)} · ${project.clips.length} clips generated${project.language ? ` · 🌐 ${project.language}` : ''}`} />
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
         {/* Project header bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -1591,6 +1665,7 @@ export default function VideoShorts() {
         processingStep: 'Done! Your clips are ready.',
         clips,
         duration: realDuration,
+        language: analysis.videoLanguage || 'English',
         error: undefined,
         isDemo: false,
       });
