@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ElementType } from 'react';
 import {
   Users, TrendingUp, Calendar, DollarSign, MessageSquare, Target,
-  ArrowUpRight, ArrowDownRight, Mail, Funnel, Globe, Star, BarChart3,
+  ArrowUpRight, ArrowDownRight, Mail, Funnel, Star, BarChart3,
   CalendarCheck, CheckCircle, Clock, Send, Eye, MousePointer, ThumbsUp,
   Zap, ChevronRight, Activity,
 } from 'lucide-react';
@@ -153,7 +153,7 @@ function GoalBar({ label, current, target, color }: { label: string; current: nu
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, appointments, conversations, pipelines, campaigns, funnels, websites, reviews, bookings } = useApp();
+  const { contacts, appointments, conversations, pipelines, campaigns, funnels, reviews, bookings, videoProjects, socialPosts } = useApp();
 
   const totalDeals = pipelines[0]?.stages.reduce((s, st) => s + st.deals.reduce((v, d) => v + d.value, 0), 0) ?? 0;
   const openDeals = pipelines[0]?.stages.slice(0, -1).reduce((s, st) => s + st.deals.length, 0) ?? 0;
@@ -161,7 +161,7 @@ export default function Dashboard() {
 
   const openConvs = conversations.filter(c => c.status === 'open').length;
   const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
-  const publishedSites = websites.filter(w => w.status === 'published').length;
+  const totalClips = videoProjects.reduce((s, p) => s + p.clips.length, 0);
   const avgRating = reviews.length ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : '—';
   const fiveStars = reviews.filter(r => r.rating === 5).length;
   const todayBookings = bookings.filter(b => b.slotDate === new Date().toISOString().split('T')[0]).length;
@@ -242,12 +242,12 @@ export default function Dashboard() {
               sparkData={[18, 28, 22, 35, 30, 40, 38, 48, 45, 55]}
             />
             <ModuleCard
-              icon={Globe} label="Websites" color="#0d9488" bg="#f0fdfa" path="/websites"
-              primary={websites.length || 3} primaryLabel="websites"
+              icon={Zap} label="AI Studio" color="#0d9488" bg="#f0fdfa" path="/social-creator"
+              primary={socialPosts.length + totalClips || 3} primaryLabel="AI creations"
               stats={[
-                { label: 'Published', value: publishedSites || 2 },
-                { label: 'Visitors', value: '5.8k' },
-                { label: 'Page views', value: '24k' },
+                { label: 'Designs', value: socialPosts.length },
+                { label: 'Shorts', value: totalClips },
+                { label: 'Projects', value: videoProjects.length },
               ]}
               sparkData={[25, 38, 32, 48, 42, 55, 50, 65, 60, 72]}
             />
