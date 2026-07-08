@@ -104,9 +104,9 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
   const isRotting = status === 'active' && days >= rottingDays;
 
   const cardBg = isWon ? '#f0fdf4' : isLost ? '#fafafa' : 'white';
-  const cardBorder = isRotting ? '#f97316' : isWon ? '#bbf7d0' : isLost ? '#e2e8f0' : '#e2e8f0';
+  const cardBorder = isRotting ? '#f97316' : isWon ? '#bbf7d0' : isLost ? '#e6e9f0' : '#e6e9f0';
   const leftBorder = isWon ? '#22c55e' : isLost ? '#94a3b8' : pc.border;
-  const rottingGlow = isRotting ? '0 0 0 2px #fed7aa, 0 1px 3px rgba(0,0,0,0.05)' : '0 1px 3px rgba(0,0,0,0.05)';
+  const rottingGlow = isRotting ? '0 0 0 2px #fed7aa, 0 1px 2px rgba(16,24,40,0.04)' : '0 1px 2px rgba(16,24,40,0.04)';
 
   return (
     <div
@@ -115,27 +115,27 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
       onClick={() => onOpen(deal)}
       style={{
         backgroundColor: cardBg,
-        borderRadius: 10,
+        borderRadius: 12,
         padding: '12px 14px',
         border: `1px solid ${cardBorder}`,
-        borderLeft: `4px solid ${leftBorder}`,
+        borderLeft: `3px solid ${leftBorder}`,
         boxShadow: rottingGlow,
         cursor: 'pointer',
-        transition: 'all 0.12s',
-        marginBottom: 8,
+        transition: 'all 0.15s ease',
+        marginBottom: 10,
         userSelect: 'none',
         opacity: isLost ? 0.7 : 1,
       }}
-      onMouseEnter={e => { if (!isLost) { e.currentTarget.style.boxShadow = `0 4px 14px rgba(0,0,0,0.1)`; e.currentTarget.style.transform = 'translateY(-1px)'; }}}
+      onMouseEnter={e => { if (!isLost) { e.currentTarget.style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = rottingGlow; e.currentTarget.style.transform = 'none'; }}
     >
       {/* Top row: status/priority + actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {isWon && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: '#dcfce7', color: '#16a34a' }}>WON</span>}
-          {isLost && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: '#94a3b8' }}>LOST</span>}
-          {status === 'active' && vf.has('priority') && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: pc.bg, color: pc.color }}>{pc.label.toUpperCase()}</span>}
-          {isRotting && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, backgroundColor: '#fff7ed', color: '#ea580c' }}>ROTTING</span>}
+          {isWon && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#16a34a' }}>WON</span>}
+          {isLost && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: '#f1f5f9', color: '#94a3b8' }}>LOST</span>}
+          {status === 'active' && vf.has('priority') && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: pc.bg, color: pc.color }}>{pc.label.toUpperCase()}</span>}
+          {isRotting && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: '#fff7ed', color: '#ea580c' }}>ROTTING</span>}
         </div>
         <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
           {status === 'active' && <>
@@ -155,7 +155,7 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
       {vf.has('labels') && labels.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {labels.map((l, i) => (
-            <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>{l.text}</span>
+            <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 999, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>{l.text}</span>
           ))}
         </div>
       )}
@@ -187,7 +187,7 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
       {/* Value + Probability */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
         {vf.has('value') && <span style={{ fontSize: 14, fontWeight: 700, color: isWon ? '#16a34a' : '#0f172a' }}>{fmt(deal.value)}</span>}
-        {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 20, backgroundColor: '#f0f9ff', color: '#0ea5e9', fontWeight: 600 }}>{deal.probability}%</span>}
+        {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, backgroundColor: '#eef2ff', color: '#6366f1', fontWeight: 600 }}>{deal.probability}%</span>}
       </div>
 
       {/* Checklist */}
@@ -258,8 +258,8 @@ function ManageFieldsModal({ visible, rottingDays, onChange, onRottingChange, on
   const toggle = (k: CardFieldKey) => setDraft(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const save = () => { onChange(draft); onRottingChange(rotting); onClose(); };
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.5)' }} onClick={onClose}>
-      <div style={{ backgroundColor: 'white', borderRadius: 16, width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: 360, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Manage Card Fields</h3>
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={18} /></button>
@@ -287,8 +287,8 @@ function ManageFieldsModal({ visible, rottingDays, onChange, onRottingChange, on
           </div>
         </div>
         <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>Cancel</button>
-          <button onClick={save} style={{ padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Apply</button>
+          <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>Cancel</button>
+          <button onClick={save} style={{ padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Apply</button>
         </div>
       </div>
     </div>
@@ -304,7 +304,7 @@ function FunnelView({ stages, allDeals }: FunnelViewProps) {
   const maxVal = Math.max(...stages.map(s => s.deals.filter(d => (d.status ?? 'active') === 'active').reduce((v, d) => v + d.value, 0)), 1);
   const totalActive = allDeals.filter(d => (d.status ?? 'active') === 'active').length;
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', padding: '24px 28px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px 28px' }}>
       <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Stage Distribution</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {stages.map(stage => {
@@ -404,7 +404,7 @@ function GanttView({ stages, allDeals }: GanttViewProps) {
   const todayPct = pct(today);
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
         <CalendarDays size={14} color="#6366f1" />
         <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Timeline / Gantt</span>
@@ -527,7 +527,7 @@ function CalendarView({ stages, allDeals, onOpen }: CalendarViewProps) {
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -750,7 +750,7 @@ function GroupedListView({ stages, applyFilter, onOpen, onEdit, onDelete, onQuic
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Column headers */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 120px 110px 100px 80px', gap: 0, padding: '8px 16px 8px 44px', borderBottom: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
         {['Task name', 'Assignee', 'Due date', 'Priority', 'Value', ''].map(h => (
@@ -808,7 +808,7 @@ function GroupedListView({ stages, applyFilter, onOpen, onEdit, onDelete, onQuic
                           </span>
                         )}
                         {(deal.labels ?? []).slice(0, 2).map((l, li) => (
-                          <span key={li} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color, flexShrink: 0 }}>{l.text}</span>
+                          <span key={li} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 999, backgroundColor: l.color + '22', color: l.color, flexShrink: 0 }}>{l.text}</span>
                         ))}
                         {cl.length > 0 && (
                           <span style={{ fontSize: 10, color: dn === cl.length ? '#22c55e' : '#94a3b8', fontWeight: 600, flexShrink: 0 }}>✓ {dn}/{cl.length}</span>
@@ -932,10 +932,9 @@ function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMov
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* Colored top bar */}
-      <div style={{ height: 4, backgroundColor: stage.color, borderRadius: '10px 10px 0 0', marginBottom: 0 }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'white', border: '1px solid #e2e8f0', borderTop: 'none', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 6px 12px', marginBottom: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: stage.color, flexShrink: 0 }} />
           {editing ? (
             <input
               value={draft}
@@ -943,23 +942,23 @@ function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMov
               onBlur={commitRename}
               onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setDraft(stage.name); setEditing(false); } }}
               autoFocus
-              style={{ fontSize: 13, fontWeight: 700, border: '1px solid #6366f1', borderRadius: 4, padding: '2px 6px', outline: 'none', width: '100%', fontFamily: 'inherit' }}
+              style={{ fontSize: 13, fontWeight: 600, border: '1px solid #6366f1', borderRadius: 7, padding: '2px 8px', outline: 'none', width: '100%', fontFamily: 'inherit', color: '#0f172a' }}
             />
           ) : (
             <span
-              style={{ fontSize: 13, fontWeight: 700, color: '#374151', cursor: 'text', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', letterSpacing: '-0.1px', cursor: 'text', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               onDoubleClick={() => { setDraft(stage.name); setEditing(true); }}
               title="Double-click to rename"
             >
               {stage.name}
             </span>
           )}
-          <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>({stage.deals.length})</span>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600, flexShrink: 0, backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: 999, padding: '1px 8px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>{stage.deals.length}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>{fmt(stageValue)}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>{fmt(stageValue)}</span>
           <button onClick={() => { setShowMenu(prev => !prev); setShowPalette(false); }}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, borderRadius: 4, color: '#94a3b8', display: 'flex' }}>
+            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 3, borderRadius: 6, color: '#94a3b8', display: 'flex' }}>
             <MoreVertical size={13} />
           </button>
         </div>
@@ -969,7 +968,7 @@ function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMov
       {showMenu && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 290 }} onClick={() => { setShowMenu(false); setShowPalette(false); }} />
-          <div style={{ position: 'absolute', top: 54, right: 0, zIndex: 300, backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 160, overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 34, right: 0, zIndex: 300, backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: 12, boxShadow: '0 12px 32px rgba(16,24,40,0.12)', minWidth: 160, overflow: 'hidden' }}>
             <button onClick={() => { setDraft(stage.name); setEditing(true); setShowMenu(false); }}
               style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 14px', border: 'none', background: 'none', fontSize: 13, color: '#374151', cursor: 'pointer', textAlign: 'left' }}
               onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
@@ -1082,8 +1081,8 @@ function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDele
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.5)' }} onClick={onClose}>
-      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>Manage Pipelines</h2>
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={20} /></button>
@@ -1132,7 +1131,7 @@ function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDele
               onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) { onCreate(newName.trim()); setNewName(''); } }} />
             <button onClick={() => { if (newName.trim()) { onCreate(newName.trim()); setNewName(''); } }}
               disabled={!newName.trim()}
-              style={{ padding: '9px 16px', backgroundColor: newName.trim() ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: newName.trim() ? 'pointer' : 'default' }}>
+              style={{ padding: '9px 16px', backgroundColor: newName.trim() ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: newName.trim() ? 'pointer' : 'default' }}>
               Create
             </button>
           </div>
@@ -1216,8 +1215,8 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.5)' }} onClick={onClose}>
-      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>{deal ? 'Edit Deal' : 'New Deal'}</h2>
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={20} /></button>
@@ -1331,7 +1330,7 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
             {labels.filter(l => !LABEL_PRESETS.some(p => p.text === l.text)).length > 0 && (
               <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {labels.filter(l => !LABEL_PRESETS.some(p => p.text === l.text)).map((l, i) => (
-                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color, fontSize: 11, fontWeight: 600 }}>
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, backgroundColor: l.color + '22', color: l.color, fontSize: 11, fontWeight: 600 }}>
                     {l.text}
                     <button onClick={() => setLabels(prev => prev.filter(x => x.text !== l.text))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', padding: 0, display: 'flex' }}><X size={10} /></button>
                   </span>
@@ -1359,9 +1358,9 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
         </div>
 
         <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button onClick={onClose} style={{ padding: '9px 20px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
+          <button onClick={onClose} style={{ padding: '9px 20px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
           <button onClick={handleSave} disabled={!title.trim()}
-            style={{ padding: '9px 20px', backgroundColor: title.trim() ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: title.trim() ? 'pointer' : 'default' }}>
+            style={{ padding: '9px 20px', backgroundColor: title.trim() ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: title.trim() ? 'pointer' : 'default' }}>
             {deal ? 'Save Changes' : 'Create Deal'}
           </button>
         </div>
@@ -1482,8 +1481,8 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
   );
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', padding: '16px' }} onClick={onClose}>
-      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 940, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 80px rgba(0,0,0,0.25)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', padding: '16px' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 940, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
 
         {/* Top bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#fafafa', flexShrink: 0 }}>
@@ -1533,11 +1532,11 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
               {status === 'active' && (
                 <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
                   <button onClick={() => prevStage && moveToStage(prevStage)} disabled={!prevStage}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: prevStage ? '#374151' : '#d1d5db', fontSize: 12, fontWeight: 600, cursor: prevStage ? 'pointer' : 'default' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', color: prevStage ? '#374151' : '#d1d5db', fontSize: 12, fontWeight: 600, cursor: prevStage ? 'pointer' : 'default' }}>
                     <ChevronLeft size={12} /> {prevStage?.name ?? 'Prev'}
                   </button>
                   <button onClick={() => nextStage && moveToStage(nextStage)} disabled={!nextStage}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: nextStage ? '#374151' : '#d1d5db', fontSize: 12, fontWeight: 600, cursor: nextStage ? 'pointer' : 'default' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', color: nextStage ? '#374151' : '#d1d5db', fontSize: 12, fontWeight: 600, cursor: nextStage ? 'pointer' : 'default' }}>
                     {nextStage?.name ?? 'Next'} <ChevronRight size={12} />
                   </button>
                   <div style={{ flex: 1 }} />
@@ -1605,7 +1604,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                 <div style={{ marginBottom: 20 }}>
                   <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: '#374151' }}>Labels</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {labels.map((l, i) => <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 10, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>{l.text}</span>)}
+                    {labels.map((l, i) => <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>{l.text}</span>)}
                   </div>
                 </div>
               )}
@@ -1726,16 +1725,16 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
 
       {/* Lost reason modal */}
       {showLostModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.5)' }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
           onClick={e => { e.stopPropagation(); setShowLostModal(false); }}>
-          <div style={{ backgroundColor: 'white', borderRadius: 14, padding: 24, width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+          <div style={{ backgroundColor: 'white', borderRadius: 14, padding: 24, width: 360, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Mark as Lost</h3>
             <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>Optionally add a reason for losing this deal.</p>
             <input value={lostReason} onChange={e => setLostReason(e.target.value)} placeholder="Lost reason (optional)..."
               style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 14 }}
               onKeyDown={e => e.key === 'Enter' && confirmLost()} />
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setShowLostModal(false)} style={{ flex: 1, padding: '9px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => setShowLostModal(false)} style={{ flex: 1, padding: '9px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
               <button onClick={confirmLost} style={{ flex: 1, padding: '9px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Mark Lost</button>
             </div>
           </div>
@@ -2030,9 +2029,9 @@ export default function Pipelines() {
   };
 
   return (
-    <div>
+    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
       <Header title="Pipelines" subtitle="Manage your sales opportunities" />
-      <div style={{ padding: '24px 28px' }}>
+      <div style={{ padding: 28 }}>
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
@@ -2042,9 +2041,12 @@ export default function Pipelines() {
             { label: 'Won Revenue', value: fmt(wonValue), sub: `${wonDeals.length} won · ${lostDeals.length} lost`, color: '#22c55e' },
             { label: 'Win Rate', value: `${winRate}%`, sub: `${closedTotal} closed deals`, color: '#f59e0b' },
           ].map(item => (
-            <div key={item.label} style={{ backgroundColor: 'white', borderRadius: 12, padding: '18px 20px', border: '1px solid #e2e8f0', borderLeft: `4px solid ${item.color}` }}>
-              <p style={{ fontSize: 12, color: '#64748b', fontWeight: 500, margin: '0 0 6px' }}>{item.label}</p>
-              <p style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0 }}>{item.value}</p>
+            <div key={item.label} style={{ backgroundColor: 'white', borderRadius: 14, padding: '20px 22px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '0 0 8px' }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: item.color, flexShrink: 0 }} />
+                <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, margin: 0, letterSpacing: '0.2px' }}>{item.label}</p>
+              </div>
+              <p style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.5px' }}>{item.value}</p>
               <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4, marginBottom: 0 }}>{item.sub}</p>
             </div>
           ))}
@@ -2055,11 +2057,11 @@ export default function Pipelines() {
           {/* Pipeline selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
-              style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#0f172a', backgroundColor: 'white', cursor: 'pointer', outline: 'none' }}>
+              style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 600, color: '#0f172a', backgroundColor: 'white', cursor: 'pointer', outline: 'none' }}>
               {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <button onClick={() => setShowPipelineModal(true)} title="Manage Pipelines"
-              style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: '#64748b', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', padding: '8px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', color: '#64748b', cursor: 'pointer' }}>
               <Settings size={14} />
             </button>
           </div>
@@ -2109,7 +2111,7 @@ export default function Pipelines() {
           {/* Sort */}
           <div style={{ position: 'relative' }}>
             <button onClick={() => setShowSortMenu(prev => !prev)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
               Sort: {SORT_LABELS[sortBy]} <ChevronDown size={13} />
             </button>
             {showSortMenu && (
@@ -2126,13 +2128,13 @@ export default function Pipelines() {
 
           {/* Manage Fields */}
           <button onClick={() => setShowManageFields(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', color: '#374151', fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <SlidersHorizontal size={14} /> Fields
           </button>
 
           {/* Add Deal */}
           <button onClick={() => openAddDeal()}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <Plus size={15} /> Add Deal
           </button>
 
@@ -2152,7 +2154,7 @@ export default function Pipelines() {
               const isOver = dragOverStage === stage.id;
               return (
                 <div key={stage.id}
-                  style={{ minWidth: 270, maxWidth: 280, flex: '0 0 270px' }}
+                  style={{ minWidth: 280, maxWidth: 290, flex: '0 0 280px', backgroundColor: '#f4f6fa', borderRadius: 14, padding: '10px 10px 12px' }}
                   onDragOver={e => handleDragOver(e, stage.id)}
                   onDrop={e => handleDrop(e, stage.id)}
                   onDragLeave={() => setDragOverStage('')}>
@@ -2234,7 +2236,7 @@ export default function Pipelines() {
 
         {/* ── Table View ──────────────────────────────────────────────────────── */}
         {view === 'table' && (
-          <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>

@@ -109,7 +109,7 @@ function LabeledField({
   const hasError = hint && hint.val && !hint.validator(hint.val).ok;
   return (
     <div>
-      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>
+      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '4px' }}>
         {label}{required && <span style={{ color: '#dc2626' }}> *</span>}
       </label>
       <div style={{ position: 'relative' }}>
@@ -230,7 +230,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
   const stateBg: Record<TestState, string> = { idle: '#f8fafc', running: '#eff6ff', ok: '#f0fdf4', fail: '#fef2f2' };
 
   return (
-    <div style={{ marginTop: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', backgroundColor: 'white' }}>
+    <div style={{ marginTop: '16px', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', backgroundColor: 'white' }}>
       {/* Header bar — always visible */}
       <button onClick={() => setExpanded(p => !p)} style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px',
@@ -261,11 +261,11 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '200px' }}>
               <Mail size={14} color="#6366f1" />
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Outgoing SMTP</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Outgoing SMTP</span>
               <span style={{ fontSize: '12px', color: '#94a3b8' }}>{smtp.host}:{smtp.port}</span>
             </div>
             <button onClick={testSMTP} disabled={smtpState === 'running'}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: stateBg[smtpState], color: stateColor[smtpState], border: `1px solid ${stateColor[smtpState]}30`, borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: smtpState === 'running' ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: stateBg[smtpState], color: stateColor[smtpState], border: `1px solid ${stateColor[smtpState]}30`, borderRadius: '9px', fontSize: '12px', fontWeight: 600, cursor: smtpState === 'running' ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
               {smtpState === 'running' ? <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> : smtpState === 'ok' ? <CheckCircle size={12} /> : smtpState === 'fail' ? <XCircle size={12} /> : <RefreshCw size={12} />}
               {smtpState === 'running' ? 'Testing…' : smtpState === 'ok' ? 'Connected ✓' : smtpState === 'fail' ? 'Retry' : 'Test SMTP'}
             </button>
@@ -280,11 +280,11 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '200px' }}>
               <Inbox size={14} color="#0891b2" />
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Incoming IMAP</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Incoming IMAP</span>
               <span style={{ fontSize: '12px', color: '#94a3b8' }}>{imap.host || 'not configured'}:{imap.port}</span>
             </div>
             <button onClick={testIMAP} disabled={imapState === 'running'}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: stateBg[imapState], color: stateColor[imapState], border: `1px solid ${stateColor[imapState]}30`, borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: imapState === 'running' ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: stateBg[imapState], color: stateColor[imapState], border: `1px solid ${stateColor[imapState]}30`, borderRadius: '9px', fontSize: '12px', fontWeight: 600, cursor: imapState === 'running' ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
               {imapState === 'running' ? <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> : imapState === 'ok' ? <CheckCircle size={12} /> : imapState === 'fail' ? <XCircle size={12} /> : <RefreshCw size={12} />}
               {imapState === 'running' ? 'Testing…' : imapState === 'ok' ? 'Connected ✓' : imapState === 'fail' ? 'Retry' : 'Test IMAP'}
             </button>
@@ -297,15 +297,15 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
 
           {/* Send test email */}
           <div style={{ paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Send size={13} color="#6366f1" /> Send a test email
             </p>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input value={sendTo} onChange={e => setSendTo(e.target.value)} placeholder="recipient@example.com"
                 onKeyDown={e => e.key === 'Enter' && sendTestEmail()}
-                style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+                style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
               <button onClick={sendTestEmail} disabled={sendState === 'running'}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: sendState === 'running' ? 'not-allowed' : 'pointer', opacity: sendState === 'running' ? 0.7 : 1, flexShrink: 0 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: sendState === 'running' ? 'not-allowed' : 'pointer', opacity: sendState === 'running' ? 0.7 : 1, flexShrink: 0 }}>
                 {sendState === 'running' ? <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />}
                 {sendState === 'running' ? 'Sending…' : 'Send'}
               </button>
@@ -414,7 +414,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
   const stepIdx = STEPS.findIndex(s => s.id === step);
   const canAdvanceOutgoing = Object.keys(smtpErrors).length === 0 && smtp.host && smtp.user && smtp.pass;
 
-  const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const };
+  const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const };
   const btnPrimary = (disabled = false) => ({
     display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 20px',
     backgroundColor: disabled ? '#e2e8f0' : '#6366f1', color: disabled ? '#94a3b8' : 'white',
@@ -423,7 +423,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
   } as const);
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', background: 'linear-gradient(135deg, #f8faff 0%, #fdf4ff 100%)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -456,7 +456,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
         {/* STEP 1: Provider */}
         {step === 'provider' && (
           <div>
-            <p style={{ fontSize: '14px', color: '#374151', margin: '0 0 16px' }}>Choose your email provider to pre-fill the connection settings:</p>
+            <p style={{ fontSize: '14px', color: '#475569', margin: '0 0 16px' }}>Choose your email provider to pre-fill the connection settings:</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
               {PROVIDERS.map(p => (
                 <button key={p.id} onClick={() => applyProvider(p.id)}
@@ -523,7 +523,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 <LabeledField label="Port" value={smtp.port} onChange={v => setSMTP(p => ({ ...p, port: v }))}
                   placeholder="587" required hint={{ val: smtp.port, validator: validatePort }} />
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>Encryption</label>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '4px' }}>Encryption</label>
                   <select value={smtp.encryption} onChange={e => setSMTP(p => ({ ...p, encryption: e.target.value as SMTPConfig['encryption'] }))}
                     style={{ ...inputStyle, cursor: 'pointer' }}>
                     <option value="tls">STARTTLS</option>
@@ -565,7 +565,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button onClick={() => setStep('provider')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
+              <button onClick={() => setStep('provider')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
                 <ChevronLeft size={15} /> Back
               </button>
               <button onClick={() => setStep('incoming')} disabled={!canAdvanceOutgoing} style={btnPrimary(!canAdvanceOutgoing)}>
@@ -595,7 +595,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                   placeholder="993"
                   hint={imap.port ? { val: imap.port, validator: validatePort } : undefined} />
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>Folder</label>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '4px' }}>Folder</label>
                   <input value={imap.folder} onChange={e => setIMAP(p => ({ ...p, folder: e.target.value }))} placeholder="INBOX" style={inputStyle} />
                 </div>
               </div>
@@ -606,11 +606,11 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 type="password" placeholder="••••••••" />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button onClick={() => setStep('outgoing')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
+              <button onClick={() => setStep('outgoing')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
                 <ChevronLeft size={15} /> Back
               </button>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => setStep('test')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
+                <button onClick={() => setStep('test')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
                   Skip
                 </button>
                 <button onClick={() => setStep('test')} style={btnPrimary()}>
@@ -631,7 +631,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
 
             {/* Config summary */}
             <div style={{ padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-              <p style={{ fontSize: '12px', fontWeight: 600, color: '#374151', margin: '0 0 8px' }}>Configuration Summary</p>
+              <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', margin: '0 0 8px' }}>Configuration Summary</p>
               {[
                 { label: 'SMTP Host', value: `${smtp.host}:${smtp.port} (${smtp.encryption.toUpperCase()})` },
                 { label: 'Username', value: smtp.user },
@@ -640,7 +640,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', gap: '12px', marginBottom: '4px' }}>
                   <span style={{ fontSize: '12px', color: '#94a3b8', width: '90px', flexShrink: 0 }}>{row.label}</span>
-                  <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500, wordBreak: 'break-all' }}>{row.value}</span>
+                  <span style={{ fontSize: '12px', color: '#475569', fontWeight: 500, wordBreak: 'break-all' }}>{row.value}</span>
                 </div>
               ))}
             </div>
@@ -667,7 +667,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button onClick={() => setStep('incoming')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
+              <button onClick={() => setStep('incoming')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
                 <ChevronLeft size={15} /> Back
               </button>
               <button onClick={handleFinish} style={btnPrimary()}>

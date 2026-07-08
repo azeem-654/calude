@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Eye, TrendingUp, DollarSign, MousePointer, ExternalLink, Edit2, Trash2, Copy, BarChart2, X, Search, Check } from 'lucide-react';
+import { Plus, Eye, TrendingUp, DollarSign, MousePointer, ExternalLink, Edit2, Trash2, Copy, BarChart2, X, Search, Check, Rocket } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import FunnelBuilder from './FunnelBuilder';
@@ -203,14 +203,14 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       {step === 1 ? (
-        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '1100px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
+        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '1100px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }}>
           {/* Header */}
           <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div>
-              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Create New Funnel</h2>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>Choose a funnel type to get started with pre-built pages</p>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>Create New Funnel</h2>
+              <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 0' }}>Choose a funnel type to get started with pre-built pages</p>
             </div>
             <button onClick={onClose} style={{ padding: '8px', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}><X size={20} /></button>
           </div>
@@ -349,14 +349,14 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
         </div>
       ) : (
         /* Step 2 — name + confirm */
-        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '480px', padding: '32px', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}>
+        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '480px', padding: '32px', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            <button onClick={() => setStep(1)} style={{ padding: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white', cursor: 'pointer', display: 'flex', color: '#64748b' }}>
+            <button onClick={() => setStep(1)} style={{ padding: '8px', border: '1px solid #e2e8f0', borderRadius: '9px', background: 'white', cursor: 'pointer', display: 'flex', color: '#64748b' }}>
               <X size={14} />
             </button>
             <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Name Your Funnel</h2>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>You can always change this later</p>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>Name Your Funnel</h2>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>You can always change this later</p>
             </div>
           </div>
 
@@ -397,11 +397,11 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
           )}
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => setStep(1)} style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: 'white', color: '#374151', fontWeight: 500 }}>
+            <button onClick={() => setStep(1)} style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', cursor: 'pointer', backgroundColor: 'white', color: '#374151', fontWeight: 500 }}>
               Back
             </button>
             <button onClick={handleCreate} disabled={!funnelName.trim()}
-              style={{ flex: 2, padding: '10px', backgroundColor: funnelName.trim() ? '#6366f1' : '#e2e8f0', color: funnelName.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: funnelName.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+              style={{ flex: 2, padding: '10px', backgroundColor: funnelName.trim() ? '#6366f1' : '#e2e8f0', color: funnelName.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 600, cursor: funnelName.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: funnelName.trim() ? '0 1px 2px rgba(99,102,241,0.3)' : 'none' }}>
               <Check size={15} /> Build Funnel
             </button>
           </div>
@@ -475,7 +475,7 @@ export default function Funnels() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Header title="Funnels & Sites" subtitle="Build and manage your marketing funnels" />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '28px', backgroundColor: '#f8fafc' }}>
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
           {[
@@ -484,13 +484,16 @@ export default function Funnels() {
             { label: 'Conversions', value: totalConversions, icon: MousePointer, color: '#3b82f6' },
             { label: 'Avg Conversion Rate', value: `${avgCvr}%`, icon: TrendingUp, color: '#f59e0b' },
           ].map(item => (
-            <div key={item.label} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '18px 20px', border: '1px solid #e2e8f0', display: 'flex', gap: '14px', alignItems: 'center' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div key={item.label}
+              style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', gap: '14px', alignItems: 'center', transition: 'box-shadow 0.15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '11px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <item.icon size={22} color={item.color} />
               </div>
               <div>
-                <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 4px', fontWeight: 500 }}>{item.label}</p>
-                <p style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{item.value}</p>
+                <p style={{ fontSize: '11px', color: '#94a3b8', margin: '0 0 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{item.label}</p>
+                <p style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{item.value}</p>
               </div>
             </div>
           ))}
@@ -498,14 +501,14 @@ export default function Funnels() {
 
         {/* Tabs + New button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '0', borderRadius: '10px', border: '1px solid #e2e8f0', overflow: 'hidden', backgroundColor: '#f8fafc' }}>
+          <div style={{ display: 'inline-flex', gap: '2px', padding: '3px', borderRadius: '10px', border: '1px solid #e6e9f0', backgroundColor: '#f1f5f9' }}>
             {(['funnels', 'websites'] as const).map(t => (
-              <button key={t} onClick={() => setActiveTab(t)} style={{ padding: '8px 20px', border: 'none', backgroundColor: activeTab === t ? '#6366f1' : 'transparent', color: activeTab === t ? 'white' : '#64748b', fontSize: '13px', fontWeight: 500, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.15s' }}>
+              <button key={t} onClick={() => setActiveTab(t)} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: activeTab === t ? 'white' : 'transparent', color: activeTab === t ? '#0f172a' : '#64748b', fontSize: '13px', fontWeight: activeTab === t ? 600 : 500, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.15s', boxShadow: activeTab === t ? '0 1px 2px rgba(16,24,40,0.08)' : 'none' }}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
-          <button onClick={() => setShowWizard(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={() => setShowWizard(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
             <Plus size={15} /> New {activeTab === 'funnels' ? 'Funnel' : 'Website'}
           </button>
         </div>
@@ -516,7 +519,10 @@ export default function Funnels() {
             const cvr = funnel.visitors > 0 ? ((funnel.conversions / funnel.visitors) * 100).toFixed(1) : '0';
             const ftype = FUNNEL_TYPES.find(t => funnel.goal === t.category);
             return (
-              <div key={funnel.id} style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <div key={funnel.id}
+                style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c7d2fe'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
                 {/* Card header with color accent */}
                 <div style={{ height: '4px', background: ftype ? `linear-gradient(90deg, ${ftype.color}, ${ftype.color}88)` : 'linear-gradient(90deg, #6366f1, #8b5cf6)' }} />
                 <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9' }}>
@@ -527,19 +533,19 @@ export default function Funnels() {
                     </div>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
                       <button onClick={() => handleToggleStatus(funnel)}
-                        style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, backgroundColor: funnel.status === 'active' ? '#ecfdf5' : '#f8fafc', color: funnel.status === 'active' ? '#16a34a' : '#64748b', border: `1px solid ${funnel.status === 'active' ? '#bbf7d0' : '#e2e8f0'}`, cursor: 'pointer' }}>
+                        style={{ padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: 600, backgroundColor: funnel.status === 'active' ? '#ecfdf5' : '#f1f5f9', color: funnel.status === 'active' ? '#16a34a' : '#64748b', border: 'none', cursor: 'pointer' }}>
                         {funnel.status === 'active' ? 'Active' : 'Draft'}
                       </button>
                       <button onClick={() => setBuilderFunnel(funnel)} title="Edit"
-                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#6366f1' }}>
+                        style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#6366f1' }}>
                         <Edit2 size={14} />
                       </button>
                       <button onClick={() => handleDuplicate(funnel)} title="Duplicate"
-                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#64748b' }}>
+                        style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#64748b' }}>
                         <Copy size={14} />
                       </button>
                       <button onClick={() => setDeleteConfirm(funnel.id)} title="Delete"
-                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid #fee2e2', backgroundColor: '#fff5f5', cursor: 'pointer', display: 'flex', color: '#dc2626' }}>
+                        style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', backgroundColor: '#fff5f5', cursor: 'pointer', display: 'flex', color: '#dc2626' }}>
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -551,7 +557,7 @@ export default function Funnels() {
                   <div style={{ padding: '12px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto' }}>
                     {(funnel.pages ?? []).map((page, i) => (
                       <React.Fragment key={page.id}>
-                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#374151', fontWeight: 500, whiteSpace: 'nowrap' }}>{page.name}</span>
+                        <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '9999px', backgroundColor: '#f1f5f9', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>{page.name}</span>
                         {i < (funnel.pages ?? []).length - 1 && <span style={{ color: '#cbd5e1', fontSize: '12px' }}>→</span>}
                       </React.Fragment>
                     ))}
@@ -565,30 +571,30 @@ export default function Funnels() {
                     { label: 'Revenue', value: `$${funnel.revenue.toLocaleString()}`, color: '#f59e0b' },
                   ].map(m => (
                     <div key={m.label} style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '18px', fontWeight: 700, color: m.color, margin: 0 }}>{m.value}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>{m.label}</p>
+                      <p style={{ fontSize: '20px', fontWeight: 700, color: m.color, margin: 0, letterSpacing: '-0.02em' }}>{m.value}</p>
+                      <p style={{ fontSize: '11px', color: '#94a3b8', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{m.label}</p>
                     </div>
                   ))}
                 </div>
                 <div style={{ padding: '0 20px 14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                    <span>Conversion Rate</span><span style={{ fontWeight: 700, color: '#374151' }}>{cvr}%</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+                    <span>Conversion Rate</span><span style={{ fontWeight: 700, color: '#0f172a' }}>{cvr}%</span>
                   </div>
-                  <div style={{ height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px' }}>
-                    <div style={{ height: '100%', width: `${Math.min(parseFloat(cvr) * 5, 100)}%`, background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', borderRadius: '2px' }} />
+                  <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(parseFloat(cvr) * 5, 100)}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', borderRadius: '9999px' }} />
                   </div>
                 </div>
-                <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '8px' }}>
+                <div style={{ padding: '14px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '8px' }}>
                   <button onClick={() => setBuilderFunnel(funnel)}
-                    style={{ flex: 1, padding: '8px', borderRadius: '7px', border: '1px solid #6366f1', backgroundColor: '#f5f3ff', color: '#6366f1', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                    style={{ flex: 1, padding: '8px', borderRadius: '9px', border: 'none', backgroundColor: '#6366f1', color: 'white', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
                     <Edit2 size={13} /> Open Builder
                   </button>
                   <button
-                    style={{ flex: 1, padding: '8px', borderRadius: '7px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                    style={{ flex: 1, padding: '8px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
                     <BarChart2 size={13} /> Analytics
                   </button>
                   <button
-                    style={{ padding: '8px 10px', borderRadius: '7px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <ExternalLink size={13} />
                   </button>
                 </div>
@@ -597,11 +603,13 @@ export default function Funnels() {
           })}
 
           {funnels.length === 0 && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '80px 60px', border: '2px dashed #e2e8f0', borderRadius: '16px', color: '#94a3b8' }}>
-              <div style={{ fontSize: '48px', marginBottom: '12px' }}>🚀</div>
-              <p style={{ fontWeight: 700, color: '#374151', margin: '0 0 6px', fontSize: '16px' }}>No funnels yet</p>
-              <p style={{ fontSize: '13px', margin: '0 0 20px' }}>Choose from 19 funnel types to start converting visitors into customers</p>
-              <button onClick={() => setShowWizard(true)} style={{ padding: '10px 24px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '72px 60px', backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: '16px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+              <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Rocket size={28} color="#6366f1" />
+              </div>
+              <p style={{ fontWeight: 700, color: '#0f172a', margin: '0 0 6px', fontSize: '16px' }}>No funnels yet</p>
+              <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 20px' }}>Choose from 19 funnel types to start converting visitors into customers</p>
+              <button onClick={() => setShowWizard(true)} style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
                 <Plus size={14} /> Create Your First Funnel
               </button>
             </div>
@@ -612,13 +620,13 @@ export default function Funnels() {
       {showWizard && <FunnelWizard onClose={() => setShowWizard(false)} onCreate={handleCreate} />}
 
       {deleteConfirm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '24px', width: '360px' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Delete Funnel?</h4>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>This action cannot be undone. All pages and data will be permanently deleted.</p>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '24px', width: '360px', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }}>
+            <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Delete Funnel?</h4>
+            <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 20px' }}>This action cannot be undone. All pages and data will be permanently deleted.</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setDeleteConfirm(null)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white' }}>Cancel</button>
-              <button onClick={() => handleDelete(deleteConfirm)} style={{ padding: '9px 18px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
+              <button onClick={() => setDeleteConfirm(null)} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer', backgroundColor: 'white' }}>Cancel</button>
+              <button onClick={() => handleDelete(deleteConfirm)} style={{ padding: '9px 16px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(220,38,38,0.3)' }}>Delete</button>
             </div>
           </div>
         </div>

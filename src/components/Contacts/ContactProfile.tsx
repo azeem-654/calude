@@ -123,55 +123,55 @@ export default function ContactProfile({ contact, onClose }: Props) {
     updateContact(contact.id, { tags: contact.tags.filter(t => t !== tag) });
   };
 
-  const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', color: '#0f172a' };
+  const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', color: '#0f172a', backgroundColor: '#fff' };
   const fieldRow = (label: string, value: string, key: keyof typeof editForm) => (
     <div key={key as string}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</div>
       {editing
         ? <input value={(editForm as unknown as Record<string, string>)[key as string] || ''} onChange={e => setEditForm(p => ({ ...p, [key]: e.target.value }))} style={inp} />
-        : <div style={{ fontSize: 14, color: value ? '#374151' : '#d1d5db', fontStyle: value ? 'normal' : 'italic' }}>{value || 'Not set'}</div>}
+        : <div style={{ fontSize: 13, color: value ? '#475569' : '#cbd5e1', fontStyle: value ? 'normal' : 'italic' }}>{value || 'Not set'}</div>}
     </div>
   );
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', backgroundColor: 'rgba(15,23,42,0.5)' }} onClick={onClose}>
-      <div style={{ marginLeft: 'auto', width: '100%', maxWidth: 860, height: '100%', backgroundColor: 'white', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 48px rgba(0,0,0,0.2)' }}
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div style={{ marginLeft: 'auto', width: '100%', maxWidth: 860, height: '100%', backgroundColor: 'white', display: 'flex', flexDirection: 'column', borderRadius: '16px 0 0 16px', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)', overflow: 'hidden' }}
         onClick={e => e.stopPropagation()}>
 
         {/* Profile Header */}
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', flexShrink: 0 }}>
+        <div style={{ padding: '24px', borderBottom: '1px solid #e6e9f0', backgroundColor: 'white', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 700, flexShrink: 0, boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
                 {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                  <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'white' }}>{contact.name}</h1>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, backgroundColor: sc.bg, color: sc.color }}>
-                    {contact.status.toUpperCase()}
+                  <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>{contact.name}</h1>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, backgroundColor: sc.bg, color: sc.color }}>
+                    {contact.status.charAt(0).toUpperCase() + contact.status.slice(1)}
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                  {contact.jobTitle && <span style={{ fontSize: 13, color: '#94a3b8' }}><Briefcase size={12} style={{ display: 'inline', marginRight: 4 }} />{contact.jobTitle}</span>}
-                  {contact.company && <span style={{ fontSize: 13, color: '#94a3b8' }}><Building2 size={12} style={{ display: 'inline', marginRight: 4 }} />{contact.company}</span>}
-                  {contact.email && <span style={{ fontSize: 13, color: '#94a3b8' }}><Mail size={12} style={{ display: 'inline', marginRight: 4 }} />{contact.email}</span>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                  {contact.jobTitle && <span style={{ fontSize: 13, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Briefcase size={12} color="#94a3b8" />{contact.jobTitle}</span>}
+                  {contact.company && <span style={{ fontSize: 13, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Building2 size={12} color="#94a3b8" />{contact.company}</span>}
+                  {contact.email && <span style={{ fontSize: 13, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Mail size={12} color="#94a3b8" />{contact.email}</span>}
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <button onClick={() => { setEditing(e => !e); setTab('overview'); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, backgroundColor: editing ? '#6366f1' : 'transparent', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', border: editing ? 'none' : '1px solid #e2e8f0', borderRadius: 9, backgroundColor: editing ? '#6366f1' : 'white', color: editing ? 'white' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: editing ? '0 1px 2px rgba(99,102,241,0.3)' : '0 1px 2px rgba(16,24,40,0.04)' }}>
                 <Edit2 size={13} /> {editing ? 'Editing' : 'Edit'}
               </button>
-              <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4, display: 'flex' }}>
-                <X size={22} />
+              <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 8, cursor: 'pointer', color: '#64748b', padding: 7, display: 'flex' }}>
+                <X size={16} />
               </button>
             </div>
           </div>
 
           {/* Quick stats */}
-          <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
             {[
               { label: 'Lifetime Value', value: contact.value > 0 ? `$${contact.value.toLocaleString()}` : '—' },
               { label: 'Activities', value: activities.length },
@@ -179,16 +179,16 @@ export default function ContactProfile({ contact, onClose }: Props) {
               { label: 'Tags', value: contact.tags.length },
               { label: 'Last Active', value: contact.lastActivity },
             ].map(m => (
-              <div key={m.label} style={{ padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>{m.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'white' }}>{m.value}</div>
+              <div key={m.label} style={{ flex: 1, padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: 10, border: '1px solid #e6e9f0', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3, whiteSpace: 'nowrap' }}>{m.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>{m.value}</div>
               </div>
             ))}
           </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', flexShrink: 0, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid #e6e9f0', backgroundColor: '#f8fafc', flexShrink: 0, overflowX: 'auto', padding: '0 12px' }}>
           {([
             { id: 'overview', label: 'Overview', icon: <User size={14} /> },
             { id: 'activity', label: `Activity (${activities.length})`, icon: <Activity size={14} /> },
@@ -198,21 +198,21 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 18px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 16px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#4f46e5' : '#64748b', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, letterSpacing: '-0.01em', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {t.icon} {t.label}
             </button>
           ))}
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px', backgroundColor: '#fff' }}>
 
           {/* ── Overview Tab ── */}
           {tab === 'overview' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
               {/* Contact info */}
               <div>
-                <h3 style={{ margin: '0 0 16px', fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Contact Information</h3>
+                <h3 style={{ margin: '0 0 16px', fontSize: 13, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>Contact Information</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   {fieldRow('First Name', contact.firstName || contact.name.split(' ')[0] || '', 'firstName')}
                   {fieldRow('Last Name', contact.lastName || contact.name.split(' ').slice(1).join(' ') || '', 'lastName')}
@@ -227,10 +227,10 @@ export default function ContactProfile({ contact, onClose }: Props) {
 
               {/* Social + details */}
               <div>
-                <h3 style={{ margin: '0 0 16px', fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Social & Web</h3>
+                <h3 style={{ margin: '0 0 16px', fontSize: 13, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>Social & Web</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 }}>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>LinkedIn</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>LinkedIn</div>
                     {editing
                       ? <input value={editForm.linkedin || ''} onChange={e => setEditForm(p => ({ ...p, linkedin: e.target.value }))} placeholder="https://linkedin.com/in/..." style={inp} />
                       : contact.linkedin
@@ -238,50 +238,50 @@ export default function ContactProfile({ contact, onClose }: Props) {
                         : <span style={{ fontSize: 14, color: '#d1d5db', fontStyle: 'italic' }}>Not set</span>}
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>Twitter / X</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Twitter / X</div>
                     {editing
                       ? <input value={editForm.twitter || ''} onChange={e => setEditForm(p => ({ ...p, twitter: e.target.value }))} placeholder="@handle" style={inp} />
                       : <div style={{ fontSize: 14, color: contact.twitter ? '#374151' : '#d1d5db', fontStyle: contact.twitter ? 'normal' : 'italic' }}>{contact.twitter || 'Not set'}</div>}
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>Website</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Website</div>
                     {editing
                       ? <input value={editForm.website || ''} onChange={e => setEditForm(p => ({ ...p, website: e.target.value }))} placeholder="https://..." style={inp} />
                       : contact.website
                         ? <a href={contact.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: '#6366f1', display: 'flex', alignItems: 'center', gap: 4 }}><Globe size={13} /> {contact.website} <ExternalLink size={11} /></a>
                         : <span style={{ fontSize: 14, color: '#d1d5db', fontStyle: 'italic' }}>Not set</span>}
                   </div>
-                  {editing && <div><div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>Assigned To</div><input value={editForm.assignedTo || ''} onChange={e => setEditForm(p => ({ ...p, assignedTo: e.target.value }))} style={inp} /></div>}
+                  {editing && <div><div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Assigned To</div><input value={editForm.assignedTo || ''} onChange={e => setEditForm(p => ({ ...p, assignedTo: e.target.value }))} style={inp} /></div>}
                 </div>
 
                 {/* Status */}
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Status & Lifecycle</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>Status & Lifecycle</h3>
                 {editing
                   ? <select value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value as Contact['status'] }))} style={{ ...inp, marginBottom: 14 }}>
                       {['lead','prospect','customer','churned'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
                     </select>
-                  : <span style={{ display: 'inline-block', marginBottom: 14, padding: '4px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600, backgroundColor: sc.bg, color: sc.color }}>{contact.status.charAt(0).toUpperCase()+contact.status.slice(1)}</span>}
+                  : <span style={{ display: 'inline-block', marginBottom: 14, padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, backgroundColor: sc.bg, color: sc.color }}>{contact.status.charAt(0).toUpperCase()+contact.status.slice(1)}</span>}
 
                 {/* Tags */}
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Tags</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>Tags</h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                   {contact.tags.map(tag => (
-                    <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: 12, backgroundColor: '#f1f5f9', color: '#374151', fontWeight: 500 }}>
+                    <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: 11, backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 600 }}>
                       {tag}
-                      {editing && <button onClick={() => removeTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0, display: 'flex', marginLeft: 2 }}><X size={10} /></button>}
+                      {editing && <button onClick={() => removeTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#818cf8', padding: 0, display: 'flex', marginLeft: 2 }}><X size={10} /></button>}
                     </span>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="Add tag..." style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addTag()} />
-                  <button onClick={addTag} style={{ padding: '8px 12px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Tag size={13} /></button>
+                  <button onClick={addTag} style={{ padding: '8px 12px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center' }}><Tag size={13} /></button>
                 </div>
               </div>
 
               {editing && (
-                <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0' }}>
-                  <button onClick={() => setEditing(false)} style={{ padding: '9px 20px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
-                  <button onClick={saveEdit} style={{ padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save Changes</button>
+                <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
+                  <button onClick={() => setEditing(false)} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
+                  <button onClick={saveEdit} style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>Save Changes</button>
                 </div>
               )}
             </div>
@@ -294,16 +294,19 @@ export default function ContactProfile({ contact, onClose }: Props) {
               <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                 {(['all', 'email_sent', 'note', 'task_completed', 'meeting', 'call'] as const).map(f => (
                   <button key={f} onClick={() => setActivityFilter(f === 'all' ? 'all' : f as ContactActivity['type'])}
-                    style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${activityFilter === f ? '#6366f1' : '#e2e8f0'}`, backgroundColor: activityFilter === f ? '#6366f1' : 'white', color: activityFilter === f ? 'white' : '#64748b', fontSize: 12, fontWeight: 500, cursor: 'pointer', textTransform: 'capitalize' }}>
+                    style={{ padding: '5px 12px', borderRadius: 999, border: `1px solid ${activityFilter === f ? '#c7d2fe' : '#e2e8f0'}`, backgroundColor: activityFilter === f ? '#eef2ff' : 'white', color: activityFilter === f ? '#4f46e5' : '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
                     {f === 'all' ? 'All' : f.replace('_', ' ')}
                   </button>
                 ))}
               </div>
 
               {filteredActivities.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                  <Activity size={32} color="#e2e8f0" style={{ margin: '0 auto 10px', display: 'block' }} />
-                  <p style={{ margin: 0, fontSize: 14 }}>No activity yet. Interactions will appear here.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '48px 0' }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                    <Activity size={28} color="#6366f1" />
+                  </div>
+                  <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>No activity yet</p>
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>Interactions with this contact will appear here.</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

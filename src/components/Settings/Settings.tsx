@@ -16,8 +16,8 @@ import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button onClick={() => onChange(!value)}
-      style={{ width: '44px', height: '24px', borderRadius: '12px', backgroundColor: value ? '#6366f1' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
-      <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '3px', left: value ? '23px' : '3px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+      style={{ width: '36px', height: '20px', borderRadius: '999px', backgroundColor: value ? '#6366f1' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, padding: 0 }}>
+      <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: value ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(16,24,40,0.25)' }} />
     </button>
   );
 }
@@ -27,14 +27,14 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: { la
   const isPass = type === 'password';
   return (
     <div>
-      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>{label}</label>
+      <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>{label}</label>
       <div style={{ position: 'relative' }}>
         <input
           type={isPass && !show ? 'password' : 'text'}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          style={{ width: '100%', padding: isPass ? '9px 36px 9px 12px' : '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', color: '#374151', backgroundColor: 'white' }}
+          style={{ width: '100%', padding: isPass ? '9px 36px 9px 12px' : '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', color: '#475569', backgroundColor: 'white' }}
         />
         {isPass && (
           <button onClick={() => setShow(p => !p)}
@@ -51,7 +51,7 @@ type TestStatus = 'idle' | 'testing' | 'ok' | 'fail';
 
 function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestStatus; onTest: () => void; label?: string }) {
   const map: Record<TestStatus, { bg: string; color: string; text: string; icon: ReactElement }> = {
-    idle: { bg: '#f1f5f9', color: '#374151', text: label, icon: <RefreshCw size={14} /> },
+    idle: { bg: '#f1f5f9', color: '#475569', text: label, icon: <RefreshCw size={14} /> },
     testing: { bg: '#eff6ff', color: '#2563eb', text: 'Testing…', icon: <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> },
     ok: { bg: '#ecfdf5', color: '#16a34a', text: 'Connected!', icon: <CheckCircle size={14} /> },
     fail: { bg: '#fef2f2', color: '#dc2626', text: 'Failed — check settings', icon: <XCircle size={14} /> },
@@ -59,7 +59,7 @@ function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestSt
   const s = map[status];
   return (
     <button onClick={onTest} disabled={status === 'testing'}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', backgroundColor: s.bg, color: s.color, border: `1px solid ${s.color}30`, borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'testing' ? 'not-allowed' : 'pointer' }}>
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', backgroundColor: s.bg, color: s.color, border: `1px solid ${s.color}30`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: status === 'testing' ? 'not-allowed' : 'pointer' }}>
       {s.icon} {s.text}
     </button>
   );
@@ -126,7 +126,7 @@ function EmailProviderCard() {
   };
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
         <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Zap size={20} color="#6366f1" />
@@ -142,7 +142,7 @@ function EmailProviderCard() {
 
       {/* Provider selector */}
       <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Campaign Sending Provider</label>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Campaign Sending Provider</label>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '10px' }}>
           {[
@@ -181,39 +181,39 @@ function EmailProviderCard() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             {cfg.provider !== 'smtp' && (
               <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>API Key *</label>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>API Key *</label>
                 <input type="password" value={cfg.apiKey} onChange={e => setCfg(prev => ({ ...prev, apiKey: e.target.value }))} placeholder="Paste your API key here"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             )}
             {cfg.provider === 'mailtrap' && (
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Inbox ID *</label>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Inbox ID *</label>
                 <input value={cfg.inboxId} onChange={e => setCfg(prev => ({ ...prev, inboxId: e.target.value }))} placeholder="e.g. 1234567"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             )}
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>From Name</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>From Name</label>
               <input value={cfg.fromName} onChange={e => setCfg(prev => ({ ...prev, fromName: e.target.value }))} placeholder="CRM Pro"
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>From Email</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>From Email</label>
               <input value={cfg.fromEmail} onChange={e => setCfg(prev => ({ ...prev, fromEmail: e.target.value }))} placeholder="hello@yourdomain.com"
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
             </div>
           </div>
 
           {/* Test send */}
           <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: '#374151', margin: '0 0 6px' }}>Send test email</p>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', margin: '0 0 6px' }}>Send test email</p>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
               <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
-                style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+                style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
             </div>
             <button onClick={runTest} disabled={status === 'sending'}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#6366f1', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#6366f1', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
               {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
             </button>
             {lastResult && (
@@ -227,7 +227,7 @@ function EmailProviderCard() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           <Save size={14} /> Save Provider
         </button>
       </div>
@@ -309,12 +309,12 @@ function MailboxWarmupCard() {
 
   const numInput = (label: string, key: keyof WarmupConfig, min: number, max: number, suffix = '') => (
     <div>
-      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>{label}</label>
+      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '5px' }}>{label}</label>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <input
           type="number" min={min} max={max} value={cfg[key] as number}
           onChange={e => set(key, Math.max(min, Math.min(max, Number(e.target.value))) as WarmupConfig[typeof key])}
-          style={{ width: '80px', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', textAlign: 'center' }}
+          style={{ width: '80px', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', textAlign: 'center' }}
         />
         {suffix && <span style={{ fontSize: '12px', color: '#94a3b8' }}>{suffix}</span>}
       </div>
@@ -322,7 +322,7 @@ function MailboxWarmupCard() {
   );
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
         <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -339,11 +339,11 @@ function MailboxWarmupCard() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {cfg.enabled ? (
-            <button onClick={stopWarmup} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+            <button onClick={stopWarmup} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '9px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
               <Square size={11} /> Stop Warmup
             </button>
           ) : (
-            <button onClick={startWarmup} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+            <button onClick={startWarmup} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '9px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
               <Play size={11} /> Start Warmup
             </button>
           )}
@@ -374,9 +374,9 @@ function MailboxWarmupCard() {
         {numInput('Daily Increase', 'dailyIncrease', 1, 50, 'per day')}
         {numInput('Max Volume', 'maxVolume', 10, 500, 'emails/day')}
         <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>Delay Between Emails</label>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '5px' }}>Delay Between Emails</label>
           <select value={cfg.delaySeconds} onChange={e => set('delaySeconds', Number(e.target.value))}
-            style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: 'white' }}>
+            style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#475569', backgroundColor: 'white' }}>
             {DELAY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
@@ -385,14 +385,14 @@ function MailboxWarmupCard() {
       {/* Send window */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
         <Clock size={16} color="#6366f1" style={{ flexShrink: 0 }} />
-        <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151', flexShrink: 0 }}>Send Window</span>
+        <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569', flexShrink: 0 }}>Send Window</span>
         <select value={cfg.sendWindowStart} onChange={e => set('sendWindowStart', Number(e.target.value))}
-          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: 'white' }}>
+          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#475569', backgroundColor: 'white' }}>
           {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
         </select>
         <span style={{ fontSize: '13px', color: '#94a3b8' }}>to</span>
         <select value={cfg.sendWindowEnd} onChange={e => set('sendWindowEnd', Number(e.target.value))}
-          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: 'white' }}>
+          style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#475569', backgroundColor: 'white' }}>
           {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
         </select>
         <span style={{ fontSize: '12px', color: '#94a3b8', flex: 1 }}>Emails only sent during this window (server local time)</span>
@@ -402,7 +402,7 @@ function MailboxWarmupCard() {
       <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
           <TrendingUp size={14} color="#6366f1" />
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Warmup Schedule Preview</span>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Warmup Schedule Preview</span>
           <span style={{ fontSize: '11px', color: '#94a3b8' }}>reaches {cfg.maxVolume}/day in {daysToMax} days</span>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end', height: '60px' }}>
@@ -422,7 +422,7 @@ function MailboxWarmupCard() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           <Save size={14} /> Save Warmup Settings
         </button>
       </div>
@@ -481,7 +481,7 @@ function EmailSMSTab() {
   );
 
   const card = (children: ReactElement) => (
-    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       {children}
     </div>
   );
@@ -503,7 +503,7 @@ function EmailSMSTab() {
           <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
             {(['twilio', 'vonage', 'plivo', 'bandwidth'] as const).map(p => (
               <button key={p} onClick={() => setSsf('provider', p)}
-                style={{ padding: '8px 16px', border: `2px solid ${sms.provider === p ? '#0d9488' : '#e2e8f0'}`, borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: sms.provider === p ? '#f0fdfa' : 'white', color: sms.provider === p ? '#0d9488' : '#64748b', textTransform: 'capitalize' }}>
+                style={{ padding: '8px 16px', border: `2px solid ${sms.provider === p ? '#0d9488' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: sms.provider === p ? '#f0fdfa' : 'white', color: sms.provider === p ? '#0d9488' : '#64748b', textTransform: 'capitalize' }}>
                 {p === 'vonage' ? 'Vonage (Nexmo)' : p.charAt(0).toUpperCase() + p.slice(1)}
               </button>
             ))}
@@ -528,16 +528,16 @@ function EmailSMSTab() {
             <Field label={sms.provider === 'twilio' ? 'Account SID' : 'API Key'} value={sms.accountSid} onChange={v => setSsf('accountSid', v)} placeholder={sms.provider === 'twilio' ? 'ACxxxxxxxxxxxxxxxx' : 'api-key'} />
             <Field label={sms.provider === 'twilio' ? 'Auth Token' : 'API Secret'} value={sms.authToken} onChange={v => setSsf('authToken', v)} type="password" placeholder="••••••••" />
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>From Phone Number</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>From Phone Number</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <Phone size={16} color="#64748b" style={{ flexShrink: 0 }} />
                 <input value={sms.fromNumber} onChange={e => setSsf('fromNumber', e.target.value)} placeholder="+15551234567"
-                  style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+                  style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
               </div>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Webhook URL (for incoming SMS)</label>
-              <div style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#6366f1', backgroundColor: '#f8fafc', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Webhook URL (for incoming SMS)</label>
+              <div style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '12px', color: '#6366f1', backgroundColor: '#f8fafc', fontFamily: 'monospace', wordBreak: 'break-all' }}>
                 https://azeem-654.github.io/calude/api/sms/inbound
               </div>
               <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>Paste this URL in your SMS provider's webhook settings</p>
@@ -588,7 +588,7 @@ function EmailSMSTab() {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
         <button onClick={() => { localStorage.setItem('crm_sms', JSON.stringify(sms)); addNotification('SMS settings saved!'); }}
-          style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.35)' }}>
           <Save size={16} /> Save SMS Settings
         </button>
       </div>
@@ -661,7 +661,7 @@ function IntegrationsTab() {
   };
 
   const card = (children: ReactNode) => (
-    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '16px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '16px' }}>
       {children}
     </div>
   );
@@ -681,7 +681,7 @@ function IntegrationsTab() {
     </div>
   );
 
-  const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const };
+  const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const };
 
   return (
     <div>
@@ -689,13 +689,13 @@ function IntegrationsTab() {
       {card(<>
         {cardHeader(<Mail size={20} color="#6366f1" />, 'Resend Email API', 'Validate your Resend API key for email delivery', 'CORS-safe')}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Resend API Key</label>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Resend API Key</label>
           <input type="password" value={resendKey} onChange={e => setResendKey(e.target.value)} placeholder="re_xxxxxxxxxxxxxxxxxxxx" style={inputStyle} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('resend', { apiKey: resendKey }, setResendStatus, setResendResult, setShowResendPopup)}
             disabled={resendStatus === 'testing' || !resendKey.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: resendStatus === 'testing' || !resendKey.trim() ? '#e2e8f0' : '#6366f1', color: resendStatus === 'testing' || !resendKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: resendStatus === 'testing' || !resendKey.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: resendStatus === 'testing' || !resendKey.trim() ? '#e2e8f0' : '#6366f1', color: resendStatus === 'testing' || !resendKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: resendStatus === 'testing' || !resendKey.trim() ? 'not-allowed' : 'pointer' }}>
             {resendStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {resendStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
@@ -709,18 +709,18 @@ function IntegrationsTab() {
         {cardHeader(<Inbox size={20} color="#0891b2" />, 'Mailtrap Sandbox API', 'Validate Mailtrap API key for email testing', 'CORS-safe')}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Mailtrap API Key</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Mailtrap API Key</label>
             <input type="password" value={mailtrapKey} onChange={e => setMailtrapKey(e.target.value)} placeholder="API key from mailtrap.io" style={inputStyle} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Inbox ID</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Inbox ID</label>
             <input value={mailtrapInboxId} onChange={e => setMailtrapInboxId(e.target.value)} placeholder="e.g. 1234567" style={inputStyle} />
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('mailtrap', { apiKey: mailtrapKey, inboxId: mailtrapInboxId }, setMailtrapStatus, setMailtrapResult, setShowMailtrapPopup)}
             disabled={mailtrapStatus === 'testing' || !mailtrapKey.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#e2e8f0' : '#0891b2', color: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#e2e8f0' : '#0891b2', color: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? 'not-allowed' : 'pointer' }}>
             {mailtrapStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {mailtrapStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
@@ -738,13 +738,13 @@ function IntegrationsTab() {
           </p>
         </div>
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>OpenAI API Key</label>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>OpenAI API Key</label>
           <input type="password" value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-xxxxxxxxxxxxxxxxxxxx" style={inputStyle} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('openai', { apiKey: openaiKey }, setOpenaiStatus, setOpenaiResult, setShowOpenaiPopup)}
             disabled={openaiStatus === 'testing' || !openaiKey.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: openaiStatus === 'testing' || !openaiKey.trim() ? '#e2e8f0' : '#10a37f', color: openaiStatus === 'testing' || !openaiKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: openaiStatus === 'testing' || !openaiKey.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: openaiStatus === 'testing' || !openaiKey.trim() ? '#e2e8f0' : '#10a37f', color: openaiStatus === 'testing' || !openaiKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: openaiStatus === 'testing' || !openaiKey.trim() ? 'not-allowed' : 'pointer' }}>
             {openaiStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {openaiStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
@@ -762,13 +762,13 @@ function IntegrationsTab() {
           </p>
         </div>
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Apollo.io API Key</label>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Apollo.io API Key</label>
           <input type="password" value={apolloKey} onChange={e => setApolloKey(e.target.value)} placeholder="Your Apollo.io API key" style={inputStyle} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('apollo', { apiKey: apolloKey }, setApolloStatus, setApolloResult, setShowApolloPopup)}
             disabled={apolloStatus === 'testing' || !apolloKey.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: apolloStatus === 'testing' || !apolloKey.trim() ? '#e2e8f0' : '#6366f1', color: apolloStatus === 'testing' || !apolloKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: apolloStatus === 'testing' || !apolloKey.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: apolloStatus === 'testing' || !apolloKey.trim() ? '#e2e8f0' : '#6366f1', color: apolloStatus === 'testing' || !apolloKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: apolloStatus === 'testing' || !apolloKey.trim() ? 'not-allowed' : 'pointer' }}>
             {apolloStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {apolloStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
@@ -781,13 +781,13 @@ function IntegrationsTab() {
       {card(<>
         {cardHeader(<Send size={20} color="#f59e0b" />, 'Webhook URL', 'Test that your webhook endpoint is reachable')}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Webhook URL</label>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Webhook URL</label>
           <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/trigger/..." style={inputStyle} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('webhook', { url: webhookUrl }, setWebhookStatus, setWebhookResult, setShowWebhookPopup)}
             disabled={webhookStatus === 'testing' || !webhookUrl.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: webhookStatus === 'testing' || !webhookUrl.trim() ? '#e2e8f0' : '#f59e0b', color: webhookStatus === 'testing' || !webhookUrl.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: webhookStatus === 'testing' || !webhookUrl.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: webhookStatus === 'testing' || !webhookUrl.trim() ? '#e2e8f0' : '#f59e0b', color: webhookStatus === 'testing' || !webhookUrl.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: webhookStatus === 'testing' || !webhookUrl.trim() ? 'not-allowed' : 'pointer' }}>
             {webhookStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {webhookStatus === 'testing' ? 'Testing…' : 'Test Webhook'}
           </button>
@@ -806,24 +806,24 @@ function IntegrationsTab() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>SMTP Host</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>SMTP Host</label>
             <input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" style={inputStyle} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Port</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Port</label>
             <input value={smtpPort} onChange={e => setSmtpPort(e.target.value)} placeholder="587" style={inputStyle} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Username</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Username</label>
             <input value={smtpUser} onChange={e => setSmtpUser(e.target.value)} placeholder="you@example.com" style={inputStyle} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>Password / App Key</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Password / App Key</label>
             <input type="password" value={smtpPass} onChange={e => setSmtpPass(e.target.value)} placeholder="••••••••" style={inputStyle} />
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
             <input type="checkbox" checked={smtpSecure} onChange={e => setSmtpSecure(e.target.checked)} style={{ width: '14px', height: '14px' }} />
             Use SSL/TLS (port 465)
           </label>
@@ -831,7 +831,7 @@ function IntegrationsTab() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('smtp', { host: smtpHost, port: parseInt(smtpPort) || 587, username: smtpUser, password: smtpPass, secure: smtpSecure }, setSmtpStatus, setSmtpResult, setShowSmtpPopup)}
             disabled={smtpStatus === 'testing' || !smtpHost.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: smtpStatus === 'testing' || !smtpHost.trim() ? '#e2e8f0' : '#374151', color: smtpStatus === 'testing' || !smtpHost.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: smtpStatus === 'testing' || !smtpHost.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: smtpStatus === 'testing' || !smtpHost.trim() ? '#e2e8f0' : '#374151', color: smtpStatus === 'testing' || !smtpHost.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: smtpStatus === 'testing' || !smtpHost.trim() ? 'not-allowed' : 'pointer' }}>
             {smtpStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {smtpStatus === 'testing' ? 'Testing…' : 'Test SMTP'}
           </button>
@@ -874,19 +874,19 @@ export default function Settings() {
   const handleSave = () => addNotification('Settings saved successfully!');
 
   return (
-    <div>
+    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
       <Header title="Settings" subtitle="Account · Email & SMS · Integrations" />
-      <div style={{ padding: '24px 28px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      <div style={{ padding: '28px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Sidebar */}
         <div style={{ width: '220px', flexShrink: 0, position: 'sticky', top: '24px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
             {tabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', border: 'none', backgroundColor: activeTab === tab.id ? '#f0f4ff' : 'white', color: activeTab === tab.id ? '#6366f1' : '#374151', fontSize: '14px', fontWeight: activeTab === tab.id ? 600 : 400, cursor: 'pointer', textAlign: 'left', borderLeft: activeTab === tab.id ? '3px solid #6366f1' : '3px solid transparent', transition: 'all 0.1s', borderBottom: '1px solid #f1f5f9' }}>
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', border: 'none', borderRadius: '9px', backgroundColor: activeTab === tab.id ? '#eef2ff' : 'transparent', color: activeTab === tab.id ? '#6366f1' : '#475569', fontSize: '13px', fontWeight: activeTab === tab.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '2px' }}>
                 <tab.icon size={16} />
                 {tab.label}
-                {(tab.id === 'email-sms' || tab.id === 'api-validation') && <span style={{ marginLeft: 'auto', fontSize: '9px', padding: '2px 6px', borderRadius: '8px', backgroundColor: '#6366f1', color: 'white', fontWeight: 700 }}>NEW</span>}
-                {tab.id !== 'email-sms' && tab.id !== 'api-validation' && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.4 }} />}
+                {(tab.id === 'email-sms' || tab.id === 'api-validation') && <span style={{ marginLeft: 'auto', fontSize: '9px', padding: '2px 7px', borderRadius: '999px', backgroundColor: activeTab === tab.id ? '#6366f1' : '#eef2ff', color: activeTab === tab.id ? 'white' : '#6366f1', fontWeight: 700, letterSpacing: '0.03em' }}>NEW</span>}
+                {tab.id !== 'email-sms' && tab.id !== 'api-validation' && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: activeTab === tab.id ? 0.7 : 0.35 }} />}
               </button>
             ))}
           </div>
@@ -898,14 +898,14 @@ export default function Settings() {
           {activeTab === 'api-validation' && <IntegrationsTab />}
 
           {activeTab === 'profile' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '20px' }}>Profile Information</h3>
+            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Profile Information</h3>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #f1f5f9' }}>
                 <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>JD</div>
                 <div>
                   <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>John Doe</p>
                   <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px' }}>Admin · CRMPro Inc.</p>
-                  <button style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white', color: '#374151', fontWeight: 500 }}>Change Photo</button>
+                  <button style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white', color: '#475569', fontWeight: 500 }}>Change Photo</button>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -915,21 +915,21 @@ export default function Settings() {
                   { label: 'Company', key: 'company' }, { label: 'Timezone', key: 'timezone' },
                 ].map(({ label, key }) => (
                   <div key={key}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>{label}</label>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{label}</label>
                     <input value={(profile as Record<string, string>)[key]} onChange={e => setProfile(p => ({ ...p, [key]: e.target.value }))}
-                      style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
                   </div>
                 ))}
               </div>
-              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                 <Save size={15} /> Save Changes
               </button>
             </div>
           )}
 
           {activeTab === 'notifications' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '20px' }}>Notification Preferences</h3>
+            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Notification Preferences</h3>
               {[
                 { key: 'emailNew', label: 'New email received', desc: 'Get notified when a new email arrives' },
                 { key: 'emailReplied', label: 'Email replied', desc: 'When a contact replies to your email' },
@@ -940,21 +940,21 @@ export default function Settings() {
               ].map(({ key, label, desc }) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <div>
-                    <p style={{ fontSize: '14px', fontWeight: 500, color: '#374151', margin: 0 }}>{label}</p>
+                    <p style={{ fontSize: '14px', fontWeight: 500, color: '#475569', margin: 0 }}>{label}</p>
                     <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{desc}</p>
                   </div>
                   <Toggle value={(notifications as Record<string, boolean>)[key]} onChange={v => setNotifications(p => ({ ...p, [key]: v }))} />
                 </div>
               ))}
-              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '16px' }}>
+              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '16px' }}>
                 <Save size={15} /> Save Preferences
               </button>
             </div>
           )}
 
           {activeTab === 'integrations' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '20px' }}>Third-Party Integrations</h3>
+            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Third-Party Integrations</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 {integrations.map((intg, idx) => (
                   <div key={intg.name} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', borderRadius: '10px', border: `1px solid ${intg.connected ? '#bbf7d0' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#f0fdf4' : 'white' }}>
@@ -967,7 +967,7 @@ export default function Settings() {
                       setIntegrations(prev => prev.map((it, i) => i === idx ? { ...it, connected: !it.connected } : it));
                       addNotification(intg.connected ? `${intg.name} disconnected` : `${intg.name} connected!`, intg.connected ? 'info' : 'success');
                     }}
-                      style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${intg.connected ? '#d1fae5' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#ecfdf5' : 'white', color: intg.connected ? '#16a34a' : '#374151', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                      style={{ padding: '6px 14px', borderRadius: '9px', border: `1px solid ${intg.connected ? '#d1fae5' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#ecfdf5' : 'white', color: intg.connected ? '#16a34a' : '#475569', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
                       {intg.connected ? '✓ Connected' : 'Connect'}
                     </button>
                   </div>
@@ -977,9 +977,9 @@ export default function Settings() {
           )}
 
           {activeTab === 'billing' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '20px' }}>Billing & Subscription</h3>
-              <div style={{ padding: '20px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', marginBottom: '20px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing & Subscription</h3>
+              <div style={{ padding: '22px 24px', borderRadius: '12px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', marginBottom: '20px', boxShadow: '0 8px 20px rgba(99,102,241,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <p style={{ fontSize: '12px', opacity: 0.8, margin: '0 0 4px' }}>Current Plan</p>
@@ -993,14 +993,16 @@ export default function Settings() {
           )}
 
           {(activeTab === 'security' || activeTab === 'branding') && (
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
                 {activeTab === 'security' ? 'Security Settings' : 'Branding'}
               </h3>
-              <div style={{ padding: '40px', textAlign: 'center', border: '2px dashed #e2e8f0', borderRadius: '10px', color: '#94a3b8', marginTop: '16px' }}>
-                <div style={{ fontSize: '40px', marginBottom: '12px' }}>{activeTab === 'security' ? '🔒' : '🎨'}</div>
-                <p style={{ fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Coming Soon</p>
-                <p style={{ fontSize: '13px' }}>This section is under development</p>
+              <div style={{ padding: '48px 24px', textAlign: 'center', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: '12px', marginTop: '16px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '16px', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  {activeTab === 'security' ? <Shield size={28} color="#6366f1" /> : <Palette size={28} color="#6366f1" />}
+                </div>
+                <p style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a', letterSpacing: '-0.01em', margin: '0 0 6px' }}>Coming Soon</p>
+                <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>This section is under development</p>
               </div>
             </div>
           )}

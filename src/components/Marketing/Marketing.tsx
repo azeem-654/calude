@@ -20,21 +20,21 @@ const typeIcons: Record<string, React.ReactElement> = {
 const typeColors: Record<string, string> = { email: '#3b82f6', sms: '#22c55e', sequence: '#8b5cf6' };
 const campaignStatusColors: Record<string, { bg: string; color: string }> = {
   active: { bg: '#ecfdf5', color: '#16a34a' },
-  draft: { bg: '#f8fafc', color: '#64748b' },
-  paused: { bg: '#fef3c7', color: '#d97706' },
-  completed: { bg: '#eff6ff', color: '#2563eb' },
+  draft: { bg: '#f1f5f9', color: '#64748b' },
+  paused: { bg: '#fffbeb', color: '#d97706' },
+  completed: { bg: '#eef2ff', color: '#4f46e5' },
 };
 
 function MetricBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <span style={{ fontSize: '11px', color: '#64748b' }}>{label}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</span>
         <span style={{ fontSize: '11px', fontWeight: 600, color }}>{pct}%</span>
       </div>
-      <div style={{ height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px' }}>
-        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: '2px' }} />
+      <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', borderRadius: '9999px' }} />
       </div>
       <span style={{ fontSize: '11px', color: '#94a3b8' }}>{value.toLocaleString()}</span>
     </div>
@@ -61,7 +61,7 @@ function CampaignsTab() {
   };
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div style={{ padding: '28px' }}>
       {/* Email provider setup nudge — non-blocking */}
       {!emailReady && !dismissedProviderBanner && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, marginBottom: 18 }}>
@@ -74,48 +74,59 @@ function CampaignsTab() {
         </div>
       )}
       {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px' }}>
         {[
           { label: 'Total Campaigns', value: campaigns.length, icon: Mail, color: '#6366f1' },
           { label: 'Total Sent', value: totalSent.toLocaleString(), icon: Users, color: '#3b82f6' },
           { label: 'Avg Open Rate', value: `${avgOpen.toFixed(1)}%`, icon: BarChart2, color: '#22c55e' },
           { label: 'Active', value: campaigns.filter(c => c.status === 'active').length, icon: Play, color: '#f59e0b' },
         ].map(item => (
-          <div key={item.label} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div key={item.label}
+            style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: '14px', transition: 'box-shadow 0.15s' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <item.icon size={20} color={item.color} />
             </div>
             <div>
-              <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 3px', fontWeight: 500 }}>{item.label}</p>
-              <p style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{item.value}</p>
+              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '0 0 3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{item.label}</p>
+              <p style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{item.value}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'inline-flex', gap: '2px', padding: '3px', borderRadius: '10px', backgroundColor: '#f1f5f9', border: '1px solid #e6e9f0' }}>
           {['all', 'email', 'sms', 'sequence'].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
-              style={{ padding: '6px 13px', borderRadius: '8px', border: `1px solid ${typeFilter === t ? '#6366f1' : '#e2e8f0'}`, backgroundColor: typeFilter === t ? '#6366f1' : 'white', color: typeFilter === t ? 'white' : '#64748b', fontSize: '12px', cursor: 'pointer', textTransform: 'capitalize', fontWeight: 500 }}>
+              style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', backgroundColor: typeFilter === t ? 'white' : 'transparent', color: typeFilter === t ? '#0f172a' : '#64748b', fontSize: '12px', cursor: 'pointer', textTransform: 'capitalize', fontWeight: typeFilter === t ? 600 : 500, boxShadow: typeFilter === t ? '0 1px 2px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
               {t === 'all' ? 'All' : t.toUpperCase()}
             </button>
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
             <Plus size={15} /> Create Campaign
           </button>
         </div>
       </div>
 
       {/* Campaign list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filtered.length === 0 && (
-          <div style={{ padding: '40px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center', color: '#94a3b8' }}>
-            <p style={{ fontSize: 14, margin: 0 }}>No campaigns yet. Click "Create Campaign" to get started.</p>
+          <div style={{ padding: '56px 40px', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', textAlign: 'center' }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <Mail size={28} color="#6366f1" />
+            </div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>No campaigns yet</p>
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 20px' }}>Create your first campaign to start reaching your audience.</p>
+            <button onClick={() => setShowModal(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+              <Plus size={15} /> Create Campaign
+            </button>
           </div>
         )}
         {filtered.map(campaign => {
@@ -123,9 +134,9 @@ function CampaignsTab() {
           const tc = typeColors[campaign.type];
           return (
             <div key={campaign.id} onClick={() => setSelectedCampaign(campaign)}
-              style={{ backgroundColor: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #e2e8f0', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.1)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c4b5fd'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = ''; (e.currentTarget as HTMLDivElement).style.borderColor = '#e2e8f0'; }}>
+              style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c7d2fe'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: campaign.sent > 0 ? '14px' : '0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                   <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: `${tc}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tc, flexShrink: 0 }}>
@@ -141,24 +152,24 @@ function CampaignsTab() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 12 }}>
-                  <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, backgroundColor: sc.bg, color: sc.color }}>
+                  <span style={{ padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: 600, backgroundColor: sc.bg, color: sc.color }}>
                     {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
                   </span>
                   <button onClick={e => { e.stopPropagation(); toggleCampaignStatus(campaign.id); }}
-                    style={{ padding: '6px', borderRadius: '7px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}>
+                    style={{ padding: '6px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}>
                     {campaign.status === 'active' ? <Pause size={13} color="#64748b" /> : <Play size={13} color="#64748b" />}
                   </button>
                   <ChevronRight size={15} color="#cbd5e1" />
                 </div>
               </div>
               {campaign.sent > 0 && (
-                <div style={{ display: 'flex', gap: '16px', paddingTop: '12px', borderTop: '1px solid #f8fafc' }}>
+                <div style={{ display: 'flex', gap: '16px', paddingTop: '14px', borderTop: '1px solid #f1f5f9' }}>
                   <MetricBar label="Open" value={campaign.opened} total={campaign.sent} color="#6366f1" />
                   <MetricBar label="Click" value={campaign.clicked} total={campaign.sent} color="#3b82f6" />
                   <MetricBar label="Reply" value={campaign.replied} total={campaign.sent} color="#22c55e" />
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: '10px', color: '#64748b', marginBottom: '3px', fontWeight: 500 }}>Sent</p>
-                    <p style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{campaign.sent.toLocaleString()}</p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Sent</p>
+                    <p style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{campaign.sent.toLocaleString()}</p>
                   </div>
                 </div>
               )}
@@ -229,10 +240,10 @@ function DeliverabilityTab() {
   };
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 820 }}>
+    <div style={{ padding: '28px', maxWidth: 820 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Deliverability Suite</h2>
-        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>Warm up your mailboxes to improve deliverability and avoid the spam folder.</p>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 4px', letterSpacing: '-0.02em' }}>Deliverability Suite</h2>
+        <p style={{ fontSize: 13, color: '#475569', margin: 0 }}>Warm up your mailboxes to improve deliverability and avoid the spam folder.</p>
       </div>
 
       {/* Stats row */}
@@ -243,21 +254,24 @@ function DeliverabilityTab() {
           { label: 'Avg Deliverability', value: `${mailboxes.reduce((s, m) => s + m.deliverability, 0) / (mailboxes.length || 1)}%`, color: '#22c55e', icon: <Shield size={18} color="#22c55e" /> },
           { label: 'Emails Today', value: mailboxes.reduce((s, m) => s + m.sent, 0), color: '#3b82f6', icon: <Mail size={18} color="#3b82f6" /> },
         ].map(item => (
-          <div key={item.label} style={{ backgroundColor: 'white', borderRadius: 12, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={item.label}
+            style={{ backgroundColor: 'white', borderRadius: 14, padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: 12, transition: 'box-shadow 0.15s' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
             <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
             <div>
-              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 3px', fontWeight: 500 }}>{item.label}</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>{item.value}</p>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{item.label}</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{item.value}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Mailbox list */}
-      <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e6e9f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>My mailboxes</span>
-          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
             <Plus size={13} /> Link mailbox
           </button>
         </div>
@@ -265,7 +279,7 @@ function DeliverabilityTab() {
           <thead>
             <tr style={{ backgroundColor: '#f8fafc' }}>
               {['Mailbox', 'Type', 'Setup', 'Warmup', 'Daily limit', 'Sent today', 'Deliverability', 'Last sync'].map(h => (
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #e6e9f0' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -273,12 +287,12 @@ function DeliverabilityTab() {
             {mailboxes.map(m => (
               <tr key={m.email} style={{ borderBottom: '1px solid #f1f5f9' }}>
                 <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{m.email}</td>
-                <td style={{ padding: '12px 14px' }}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, backgroundColor: '#dbeafe', color: '#1d4ed8', fontWeight: 600 }}>{m.type}</span></td>
+                <td style={{ padding: '12px 14px' }}><span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 9999, backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 600 }}>{m.type}</span></td>
                 <td style={{ padding: '12px 14px' }}><span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#16a34a' }}><Check size={12} /> Connected</span></td>
                 <td style={{ padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button onClick={() => setShowWarmupModal(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 7, backgroundColor: m.warmupOn ? '#fffbeb' : 'white', color: m.warmupOn ? '#d97706' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', border: '1px solid #e2e8f0', borderRadius: 9999, backgroundColor: m.warmupOn ? '#fffbeb' : 'white', color: m.warmupOn ? '#d97706' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                       {m.warmupOn ? <ToggleRight size={13} color="#f59e0b" /> : <ToggleLeft size={13} />}
                       {m.warmupOn ? 'On' : 'Off'}
                     </button>
@@ -289,8 +303,8 @@ function DeliverabilityTab() {
                 <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>{m.sent} / {m.dailyLimit}</td>
                 <td style={{ padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 50, height: 5, backgroundColor: '#e2e8f0', borderRadius: 3 }}>
-                      <div style={{ height: '100%', width: `${m.deliverability}%`, backgroundColor: m.deliverability >= 90 ? '#22c55e' : m.deliverability >= 70 ? '#f59e0b' : '#ef4444', borderRadius: 3 }} />
+                    <div style={{ width: 50, height: 6, backgroundColor: '#f1f5f9', borderRadius: 9999, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${m.deliverability}%`, background: m.deliverability >= 90 ? '#22c55e' : m.deliverability >= 70 ? '#f59e0b' : '#ef4444', borderRadius: 9999 }} />
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 700, color: m.deliverability >= 90 ? '#16a34a' : '#d97706' }}>{m.deliverability}%</span>
                   </div>
@@ -303,7 +317,7 @@ function DeliverabilityTab() {
       </div>
 
       {/* Tips */}
-      <div style={{ backgroundColor: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '16px 20px' }}>
+      <div style={{ backgroundColor: '#fffbeb', borderRadius: 14, border: '1px solid #fde68a', padding: '18px 22px' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 10 }}>💡 Deliverability Tips</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
@@ -322,9 +336,9 @@ function DeliverabilityTab() {
 
       {/* Warmup settings modal */}
       {showWarmupModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowWarmupModal(false)}>
-          <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 580, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowWarmupModal(false)}>
+          <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 580, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e6e9f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Mailbox Warmup Settings</div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Inbox Warmup improves email deliverability by gradually increasing outbound volume over time to build sender reputation.</div>
@@ -372,10 +386,10 @@ function DeliverabilityTab() {
                 </div>
               </label>
             </div>
-            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setShowWarmupModal(false)} style={{ padding: '8px 18px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, cursor: 'pointer', backgroundColor: 'white' }}>Skip step</button>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e6e9f0', display: 'flex', justifyContent: 'flex-end', gap: 10, backgroundColor: '#f8fafc' }}>
+              <button onClick={() => setShowWarmupModal(false)} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 500, color: '#374151', cursor: 'pointer', backgroundColor: 'white' }}>Skip step</button>
               <button onClick={() => setShowWarmupModal(false)}
-                style={{ padding: '8px 18px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
                 Warm up mailbox
               </button>
             </div>
@@ -423,16 +437,18 @@ export default function Marketing() {
       <Header title="Marketing" subtitle="Campaigns · Imports · Sequences · Automations" />
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: '2px', padding: '0 28px', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '4px', padding: '0 28px', borderBottom: '1px solid #e6e9f0', backgroundColor: 'white', flexShrink: 0 }}>
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '12px 16px', border: 'none', borderBottom: `2px solid ${isActive ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#6366f1' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: '-1px' }}>
-              <span style={{ color: isActive ? '#6366f1' : '#94a3b8' }}>{tab.icon}</span>
+              style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 16px', border: 'none', borderBottom: `2px solid ${isActive ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#0f172a' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: '-1px' }}
+              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#0f172a'; }}
+              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; }}>
+              <span style={{ color: isActive ? '#6366f1' : '#94a3b8', display: 'flex' }}>{tab.icon}</span>
               {tab.label}
               {tab.badge && (
-                <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '10px', backgroundColor: '#ecfdf5', color: '#16a34a' }}>{tab.badge}</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '9999px', backgroundColor: '#ecfdf5', color: '#16a34a' }}>{tab.badge}</span>
               )}
             </button>
           );

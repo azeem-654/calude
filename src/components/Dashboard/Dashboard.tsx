@@ -54,6 +54,7 @@ function ModuleCard({
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
 
+  const sparkId = `sg-${label.replace(/\s+/g, '-')}`;
   const spark = sparkData ?? [20, 35, 28, 45, 38, 55, 48, 62, 58, 70];
   const sparkMin = Math.min(...spark);
   const sparkMax = Math.max(...spark);
@@ -96,12 +97,12 @@ function ModuleCard({
       <div style={{ height: '36px', marginBottom: '12px' }}>
         <svg width="100%" height="36" viewBox="0 0 100 100" preserveAspectRatio="none">
           <defs>
-            <linearGradient id={`sg-${label}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={sparkId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.2" />
               <stop offset="100%" stopColor={color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          <polygon points={`0,100 ${sparkPoints} 100,100`} fill={`url(#sg-${label})`} />
+          <polygon points={`0,100 ${sparkPoints} 100,100`} fill={`url(#${sparkId})`} />
           <polyline points={sparkPoints} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
