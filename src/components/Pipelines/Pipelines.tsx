@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type { DragEvent } from 'react';
 import {
   Plus, Search, X, Check, Edit2, Trash2, User,
@@ -6,11 +6,16 @@ import {
   ChevronLeft, ChevronRight, Trophy, ThumbsDown, MoreVertical,
   Settings, Clock, SlidersHorizontal, TrendingUp,
   FileText, CheckSquare, Timer, Link2, GitBranch, CalendarDays,
-  Sparkles, ChevronUp, Calendar, Brain, Zap,
+  Sparkles, ChevronUp, Calendar, Brain, Zap, Gauge,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { Deal, Stage, ChecklistItem, DealActivity, SubTask } from '../../types';
+import {
+  AutomationsModal, ConfettiBurst, loadAutomationRules, saveAutomationRules,
+  runAutomations, runIdleSweep, appendAutomationLog, describeAction,
+} from './Automations';
+import type { AutomationRule, AutomationRunResult } from './Automations';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
 type ViewMode = 'board' | 'list' | 'calendar' | 'gantt' | 'table' | 'funnel';
@@ -911,17 +916,21 @@ interface StageHeaderProps {
   stage: Stage;
   index: number;
   total: number;
+  wipLimit?: number;
   onRename: (id: string, name: string) => void;
   onRecolor: (id: string, color: string) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, dir: 'left' | 'right') => void;
+  onSetWip: (id: string, limit: number) => void;
 }
 
-function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMove }: StageHeaderProps) {
+function StageHeader({ stage, index, total, wipLimit, onRename, onRecolor, onDelete, onMove, onSetWip }: StageHeaderProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(stage.name);
   const [showMenu, setShowMenu] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [showWipInput, setShowWipInput] = useState(false);
+  const [wipDraft, setWipDraft] = useState(String(wipLimit ?? ''));
 
   const commitRename = () => {
     if (draft.trim() && draft.trim() !== stage.name) onRename(stage.id, draft.trim());
@@ -929,6 +938,7 @@ function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMov
   };
 
   const stageValue = stage.deals.reduce((v, d) => v + d.value, 0);
+  const overWip = wipLimit != null && wipLimit > 0 && stage.deals.length > wipLimit;
 
   return (
     <div style={{ position: 'relative' }}>
@@ -953,7 +963,17 @@ function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMov
               {stage.name}
             </span>
           )}
-          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600, flexShrink: 0, backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: 999, padding: '1px 8px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>{stage.deals.length}</span>
+          <span
+            title={overWip ? `Over WIP limit (${wipLimit})` : wipLimit ? `WIP limit: ${wipLimit}` : undefined}
+            style={{
+              fontSize: 11, fontWeight: 700, flexShrink: 0, borderRadius: 999, padding: '1px 8px',
+              color: overWip ? '#dc2626' : '#64748b',
+              backgroundColor: overWip ? '#fef2f2' : 'white',
+              border: `1px solid ${overWip ? '#fecaca' : '#e6e9f0'}`,
+              boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
+            }}>
+            {stage.deals.length}{wipLimit ? `/${wipLimit}` : ''}
+          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>{fmt(stageValue)}</span>
@@ -987,6 +1007,24 @@ function StageHeader({ stage, index, total, onRename, onRecolor, onDelete, onMov
                   <button key={c} onClick={() => { onRecolor(stage.id, c); setShowMenu(false); setShowPalette(false); }}
                     style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: c, border: c === stage.color ? '2px solid #0f172a' : '2px solid transparent', cursor: 'pointer' }} />
                 ))}
+              </div>
+            )}
+            <button onClick={() => { setWipDraft(String(wipLimit ?? '')); setShowWipInput(prev => !prev); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 14px', border: 'none', background: 'none', fontSize: 13, color: '#374151', cursor: 'pointer', textAlign: 'left' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+              <Gauge size={13} /> WIP Limit{wipLimit ? ` (${wipLimit})` : ''}
+            </button>
+            {showWipInput && (
+              <div style={{ padding: '2px 14px 10px', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="number" min={0} max={99} value={wipDraft} autoFocus
+                  onChange={e => setWipDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { onSetWip(stage.id, Number(wipDraft) || 0); setShowMenu(false); setShowWipInput(false); } }}
+                  placeholder="0 = off"
+                  style={{ width: 70, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit' }} />
+                <button onClick={() => { onSetWip(stage.id, Number(wipDraft) || 0); setShowMenu(false); setShowWipInput(false); }}
+                  style={{ padding: '5px 10px', border: 'none', borderRadius: 7, background: '#6366f1', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Set</button>
               </div>
             )}
             {index > 0 && (
@@ -1776,10 +1814,56 @@ export default function Pipelines() {
     try { return Number(localStorage.getItem('crm_rotting_days') ?? DEFAULT_ROTTING_DAYS); } catch { return DEFAULT_ROTTING_DAYS; }
   });
 
+  // ── Automations / WIP / celebration ──
+  const [autoRules, setAutoRules] = useState<AutomationRule[]>(loadAutomationRules);
+  const [showAutomations, setShowAutomations] = useState(false);
+  const [confetti, setConfetti] = useState(false);
+  const [wipLimits, setWipLimits] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('crm_wip_limits') || '{}'); } catch { return {}; }
+  });
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const updateAutoRules = (rules: AutomationRule[]) => {
+    setAutoRules(rules);
+    saveAutomationRules(rules);
+  };
+
+  const setWip = (stageId: string, limit: number) => {
+    setWipLimits(prev => {
+      const next = { ...prev };
+      if (limit > 0) next[stageId] = limit; else delete next[stageId];
+      try { localStorage.setItem('crm_wip_limits', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  // "/" focuses deal search (ClickUp-style shortcut)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === '/' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement) && !(e.target as HTMLElement)?.isContentEditable) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const selected = pipelines.find(p => p.id === selectedId) ?? pipelines[0];
   const allDeals = selected?.stages.flatMap(s => s.deals) ?? [];
   const editDeal = editDealId ? allDeals.find(d => d.id === editDealId) ?? null : null;
   const detailDeal = detailDealId ? allDeals.find(d => d.id === detailDealId) ?? null : null;
+
+  // Idle-deal automation sweep — runs once per pipeline selection
+  useEffect(() => {
+    if (!selected) return;
+    const result = runIdleSweep(selected.stages, autoRules, selected.id);
+    if (result.ran.length > 0) {
+      updatePipeline(selected.id, { stages: result.stages });
+      finishAutomationRun(result);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   if (!selected) return (
     <div>
@@ -1813,6 +1897,24 @@ export default function Pipelines() {
     updatePipeline(selected.id, { stages: newStages });
   };
 
+  /** After the engine runs: bump rule counters, append the activity log, surface notifications. */
+  function finishAutomationRun(result: AutomationRunResult) {
+    if (result.ran.length === 0) return;
+    const counts = new Map<string, number>();
+    result.ran.forEach(r => counts.set(r.rule.id, (counts.get(r.rule.id) ?? 0) + 1));
+    updateAutoRules(autoRules.map(r => counts.has(r.id) ? { ...r, runs: r.runs + (counts.get(r.id) ?? 0) } : r));
+    appendAutomationLog(result.ran.map((r, i) => ({
+      id: `log-${Date.now()}-${i}`,
+      ruleName: r.rule.name,
+      dealTitle: r.dealTitle,
+      summary: `"${r.dealTitle}" → ${r.rule.actions.map(a => describeAction(a, selected.stages)).join(', ')}`,
+      at: new Date().toISOString(),
+    })));
+    result.notes.forEach(n => addNotification(`🔔 ${n}`, 'info'));
+    const names = [...new Set(result.ran.map(r => r.rule.name))].slice(0, 2).join('", "');
+    addNotification(`⚡ Automation ran: "${names}"`, 'info');
+  }
+
   const moveDeal = (dealId: string, fromStageId: string, toStageId: string) => {
     if (fromStageId === toStageId) return;
     const toStage = selected.stages.find(s => s.id === toStageId);
@@ -1824,7 +1926,16 @@ export default function Pipelines() {
     });
     if (!moving) return;
     const updated = { ...moving, stage: toStage.name, lastStageChangedAt: new Date().toISOString() };
-    updatePipeline(selected.id, { stages: without.map(s => s.id === toStageId ? { ...s, deals: [...s.deals, updated] } : s) });
+    const movedStages = without.map(s => s.id === toStageId ? { ...s, deals: [...s.deals, updated] } : s);
+    const result = runAutomations(movedStages, dealId, { type: 'deal_moved', stageId: toStageId }, autoRules, selected.id);
+    updatePipeline(selected.id, { stages: result.stages });
+    finishAutomationRun(result);
+    // WIP limit warning (Kanban best practice — from ClickUp/Trello)
+    const limit = wipLimits[toStageId];
+    const newCount = (movedStages.find(s => s.id === toStageId)?.deals.length ?? 0);
+    if (limit && newCount > limit) {
+      addNotification(`⚠️ "${toStage.name}" is over its WIP limit (${newCount}/${limit})`, 'error');
+    }
   };
 
   const saveDeal = (data: Partial<Deal>, targetStageId: string) => {
@@ -1861,8 +1972,11 @@ export default function Pipelines() {
         lastStageChangedAt: new Date().toISOString(),
         activity: [],
       };
-      updatePipeline(selected.id, { stages: selected.stages.map(s => s.id === targetStageId ? { ...s, deals: [...s.deals, newDeal] } : s) });
+      const withNew = selected.stages.map(s => s.id === targetStageId ? { ...s, deals: [...s.deals, newDeal] } : s);
+      const result = runAutomations(withNew, newDeal.id, { type: 'deal_created', stageId: targetStageId }, autoRules, selected.id);
+      updatePipeline(selected.id, { stages: result.stages });
       addNotification(`Deal "${newDeal.title}" created!`);
+      finishAutomationRun(result);
     }
     setShowForm(false);
     setEditDealId(null);
@@ -1897,12 +2011,16 @@ export default function Pipelines() {
       status: 'active',
       activity: [],
     };
-    updatePipeline(selected.id, { stages: selected.stages.map(s => s.id === stageId ? { ...s, deals: [...s.deals, newDeal] } : s) });
+    const withNew = selected.stages.map(s => s.id === stageId ? { ...s, deals: [...s.deals, newDeal] } : s);
+    const result = runAutomations(withNew, newDeal.id, { type: 'deal_created', stageId }, autoRules, selected.id);
+    updatePipeline(selected.id, { stages: result.stages });
     addNotification(`Deal "${title}" created!`);
+    finishAutomationRun(result);
   };
 
   const markDealWon = (deal: Deal) => {
     updateDeal(deal.id, { status: 'won', closedAt: new Date().toISOString(), probability: 100 });
+    setConfetti(true);
     addNotification(`🏆 Deal "${deal.title}" marked as Won!`);
   };
 
@@ -2086,7 +2204,7 @@ export default function Pipelines() {
           {/* Search */}
           <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
             <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals..."
+            <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals...  ( / )"
               style={{ width: '100%', padding: '8px 10px 8px 32px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', backgroundColor: 'white', boxSizing: 'border-box' }} />
           </div>
 
@@ -2132,6 +2250,18 @@ export default function Pipelines() {
             <SlidersHorizontal size={14} /> Fields
           </button>
 
+          {/* Automations */}
+          <button onClick={() => setShowAutomations(true)}
+            title="Automations — when something happens, do something"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: '1px solid #fde68a', borderRadius: 9, backgroundColor: '#fffbeb', color: '#b45309', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <Zap size={14} /> Automations
+            {autoRules.filter(r => r.pipelineId === selected.id && r.enabled).length > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: '#f59e0b', color: 'white', borderRadius: 999, padding: '1px 6px' }}>
+                {autoRules.filter(r => r.pipelineId === selected.id && r.enabled).length}
+              </span>
+            )}
+          </button>
+
           {/* Add Deal */}
           <button onClick={() => openAddDeal()}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -2163,10 +2293,12 @@ export default function Pipelines() {
                     stage={stage}
                     index={stageIdx}
                     total={selected.stages.length}
+                    wipLimit={wipLimits[stage.id]}
                     onRename={renameStage}
                     onRecolor={recolorStage}
                     onDelete={deleteStage}
                     onMove={moveStage}
+                    onSetWip={setWip}
                   />
 
                   {/* Drop zone */}
@@ -2391,6 +2523,20 @@ export default function Pipelines() {
           onMoveDealToStage={moveDeal}
         />
       )}
+
+      {/* Automations */}
+      {showAutomations && (
+        <AutomationsModal
+          pipelineId={selected.id}
+          stages={selected.stages}
+          rules={autoRules}
+          onRulesChange={updateAutoRules}
+          onClose={() => setShowAutomations(false)}
+        />
+      )}
+
+      {/* Won-deal celebration */}
+      {confetti && <ConfettiBurst onDone={() => setConfetti(false)} />}
     </div>
   );
 }
