@@ -71,8 +71,60 @@ jobs:
           VITE_BASE: /
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
-      # ── 6. FTP Upload ────────────────────────────────────────────────────────
-      - name: Deploy via FTP → ${{ steps.target.outputs.label }}
+      # ── 6. FTP Upload (Freehostia FTP is flaky — retry up to 3 times) ────────
+      - name: Deploy via FTP → ${{ steps.target.outputs.label }} (attempt 1)
+        id: ftp1
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:      ${{ secrets.FTP_HOST }}
+          username:    ${{ secrets.FTP_USER }}
+          password:    ${{ secrets.FTP_PASSWORD }}
+          port:        21
+          security:    loose
+          log-level:   verbose
+          timeout:     120000
+          local-dir:   ./dist/
+          server-dir:  ${{ steps.target.outputs.dir }}
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/*.map
+
+      - name: Wait before retry
+        if: steps.ftp1.outcome == 'failure'
+        run: echo "First FTP attempt timed out — waiting 45s for the server to recover..." && sleep 45
+
+      - name: Deploy via FTP (attempt 2)
+        id: ftp2
+        if: steps.ftp1.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:      ${{ secrets.FTP_HOST }}
+          username:    ${{ secrets.FTP_USER }}
+          password:    ${{ secrets.FTP_PASSWORD }}
+          port:        21
+          security:    loose
+          log-level:   verbose
+          timeout:     120000
+          local-dir:   ./dist/
+          server-dir:  ${{ steps.target.outputs.dir }}
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/*.map
+
+      - name: Wait before final retry
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
+        run: echo "Second FTP attempt timed out — waiting 90s before the final attempt..." && sleep 90
+
+      - name: Deploy via FTP (attempt 3 — final)
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server:      ${{ secrets.FTP_HOST }}
