@@ -1,107 +1,92 @@
 import { useState, useEffect, useRef } from 'react';
-import type { ElementType } from 'react';
 import {
-  Users, TrendingUp, Calendar, DollarSign, MessageSquare,
-  ArrowUpRight, ArrowDownRight, Mail, Funnel, Star,
-  CalendarCheck, Send, Zap, ChevronRight, Activity,
-  ShoppingBag, CornerUpLeft, ArrowRight,
+  MessageSquare, Mail, ShoppingBag, CornerUpLeft,
+  Check, CheckCheck, Calendar as CalIcon, Plus, Share2,
+  MoreHorizontal, Star,
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
-import { useNavigate } from 'react-router-dom';
+import type { Deal } from '../../types';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DEMO_REVENUE = [18, 22, 19, 28, 26, 34, 31, 38, 36, 44, 41, 52].map((v, i) => ({ month: MONTHS[i], revenue: v * 1000 }));
-
-/* ═══ Stratus design tokens ═══ */
+/* ═══ SugarCRM Customer-Journey design tokens ═══ */
 const INK = '#17191c';
-const MUTED = '#83878e';
-const FAINT = '#b0b4ba';
-const LINE = '#ecedf0';
-const CARD: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 20, border: `1px solid ${LINE}`, padding: '22px 24px' };
-const LABEL: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' };
+const MUTED = '#8a8f98';
+const RED = '#e5484d';
+const BLUE = '#3e63dd';
+const GREEN = '#3f9142';
+const FROST: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 24, padding: 20 };
+const CARD: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)' };
 
-/* ── KPI bento card ── */
-function KpiCard({ title, value, change, icon: Icon, dark = false, prefix = '' }: {
-  title: string; value: string | number; change: number;
-  icon: ElementType; dark?: boolean; prefix?: string;
-}) {
-  const up = change >= 0;
+const TEAM = [
+  { name: 'John Doe', img: 12, badge: 2, badgeColor: BLUE },
+  { name: 'Maria Kim', img: 47, badge: 3, badgeColor: BLUE },
+  { name: 'Alex Ray', img: 33, badge: 2, badgeColor: RED },
+  { name: 'Sara Lee', img: 26, badge: 1, badgeColor: RED },
+  { name: 'Tom Fox', img: 59, badge: 0, badgeColor: BLUE },
+  { name: 'Nina Park', img: 44, badge: 1, badgeColor: RED },
+  { name: 'Omar Diaz', img: 68, badge: 0, badgeColor: BLUE },
+  { name: 'Amy Wu', img: 24, badge: 0, badgeColor: BLUE },
+];
+
+/* ── Photo avatar with initials fallback ── */
+function Avatar({ img, name, size = 40 }: { img: number; name: string; size?: number }) {
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2);
   return (
     <div style={{
-      ...CARD,
-      backgroundColor: dark ? INK : '#fff',
-      border: dark ? '1px solid #17191c' : `1px solid ${LINE}`,
-      display: 'flex', flexDirection: 'column', gap: 14,
+      width: size, height: size, borderRadius: 999, overflow: 'hidden', position: 'relative', flexShrink: 0,
+      background: 'linear-gradient(135deg,#c7cdd6,#9aa2ad)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#fff', fontSize: size * 0.34, fontWeight: 700,
+      boxShadow: '0 1px 3px rgba(23,25,28,0.12)',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: 999,
-          backgroundColor: dark ? 'rgba(255,255,255,0.1)' : '#f3f4f6',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon size={17} color={dark ? '#c7f441' : INK} strokeWidth={2} />
-        </div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderRadius: 999,
-          backgroundColor: dark ? '#c7f441' : up ? '#eefbe7' : '#fdeeee',
-        }}>
-          {up ? <ArrowUpRight size={11} color={dark ? INK : '#3f9142'} /> : <ArrowDownRight size={11} color="#c0392b" />}
-          <span style={{ fontSize: 11, fontWeight: 700, color: dark ? INK : up ? '#3f9142' : '#c0392b' }}>{Math.abs(change)}%</span>
-        </div>
-      </div>
-      <div>
-        <p style={{ fontSize: 30, fontWeight: 700, color: dark ? '#fff' : INK, margin: 0, letterSpacing: '-0.03em', lineHeight: 1.1 }}>{prefix}{value}</p>
-        <p style={{ fontSize: 12.5, color: dark ? 'rgba(255,255,255,0.55)' : MUTED, margin: '5px 0 0', fontWeight: 500 }}>{title}</p>
-      </div>
+      <span>{initials}</span>
+      <img src={`https://i.pravatar.cc/${size * 2}?img=${img}`} alt=""
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
     </div>
   );
 }
 
-/* ── Customer Journey strip — the signature element ── */
-function CustomerJourney({ stages }: { stages: { name: string; count: number; value: number; color: string }[] }) {
-  const total = Math.max(1, stages.reduce((s, x) => s + x.count, 0));
+/* ── Team avatar row with count badges ── */
+function TeamRow() {
   return (
-    <div style={CARD}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Customer Journey</h3>
-          <p style={{ fontSize: 12.5, color: MUTED, margin: '3px 0 0' }}>Where your customers are right now, stage by stage</p>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {TEAM.map(m => (
+        <div key={m.name} style={{ position: 'relative' }} title={m.name}>
+          <Avatar img={m.img} name={m.name} size={42} />
+          <span style={{
+            position: 'absolute', bottom: -2, right: -2, minWidth: 17, height: 17, borderRadius: 999,
+            backgroundColor: m.badge > 0 ? m.badgeColor : '#fff',
+            color: m.badge > 0 ? '#fff' : INK,
+            fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid #e9ebee', padding: '0 3px', boxSizing: 'border-box',
+          }}>
+            {m.badge > 0 ? m.badge : '+'}
+          </span>
         </div>
-        <span style={{ ...LABEL, backgroundColor: '#f3f4f6', padding: '6px 14px', borderRadius: 999 }}>{total} in journey</span>
-      </div>
+      ))}
+    </div>
+  );
+}
 
-      {/* Segment bar */}
-      <div style={{ display: 'flex', gap: 5, height: 10, borderRadius: 999, overflow: 'hidden', marginBottom: 20 }}>
-        {stages.map(s => (
-          <div key={s.name} style={{ flex: Math.max(s.count, 0.5), backgroundColor: s.color, borderRadius: 999, transition: 'flex 0.6s ease' }} />
-        ))}
-      </div>
-
-      {/* Stage columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stages.length}, 1fr)`, gap: 12 }}>
-        {stages.map((s, i) => {
-          const share = Math.round((s.count / total) * 100);
-          return (
-            <div key={s.name} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: s.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                </div>
-                <p style={{ fontSize: 22, fontWeight: 700, color: INK, margin: 0, letterSpacing: '-0.02em' }}>{s.count}</p>
-                <p style={{ fontSize: 11.5, color: FAINT, margin: '3px 0 0', fontWeight: 500 }}>
-                  ${(s.value / 1000).toFixed(0)}k · {share}%
-                </p>
-              </div>
-              {i < stages.length - 1 && (
-                <ArrowRight size={14} color={LINE} style={{ marginTop: 22, flexShrink: 0 }} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+/* ── Journey task row (avatar + label + checks + calendar chip) ── */
+function JourneyTask({ deal, avatarSeed, done }: { deal: { title: string; contactName?: string }; avatarSeed: number; done?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px' }}>
+      <Avatar img={avatarSeed} name={deal.contactName || deal.title} size={34} />
+      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: INK, lineHeight: 1.35, minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+        {deal.title}
+      </span>
+      {done
+        ? <CheckCheck size={15} color={INK} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+        : <MoreHorizontal size={15} color={MUTED} style={{ flexShrink: 0 }} />}
+      <button style={{
+        width: 30, height: 30, borderRadius: 999, border: '1px solid #ecedf0', backgroundColor: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: INK,
+      }}>
+        <CalIcon size={13} strokeWidth={2} />
+      </button>
     </div>
   );
 }
@@ -117,14 +102,14 @@ interface FeedEvent {
 }
 
 const FEED_META = {
-  message: { icon: MessageSquare, color: '#3b82f6', bg: '#eef4fe', label: 'Message' },
-  order:   { icon: ShoppingBag,   color: '#3f9142', bg: '#eefbe7', label: 'Order' },
-  email:   { icon: Mail,          color: '#8b5cf6', bg: '#f4f0fe', label: 'Email' },
-  reply:   { icon: CornerUpLeft,  color: '#d97706', bg: '#fdf5e7', label: 'Team reply' },
+  message: { icon: MessageSquare, color: BLUE,  bg: '#eceff9', label: 'Message' },
+  order:   { icon: ShoppingBag,   color: GREEN, bg: '#e9f4e6', label: 'Order' },
+  email:   { icon: Mail,          color: '#8b5cf6', bg: '#f1edfb', label: 'Email' },
+  reply:   { icon: CornerUpLeft,  color: RED,   bg: '#fceaea', label: 'Team reply' },
 } as const;
 
 const FALLBACK_NAMES = ['Emily Chen', 'Robert Martinez', 'Sarah Johnson', 'Mike Davis', 'Lisa Wong', 'James Carter', 'Ana Silva', 'Tom Becker'];
-const TEAM = ['John', 'Maria', 'Alex'];
+const TEAM_NAMES = ['John', 'Maria', 'Alex'];
 
 function makeEvent(id: number, names: string[]): FeedEvent {
   const name = names[Math.floor(Math.random() * names.length)];
@@ -133,7 +118,7 @@ function makeEvent(id: number, names: string[]): FeedEvent {
     type === 'message' ? ['sent you a new message', 'asked about pricing', 'replied in the chat'][Math.floor(Math.random() * 3)] :
     type === 'order'   ? `placed an order — $${(Math.floor(Math.random() * 46) + 3) * 100}` :
     type === 'email'   ? ['opened your campaign email', 'clicked a campaign link', 'subscribed to the newsletter'][Math.floor(Math.random() * 3)] :
-    `got a reply from ${TEAM[Math.floor(Math.random() * TEAM.length)]} on the team`;
+    `got a reply from ${TEAM_NAMES[Math.floor(Math.random() * TEAM_NAMES.length)]} on the team`;
   return { id, type, actor: name, text, ts: Date.now(), fresh: true };
 }
 
@@ -161,7 +146,7 @@ function LiveFeed({ names }: { names: string[] }) {
       if (!hoverRef.current) {
         idRef.current += 1;
         const e = makeEvent(idRef.current, names);
-        setEvents(prev => [e, ...prev.map(p => ({ ...p, fresh: false }))].slice(0, 7));
+        setEvents(prev => [e, ...prev.map(p => ({ ...p, fresh: false }))].slice(0, 6));
       }
       setNow(Date.now());
       timer = window.setTimeout(tick, 3200 + Math.random() * 2800);
@@ -174,52 +159,47 @@ function LiveFeed({ names }: { names: string[] }) {
 
   return (
     <div
-      style={{ ...CARD, padding: '22px 20px 14px', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      style={{ ...FROST, display: 'flex', flexDirection: 'column', minHeight: 0 }}
       onMouseEnter={() => { hoverRef.current = true; }}
       onMouseLeave={() => { hoverRef.current = false; }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingRight: 4 }}>
-        <div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Live Activity</h3>
-          <p style={{ fontSize: 12, color: MUTED, margin: '3px 0 0' }}>Messages, orders, emails & team replies</p>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
+        <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Live Activity</h3>
         <span style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999,
-          backgroundColor: '#eefbe7', fontSize: 10.5, fontWeight: 800, color: '#3f9142', letterSpacing: '0.08em',
+          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 999,
+          backgroundColor: INK, fontSize: 10, fontWeight: 800, color: '#fff', letterSpacing: '0.1em',
         }}>
-          <span style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: '#4ade80', animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
+          <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: '#6ee76e', animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
           LIVE
         </span>
       </div>
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {events.map(e => {
+      <div style={{ ...CARD, padding: '6px 14px', flex: 1 }}>
+        {events.map((e, i) => {
           const meta = FEED_META[e.type];
           const Icon = meta.icon;
           return (
             <div key={e.id} style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '10px 4px',
-              borderBottom: `1px solid #f4f5f7`,
+              display: 'flex', alignItems: 'center', gap: 11, padding: '10px 0',
+              borderBottom: i < events.length - 1 ? '1px solid #f2f3f5' : 'none',
               animation: e.fresh ? 'feed-in 0.45s cubic-bezier(0.16,1,0.3,1)' : undefined,
             }}>
               <div style={{
-                width: 36, height: 36, borderRadius: 12, backgroundColor: meta.bg,
+                width: 34, height: 34, borderRadius: 999, backgroundColor: meta.bg,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
-                <Icon size={15} color={meta.color} strokeWidth={2.2} />
+                <Icon size={14} color={meta.color} strokeWidth={2.2} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 13, color: INK, margin: 0, lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <p style={{ fontSize: 12.5, color: INK, margin: 0, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <span style={{ fontWeight: 700 }}>{e.actor}</span>{' '}
                   <span style={{ color: '#5c6066' }}>{e.text}</span>
                 </p>
-                <p style={{ fontSize: 11, color: FAINT, margin: '2px 0 0', fontWeight: 500 }}>
+                <p style={{ fontSize: 10.5, color: MUTED, margin: '2px 0 0', fontWeight: 500 }}>
                   {meta.label} · {relTime(e.ts, now)}
                 </p>
               </div>
-              {e.fresh && (
-                <span style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: meta.color, flexShrink: 0 }} />
-              )}
+              {e.fresh && <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: meta.color, flexShrink: 0 }} />}
             </div>
           );
         })}
@@ -228,267 +208,216 @@ function LiveFeed({ names }: { names: string[] }) {
   );
 }
 
-/* ── Module bento card ── */
-function ModuleCard({ icon: Icon, label, color, path, primary, primaryLabel, stats }: {
-  icon: ElementType; label: string; color: string; path: string;
-  primary: string | number; primaryLabel: string;
-  stats: { label: string; value: string | number }[];
-}) {
-  const navigate = useNavigate();
-  const [hovered, setHovered] = useState(false);
+/* ── Donut journey card (Executed / Active — like the shot) ── */
+function JourneyDonut({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const data = [{ v: value }, { v: Math.max(total - value, 0.0001) }];
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={() => navigate(path)}
-      style={{
-        ...CARD, padding: '20px 22px', cursor: 'pointer',
-        boxShadow: hovered ? '0 12px 32px -8px rgba(23,25,28,0.12)' : 'none',
-        transform: hovered ? 'translateY(-2px)' : 'none',
-        transition: 'all 0.18s ease',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 999, backgroundColor: `${color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon size={15} color={color} strokeWidth={2.2} />
-          </div>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: INK, letterSpacing: '-0.01em' }}>{label}</span>
+    <div style={{ flex: 1, textAlign: 'center', position: 'relative' }}>
+      <div style={{ position: 'relative', height: 120 }}>
+        <ResponsiveContainer width="100%" height={120}>
+          <PieChart>
+            <Pie data={data} dataKey="v" cx="50%" cy="50%" innerRadius={38} outerRadius={54} startAngle={90} endAngle={-270} strokeWidth={0}>
+              <Cell fill={color} />
+              <Cell fill="#eceef1" />
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: 22, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>{value}</span>
         </div>
-        <ChevronRight size={15} color={hovered ? color : FAINT} style={{ transform: hovered ? 'translateX(2px)' : 'none', transition: 'all 0.15s' }} />
       </div>
-      <p style={{ fontSize: 28, fontWeight: 700, color: INK, margin: 0, lineHeight: 1, letterSpacing: '-0.03em' }}>{primary}</p>
-      <p style={{ fontSize: 11.5, color: MUTED, margin: '4px 0 14px', fontWeight: 500 }}>{primaryLabel}</p>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 8, paddingTop: 12, borderTop: `1px solid #f4f5f7` }}>
-        {stats.map(s => (
-          <div key={s.label}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: INK, margin: 0 }}>{s.value}</p>
-            <p style={{ fontSize: 10.5, color: FAINT, margin: '2px 0 0', fontWeight: 500 }}>{s.label}</p>
-          </div>
-        ))}
-      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>{label}</span>
     </div>
   );
 }
 
-/* ── Goal progress ── */
-function GoalBar({ label, current, target, color }: { label: string; current: number; target: number; color: string }) {
-  const pct = Math.min(100, Math.round((current / target) * 100));
+/* ── Status chip ── */
+function StatusChip({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    executed: { bg: '#e2f5dc', color: GREEN },
+    scheduled: { bg: '#fdeeda', color: '#c77414' },
+    active: { bg: '#eceff9', color: BLUE },
+    pending: { bg: '#f0f1f3', color: MUTED },
+  };
+  const c = map[status.toLowerCase()] ?? map.pending;
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: 12, color: MUTED }}>{current.toLocaleString()} / {target.toLocaleString()} <span style={{ fontWeight: 700, color: INK }}>{pct}%</span></span>
-      </div>
-      <div style={{ height: 8, borderRadius: 999, backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 999, transition: 'width 0.6s ease' }} />
-      </div>
-    </div>
+    <span style={{ padding: '4px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, backgroundColor: c.bg, color: c.color, textTransform: 'capitalize' }}>
+      {status}
+    </span>
   );
 }
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, appointments, conversations, pipelines, campaigns, funnels, reviews, bookings, videoProjects, socialPosts } = useApp();
+  const { contacts, pipelines, appointments } = useApp();
 
-  const totalDeals = pipelines[0]?.stages.reduce((s, st) => s + st.deals.reduce((v, d) => v + d.value, 0), 0) ?? 0;
-  const openDeals = pipelines[0]?.stages.slice(0, -1).reduce((s, st) => s + st.deals.length, 0) ?? 0;
-  const wonDeals = pipelines[0]?.stages.slice(-1)[0]?.deals.length ?? 0;
-
-  const openConvs = conversations.filter(c => c.status === 'open').length;
-  const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
-  const totalClips = videoProjects.reduce((s, p) => s + p.clips.length, 0);
-  const avgRating = reviews.length ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : '4.8';
-  const fiveStars = reviews.filter(r => r.rating === 5).length;
-  const todayBookings = bookings.filter(b => b.slotDate === new Date().toISOString().split('T')[0]).length;
-  const emailRate = activeCampaigns > 0 ? 42 : 0;
-
-  /* Journey stages from the real pipeline (fallback demo numbers) */
-  const JOURNEY_COLORS = ['#8b5cf6', '#3b82f6', '#f59e0b', '#f97316', '#22c55e'];
   const pipelineStages = pipelines[0]?.stages ?? [];
-  const journeyStages = (pipelineStages.length >= 2
-    ? pipelineStages.map((s, i) => ({
-        name: s.name,
-        count: s.deals.length,
-        value: s.deals.reduce((v, d) => v + d.value, 0),
-        color: JOURNEY_COLORS[i % JOURNEY_COLORS.length],
+  const allDeals: Deal[] = pipelineStages.flatMap(s => s.deals);
+
+  /* Journey columns from real pipeline stages (demo rows if empty) */
+  const DEMO_COLS = [
+    { name: 'Lead Capture', deals: [{ title: 'Qualify inbound lead', contactName: 'Emily Chen' }, { title: 'Acknowledge new enquiry', contactName: 'Tom Becker' }] },
+    { name: 'Qualification', deals: [{ title: 'Identify budget range', contactName: 'Sarah Johnson' }, { title: 'Identify decision maker', contactName: 'Mike Davis' }, { title: 'Map pain points', contactName: 'Ana Silva' }] },
+    { name: 'Proposal', deals: [{ title: 'Estimate delivery time', contactName: 'James Carter' }, { title: 'Send pricing proposal', contactName: 'Lisa Wong' }, { title: 'Review contract terms', contactName: 'Robert Martinez' }] },
+    { name: 'Closing', deals: [{ title: 'Final negotiation call', contactName: 'Emily Chen' }, { title: 'Customer satisfaction check', contactName: 'Sara Lee' }] },
+  ];
+  const journeyCols = pipelineStages.length >= 2 && allDeals.length > 0
+    ? pipelineStages.slice(0, 4).map(s => ({ name: s.name, deals: s.deals.slice(0, 3).map(d => ({ title: d.title, contactName: d.contactName })) }))
+    : DEMO_COLS;
+
+  /* Black accent card = biggest active deal (or demo) */
+  const topDeal = [...allDeals].filter(d => (d.status ?? 'active') === 'active').sort((a, b) => b.value - a.value)[0];
+  const accent = topDeal ? { title: topDeal.title, value: topDeal.value } : { title: 'Request Processing', value: 48000 };
+
+  /* Knowledge table rows from deals (or demo) */
+  const tableRows = (allDeals.length > 0
+    ? allDeals.slice(0, 4).map(d => ({
+        subject: d.title,
+        status: d.status === 'won' ? 'executed' : d.status === 'lost' ? 'pending' : 'active',
+        start: new Date(d.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        end: d.expectedClose ? new Date(d.expectedClose).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
+        user: d.assignedTo || d.contactName || '—',
       }))
     : [
-        { name: 'New Lead', count: 24, value: 96000, color: JOURNEY_COLORS[0] },
-        { name: 'Qualified', count: 16, value: 78000, color: JOURNEY_COLORS[1] },
-        { name: 'Proposal', count: 9, value: 54000, color: JOURNEY_COLORS[2] },
-        { name: 'Negotiation', count: 5, value: 38000, color: JOURNEY_COLORS[3] },
-        { name: 'Won', count: 6, value: 47000, color: JOURNEY_COLORS[4] },
+        { subject: 'Design Sprint', status: 'executed', start: 'Sep 30', end: 'Oct 1', user: 'Sam Frank' },
+        { subject: 'Meeting Lead', status: 'scheduled', start: 'Oct 1', end: 'Oct 1', user: 'Nikki Olay' },
+        { subject: 'Quote Follow-up', status: 'active', start: 'Oct 2', end: 'Oct 4', user: 'John Doe' },
+        { subject: 'Renewal Review', status: 'pending', start: 'Oct 3', end: 'Oct 8', user: 'Maria Kim' },
       ]
   );
-  const journeyAllZero = journeyStages.every(s => s.count === 0);
-  const journey = journeyAllZero
-    ? journeyStages.map((s, i) => ({ ...s, count: [24, 16, 9, 5, 6][i % 5], value: [96000, 78000, 54000, 38000, 47000][i % 5] }))
-    : journeyStages;
+
+  const wonCount = allDeals.filter(d => d.status === 'won').length || 5;
+  const activeCount = allDeals.filter(d => (d.status ?? 'active') === 'active').length || 7;
 
   const feedNames = contacts.length >= 3 ? contacts.slice(0, 12).map(c => c.name) : FALLBACK_NAMES;
+  const scheduledToday = appointments.filter(a => a.status === 'scheduled').length;
 
-  /* Revenue by month from real won deals; demo curve when no closed deals yet */
-  const revenueData = (() => {
-    const base = MONTHS.map(m => ({ month: m, revenue: 0 }));
-    pipelines.forEach(p => p.stages.forEach(s => s.deals.forEach(d => {
-      if (d.status === 'won' && d.closedAt) base[new Date(d.closedAt).getMonth()].revenue += d.value;
-    })));
-    return base.some(b => b.revenue > 0) ? base : DEMO_REVENUE;
-  })();
+  let avatarSeed = 5;
 
   return (
-    <div style={{ backgroundColor: '#f3f4f6', minHeight: '100vh' }}>
-      <Header title="Dashboard" subtitle="Welcome back, John! Here's your business overview." />
+    <div style={{ minHeight: '100vh', paddingBottom: 32 }}>
+      <Header title="Customer Journeys" subtitle={`Welcome back, John — ${scheduledToday || 9} appointments scheduled, ${activeCount} deals in motion.`} />
 
-      <div style={{ padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ── Row 1: KPI bento ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-          <KpiCard title="Pipeline value" value={`${((totalDeals || 284000) / 1000).toFixed(0)}k`} change={23} icon={DollarSign} prefix="$" dark />
-          <KpiCard title="Total contacts" value={contacts.length || 248} change={12} icon={Users} />
-          <KpiCard title="Open deals" value={openDeals || 18} change={8} icon={TrendingUp} />
-          <KpiCard title="Appointments" value={appointments.filter(a => a.status === 'scheduled').length || 9} change={-5} icon={Calendar} />
-        </div>
-
-        {/* ── Row 2: Customer Journey ── */}
-        <CustomerJourney stages={journey} />
-
-        {/* ── Row 3: Revenue + Live feed ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.9fr 1.1fr', gap: 16 }}>
-          <div style={CARD}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Revenue Overview</h3>
-                <p style={{ fontSize: 12.5, color: MUTED, margin: '3px 0 0' }}>Monthly recurring revenue trend</p>
+        {/* ── Journey board ── */}
+        <div style={FROST}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 16px' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>New Deal Management</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <TeamRow />
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[Plus, Share2, CalIcon].map((I, i) => (
+                  <button key={i} style={{ width: 36, height: 36, borderRadius: 999, border: 'none', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: INK, boxShadow: '0 1px 2px rgba(23,25,28,0.06)' }}>
+                    <I size={14} strokeWidth={2.2} />
+                  </button>
+                ))}
               </div>
-              <select style={{ fontSize: 12, border: `1px solid ${LINE}`, borderRadius: 999, padding: '7px 14px', color: MUTED, outline: 'none', backgroundColor: '#fff', fontWeight: 600, cursor: 'pointer' }}>
-                <option>Last 12 months</option>
-                <option>Last 6 months</option>
-              </select>
             </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <AreaChart data={revenueData} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={INK} stopOpacity={0.14} />
-                    <stop offset="95%" stopColor={INK} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 6" stroke="#e8e9ec" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: FAINT }} axisLine={false} tickLine={false} dy={6} />
-                <YAxis tick={{ fontSize: 11, fill: FAINT }} axisLine={false} tickLine={false} tickFormatter={v => `$${v / 1000}k`} />
-                <Tooltip
-                  formatter={v => [`$${Number(v).toLocaleString()}`, 'Revenue']}
-                  contentStyle={{ borderRadius: 14, border: `1px solid ${LINE}`, fontSize: 12, boxShadow: '0 12px 32px -8px rgba(23,25,28,0.12)' }}
-                />
-                <Area type="monotone" dataKey="revenue" stroke={INK} strokeWidth={2.5} fill="url(#colorRev)" dot={false}
-                  activeDot={{ r: 5, fill: '#c7f441', stroke: INK, strokeWidth: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
           </div>
 
-          <LiveFeed names={feedNames} />
-        </div>
-
-        {/* ── Row 4: Module overview ── */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 2px 12px' }}>
-            <Activity size={15} color={INK} />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: INK, margin: 0, letterSpacing: '-0.01em' }}>Modules</h2>
-            <span style={{ fontSize: 11.5, color: FAINT, fontWeight: 500 }}>Click any card to open</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-            <ModuleCard
-              icon={Users} label="Contacts" color="#6366f1" path="/contacts"
-              primary={contacts.length || 248} primaryLabel="total contacts"
-              stats={[{ label: 'New this mo.', value: 34 }, { label: 'Tagged', value: Math.round((contacts.length || 248) * 0.6) }, { label: 'Active', value: Math.round((contacts.length || 248) * 0.8) }]}
-            />
-            <ModuleCard
-              icon={MessageSquare} label="Conversations" color="#0891b2" path="/conversations"
-              primary={conversations.length || 63} primaryLabel="total threads"
-              stats={[{ label: 'Open', value: openConvs || 18 }, { label: 'Resolved', value: (conversations.length || 63) - (openConvs || 18) }, { label: 'Unread', value: 7 }]}
-            />
-            <ModuleCard
-              icon={Mail} label="Marketing" color="#8b5cf6" path="/marketing"
-              primary={activeCampaigns || 4} primaryLabel="active campaigns"
-              stats={[{ label: 'Sent', value: '12.4k' }, { label: 'Open rate', value: `${emailRate || 42}%` }, { label: 'Clicks', value: `${emailRate ? Math.round(emailRate * 0.3) : 14}%` }]}
-            />
-            <ModuleCard
-              icon={TrendingUp} label="Pipelines" color="#f59e0b" path="/pipelines"
-              primary={`$${((totalDeals || 284000) / 1000).toFixed(0)}k`} primaryLabel="pipeline value"
-              stats={[{ label: 'Open', value: openDeals || 18 }, { label: 'Won', value: wonDeals || 6 }, { label: 'Conv. %', value: '33%' }]}
-            />
-            <ModuleCard
-              icon={Funnel} label="Funnels" color="#ec4899" path="/funnels"
-              primary={funnels.length || 5} primaryLabel="active funnels"
-              stats={[{ label: 'Views', value: '8.2k' }, { label: 'Leads', value: 184 }, { label: 'Conv. %', value: '2.2%' }]}
-            />
-            <ModuleCard
-              icon={Zap} label="AI Studio" color="#0d9488" path="/social-creator"
-              primary={socialPosts.length + totalClips || 3} primaryLabel="AI creations"
-              stats={[{ label: 'Designs', value: socialPosts.length }, { label: 'Shorts', value: totalClips }, { label: 'Projects', value: videoProjects.length }]}
-            />
-            <ModuleCard
-              icon={CalendarCheck} label="Scheduling" color="#3b82f6" path="/scheduling"
-              primary={bookings.length || 28} primaryLabel="total bookings"
-              stats={[{ label: 'Today', value: todayBookings || 3 }, { label: 'This week', value: 11 }, { label: 'No-shows', value: 2 }]}
-            />
-            <ModuleCard
-              icon={Star} label="Reputation" color="#f59e0b" path="/reputation"
-              primary={avgRating} primaryLabel="avg. rating"
-              stats={[{ label: 'Reviews', value: reviews.length || 47 }, { label: '5-star', value: fiveStars || 38 }, { label: 'Replied', value: `${reviews.length ? Math.round((reviews.filter(r => r.replied).length / reviews.length) * 100) : 82}%` }]}
-            />
-          </div>
-        </div>
-
-        {/* ── Row 5: Goals + Today's appointments ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div style={CARD}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, margin: '0 0 4px', letterSpacing: '-0.02em' }}>Monthly Goals</h3>
-            <p style={{ fontSize: 12.5, color: MUTED, margin: '0 0 18px' }}>Progress toward this month's targets</p>
-            <GoalBar label="New Contacts" current={contacts.length || 248} target={300} color={INK} />
-            <GoalBar label="Revenue" current={totalDeals ? Math.round(totalDeals * 0.4) : 38400} target={50000} color="#c7f441" />
-            <GoalBar label="Deals Closed" current={wonDeals || 6} target={15} color="#8b5cf6" />
-            <GoalBar label="Campaign Emails" current={12400} target={20000} color="#3b82f6" />
-            <GoalBar label="5-star Reviews" current={fiveStars || 38} target={50} color="#f59e0b" />
-          </div>
-
-          <div style={CARD}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Today's Appointments</h3>
-              <span style={{ fontSize: 12, color: INK, fontWeight: 700, backgroundColor: '#f3f4f6', padding: '5px 13px', borderRadius: 999 }}>
-                {appointments.filter(a => a.status === 'scheduled').length} scheduled
-              </span>
-            </div>
-            {appointments.filter(a => a.date === '2024-05-21').slice(0, 5).map(appt => (
-              <div key={appt.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px', borderRadius: 14, border: `1px solid #f4f5f7`, marginBottom: 8, backgroundColor: '#fafbfc' }}>
-                <div style={{ textAlign: 'center', minWidth: 42 }}>
-                  <p style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>{appt.time.split(':')[0]}</p>
-                  <p style={{ fontSize: 10, color: FAINT, margin: 0, fontWeight: 600 }}>{appt.time.includes('AM') ? 'AM' : 'PM'}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1.15fr 1fr', gap: 14, alignItems: 'start' }}>
+            {journeyCols.map((col, ci) => (
+              <div key={col.name}>
+                <div style={{ ...CARD, padding: '8px 12px' }}>
+                  {col.deals.length === 0 && (
+                    <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', padding: '18px 0', margin: 0 }}>No deals here yet</p>
+                  )}
+                  {col.deals.map((d, di) => (
+                    <div key={di} style={{ borderBottom: di < col.deals.length - 1 ? '1px solid #f2f3f5' : 'none' }}>
+                      <JourneyTask deal={d} avatarSeed={(avatarSeed += 7) % 70} done={ci < 2} />
+                    </div>
+                  ))}
                 </div>
-                <div style={{ width: 1, height: 30, backgroundColor: LINE }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: INK, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appt.title}</p>
-                  <p style={{ fontSize: 11.5, color: MUTED, margin: '2px 0 0' }}>{appt.contactName} · {appt.type}</p>
-                </div>
-                <span style={{
-                  padding: '4px 11px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, flexShrink: 0,
-                  backgroundColor: appt.status === 'completed' ? '#eefbe7' : appt.status === 'cancelled' ? '#fdeeee' : '#eef4fe',
-                  color: appt.status === 'completed' ? '#3f9142' : appt.status === 'cancelled' ? '#c0392b' : '#2563eb',
-                }}>
-                  {appt.status}
-                </span>
+
+                {/* Black accent card in the last column (like "Request Processing") */}
+                {ci === journeyCols.length - 1 && (
+                  <div style={{
+                    marginTop: 12, backgroundColor: INK, borderRadius: 18, padding: '16px 18px',
+                    color: '#fff', boxShadow: '0 12px 28px -8px rgba(23,25,28,0.4)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.35 }}>{accent.title}</span>
+                      <Star size={13} color="#c7f441" fill="#c7f441" style={{ flexShrink: 0, marginTop: 2 }} />
+                    </div>
+                    <p style={{ fontSize: 20, fontWeight: 800, margin: '8px 0 0', letterSpacing: '-0.02em' }}>${accent.value.toLocaleString()}</p>
+                    <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', margin: '2px 0 0', fontWeight: 500 }}>Top opportunity — needs attention</p>
+                  </div>
+                )}
+
+                <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#5c6066', margin: '12px 0 0' }}>{col.name}</p>
               </div>
             ))}
-            {appointments.filter(a => a.date === '2024-05-21').length === 0 && (
-              <div style={{ textAlign: 'center', padding: '36px 16px' }}>
-                <div style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                  <CalendarCheck size={24} color={FAINT} />
-                </div>
-                <p style={{ fontSize: 13, margin: 0, color: MUTED, fontWeight: 500 }}>No appointments today</p>
+          </div>
+        </div>
+
+        {/* ── Bottom row: Live Activity | Knowledge table | Donut journey ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.25fr 0.85fr', gap: 16, alignItems: 'stretch' }}>
+
+          <LiveFeed names={feedNames} />
+
+          {/* Suggested Knowledge–style table */}
+          <div style={FROST}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Suggested Actions</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[Plus, Share2, CalIcon].map((I, i) => (
+                  <button key={i} style={{ width: 34, height: 34, borderRadius: 999, border: 'none', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: INK, boxShadow: '0 1px 2px rgba(23,25,28,0.06)' }}>
+                    <I size={13} strokeWidth={2.2} />
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+            <div style={{ ...CARD, padding: '6px 16px 10px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    {['Subject', 'Status', 'Start Date', 'End Date', 'Assigned User'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '10px 6px 8px', fontSize: 10.5, fontWeight: 600, color: MUTED, borderBottom: '1px solid #f2f3f5', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((r, i) => (
+                    <tr key={i}>
+                      <td style={{ padding: '10px 6px', fontWeight: 700, color: INK, borderBottom: i < tableRows.length - 1 ? '1px solid #f6f7f8' : 'none', display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Star size={11} color="#c9ced6" /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>{r.subject}</span>
+                      </td>
+                      <td style={{ padding: '10px 6px', borderBottom: i < tableRows.length - 1 ? '1px solid #f6f7f8' : 'none' }}><StatusChip status={r.status} /></td>
+                      <td style={{ padding: '10px 6px', color: '#5c6066', borderBottom: i < tableRows.length - 1 ? '1px solid #f6f7f8' : 'none', whiteSpace: 'nowrap' }}>{r.start}</td>
+                      <td style={{ padding: '10px 6px', color: '#5c6066', borderBottom: i < tableRows.length - 1 ? '1px solid #f6f7f8' : 'none', whiteSpace: 'nowrap' }}>{r.end}</td>
+                      <td style={{ padding: '10px 6px', color: INK, fontWeight: 600, borderBottom: i < tableRows.length - 1 ? '1px solid #f6f7f8' : 'none', whiteSpace: 'nowrap' }}>{r.user}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Support/deal journey donuts */}
+          <div style={FROST}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Deal Journey</h3>
+              <button style={{ width: 34, height: 34, borderRadius: 999, border: 'none', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: INK, boxShadow: '0 1px 2px rgba(23,25,28,0.06)' }}>
+                <Share2 size={13} strokeWidth={2.2} />
+              </button>
+            </div>
+            <div style={{ ...CARD, padding: '18px 10px', display: 'flex', gap: 4 }}>
+              <JourneyDonut label="Executed" value={wonCount} total={wonCount + activeCount} color={BLUE} />
+              <JourneyDonut label="Active" value={activeCount} total={wonCount + activeCount} color={RED} />
+            </div>
+            <div style={{ ...CARD, padding: '12px 16px', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: 11, color: MUTED, margin: 0, fontWeight: 600 }}>Win rate</p>
+                <p style={{ fontSize: 20, fontWeight: 800, color: INK, margin: '2px 0 0', letterSpacing: '-0.02em' }}>
+                  {Math.round((wonCount / Math.max(wonCount + activeCount, 1)) * 100)}%
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 999, backgroundColor: '#e2f5dc' }}>
+                <Check size={11} color={GREEN} strokeWidth={3} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: GREEN }}>{wonCount} won</span>
+              </div>
+            </div>
           </div>
         </div>
 

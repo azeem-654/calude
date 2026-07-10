@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { AppProvider, useApp } from './context/AppContext';
-import Sidebar from './components/Layout/Sidebar';
+import { AppProvider } from './context/AppContext';
+import TopNav, { IconRail } from './components/Layout/TopNav';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import Conversations from './components/Conversations/Conversations';
@@ -18,11 +18,8 @@ import VideoShorts from './components/VideoShorts/VideoShorts';
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
 
-const SIDEBAR_WIDTHS = { full: 240, icons: 64, hidden: 0 };
-
 function AppLayout() {
   const location = useLocation();
-  const { sidebarMode } = useApp();
   const isBooking = location.pathname.startsWith('/book');
   const isPreview = location.pathname.startsWith('/preview');
   const isEditor = location.pathname.startsWith('/social-creator/editor');
@@ -53,15 +50,10 @@ function AppLayout() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
-      <Sidebar />
-      <main style={{
-        marginLeft: `${SIDEBAR_WIDTHS[sidebarMode]}px`,
-        flex: 1,
-        minHeight: '100vh',
-        overflow: 'auto',
-        transition: 'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',
-      }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#e9ebee' }}>
+      <TopNav />
+      <IconRail />
+      <main style={{ minHeight: 'calc(100vh - 68px)', paddingLeft: 62 }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />

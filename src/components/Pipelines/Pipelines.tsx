@@ -2147,7 +2147,7 @@ export default function Pipelines() {
   };
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ minHeight: '100vh' }}>
       <Header title="Pipelines" subtitle="Manage your sales opportunities" />
       <div style={{ padding: 28 }}>
 
