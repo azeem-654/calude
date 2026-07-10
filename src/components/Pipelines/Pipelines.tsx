@@ -309,7 +309,7 @@ function FunnelView({ stages, allDeals }: FunnelViewProps) {
   const maxVal = Math.max(...stages.map(s => s.deals.filter(d => (d.status ?? 'active') === 'active').reduce((v, d) => v + d.value, 0)), 1);
   const totalActive = allDeals.filter(d => (d.status ?? 'active') === 'active').length;
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px 28px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px 28px' }}>
       <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Stage Distribution</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {stages.map(stage => {
@@ -409,7 +409,7 @@ function GanttView({ stages, allDeals }: GanttViewProps) {
   const todayPct = pct(today);
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
         <CalendarDays size={14} color="#6366f1" />
         <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Timeline / Gantt</span>
@@ -532,7 +532,7 @@ function CalendarView({ stages, allDeals, onOpen }: CalendarViewProps) {
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -755,7 +755,7 @@ function GroupedListView({ stages, applyFilter, onOpen, onEdit, onDelete, onQuic
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Column headers */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 120px 110px 100px 80px', gap: 0, padding: '8px 16px 8px 44px', borderBottom: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
         {['Task name', 'Assignee', 'Due date', 'Priority', 'Value', ''].map(h => (
@@ -1765,7 +1765,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
       {showLostModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
           onClick={e => { e.stopPropagation(); setShowLostModal(false); }}>
-          <div style={{ backgroundColor: 'white', borderRadius: 14, padding: 24, width: 360, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }} onClick={e => e.stopPropagation()}>
+          <div style={{ backgroundColor: 'white', borderRadius: 18, padding: 24, width: 360, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Mark as Lost</h3>
             <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>Optionally add a reason for losing this deal.</p>
             <input value={lostReason} onChange={e => setLostReason(e.target.value)} placeholder="Lost reason (optional)..."
@@ -2159,7 +2159,7 @@ export default function Pipelines() {
             { label: 'Won Revenue', value: fmt(wonValue), sub: `${wonDeals.length} won · ${lostDeals.length} lost`, color: '#22c55e' },
             { label: 'Win Rate', value: `${winRate}%`, sub: `${closedTotal} closed deals`, color: '#f59e0b' },
           ].map(item => (
-            <div key={item.label} style={{ backgroundColor: 'white', borderRadius: 14, padding: '20px 22px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+            <div key={item.label} style={{ backgroundColor: 'white', borderRadius: 18, padding: '20px 22px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '0 0 8px' }}>
                 <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: item.color, flexShrink: 0 }} />
                 <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, margin: 0, letterSpacing: '0.2px' }}>{item.label}</p>
@@ -2284,7 +2284,7 @@ export default function Pipelines() {
               const isOver = dragOverStage === stage.id;
               return (
                 <div key={stage.id}
-                  style={{ minWidth: 280, maxWidth: 290, flex: '0 0 280px', backgroundColor: '#f4f6fa', borderRadius: 14, padding: '10px 10px 12px' }}
+                  style={{ minWidth: 280, maxWidth: 290, flex: '0 0 280px', backgroundColor: '#f4f6fa', borderRadius: 18, padding: '10px 10px 12px' }}
                   onDragOver={e => handleDragOver(e, stage.id)}
                   onDrop={e => handleDrop(e, stage.id)}
                   onDragLeave={() => setDragOverStage('')}>
@@ -2368,7 +2368,7 @@ export default function Pipelines() {
 
         {/* ── Table View ──────────────────────────────────────────────────────── */}
         {view === 'table' && (
-          <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>

@@ -93,7 +93,7 @@ function FunnelPageWireframe({ type }: { type: FunnelTypeConfig }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           {[0, 1, 2].map(i => (
             <div key={i} style={{ background: `${c}08`, borderRadius: 8, padding: '12px 8px', textAlign: 'center' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 14, background: `${c}22`, margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 28, height: 28, borderRadius: 18, background: `${c}22`, margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ width: 12, height: 12, borderRadius: 6, background: c, opacity: 0.55 }} />
               </div>
               <div style={{ width: '78%', height: 5, borderRadius: 2, background: '#64748b', opacity: 0.5, margin: '0 auto 4px' }} />
@@ -108,7 +108,7 @@ function FunnelPageWireframe({ type }: { type: FunnelTypeConfig }) {
         <div style={{ width: '42%', height: 9, borderRadius: 4, background: '#1e293b', opacity: 0.65, margin: '0 auto 14px' }} />
         {[0, 1, 2].map(i => (
           <div key={i} style={{ background: 'white', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', gap: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ width: 28, height: 28, borderRadius: 14, background: `${c}25`, flexShrink: 0 }} />
+            <div style={{ width: 28, height: 28, borderRadius: 18, background: `${c}25`, flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', gap: 2, marginBottom: 5 }}>
                 {[0, 1, 2, 3, 4].map(s => <div key={s} style={{ width: 8, height: 8, borderRadius: 4, background: '#fbbf24' }} />)}
@@ -139,7 +139,7 @@ function FunnelPageWireframe({ type }: { type: FunnelTypeConfig }) {
       <div style={{ background: `linear-gradient(135deg, ${c}, ${c}cc)`, padding: '26px 20px', textAlign: 'center' }}>
         <div style={{ width: '62%', height: 11, borderRadius: 5, background: 'rgba(255,255,255,0.9)', margin: '0 auto 8px' }} />
         <div style={{ width: '46%', height: 7, borderRadius: 3, background: 'rgba(255,255,255,0.6)', margin: '0 auto 16px' }} />
-        <div style={{ width: 104, height: 28, borderRadius: 14, background: 'white', margin: '0 auto', opacity: 0.95 }} />
+        <div style={{ width: 104, height: 28, borderRadius: 18, background: 'white', margin: '0 auto', opacity: 0.95 }} />
       </div>
       {/* Footer */}
       <div style={{ background: '#0f172a', padding: '18px 16px' }}>
@@ -475,7 +475,7 @@ export default function Funnels() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Header title="Funnels & Sites" subtitle="Build and manage your marketing funnels" />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '28px', backgroundColor: '#f8fafc' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '28px' }}>
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
           {[
@@ -485,7 +485,7 @@ export default function Funnels() {
             { label: 'Avg Conversion Rate', value: `${avgCvr}%`, icon: TrendingUp, color: '#f59e0b' },
           ].map(item => (
             <div key={item.label}
-              style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', gap: '14px', alignItems: 'center', transition: 'box-shadow 0.15s' }}
+              style={{ backgroundColor: 'white', borderRadius: '18px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', gap: '14px', alignItems: 'center', transition: 'box-shadow 0.15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '11px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -520,7 +520,7 @@ export default function Funnels() {
             const ftype = FUNNEL_TYPES.find(t => funnel.goal === t.category);
             return (
               <div key={funnel.id}
-                style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+                style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c7d2fe'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
                 {/* Card header with color accent */}

@@ -11,7 +11,7 @@ const platformColors: Record<string, { color: string; bg: string }> = {
 
 const cardStyle: React.CSSProperties = {
   backgroundColor: 'white',
-  borderRadius: '14px',
+  borderRadius: '18px',
   border: '1px solid #e6e9f0',
   boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
 };
@@ -48,7 +48,7 @@ export default function Reputation() {
   };
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ minHeight: '100vh' }}>
       <Header title="Reputation Management" subtitle="Monitor and respond to customer reviews" />
       <div style={{ padding: '28px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>

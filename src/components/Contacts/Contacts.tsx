@@ -205,7 +205,7 @@ export default function Contacts() {
   return (
     <div>
       <Header title="Contacts" subtitle={`${contacts.length} total contacts · ${filtered.length} showing`} />
-      <div style={{ padding: '28px', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 73px)', boxSizing: 'border-box' }}>
+      <div style={{ padding: '28px', minHeight: 'calc(100vh - 73px)', boxSizing: 'border-box' }}>
 
         {/* Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '10px', flexWrap: 'wrap' }}>
@@ -240,7 +240,7 @@ export default function Contacts() {
 
         {/* Filter builder */}
         {showFilter && (
-          <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '20px', marginBottom: 16 }}>
+          <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '20px', marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginBottom: 12 }}>Advanced Filters</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
               {filterRules.map((rule, i) => (
@@ -285,7 +285,7 @@ export default function Contacts() {
         )}
 
         {/* Table */}
-        <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e6e9f0' }}>

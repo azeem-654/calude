@@ -126,7 +126,7 @@ function EmailProviderCard() {
   };
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
         <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Zap size={20} color="#6366f1" />
@@ -322,7 +322,7 @@ function MailboxWarmupCard() {
   );
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
         <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -481,7 +481,7 @@ function EmailSMSTab() {
   );
 
   const card = (children: ReactElement) => (
-    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       {children}
     </div>
   );
@@ -661,7 +661,7 @@ function IntegrationsTab() {
   };
 
   const card = (children: ReactNode) => (
-    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '16px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '16px' }}>
       {children}
     </div>
   );
@@ -874,12 +874,12 @@ export default function Settings() {
   const handleSave = () => addNotification('Settings saved successfully!');
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ minHeight: '100vh' }}>
       <Header title="Settings" subtitle="Account · Email & SMS · Integrations" />
       <div style={{ padding: '28px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Sidebar */}
         <div style={{ width: '220px', flexShrink: 0, position: 'sticky', top: '24px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
             {tabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', border: 'none', borderRadius: '9px', backgroundColor: activeTab === tab.id ? '#eef2ff' : 'transparent', color: activeTab === tab.id ? '#6366f1' : '#475569', fontSize: '13px', fontWeight: activeTab === tab.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '2px' }}>
@@ -898,7 +898,7 @@ export default function Settings() {
           {activeTab === 'api-validation' && <IntegrationsTab />}
 
           {activeTab === 'profile' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Profile Information</h3>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #f1f5f9' }}>
                 <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>JD</div>
@@ -928,7 +928,7 @@ export default function Settings() {
           )}
 
           {activeTab === 'notifications' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Notification Preferences</h3>
               {[
                 { key: 'emailNew', label: 'New email received', desc: 'Get notified when a new email arrives' },
@@ -953,7 +953,7 @@ export default function Settings() {
           )}
 
           {activeTab === 'integrations' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Third-Party Integrations</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 {integrations.map((intg, idx) => (
@@ -977,7 +977,7 @@ export default function Settings() {
           )}
 
           {activeTab === 'billing' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing & Subscription</h3>
               <div style={{ padding: '22px 24px', borderRadius: '12px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', marginBottom: '20px', boxShadow: '0 8px 20px rgba(99,102,241,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -993,7 +993,7 @@ export default function Settings() {
           )}
 
           {(activeTab === 'security' || activeTab === 'branding') && (
-            <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
                 {activeTab === 'security' ? 'Security Settings' : 'Branding'}
               </h3>

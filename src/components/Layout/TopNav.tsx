@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
+  Scissors, Palette, Settings as SettingsIcon,
 } from 'lucide-react';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
@@ -12,18 +13,18 @@ const PRIMARY_NAV = [
   { path: '/contacts',      label: 'Contacts' },
   { path: '/conversations', label: 'Conversations' },
   { path: '/calendar',      label: 'Calendar' },
+  { path: '/scheduling',    label: 'Scheduling' },
   { path: '/pipelines',     label: 'Pipelines' },
   { path: '/marketing',     label: 'Marketing' },
+  { path: '/funnels',       label: 'Funnels' },
   { path: '/analytics',     label: 'Reports' },
 ];
 
 const MORE_NAV = [
-  { path: '/scheduling',     label: 'Scheduling' },
-  { path: '/funnels',        label: 'Funnels' },
-  { path: '/ai-shorts',      label: 'AI Shorts' },
-  { path: '/social-creator', label: 'Social Creator' },
-  { path: '/reputation',     label: 'Reputation' },
-  { path: '/settings',       label: 'Settings' },
+  { path: '/ai-shorts',      label: 'AI Shorts',      icon: Scissors,     desc: 'Turn videos into viral clips' },
+  { path: '/social-creator', label: 'Social Creator', icon: Palette,      desc: 'AI social post designer' },
+  { path: '/reputation',     label: 'Reputation',     icon: Star,         desc: 'Reviews & ratings' },
+  { path: '/settings',       label: 'Settings',       icon: SettingsIcon, desc: 'Email, SMS & workspace' },
 ];
 
 const circleBtn: React.CSSProperties = {
@@ -63,15 +64,15 @@ export default function TopNav() {
       </NavLink>
 
       {/* Nav pills */}
-      <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
+      <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center', minWidth: 0 }}>
         {PRIMARY_NAV.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
             end={item.path === '/'}
             style={({ isActive }) => ({
-              padding: '9px 16px', borderRadius: 999, textDecoration: 'none',
-              fontSize: 13.5, fontWeight: isActive ? 700 : 500, whiteSpace: 'nowrap',
+              padding: '9px 13px', borderRadius: 999, textDecoration: 'none',
+              fontSize: 13, fontWeight: isActive ? 700 : 500, whiteSpace: 'nowrap',
               color: isActive ? '#fff' : '#17191c',
               backgroundColor: isActive ? '#17191c' : 'transparent',
               transition: 'background-color 0.15s ease, color 0.15s ease',
@@ -99,26 +100,42 @@ export default function TopNav() {
           </button>
           {moreOpen && (
             <div style={{
-              position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
-              backgroundColor: '#fff', borderRadius: 18, padding: 6, minWidth: 180, zIndex: 300,
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+              backgroundColor: '#fff', borderRadius: 20, padding: 8, minWidth: 250, zIndex: 300,
               boxShadow: '0 16px 40px -8px rgba(23,25,28,0.18)',
             }}>
-              {MORE_NAV.map(item => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMoreOpen(false)}
-                  className="more-nav-item"
-                  style={({ isActive }) => ({
-                    display: 'block', padding: '10px 14px', borderRadius: 12, textDecoration: 'none',
-                    fontSize: 13.5, fontWeight: isActive ? 700 : 500,
-                    color: isActive ? '#fff' : '#17191c',
-                    backgroundColor: isActive ? '#17191c' : 'transparent',
-                  })}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
+              {MORE_NAV.map(item => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMoreOpen(false)}
+                    className="more-nav-item"
+                    style={({ isActive }) => ({
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 12px', borderRadius: 14, textDecoration: 'none',
+                      backgroundColor: isActive ? '#17191c' : 'transparent',
+                    })}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span style={{
+                          width: 34, height: 34, borderRadius: 999, flexShrink: 0,
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.14)' : '#f0f1f3',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Icon size={15} color={isActive ? '#fff' : '#17191c'} strokeWidth={2} />
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: isActive ? '#fff' : '#17191c', letterSpacing: '-0.01em' }}>{item.label}</span>
+                          <span style={{ display: 'block', fontSize: 11, color: isActive ? 'rgba(255,255,255,0.6)' : '#8a8f98', marginTop: 1 }}>{item.desc}</span>
+                        </span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
             </div>
           )}
         </div>

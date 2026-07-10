@@ -360,7 +360,7 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
           { label: 'Duplicates', value: summary.duplicates, color: '#f59e0b', bg: '#fffbeb' },
           { label: 'Errors', value: summary.errors, color: '#ef4444', bg: '#fef2f2' },
         ].map(s => (
-          <div key={s.label} style={{ backgroundColor: s.bg, borderRadius: '14px', padding: '20px 12px' }}>
+          <div key={s.label} style={{ backgroundColor: s.bg, borderRadius: '18px', padding: '20px 12px' }}>
             <p style={{ fontSize: '28px', fontWeight: 800, color: s.color, margin: '0 0 6px' }}>{s.value.toLocaleString()}</p>
             <p style={{ fontSize: '12px', color: '#64748b', margin: 0, fontWeight: 500 }}>{s.label}</p>
           </div>

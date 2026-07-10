@@ -108,7 +108,7 @@ export default function CalendarView() {
   };
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ minHeight: '100vh' }}>
       <Header title="Calendar" subtitle="Manage your appointments and schedule" />
       <div style={{ padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -144,7 +144,7 @@ export default function CalendarView() {
         </div>
 
         {view === 'list' ? (
-          <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
             {appointments.length === 0 && (
               <div style={{ padding: '56px 20px', textAlign: 'center' }}>
                 <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
@@ -194,7 +194,7 @@ export default function CalendarView() {
             ))}
           </div>
         ) : (
-          <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e6e9f0', backgroundColor: '#f8fafc' }}>
               {DAYS.map(d => (
                 <div key={d} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{d}</div>

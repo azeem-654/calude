@@ -35,7 +35,7 @@ const statusColors: Record<string, { bg: string; color: string }> = {
 
 const CARD: React.CSSProperties = {
   backgroundColor: 'white',
-  borderRadius: 14,
+  borderRadius: 18,
   border: '1px solid #e6e9f0',
   boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
 };
@@ -74,7 +74,7 @@ export default function Scheduling() {
   const upcomingCount = bookings.filter(b => b.status === 'confirmed' && b.slotDate >= new Date().toISOString().split('T')[0]).length;
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ minHeight: '100vh' }}>
       <Header title="Scheduling" subtitle="Calendly-style booking management" />
       <div style={{ padding: 28 }}>
 

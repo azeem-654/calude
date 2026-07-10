@@ -11,7 +11,7 @@ const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 const cardStyle: React.CSSProperties = {
   backgroundColor: 'white',
-  borderRadius: '14px',
+  borderRadius: '18px',
   border: '1px solid #e6e9f0',
   boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
   padding: '20px 24px',
@@ -42,7 +42,7 @@ export default function Analytics() {
   const [period, setPeriod] = useState('12m');
 
   return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ minHeight: '100vh' }}>
       <Header title="Analytics" subtitle="Insights and performance metrics" />
       <div style={{ padding: '28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>

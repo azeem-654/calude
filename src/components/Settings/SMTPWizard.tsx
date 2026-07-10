@@ -230,7 +230,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
   const stateBg: Record<TestState, string> = { idle: '#f8fafc', running: '#eff6ff', ok: '#f0fdf4', fail: '#fef2f2' };
 
   return (
-    <div style={{ marginTop: '16px', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', backgroundColor: 'white' }}>
+    <div style={{ marginTop: '16px', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', backgroundColor: 'white' }}>
       {/* Header bar — always visible */}
       <button onClick={() => setExpanded(p => !p)} style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px',
@@ -423,7 +423,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
   } as const);
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', background: 'linear-gradient(135deg, #f8faff 0%, #fdf4ff 100%)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>

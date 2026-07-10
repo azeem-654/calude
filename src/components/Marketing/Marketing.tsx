@@ -82,7 +82,7 @@ function CampaignsTab() {
           { label: 'Active', value: campaigns.filter(c => c.status === 'active').length, icon: Play, color: '#f59e0b' },
         ].map(item => (
           <div key={item.label}
-            style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: '14px', transition: 'box-shadow 0.15s' }}
+            style={{ backgroundColor: 'white', borderRadius: '18px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: '14px', transition: 'box-shadow 0.15s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -117,7 +117,7 @@ function CampaignsTab() {
       {/* Campaign list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filtered.length === 0 && (
-          <div style={{ padding: '56px 40px', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', textAlign: 'center' }}>
+          <div style={{ padding: '56px 40px', backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', textAlign: 'center' }}>
             <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <Mail size={28} color="#6366f1" />
             </div>
@@ -134,7 +134,7 @@ function CampaignsTab() {
           const tc = typeColors[campaign.type];
           return (
             <div key={campaign.id} onClick={() => setSelectedCampaign(campaign)}
-              style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+              style={{ backgroundColor: 'white', borderRadius: '18px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c7d2fe'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: campaign.sent > 0 ? '14px' : '0' }}>
@@ -255,7 +255,7 @@ function DeliverabilityTab() {
           { label: 'Emails Today', value: mailboxes.reduce((s, m) => s + m.sent, 0), color: '#3b82f6', icon: <Mail size={18} color="#3b82f6" /> },
         ].map(item => (
           <div key={item.label}
-            style={{ backgroundColor: 'white', borderRadius: 14, padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: 12, transition: 'box-shadow 0.15s' }}
+            style={{ backgroundColor: 'white', borderRadius: 18, padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: 12, transition: 'box-shadow 0.15s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
             <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
@@ -268,7 +268,7 @@ function DeliverabilityTab() {
       </div>
 
       {/* Mailbox list */}
-      <div style={{ backgroundColor: 'white', borderRadius: 14, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', marginBottom: 24 }}>
+      <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #e6e9f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>My mailboxes</span>
           <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
@@ -317,7 +317,7 @@ function DeliverabilityTab() {
       </div>
 
       {/* Tips */}
-      <div style={{ backgroundColor: '#fffbeb', borderRadius: 14, border: '1px solid #fde68a', padding: '18px 22px' }}>
+      <div style={{ backgroundColor: '#fffbeb', borderRadius: 18, border: '1px solid #fde68a', padding: '18px 22px' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 10 }}>💡 Deliverability Tips</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[

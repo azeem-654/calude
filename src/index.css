@@ -176,6 +176,11 @@ button:focus-visible, a:focus-visible {
   color: #fff !important;
 }
 
+/* ── TopNav "More" dropdown hover ── */
+.more-nav-item:hover:not([aria-current]) {
+  background-color: #f0f1f3 !important;
+}
+
 /* ── Card hover helper ── */
 .hover-lift {
   transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
