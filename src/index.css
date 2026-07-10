@@ -154,6 +154,67 @@ button:focus-visible, a:focus-visible {
   50% { opacity: 0.7; box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
 }
 
+/* KPI marquee ticker */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 36s linear infinite;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* Insight carousel slide */
+@keyframes insight-in {
+  0% { opacity: 0; transform: translateX(26px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* Top-nav pill hover (inside white capsule) */
+.pill-link:hover:not(.pill-active) {
+  background-color: #f0f1f3 !important;
+}
+
+/* Icon rail buttons with custom tooltip */
+.rail-btn {
+  position: relative;
+}
+
+.rail-btn:hover {
+  background-color: #17191c !important;
+  color: #fff !important;
+}
+
+.rail-btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  background: #17191c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 500;
+}
+
+.rail-btn:hover::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
 .fade-in { animation: fadeIn 0.25s ease both; }
 .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 

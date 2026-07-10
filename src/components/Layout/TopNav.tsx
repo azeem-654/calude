@@ -63,19 +63,25 @@ export default function TopNav() {
         <span style={{ fontSize: 18, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>crmpro</span>
       </NavLink>
 
-      {/* Nav pills */}
-      <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center', minWidth: 0 }}>
+      {/* Nav pills — white capsule segmented control */}
+      <nav style={{
+        display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
+        margin: '0 auto', padding: 4, borderRadius: 999,
+        backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
+      }}>
         {PRIMARY_NAV.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
             end={item.path === '/'}
+            className={({ isActive }) => `pill-link${isActive ? ' pill-active' : ''}`}
             style={({ isActive }) => ({
-              padding: '9px 13px', borderRadius: 999, textDecoration: 'none',
+              padding: '8px 14px', borderRadius: 999, textDecoration: 'none',
               fontSize: 13, fontWeight: isActive ? 700 : 500, whiteSpace: 'nowrap',
-              color: isActive ? '#fff' : '#17191c',
+              color: isActive ? '#fff' : '#3b3f45',
               backgroundColor: isActive ? '#17191c' : 'transparent',
-              transition: 'background-color 0.15s ease, color 0.15s ease',
+              boxShadow: isActive ? '0 3px 10px rgba(23,25,28,0.28)' : 'none',
+              transition: 'background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
               letterSpacing: '-0.01em',
             })}
           >
@@ -87,12 +93,14 @@ export default function TopNav() {
         <div ref={moreRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setMoreOpen(v => !v)}
+            className={`pill-link${moreActive ? ' pill-active' : ''}`}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              padding: '9px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-              fontSize: 13.5, fontWeight: moreActive ? 700 : 500, fontFamily: 'inherit',
-              color: moreActive ? '#fff' : '#17191c',
+              padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              fontSize: 13, fontWeight: moreActive ? 700 : 500, fontFamily: 'inherit',
+              color: moreActive ? '#fff' : '#3b3f45',
               backgroundColor: moreActive ? '#17191c' : 'transparent',
+              boxShadow: moreActive ? '0 3px 10px rgba(23,25,28,0.28)' : 'none',
               letterSpacing: '-0.01em',
             }}
           >
@@ -166,32 +174,81 @@ export default function TopNav() {
   );
 }
 
-/* ── Floating left icon rail ── */
+/* ── Floating left icon rail — grouped quick actions ── */
 export function IconRail() {
   const navigate = useNavigate();
-  const rail: { icon: typeof Plus; title: string; onClick: () => void }[] = [
-    { icon: ChevronLeft,   title: 'Back',            onClick: () => window.history.back() },
-    { icon: Share2,        title: 'Share this view', onClick: () => { navigator.clipboard?.writeText(window.location.href).catch(() => {}); } },
-    { icon: Star,          title: 'Reputation',      onClick: () => navigate('/reputation') },
-    { icon: Plus,          title: 'New contact',     onClick: () => navigate('/contacts') },
-    { icon: Phone,         title: 'Conversations',   onClick: () => navigate('/conversations') },
-    { icon: CalIcon,       title: 'Calendar',        onClick: () => navigate('/calendar') },
-    { icon: Send,          title: 'Marketing',       onClick: () => navigate('/marketing') },
-    { icon: TriangleAlert, title: 'Analytics',       onClick: () => navigate('/analytics') },
+  const location = useLocation();
+
+  const railBtn = (active: boolean): React.CSSProperties => ({
+    width: 38, height: 38, borderRadius: 999, border: 'none', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: active ? '#17191c' : 'transparent',
+    color: active ? '#fff' : '#3b3f45',
+    transition: 'background-color 0.13s ease, color 0.13s ease',
+    flexShrink: 0,
+  });
+
+  const groups: { icon: typeof Plus; tip: string; path?: string; onClick: () => void }[][] = [
+    /* Navigate & share */
+    [
+      { icon: ChevronLeft, tip: 'Go back', onClick: () => window.history.back() },
+      { icon: Share2, tip: 'Copy link to this view', onClick: () => { navigator.clipboard?.writeText(window.location.href).catch(() => {}); } },
+    ],
+    /* Create */
+    [
+      { icon: Plus, tip: 'New contact', path: '/contacts', onClick: () => navigate('/contacts') },
+      { icon: Send, tip: 'New campaign', path: '/marketing', onClick: () => navigate('/marketing') },
+      { icon: CalIcon, tip: 'New appointment', path: '/calendar', onClick: () => navigate('/calendar') },
+    ],
+    /* Monitor */
+    [
+      { icon: Phone, tip: 'Conversations', path: '/conversations', onClick: () => navigate('/conversations') },
+      { icon: TriangleAlert, tip: 'Analytics & reports', path: '/analytics', onClick: () => navigate('/analytics') },
+      { icon: Star, tip: 'Reputation & reviews', path: '/reputation', onClick: () => navigate('/reputation') },
+    ],
   ];
+
   return (
     <div style={{
-      position: 'fixed', left: 16, top: '50%', transform: 'translateY(-50%)', zIndex: 90,
-      display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
+      position: 'fixed', left: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 90,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
     }}>
-      {rail.map(({ icon: Icon, title, onClick }) => (
-        <button key={title} title={title} onClick={onClick} style={{ ...circleBtn, width: 38, height: 38, color: '#3b3f45' }}>
-          <Icon size={15} strokeWidth={2} />
+      {/* Grouped capsule */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+        padding: 6, borderRadius: 999, backgroundColor: '#fff',
+        boxShadow: '0 4px 16px rgba(23,25,28,0.08)',
+      }}>
+        {groups.map((group, gi) => (
+          <div key={gi} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+            {gi > 0 && <div style={{ width: 22, height: 1, backgroundColor: '#ecedf0', margin: '3px 0' }} />}
+            {group.map(({ icon: Icon, tip, path, onClick }) => {
+              const active = !!path && (path === '/' ? location.pathname === '/' : location.pathname.startsWith(path));
+              return (
+                <button key={tip} className="rail-btn" data-tip={tip} onClick={onClick} style={railBtn(active)}>
+                  <Icon size={15} strokeWidth={2} />
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Settings + theme, separate pod */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+        padding: 6, borderRadius: 999, backgroundColor: '#fff',
+        boxShadow: '0 4px 16px rgba(23,25,28,0.08)',
+      }}>
+        <button className="rail-btn" data-tip="Settings" onClick={() => navigate('/settings')}
+          style={railBtn(location.pathname.startsWith('/settings'))}>
+          <SettingsIcon size={15} strokeWidth={2} />
         </button>
-      ))}
-      <button title="Theme" style={{ ...circleBtn, width: 38, height: 38, backgroundColor: '#17191c', color: '#fff', marginTop: 8 }}>
-        <Moon size={15} strokeWidth={2} />
-      </button>
+        <button className="rail-btn" data-tip="Dark mode — coming soon"
+          style={{ ...railBtn(false), backgroundColor: '#17191c', color: '#fff' }}>
+          <Moon size={15} strokeWidth={2} />
+        </button>
+      </div>
     </div>
   );
 }
