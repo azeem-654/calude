@@ -82,6 +82,146 @@ function fmtRelTime(iso: string) {
 }
 
 // ── Deal Card ─────────────────────────────────────────────────────────────────
+/* ── E-wallet card skins: every deal gets a genuinely different design ──
+   (like a bank-card set: solid+mesh, circles, two-tone band, clean white,
+   gradients with shine, dark with color band). Stable per deal via id hash. */
+interface CardSkin {
+  bg: string;
+  ink: string;          // primary text
+  sub: string;          // secondary text
+  chipBg: string;
+  chipInk: string;
+  trackBg: string;      // checklist track
+  fillBg: string;       // checklist fill
+  divider: string;
+  border?: string;      // light cards need an outline
+  texture: 'mesh' | 'circles' | 'diag' | 'shine' | 'none';
+  band?: string;        // decorative bottom band (color/gradient)
+  footerInk?: string;   // bottom-row text when it sits on the band
+  glow: string;
+  dark: boolean;        // dark background → white-ish overlays
+}
+
+const CARD_SKINS: CardSkin[] = [
+  { // 1 · royal blue + geometric mesh
+    bg: '#2f6bff', ink: '#fff', sub: 'rgba(255,255,255,0.72)',
+    chipBg: 'rgba(255,255,255,0.18)', chipInk: '#fff',
+    trackBg: 'rgba(255,255,255,0.25)', fillBg: '#fff', divider: 'rgba(255,255,255,0.18)',
+    texture: 'mesh', glow: 'rgba(47,107,255,0.4)', dark: true,
+  },
+  { // 2 · teal + big translucent circles (balance-card style)
+    bg: 'linear-gradient(135deg, #2dd4bf 0%, #0f9488 100%)', ink: '#fff', sub: 'rgba(255,255,255,0.75)',
+    chipBg: 'rgba(255,255,255,0.2)', chipInk: '#fff',
+    trackBg: 'rgba(255,255,255,0.25)', fillBg: '#fff', divider: 'rgba(255,255,255,0.18)',
+    texture: 'circles', glow: 'rgba(20,184,166,0.4)', dark: true,
+  },
+  { // 3 · yellow with black band (two-tone)
+    bg: '#fbbf24', ink: '#17191c', sub: 'rgba(0,0,0,0.55)',
+    chipBg: 'rgba(0,0,0,0.12)', chipInk: '#17191c',
+    trackBg: 'rgba(0,0,0,0.15)', fillBg: '#17191c', divider: 'transparent',
+    texture: 'none', band: '#17191c', footerInk: '#fff',
+    glow: 'rgba(251,191,36,0.45)', dark: false,
+  },
+  { // 4 · clean white + fine diagonal lines
+    bg: '#ffffff', ink: '#17191c', sub: '#8a8f98',
+    chipBg: '#f0f1f3', chipInk: '#17191c',
+    trackBg: '#e9ebee', fillBg: '#17191c', divider: '#f0f1f3',
+    border: '1px solid #e6e9f0',
+    texture: 'diag', glow: 'rgba(23,25,28,0.12)', dark: false,
+  },
+  { // 5 · violet gradient + shine
+    bg: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', ink: '#fff', sub: 'rgba(255,255,255,0.72)',
+    chipBg: 'rgba(255,255,255,0.18)', chipInk: '#fff',
+    trackBg: 'rgba(255,255,255,0.25)', fillBg: '#fff', divider: 'rgba(255,255,255,0.18)',
+    texture: 'shine', glow: 'rgba(139,92,246,0.4)', dark: true,
+  },
+  { // 6 · pink→orange gradient + shine
+    bg: 'linear-gradient(135deg, #ec4899 0%, #f97316 100%)', ink: '#fff', sub: 'rgba(255,255,255,0.78)',
+    chipBg: 'rgba(255,255,255,0.2)', chipInk: '#fff',
+    trackBg: 'rgba(255,255,255,0.25)', fillBg: '#fff', divider: 'rgba(255,255,255,0.18)',
+    texture: 'shine', glow: 'rgba(236,72,153,0.4)', dark: true,
+  },
+  { // 7 · dark navy + sunset gradient band
+    bg: '#1b2436', ink: '#fff', sub: 'rgba(255,255,255,0.6)',
+    chipBg: 'rgba(255,255,255,0.12)', chipInk: '#fff',
+    trackBg: 'rgba(255,255,255,0.18)', fillBg: '#c7f441', divider: 'transparent',
+    texture: 'none', band: 'linear-gradient(90deg, #ec4899, #fb923c)', footerInk: '#fff',
+    glow: 'rgba(27,36,54,0.45)', dark: true,
+  },
+  { // 8 · deep green + peach band
+    bg: '#1f3d36', ink: '#fff', sub: 'rgba(255,255,255,0.62)',
+    chipBg: 'rgba(255,255,255,0.14)', chipInk: '#fff',
+    trackBg: 'rgba(255,255,255,0.18)', fillBg: '#f6c6a6', divider: 'transparent',
+    texture: 'none', band: '#f6c6a6', footerInk: '#17191c',
+    glow: 'rgba(31,61,54,0.45)', dark: true,
+  },
+];
+
+const WON_SKIN: CardSkin = {
+  bg: 'linear-gradient(135deg, #34d399 0%, #059669 100%)', ink: '#fff', sub: 'rgba(255,255,255,0.78)',
+  chipBg: 'rgba(255,255,255,0.22)', chipInk: '#fff',
+  trackBg: 'rgba(255,255,255,0.25)', fillBg: '#fff', divider: 'rgba(255,255,255,0.18)',
+  texture: 'circles', glow: 'rgba(16,185,129,0.4)', dark: true,
+};
+const LOST_SKIN: CardSkin = {
+  bg: 'linear-gradient(135deg, #a8adb5 0%, #7c828c 100%)', ink: '#fff', sub: 'rgba(255,255,255,0.7)',
+  chipBg: 'rgba(255,255,255,0.2)', chipInk: '#fff',
+  trackBg: 'rgba(255,255,255,0.22)', fillBg: '#fff', divider: 'rgba(255,255,255,0.16)',
+  texture: 'diag', glow: 'rgba(107,114,128,0.3)', dark: true,
+};
+
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function CardTexture({ skin }: { skin: CardSkin }) {
+  const common: React.CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' };
+  const line = skin.dark ? 'rgba(255,255,255,0.16)' : 'rgba(23,25,28,0.08)';
+  const soft = skin.dark ? 'rgba(255,255,255,0.10)' : 'rgba(23,25,28,0.04)';
+
+  if (skin.texture === 'mesh') {
+    return (
+      <svg style={common} viewBox="0 0 300 190" preserveAspectRatio="none">
+        <g stroke={line} strokeWidth="1" fill="none">
+          <path d="M150,-10 L260,60 L200,190 M260,60 L340,140 M150,-10 L200,190 M200,190 L320,90" />
+          <path d="M180,-20 L260,60 L310,10 M230,20 L200,190" />
+        </g>
+      </svg>
+    );
+  }
+  if (skin.texture === 'circles') {
+    return (
+      <svg style={common} viewBox="0 0 300 190" preserveAspectRatio="none">
+        <circle cx="250" cy="150" r="80" fill={soft} />
+        <circle cx="285" cy="60" r="45" fill={soft} />
+        <circle cx="215" cy="105" r="26" fill={line} opacity="0.5" />
+      </svg>
+    );
+  }
+  if (skin.texture === 'diag') {
+    return (
+      <svg style={common} viewBox="0 0 300 190" preserveAspectRatio="none">
+        <g stroke={line} strokeWidth="1">
+          {Array.from({ length: 9 }, (_, i) => (
+            <line key={i} x1={170 + i * 16} y1="-10" x2={90 + i * 16} y2="200" />
+          ))}
+        </g>
+      </svg>
+    );
+  }
+  if (skin.texture === 'shine') {
+    return (
+      <svg style={common} viewBox="0 0 300 190" preserveAspectRatio="none">
+        <path d="M140,-20 L300,190 L220,190 L60,-20 Z" fill={soft} />
+        <path d="M200,-20 L340,160 L310,190 L160,-20 Z" fill={line} opacity="0.4" />
+      </svg>
+    );
+  }
+  return null;
+}
+
 interface DealCardProps {
   deal: Deal;
   stageId: string;
@@ -108,10 +248,14 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
   const days = daysInStage(deal);
   const isRotting = status === 'active' && days >= rottingDays;
 
-  const cardBg = isWon ? '#f0fdf4' : isLost ? '#fafafa' : 'white';
-  const cardBorder = isRotting ? '#f97316' : isWon ? '#bbf7d0' : isLost ? '#e6e9f0' : '#e6e9f0';
-  const leftBorder = isWon ? '#22c55e' : isLost ? '#94a3b8' : pc.border;
-  const rottingGlow = isRotting ? '0 0 0 2px #fed7aa, 0 1px 2px rgba(16,24,40,0.04)' : '0 1px 2px rgba(16,24,40,0.04)';
+  const skin = isWon ? WON_SKIN : isLost ? LOST_SKIN : CARD_SKINS[hashId(deal.id) % CARD_SKINS.length];
+  const hasBand = !!skin.band;
+  const footerInk = hasBand ? (skin.footerInk ?? skin.sub) : skin.sub;
+  const btnInk = skin.dark ? 'rgba(255,255,255,0.85)' : '#6b7280';
+  const alertInk = skin.dark ? '#ffd7a3' : '#ea580c';
+  const baseShadow = isRotting
+    ? `0 0 0 2.5px #ff9f2e, 0 8px 22px -8px ${skin.glow}`
+    : `0 8px 22px -10px ${skin.glow}`;
 
   return (
     <div
@@ -119,131 +263,147 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
       onDragStart={e => status === 'active' && onDragStart(e, deal, stageId)}
       onClick={() => onOpen(deal)}
       style={{
-        backgroundColor: cardBg,
-        borderRadius: 12,
-        padding: '12px 14px',
-        border: `1px solid ${cardBorder}`,
-        borderLeft: `3px solid ${leftBorder}`,
-        boxShadow: rottingGlow,
+        position: 'relative',
+        overflow: 'hidden',
+        background: skin.bg,
+        borderRadius: 16,
+        border: skin.border ?? 'none',
+        padding: hasBand ? '14px 16px 0' : '14px 16px 12px',
+        boxShadow: baseShadow,
         cursor: 'pointer',
-        transition: 'all 0.15s ease',
-        marginBottom: 10,
+        transition: 'all 0.18s ease',
+        marginBottom: 12,
         userSelect: 'none',
-        opacity: isLost ? 0.7 : 1,
+        opacity: isLost ? 0.82 : 1,
       }}
-      onMouseEnter={e => { if (!isLost) { e.currentTarget.style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = rottingGlow; e.currentTarget.style.transform = 'none'; }}
+      onMouseEnter={e => { if (!isLost) { e.currentTarget.style.boxShadow = isRotting ? `0 0 0 2.5px #ff9f2e, 0 14px 30px -8px ${skin.glow}` : `0 14px 30px -8px ${skin.glow}`; e.currentTarget.style.transform = 'translateY(-3px)'; } }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = baseShadow; e.currentTarget.style.transform = 'none'; }}
     >
-      {/* Top row: status/priority + actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {isWon && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#16a34a' }}>WON</span>}
-          {isLost && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: '#f1f5f9', color: '#94a3b8' }}>LOST</span>}
-          {status === 'active' && vf.has('priority') && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: pc.bg, color: pc.color }}>{pc.label.toUpperCase()}</span>}
-          {isRotting && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: '#fff7ed', color: '#ea580c' }}>ROTTING</span>}
-        </div>
-        <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
-          {status === 'active' && <>
-            <button onClick={() => onMarkWon(deal)} title="Mark Won" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#22c55e', display: 'flex' }}><Trophy size={11} /></button>
-            <button onClick={() => onMarkLost(deal)} title="Mark Lost" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><ThumbsDown size={11} /></button>
-          </>}
-          {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#17191c', fontSize: 10, fontWeight: 600 }}>Reopen</button>}
-          <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><Edit2 size={12} /></button>
-          <button onClick={() => onDelete(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><Trash2 size={12} /></button>
-        </div>
-      </div>
+      <CardTexture skin={skin} />
+      {/* decorative bottom band (two-tone cards) */}
+      {hasBand && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 36, background: skin.band }} />}
 
-      {/* Title */}
-      <p style={{ fontSize: 13, fontWeight: 600, color: isLost ? '#94a3b8' : '#0f172a', margin: '0 0 6px', lineHeight: 1.4, textDecoration: isLost ? 'line-through' : 'none' }}>{deal.title}</p>
-
-      {/* Labels */}
-      {vf.has('labels') && labels.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-          {labels.map((l, i) => (
-            <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 999, backgroundColor: l.color + '22', color: l.color, border: `1px solid ${l.color}44` }}>{l.text}</span>
-          ))}
-        </div>
-      )}
-
-      {/* Contact */}
-      {vf.has('contact') && deal.contactName && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-          <User size={11} color="#94a3b8" />
-          <span style={{ fontSize: 11, color: '#64748b' }}>{deal.contactName}</span>
-        </div>
-      )}
-
-      {/* Source */}
-      {vf.has('source') && deal.source && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-          <TrendingUp size={11} color="#94a3b8" />
-          <span style={{ fontSize: 11, color: '#64748b' }}>{deal.source}</span>
-        </div>
-      )}
-
-      {/* Assigned to */}
-      {vf.has('assignedTo') && deal.assignedTo && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-          <Flag size={11} color="#94a3b8" />
-          <span style={{ fontSize: 11, color: '#64748b' }}>{deal.assignedTo}</span>
-        </div>
-      )}
-
-      {/* Value + Probability */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-        {vf.has('value') && <span style={{ fontSize: 14, fontWeight: 700, color: isWon ? '#16a34a' : '#0f172a' }}>{fmt(deal.value)}</span>}
-        {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, backgroundColor: '#eceef1', color: '#17191c', fontWeight: 600 }}>{deal.probability}%</span>}
-      </div>
-
-      {/* Checklist */}
-      {vf.has('checklist') && checklist.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>Checklist</span>
-            <span style={{ fontSize: 10, color: done === checklist.length ? '#22c55e' : '#94a3b8', fontWeight: 600 }}>{done}/{checklist.length}</span>
+      <div style={{ position: 'relative' }}>
+        {/* Top row: status/priority + actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {isWon && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.92)', color: '#059669' }}>WON</span>}
+            {isLost && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.92)', color: '#6b7280' }}>LOST</span>}
+            {status === 'active' && vf.has('priority') && (
+              <span style={{
+                fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                backgroundColor: p === 'urgent' ? 'rgba(255,255,255,0.94)' : skin.chipBg,
+                color: p === 'urgent' ? '#dc2626' : skin.chipInk,
+              }}>{pc.label.toUpperCase()}</span>
+            )}
+            {isRotting && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', color: '#ea580c' }}>ROTTING</span>}
           </div>
-          <div style={{ height: 3, backgroundColor: '#e2e8f0', borderRadius: 2 }}>
-            <div style={{ height: '100%', width: `${checklist.length > 0 ? (done / checklist.length) * 100 : 0}%`, backgroundColor: done === checklist.length ? '#22c55e' : '#17191c', borderRadius: 2, transition: 'width 0.3s' }} />
+          <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
+            {status === 'active' && <>
+              <button onClick={() => onMarkWon(deal)} title="Mark Won" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: btnInk, display: 'flex' }}><Trophy size={11} /></button>
+              <button onClick={() => onMarkLost(deal)} title="Mark Lost" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: btnInk, display: 'flex' }}><ThumbsDown size={11} /></button>
+            </>}
+            {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: skin.ink, fontSize: 10, fontWeight: 700 }}>Reopen</button>}
+            <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: btnInk, display: 'flex' }}><Edit2 size={12} /></button>
+            <button onClick={() => onDelete(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: btnInk, display: 'flex' }}><Trash2 size={12} /></button>
           </div>
         </div>
-      )}
 
-      {/* Close date */}
-      {vf.has('closeDate') && deal.expectedClose && (
-        <div style={{ marginTop: 6 }}>
-          <span style={{ fontSize: 10, color: overdue && status === 'active' ? '#dc2626' : '#94a3b8', fontWeight: overdue && status === 'active' ? 700 : 400 }}>
-            {overdue && status === 'active' ? '⚠ Overdue: ' : '📅 '}{deal.expectedClose}
-          </span>
-        </div>
-      )}
+        {/* Title */}
+        <p style={{ fontSize: 13.5, fontWeight: 700, color: skin.ink, margin: '0 0 6px', lineHeight: 1.4, letterSpacing: '-0.01em', textDecoration: isLost ? 'line-through' : 'none' }}>{deal.title}</p>
 
-      {/* Bottom row: days in stage + quick actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
-        {vf.has('daysInStage') && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Clock size={10} color={isRotting ? '#ea580c' : '#94a3b8'} />
-            <span style={{ fontSize: 10, color: isRotting ? '#ea580c' : '#94a3b8', fontWeight: isRotting ? 700 : 400 }}>{days}d in stage</span>
+        {/* Labels */}
+        {vf.has('labels') && labels.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+            {labels.map((l, i) => (
+              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, backgroundColor: skin.chipBg, color: skin.chipInk }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: l.color, flexShrink: 0 }} />{l.text}
+              </span>
+            ))}
           </div>
         )}
-        {vf.has('quickActions') && (
-          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }} onClick={e => e.stopPropagation()}>
-            {(deal.activity ?? []).length > 0 && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#94a3b8' }}>
-                <MessageSquare size={10} />{(deal.activity ?? []).length}
-              </span>
-            )}
-            {checklist.length > 0 && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: done === checklist.length ? '#22c55e' : '#94a3b8' }}>
-                <CheckSquare size={10} />{done}/{checklist.length}
-              </span>
-            )}
-            {deal.description && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#94a3b8' }}>
-                <FileText size={10} />
-              </span>
-            )}
+
+        {/* Contact / Source / Assigned */}
+        {vf.has('contact') && deal.contactName && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+            <User size={11} color={skin.sub} />
+            <span style={{ fontSize: 11, color: skin.sub, fontWeight: 500 }}>{deal.contactName}</span>
           </div>
         )}
+        {vf.has('source') && deal.source && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+            <TrendingUp size={11} color={skin.sub} />
+            <span style={{ fontSize: 11, color: skin.sub, fontWeight: 500 }}>{deal.source}</span>
+          </div>
+        )}
+        {vf.has('assignedTo') && deal.assignedTo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+            <Flag size={11} color={skin.sub} />
+            <span style={{ fontSize: 11, color: skin.sub, fontWeight: 500 }}>{deal.assignedTo}</span>
+          </div>
+        )}
+
+        {/* Value (card-number style) + Probability */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+          {vf.has('value') && <span style={{ fontSize: 17, fontWeight: 800, color: skin.ink, letterSpacing: '-0.02em' }}>{fmt(deal.value)}</span>}
+          {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 999, backgroundColor: skin.chipBg, color: skin.chipInk, fontWeight: 700 }}>{deal.probability}%</span>}
+        </div>
+
+        {/* Checklist */}
+        {vf.has('checklist') && checklist.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+              <span style={{ fontSize: 10, color: skin.sub, fontWeight: 600 }}>Checklist</span>
+              <span style={{ fontSize: 10, color: skin.sub, fontWeight: 700 }}>{done}/{checklist.length}</span>
+            </div>
+            <div style={{ height: 4, backgroundColor: skin.trackBg, borderRadius: 999 }}>
+              <div style={{ height: '100%', width: `${checklist.length > 0 ? (done / checklist.length) * 100 : 0}%`, backgroundColor: skin.fillBg, borderRadius: 999, transition: 'width 0.3s' }} />
+            </div>
+          </div>
+        )}
+
+        {/* Close date */}
+        {vf.has('closeDate') && deal.expectedClose && (
+          <div style={{ marginTop: 6 }}>
+            <span style={{ fontSize: 10, color: overdue && status === 'active' ? alertInk : skin.sub, fontWeight: overdue && status === 'active' ? 800 : 500 }}>
+              {overdue && status === 'active' ? '⚠ Overdue: ' : '📅 '}{deal.expectedClose}
+            </span>
+          </div>
+        )}
+
+        {/* Bottom row: days in stage + quick indicators (sits on the band when present) */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          marginTop: 8, paddingTop: 8, paddingBottom: hasBand ? 10 : 0,
+          borderTop: hasBand ? 'none' : `1px solid ${skin.divider}`,
+          minHeight: hasBand ? 20 : undefined,
+        }}>
+          {vf.has('daysInStage') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Clock size={10} color={isRotting ? alertInk : footerInk} />
+              <span style={{ fontSize: 10, color: isRotting ? alertInk : footerInk, fontWeight: isRotting ? 800 : 500 }}>{days}d in stage</span>
+            </div>
+          )}
+          {vf.has('quickActions') && (
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }} onClick={e => e.stopPropagation()}>
+              {(deal.activity ?? []).length > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: footerInk, fontWeight: 600 }}>
+                  <MessageSquare size={10} />{(deal.activity ?? []).length}
+                </span>
+              )}
+              {checklist.length > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: footerInk, fontWeight: 600 }}>
+                  <CheckSquare size={10} />{done}/{checklist.length}
+                </span>
+              )}
+              {deal.description && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: footerInk }}>
+                  <FileText size={10} />
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
