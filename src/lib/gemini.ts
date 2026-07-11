@@ -343,3 +343,75 @@ Rules:
   return result.text ?? currentText;
 }
 
+/* ─── Email reply drafting for the Conversations inbox ─── */
+export interface ReplyContext {
+  companyName: string;
+  industry: string;
+  description: string;
+  products: string;
+  tone: string;
+  signature: string;
+  knowledge: string;
+  businessHours: string;
+  website: string;
+}
+
+export interface DraftedReply {
+  subject: string;
+  body: string;         // plain text with line breaks
+  confidence: number;   // 0-100 — how well the knowledge base covered the question
+  needsHuman: boolean;  // true if the AI is unsure / requires a human
+}
+
+/**
+ * Draft a reply to an incoming customer email, grounded in the mailbox's
+ * company profile + knowledge base. Only claims facts present in the profile;
+ * flags needsHuman when it can't answer confidently.
+ */
+export async function draftEmailReply(
+  ctx: ReplyContext,
+  email: { from: string; fromName: string; subject: string; body: string },
+  extraInstruction = '',
+): Promise<DraftedReply> {
+  const prompt = `You are a customer support agent replying on behalf of a company. Write a reply to the customer's email below.
+
+=== COMPANY PROFILE (the only source of truth about the company) ===
+Company: ${ctx.companyName || '(unspecified)'}
+Industry: ${ctx.industry || '(unspecified)'}
+What we do: ${ctx.description || '(unspecified)'}
+Products / services: ${ctx.products || '(unspecified)'}
+Business hours: ${ctx.businessHours || '(unspecified)'}
+Website: ${ctx.website || '(unspecified)'}
+Knowledge base / FAQ / policies:
+${ctx.knowledge || '(none provided)'}
+
+=== STYLE ===
+Tone: ${ctx.tone}. Keep it concise, warm and helpful. Address the customer by their first name if known. Do NOT invent facts, prices, features, or policies that are not in the company profile above — if the answer isn't covered, acknowledge the request and say a team member will follow up with specifics.
+${extraInstruction ? `Extra instruction for THIS reply: ${extraInstruction}` : ''}
+End the message with this exact signature block:
+${ctx.signature || ctx.companyName || ''}
+
+=== CUSTOMER EMAIL ===
+From: ${email.fromName} <${email.from}>
+Subject: ${email.subject}
+Body:
+${email.body}
+
+Return ONLY valid JSON, no markdown fences:
+{
+  "subject": "Re: <original subject>",
+  "body": "the full reply as plain text with \\n line breaks, including the signature",
+  "confidence": <0-100: how well the company knowledge covered the customer's question>,
+  "needsHuman": <true if you had to defer specifics to a human, else false>
+}`;
+
+  const json = await callGemini(prompt, 0.5);
+  const r = JSON.parse(json) as Partial<DraftedReply>;
+  return {
+    subject: r.subject || `Re: ${email.subject}`,
+    body: r.body || '',
+    confidence: typeof r.confidence === 'number' ? Math.max(0, Math.min(100, r.confidence)) : 60,
+    needsHuman: !!r.needsHuman,
+  };
+}
+
