@@ -11,7 +11,7 @@ const channelIcons: Record<string, React.ReactElement> = {
 };
 
 const channelColors: Record<string, string> = {
-  sms: '#6366f1', email: '#3b82f6', call: '#22c55e', chat: '#f59e0b',
+  sms: '#17191c', email: '#3b82f6', call: '#22c55e', chat: '#f59e0b',
 };
 
 export default function Conversations() {
@@ -53,13 +53,13 @@ export default function Conversations() {
                 style={{
                   padding: '14px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
                   backgroundColor: selected === conv.id ? '#f0f4ff' : 'white',
-                  borderLeft: selected === conv.id ? '3px solid #6366f1' : '3px solid transparent',
+                  borderLeft: selected === conv.id ? '3px solid #17191c' : '3px solid transparent',
                   transition: 'all 0.1s',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 600 }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 600 }}>
                       {conv.contactName.split(' ').map(n => n[0]).join('').slice(0, 2)}
                     </div>
                     <div style={{ position: 'absolute', bottom: 0, right: 0, width: '16px', height: '16px', borderRadius: '50%', backgroundColor: channelColors[conv.channel], display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid white', color: 'white' }}>
@@ -74,7 +74,7 @@ export default function Conversations() {
                     <p style={{ fontSize: '12px', color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.lastMessage}</p>
                   </div>
                   {conv.unread > 0 && (
-                    <span style={{ minWidth: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#6366f1', color: 'white', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ minWidth: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#17191c', color: 'white', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {conv.unread}
                     </span>
                   )}
@@ -89,7 +89,7 @@ export default function Conversations() {
             <>
               <div style={{ padding: '16px 24px', backgroundColor: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '14px', fontWeight: 600 }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '14px', fontWeight: 600 }}>
                     {activeConvo.contactName.split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </div>
                   <div>
@@ -114,7 +114,7 @@ export default function Conversations() {
                   <div key={msg.id} style={{ display: 'flex', justifyContent: msg.sender === 'agent' ? 'flex-end' : 'flex-start' }}>
                     <div style={{
                       maxWidth: '70%', padding: '10px 14px', borderRadius: msg.sender === 'agent' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                      backgroundColor: msg.sender === 'agent' ? '#6366f1' : 'white',
+                      backgroundColor: msg.sender === 'agent' ? '#17191c' : 'white',
                       color: msg.sender === 'agent' ? 'white' : '#374151',
                       fontSize: '14px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                       border: msg.sender === 'contact' ? '1px solid #e2e8f0' : 'none',
@@ -138,7 +138,7 @@ export default function Conversations() {
                   />
                   <button
                     onClick={handleSend}
-                    style={{ padding: '10px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '13px' }}
+                    style={{ padding: '10px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '13px' }}
                   >
                     <Send size={16} /> Send
                   </button>

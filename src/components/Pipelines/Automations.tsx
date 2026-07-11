@@ -137,7 +137,7 @@ function applyActions(stages: Stage[], dealId: string, actions: AutomationAction
         out = mutateDeal(out, dealId, d => {
           const labels = d.labels ?? [];
           if (labels.some(l => l.text === a.labelText)) return d;
-          return { ...d, labels: [...labels, { text: a.labelText ?? 'Auto', color: a.labelColor ?? '#8b5cf6' }] };
+          return { ...d, labels: [...labels, { text: a.labelText ?? 'Auto', color: a.labelColor ?? '#3b3f45' }] };
         });
         break;
       case 'set_probability':
@@ -242,7 +242,7 @@ export function runIdleSweep(
 /* ═══════════════════════════════════════════════════════════════
    Confetti burst — celebration on Won deals (Asana-style delight)
    ═══════════════════════════════════════════════════════════════ */
-const CONFETTI_COLORS = ['#6366f1', '#8b5cf6', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#f97316'];
+const CONFETTI_COLORS = ['#17191c', '#3b3f45', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#f97316'];
 
 export function ConfettiBurst({ onDone }: { onDone: () => void }) {
   useEffect(() => {
@@ -303,7 +303,7 @@ const ACTION_OPTIONS: { value: ActionType; label: string; icon: typeof Flag }[] 
   { value: 'mark_lost', label: 'Mark as Lost', icon: XCircle },
 ];
 
-const LABEL_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
+const LABEL_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#3b3f45', '#ec4899', '#14b8a6'];
 
 const inp: React.CSSProperties = { padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', backgroundColor: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' };
 
@@ -394,9 +394,9 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
           <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid #e9edf3' }}>
             {([['rules', 'Rules', myRules.length], ['log', 'Activity', log.length]] as const).map(([id, label, count]) => (
               <button key={id} onClick={() => setTab(id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 2px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: tab === id ? '#6366f1' : '#64748b', borderBottom: tab === id ? '2px solid #6366f1' : '2px solid transparent', marginBottom: -1 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 2px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: tab === id ? '#17191c' : '#64748b', borderBottom: tab === id ? '2px solid #17191c' : '2px solid transparent', marginBottom: -1 }}>
                 {id === 'rules' ? <Zap size={13} /> : <Activity size={13} />} {label}
-                <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: tab === id ? '#eef2ff' : '#f1f5f9', color: tab === id ? '#4f46e5' : '#94a3b8', fontWeight: 700 }}>{count}</span>
+                <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: tab === id ? '#eceef1' : '#f1f5f9', color: tab === id ? '#17191c' : '#94a3b8', fontWeight: 700 }}>{count}</span>
               </button>
             ))}
           </div>
@@ -422,14 +422,14 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
                 <div key={rule.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', border: '1px solid #e6e9f0', borderRadius: 12, marginBottom: 10, background: rule.enabled ? '#fff' : '#fafbfc', opacity: rule.enabled ? 1 : 0.65 }}>
                   <button onClick={() => toggleRule(rule.id)} title={rule.enabled ? 'Disable' : 'Enable'}
                     style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0, marginTop: 1 }}>
-                    {rule.enabled ? <ToggleRight size={26} color="#6366f1" /> : <ToggleLeft size={26} color="#cbd5e1" />}
+                    {rule.enabled ? <ToggleRight size={26} color="#17191c" /> : <ToggleLeft size={26} color="#cbd5e1" />}
                   </button>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', lineHeight: 1.45 }}>
                       <span style={{ color: '#f59e0b', fontWeight: 700 }}>WHEN</span> {describeTrigger(rule.trigger, stages)}
                     </div>
                     <div style={{ fontSize: 13, color: '#475569', marginTop: 3, lineHeight: 1.45 }}>
-                      <span style={{ color: '#6366f1', fontWeight: 700 }}>THEN</span> {rule.actions.map(a => describeAction(a, stages)).join(' · ')}
+                      <span style={{ color: '#17191c', fontWeight: 700 }}>THEN</span> {rule.actions.map(a => describeAction(a, stages)).join(' · ')}
                     </div>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>
                       Ran {rule.runs} time{rule.runs === 1 ? '' : 's'}
@@ -444,7 +444,7 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
 
               {/* Builder */}
               {building ? (
-                <div style={{ border: '1px solid #c7d2fe', borderRadius: 14, padding: 18, background: '#fafbff', marginTop: 4 }}>
+                <div style={{ border: '1px solid #d5d8dd', borderRadius: 14, padding: 18, background: '#fafbff', marginTop: 4 }}>
                   <input value={ruleName} onChange={e => setRuleName(e.target.value)} placeholder="Rule name (optional — auto-generated)"
                     style={{ ...inp, width: '100%', marginBottom: 14, fontWeight: 600 }} />
 
@@ -485,10 +485,10 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
 
                   {/* THEN */}
                   <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: '#6366f1', letterSpacing: '0.06em', marginBottom: 8 }}>→ THEN</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#17191c', letterSpacing: '0.06em', marginBottom: 8 }}>→ THEN</div>
                     {actions.map((a, i) => (
                       <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-                        <ChevronRight size={13} color="#c7d2fe" style={{ flexShrink: 0 }} />
+                        <ChevronRight size={13} color="#d5d8dd" style={{ flexShrink: 0 }} />
                         <select value={a.type} onChange={e => changeActionType(i, e.target.value as ActionType)}
                           style={{ ...inp, cursor: 'pointer', fontWeight: 600 }}>
                           {ACTION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -531,7 +531,7 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
                       </div>
                     ))}
                     <button onClick={addAction}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', border: '1px dashed #c7d2fe', borderRadius: 8, background: 'none', color: '#6366f1', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginTop: 2 }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', border: '1px dashed #d5d8dd', borderRadius: 8, background: 'none', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginTop: 2 }}>
                       <Plus size={12} /> Add action
                     </button>
                   </div>
@@ -542,14 +542,14 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
                       Cancel
                     </button>
                     <button onClick={saveRule}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', border: 'none', borderRadius: 9, background: '#6366f1', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', border: 'none', borderRadius: 9, background: '#17191c', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                       <Zap size={13} /> Create Rule
                     </button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => setBuilding(true)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '12px', border: '2px dashed #c7d2fe', borderRadius: 12, background: 'none', color: '#6366f1', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '12px', border: '2px dashed #d5d8dd', borderRadius: 12, background: 'none', color: '#17191c', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>
                   <Plus size={15} /> New Automation Rule
                 </button>
               )}
@@ -581,7 +581,7 @@ export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onC
                           When {describeTrigger(tpl.trigger, stages)} → {tpl.actions.map(a => describeAction(a, stages)).join(', ')}
                         </div>
                       </div>
-                      <ArrowRight size={13} color="#c7d2fe" style={{ flexShrink: 0 }} />
+                      <ArrowRight size={13} color="#d5d8dd" style={{ flexShrink: 0 }} />
                     </button>
                   ))}
                 </div>

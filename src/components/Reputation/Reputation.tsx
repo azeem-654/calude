@@ -98,12 +98,12 @@ export default function Reputation() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: '10px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
             {['all', 'google', 'facebook', 'yelp', 'unreplied'].map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', backgroundColor: filter === f ? '#eef2ff' : 'transparent', color: filter === f ? '#6366f1' : '#94a3b8', fontSize: '12px', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.12s' }}>
+              <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', backgroundColor: filter === f ? '#eceef1' : 'transparent', color: filter === f ? '#17191c' : '#94a3b8', fontSize: '12px', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.12s' }}>
                 {f === 'unreplied' ? 'Needs Reply' : f.charAt(0).toUpperCase() + f.slice(1)}
               </button>
             ))}
           </div>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.35)' }}>
+          <button style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.35)' }}>
             <Send size={14} /> Request Reviews
           </button>
         </div>
@@ -115,7 +115,7 @@ export default function Reputation() {
               <div key={review.id} style={{ ...cardStyle, padding: '20px 24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1', fontSize: '14px', fontWeight: 700, flexShrink: 0 }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#17191c', fontSize: '14px', fontWeight: 700, flexShrink: 0 }}>
                       {review.author[0]}
                     </div>
                     <div>
@@ -137,8 +137,8 @@ export default function Reputation() {
                 </div>
                 <p style={{ fontSize: '14px', color: '#475569', lineHeight: '1.65', marginTop: 0, marginBottom: '14px' }}>{review.content}</p>
                 {review.replied ? (
-                  <div style={{ padding: '12px 16px', backgroundColor: '#f6f7ff', borderRadius: '10px', border: '1px solid #e0e7ff' }}>
-                    <p style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600, margin: '0 0 4px' }}>Your Reply</p>
+                  <div style={{ padding: '12px 16px', backgroundColor: '#f6f7ff', borderRadius: '10px', border: '1px solid #e4e6ea' }}>
+                    <p style={{ fontSize: '12px', color: '#17191c', fontWeight: 600, margin: '0 0 4px' }}>Your Reply</p>
                     <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: 0 }}>Thank you for your wonderful review! We're thrilled you had such a great experience with us.</p>
                   </div>
                 ) : (
@@ -149,7 +149,7 @@ export default function Reputation() {
                       onChange={e => setReply(prev => ({ ...prev, [review.id]: e.target.value }))}
                       style={{ flex: 1, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#475569', backgroundColor: '#f8fafc' }}
                     />
-                    <button onClick={() => sendReply(review.id)} style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <button onClick={() => sendReply(review.id)} style={{ padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                       <Send size={14} /> Reply
                     </button>
                   </div>

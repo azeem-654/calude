@@ -15,7 +15,7 @@ const ACTIVITY_ICONS: Record<ContactActivity['type'], string> = {
 };
 
 const ACTIVITY_COLORS: Record<ContactActivity['type'], string> = {
-  email_sent: '#6366f1', email_opened: '#8b5cf6', note: '#f59e0b',
+  email_sent: '#17191c', email_opened: '#3b3f45', note: '#f59e0b',
   task_completed: '#22c55e', meeting: '#3b82f6', tag_added: '#ec4899',
   stage_change: '#64748b', form_submitted: '#14b8a6', link_clicked: '#f97316', call: '#06b6d4',
 };
@@ -142,7 +142,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
         <div style={{ padding: '24px', borderBottom: '1px solid #e6e9f0', backgroundColor: 'white', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 700, flexShrink: 0, boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 700, flexShrink: 0, boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                 {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
               </div>
               <div>
@@ -161,7 +161,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <button onClick={() => { setEditing(e => !e); setTab('overview'); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', border: editing ? 'none' : '1px solid #e2e8f0', borderRadius: 9, backgroundColor: editing ? '#6366f1' : 'white', color: editing ? 'white' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: editing ? '0 1px 2px rgba(99,102,241,0.3)' : '0 1px 2px rgba(16,24,40,0.04)' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', border: editing ? 'none' : '1px solid #e2e8f0', borderRadius: 9, backgroundColor: editing ? '#17191c' : 'white', color: editing ? 'white' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: editing ? '0 1px 2px rgba(23,25,28,0.3)' : '0 1px 2px rgba(16,24,40,0.04)' }}>
                 <Edit2 size={13} /> {editing ? 'Editing' : 'Edit'}
               </button>
               <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 8, cursor: 'pointer', color: '#64748b', padding: 7, display: 'flex' }}>
@@ -198,7 +198,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 16px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#4f46e5' : '#64748b', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, letterSpacing: '-0.01em', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 16px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#17191c' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#17191c' : '#64748b', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, letterSpacing: '-0.01em', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {t.icon} {t.label}
             </button>
           ))}
@@ -234,7 +234,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
                     {editing
                       ? <input value={editForm.linkedin || ''} onChange={e => setEditForm(p => ({ ...p, linkedin: e.target.value }))} placeholder="https://linkedin.com/in/..." style={inp} />
                       : contact.linkedin
-                        ? <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: '#6366f1', display: 'flex', alignItems: 'center', gap: 4 }}><Link2 size={13} /> {contact.linkedin} <ExternalLink size={11} /></a>
+                        ? <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: '#17191c', display: 'flex', alignItems: 'center', gap: 4 }}><Link2 size={13} /> {contact.linkedin} <ExternalLink size={11} /></a>
                         : <span style={{ fontSize: 14, color: '#d1d5db', fontStyle: 'italic' }}>Not set</span>}
                   </div>
                   <div>
@@ -248,7 +248,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
                     {editing
                       ? <input value={editForm.website || ''} onChange={e => setEditForm(p => ({ ...p, website: e.target.value }))} placeholder="https://..." style={inp} />
                       : contact.website
-                        ? <a href={contact.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: '#6366f1', display: 'flex', alignItems: 'center', gap: 4 }}><Globe size={13} /> {contact.website} <ExternalLink size={11} /></a>
+                        ? <a href={contact.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: '#17191c', display: 'flex', alignItems: 'center', gap: 4 }}><Globe size={13} /> {contact.website} <ExternalLink size={11} /></a>
                         : <span style={{ fontSize: 14, color: '#d1d5db', fontStyle: 'italic' }}>Not set</span>}
                   </div>
                   {editing && <div><div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Assigned To</div><input value={editForm.assignedTo || ''} onChange={e => setEditForm(p => ({ ...p, assignedTo: e.target.value }))} style={inp} /></div>}
@@ -266,22 +266,22 @@ export default function ContactProfile({ contact, onClose }: Props) {
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>Tags</h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                   {contact.tags.map(tag => (
-                    <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: 11, backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 600 }}>
+                    <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, fontSize: 11, backgroundColor: '#eceef1', color: '#17191c', fontWeight: 600 }}>
                       {tag}
-                      {editing && <button onClick={() => removeTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#818cf8', padding: 0, display: 'flex', marginLeft: 2 }}><X size={10} /></button>}
+                      {editing && <button onClick={() => removeTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#5c6066', padding: 0, display: 'flex', marginLeft: 2 }}><X size={10} /></button>}
                     </span>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="Add tag..." style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addTag()} />
-                  <button onClick={addTag} style={{ padding: '8px 12px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center' }}><Tag size={13} /></button>
+                  <button onClick={addTag} style={{ padding: '8px 12px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)', display: 'flex', alignItems: 'center' }}><Tag size={13} /></button>
                 </div>
               </div>
 
               {editing && (
                 <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
                   <button onClick={() => setEditing(false)} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
-                  <button onClick={saveEdit} style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>Save Changes</button>
+                  <button onClick={saveEdit} style={{ padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>Save Changes</button>
                 </div>
               )}
             </div>
@@ -294,7 +294,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
               <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                 {(['all', 'email_sent', 'note', 'task_completed', 'meeting', 'call'] as const).map(f => (
                   <button key={f} onClick={() => setActivityFilter(f === 'all' ? 'all' : f as ContactActivity['type'])}
-                    style={{ padding: '5px 12px', borderRadius: 999, border: `1px solid ${activityFilter === f ? '#c7d2fe' : '#e2e8f0'}`, backgroundColor: activityFilter === f ? '#eef2ff' : 'white', color: activityFilter === f ? '#4f46e5' : '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
+                    style={{ padding: '5px 12px', borderRadius: 999, border: `1px solid ${activityFilter === f ? '#d5d8dd' : '#e2e8f0'}`, backgroundColor: activityFilter === f ? '#eceef1' : 'white', color: activityFilter === f ? '#17191c' : '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
                     {f === 'all' ? 'All' : f.replace('_', ' ')}
                   </button>
                 ))}
@@ -302,8 +302,8 @@ export default function ContactProfile({ contact, onClose }: Props) {
 
               {filteredActivities.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '48px 0' }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                    <Activity size={28} color="#6366f1" />
+                  <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                    <Activity size={28} color="#17191c" />
                   </div>
                   <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>No activity yet</p>
                   <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>Interactions with this contact will appear here.</p>
@@ -334,7 +334,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
                 <input value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="Task title..."
                   style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addTask()} />
                 <input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} style={{ ...inp, width: 140 }} />
-                <button onClick={addTask} style={{ padding: '8px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Task</button>
+                <button onClick={addTask} style={{ padding: '8px 14px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Task</button>
               </div>
 
               {/* Open tasks */}
@@ -385,7 +385,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
               <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
                 <textarea value={noteInput} onChange={e => setNoteInput(e.target.value)} placeholder="Add a note about this contact..."
                   rows={3} style={{ ...inp, flex: 1, resize: 'vertical' }} />
-                <button onClick={addNote} style={{ padding: '8px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start' }}>+ Note</button>
+                <button onClick={addNote} style={{ padding: '8px 14px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start' }}>+ Note</button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -431,7 +431,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button onClick={sendContactEmail} disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', backgroundColor: (sendingEmail || !emailSubject.trim() || !emailBody.trim()) ? '#c7d2fe' : '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: (sendingEmail || !emailSubject.trim() || !emailBody.trim()) ? 'default' : 'pointer' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', backgroundColor: (sendingEmail || !emailSubject.trim() || !emailBody.trim()) ? '#d5d8dd' : '#17191c', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: (sendingEmail || !emailSubject.trim() || !emailBody.trim()) ? 'default' : 'pointer' }}>
                     <Send size={14} /> {sendingEmail ? 'Sending...' : 'Send Email'}
                   </button>
                 </div>
@@ -444,7 +444,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>AI Shorts for {contact.name}</h3>
-                <a href="/ai-shorts" style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <a href="/ai-shorts" style={{ fontSize: '12px', color: '#17191c', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <ExternalLink size={12} /> Open AI Shorts
                 </a>
               </div>

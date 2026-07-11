@@ -81,7 +81,7 @@ export default function Scheduling() {
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
           {[
-            { label: 'Upcoming Meetings', value: upcomingCount, color: '#6366f1' },
+            { label: 'Upcoming Meetings', value: upcomingCount, color: '#17191c' },
             { label: 'Total Bookings', value: bookings.length, color: '#3b82f6' },
             { label: 'Completed', value: bookings.filter(b => b.status === 'completed').length, color: '#22c55e' },
             { label: 'Cancelled', value: bookings.filter(b => b.status === 'cancelled').length, color: '#f59e0b' },
@@ -99,12 +99,12 @@ export default function Scheduling() {
         {/* Booking link card */}
         <div style={{ ...CARD, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(23,25,28,0.25)' }}>
               <Link size={19} color="white" />
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 3 }}>Your Booking Page</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6366f1', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', backgroundColor: '#eef2ff', padding: '3px 10px', borderRadius: 999, display: 'inline-block' }}>{publicUrl}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#17191c', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', backgroundColor: '#eceef1', padding: '3px 10px', borderRadius: 999, display: 'inline-block' }}>{publicUrl}</div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -113,7 +113,7 @@ export default function Scheduling() {
               {copiedLink ? <Check size={14} /> : <Copy size={14} />} {copiedLink ? 'Copied!' : 'Copy Link'}
             </button>
             <a href={publicUrl} target="_blank" rel="noopener noreferrer"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', border: 'none', borderRadius: 9, backgroundColor: '#6366f1', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', border: 'none', borderRadius: 9, backgroundColor: '#17191c', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
               Open Page
             </a>
           </div>
@@ -123,7 +123,7 @@ export default function Scheduling() {
         <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, gap: 2, marginBottom: 20 }}>
           {([['bookings', 'Bookings', <Calendar size={14} />], ['availability', 'Availability', <Clock size={14} />], ['settings', 'Settings', <Settings size={14} />]] as const).map(([id, label, icon]) => (
             <button key={id} onClick={() => setTab(id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderRadius: 8, backgroundColor: tab === id ? 'white' : 'transparent', color: tab === id ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: tab === id ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderRadius: 8, backgroundColor: tab === id ? 'white' : 'transparent', color: tab === id ? '#17191c' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: tab === id ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
               {icon} {label}
             </button>
           ))}
@@ -136,7 +136,7 @@ export default function Scheduling() {
               <div style={{ display: 'flex', gap: 6 }}>
                 {(['all', 'confirmed', 'completed', 'cancelled'] as const).map(f => (
                   <button key={f} onClick={() => setBookingFilter(f)}
-                    style={{ padding: '5px 14px', borderRadius: 999, border: `1px solid ${bookingFilter === f ? '#6366f1' : '#e2e8f0'}`, backgroundColor: bookingFilter === f ? '#6366f1' : 'white', color: bookingFilter === f ? 'white' : '#64748b', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize', fontWeight: 600, transition: 'all 0.12s' }}>
+                    style={{ padding: '5px 14px', borderRadius: 999, border: `1px solid ${bookingFilter === f ? '#17191c' : '#e2e8f0'}`, backgroundColor: bookingFilter === f ? '#17191c' : 'white', color: bookingFilter === f ? 'white' : '#64748b', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize', fontWeight: 600, transition: 'all 0.12s' }}>
                     {f}
                   </button>
                 ))}
@@ -146,13 +146,13 @@ export default function Scheduling() {
 
             {filteredBookings.length === 0 ? (
               <div style={{ padding: '56px 20px', textAlign: 'center' }}>
-                <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <Calendar size={28} color="#6366f1" />
+                <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <Calendar size={28} color="#17191c" />
                 </div>
                 <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>No bookings yet</p>
                 <p style={{ margin: '0 0 18px', fontSize: 13, color: '#94a3b8' }}>Share your booking page to start receiving meetings.</p>
                 <button onClick={copyLink}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                   <Copy size={14} /> Copy Booking Link
                 </button>
               </div>
@@ -166,7 +166,7 @@ export default function Scheduling() {
                       style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 22px', borderBottom: i < filteredBookings.length - 1 ? '1px solid #f1f5f9' : 'none', opacity: isPast && booking.status === 'confirmed' ? 0.6 : 1, transition: 'background 0.12s' }}
                       onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
                       onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 15, fontWeight: 700, flexShrink: 0, boxShadow: '0 2px 6px rgba(99,102,241,0.25)' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 15, fontWeight: 700, flexShrink: 0, boxShadow: '0 2px 6px rgba(23,25,28,0.25)' }}>
                         {booking.guestName.charAt(0).toUpperCase()}
                       </div>
                       <div style={{ flex: 1 }}>
@@ -212,10 +212,10 @@ export default function Scheduling() {
               {DAYS.map(day => {
                 const avail = schedule.weekly[day];
                 return (
-                  <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', backgroundColor: 'white', borderRadius: 12, border: `1px solid ${avail.enabled ? '#c7d2fe' : '#e6e9f0'}`, boxShadow: avail.enabled ? '0 1px 2px rgba(99,102,241,0.06)' : '0 1px 2px rgba(16,24,40,0.03)', transition: 'all 0.15s' }}>
+                  <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', backgroundColor: 'white', borderRadius: 12, border: `1px solid ${avail.enabled ? '#d5d8dd' : '#e6e9f0'}`, boxShadow: avail.enabled ? '0 1px 2px rgba(23,25,28,0.06)' : '0 1px 2px rgba(16,24,40,0.03)', transition: 'all 0.15s' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: 140 }}>
                       <button onClick={() => updateDay(day, { enabled: !avail.enabled })}
-                        style={{ width: 36, height: 20, borderRadius: 999, backgroundColor: avail.enabled ? '#6366f1' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, padding: 0 }}>
+                        style={{ width: 36, height: 20, borderRadius: 999, backgroundColor: avail.enabled ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, padding: 0 }}>
                         <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: 2, left: avail.enabled ? 18 : 2, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(16,24,40,0.25)' }} />
                       </button>
                       <span style={{ fontSize: 13, fontWeight: 600, color: avail.enabled ? '#0f172a' : '#94a3b8' }}>{DAY_LABELS[day]}</span>
@@ -240,8 +240,8 @@ export default function Scheduling() {
               })}
             </div>
 
-            <div style={{ marginTop: 24, padding: '16px 20px', backgroundColor: '#eef2ff', borderRadius: 12, border: '1px solid #c7d2fe', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <Globe size={16} color="#6366f1" style={{ flexShrink: 0, marginTop: 1 }} />
+            <div style={{ marginTop: 24, padding: '16px 20px', backgroundColor: '#eceef1', borderRadius: 12, border: '1px solid #d5d8dd', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <Globe size={16} color="#17191c" style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
                 <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, marginBottom: 3 }}>Timezone</div>
                 <div style={{ fontSize: 13, color: '#475569' }}>{schedule.timezone} — visitors see times in their local timezone automatically.</div>

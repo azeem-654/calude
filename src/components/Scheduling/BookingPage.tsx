@@ -149,7 +149,7 @@ export default function BookingPage() {
     if (cfg.provider !== 'none') {
       const confirmHtml = `
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
-          <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:12px;padding:24px;color:white;text-align:center;margin-bottom:24px">
+          <div style="background:#17191c;border-radius:12px;padding:24px;color:white;text-align:center;margin-bottom:24px">
             <div style="font-size:32px;margin-bottom:8px">✅</div>
             <h1 style="margin:0;font-size:22px">Meeting Confirmed!</h1>
           </div>
@@ -206,7 +206,7 @@ export default function BookingPage() {
             )}
           </div>
           <button onClick={() => { setStep('calendar'); setSelectedDate(null); setSelectedTime(null); setGuestForm({ name: '', email: '', phone: '', notes: '' }); }}
-            style={{ padding: '12px 28px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ padding: '12px 28px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             Book Another Meeting
           </button>
         </div>
@@ -220,18 +220,18 @@ export default function BookingPage() {
 
         {/* Left panel */}
         <div style={{ padding: '36px 28px', width: step === 'form' ? '100%' : 260, borderRight: step === 'form' ? 'none' : '1px solid #e2e8f0', borderBottom: step === 'form' ? '1px solid #e2e8f0' : 'none', backgroundColor: '#fafafa', flexShrink: 0 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
             <Calendar size={22} color="white" />
           </div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>{schedule.title}</h1>
           <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 20px', lineHeight: 1.5 }}>{schedule.description}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
-              <Clock size={14} color="#6366f1" /> {schedule.duration} minutes
+              <Clock size={14} color="#17191c" /> {schedule.duration} minutes
             </div>
             {schedule.location && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
-                <MapPin size={14} color="#6366f1" /> {schedule.location}
+                <MapPin size={14} color="#17191c" /> {schedule.location}
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8' }}>
@@ -239,8 +239,8 @@ export default function BookingPage() {
             </div>
           </div>
           {selectedDate && selectedTime && step === 'form' && (
-            <div style={{ marginTop: 20, padding: '12px 14px', backgroundColor: '#eef2ff', borderRadius: 10, border: '1px solid #c7d2fe' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', marginBottom: 4 }}>Selected Time</div>
+            <div style={{ marginTop: 20, padding: '12px 14px', backgroundColor: '#eceef1', borderRadius: 10, border: '1px solid #d5d8dd' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#17191c', textTransform: 'uppercase', marginBottom: 4 }}>Selected Time</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#4338ca' }}>
                 {new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
               </div>
@@ -287,16 +287,16 @@ export default function BookingPage() {
                   return (
                     <button key={i} onClick={() => handleDateClick(date)} disabled={!available}
                       style={{
-                        padding: '8px 4px', borderRadius: 8, border: isSelected ? '2px solid #6366f1' : '1px solid transparent',
-                        backgroundColor: isSelected ? '#6366f1' : (available ? '#f8faff' : 'transparent'),
+                        padding: '8px 4px', borderRadius: 8, border: isSelected ? '2px solid #17191c' : '1px solid transparent',
+                        backgroundColor: isSelected ? '#17191c' : (available ? '#f8faff' : 'transparent'),
                         color: isSelected ? 'white' : (available ? '#0f172a' : '#d1d5db'),
                         fontSize: 13, fontWeight: isToday ? 700 : 400, cursor: available ? 'pointer' : 'default',
                         transition: 'all 0.1s',
                       }}
-                      onMouseEnter={e => { if (available && !isSelected) e.currentTarget.style.backgroundColor = '#eef2ff'; }}
+                      onMouseEnter={e => { if (available && !isSelected) e.currentTarget.style.backgroundColor = '#eceef1'; }}
                       onMouseLeave={e => { if (available && !isSelected) e.currentTarget.style.backgroundColor = '#f8faff'; }}>
                       {date.getDate()}
-                      {isToday && !isSelected && <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#6366f1', margin: '2px auto 0' }} />}
+                      {isToday && !isSelected && <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#17191c', margin: '2px auto 0' }} />}
                     </button>
                   );
                 })}
@@ -315,7 +315,7 @@ export default function BookingPage() {
                   ) : (
                     slots.map(slot => (
                       <button key={slot} onClick={() => { setSelectedTime(slot); setStep('form'); }}
-                        style={{ padding: '10px 8px', border: `1.5px solid ${selectedTime === slot ? '#6366f1' : '#e2e8f0'}`, borderRadius: 8, backgroundColor: selectedTime === slot ? '#6366f1' : 'white', color: selectedTime === slot ? 'white' : '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.1s', textAlign: 'center' }}>
+                        style={{ padding: '10px 8px', border: `1.5px solid ${selectedTime === slot ? '#17191c' : '#e2e8f0'}`, borderRadius: 8, backgroundColor: selectedTime === slot ? '#17191c' : 'white', color: selectedTime === slot ? 'white' : '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.1s', textAlign: 'center' }}>
                         {fmt12(slot)}
                       </button>
                     ))
@@ -330,7 +330,7 @@ export default function BookingPage() {
         {step === 'form' && (
           <div style={{ flex: 1, padding: '32px 28px', display: 'flex', flexDirection: 'column' }}>
             <button onClick={() => setStep('calendar')}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'none', cursor: 'pointer', color: '#6366f1', fontSize: 13, fontWeight: 600, padding: '0 0 16px', width: 'fit-content' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'none', cursor: 'pointer', color: '#17191c', fontSize: 13, fontWeight: 600, padding: '0 0 16px', width: 'fit-content' }}>
               <ChevronLeft size={15} /> Back to calendar
             </button>
 
@@ -358,7 +358,7 @@ export default function BookingPage() {
                   rows={3} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
               </div>
               <button onClick={handleBook} disabled={submitting || !guestForm.name.trim() || !guestForm.email.trim()}
-                style={{ padding: '13px 24px', backgroundColor: (submitting || !guestForm.name.trim() || !guestForm.email.trim()) ? '#c7d2fe' : '#6366f1', color: 'white', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: (submitting || !guestForm.name.trim() || !guestForm.email.trim()) ? 'default' : 'pointer', marginTop: 4 }}>
+                style={{ padding: '13px 24px', backgroundColor: (submitting || !guestForm.name.trim() || !guestForm.email.trim()) ? '#d5d8dd' : '#17191c', color: 'white', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: (submitting || !guestForm.name.trim() || !guestForm.email.trim()) ? 'default' : 'pointer', marginTop: 4 }}>
                 {submitting ? 'Booking...' : 'Confirm Booking'}
               </button>
               <p style={{ margin: 0, fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>

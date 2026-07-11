@@ -7,7 +7,7 @@ import {
 import Header from '../Layout/Header';
 import { revenueData, channelData } from '../../data/mockData';
 
-const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
+const COLORS = ['#17191c', '#22c55e', '#f59e0b', '#ef4444', '#3b3f45'];
 
 const cardStyle: React.CSSProperties = {
   backgroundColor: 'white',
@@ -49,7 +49,7 @@ export default function Analytics() {
           <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>Overview</h2>
           <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: '10px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
             {['7d', '30d', '90d', '12m'].map(p => (
-              <button key={p} onClick={() => setPeriod(p)} style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', backgroundColor: period === p ? '#eef2ff' : 'transparent', color: period === p ? '#6366f1' : '#94a3b8', fontSize: '13px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.12s' }}>
+              <button key={p} onClick={() => setPeriod(p)} style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', backgroundColor: period === p ? '#eceef1' : 'transparent', color: period === p ? '#17191c' : '#94a3b8', fontSize: '13px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.12s' }}>
                 {p}
               </button>
             ))}
@@ -59,7 +59,7 @@ export default function Analytics() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
           {[
             { label: 'Total Revenue', value: '$895K', change: '+23%', icon: DollarSign, color: '#16a34a' },
-            { label: 'New Contacts', value: '2,847', change: '+18%', icon: Users, color: '#6366f1' },
+            { label: 'New Contacts', value: '2,847', change: '+18%', icon: Users, color: '#17191c' },
             { label: 'Conversion Rate', value: '4.2%', change: '+0.8%', icon: Target, color: '#3b82f6' },
             { label: 'Avg Deal Size', value: '$7,300', change: '+12%', icon: TrendingUp, color: '#f59e0b' },
           ].map(item => (
@@ -91,7 +91,7 @@ export default function Analytics() {
                 <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v / 1000}k`} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: '#e6e9f0', strokeWidth: 1 }} />
-                <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }} name="Revenue" />
+                <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#17191c" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#17191c', stroke: '#fff', strokeWidth: 2 }} name="Revenue" />
                 <Line yAxisId="right" type="monotone" dataKey="leads" stroke="#22c55e" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#22c55e', stroke: '#fff', strokeWidth: 2 }} name="Leads" />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', color: '#475569' }} />
               </LineChart>

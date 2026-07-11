@@ -8,7 +8,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const statusColors: Record<string, string> = {
-  scheduled: '#6366f1', completed: '#22c55e', cancelled: '#ef4444', 'no-show': '#f59e0b',
+  scheduled: '#17191c', completed: '#22c55e', cancelled: '#ef4444', 'no-show': '#f59e0b',
 };
 
 const INPUT: React.CSSProperties = {
@@ -78,7 +78,7 @@ function BookModal({ onClose, onBook }: { onClose: () => void; onBook: (a: Omit<
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
-            <button type="submit" style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>Book Appointment</button>
+            <button type="submit" style={{ padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>Book Appointment</button>
           </div>
         </form>
       </div>
@@ -131,13 +131,13 @@ export default function CalendarView() {
             <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, gap: 2 }}>
               {(['month', 'week', 'list'] as const).map(v => (
                 <button key={v} onClick={() => setView(v)}
-                  style={{ padding: '7px 14px', borderRadius: 8, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#6366f1' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', boxShadow: view === v ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
+                  style={{ padding: '7px 14px', borderRadius: 8, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#17191c' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', boxShadow: view === v ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
                   {v}
                 </button>
               ))}
             </div>
             <button onClick={() => setShowModal(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
               <Plus size={15} /> Book
             </button>
           </div>
@@ -147,13 +147,13 @@ export default function CalendarView() {
           <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
             {appointments.length === 0 && (
               <div style={{ padding: '56px 20px', textAlign: 'center' }}>
-                <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <CalendarDays size={28} color="#6366f1" />
+                <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <CalendarDays size={28} color="#17191c" />
                 </div>
                 <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>No appointments yet</p>
                 <p style={{ margin: '0 0 18px', fontSize: 13, color: '#94a3b8' }}>Book your first appointment to see it here.</p>
                 <button onClick={() => setShowModal(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                   <Plus size={14} /> Book Appointment
                 </button>
               </div>
@@ -163,9 +163,9 @@ export default function CalendarView() {
                 style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 22px', borderBottom: i < appointments.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.12s' }}
                 onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                <div style={{ textAlign: 'center', minWidth: 60, padding: '10px 8px', borderRadius: 12, backgroundColor: '#eef2ff', border: '1px solid #e0e7ff' }}>
-                  <p style={{ fontSize: 20, fontWeight: 700, color: '#6366f1', margin: 0, lineHeight: 1.1 }}>{appt.date.split('-')[2]}</p>
-                  <p style={{ fontSize: 10, fontWeight: 600, color: '#818cf8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{MONTHS[parseInt(appt.date.split('-')[1]) - 1].slice(0, 3)}</p>
+                <div style={{ textAlign: 'center', minWidth: 60, padding: '10px 8px', borderRadius: 12, backgroundColor: '#eceef1', border: '1px solid #e4e6ea' }}>
+                  <p style={{ fontSize: 20, fontWeight: 700, color: '#17191c', margin: 0, lineHeight: 1.1 }}>{appt.date.split('-')[2]}</p>
+                  <p style={{ fontSize: 10, fontWeight: 600, color: '#5c6066', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{MONTHS[parseInt(appt.date.split('-')[1]) - 1].slice(0, 3)}</p>
                 </div>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: 0 }}>{appt.title}</p>
@@ -206,12 +206,12 @@ export default function CalendarView() {
                 const isToday = day === 21 && month === 4;
                 return (
                   <div key={i}
-                    style={{ minHeight: 104, padding: 8, borderRight: i % 7 !== 6 ? '1px solid #f1f5f9' : 'none', borderBottom: i < 35 ? '1px solid #f1f5f9' : 'none', backgroundColor: day ? (isToday ? '#f5f6ff' : 'white') : '#f8fafc', boxShadow: isToday ? 'inset 0 0 0 2px #6366f1' : 'none', transition: 'background 0.12s', position: 'relative' }}
+                    style={{ minHeight: 104, padding: 8, borderRight: i % 7 !== 6 ? '1px solid #f1f5f9' : 'none', borderBottom: i < 35 ? '1px solid #f1f5f9' : 'none', backgroundColor: day ? (isToday ? '#f5f6ff' : 'white') : '#f8fafc', boxShadow: isToday ? 'inset 0 0 0 2px #17191c' : 'none', transition: 'background 0.12s', position: 'relative' }}
                     onMouseEnter={e => { if (day && !isToday) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
                     onMouseLeave={e => { if (day && !isToday) e.currentTarget.style.backgroundColor = 'white'; }}>
                     {day && (
                       <>
-                        <div style={{ width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? 'white' : '#475569', backgroundColor: isToday ? '#6366f1' : 'transparent', marginBottom: 6, boxShadow: isToday ? '0 2px 6px rgba(99,102,241,0.35)' : 'none' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? 'white' : '#475569', backgroundColor: isToday ? '#17191c' : 'transparent', marginBottom: 6, boxShadow: isToday ? '0 2px 6px rgba(23,25,28,0.35)' : 'none' }}>
                           {day}
                         </div>
                         {appts.slice(0, 2).map(a => (

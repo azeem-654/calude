@@ -88,7 +88,7 @@ function ContactModal({ onClose, onSave, initial }: { onClose: () => void; onSav
           </div>
           <div style={{ display: 'flex', gap: '10px', marginTop: '24px', justifyContent: 'flex-end' }}>
             <button type="button" onClick={onClose} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
-            <button type="submit" style={{ padding: '9px 16px', border: 'none', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', backgroundColor: '#6366f1', color: 'white', fontWeight: 600, boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>{initial ? 'Save Changes' : 'Add Contact'}</button>
+            <button type="submit" style={{ padding: '9px 16px', border: 'none', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', backgroundColor: '#17191c', color: 'white', fontWeight: 600, boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>{initial ? 'Save Changes' : 'Add Contact'}</button>
           </div>
         </form>
       </div>
@@ -221,7 +221,7 @@ export default function Contacts() {
               {['lead','prospect','customer','churned'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
             </select>
             <button onClick={() => setShowFilter(p => !p)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', border: `1px solid ${showFilter || filterRules.length > 0 ? '#c7d2fe' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: showFilter || filterRules.length > 0 ? '#eef2ff' : 'white', color: showFilter || filterRules.length > 0 ? '#4f46e5' : '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', border: `1px solid ${showFilter || filterRules.length > 0 ? '#d5d8dd' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: showFilter || filterRules.length > 0 ? '#eceef1' : 'white', color: showFilter || filterRules.length > 0 ? '#17191c' : '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Filter size={14} /> Filter{filterRules.length > 0 ? ` (${filterRules.length})` : ''}
             </button>
           </div>
@@ -232,7 +232,7 @@ export default function Contacts() {
             <button onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Upload size={14} color="#64748b" /> Import
             </button>
-            <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+            <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
               <Plus size={16} /> Add Contact
             </button>
           </div>
@@ -260,7 +260,7 @@ export default function Contacts() {
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={addRule} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', border: '1px solid #c7d2fe', borderRadius: 9, backgroundColor: '#eef2ff', color: '#4f46e5', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={addRule} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: '#eceef1', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                 <Plus size={12} /> Add Filter
               </button>
               {filterRules.length > 0 && (
@@ -275,10 +275,10 @@ export default function Contacts() {
 
         {/* Bulk action bar */}
         {selected.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', backgroundColor: '#eef2ff', borderRadius: 12, marginBottom: 12, border: '1px solid #c7d2fe', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#4f46e5' }}>{selected.size} selected</span>
-            <button onClick={bulkTag} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #c7d2fe', borderRadius: 9, backgroundColor: 'white', color: '#4f46e5', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Tag size={12} /> Add Tag</button>
-            <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #c7d2fe', borderRadius: 9, backgroundColor: 'white', color: '#4f46e5', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={12} /> Export</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', backgroundColor: '#eceef1', borderRadius: 12, marginBottom: 12, border: '1px solid #d5d8dd', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#17191c' }}>{selected.size} selected</span>
+            <button onClick={bulkTag} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Tag size={12} /> Add Tag</button>
+            <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={12} /> Export</button>
             <button onClick={bulkDelete} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 9, backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Trash2 size={12} /> Delete</button>
             <button onClick={() => setSelected(new Set())} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={16} /></button>
           </div>
@@ -290,7 +290,7 @@ export default function Contacts() {
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e6e9f0' }}>
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
-                  <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#6366f1' }} />
+                  <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                 </th>
                 {[['name','Name'], ['email','Contact'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
                   <th key={field} onClick={() => sortHeader(field)} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
@@ -308,11 +308,11 @@ export default function Contacts() {
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}>
                     <td style={{ padding: '14px 16px' }}>
-                      <input type="checkbox" checked={selected.has(contact.id)} onChange={() => toggleSelect(contact.id)} style={{ cursor: 'pointer', accentColor: '#6366f1' }} />
+                      <input type="checkbox" checked={selected.has(contact.id)} onChange={() => toggleSelect(contact.id)} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                     </td>
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 600, flexShrink: 0 }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 600, flexShrink: 0 }}>
                           {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
                         <div>
@@ -349,8 +349,8 @@ export default function Contacts() {
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#94a3b8' }}>{contact.lastActivity}</td>
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={() => setProfileContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }} title="View Profile"><Eye size={13} color="#6366f1" /></button>
-                        <button onClick={() => setEditContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}><Edit2 size={13} color="#6366f1" /></button>
+                        <button onClick={() => setProfileContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }} title="View Profile"><Eye size={13} color="#17191c" /></button>
+                        <button onClick={() => setEditContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}><Edit2 size={13} color="#17191c" /></button>
                         <button onClick={() => deleteContact(contact.id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', backgroundColor: '#fef2f2', cursor: 'pointer', display: 'flex' }}><Trash2 size={13} color="#ef4444" /></button>
                       </div>
                     </td>
@@ -361,12 +361,12 @@ export default function Contacts() {
           </table>
           {filtered.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '64px 24px' }}>
-              <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                <Users size={28} color="#6366f1" />
+              <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <Users size={28} color="#17191c" />
               </div>
               <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>No contacts found</p>
               <p style={{ margin: '0 0 20px', fontSize: 13, color: '#94a3b8', maxWidth: 320 }}>Try adjusting your search or filters, or add a new contact to get started.</p>
-              <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+              <button onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                 <Plus size={15} /> Add Contact
               </button>
             </div>

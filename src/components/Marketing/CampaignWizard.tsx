@@ -103,13 +103,13 @@ const TONE_CFG: Record<ToneType, { greet: string; sign: string }> = {
 function buildEmailBody(goal: string, stepIdx: number, product: string, concept: string, cta: string, tone: ToneType): string {
   const { greet, sign } = TONE_CFG[tone] || TONE_CFG.professional;
   const ctaText = cta || 'Get Started';
-  const btn = `<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#6366f1;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">${ctaText} →</a></div>`;
+  const btn = `<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#17191c;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">${ctaText} →</a></div>`;
   const g = goal || 'custom';
 
   if (stepIdx === 0) {
     const first: Record<string, string> = {
       announce: `<p>${greet}</p><p>We're thrilled to announce <strong>${product}</strong>.</p><p>${concept || "This is something we've been working on, and we can't wait to share it with you."}</p><ul><li>✅ <strong>Benefit 1</strong> — [describe key value]</li><li>✅ <strong>Benefit 2</strong> — [describe key value]</li><li>✅ <strong>Benefit 3</strong> — [describe key value]</li></ul>${btn}<p>${sign}<br/>[Your Name]</p>`,
-      promote:  `<p>${greet}</p><p>We have an exclusive offer prepared just for you:</p><div style="background:#f5f3ff;padding:24px;border-radius:12px;text-align:center;margin:20px 0"><p style="font-size:26px;font-weight:800;color:#6366f1;margin:0">${concept.slice(0, 70) || 'Special Offer'}</p></div><p>This is available for a <strong>limited time only</strong>. Here's what you get:</p><ul><li>[Offer detail 1]</li><li>[Offer detail 2]</li></ul>${btn}<p>${sign}<br/>[Your Name]</p>`,
+      promote:  `<p>${greet}</p><p>We have an exclusive offer prepared just for you:</p><div style="background:#f0f1f3;padding:24px;border-radius:12px;text-align:center;margin:20px 0"><p style="font-size:26px;font-weight:800;color:#17191c;margin:0">${concept.slice(0, 70) || 'Special Offer'}</p></div><p>This is available for a <strong>limited time only</strong>. Here's what you get:</p><ul><li>[Offer detail 1]</li><li>[Offer detail 2]</li></ul>${btn}<p>${sign}<br/>[Your Name]</p>`,
       nurture:  `<p>${greet}</p><p>${concept || "Here's something that's been helping our top users succeed."}</p><p><strong>The key insight:</strong> [Your main insight or tip here]</p><p>Here's how to apply it today:</p><ol><li>[Action step 1]</li><li>[Action step 2]</li><li>[Action step 3]</li></ol>${btn}<p>${sign}<br/>[Your Name]</p>`,
       welcome:  `<p>${greet} Welcome! 🎉</p><p>${concept || "We're excited to have you on board."}</p><p>Here's your quick-start plan:</p><ul><li>📌 <strong>Right now</strong>: ${ctaText}</li><li>📌 <strong>Day 2</strong>: Get your first result</li><li>📌 <strong>Day 5</strong>: Discover advanced features</li></ul>${btn}<p>${sign}<br/>[Your Name]</p>`,
       reengage: `<p>${greet}</p><p>It's been a while, and we genuinely miss you.</p><p>${concept || "A lot has improved. Here's what's new for you."}</p><div style="background:#ecfdf5;padding:20px;border-radius:12px;text-align:center;margin:20px 0"><p style="font-size:18px;font-weight:700;color:#16a34a;margin:0">We've prepared something special for your return</p></div>${btn}<p>${sign}<br/>[Your Name]</p>`,
@@ -178,9 +178,9 @@ function createStepFromCampaign(c: Campaign): WizardStep {
 
 /* ─── Rich Email Editor ─── */
 const CONTENT_BLOCKS = [
-  { label: 'CTA Button', html: '<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#6366f1;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Button Text →</a></div>' },
+  { label: 'CTA Button', html: '<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#17191c;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Button Text →</a></div>' },
   { label: 'Divider',    html: '<hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0" />' },
-  { label: 'Highlight',  html: '<div style="background:#f5f3ff;border-left:4px solid #6366f1;padding:16px 20px;border-radius:0 8px 8px 0;margin:16px 0"><p style="margin:0;color:#374151;font-weight:500">[Key message or quote]</p></div>' },
+  { label: 'Highlight',  html: '<div style="background:#f0f1f3;border-left:4px solid #17191c;padding:16px 20px;border-radius:0 8px 8px 0;margin:16px 0"><p style="margin:0;color:#374151;font-weight:500">[Key message or quote]</p></div>' },
   { label: 'Image',      html: '<div style="text-align:center;margin:20px 0;padding:40px;background:#f1f5f9;border-radius:8px;border:2px dashed #e2e8f0"><p style="margin:0;color:#94a3b8;font-size:13px">📷 [Replace with your image URL]</p></div>' },
 ];
 
@@ -268,7 +268,7 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 8px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#fafafa', flexWrap: 'wrap' }}>
         {/* Templates button */}
         <button onClick={() => setShowTemplates(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
           <LayoutTemplate size={11} /> Templates
         </button>
         {sep}
@@ -324,7 +324,7 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
           {(['edit', 'mobile', 'desktop'] as const).map(m => (
             <button key={m} onClick={() => setPreview(m)}
-              style={{ ...tb, width: 'auto', padding: '0 7px', fontSize: 10, fontWeight: 600, backgroundColor: preview === m ? '#ede9fe' : 'white', color: preview === m ? '#6366f1' : '#64748b', border: `1px solid ${preview === m ? '#c4b5fd' : '#e2e8f0'}` }}>
+              style={{ ...tb, width: 'auto', padding: '0 7px', fontSize: 10, fontWeight: 600, backgroundColor: preview === m ? '#eceef1' : 'white', color: preview === m ? '#17191c' : '#64748b', border: `1px solid ${preview === m ? '#d5d8dd' : '#e2e8f0'}` }}>
               {m === 'edit' ? '✏️' : m === 'mobile' ? <Smartphone size={11} /> : <Monitor size={11} />}
             </button>
           ))}
@@ -335,12 +335,12 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', backgroundColor: '#f8fafc', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Insert:</span>
         {[
-          { label: 'CTA Button', html: '<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#6366f1;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Button Text →</a></div>' },
+          { label: 'CTA Button', html: '<div style="text-align:center;margin:24px 0"><a href="#" style="display:inline-block;padding:14px 32px;background:#17191c;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Button Text →</a></div>' },
           { label: 'Divider',    html: '<hr style="border:none;border-top:2px solid #e2e8f0;margin:24px 0" />' },
-          { label: 'Highlight',  html: '<div style="background:#f5f3ff;border-left:4px solid #6366f1;padding:16px 20px;border-radius:0 8px 8px 0;margin:16px 0"><p style="margin:0;color:#374151;font-weight:500">[Key message or quote]</p></div>' },
+          { label: 'Highlight',  html: '<div style="background:#f0f1f3;border-left:4px solid #17191c;padding:16px 20px;border-radius:0 8px 8px 0;margin:16px 0"><p style="margin:0;color:#374151;font-weight:500">[Key message or quote]</p></div>' },
           { label: 'Image',      html: '<div style="text-align:center;margin:20px 0;padding:40px;background:#f1f5f9;border-radius:8px;border:2px dashed #e2e8f0"><p style="margin:0;color:#94a3b8;font-size:13px">📷 [Replace with your image URL or paste img tag]</p></div>' },
           { label: 'Callout',    html: '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 20px;margin:16px 0;display:flex;gap:12px;align-items:flex-start"><span style="font-size:20px;flex-shrink:0">⚠️</span><p style="margin:0;color:#92400e;font-size:14px">[Important note or callout text here]</p></div>' },
-          { label: 'Signature',  html: '<div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:14px;color:#374151"><strong>[Your Name]</strong><br/><span style="color:#64748b">[Title] · [Company]</span><br/><a href="mailto:[email]" style="color:#6366f1">[email]</a></p></div>' },
+          { label: 'Signature',  html: '<div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:14px;color:#374151"><strong>[Your Name]</strong><br/><span style="color:#64748b">[Title] · [Company]</span><br/><a href="mailto:[email]" style="color:#17191c">[email]</a></p></div>' },
         ].map(b => (
           <button key={b.label} onClick={() => insertBlock(b.html)}
             style={{ padding: '2px 7px', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontWeight: 500, flexShrink: 0 }}>{b.label}</button>
@@ -349,12 +349,12 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
         <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, flexShrink: 0 }}>Variables:</span>
         {['{{firstName}}', '{{lastName}}', '{{email}}', '{{company}}', '{{phone}}', '{{jobTitle}}', '{{unsubscribe}}'].map(v => (
           <button key={v} onClick={() => insertVar(v)}
-            style={{ padding: '2px 6px', background: '#ede9fe', color: '#6d28d9', border: 'none', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>{v}</button>
+            style={{ padding: '2px 6px', background: '#eceef1', color: '#17191c', border: 'none', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>{v}</button>
         ))}
         {customFieldDefs.map(f => (
           <button key={f.key} onClick={() => insertVar(`{{${f.key}}}`)}
             title={f.label}
-            style={{ padding: '2px 6px', background: '#fdf4ff', color: '#7c3aed', border: '1px solid #e9d5ff', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>
+            style={{ padding: '2px 6px', background: '#f7f8f9', color: '#17191c', border: '1px solid #e4e6ea', borderRadius: 4, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 500, flexShrink: 0 }}>
             {`{{${f.key}}}`}
           </button>
         ))}
@@ -385,7 +385,7 @@ function ToggleSwitch({ on, onChange, label, desc }: { on: boolean; onChange: (v
         <div style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{label}</div>
         {desc && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{desc}</div>}
       </div>
-      <button onClick={() => onChange(!on)} style={{ width: 38, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', backgroundColor: on ? '#6366f1' : '#e2e8f0', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
+      <button onClick={() => onChange(!on)} style={{ width: 38, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', backgroundColor: on ? '#17191c' : '#e2e8f0', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
         <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: 3, left: on ? 21 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
       </button>
     </div>
@@ -395,7 +395,7 @@ function ToggleSwitch({ on, onChange, label, desc }: { on: boolean; onChange: (v
 /* ─── Step 1: Campaign Brief ─── */
 function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
   const types = [
-    { id: 'email' as const,    icon: <Mail size={20} color="#6366f1" />,          label: 'Email Campaign',   desc: 'Newsletter, announcement, or blast',     badge: '~24% open rate', color: '#6366f1' },
+    { id: 'email' as const,    icon: <Mail size={20} color="#17191c" />,          label: 'Email Campaign',   desc: 'Newsletter, announcement, or blast',     badge: '~24% open rate', color: '#17191c' },
     { id: 'sms' as const,      icon: <MessageSquare size={20} color="#22c55e" />, label: 'SMS Campaign',     desc: 'Flash sales, urgent alerts, outreach',   badge: '98% open rate',  color: '#22c55e' },
     { id: 'sequence' as const, icon: <Zap size={20} color="#f59e0b" />,           label: 'Email Sequence',   desc: 'Multi-step automated follow-up flow',    badge: '3× conversion',  color: '#f59e0b' },
   ];
@@ -438,9 +438,9 @@ function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Part
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7, marginBottom: 20 }}>
         {GOALS.map(g => (
           <button key={g.id} onClick={() => onChange({ goal: g.id as CampaignGoal, steps: [] })}
-            style={{ padding: '10px 8px', border: `2px solid ${state.goal === g.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.goal === g.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
+            style={{ padding: '10px 8px', border: `2px solid ${state.goal === g.id ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.goal === g.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
             <div style={{ fontSize: 20, marginBottom: 3 }}>{g.icon}</div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: state.goal === g.id ? '#6366f1' : '#0f172a', marginBottom: 1 }}>{g.label}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: state.goal === g.id ? '#17191c' : '#0f172a', marginBottom: 1 }}>{g.label}</div>
             <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.3 }}>{g.desc}</div>
           </button>
         ))}
@@ -450,7 +450,7 @@ function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Part
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 20 }}>
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            <Wand2 size={12} color="#6366f1" /> What is this campaign about? *
+            <Wand2 size={12} color="#17191c" /> What is this campaign about? *
           </label>
           <textarea value={state.concept} onChange={e => onChange({ concept: e.target.value, steps: [] })}
             placeholder="e.g. We're launching TaskFlow, our new project management SaaS. It helps remote teams track tasks, deadlines and workloads in one place."
@@ -460,7 +460,7 @@ function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Part
         </div>
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            <Target size={12} color="#6366f1" /> Desired action (CTA)
+            <Target size={12} color="#17191c" /> Desired action (CTA)
           </label>
           <input value={state.cta} onChange={e => onChange({ cta: e.target.value, steps: [] })} placeholder="e.g. Start free trial, Book a demo, Claim 30% off, Download guide"
             style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
@@ -472,9 +472,9 @@ function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Part
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
         {tones.map(t => (
           <button key={t.id} onClick={() => onChange({ tone: t.id, steps: [] })}
-            style={{ padding: '10px 8px', border: `2px solid ${state.tone === t.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.tone === t.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
+            style={{ padding: '10px 8px', border: `2px solid ${state.tone === t.id ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.tone === t.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
             <div style={{ fontSize: 18, marginBottom: 3 }}>{t.emoji}</div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: state.tone === t.id ? '#6366f1' : '#0f172a' }}>{t.label}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: state.tone === t.id ? '#17191c' : '#0f172a' }}>{t.label}</div>
             <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.3, marginTop: 1 }}>{t.desc}</div>
           </button>
         ))}
@@ -573,14 +573,14 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: '0 0 30px rgba(99,102,241,0.3)' }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: '0 0 30px rgba(23,25,28,0.3)' }}>
           <Sparkles size={28} color="white" />
         </div>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Building your campaign flow</h3>
-        <p style={{ fontSize: 13, color: '#6366f1', fontWeight: 500, marginBottom: 24, minHeight: 20, transition: 'opacity 0.3s' }}>{LOADING_MSGS[msgIdx]}</p>
+        <p style={{ fontSize: 13, color: '#17191c', fontWeight: 500, marginBottom: 24, minHeight: 20, transition: 'opacity 0.3s' }}>{LOADING_MSGS[msgIdx]}</p>
         <div style={{ display: 'flex', gap: 6 }}>
           {[0, 1, 2].map(i => (
-            <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#6366f1', opacity: msgIdx % 3 === i ? 1 : 0.3, transition: 'opacity 0.3s' }} />
+            <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#17191c', opacity: msgIdx % 3 === i ? 1 : 0.3, transition: 'opacity 0.3s' }} />
           ))}
         </div>
         <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 16 }}>Personalized for: <em>"{state.concept.slice(0, 60) || 'your campaign'}{state.concept.length > 60 ? '…' : ''}"</em></p>
@@ -597,19 +597,19 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
           <p style={{ color: '#64748b', fontSize: 13 }}>Review, edit, and approve your campaign before it goes live.</p>
         </div>
         <button onClick={regenerate}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#6366f1', flexShrink: 0 }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#17191c', flexShrink: 0 }}>
           <RefreshCw size={12} /> Regenerate
         </button>
       </div>
 
       {/* Summary bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', backgroundColor: '#f5f3ff', borderRadius: 10, border: '1px solid #ede9fe', marginBottom: 18, flexWrap: 'wrap' }}>
-        <Sparkles size={13} color="#6366f1" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#6366f1' }}>{state.steps.length} {isSMS ? 'message' : 'email'}{state.steps.length !== 1 ? 's' : ''}</span>
-        {!isSMS && <><span style={{ fontSize: 11, color: '#8b5cf6' }}>·</span><span style={{ fontSize: 12, color: '#8b5cf6' }}>Spans {totalDays} days</span></>}
-        {state.stopOnReply && <><span style={{ fontSize: 11, color: '#8b5cf6' }}>·</span><span style={{ fontSize: 12, color: '#8b5cf6' }}>Stops on reply</span></>}
-        <span style={{ fontSize: 11, color: '#8b5cf6' }}>·</span>
-        <span style={{ fontSize: 11, color: '#8b5cf6', padding: '1px 7px', backgroundColor: '#ede9fe', borderRadius: 20, fontWeight: 600 }}>AI-generated · Review before launch</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', backgroundColor: '#f0f1f3', borderRadius: 10, border: '1px solid #eceef1', marginBottom: 18, flexWrap: 'wrap' }}>
+        <Sparkles size={13} color="#17191c" />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#17191c' }}>{state.steps.length} {isSMS ? 'message' : 'email'}{state.steps.length !== 1 ? 's' : ''}</span>
+        {!isSMS && <><span style={{ fontSize: 11, color: '#3b3f45' }}>·</span><span style={{ fontSize: 12, color: '#3b3f45' }}>Spans {totalDays} days</span></>}
+        {state.stopOnReply && <><span style={{ fontSize: 11, color: '#3b3f45' }}>·</span><span style={{ fontSize: 12, color: '#3b3f45' }}>Stops on reply</span></>}
+        <span style={{ fontSize: 11, color: '#3b3f45' }}>·</span>
+        <span style={{ fontSize: 11, color: '#3b3f45', padding: '1px 7px', backgroundColor: '#eceef1', borderRadius: 20, fontWeight: 600 }}>AI-generated · Review before launch</span>
       </div>
 
       {/* Step timeline */}
@@ -624,19 +624,19 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
             <div key={step.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               {/* Timeline */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 32, flexShrink: 0, paddingTop: 6 }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isFirst ? '#6366f1' : '#f1f5f9', border: isFirst ? 'none' : '2px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1, flexShrink: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isFirst ? '#17191c' : '#f1f5f9', border: isFirst ? 'none' : '2px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1, flexShrink: 0 }}>
                   {isFirst ? (isSMS ? <MessageSquare size={12} color="white" /> : <Mail size={12} color="white" />) : <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>{idx + 1}</span>}
                 </div>
                 {idx < state.steps.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 20, backgroundColor: '#e2e8f0', marginTop: 2 }} />}
               </div>
 
               {/* Card */}
-              <div style={{ flex: 1, border: `1px solid ${isExpanded ? '#c4b5fd' : '#e2e8f0'}`, borderRadius: 10, overflow: 'hidden', marginBottom: 10, backgroundColor: 'white', boxShadow: isExpanded ? '0 0 0 3px #ede9fe40' : 'none', transition: 'all 0.15s' }}>
+              <div style={{ flex: 1, border: `1px solid ${isExpanded ? '#d5d8dd' : '#e2e8f0'}`, borderRadius: 10, overflow: 'hidden', marginBottom: 10, backgroundColor: 'white', boxShadow: isExpanded ? '0 0 0 3px #eceef140' : 'none', transition: 'all 0.15s' }}>
                 {/* Header row */}
                 <div onClick={() => setExpandedId(isExpanded ? null : step.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', backgroundColor: isExpanded ? '#faf5ff' : 'white' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', backgroundColor: isExpanded ? '#f7f8f9' : 'white' }}>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, backgroundColor: isFirst ? '#6366f1' : '#f1f5f9', color: isFirst ? 'white' : '#64748b', fontWeight: 700 }}>
+                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, backgroundColor: isFirst ? '#17191c' : '#f1f5f9', color: isFirst ? 'white' : '#64748b', fontWeight: 700 }}>
                       {isFirst ? 'Day 0' : `Day ${step.day}`}
                     </span>
                     <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, backgroundColor: cc.bg, color: cc.color }}>{step.condition}</span>
@@ -722,7 +722,7 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
       </div>
 
       <button onClick={addStep}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '11px 16px', border: '2px dashed #c4b5fd', borderRadius: 10, backgroundColor: '#faf5ff', cursor: 'pointer', color: '#6366f1', fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '11px 16px', border: '2px dashed #d5d8dd', borderRadius: 10, backgroundColor: '#f7f8f9', cursor: 'pointer', color: '#17191c', fontSize: 13, fontWeight: 600, marginTop: 4 }}>
         <Plus size={14} /> Add follow-up step
       </button>
     </div>
@@ -886,18 +886,18 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Settings size={13} color="#6366f1" />
+            <Settings size={13} color="#17191c" />
             <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sender profile</span>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => { setShowAddForm(v => !v); setAddError(''); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6366f1', fontWeight: 600, background: '#f5f3ff', border: '1px solid #e0e7ff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#17191c', fontWeight: 600, background: '#f0f1f3', border: '1px solid #e4e6ea', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
               <Plus size={11} /> Add profile
             </button>
             <button
               onClick={() => { window.location.hash = '#/settings'; }}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6366f1', fontWeight: 600, background: 'none', border: '1px solid #e0e7ff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#17191c', fontWeight: 600, background: 'none', border: '1px solid #e4e6ea', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
               <Settings size={11} /> Settings
             </button>
           </div>
@@ -944,7 +944,7 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
             {addError && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8 }}>{addError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={handleAddProfile}
-                style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ padding: '8px 16px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                 Save Profile
               </button>
               <button onClick={() => { setShowAddForm(false); setAddError(''); setNewProfile({ name: '', email: '', replyTo: '', tag: '' }); }}
@@ -966,7 +966,7 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
             <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
               <button
                 onClick={() => setShowAddForm(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 <Plus size={14} /> Add Sender Profile
               </button>
               <button
@@ -988,14 +988,14 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
                     onClick={() => selectProfile(p)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-                      width: '100%', border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
-                      borderRadius: 12, background: isSelected ? '#f5f3ff' : '#fff',
+                      width: '100%', border: `2px solid ${isSelected ? '#17191c' : '#e2e8f0'}`,
+                      borderRadius: 12, background: isSelected ? '#f0f1f3' : '#fff',
                       cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
                     }}
                   >
                     <div style={{
                       width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                      background: isSelected ? '#ede9fe' : '#f1f5f9',
+                      background: isSelected ? '#eceef1' : '#f1f5f9',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
                     }}>
                       {p.providerIcon}
@@ -1016,8 +1016,8 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
                     </div>
                     <div style={{
                       width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                      border: `2px solid ${isSelected ? '#6366f1' : '#cbd5e1'}`,
-                      background: isSelected ? '#6366f1' : '#fff',
+                      border: `2px solid ${isSelected ? '#17191c' : '#cbd5e1'}`,
+                      background: isSelected ? '#17191c' : '#fff',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {isSelected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
@@ -1068,7 +1068,7 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
       {/* Tracking */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <Eye size={13} color="#6366f1" />
+          <Eye size={13} color="#17191c" />
           <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tracking & behavior</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -1082,14 +1082,14 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
       {/* Send window */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <Clock size={13} color="#6366f1" />
+          <Clock size={13} color="#17191c" />
           <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Send window</span>
         </div>
         <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>Emails only send on selected days within the time range.</p>
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           {WEEK_DAYS.map(d => (
             <button key={d.id} onClick={() => toggleDay(d.id)}
-              style={{ width: 34, height: 34, borderRadius: '50%', border: `2px solid ${state.sendDays.includes(d.id) ? '#6366f1' : '#e2e8f0'}`, backgroundColor: state.sendDays.includes(d.id) ? '#6366f1' : 'white', color: state.sendDays.includes(d.id) ? 'white' : '#94a3b8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              style={{ width: 34, height: 34, borderRadius: '50%', border: `2px solid ${state.sendDays.includes(d.id) ? '#17191c' : '#e2e8f0'}`, backgroundColor: state.sendDays.includes(d.id) ? '#17191c' : 'white', color: state.sendDays.includes(d.id) ? 'white' : '#94a3b8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
               {d.label}
             </button>
           ))}
@@ -1126,15 +1126,15 @@ function StepAudience({ state, onChange, counts }: { state: WizardState; onChang
       <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>Choose who will receive this campaign.</p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Users size={13} color="#6366f1" />
+        <Users size={13} color="#17191c" />
         <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Segment</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
         {audiences.map(a => (
           <button key={a.id} onClick={() => onChange({ audience: a.id })}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: `2px solid ${state.audience === a.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.audience === a.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'left' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: state.audience === a.id ? '#ede9fe' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Users size={15} color={state.audience === a.id ? '#6366f1' : '#94a3b8'} />
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: `2px solid ${state.audience === a.id ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.audience === a.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: state.audience === a.id ? '#eceef1' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Users size={15} color={state.audience === a.id ? '#17191c' : '#94a3b8'} />
             </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{a.label}</div>
@@ -1244,7 +1244,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
     <div style={{ padding: '10px 0' }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Sending in progress…</h2>
       <div style={{ height: 6, backgroundColor: '#e2e8f0', borderRadius: 3, marginBottom: 16 }}>
-        <div style={{ height: '100%', width: `${sendProgress}%`, backgroundColor: '#6366f1', borderRadius: 3, transition: 'width 0.3s' }} />
+        <div style={{ height: '100%', width: `${sendProgress}%`, backgroundColor: '#17191c', borderRadius: 3, transition: 'width 0.3s' }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
         {sendLogs.map((log, i) => (
@@ -1299,7 +1299,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
               {state.steps.map((s, i) => (
                 <React.Fragment key={s.id}>
-                  <div style={{ padding: '3px 9px', backgroundColor: i === 0 ? '#6366f1' : '#f1f5f9', color: i === 0 ? 'white' : '#374151', borderRadius: 6, fontSize: 10, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ padding: '3px 9px', backgroundColor: i === 0 ? '#17191c' : '#f1f5f9', color: i === 0 ? 'white' : '#374151', borderRadius: 6, fontSize: 10, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     Day {s.day} {!isSMS && s.subject ? `· ${s.subject.slice(0, 24)}${s.subject.length > 24 ? '…' : ''}` : ''}
                   </div>
                   {i < state.steps.length - 1 && <ChevronRight size={10} color="#94a3b8" />}
@@ -1370,8 +1370,8 @@ function StepReview({ state, counts, contacts, onLaunch }: {
           { id: 'scheduled' as const, label: '📅 Schedule',  desc: 'Pick a date & time'   },
         ].map(opt => (
           <button key={opt.id} onClick={() => setSendTime(opt.id)}
-            style={{ flex: 1, padding: '9px', border: `2px solid ${sendTime === opt.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: sendTime === opt.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: sendTime === opt.id ? '#6366f1' : '#0f172a', marginBottom: 1 }}>{opt.label}</div>
+            style={{ flex: 1, padding: '9px', border: `2px solid ${sendTime === opt.id ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: sendTime === opt.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: sendTime === opt.id ? '#17191c' : '#0f172a', marginBottom: 1 }}>{opt.label}</div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>{opt.desc}</div>
           </button>
         ))}
@@ -1392,7 +1392,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
           </button>
         )}
         <button onClick={handleLaunch} disabled={launching || !state.name}
-          style={{ flex: 1, padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#6366f1', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          style={{ flex: 1, padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#17191c', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           {launching ? <><Loader size={15} /> {isDemo ? 'Capturing to Demo Inbox…' : (hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…')}</> : <><Send size={16} /> {sendTime === 'now' ? (isDemo ? `Launch → Demo Inbox (${counts[state.audience]} emails)` : (hasProvider && !isSMS ? `Launch & Send to ${counts[state.audience]} contacts` : 'Save & Launch Campaign')) : 'Schedule Campaign'}</>}
         </button>
       </div>
@@ -1528,12 +1528,12 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
                 return (
                   <React.Fragment key={label}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: done || active ? '#6366f1' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: done || active ? 'white' : '#94a3b8', flexShrink: 0 }}>
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: done || active ? '#17191c' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: done || active ? 'white' : '#94a3b8', flexShrink: 0 }}>
                         {done ? '✓' : n}
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: active ? 600 : 400, color: active ? '#6366f1' : done ? '#64748b' : '#94a3b8', whiteSpace: 'nowrap' }}>{label}</span>
+                      <span style={{ fontSize: 10, fontWeight: active ? 600 : 400, color: active ? '#17191c' : done ? '#64748b' : '#94a3b8', whiteSpace: 'nowrap' }}>{label}</span>
                     </div>
-                    {i < STEP_LABELS.length - 1 && <div style={{ width: 12, height: 1, backgroundColor: done ? '#6366f1' : '#e2e8f0', flexShrink: 0, margin: '0 1px' }} />}
+                    {i < STEP_LABELS.length - 1 && <div style={{ width: 12, height: 1, backgroundColor: done ? '#17191c' : '#e2e8f0', flexShrink: 0, margin: '0 1px' }} />}
                   </React.Fragment>
                 );
               })}
@@ -1553,7 +1553,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
             <div style={{ width: 220, flexShrink: 0, borderLeft: '1px solid #e2e8f0', backgroundColor: '#fafafa', padding: '20px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: 26, height: 26, borderRadius: 7, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Sparkles size={12} color="white" />
                   </div>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>AI Guidance</span>
@@ -1614,7 +1614,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
                 <span style={{ fontSize: 11, color: '#f59e0b', marginRight: 8 }}>⚠️ {canNextTooltip()}</span>
               )}
               <button onClick={() => setStep(s => Math.min(TOTAL_STEPS, s + 1))} disabled={!canNext()}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 18px', backgroundColor: canNext() ? '#6366f1' : '#e2e8f0', color: canNext() ? 'white' : '#94a3b8', border: 'none', borderRadius: 8, cursor: canNext() ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 600 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 18px', backgroundColor: canNext() ? '#17191c' : '#e2e8f0', color: canNext() ? 'white' : '#94a3b8', border: 'none', borderRadius: 8, cursor: canNext() ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 600 }}>
                 {step === TOTAL_STEPS - 1 ? 'Review' : 'Next'} <ChevronRight size={14} />
               </button>
             </div>

@@ -90,7 +90,7 @@ export default function ValidationPopup({ result, onClose, title }: Props) {
         {/* Footer */}
         <div style={{ padding: '14px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f8fafc' }}>
           <button onClick={onClose}
-            style={{ padding: '9px 20px', backgroundColor: isSuccess ? '#16a34a' : '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ padding: '9px 20px', backgroundColor: isSuccess ? '#16a34a' : '#17191c', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             {isSuccess ? 'Great, close' : 'Understood'}
           </button>
         </div>
@@ -109,7 +109,7 @@ interface StatusIndicatorProps {
 export function ValidationStatusIndicator({ status, message, onShowDetails }: StatusIndicatorProps) {
   if (status === 'idle') return null;
   const cfg = {
-    testing: { color: '#6366f1', bg: '#eef2ff', icon: '⟳', label: 'Testing...' },
+    testing: { color: '#17191c', bg: '#eceef1', icon: '⟳', label: 'Testing...' },
     success: { color: '#16a34a', bg: '#f0fdf4', icon: '✓', label: 'Connected' },
     error: { color: '#dc2626', bg: '#fef2f2', icon: '✗', label: 'Failed' },
   }[status];

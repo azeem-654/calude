@@ -8,8 +8,8 @@
    ───────────────────────────────────────────────────────────── */
 
 :root {
-  --accent: #6366f1;
-  --accent-soft: rgba(99, 102, 241, 0.12);
+  --accent: #17191c;
+  --accent-soft: rgba(23, 25, 28, 0.08);
   --ink: #0f172a;
   --ink-body: #475569;
   --ink-muted: #94a3b8;
@@ -47,7 +47,7 @@ body {
 }
 
 ::selection {
-  background: rgba(99, 102, 241, 0.22);
+  background: rgba(23, 25, 28, 0.14);
 }
 
 /* ── Form controls: inherit type, glowing focus ring everywhere ── */
@@ -56,8 +56,8 @@ button, input, textarea, select {
 }
 
 input:focus, textarea:focus, select:focus {
-  border-color: #a5b4fc !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.13) !important;
+  border-color: #9aa0a8 !important;
+  box-shadow: 0 0 0 3px rgba(23, 25, 28, 0.09) !important;
 }
 
 input::placeholder, textarea::placeholder {
@@ -233,7 +233,7 @@ button:focus-visible, a:focus-visible {
 }
 
 .nav-item-active {
-  background-color: rgba(99, 102, 241, 0.16);
+  background-color: rgba(23, 25, 28, 0.12);
   color: #fff !important;
 }
 

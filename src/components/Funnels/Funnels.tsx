@@ -19,9 +19,9 @@ interface FunnelTypeConfig {
 }
 
 const FUNNEL_TYPES: FunnelTypeConfig[] = [
-  { id: 'squeeze', name: 'Squeeze Page', emoji: '📧', color: '#6366f1', bg: '#f5f3ff', category: 'Lead Generation', desc: 'Capture emails with a single-focused opt-in page', defaultSteps: [{ name: 'Squeeze Page', type: 'optin' }, { name: 'Thank You', type: 'thankyou' }] },
-  { id: 'lead_magnet', name: 'Lead Magnet', emoji: '🎯', color: '#8b5cf6', bg: '#f5f3ff', category: 'Lead Generation', desc: 'Offer a free resource in exchange for email addresses', defaultSteps: [{ name: 'Opt-in Page', type: 'optin' }, { name: 'Thank You', type: 'thankyou' }] },
-  { id: 'reverse_squeeze', name: 'Reverse Squeeze', emoji: '🔄', color: '#7c3aed', bg: '#f5f3ff', category: 'Lead Generation', desc: 'Give value first, then ask for the opt-in', defaultSteps: [{ name: 'Content Page', type: 'landing' }, { name: 'Opt-in Page', type: 'optin' }, { name: 'Thank You', type: 'thankyou' }] },
+  { id: 'squeeze', name: 'Squeeze Page', emoji: '📧', color: '#17191c', bg: '#f0f1f3', category: 'Lead Generation', desc: 'Capture emails with a single-focused opt-in page', defaultSteps: [{ name: 'Squeeze Page', type: 'optin' }, { name: 'Thank You', type: 'thankyou' }] },
+  { id: 'lead_magnet', name: 'Lead Magnet', emoji: '🎯', color: '#3b3f45', bg: '#f0f1f3', category: 'Lead Generation', desc: 'Offer a free resource in exchange for email addresses', defaultSteps: [{ name: 'Opt-in Page', type: 'optin' }, { name: 'Thank You', type: 'thankyou' }] },
+  { id: 'reverse_squeeze', name: 'Reverse Squeeze', emoji: '🔄', color: '#17191c', bg: '#f0f1f3', category: 'Lead Generation', desc: 'Give value first, then ask for the opt-in', defaultSteps: [{ name: 'Content Page', type: 'landing' }, { name: 'Opt-in Page', type: 'optin' }, { name: 'Thank You', type: 'thankyou' }] },
   { id: 'ask_campaign', name: 'Ask Campaign', emoji: '❓', color: '#ec4899', bg: '#fdf2f8', category: 'Lead Generation', desc: 'Survey prospects to understand their biggest problems', defaultSteps: [{ name: 'Survey Page', type: 'survey' }, { name: 'Thank You', type: 'thankyou' }] },
   { id: 'survey', name: 'Survey Funnel', emoji: '📋', color: '#f97316', bg: '#fff7ed', category: 'Lead Generation', desc: 'Qualify prospects with a multi-step survey funnel', defaultSteps: [{ name: 'Survey', type: 'survey' }, { name: 'Result Page', type: 'landing' }, { name: 'Opt-in', type: 'optin' }] },
   { id: 'sales', name: 'Sales Letter', emoji: '💰', color: '#22c55e', bg: '#f0fdf4', category: 'Sales', desc: 'Classic long-form sales page with order form', defaultSteps: [{ name: 'Sales Page', type: 'sales' }, { name: 'Order Form', type: 'checkout' }, { name: 'OTO', type: 'upsell' }, { name: 'Thank You', type: 'thankyou' }] },
@@ -30,11 +30,11 @@ const FUNNEL_TYPES: FunnelTypeConfig[] = [
   { id: 'product_launch', name: 'Product Launch', emoji: '🚀', color: '#f59e0b', bg: '#fffbeb', category: 'Sales', desc: 'Build anticipation and launch your product with a bang', defaultSteps: [{ name: 'Pre-Launch 1', type: 'landing' }, { name: 'Pre-Launch 2', type: 'landing' }, { name: 'Pre-Launch 3', type: 'landing' }, { name: 'Sales Page', type: 'sales' }, { name: 'Order Form', type: 'checkout' }] },
   { id: 'invisible', name: 'Invisible Funnel', emoji: '👻', color: '#64748b', bg: '#f8fafc', category: 'Sales', desc: 'Charge a tiny fee upfront to build trust, then upsell', defaultSteps: [{ name: 'Free+Shipping', type: 'sales' }, { name: 'Order Form', type: 'checkout' }, { name: 'OTO', type: 'upsell' }, { name: 'Thank You', type: 'thankyou' }] },
   { id: 'daily_deal', name: 'Daily Deal', emoji: '⚡', color: '#dc2626', bg: '#fff5f5', category: 'Sales', desc: 'Time-sensitive daily deal funnel with urgency countdown', defaultSteps: [{ name: 'Deal Page', type: 'sales' }, { name: 'Order Form', type: 'checkout' }, { name: 'Thank You', type: 'thankyou' }] },
-  { id: 'webinar', name: 'Webinar Funnel', emoji: '🎤', color: '#6366f1', bg: '#f5f3ff', category: 'Events', desc: 'Register, deliver, and sell during your live webinar', defaultSteps: [{ name: 'Registration', type: 'webinar' }, { name: 'Confirmation', type: 'thankyou' }, { name: 'Webinar Room', type: 'webinar' }, { name: 'Replay', type: 'landing' }] },
-  { id: 'auto_webinar', name: 'Auto Webinar', emoji: '🤖', color: '#8b5cf6', bg: '#f5f3ff', category: 'Events', desc: 'Run evergreen automated webinars on autopilot 24/7', defaultSteps: [{ name: 'Registration', type: 'webinar' }, { name: 'Confirmation', type: 'thankyou' }, { name: 'Webinar Room', type: 'webinar' }, { name: 'Sales Page', type: 'sales' }] },
+  { id: 'webinar', name: 'Webinar Funnel', emoji: '🎤', color: '#17191c', bg: '#f0f1f3', category: 'Events', desc: 'Register, deliver, and sell during your live webinar', defaultSteps: [{ name: 'Registration', type: 'webinar' }, { name: 'Confirmation', type: 'thankyou' }, { name: 'Webinar Room', type: 'webinar' }, { name: 'Replay', type: 'landing' }] },
+  { id: 'auto_webinar', name: 'Auto Webinar', emoji: '🤖', color: '#3b3f45', bg: '#f0f1f3', category: 'Events', desc: 'Run evergreen automated webinars on autopilot 24/7', defaultSteps: [{ name: 'Registration', type: 'webinar' }, { name: 'Confirmation', type: 'thankyou' }, { name: 'Webinar Room', type: 'webinar' }, { name: 'Sales Page', type: 'sales' }] },
   { id: 'live_demo', name: 'Live Demo', emoji: '📡', color: '#0ea5e9', bg: '#f0f9ff', category: 'Events', desc: 'Book prospects into live product demonstrations', defaultSteps: [{ name: 'Demo Page', type: 'landing' }, { name: 'Application', type: 'checkout' }, { name: 'Confirmation', type: 'thankyou' }] },
   { id: 'summit', name: 'Summit Funnel', emoji: '🏔️', color: '#14b8a6', bg: '#f0fdfa', category: 'Events', desc: 'Virtual summit with multiple speakers and sessions', defaultSteps: [{ name: 'Registration', type: 'optin' }, { name: 'Summit Room', type: 'webinar' }, { name: 'Upgrade Page', type: 'sales' }] },
-  { id: 'membership', name: 'Membership', emoji: '🔐', color: '#7c3aed', bg: '#f5f3ff', category: 'Membership', desc: 'Sell and deliver recurring membership access', defaultSteps: [{ name: 'Sales Page', type: 'sales' }, { name: 'Checkout', type: 'checkout' }, { name: 'Member Access', type: 'landing' }, { name: 'Welcome', type: 'thankyou' }] },
+  { id: 'membership', name: 'Membership', emoji: '🔐', color: '#17191c', bg: '#f0f1f3', category: 'Membership', desc: 'Sell and deliver recurring membership access', defaultSteps: [{ name: 'Sales Page', type: 'sales' }, { name: 'Checkout', type: 'checkout' }, { name: 'Member Access', type: 'landing' }, { name: 'Welcome', type: 'thankyou' }] },
   { id: 'bridge', name: 'Bridge Page', emoji: '🌉', color: '#f97316', bg: '#fff7ed', category: 'Affiliate', desc: 'Warm up traffic before sending to an affiliate offer', defaultSteps: [{ name: 'Bridge Page', type: 'landing' }, { name: 'Offer Page', type: 'sales' }] },
   { id: 'application', name: 'Application', emoji: '📝', color: '#ec4899', bg: '#fdf2f8', category: 'High Ticket', desc: 'Qualify high-ticket clients with an application process', defaultSteps: [{ name: 'Application Page', type: 'checkout' }, { name: 'Confirmation', type: 'thankyou' }, { name: 'Schedule Call', type: 'landing' }] },
   { id: 'cancellation', name: 'Cancellation', emoji: '🛑', color: '#64748b', bg: '#f8fafc', category: 'Retention', desc: 'Save cancellations with downsells and pause options', defaultSteps: [{ name: 'Cancel Page', type: 'landing' }, { name: 'Downsell', type: 'sales' }, { name: 'Confirmed', type: 'thankyou' }] },
@@ -221,7 +221,7 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
               <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px 4px' }}>Category</p>
               {CATEGORIES.map(cat => (
                 <button key={cat} onClick={() => setCategory(cat)}
-                  style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: '8px', border: 'none', backgroundColor: category === cat ? '#f5f3ff' : 'transparent', color: category === cat ? '#6366f1' : '#374151', fontSize: '13px', fontWeight: category === cat ? 600 : 400, cursor: 'pointer', marginBottom: '2px' }}>
+                  style={{ width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: '8px', border: 'none', backgroundColor: category === cat ? '#f0f1f3' : 'transparent', color: category === cat ? '#17191c' : '#374151', fontSize: '13px', fontWeight: category === cat ? 600 : 400, cursor: 'pointer', marginBottom: '2px' }}>
                   {cat}
                 </button>
               ))}
@@ -401,7 +401,7 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
               Back
             </button>
             <button onClick={handleCreate} disabled={!funnelName.trim()}
-              style={{ flex: 2, padding: '10px', backgroundColor: funnelName.trim() ? '#6366f1' : '#e2e8f0', color: funnelName.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 600, cursor: funnelName.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: funnelName.trim() ? '0 1px 2px rgba(99,102,241,0.3)' : 'none' }}>
+              style={{ flex: 2, padding: '10px', backgroundColor: funnelName.trim() ? '#17191c' : '#e2e8f0', color: funnelName.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 600, cursor: funnelName.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: funnelName.trim() ? '0 1px 2px rgba(23,25,28,0.3)' : 'none' }}>
               <Check size={15} /> Build Funnel
             </button>
           </div>
@@ -480,7 +480,7 @@ export default function Funnels() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
           {[
             { label: 'Total Revenue', value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, color: '#22c55e' },
-            { label: 'Total Visitors', value: totalVisitors.toLocaleString(), icon: Eye, color: '#6366f1' },
+            { label: 'Total Visitors', value: totalVisitors.toLocaleString(), icon: Eye, color: '#17191c' },
             { label: 'Conversions', value: totalConversions, icon: MousePointer, color: '#3b82f6' },
             { label: 'Avg Conversion Rate', value: `${avgCvr}%`, icon: TrendingUp, color: '#f59e0b' },
           ].map(item => (
@@ -508,7 +508,7 @@ export default function Funnels() {
               </button>
             ))}
           </div>
-          <button onClick={() => setShowWizard(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+          <button onClick={() => setShowWizard(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
             <Plus size={15} /> New {activeTab === 'funnels' ? 'Funnel' : 'Website'}
           </button>
         </div>
@@ -521,10 +521,10 @@ export default function Funnels() {
             return (
               <div key={funnel.id}
                 style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c7d2fe'; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#d5d8dd'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
                 {/* Card header with color accent */}
-                <div style={{ height: '4px', background: ftype ? `linear-gradient(90deg, ${ftype.color}, ${ftype.color}88)` : 'linear-gradient(90deg, #6366f1, #8b5cf6)' }} />
+                <div style={{ height: '4px', background: ftype ? `linear-gradient(90deg, ${ftype.color}, ${ftype.color}88)` : '#17191c' }} />
                 <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -537,7 +537,7 @@ export default function Funnels() {
                         {funnel.status === 'active' ? 'Active' : 'Draft'}
                       </button>
                       <button onClick={() => setBuilderFunnel(funnel)} title="Edit"
-                        style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#6366f1' }}>
+                        style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#17191c' }}>
                         <Edit2 size={14} />
                       </button>
                       <button onClick={() => handleDuplicate(funnel)} title="Duplicate"
@@ -566,7 +566,7 @@ export default function Funnels() {
 
                 <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                   {[
-                    { label: 'Visitors', value: funnel.visitors.toLocaleString(), color: '#6366f1' },
+                    { label: 'Visitors', value: funnel.visitors.toLocaleString(), color: '#17191c' },
                     { label: 'Conversions', value: funnel.conversions.toLocaleString(), color: '#22c55e' },
                     { label: 'Revenue', value: `$${funnel.revenue.toLocaleString()}`, color: '#f59e0b' },
                   ].map(m => (
@@ -581,12 +581,12 @@ export default function Funnels() {
                     <span>Conversion Rate</span><span style={{ fontWeight: 700, color: '#0f172a' }}>{cvr}%</span>
                   </div>
                   <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min(parseFloat(cvr) * 5, 100)}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', borderRadius: '9999px' }} />
+                    <div style={{ height: '100%', width: `${Math.min(parseFloat(cvr) * 5, 100)}%`, background: '#17191c', borderRadius: '9999px' }} />
                   </div>
                 </div>
                 <div style={{ padding: '14px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '8px' }}>
                   <button onClick={() => setBuilderFunnel(funnel)}
-                    style={{ flex: 1, padding: '8px', borderRadius: '9px', border: 'none', backgroundColor: '#6366f1', color: 'white', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+                    style={{ flex: 1, padding: '8px', borderRadius: '9px', border: 'none', backgroundColor: '#17191c', color: 'white', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                     <Edit2 size={13} /> Open Builder
                   </button>
                   <button
@@ -604,12 +604,12 @@ export default function Funnels() {
 
           {funnels.length === 0 && (
             <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '72px 60px', backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: '16px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
-              <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <Rocket size={28} color="#6366f1" />
+              <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Rocket size={28} color="#17191c" />
               </div>
               <p style={{ fontWeight: 700, color: '#0f172a', margin: '0 0 6px', fontSize: '16px' }}>No funnels yet</p>
               <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 20px' }}>Choose from 19 funnel types to start converting visitors into customers</p>
-              <button onClick={() => setShowWizard(true)} style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+              <button onClick={() => setShowWizard(true)} style={{ padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                 <Plus size={14} /> Create Your First Funnel
               </button>
             </div>

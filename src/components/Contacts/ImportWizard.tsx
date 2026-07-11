@@ -96,7 +96,7 @@ function Pill({ label, onRemove }: { label: string; onRemove: () => void }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
       padding: '3px 10px 3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-      background: '#ede9fe', color: '#6d28d9',
+      background: '#eceef1', color: '#17191c',
     }}>
       {label}
       <button onClick={onRemove} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, display: 'flex', lineHeight: 1 }}>
@@ -121,19 +121,19 @@ function StepBar({ current }: { current: StepId }) {
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, fontWeight: 700,
-                background: done ? '#6366f1' : active ? '#6366f1' : '#f1f5f9',
+                background: done ? '#17191c' : active ? '#17191c' : '#f1f5f9',
                 color: done || active ? '#fff' : '#94a3b8',
-                border: active ? '3px solid #c7d2fe' : 'none',
+                border: active ? '3px solid #d5d8dd' : 'none',
                 boxSizing: 'border-box',
               }}>
                 {done ? <CheckCircle size={14} /> : i + 1}
               </div>
-              <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? '#6366f1' : done ? '#374151' : '#94a3b8', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? '#17191c' : done ? '#374151' : '#94a3b8', whiteSpace: 'nowrap' }}>
                 {s.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div style={{ flex: 1, height: 2, background: i < idx ? '#6366f1' : '#e2e8f0', margin: '0 8px', minWidth: 20 }} />
+              <div style={{ flex: 1, height: 2, background: i < idx ? '#17191c' : '#e2e8f0', margin: '0 8px', minWidth: 20 }} />
             )}
           </React.Fragment>
         );
@@ -330,8 +330,8 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Upload size={18} color="#6366f1" />
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Upload size={18} color="#17191c" />
               </div>
               <h2 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: 0 }}>Import Contacts</h2>
             </div>
@@ -351,19 +351,19 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
               onDrop={handleDrop}
               onClick={() => fileRef.current?.click()}
               style={{
-                border: `2px dashed ${dragging ? '#6366f1' : '#c7d2fe'}`,
+                border: `2px dashed ${dragging ? '#17191c' : '#d5d8dd'}`,
                 borderRadius: 16, padding: '52px 24px', textAlign: 'center',
-                cursor: 'pointer', background: dragging ? '#f5f3ff' : '#fafbff',
+                cursor: 'pointer', background: dragging ? '#f0f1f3' : '#fafbff',
                 transition: 'all 0.15s',
               }}>
-              <div style={{ width: 56, height: 56, borderRadius: 16, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <Upload size={26} color="#6366f1" />
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Upload size={26} color="#17191c" />
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
                 {dragging ? 'Drop your CSV here' : 'Drag & drop your CSV file'}
               </div>
               <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>or click to browse — .csv files only</div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#6366f1', color: '#fff', borderRadius: 9, fontSize: 13, fontWeight: 700 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: '#17191c', color: '#fff', borderRadius: 9, fontSize: 13, fontWeight: 700 }}>
                 <FileText size={14} /> Choose File
               </div>
               <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFileInput} />
@@ -400,7 +400,7 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
           <div>
             {/* File info banner */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', marginBottom: 20 }}>
-              <FileText size={14} color="#6366f1" />
+              <FileText size={14} color="#17191c" />
               <span style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>{fileName}</span>
               <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>{rows.length} rows · {headers.length} columns · delimiter: <code style={{ fontFamily: 'monospace' }}>{delimiter === '\t' ? 'tab' : delimiter}</code></span>
             </div>
@@ -408,7 +408,7 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
             {/* Stats bar */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 20 }}>
               {[
-                { label: 'Total rows', value: rows.length, color: '#6366f1', bg: '#f5f3ff' },
+                { label: 'Total rows', value: rows.length, color: '#17191c', bg: '#f0f1f3' },
                 { label: 'Mapped', value: Object.values(mapping).filter(v => v !== '__skip__').length, color: '#16a34a', bg: '#f0fdf4' },
                 { label: 'Will skip', value: Object.values(mapping).filter(v => v === '__skip__').length, color: '#94a3b8', bg: '#f8fafc' },
               ].map(s => (
@@ -439,7 +439,7 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 10 }}>
-                        <ChevronRight size={16} color="#c7d2fe" />
+                        <ChevronRight size={16} color="#d5d8dd" />
                       </div>
 
                       {/* Target field */}
@@ -448,10 +448,10 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                           value={m}
                           onChange={e => setMapping(p => ({ ...p, [h]: e.target.value }))}
                           style={{
-                            width: '100%', padding: '9px 10px', border: `1px solid ${isNew ? '#a78bfa' : m === '__skip__' ? '#e2e8f0' : '#6366f1'}`,
+                            width: '100%', padding: '9px 10px', border: `1px solid ${isNew ? '#a78bfa' : m === '__skip__' ? '#e2e8f0' : '#17191c'}`,
                             borderRadius: 8, fontSize: 12, outline: 'none',
-                            background: isNew ? '#faf5ff' : m === '__skip__' ? '#f8fafc' : '#f5f3ff',
-                            color: isNew ? '#7c3aed' : m === '__skip__' ? '#94a3b8' : '#4f46e5',
+                            background: isNew ? '#f7f8f9' : m === '__skip__' ? '#f8fafc' : '#f0f1f3',
+                            color: isNew ? '#17191c' : m === '__skip__' ? '#94a3b8' : '#17191c',
                             fontWeight: m !== '__skip__' ? 600 : 400,
                           }}>
                           <option value="__skip__">— Skip this column —</option>
@@ -474,10 +474,10 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                               value={newVarLabels[h] || ''}
                               onChange={e => setNewVarLabels(p => ({ ...p, [h]: e.target.value }))}
                               placeholder="Variable name (e.g. Industry)"
-                              style={{ flex: 1, padding: '6px 10px', border: '1px solid #a78bfa', borderRadius: 6, fontSize: 12, outline: 'none', background: '#fdf4ff' }}
+                              style={{ flex: 1, padding: '6px 10px', border: '1px solid #a78bfa', borderRadius: 6, fontSize: 12, outline: 'none', background: '#f7f8f9' }}
                             />
                             {newVarLabels[h] && (
-                              <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#7c3aed', background: '#ede9fe', padding: '3px 8px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                              <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#17191c', background: '#eceef1', padding: '3px 8px', borderRadius: 5, whiteSpace: 'nowrap' }}>
                                 {`{{${toSlug(newVarLabels[h]) || '…'}}}`}
                               </span>
                             )}
@@ -491,9 +491,9 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
             </div>
 
             {/* Apply tags */}
-            <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fafbff', borderRadius: 10, border: '1px solid #e0e7ff' }}>
+            <div style={{ marginBottom: 20, padding: '14px 16px', background: '#fafbff', borderRadius: 10, border: '1px solid #e4e6ea' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Tag size={12} color="#6366f1" /> Apply tags to all imported contacts
+                <Tag size={12} color="#17191c" /> Apply tags to all imported contacts
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {applyTags.map(t => <Pill key={t} label={t} onRemove={() => setApplyTags(prev => prev.filter(x => x !== t))} />)}
@@ -507,14 +507,14 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                   style={{ flex: 1, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none' }}
                 />
                 <button onClick={() => addTag(tagInput)}
-                  style={{ padding: '7px 14px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  style={{ padding: '7px 14px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   <Plus size={13} />
                 </button>
               </div>
             </div>
 
             {/* Duplicate strategy */}
-            <div style={{ marginBottom: 24, padding: '14px 16px', background: '#fafbff', borderRadius: 10, border: '1px solid #e0e7ff' }}>
+            <div style={{ marginBottom: 24, padding: '14px 16px', background: '#fafbff', borderRadius: 10, border: '1px solid #e4e6ea' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                 Duplicate contacts (matched by email)
               </div>
@@ -525,10 +525,10 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                 ].map(opt => (
                   <button key={opt.id} onClick={() => setDupStrategy(opt.id as 'skip' | 'update')}
                     style={{
-                      flex: 1, padding: '10px 14px', border: `2px solid ${dupStrategy === opt.id ? '#6366f1' : '#e2e8f0'}`,
-                      borderRadius: 9, background: dupStrategy === opt.id ? '#f5f3ff' : '#fff', cursor: 'pointer', textAlign: 'left',
+                      flex: 1, padding: '10px 14px', border: `2px solid ${dupStrategy === opt.id ? '#17191c' : '#e2e8f0'}`,
+                      borderRadius: 9, background: dupStrategy === opt.id ? '#f0f1f3' : '#fff', cursor: 'pointer', textAlign: 'left',
                     }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: dupStrategy === opt.id ? '#4f46e5' : '#0f172a' }}>{opt.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: dupStrategy === opt.id ? '#17191c' : '#0f172a' }}>{opt.label}</div>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{opt.desc}</div>
                   </button>
                 ))}
@@ -541,7 +541,7 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                 <ChevronLeft size={14} /> Back
               </button>
               <button onClick={() => setStep('preview')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 Preview <ChevronRight size={14} />
               </button>
             </div>
@@ -554,10 +554,10 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
             {/* Summary cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
               {[
-                { label: 'Total rows',    value: rows.length,             icon: <FileText size={14} />, color: '#6366f1', bg: '#f5f3ff' },
+                { label: 'Total rows',    value: rows.length,             icon: <FileText size={14} />, color: '#17191c', bg: '#f0f1f3' },
                 { label: 'Will import',   value: rows.length - willSkip,  icon: <Users size={14} />,    color: '#16a34a', bg: '#f0fdf4' },
                 { label: 'Will skip',     value: willSkip,                icon: <AlertCircle size={14} />, color: willSkip > 0 ? '#d97706' : '#94a3b8', bg: willSkip > 0 ? '#fffbeb' : '#f8fafc' },
-                { label: 'New variables', value: newVarDefs.length,       icon: <Tag size={14} />,      color: '#7c3aed', bg: '#faf5ff' },
+                { label: 'New variables', value: newVarDefs.length,       icon: <Tag size={14} />,      color: '#17191c', bg: '#f7f8f9' },
               ].map(s => (
                 <div key={s.label} style={{ padding: '12px 14px', background: s.bg, borderRadius: 10, textAlign: 'center' }}>
                   <div style={{ color: s.color, display: 'flex', justifyContent: 'center', marginBottom: 4 }}>{s.icon}</div>
@@ -569,19 +569,19 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
 
             {/* New variables preview */}
             {newVarDefs.length > 0 && (
-              <div style={{ marginBottom: 16, padding: '14px 16px', background: '#faf5ff', borderRadius: 10, border: '1px solid #e9d5ff' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+              <div style={{ marginBottom: 16, padding: '14px 16px', background: '#f7f8f9', borderRadius: 10, border: '1px solid #e4e6ea' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#17191c', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
                   New variables to be created
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                   {newVarDefs.map(v => (
-                    <div key={v.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: '#ede9fe', borderRadius: 20 }}>
-                      <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#6d28d9' }}>{`{{${v.key}}}`}</span>
-                      <span style={{ fontSize: 11, color: '#7c3aed' }}>— {v.label}</span>
+                    <div key={v.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: '#eceef1', borderRadius: 20 }}>
+                      <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#17191c' }}>{`{{${v.key}}}`}</span>
+                      <span style={{ fontSize: 11, color: '#17191c' }}>— {v.label}</span>
                     </div>
                   ))}
                 </div>
-                <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 8 }}>
+                <div style={{ fontSize: 11, color: '#17191c', marginTop: 8 }}>
                   These variables will be available in email templates for personalization.
                 </div>
               </div>
@@ -634,7 +634,7 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
                 <ChevronLeft size={14} /> Back
               </button>
               <button onClick={doImport}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 Import {rows.length - willSkip} Contacts <ChevronRight size={14} />
               </button>
             </div>
@@ -650,7 +650,7 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
             <h3 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>Import Complete!</h3>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginBottom: 24 }}>
               <div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#6366f1' }}>{result.imported}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#17191c' }}>{result.imported}</div>
                 <div style={{ fontSize: 12, color: '#64748b' }}>contacts imported</div>
               </div>
               {result.skipped > 0 && (
@@ -661,33 +661,33 @@ export default function ImportWizard({ onClose, onImport, existingFields }: Prop
               )}
               {result.newFields.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: '#7c3aed' }}>{result.newFields.length}</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#17191c' }}>{result.newFields.length}</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>new variables</div>
                 </div>
               )}
             </div>
 
             {result.newFields.length > 0 && (
-              <div style={{ padding: '16px 20px', background: '#faf5ff', borderRadius: 12, border: '1px solid #e9d5ff', marginBottom: 24, textAlign: 'left' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
+              <div style={{ padding: '16px 20px', background: '#f7f8f9', borderRadius: 12, border: '1px solid #e4e6ea', marginBottom: 24, textAlign: 'left' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#17191c', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
                   New email personalization variables
                 </div>
                 {result.newFields.map(v => (
-                  <div key={v.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid #ede9fe' }}>
-                    <code style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#6d28d9', background: '#ede9fe', padding: '2px 8px', borderRadius: 5 }}>
+                  <div key={v.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid #eceef1' }}>
+                    <code style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#17191c', background: '#eceef1', padding: '2px 8px', borderRadius: 5 }}>
                       {`{{${v.key}}}`}
                     </code>
                     <span style={{ fontSize: 13, color: '#374151' }}>{v.label}</span>
                   </div>
                 ))}
-                <p style={{ fontSize: 12, color: '#7c3aed', margin: '10px 0 0' }}>
+                <p style={{ fontSize: 12, color: '#17191c', margin: '10px 0 0' }}>
                   Use these tokens in Marketing → Campaign Wizard → Email editor to personalize messages.
                 </p>
               </div>
             )}
 
             <button onClick={onClose}
-              style={{ padding: '11px 32px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              style={{ padding: '11px 32px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               Done
             </button>
           </div>

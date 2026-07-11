@@ -191,14 +191,14 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
         onDrop={handleDrop}
         onClick={() => fileRef.current?.click()}
         style={{
-          border: `2px dashed ${dragging ? '#6366f1' : '#cbd5e1'}`,
+          border: `2px dashed ${dragging ? '#17191c' : '#cbd5e1'}`,
           borderRadius: '16px', padding: '56px 40px', textAlign: 'center',
-          cursor: 'pointer', backgroundColor: dragging ? '#f5f3ff' : '#fafafa',
+          cursor: 'pointer', backgroundColor: dragging ? '#f0f1f3' : '#fafafa',
           transition: 'all 0.2s',
         }}
       >
-        <div style={{ width: '68px', height: '68px', borderRadius: '18px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
-          <Upload size={30} color="#6366f1" />
+        <div style={{ width: '68px', height: '68px', borderRadius: '18px', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+          <Upload size={30} color="#17191c" />
         </div>
         <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>
           {dragging ? 'Drop it!' : 'Drop CSV here or click to browse'}
@@ -230,8 +230,8 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
     return (
       <div style={{ padding: '28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '24px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <FileText size={22} color="#6366f1" />
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FileText size={22} color="#17191c" />
           </div>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{file?.name}</p>
@@ -307,7 +307,7 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
           <div style={{ display: 'flex', gap: '8px' }}>
             {(['skip', 'update'] as const).map(s => (
               <button key={s} onClick={() => setDupStrategy(s)}
-                style={{ padding: '8px 16px', border: `2px solid ${dupStrategy === s ? '#6366f1' : '#e2e8f0'}`, borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: dupStrategy === s ? '#6366f1' : 'white', color: dupStrategy === s ? 'white' : '#64748b', transition: 'all 0.15s' }}>
+                style={{ padding: '8px 16px', border: `2px solid ${dupStrategy === s ? '#17191c' : '#e2e8f0'}`, borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: dupStrategy === s ? '#17191c' : 'white', color: dupStrategy === s ? 'white' : '#64748b', transition: 'all 0.15s' }}>
                 {s === 'skip' ? 'Skip Duplicates' : 'Update Existing'}
               </button>
             ))}
@@ -317,7 +317,7 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button onClick={reset} style={{ padding: '10px 20px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', background: 'white', color: '#64748b' }}>Cancel</button>
           <button onClick={handleImport} disabled={!emailMapped}
-            style={{ padding: '10px 24px', backgroundColor: emailMapped ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: emailMapped ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            style={{ padding: '10px 24px', backgroundColor: emailMapped ? '#17191c' : '#d5d8dd', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: emailMapped ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Upload size={15} /> Import {parsed.rows.length.toLocaleString()} Contacts
           </button>
         </div>
@@ -328,18 +328,18 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
   /* ── IMPORTING STAGE ── */
   if (stage === 'importing') return (
     <div style={{ padding: '80px 28px', textAlign: 'center' }}>
-      <div style={{ width: '76px', height: '76px', borderRadius: '50%', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-        <RefreshCw size={30} color="#6366f1" className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+      <div style={{ width: '76px', height: '76px', borderRadius: '50%', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+        <RefreshCw size={30} color="#17191c" className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
       </div>
       <h3 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Importing…</h3>
       <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 40px' }}>Processing {parsed?.rows.length.toLocaleString()} records</p>
       <div style={{ maxWidth: '420px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
           <span style={{ fontSize: '13px', color: '#64748b' }}>Progress</span>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#6366f1' }}>{progress}%</span>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#17191c' }}>{progress}%</span>
         </div>
         <div style={{ height: '10px', backgroundColor: '#e2e8f0', borderRadius: '5px', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', borderRadius: '5px', transition: 'width 0.3s ease' }} />
+          <div style={{ height: '100%', width: `${progress}%`, background: '#17191c', borderRadius: '5px', transition: 'width 0.3s ease' }} />
         </div>
       </div>
     </div>
@@ -355,7 +355,7 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
       <p style={{ fontSize: '15px', color: '#64748b', margin: '0 0 36px' }}>Your contacts have been added to the CRM.</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', maxWidth: '520px', margin: '0 auto 36px' }}>
         {[
-          { label: 'Total Rows', value: summary.total, color: '#6366f1', bg: '#f5f3ff' },
+          { label: 'Total Rows', value: summary.total, color: '#17191c', bg: '#f0f1f3' },
           { label: 'Imported', value: summary.imported, color: '#16a34a', bg: '#ecfdf5' },
           { label: 'Duplicates', value: summary.duplicates, color: '#f59e0b', bg: '#fffbeb' },
           { label: 'Errors', value: summary.errors, color: '#ef4444', bg: '#fef2f2' },
@@ -367,7 +367,7 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
         ))}
       </div>
       <button onClick={reset}
-        style={{ padding: '11px 28px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+        style={{ padding: '11px 28px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
         <Upload size={16} /> Import Another File
       </button>
     </div>

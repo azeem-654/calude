@@ -107,7 +107,7 @@ function ActiveCampaignPanel({ conn, onSave, onDisconnect, contacts }: {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
             {[
-              { label: 'Contacts to sync', value: contacts.length, icon: <Users size={18} color="#6366f1" />, color: '#6366f1' },
+              { label: 'Contacts to sync', value: contacts.length, icon: <Users size={18} color="#17191c" />, color: '#17191c' },
               { label: 'Email lists', value: conn.listId ? '1 linked' : 'None linked', icon: <Mail size={18} color="#3b82f6" />, color: '#3b82f6' },
               { label: 'Sync status', value: syncResult ? 'Done' : 'Idle', icon: <Zap size={18} color="#22c55e" />, color: '#22c55e' },
             ].map(s => (
@@ -132,7 +132,7 @@ function ActiveCampaignPanel({ conn, onSave, onDisconnect, contacts }: {
               </div>
             )}
             <button onClick={syncContacts} disabled={syncing}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: syncing ? '#e2e8f0' : '#6366f1', color: syncing ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: syncing ? 'wait' : 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: syncing ? '#e2e8f0' : '#17191c', color: syncing ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: syncing ? 'wait' : 'pointer' }}>
               <RefreshCw size={14} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
               {syncing ? 'Syncing…' : `Sync ${contacts.length} contacts →`}
             </button>
@@ -153,7 +153,7 @@ function ActiveCampaignPanel({ conn, onSave, onDisconnect, contacts }: {
                 style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none' }}
               />
               <button onClick={() => onSave({ ...conn, listId })}
-                style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ padding: '8px 16px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 Save
               </button>
             </div>
@@ -216,7 +216,7 @@ function ActiveCampaignPanel({ conn, onSave, onDisconnect, contacts }: {
                 {testing ? '⟳ Testing…' : 'Test Connection'}
               </button>
               <button onClick={handleSave} disabled={!apiKey || !apiUrl}
-                style={{ flex: 1, padding: '9px', background: (!apiKey || !apiUrl) ? '#e2e8f0' : '#6366f1', color: (!apiKey || !apiUrl) ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: (!apiKey || !apiUrl) ? 'not-allowed' : 'pointer' }}>
+                style={{ flex: 1, padding: '9px', background: (!apiKey || !apiUrl) ? '#e2e8f0' : '#17191c', color: (!apiKey || !apiUrl) ? '#94a3b8' : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: (!apiKey || !apiUrl) ? 'not-allowed' : 'pointer' }}>
                 Connect →
               </button>
             </div>
@@ -274,7 +274,7 @@ export default function EmailApps({ contacts }: { contacts: { name?: string; ema
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 28 }}>
         {[
-          { label: 'Connected Apps', value: Object.keys(connections).length, color: '#6366f1', icon: <Check size={18} color="#6366f1" /> },
+          { label: 'Connected Apps', value: Object.keys(connections).length, color: '#17191c', icon: <Check size={18} color="#17191c" /> },
           { label: 'Contacts Ready', value: contacts.length, color: '#3b82f6', icon: <Users size={18} color="#3b82f6" /> },
           { label: 'Sync Available', value: Object.keys(connections).length > 0 ? 'Yes' : 'None', color: '#22c55e', icon: <ArrowUpDown size={18} color="#22c55e" /> },
         ].map(s => (
@@ -304,12 +304,12 @@ export default function EmailApps({ contacts }: { contacts: { name?: string; ema
               key={app.id}
               onClick={() => setSelectedApp(app.id)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, border: `1px solid ${selectedApp === app.id ? '#c4b5fd' : '#e2e8f0'}`,
-                background: selectedApp === app.id ? '#f5f3ff' : '#fff', cursor: 'pointer', textAlign: 'left',
+                display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, border: `1px solid ${selectedApp === app.id ? '#d5d8dd' : '#e2e8f0'}`,
+                background: selectedApp === app.id ? '#f0f1f3' : '#fff', cursor: 'pointer', textAlign: 'left',
               }}
             >
               <span style={{ fontSize: 18 }}>{app.icon}</span>
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: selectedApp === app.id ? '#6366f1' : '#374151' }}>{app.name}</span>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: selectedApp === app.id ? '#17191c' : '#374151' }}>{app.name}</span>
               {app.connected && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />}
             </button>
           ))}
@@ -320,9 +320,9 @@ export default function EmailApps({ contacts }: { contacts: { name?: string; ema
             { id: 'postmark',     name: 'Postmark', icon: '📮' },
           ].map(app => (
             <button key={app.id} onClick={() => setSelectedApp(app.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, border: `1px solid ${selectedApp === app.id ? '#c4b5fd' : '#e2e8f0'}`, background: selectedApp === app.id ? '#f5f3ff' : '#fff', cursor: 'pointer', textAlign: 'left' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, border: `1px solid ${selectedApp === app.id ? '#d5d8dd' : '#e2e8f0'}`, background: selectedApp === app.id ? '#f0f1f3' : '#fff', cursor: 'pointer', textAlign: 'left' }}>
               <span style={{ fontSize: 18 }}>{app.icon}</span>
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: selectedApp === app.id ? '#6366f1' : '#374151' }}>{app.name}</span>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: selectedApp === app.id ? '#17191c' : '#374151' }}>{app.name}</span>
             </button>
           ))}
         </div>
@@ -354,7 +354,7 @@ export default function EmailApps({ contacts }: { contacts: { name?: string; ema
                 </p>
                 <a
                   href="#/settings"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 18, padding: '9px 18px', background: '#6366f1', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 18, padding: '9px 18px', background: '#17191c', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
                 >
                   Go to Settings <ExternalLink size={13} />
                 </a>

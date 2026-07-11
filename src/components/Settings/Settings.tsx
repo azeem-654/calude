@@ -16,7 +16,7 @@ import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button onClick={() => onChange(!value)}
-      style={{ width: '36px', height: '20px', borderRadius: '999px', backgroundColor: value ? '#6366f1' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, padding: 0 }}>
+      style={{ width: '36px', height: '20px', borderRadius: '999px', backgroundColor: value ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, padding: 0 }}>
       <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: value ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(16,24,40,0.25)' }} />
     </button>
   );
@@ -128,13 +128,13 @@ function EmailProviderCard() {
   return (
     <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
-        <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Zap size={20} color="#6366f1" />
+        <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Zap size={20} color="#17191c" />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Email Sending Provider</h4>
-            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#6366f115', color: '#6366f1', fontWeight: 600 }}>Campaign Sending</span>
+            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#17191c15', color: '#17191c', fontWeight: 600 }}>Campaign Sending</span>
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>API-based sending used by campaigns and sequences</p>
         </div>
@@ -152,8 +152,8 @@ function EmailProviderCard() {
             { id: 'none',     label: '🚫 None',     desc: 'Disabled' },
           ].map(p => (
             <button key={p.id} onClick={() => setCfg(prev => ({ ...prev, provider: p.id as EmailProviderConfig['provider'] }))}
-              style={{ padding: '10px', border: `2px solid ${cfg.provider === p.id ? '#6366f1' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === p.id ? '#f5f3ff' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: cfg.provider === p.id ? '#6366f1' : '#374151' }}>{p.label}</div>
+              style={{ padding: '10px', border: `2px solid ${cfg.provider === p.id ? '#17191c' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === p.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: cfg.provider === p.id ? '#17191c' : '#374151' }}>{p.label}</div>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{p.desc}</div>
             </button>
           ))}
@@ -162,7 +162,7 @@ function EmailProviderCard() {
           <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <p style={{ fontSize: '12px', color: '#64748b', margin: 0, flex: 1 }}>{providerDocs[cfg.provider].hint}</p>
             <a href={providerDocs[cfg.provider].url} target="_blank" rel="noopener noreferrer"
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#6366f1', fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#17191c', fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
               Get free API key <ExternalLink size={11} />
             </a>
           </div>
@@ -213,7 +213,7 @@ function EmailProviderCard() {
                 style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
             </div>
             <button onClick={runTest} disabled={status === 'sending'}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#6366f1', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#17191c', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
               {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
             </button>
             {lastResult && (
@@ -227,7 +227,7 @@ function EmailProviderCard() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           <Save size={14} /> Save Provider
         </button>
       </div>
@@ -384,7 +384,7 @@ function MailboxWarmupCard() {
 
       {/* Send window */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-        <Clock size={16} color="#6366f1" style={{ flexShrink: 0 }} />
+        <Clock size={16} color="#17191c" style={{ flexShrink: 0 }} />
         <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569', flexShrink: 0 }}>Send Window</span>
         <select value={cfg.sendWindowStart} onChange={e => set('sendWindowStart', Number(e.target.value))}
           style={{ padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#475569', backgroundColor: 'white' }}>
@@ -401,7 +401,7 @@ function MailboxWarmupCard() {
       {/* Schedule preview */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
-          <TrendingUp size={14} color="#6366f1" />
+          <TrendingUp size={14} color="#17191c" />
           <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Warmup Schedule Preview</span>
           <span style={{ fontSize: '11px', color: '#94a3b8' }}>reaches {cfg.maxVolume}/day in {daysToMax} days</span>
         </div>
@@ -413,7 +413,7 @@ function MailboxWarmupCard() {
               <div key={p.day} title={`Day ${p.day}: ${p.vol} emails`}
                 style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', minWidth: 0 }}>
                 <span style={{ fontSize: '9px', color: isToday ? '#f97316' : '#94a3b8', fontWeight: isToday ? 700 : 400 }}>{p.vol}</span>
-                <div style={{ width: '100%', height: `${Math.max(h, 6)}%`, backgroundColor: isToday ? '#f97316' : '#c4b5fd', borderRadius: '3px 3px 0 0', transition: 'height 0.3s' }} />
+                <div style={{ width: '100%', height: `${Math.max(h, 6)}%`, backgroundColor: isToday ? '#f97316' : '#d5d8dd', borderRadius: '3px 3px 0 0', transition: 'height 0.3s' }} />
                 <span style={{ fontSize: '9px', color: isToday ? '#f97316' : '#94a3b8', fontWeight: isToday ? 700 : 400 }}>D{p.day}</span>
               </div>
             );
@@ -422,7 +422,7 @@ function MailboxWarmupCard() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           <Save size={14} /> Save Warmup Settings
         </button>
       </div>
@@ -467,7 +467,7 @@ function EmailSMSTab() {
 
   const sectionHead = (icon: ReactElement, title: string, desc: string, badge?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
-      <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
       </div>
       <div style={{ flex: 1 }}>
@@ -537,7 +537,7 @@ function EmailSMSTab() {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Webhook URL (for incoming SMS)</label>
-              <div style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '12px', color: '#6366f1', backgroundColor: '#f8fafc', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              <div style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '12px', color: '#17191c', backgroundColor: '#f8fafc', fontFamily: 'monospace', wordBreak: 'break-all' }}>
                 https://azeem-654.github.io/calude/api/sms/inbound
               </div>
               <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>Paste this URL in your SMS provider's webhook settings</p>
@@ -588,7 +588,7 @@ function EmailSMSTab() {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
         <button onClick={() => { localStorage.setItem('crm_sms', JSON.stringify(sms)); addNotification('SMS settings saved!'); }}
-          style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.35)' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.35)' }}>
           <Save size={16} /> Save SMS Settings
         </button>
       </div>
@@ -668,7 +668,7 @@ function IntegrationsTab() {
 
   const cardHeader = (icon: ReactNode, title: string, desc: string, badge?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
-      <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
       </div>
       <div style={{ flex: 1 }}>
@@ -687,7 +687,7 @@ function IntegrationsTab() {
     <div>
       {/* Resend */}
       {card(<>
-        {cardHeader(<Mail size={20} color="#6366f1" />, 'Resend Email API', 'Validate your Resend API key for email delivery', 'CORS-safe')}
+        {cardHeader(<Mail size={20} color="#17191c" />, 'Resend Email API', 'Validate your Resend API key for email delivery', 'CORS-safe')}
         <div style={{ marginBottom: '12px' }}>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Resend API Key</label>
           <input type="password" value={resendKey} onChange={e => setResendKey(e.target.value)} placeholder="re_xxxxxxxxxxxxxxxxxxxx" style={inputStyle} />
@@ -695,7 +695,7 @@ function IntegrationsTab() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('resend', { apiKey: resendKey }, setResendStatus, setResendResult, setShowResendPopup)}
             disabled={resendStatus === 'testing' || !resendKey.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: resendStatus === 'testing' || !resendKey.trim() ? '#e2e8f0' : '#6366f1', color: resendStatus === 'testing' || !resendKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: resendStatus === 'testing' || !resendKey.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: resendStatus === 'testing' || !resendKey.trim() ? '#e2e8f0' : '#17191c', color: resendStatus === 'testing' || !resendKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: resendStatus === 'testing' || !resendKey.trim() ? 'not-allowed' : 'pointer' }}>
             {resendStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {resendStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
@@ -755,7 +755,7 @@ function IntegrationsTab() {
 
       {/* Apollo.io */}
       {card(<>
-        {cardHeader(<Globe size={20} color="#6366f1" />, 'Apollo.io API', 'Validate your Apollo.io API key for contact enrichment')}
+        {cardHeader(<Globe size={20} color="#17191c" />, 'Apollo.io API', 'Validate your Apollo.io API key for contact enrichment')}
         <div style={{ padding: '10px 14px', backgroundColor: '#fefce8', borderRadius: '8px', border: '1px solid #fef08a', marginBottom: '14px' }}>
           <p style={{ fontSize: '12px', color: '#a16207', margin: 0 }}>
             <strong>Note:</strong> Apollo.io API requires a backend proxy. Start the local backend server for full validation.
@@ -768,7 +768,7 @@ function IntegrationsTab() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => runValidation('apollo', { apiKey: apolloKey }, setApolloStatus, setApolloResult, setShowApolloPopup)}
             disabled={apolloStatus === 'testing' || !apolloKey.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: apolloStatus === 'testing' || !apolloKey.trim() ? '#e2e8f0' : '#6366f1', color: apolloStatus === 'testing' || !apolloKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: apolloStatus === 'testing' || !apolloKey.trim() ? 'not-allowed' : 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: apolloStatus === 'testing' || !apolloKey.trim() ? '#e2e8f0' : '#17191c', color: apolloStatus === 'testing' || !apolloKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: apolloStatus === 'testing' || !apolloKey.trim() ? 'not-allowed' : 'pointer' }}>
             {apolloStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
             {apolloStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
@@ -882,10 +882,10 @@ export default function Settings() {
           <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
             {tabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', border: 'none', borderRadius: '9px', backgroundColor: activeTab === tab.id ? '#eef2ff' : 'transparent', color: activeTab === tab.id ? '#6366f1' : '#475569', fontSize: '13px', fontWeight: activeTab === tab.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '2px' }}>
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', border: 'none', borderRadius: '9px', backgroundColor: activeTab === tab.id ? '#eceef1' : 'transparent', color: activeTab === tab.id ? '#17191c' : '#475569', fontSize: '13px', fontWeight: activeTab === tab.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '2px' }}>
                 <tab.icon size={16} />
                 {tab.label}
-                {(tab.id === 'email-sms' || tab.id === 'api-validation') && <span style={{ marginLeft: 'auto', fontSize: '9px', padding: '2px 7px', borderRadius: '999px', backgroundColor: activeTab === tab.id ? '#6366f1' : '#eef2ff', color: activeTab === tab.id ? 'white' : '#6366f1', fontWeight: 700, letterSpacing: '0.03em' }}>NEW</span>}
+                {(tab.id === 'email-sms' || tab.id === 'api-validation') && <span style={{ marginLeft: 'auto', fontSize: '9px', padding: '2px 7px', borderRadius: '999px', backgroundColor: activeTab === tab.id ? '#17191c' : '#eceef1', color: activeTab === tab.id ? 'white' : '#17191c', fontWeight: 700, letterSpacing: '0.03em' }}>NEW</span>}
                 {tab.id !== 'email-sms' && tab.id !== 'api-validation' && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: activeTab === tab.id ? 0.7 : 0.35 }} />}
               </button>
             ))}
@@ -901,7 +901,7 @@ export default function Settings() {
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Profile Information</h3>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>JD</div>
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>JD</div>
                 <div>
                   <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>John Doe</p>
                   <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px' }}>Admin · CRMPro Inc.</p>
@@ -921,7 +921,7 @@ export default function Settings() {
                   </div>
                 ))}
               </div>
-              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                 <Save size={15} /> Save Changes
               </button>
             </div>
@@ -946,7 +946,7 @@ export default function Settings() {
                   <Toggle value={(notifications as Record<string, boolean>)[key]} onChange={v => setNotifications(p => ({ ...p, [key]: v }))} />
                 </div>
               ))}
-              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '16px' }}>
+              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '16px' }}>
                 <Save size={15} /> Save Preferences
               </button>
             </div>
@@ -979,7 +979,7 @@ export default function Settings() {
           {activeTab === 'billing' && (
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing & Subscription</h3>
-              <div style={{ padding: '22px 24px', borderRadius: '12px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', marginBottom: '20px', boxShadow: '0 8px 20px rgba(99,102,241,0.25)' }}>
+              <div style={{ padding: '22px 24px', borderRadius: '12px', background: '#17191c', color: 'white', marginBottom: '20px', boxShadow: '0 8px 20px rgba(23,25,28,0.25)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <p style={{ fontSize: '12px', opacity: 0.8, margin: '0 0 4px' }}>Current Plan</p>
@@ -998,8 +998,8 @@ export default function Settings() {
                 {activeTab === 'security' ? 'Security Settings' : 'Branding'}
               </h3>
               <div style={{ padding: '48px 24px', textAlign: 'center', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: '12px', marginTop: '16px' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '16px', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  {activeTab === 'security' ? <Shield size={28} color="#6366f1" /> : <Palette size={28} color="#6366f1" />}
+                <div style={{ width: '64px', height: '64px', borderRadius: '16px', backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  {activeTab === 'security' ? <Shield size={28} color="#17191c" /> : <Palette size={28} color="#17191c" />}
                 </div>
                 <p style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a', letterSpacing: '-0.01em', margin: '0 0 6px' }}>Coming Soon</p>
                 <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>This section is under development</p>

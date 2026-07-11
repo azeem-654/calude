@@ -23,7 +23,7 @@ interface FormErrors {
 
 /* ── providers ── */
 const PROVIDERS = [
-  { id: 'cpanel', label: 'cPanel / Freehostia', emoji: '🏠', desc: 'Hosting account email · mail.yourdomain.com', color: '#6366f1',
+  { id: 'cpanel', label: 'cPanel / Freehostia', emoji: '🏠', desc: 'Hosting account email · mail.yourdomain.com', color: '#17191c',
     smtp: { host: '', port: '465', encryption: 'ssl' as const, user: '', pass: '', fromName: '', fromEmail: '' },
     imap: { host: '', port: '993', user: '', pass: '', folder: 'INBOX' } },
   { id: 'gmail', label: 'Gmail', emoji: '📧', desc: 'smtp.gmail.com · App Password required', color: '#ea4335',
@@ -118,7 +118,7 @@ function LabeledField({
           placeholder={placeholder}
           style={{
             width: '100%', padding: isPass ? '9px 36px 9px 12px' : '9px 12px',
-            border: `1px solid ${hasError ? '#fca5a5' : value ? '#a5b4fc' : '#e2e8f0'}`,
+            border: `1px solid ${hasError ? '#fca5a5' : value ? '#b9bec6' : '#e2e8f0'}`,
             borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
             backgroundColor: hasError ? '#fff5f5' : 'white', color: '#0f172a',
             transition: 'border-color 0.15s',
@@ -141,14 +141,14 @@ function StepDot({ label, active, done, idx }: { label: string; active: boolean;
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
       <div style={{
         width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700,
-        backgroundColor: done ? '#dcfce7' : active ? '#6366f1' : '#f1f5f9',
+        backgroundColor: done ? '#dcfce7' : active ? '#17191c' : '#f1f5f9',
         color: done ? '#16a34a' : active ? 'white' : '#94a3b8',
-        border: `2px solid ${done ? '#86efac' : active ? '#6366f1' : '#e2e8f0'}`,
+        border: `2px solid ${done ? '#86efac' : active ? '#17191c' : '#e2e8f0'}`,
         transition: 'all 0.2s',
       }}>
         {done ? <CheckCircle size={14} /> : idx + 1}
       </div>
-      <span style={{ fontSize: '11px', fontWeight: active ? 600 : 400, color: active ? '#6366f1' : done ? '#16a34a' : '#94a3b8', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: '11px', fontWeight: active ? 600 : 400, color: active ? '#17191c' : done ? '#16a34a' : '#94a3b8', whiteSpace: 'nowrap' }}>{label}</span>
     </div>
   );
 }
@@ -214,7 +214,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
           fromName: smtp.fromName || 'CRMPro',
           fromEmail: smtp.fromEmail || smtp.user, to: sendTo.trim(),
           subject: '✅ CRMPro SMTP Test',
-          html: `<div style="font-family:Inter,sans-serif;max-width:560px;padding:32px"><h2 style="color:#6366f1">✅ SMTP Connection Verified</h2><p>Your SMTP integration is working correctly.</p><table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0"><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Host</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.host}:${smtp.port}</td></tr><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Sent at</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date().toLocaleString()}</td></tr></table></div>`,
+          html: `<div style="font-family:Inter,sans-serif;max-width:560px;padding:32px"><h2 style="color:#17191c">✅ SMTP Connection Verified</h2><p>Your SMTP integration is working correctly.</p><table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0"><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Host</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.host}:${smtp.port}</td></tr><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Sent at</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date().toLocaleString()}</td></tr></table></div>`,
         }),
       });
       const d = await r.json() as { success: boolean; message: string; previewUrl?: string };
@@ -238,7 +238,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
         borderBottom: expanded ? '1px solid #e2e8f0' : 'none',
       }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Wifi size={16} color="#6366f1" />
+          <Wifi size={16} color="#17191c" />
         </div>
         <div style={{ flex: 1 }}>
           <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Test Connection Anytime</span>
@@ -260,7 +260,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
           {/* SMTP test row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '200px' }}>
-              <Mail size={14} color="#6366f1" />
+              <Mail size={14} color="#17191c" />
               <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Outgoing SMTP</span>
               <span style={{ fontSize: '12px', color: '#94a3b8' }}>{smtp.host}:{smtp.port}</span>
             </div>
@@ -298,14 +298,14 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
           {/* Send test email */}
           <div style={{ paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
             <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Send size={13} color="#6366f1" /> Send a test email
+              <Send size={13} color="#17191c" /> Send a test email
             </p>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input value={sendTo} onChange={e => setSendTo(e.target.value)} placeholder="recipient@example.com"
                 onKeyDown={e => e.key === 'Enter' && sendTestEmail()}
                 style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
               <button onClick={sendTestEmail} disabled={sendState === 'running'}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: sendState === 'running' ? 'not-allowed' : 'pointer', opacity: sendState === 'running' ? 0.7 : 1, flexShrink: 0 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: sendState === 'running' ? 'not-allowed' : 'pointer', opacity: sendState === 'running' ? 0.7 : 1, flexShrink: 0 }}>
                 {sendState === 'running' ? <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />}
                 {sendState === 'running' ? 'Sending…' : 'Send'}
               </button>
@@ -317,7 +317,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
                 </div>
                 {previewUrl && (
                   <a href={previewUrl} target="_blank" rel="noreferrer"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px', backgroundColor: '#6366f1', color: 'white', borderRadius: '6px', fontSize: '12px', fontWeight: 700, textDecoration: 'none', alignSelf: 'flex-start' }}>
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px', backgroundColor: '#17191c', color: 'white', borderRadius: '6px', fontSize: '12px', fontWeight: 700, textDecoration: 'none', alignSelf: 'flex-start' }}>
                     🔍 View on Ethereal →
                   </a>
                 )}
@@ -417,7 +417,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
   const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const };
   const btnPrimary = (disabled = false) => ({
     display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 20px',
-    backgroundColor: disabled ? '#e2e8f0' : '#6366f1', color: disabled ? '#94a3b8' : 'white',
+    backgroundColor: disabled ? '#e2e8f0' : '#17191c', color: disabled ? '#94a3b8' : 'white',
     border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 600,
     cursor: disabled ? 'not-allowed' : 'pointer',
   } as const);
@@ -425,9 +425,9 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
   return (
     <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', background: 'linear-gradient(135deg, #f8faff 0%, #fdf4ff 100%)' }}>
+      <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', background: 'linear-gradient(135deg, #f8faff 0%, #f7f8f9 100%)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: '11px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '11px', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Mail size={20} color="white" />
           </div>
           <div>
@@ -477,8 +477,8 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
               ))}
             </div>
             {selectedProvider === 'cpanel' && (
-              <div style={{ padding: '12px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px', border: '1px solid #c4b5fd', marginBottom: '16px', display: 'flex', gap: '8px' }}>
-                <Info size={14} color="#6366f1" style={{ flexShrink: 0, marginTop: '1px' }} />
+              <div style={{ padding: '12px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px', border: '1px solid #d5d8dd', marginBottom: '16px', display: 'flex', gap: '8px' }}>
+                <Info size={14} color="#17191c" style={{ flexShrink: 0, marginTop: '1px' }} />
                 <div style={{ fontSize: '12px', color: '#4338ca', margin: 0, lineHeight: 1.6 }}>
                   <strong>Freehostia / cPanel setup:</strong><br />
                   Host: <code>mail.protectedcentral.com</code> · Port: <code>465</code> · Encryption: <code>SSL</code><br />
@@ -512,7 +512,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
         {step === 'outgoing' && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <Mail size={16} color="#6366f1" />
+              <Mail size={16} color="#17191c" />
               <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Outgoing Mail (SMTP)</h4>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
@@ -625,7 +625,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
         {step === 'test' && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <Wifi size={16} color="#6366f1" />
+              <Wifi size={16} color="#17191c" />
               <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Test Your Connection</h4>
             </div>
 
@@ -647,7 +647,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
 
             {/* Test button */}
             <button onClick={runConnectionTest} disabled={testState === 'running'}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', backgroundColor: testState === 'running' ? '#e2e8f0' : '#6366f1', color: testState === 'running' ? '#94a3b8' : 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: testState === 'running' ? 'not-allowed' : 'pointer', marginBottom: '14px', width: '100%', justifyContent: 'center' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', backgroundColor: testState === 'running' ? '#e2e8f0' : '#17191c', color: testState === 'running' ? '#94a3b8' : 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: testState === 'running' ? 'not-allowed' : 'pointer', marginBottom: '14px', width: '100%', justifyContent: 'center' }}>
               {testState === 'running' ? <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> : testState === 'ok' ? <CheckCircle size={16} /> : testState === 'fail' ? <XCircle size={16} /> : <Wifi size={16} />}
               {testState === 'running' ? 'Connecting to SMTP server…' : testState === 'ok' ? 'Connection Successful!' : testState === 'fail' ? 'Connection Failed — Retry' : 'Test SMTP Connection'}
             </button>
@@ -700,7 +700,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
               )}
             </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
-              <button onClick={() => setStep('outgoing')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => setStep('outgoing')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 20px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                 <Pencil size={13} /> Edit Settings
               </button>
               <button onClick={() => setStep('provider')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 18px', backgroundColor: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>

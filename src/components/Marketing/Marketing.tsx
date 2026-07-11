@@ -17,12 +17,12 @@ import type { EmailSequence } from '../../types/marketing';
 const typeIcons: Record<string, React.ReactElement> = {
   email: <Mail size={14} />, sms: <MessageSquare size={14} />, sequence: <Zap size={14} />,
 };
-const typeColors: Record<string, string> = { email: '#3b82f6', sms: '#22c55e', sequence: '#8b5cf6' };
+const typeColors: Record<string, string> = { email: '#3b82f6', sms: '#22c55e', sequence: '#3b3f45' };
 const campaignStatusColors: Record<string, { bg: string; color: string }> = {
   active: { bg: '#ecfdf5', color: '#16a34a' },
   draft: { bg: '#f1f5f9', color: '#64748b' },
   paused: { bg: '#fffbeb', color: '#d97706' },
-  completed: { bg: '#eef2ff', color: '#4f46e5' },
+  completed: { bg: '#eceef1', color: '#17191c' },
 };
 
 function MetricBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
@@ -34,7 +34,7 @@ function MetricBar({ label, value, total, color }: { label: string; value: numbe
         <span style={{ fontSize: '11px', fontWeight: 600, color }}>{pct}%</span>
       </div>
       <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', borderRadius: '9999px' }} />
+        <div style={{ height: '100%', width: `${pct}%`, background: '#17191c', borderRadius: '9999px' }} />
       </div>
       <span style={{ fontSize: '11px', color: '#94a3b8' }}>{value.toLocaleString()}</span>
     </div>
@@ -68,7 +68,7 @@ function CampaignsTab() {
           <Settings size={16} color="#d97706" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13, color: '#92400e' }}>
             <strong>Email provider not set up yet.</strong> You can create and draft campaigns now — connect SMTP, Resend, or Mailtrap in{' '}
-            <button onClick={() => { window.location.hash = '#/settings'; }} style={{ border: 'none', background: 'none', color: '#6366f1', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13 }}>Settings → Email & SMS</button> when ready to send.
+            <button onClick={() => { window.location.hash = '#/settings'; }} style={{ border: 'none', background: 'none', color: '#17191c', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13 }}>Settings → Email & SMS</button> when ready to send.
           </div>
           <button onClick={() => setDismissedProviderBanner(true)} style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}>✕</button>
         </div>
@@ -76,7 +76,7 @@ function CampaignsTab() {
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px' }}>
         {[
-          { label: 'Total Campaigns', value: campaigns.length, icon: Mail, color: '#6366f1' },
+          { label: 'Total Campaigns', value: campaigns.length, icon: Mail, color: '#17191c' },
           { label: 'Total Sent', value: totalSent.toLocaleString(), icon: Users, color: '#3b82f6' },
           { label: 'Avg Open Rate', value: `${avgOpen.toFixed(1)}%`, icon: BarChart2, color: '#22c55e' },
           { label: 'Active', value: campaigns.filter(c => c.status === 'active').length, icon: Play, color: '#f59e0b' },
@@ -108,7 +108,7 @@ function CampaignsTab() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
             <Plus size={15} /> Create Campaign
           </button>
         </div>
@@ -118,13 +118,13 @@ function CampaignsTab() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filtered.length === 0 && (
           <div style={{ padding: '56px 40px', backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', textAlign: 'center' }}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <Mail size={28} color="#6366f1" />
+            <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <Mail size={28} color="#17191c" />
             </div>
             <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>No campaigns yet</p>
             <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 20px' }}>Create your first campaign to start reaching your audience.</p>
             <button onClick={() => setShowModal(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
               <Plus size={15} /> Create Campaign
             </button>
           </div>
@@ -135,7 +135,7 @@ function CampaignsTab() {
           return (
             <div key={campaign.id} onClick={() => setSelectedCampaign(campaign)}
               style={{ backgroundColor: 'white', borderRadius: '18px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#c7d2fe'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#d5d8dd'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: campaign.sent > 0 ? '14px' : '0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
@@ -164,7 +164,7 @@ function CampaignsTab() {
               </div>
               {campaign.sent > 0 && (
                 <div style={{ display: 'flex', gap: '16px', paddingTop: '14px', borderTop: '1px solid #f1f5f9' }}>
-                  <MetricBar label="Open" value={campaign.opened} total={campaign.sent} color="#6366f1" />
+                  <MetricBar label="Open" value={campaign.opened} total={campaign.sent} color="#17191c" />
                   <MetricBar label="Click" value={campaign.clicked} total={campaign.sent} color="#3b82f6" />
                   <MetricBar label="Reply" value={campaign.replied} total={campaign.sent} color="#22c55e" />
                   <div style={{ flex: 1 }}>
@@ -249,7 +249,7 @@ function DeliverabilityTab() {
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { label: 'Connected Mailboxes', value: mailboxes.length, color: '#6366f1', icon: <Inbox size={18} color="#6366f1" /> },
+          { label: 'Connected Mailboxes', value: mailboxes.length, color: '#17191c', icon: <Inbox size={18} color="#17191c" /> },
           { label: 'Warming Up', value: mailboxes.filter(m => m.warmupOn).length, color: '#f59e0b', icon: <Zap size={18} color="#f59e0b" /> },
           { label: 'Avg Deliverability', value: `${mailboxes.reduce((s, m) => s + m.deliverability, 0) / (mailboxes.length || 1)}%`, color: '#22c55e', icon: <Shield size={18} color="#22c55e" /> },
           { label: 'Emails Today', value: mailboxes.reduce((s, m) => s + m.sent, 0), color: '#3b82f6', icon: <Mail size={18} color="#3b82f6" /> },
@@ -271,7 +271,7 @@ function DeliverabilityTab() {
       <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #e6e9f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>My mailboxes</span>
-          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
             <Plus size={13} /> Link mailbox
           </button>
         </div>
@@ -287,7 +287,7 @@ function DeliverabilityTab() {
             {mailboxes.map(m => (
               <tr key={m.email} style={{ borderBottom: '1px solid #f1f5f9' }}>
                 <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{m.email}</td>
-                <td style={{ padding: '12px 14px' }}><span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 9999, backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 600 }}>{m.type}</span></td>
+                <td style={{ padding: '12px 14px' }}><span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 9999, backgroundColor: '#eceef1', color: '#17191c', fontWeight: 600 }}>{m.type}</span></td>
                 <td style={{ padding: '12px 14px' }}><span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#16a34a' }}><Check size={12} /> Connected</span></td>
                 <td style={{ padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -352,9 +352,9 @@ function DeliverabilityTab() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
                   {(['progressive', 'flat', 'randomize'] as WarmupType[]).map(t => (
                     <button key={t} onClick={() => setWarmupType(t)}
-                      style={{ padding: '12px 10px', border: `2px solid ${warmupType === t ? '#6366f1' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: warmupType === t ? '#eef2ff' : 'white', cursor: 'pointer', textAlign: 'center' }}>
-                      {warmupType === t && <Check size={14} color="#6366f1" style={{ display: 'block', margin: '0 auto 4px' }} />}
-                      <div style={{ fontSize: 12, fontWeight: 700, color: warmupType === t ? '#4f46e5' : '#374151', textTransform: 'capitalize' }}>{warmupDescriptions[t].label}</div>
+                      style={{ padding: '12px 10px', border: `2px solid ${warmupType === t ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: warmupType === t ? '#eceef1' : 'white', cursor: 'pointer', textAlign: 'center' }}>
+                      {warmupType === t && <Check size={14} color="#17191c" style={{ display: 'block', margin: '0 auto 4px' }} />}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: warmupType === t ? '#17191c' : '#374151', textTransform: 'capitalize' }}>{warmupDescriptions[t].label}</div>
                       <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, lineHeight: 1.3 }}>{warmupDescriptions[t].desc}</div>
                     </button>
                   ))}
@@ -379,7 +379,7 @@ function DeliverabilityTab() {
               </div>
               {/* Continuous warmup */}
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={continuous} onChange={e => setContinuous(e.target.checked)} style={{ marginTop: 3, accentColor: '#6366f1', cursor: 'pointer' }} />
+                <input type="checkbox" checked={continuous} onChange={e => setContinuous(e.target.checked)} style={{ marginTop: 3, accentColor: '#17191c', cursor: 'pointer' }} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Continuous warmup</div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>Continuous warmup keeps sending warmup emails after your scheduled end date to maintain deliverability.</div>
@@ -389,7 +389,7 @@ function DeliverabilityTab() {
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e6e9f0', display: 'flex', justifyContent: 'flex-end', gap: 10, backgroundColor: '#f8fafc' }}>
               <button onClick={() => setShowWarmupModal(false)} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 500, color: '#374151', cursor: 'pointer', backgroundColor: 'white' }}>Skip step</button>
               <button onClick={() => setShowWarmupModal(false)}
-                style={{ padding: '9px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(99,102,241,0.3)' }}>
+                style={{ padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                 Warm up mailbox
               </button>
             </div>
@@ -442,10 +442,10 @@ export default function Marketing() {
           const isActive = activeTab === tab.id;
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 16px', border: 'none', borderBottom: `2px solid ${isActive ? '#6366f1' : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#0f172a' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: '-1px' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 16px', border: 'none', borderBottom: `2px solid ${isActive ? '#17191c' : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#0f172a' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: '-1px' }}
               onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#0f172a'; }}
               onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; }}>
-              <span style={{ color: isActive ? '#6366f1' : '#94a3b8', display: 'flex' }}>{tab.icon}</span>
+              <span style={{ color: isActive ? '#17191c' : '#94a3b8', display: 'flex' }}>{tab.icon}</span>
               {tab.label}
               {tab.badge && (
                 <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '9999px', backgroundColor: '#ecfdf5', color: '#16a34a' }}>{tab.badge}</span>

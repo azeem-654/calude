@@ -53,7 +53,7 @@ function daysInStage(deal: Deal): number {
 const PRIORITY: Record<Priority, { color: string; bg: string; label: string; border: string }> = {
   urgent: { color: '#dc2626', bg: '#fef2f2', label: 'Urgent', border: '#dc2626' },
   high:   { color: '#ea580c', bg: '#fff7ed', label: 'High',   border: '#ea580c' },
-  normal: { color: '#6366f1', bg: '#eef2ff', label: 'Normal', border: '#6366f1' },
+  normal: { color: '#17191c', bg: '#eceef1', label: 'Normal', border: '#17191c' },
   low:    { color: '#94a3b8', bg: '#f8fafc', label: 'Low',    border: '#e2e8f0' },
 };
 
@@ -62,12 +62,12 @@ const LABEL_PRESETS = [
   { color: '#f97316', text: 'Follow Up' },
   { color: '#22c55e', text: 'Ready to Close' },
   { color: '#3b82f6', text: 'Enterprise' },
-  { color: '#8b5cf6', text: 'VIP' },
+  { color: '#3b3f45', text: 'VIP' },
   { color: '#ec4899', text: 'Partnership' },
 ];
 
-const LABEL_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
-const STAGE_COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#14b8a6','#ec4899','#0ea5e9'];
+const LABEL_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#3b3f45','#ec4899','#14b8a6'];
+const STAGE_COLORS = ['#17191c','#22c55e','#f59e0b','#ef4444','#3b3f45','#14b8a6','#ec4899','#0ea5e9'];
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 
 function fmt(n: number) { return `$${n.toLocaleString()}`; }
@@ -147,7 +147,7 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
             <button onClick={() => onMarkWon(deal)} title="Mark Won" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#22c55e', display: 'flex' }}><Trophy size={11} /></button>
             <button onClick={() => onMarkLost(deal)} title="Mark Lost" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><ThumbsDown size={11} /></button>
           </>}
-          {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#6366f1', fontSize: 10, fontWeight: 600 }}>Reopen</button>}
+          {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#17191c', fontSize: 10, fontWeight: 600 }}>Reopen</button>}
           <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><Edit2 size={12} /></button>
           <button onClick={() => onDelete(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#94a3b8', display: 'flex' }}><Trash2 size={12} /></button>
         </div>
@@ -192,7 +192,7 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
       {/* Value + Probability */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
         {vf.has('value') && <span style={{ fontSize: 14, fontWeight: 700, color: isWon ? '#16a34a' : '#0f172a' }}>{fmt(deal.value)}</span>}
-        {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, backgroundColor: '#eef2ff', color: '#6366f1', fontWeight: 600 }}>{deal.probability}%</span>}
+        {vf.has('probability') && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, backgroundColor: '#eceef1', color: '#17191c', fontWeight: 600 }}>{deal.probability}%</span>}
       </div>
 
       {/* Checklist */}
@@ -203,7 +203,7 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
             <span style={{ fontSize: 10, color: done === checklist.length ? '#22c55e' : '#94a3b8', fontWeight: 600 }}>{done}/{checklist.length}</span>
           </div>
           <div style={{ height: 3, backgroundColor: '#e2e8f0', borderRadius: 2 }}>
-            <div style={{ height: '100%', width: `${checklist.length > 0 ? (done / checklist.length) * 100 : 0}%`, backgroundColor: done === checklist.length ? '#22c55e' : '#6366f1', borderRadius: 2, transition: 'width 0.3s' }} />
+            <div style={{ height: '100%', width: `${checklist.length > 0 ? (done / checklist.length) * 100 : 0}%`, backgroundColor: done === checklist.length ? '#22c55e' : '#17191c', borderRadius: 2, transition: 'width 0.3s' }} />
           </div>
         </div>
       )}
@@ -273,9 +273,9 @@ function ManageFieldsModal({ visible, rottingDays, onChange, onRottingChange, on
           <p style={{ margin: '0 0 12px', fontSize: 12, color: '#64748b' }}>Choose which fields appear on deal cards:</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
             {ALL_CARD_FIELDS.map(f => (
-              <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 10px', borderRadius: 8, backgroundColor: draft.has(f.key) ? '#eef2ff' : '#f8fafc', border: `1px solid ${draft.has(f.key) ? '#c7d2fe' : '#e2e8f0'}` }}>
+              <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 10px', borderRadius: 8, backgroundColor: draft.has(f.key) ? '#eceef1' : '#f8fafc', border: `1px solid ${draft.has(f.key) ? '#d5d8dd' : '#e2e8f0'}` }}>
                 <input type="checkbox" checked={draft.has(f.key)} onChange={() => toggle(f.key)} style={{ cursor: 'pointer' }} />
-                <span style={{ fontSize: 13, fontWeight: draft.has(f.key) ? 600 : 400, color: draft.has(f.key) ? '#4f46e5' : '#374151' }}>{f.label}</span>
+                <span style={{ fontSize: 13, fontWeight: draft.has(f.key) ? 600 : 400, color: draft.has(f.key) ? '#17191c' : '#374151' }}>{f.label}</span>
               </label>
             ))}
           </div>
@@ -293,7 +293,7 @@ function ManageFieldsModal({ visible, rottingDays, onChange, onRottingChange, on
         </div>
         <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>Cancel</button>
-          <button onClick={save} style={{ padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Apply</button>
+          <button onClick={save} style={{ padding: '8px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Apply</button>
         </div>
       </div>
     </div>
@@ -411,7 +411,7 @@ function GanttView({ stages, allDeals }: GanttViewProps) {
   return (
     <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
       <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <CalendarDays size={14} color="#6366f1" />
+        <CalendarDays size={14} color="#17191c" />
         <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Timeline / Gantt</span>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>({activeDeals.length} deals)</span>
       </div>
@@ -536,7 +536,7 @@ function CalendarView({ stages, allDeals, onOpen }: CalendarViewProps) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Calendar size={14} color="#6366f1" />
+          <Calendar size={14} color="#17191c" />
           <span style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>{monthLabel}</span>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -572,12 +572,12 @@ function CalendarView({ stages, allDeals, onOpen }: CalendarViewProps) {
               {day && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-                    <span style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: isToday ? 700 : 400, backgroundColor: isToday ? '#6366f1' : 'transparent', color: isToday ? 'white' : '#374151' }}>
+                    <span style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: isToday ? 700 : 400, backgroundColor: isToday ? '#17191c' : 'transparent', color: isToday ? 'white' : '#374151' }}>
                       {day}
                     </span>
                   </div>
                   {dayDeals.slice(0, 3).map(deal => {
-                    const stageColor = stageColorMap.get(deal.stage) ?? '#6366f1';
+                    const stageColor = stageColorMap.get(deal.stage) ?? '#17191c';
                     const st = deal.status ?? 'active';
                     return (
                       <div key={deal.id} onClick={() => onOpen(deal)}
@@ -667,7 +667,7 @@ function BrainPanel({ stages, allDeals, onClose }: BrainPanelProps) {
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 450, display: 'flex', backgroundColor: 'rgba(15,23,42,0.3)' }} onClick={onClose}>
       <div style={{ marginLeft: 'auto', width: 400, height: '100%', backgroundColor: 'white', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 48px rgba(0,0,0,0.16)' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #7c3aed, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Brain size={18} color="white" />
             <span style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>ClickUp Brain</span>
@@ -681,7 +681,7 @@ function BrainPanel({ stages, allDeals, onClose }: BrainPanelProps) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {SUGGESTIONS.map(s => (
               <button key={s.label} onClick={() => send(s.query)}
-                style={{ padding: '5px 10px', borderRadius: 20, border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', color: '#4f46e5', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ padding: '5px 10px', borderRadius: 20, border: '1px solid #d5d8dd', backgroundColor: '#eceef1', color: '#17191c', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 {s.label}
               </button>
             ))}
@@ -693,11 +693,11 @@ function BrainPanel({ stages, allDeals, onClose }: BrainPanelProps) {
           {messages.map((msg, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
               {msg.role === 'brain' && (
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #7c3aed, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Sparkles size={12} color="white" />
                 </div>
               )}
-              <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px', backgroundColor: msg.role === 'user' ? '#6366f1' : '#f8fafc', border: msg.role === 'user' ? 'none' : '1px solid #e2e8f0' }}>
+              <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px', backgroundColor: msg.role === 'user' ? '#17191c' : '#f8fafc', border: msg.role === 'user' ? 'none' : '1px solid #e2e8f0' }}>
                 {msg.text.split('\n').map((line, li) => (
                   <p key={li} style={{ margin: li > 0 ? '4px 0 0' : 0, fontSize: 13, color: msg.role === 'user' ? 'white' : '#374151', lineHeight: 1.5 }}>
                     {line.startsWith('**') && line.endsWith('**')
@@ -716,7 +716,7 @@ function BrainPanel({ stages, allDeals, onClose }: BrainPanelProps) {
             style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
             onKeyDown={e => e.key === 'Enter' && send(input)} />
           <button onClick={() => send(input)} disabled={!input.trim()}
-            style={{ padding: '9px 14px', backgroundColor: input.trim() ? '#6366f1' : '#e2e8f0', color: input.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: 8, cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}>
+            style={{ padding: '9px 14px', backgroundColor: input.trim() ? '#17191c' : '#e2e8f0', color: input.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: 8, cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}>
             <Send size={14} />
           </button>
         </div>
@@ -824,7 +824,7 @@ function GroupedListView({ stages, applyFilter, onOpen, onEdit, onDelete, onQuic
                       <div>
                         {deal.assignedTo ? (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <span style={{ fontSize: 10, fontWeight: 700, color: 'white' }}>{deal.assignedTo.slice(0, 2).toUpperCase()}</span>
                             </div>
                             <span style={{ fontSize: 11, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 80 }}>{deal.assignedTo}</span>
@@ -952,7 +952,7 @@ function StageHeader({ stage, index, total, wipLimit, onRename, onRecolor, onDel
               onBlur={commitRename}
               onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setDraft(stage.name); setEditing(false); } }}
               autoFocus
-              style={{ fontSize: 13, fontWeight: 600, border: '1px solid #6366f1', borderRadius: 7, padding: '2px 8px', outline: 'none', width: '100%', fontFamily: 'inherit', color: '#0f172a' }}
+              style={{ fontSize: 13, fontWeight: 600, border: '1px solid #17191c', borderRadius: 7, padding: '2px 8px', outline: 'none', width: '100%', fontFamily: 'inherit', color: '#0f172a' }}
             />
           ) : (
             <span
@@ -1024,7 +1024,7 @@ function StageHeader({ stage, index, total, wipLimit, onRename, onRecolor, onDel
                   placeholder="0 = off"
                   style={{ width: 70, padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit' }} />
                 <button onClick={() => { onSetWip(stage.id, Number(wipDraft) || 0); setShowMenu(false); setShowWipInput(false); }}
-                  style={{ padding: '5px 10px', border: 'none', borderRadius: 7, background: '#6366f1', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Set</button>
+                  style={{ padding: '5px 10px', border: 'none', borderRadius: 7, background: '#17191c', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Set</button>
               </div>
             )}
             {index > 0 && (
@@ -1073,14 +1073,14 @@ function QuickAddDeal({ onAdd }: QuickAddProps) {
   if (!active) return (
     <button onClick={() => setActive(true)}
       style={{ width: '100%', marginTop: 6, padding: '9px', border: '2px dashed #e2e8f0', borderRadius: 10, backgroundColor: 'transparent', color: '#94a3b8', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, transition: 'all 0.1s' }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = '#17191c'; e.currentTarget.style.color = '#17191c'; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8'; }}>
       <Plus size={13} /> Add Deal
     </button>
   );
 
   return (
-    <div style={{ marginTop: 6, padding: '10px', backgroundColor: 'white', border: '1px solid #6366f1', borderRadius: 10 }}>
+    <div style={{ marginTop: 6, padding: '10px', backgroundColor: 'white', border: '1px solid #17191c', borderRadius: 10 }}>
       <input
         value={title}
         onChange={e => setTitle(e.target.value)}
@@ -1090,7 +1090,7 @@ function QuickAddDeal({ onAdd }: QuickAddProps) {
         style={{ width: '100%', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, outline: 'none', marginBottom: 6, boxSizing: 'border-box', fontFamily: 'inherit' }}
       />
       <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={commit} style={{ flex: 1, padding: '6px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+        <button onClick={commit} style={{ flex: 1, padding: '6px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
         <button onClick={() => { setTitle(''); setActive(false); }} style={{ flex: 1, padding: '6px', backgroundColor: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
       </div>
     </div>
@@ -1129,7 +1129,7 @@ function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDele
         <div style={{ padding: '18px 22px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             {pipelines.map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${p.id === selectedId ? '#6366f1' : '#e2e8f0'}`, backgroundColor: p.id === selectedId ? '#eef2ff' : 'white' }}>
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${p.id === selectedId ? '#17191c' : '#e2e8f0'}`, backgroundColor: p.id === selectedId ? '#eceef1' : 'white' }}>
                 {editingId === p.id ? (
                   <input
                     value={editDraft}
@@ -1137,11 +1137,11 @@ function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDele
                     onBlur={() => commitRename(p.id)}
                     onKeyDown={e => { if (e.key === 'Enter') commitRename(p.id); if (e.key === 'Escape') setEditingId(null); }}
                     autoFocus
-                    style={{ flex: 1, fontSize: 14, border: '1px solid #6366f1', borderRadius: 6, padding: '4px 8px', outline: 'none', fontFamily: 'inherit' }}
+                    style={{ flex: 1, fontSize: 14, border: '1px solid #17191c', borderRadius: 6, padding: '4px 8px', outline: 'none', fontFamily: 'inherit' }}
                   />
                 ) : (
                   <span
-                    style={{ flex: 1, fontSize: 14, fontWeight: p.id === selectedId ? 700 : 500, color: p.id === selectedId ? '#4f46e5' : '#374151', cursor: 'pointer' }}
+                    style={{ flex: 1, fontSize: 14, fontWeight: p.id === selectedId ? 700 : 500, color: p.id === selectedId ? '#17191c' : '#374151', cursor: 'pointer' }}
                     onClick={() => { onSelect(p.id); onClose(); }}
                   >
                     {p.name}
@@ -1169,7 +1169,7 @@ function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDele
               onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) { onCreate(newName.trim()); setNewName(''); } }} />
             <button onClick={() => { if (newName.trim()) { onCreate(newName.trim()); setNewName(''); } }}
               disabled={!newName.trim()}
-              style={{ padding: '9px 16px', backgroundColor: newName.trim() ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: newName.trim() ? 'pointer' : 'default' }}>
+              style={{ padding: '9px 16px', backgroundColor: newName.trim() ? '#17191c' : '#d5d8dd', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: newName.trim() ? 'pointer' : 'default' }}>
               Create
             </button>
           </div>
@@ -1310,7 +1310,7 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
           <div>
             <label style={lbl}>Status</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {([['active', '#6366f1', 'Active'], ['won', '#22c55e', '🏆 Won'], ['lost', '#94a3b8', 'Lost']] as const).map(([s, c, l]) => (
+              {([['active', '#17191c', 'Active'], ['won', '#22c55e', '🏆 Won'], ['lost', '#94a3b8', 'Lost']] as const).map(([s, c, l]) => (
                 <button key={s} onClick={() => setStatus(s)}
                   style={{ flex: 1, padding: '7px 4px', border: `2px solid ${status === s ? c : '#e2e8f0'}`, borderRadius: 8, backgroundColor: status === s ? c + '22' : 'white', color: status === s ? c : '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   {l}
@@ -1363,7 +1363,7 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
                 ))}
               </div>
               <input value={customLabel} onChange={e => setCustomLabel(e.target.value)} placeholder="Custom label..." style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addCustomLabel()} />
-              <button onClick={addCustomLabel} style={{ padding: '7px 12px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Add</button>
+              <button onClick={addCustomLabel} style={{ padding: '7px 12px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Add</button>
             </div>
             {labels.filter(l => !LABEL_PRESETS.some(p => p.text === l.text)).length > 0 && (
               <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -1398,7 +1398,7 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
         <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button onClick={onClose} style={{ padding: '9px 20px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white', color: '#374151' }}>Cancel</button>
           <button onClick={handleSave} disabled={!title.trim()}
-            style={{ padding: '9px 20px', backgroundColor: title.trim() ? '#6366f1' : '#c7d2fe', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: title.trim() ? 'pointer' : 'default' }}>
+            style={{ padding: '9px 20px', backgroundColor: title.trim() ? '#17191c' : '#d5d8dd', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: title.trim() ? 'pointer' : 'default' }}>
             {deal ? 'Save Changes' : 'Create Deal'}
           </button>
         </div>
@@ -1533,7 +1533,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             {status === 'won' && <button onClick={reactivate} style={{ fontSize: 11, color: '#16a34a', background: 'none', border: '1px solid #16a34a', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>Reactivate</button>}
-            {status === 'lost' && <button onClick={reactivate} style={{ fontSize: 11, color: '#6366f1', background: 'none', border: '1px solid #6366f1', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>Reactivate</button>}
+            {status === 'lost' && <button onClick={reactivate} style={{ fontSize: 11, color: '#17191c', background: 'none', border: '1px solid #17191c', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>Reactivate</button>}
             <button onClick={() => onEdit(deal)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e2e8f0', borderRadius: 7, backgroundColor: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Edit2 size={12} /> Edit</button>
             <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 4 }}><X size={18} /></button>
           </div>
@@ -1603,10 +1603,10 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Win Probability</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#6366f1' }}>{deal.probability}%</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#17191c' }}>{deal.probability}%</span>
                 </div>
                 <div style={{ height: 8, backgroundColor: '#e2e8f0', borderRadius: 4 }}>
-                  <div style={{ height: '100%', width: `${deal.probability}%`, background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', borderRadius: 4, transition: 'width 0.3s' }} />
+                  <div style={{ height: '100%', width: `${deal.probability}%`, background: '#17191c', borderRadius: 4, transition: 'width 0.3s' }} />
                 </div>
               </div>
 
@@ -1614,7 +1614,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}><Timer size={13} /> Track Time</span>
-                  <button onClick={() => setShowTimeLog(p => !p)} style={{ fontSize: 11, color: '#6366f1', background: 'none', border: '1px solid #c7d2fe', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>+ Log</button>
+                  <button onClick={() => setShowTimeLog(p => !p)} style={{ fontSize: 11, color: '#17191c', background: 'none', border: '1px solid #d5d8dd', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>+ Log</button>
                 </div>
                 <div style={{ padding: '10px 14px', backgroundColor: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 14, fontWeight: 700, color: timeTracked > 0 ? '#0f172a' : '#94a3b8' }}>
                   {timeTracked > 0 ? fmtTime(timeTracked) : '— Not tracked'}
@@ -1624,7 +1624,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                     <input value={timeInput} onChange={e => setTimeInput(e.target.value)} placeholder="Hours (e.g. 1.5)" autoFocus
                       style={{ flex: 1, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
                       onKeyDown={e => e.key === 'Enter' && logTime()} />
-                    <button onClick={logTime} style={{ padding: '8px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                    <button onClick={logTime} style={{ padding: '8px 14px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
                   </div>
                 )}
               </div>
@@ -1651,7 +1651,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
               <div style={{ marginBottom: 20 }}>
                 <button onClick={() => setSection(s => s === 'subtasks' ? null : 'subtasks')}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '10px 0', border: 'none', background: 'none', cursor: 'pointer', borderTop: '1px solid #f1f5f9', textAlign: 'left' }}>
-                  <GitBranch size={13} color="#6366f1" />
+                  <GitBranch size={13} color="#17191c" />
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', flex: 1 }}>Subtasks {subtasks.length > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>({subtasksDone}/{subtasks.length})</span>}</span>
                   {section === 'subtasks' ? <ChevronUp size={14} color="#94a3b8" /> : <ChevronDown size={14} color="#94a3b8" />}
                 </button>
@@ -1668,7 +1668,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                       <input value={newSubtask} onChange={e => setNewSubtask(e.target.value)} placeholder="Add subtask..."
                         style={{ flex: 1, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
                         onKeyDown={e => e.key === 'Enter' && addSubtask()} />
-                      <button onClick={addSubtask} style={{ padding: '7px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                      <button onClick={addSubtask} style={{ padding: '7px 14px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
                     </div>
                   </div>
                 )}
@@ -1678,7 +1678,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
               <div style={{ marginBottom: 20 }}>
                 <button onClick={() => setSection(s => s === 'checklist' ? null : 'checklist')}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '10px 0', border: 'none', background: 'none', cursor: 'pointer', borderTop: '1px solid #f1f5f9', textAlign: 'left' }}>
-                  <CheckSquare size={13} color="#6366f1" />
+                  <CheckSquare size={13} color="#17191c" />
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', flex: 1 }}>Checklist {checklist.length > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>({done}/{checklist.length})</span>}</span>
                   {section === 'checklist' ? <ChevronUp size={14} color="#94a3b8" /> : <ChevronDown size={14} color="#94a3b8" />}
                 </button>
@@ -1686,7 +1686,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                   <div style={{ paddingTop: 8 }}>
                     {checklist.length > 0 && (
                       <div style={{ height: 5, backgroundColor: '#e2e8f0', borderRadius: 3, marginBottom: 10 }}>
-                        <div style={{ height: '100%', width: `${(done / checklist.length) * 100}%`, backgroundColor: done === checklist.length ? '#22c55e' : '#6366f1', borderRadius: 3, transition: 'width 0.3s' }} />
+                        <div style={{ height: '100%', width: `${(done / checklist.length) * 100}%`, backgroundColor: done === checklist.length ? '#22c55e' : '#17191c', borderRadius: 3, transition: 'width 0.3s' }} />
                       </div>
                     )}
                     {checklist.map(item => (
@@ -1700,7 +1700,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                       <input value={newCheckItem} onChange={e => setNewCheckItem(e.target.value)} placeholder="Add checklist item..."
                         style={{ flex: 1, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
                         onKeyDown={e => e.key === 'Enter' && addCheck()} />
-                      <button onClick={addCheck} style={{ padding: '7px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                      <button onClick={addCheck} style={{ padding: '7px 14px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
                     </div>
                   </div>
                 )}
@@ -1711,11 +1711,11 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
           {/* RIGHT: Activity feed */}
           <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}><MessageSquare size={14} color="#6366f1" /> Activity {activity.length > 0 && <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>({activity.length})</span>}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}><MessageSquare size={14} color="#17191c" /> Activity {activity.length > 0 && <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 12 }}>({activity.length})</span>}</span>
             </div>
             {/* Compose */}
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <User size={13} color="white" />
               </div>
               <div style={{ flex: 1 }}>
@@ -1724,7 +1724,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                   onKeyDown={e => e.key === 'Enter' && addActivity()} />
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button onClick={addActivity} disabled={!newActivity.trim()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', backgroundColor: newActivity.trim() ? '#6366f1' : '#e2e8f0', color: newActivity.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: newActivity.trim() ? 'pointer' : 'default' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', backgroundColor: newActivity.trim() ? '#17191c' : '#e2e8f0', color: newActivity.trim() ? 'white' : '#94a3b8', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: newActivity.trim() ? 'pointer' : 'default' }}>
                     <Send size={12} /> Post
                   </button>
                 </div>
@@ -1742,7 +1742,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {activity.map(item => (
                     <div key={item.id} style={{ display: 'flex', gap: 10 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <User size={13} color="white" />
                       </div>
                       <div style={{ flex: 1, backgroundColor: '#f8fafc', borderRadius: 10, padding: '10px 14px', border: '1px solid #e2e8f0' }}>
@@ -1871,7 +1871,7 @@ export default function Pipelines() {
       <div style={{ padding: 40, textAlign: 'center' }}>
         <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 16 }}>No pipelines yet.</p>
         <button onClick={() => setShowPipelineModal(true)}
-          style={{ padding: '10px 20px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ padding: '10px 20px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
           Create Pipeline
         </button>
         {showPipelineModal && (
@@ -2154,8 +2154,8 @@ export default function Pipelines() {
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
           {[
-            { label: 'Active Pipeline', value: fmt(totalValue), sub: `${activeDeals.length} active deals`, color: '#6366f1' },
-            { label: 'Weighted Value', value: fmt(weightedValue), sub: 'By probability', color: '#8b5cf6' },
+            { label: 'Active Pipeline', value: fmt(totalValue), sub: `${activeDeals.length} active deals`, color: '#17191c' },
+            { label: 'Weighted Value', value: fmt(weightedValue), sub: 'By probability', color: '#3b3f45' },
             { label: 'Won Revenue', value: fmt(wonValue), sub: `${wonDeals.length} won · ${lostDeals.length} lost`, color: '#22c55e' },
             { label: 'Win Rate', value: `${winRate}%`, sub: `${closedTotal} closed deals`, color: '#f59e0b' },
           ].map(item => (
@@ -2195,7 +2195,7 @@ export default function Pipelines() {
               ['gantt',    <CalendarDays size={13} />, 'Gantt'],
             ] as const).map(([v, icon, label]) => (
               <button key={v} onClick={() => setView(v as ViewMode)}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#6366f1' : '#64748b', fontSize: 12, fontWeight: view === v ? 700 : 500, cursor: 'pointer', boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', whiteSpace: 'nowrap' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#17191c' : '#64748b', fontSize: 12, fontWeight: view === v ? 700 : 500, cursor: 'pointer', boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', whiteSpace: 'nowrap' }}>
                 {icon} {label}
               </button>
             ))}
@@ -2236,7 +2236,7 @@ export default function Pipelines() {
               <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, marginTop: 4, backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 140, overflow: 'hidden' }}>
                 {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(([key, label]) => (
                   <button key={key} onClick={() => { setSortBy(key); setShowSortMenu(false); }}
-                    style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', border: 'none', backgroundColor: sortBy === key ? '#f0f9ff' : 'white', color: sortBy === key ? '#6366f1' : '#374151', fontSize: 13, fontWeight: sortBy === key ? 700 : 400, cursor: 'pointer' }}>
+                    style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', border: 'none', backgroundColor: sortBy === key ? '#f0f9ff' : 'white', color: sortBy === key ? '#17191c' : '#374151', fontSize: 13, fontWeight: sortBy === key ? 700 : 400, cursor: 'pointer' }}>
                     {label}
                   </button>
                 ))}
@@ -2264,14 +2264,14 @@ export default function Pipelines() {
 
           {/* Add Deal */}
           <button onClick={() => openAddDeal()}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <Plus size={15} /> Add Deal
           </button>
 
           {/* Brain AI Button */}
           <button onClick={() => setShowBrain(prev => !prev)}
             title="ClickUp Brain — AI pipeline insights"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: showBrain ? 'linear-gradient(135deg,#7c3aed,#6366f1)' : 'white', color: showBrain ? 'white' : '#7c3aed', border: showBrain ? 'none' : '1px solid #c4b5fd', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: showBrain ? '0 2px 8px rgba(124,58,237,0.35)' : 'none' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: showBrain ? '#17191c' : 'white', color: showBrain ? 'white' : '#17191c', border: showBrain ? 'none' : '1px solid #d5d8dd', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: showBrain ? '0 2px 8px rgba(23,25,28,0.35)' : 'none' }}>
             <Sparkles size={14} /> Brain
           </button>
         </div>
@@ -2302,7 +2302,7 @@ export default function Pipelines() {
                   />
 
                   {/* Drop zone */}
-                  <div style={{ minHeight: 80, padding: '4px 0', borderRadius: 10, backgroundColor: isOver ? '#eef2ff' : 'transparent', border: isOver ? '2px dashed #6366f1' : '2px dashed transparent', transition: 'all 0.15s' }}>
+                  <div style={{ minHeight: 80, padding: '4px 0', borderRadius: 10, backgroundColor: isOver ? '#eceef1' : 'transparent', border: isOver ? '2px dashed #17191c' : '2px dashed transparent', transition: 'all 0.15s' }}>
                     {deals.map(deal => (
                       <DealCard
                         key={deal.id}
@@ -2338,14 +2338,14 @@ export default function Pipelines() {
                     style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, outline: 'none', marginBottom: 8, boxSizing: 'border-box', fontFamily: 'inherit' }}
                     onKeyDown={e => { if (e.key === 'Enter') addStage(); if (e.key === 'Escape') setAddingStage(false); }} />
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={addStage} style={{ flex: 1, padding: '7px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                    <button onClick={addStage} style={{ flex: 1, padding: '7px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
                     <button onClick={() => setAddingStage(false)} style={{ flex: 1, padding: '7px', backgroundColor: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => setAddingStage(true)}
                   style={{ width: '100%', padding: '12px', border: '2px dashed #d1d5db', borderRadius: 10, backgroundColor: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.1s' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#17191c'; e.currentTarget.style.color = '#17191c'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#94a3b8'; }}>
                   <Plus size={14} /> Add Stage
                 </button>
@@ -2410,11 +2410,11 @@ export default function Pipelines() {
                         <span style={{ padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, backgroundColor: stageObj ? stageObj.color + '22' : '#f1f5f9', color: stageObj?.color ?? '#64748b' }}>{deal.stage}</span>
                       </td>
                       <td style={{ padding: '11px 14px', fontSize: 14, fontWeight: 700, color: st === 'won' ? '#16a34a' : '#0f172a', whiteSpace: 'nowrap' }}>{fmt(deal.value)}</td>
-                      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: '#6366f1', whiteSpace: 'nowrap' }}>{fmt(Math.round(deal.value * deal.probability / 100))}</td>
+                      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: '#17191c', whiteSpace: 'nowrap' }}>{fmt(Math.round(deal.value * deal.probability / 100))}</td>
                       <td style={{ padding: '11px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <div style={{ width: 50, height: 5, backgroundColor: '#e2e8f0', borderRadius: 3 }}>
-                            <div style={{ height: '100%', width: `${deal.probability}%`, backgroundColor: '#6366f1', borderRadius: 3 }} />
+                            <div style={{ height: '100%', width: `${deal.probability}%`, backgroundColor: '#17191c', borderRadius: 3 }} />
                           </div>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{deal.probability}%</span>
                         </div>
@@ -2427,7 +2427,7 @@ export default function Pipelines() {
                         {cl.length > 0 ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                             <div style={{ width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2 }}>
-                              <div style={{ height: '100%', width: `${(dn / cl.length) * 100}%`, backgroundColor: dn === cl.length ? '#22c55e' : '#6366f1', borderRadius: 2 }} />
+                              <div style={{ height: '100%', width: `${(dn / cl.length) * 100}%`, backgroundColor: dn === cl.length ? '#22c55e' : '#17191c', borderRadius: 2 }} />
                             </div>
                             <span style={{ fontSize: 11, color: dn === cl.length ? '#22c55e' : '#94a3b8', fontWeight: 600 }}>{dn}/{cl.length}</span>
                           </div>
