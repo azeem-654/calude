@@ -3,8 +3,9 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
-  Scissors, Palette, Settings as SettingsIcon,
+  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight,
 } from 'lucide-react';
+import { loadSubAccounts, activeAccount, switchAccount } from '../../services/tenancy';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
@@ -36,13 +37,19 @@ const circleBtn: React.CSSProperties = {
 
 export default function TopNav() {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [acctOpen, setAcctOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const acctRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const moreActive = MORE_NAV.some(n => location.pathname.startsWith(n.path));
+  const accounts = loadSubAccounts();
+  const active = activeAccount();
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+      if (acctRef.current && !acctRef.current.contains(e.target as Node)) setAcctOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -62,6 +69,46 @@ export default function TopNav() {
         <Layers size={22} color="#17191c" strokeWidth={2.4} />
         <span style={{ fontSize: 18, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>crmpro</span>
       </NavLink>
+
+      {/* Sub-account switcher */}
+      {active && (
+        <div ref={acctRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button onClick={() => setAcctOpen(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 6px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#fff', boxShadow: '0 1px 2px rgba(23,25,28,0.08)', maxWidth: 190 }}>
+            <span style={{ width: 22, height: 22, borderRadius: 7, background: active.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{(active.businessName || active.name || '?')[0].toUpperCase()}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#17191c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{active.name}</span>
+            <ChevronDown size={13} color="#8a8f98" style={{ transform: acctOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+          </button>
+          {acctOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, background: '#fff', borderRadius: 16, padding: 6, minWidth: 250, zIndex: 300, boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)' }}>
+              <button onClick={() => { setAcctOpen(false); navigate('/agency'); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', border: 'none', background: location.pathname === '/agency' ? '#f0f1f3' : 'none', borderRadius: 12, cursor: 'pointer', textAlign: 'left', marginBottom: 4 }}>
+                <span style={{ width: 30, height: 30, borderRadius: 9, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Building2 size={15} color="#fff" /></span>
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#17191c' }}>Agency dashboard</span>
+                  <span style={{ display: 'block', fontSize: 11, color: '#8a8f98' }}>Manage all clients & billing</span>
+                </span>
+                <ArrowLeftRight size={13} color="#8a8f98" />
+              </button>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#b0b4ba', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 12px 4px' }}>Switch workspace</div>
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                {accounts.map(a => (
+                  <button key={a.id} onClick={() => a.id === active.id ? setAcctOpen(false) : switchAccount(a.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 12px', border: 'none', background: 'none', borderRadius: 12, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f6f7f8')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                    <span style={{ width: 26, height: 26, borderRadius: 8, background: a.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{(a.businessName || a.name || '?')[0].toUpperCase()}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#17191c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                      <span style={{ display: 'block', fontSize: 10.5, color: '#b0b4ba', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.businessName || a.industry || '—'}</span>
+                    </span>
+                    {a.id === active.id && <Check size={14} color="#17191c" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Nav pills — white capsule segmented control */}
       <nav style={{

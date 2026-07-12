@@ -17,6 +17,7 @@ import Settings from './components/Settings/Settings';
 import VideoShorts from './components/VideoShorts/VideoShorts';
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
+import AgencyDashboard from './components/Agency/AgencyDashboard';
 
 function AppLayout() {
   const location = useLocation();
@@ -68,6 +69,7 @@ function AppLayout() {
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reputation" element={<Reputation />} />
+          <Route path="/agency" element={<AgencyDashboard />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
