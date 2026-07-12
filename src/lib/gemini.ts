@@ -415,3 +415,36 @@ Return ONLY valid JSON, no markdown fences:
   };
 }
 
+/* ─── Review reply drafting for the Reputation module ─── */
+export async function draftReviewReply(
+  business: { name: string; category: string; description: string; tone: string; signature: string; knowledge: string },
+  review: { author: string; rating: number; content: string; platform: string },
+  extraInstruction = '',
+): Promise<string> {
+  const prompt = `You are the owner/manager of a business replying publicly to a customer review on ${review.platform}. Write a short, sincere public reply.
+
+=== BUSINESS ===
+Name: ${business.name || '(unspecified)'}
+Category: ${business.category || '(unspecified)'}
+About: ${business.description || '(unspecified)'}
+Facts/policies you may reference: ${business.knowledge || '(none)'}
+
+=== STYLE ===
+Tone: ${business.tone}. 2-4 sentences. Address the reviewer by first name. Sound human, not templated.
+- 4-5 stars: thank them specifically, reference something from their review, invite them back.
+- 3 stars: thank them, acknowledge the mixed experience, show you want to improve.
+- 1-2 stars: apologize sincerely, do NOT be defensive, take it offline (invite them to contact you), promise to make it right. Never argue or blame the customer.
+Do not invent specifics not supported by the business facts above.
+${extraInstruction ? `Extra instruction: ${extraInstruction}` : ''}
+${business.signature ? `End with: ${business.signature}` : ''}
+
+=== REVIEW ===
+${review.author} · ${review.rating}★
+"${review.content}"
+
+Return ONLY JSON: {"reply": "the public reply text"}`;
+  const json = await callGemini(prompt, 0.6);
+  const r = JSON.parse(json) as { reply?: string };
+  return r.reply || '';
+}
+
