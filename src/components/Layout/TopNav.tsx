@@ -3,9 +3,10 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
-  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight,
+  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut,
 } from 'lucide-react';
-import { loadSubAccounts, activeAccount, switchAccount } from '../../services/tenancy';
+import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
+import { getSession, logout } from '../../services/auth';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
@@ -43,13 +44,19 @@ export default function TopNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const moreActive = MORE_NAV.some(n => location.pathname.startsWith(n.path));
+  const session = getSession();
+  const isClient = session?.user.role === 'client';
   const accounts = loadSubAccounts();
   const active = activeAccount();
+  const brand = activeBranding();
+  const [userOpen, setUserOpen] = useState(false);
+  const userRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
       if (acctRef.current && !acctRef.current.contains(e.target as Node)) setAcctOpen(false);
+      if (userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -64,14 +71,15 @@ export default function TopNav() {
       backdropFilter: 'blur(14px)',
       WebkitBackdropFilter: 'blur(14px)',
     }}>
-      {/* Logo */}
+      {/* Logo — white-labeled per workspace */}
       <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', flexShrink: 0 }}>
-        <Layers size={22} color="#17191c" strokeWidth={2.4} />
-        <span style={{ fontSize: 18, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>crmpro</span>
+        {brand.logoUrl
+          ? <img src={brand.logoUrl} alt="" style={{ height: 26, maxWidth: 150, objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          : <><Layers size={22} color="#17191c" strokeWidth={2.4} /><span style={{ fontSize: 18, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>{brand.appName}</span></>}
       </NavLink>
 
-      {/* Sub-account switcher */}
-      {active && (
+      {/* Sub-account switcher — agency only */}
+      {active && !isClient && (
         <div ref={acctRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button onClick={() => setAcctOpen(v => !v)}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 6px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#fff', boxShadow: '0 1px 2px rgba(23,25,28,0.08)', maxWidth: 190 }}>
@@ -204,17 +212,32 @@ export default function TopNav() {
           <Bell size={16} strokeWidth={2.2} />
           <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 999, backgroundColor: '#e5484d', border: '2px solid #fff', boxSizing: 'content-box' }} />
         </button>
-        <div style={{
-          width: 40, height: 40, borderRadius: 999, overflow: 'hidden', cursor: 'pointer',
-          boxShadow: '0 1px 2px rgba(23,25,28,0.1)', flexShrink: 0, position: 'relative',
-          background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontSize: 13, fontWeight: 800,
-        }}>
-          <img src="https://i.pravatar.cc/80?img=12" alt="" width={40} height={40}
-            style={{ position: 'absolute', inset: 0, objectFit: 'cover' }}
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-          <span>JD</span>
+        <div ref={userRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button onClick={() => setUserOpen(v => !v)} style={{
+            width: 40, height: 40, borderRadius: 999, overflow: 'hidden', cursor: 'pointer', border: 'none', padding: 0,
+            boxShadow: '0 1px 2px rgba(23,25,28,0.1)', position: 'relative',
+            background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontSize: 13, fontWeight: 800,
+          }}>
+            {(session?.user.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+          </button>
+          {userOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 16, padding: 6, minWidth: 220, zIndex: 300, boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)' }}>
+              <div style={{ padding: '10px 12px' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#17191c' }}>{session?.user.name || 'User'}</div>
+                <div style={{ fontSize: 11.5, color: '#8a8f98', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session?.user.email}</div>
+                <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: isClient ? '#eceff9' : '#e9f4e6', color: isClient ? '#3e63dd' : '#3f9142', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{isClient ? 'Client' : 'Agency'}</span>
+              </div>
+              {!isClient && (
+                <NavLink to="/settings" onClick={() => setUserOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', borderRadius: 10, textDecoration: 'none', color: '#374151', fontSize: 13, fontWeight: 500 }}>
+                  <SettingsIcon size={14} /> Settings
+                </NavLink>
+              )}
+              <button onClick={() => { logout().then(() => window.location.reload()); }} style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '9px 12px', border: 'none', background: 'none', borderRadius: 10, cursor: 'pointer', color: '#e5484d', fontSize: 13, fontWeight: 600, textAlign: 'left' }}>
+                <LogOut size={14} /> Sign out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

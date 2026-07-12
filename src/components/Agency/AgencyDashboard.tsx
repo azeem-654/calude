@@ -2,8 +2,9 @@ import { useState } from 'react';
 import {
   Building2, Plus, Search, ArrowRight, MoreVertical, Users, TrendingUp,
   DollarSign, Pause, Play, Trash2, Edit2, X, CheckCircle2, Zap, Star,
-  MessageSquare, LogIn, Rocket,
+  MessageSquare, LogIn, Rocket, Palette, KeyRound,
 } from 'lucide-react';
+import { createUser } from '../../services/auth';
 import Header from '../Layout/Header';
 import {
   loadSubAccounts, saveSubAccounts, createSubAccount, updateSubAccount, deleteSubAccount,
@@ -183,9 +184,19 @@ const COLORS = ['#3e63dd', '#e5484d', '#3f9142', '#f59e0b', '#8b5cf6', '#0d9488'
 function SubAccountModal({ account, creating, onSave, onClose }: { account: SubAccount; creating: boolean; onSave: (a: SubAccount) => void; onClose: () => void }) {
   const [a, setA] = useState<SubAccount>(account);
   const set = (patch: Partial<SubAccount>) => setA(prev => ({ ...prev, ...patch }));
+  const setBrand = (patch: Partial<NonNullable<SubAccount['branding']>>) => setA(prev => ({ ...prev, branding: { ...prev.branding, ...patch } }));
   const canSave = a.name.trim() && a.contactEmail.trim();
-
   const pickPlan = (id: PlanId) => set({ plan: id, price: planById(id).price });
+
+  // Client login provisioning
+  const [loginPw, setLoginPw] = useState('');
+  const [loginMsg, setLoginMsg] = useState('');
+  const provision = async () => {
+    if (!a.contactEmail.trim() || loginPw.length < 6) { setLoginMsg('Enter a contact email and a password of 6+ characters.'); return; }
+    const res = await createUser({ email: a.contactEmail.trim(), password: loginPw, name: a.contactName || a.businessName || a.name, role: 'client', accountId: a.id });
+    setLoginMsg(res.ok ? `✓ Login created for ${a.contactEmail}` : (res.error || 'Could not create login.'));
+    if (res.ok) setLoginPw('');
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -236,6 +247,27 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
                 {COLORS.map(c => <button key={c} onClick={() => set({ color: c })} style={{ width: 22, height: 22, borderRadius: 999, background: c, border: a.color === c ? '2px solid #17191c' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />)}
               </div>
             </div>
+          </div>
+
+          {/* White-label branding */}
+          <div style={{ borderTop: '1px solid #f2f3f5', paddingTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}><Palette size={14} color={INK} /><span style={{ fontSize: 13, fontWeight: 700, color: INK }}>White-label branding</span><span style={{ fontSize: 11, color: MUTED }}>— what this client sees</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div><label style={lbl}>App name</label><input style={inp} value={a.branding?.appName ?? ''} onChange={e => setBrand({ appName: e.target.value })} placeholder="crmpro (default)" /></div>
+              <div><label style={lbl}>Logo image URL</label><input style={inp} value={a.branding?.logoUrl ?? ''} onChange={e => setBrand({ logoUrl: e.target.value })} placeholder="https://…/logo.png" /></div>
+              <div style={{ gridColumn: '1 / 3' }}><label style={lbl}>Login headline</label><input style={inp} value={a.branding?.loginHeadline ?? ''} onChange={e => setBrand({ loginHeadline: e.target.value })} placeholder="Sign in to your workspace" /></div>
+            </div>
+          </div>
+
+          {/* Client login */}
+          <div style={{ borderTop: '1px solid #f2f3f5', paddingTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}><KeyRound size={14} color={INK} /><span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Client login</span><span style={{ fontSize: 11, color: MUTED }}>— locked to this workspace</span></div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}><label style={lbl}>Login email</label><input style={{ ...inp, background: '#f7f8f9' }} value={a.contactEmail} readOnly placeholder="set the contact email above" /></div>
+              <div style={{ flex: 1 }}><label style={lbl}>Set password</label><input style={inp} type="text" value={loginPw} onChange={e => setLoginPw(e.target.value)} placeholder="6+ characters" /></div>
+              <button onClick={provision} style={{ padding: '9px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Create login</button>
+            </div>
+            {loginMsg && <div style={{ fontSize: 12, color: loginMsg.startsWith('✓') ? '#3f9142' : '#e5484d', fontWeight: 600, marginTop: 8 }}>{loginMsg}</div>}
           </div>
         </div>
         <div style={{ padding: '14px 24px', borderTop: '1px solid #e9edf3', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

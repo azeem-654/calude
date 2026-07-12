@@ -1,6 +1,10 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
+import LoginScreen from './components/Auth/LoginScreen';
+import { getSession } from './services/auth';
+import { getActiveAccountId, setActiveAccountId } from './services/tenancy';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import Conversations from './components/Conversations/Conversations';
@@ -19,7 +23,7 @@ import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
 
-function AppLayout() {
+function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
   const isBooking = location.pathname.startsWith('/book');
   const isPreview = location.pathname.startsWith('/preview');
@@ -69,7 +73,8 @@ function AppLayout() {
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reputation" element={<Reputation />} />
-          <Route path="/agency" element={<AgencyDashboard />} />
+          {/* Agency dashboard is off-limits to client logins */}
+          <Route path="/agency" element={isClient ? <Navigate to="/" replace /> : <AgencyDashboard />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
@@ -78,10 +83,24 @@ function AppLayout() {
 }
 
 export default function App() {
+  const [session, setSession] = useState(getSession());
+
+  // Clients are locked to their own workspace — force the active account.
+  useEffect(() => {
+    if (session?.user.role === 'client' && session.user.accountId && getActiveAccountId() !== session.user.accountId) {
+      setActiveAccountId(session.user.accountId);
+      window.location.reload();
+    }
+  }, [session]);
+
+  if (!session) {
+    return <LoginScreen onAuthed={() => setSession(getSession())} />;
+  }
+
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
       <AppProvider>
-        <AppLayout />
+        <AppLayout isClient={session.user.role === 'client'} />
       </AppProvider>
     </BrowserRouter>
   );

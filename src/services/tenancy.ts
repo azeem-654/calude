@@ -31,6 +31,12 @@ export const PLANS: Plan[] = [
 ];
 export function planById(id: PlanId): Plan { return PLANS.find(p => p.id === id) ?? PLANS[0]; }
 
+export interface Branding {
+  appName?: string;         // white-label product name shown in the nav/login
+  logoUrl?: string;         // optional logo image
+  loginHeadline?: string;   // headline on the client login screen
+}
+
 export interface SubAccount {
   id: string;
   name: string;             // workspace / location name
@@ -45,6 +51,7 @@ export interface SubAccount {
   status: AccountStatus;
   createdAt: string;
   trialEndsAt?: string;
+  branding?: Branding;
 }
 
 export interface AgencyProfile {
@@ -113,6 +120,16 @@ export function activeAccount(): SubAccount | null {
   const id = getActiveAccountId();
   return loadSubAccounts().find(a => a.id === id) ?? null;
 }
+/** White-label branding for the active account (falls back to defaults). */
+export function activeBranding(): Required<Branding> {
+  const a = activeAccount();
+  return {
+    appName: a?.branding?.appName || 'crmpro',
+    logoUrl: a?.branding?.logoUrl || '',
+    loginHeadline: a?.branding?.loginHeadline || 'Sign in to your workspace',
+  };
+}
+
 export function loadAgency(): AgencyProfile {
   try { const a = JSON.parse(window.localStorage.getItem('crm_agency') || 'null'); if (a) return a; } catch { /* ignore */ }
   return { name: 'My Agency', ownerEmail: '' };
