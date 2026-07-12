@@ -2,9 +2,11 @@ import { useState } from 'react';
 import {
   Building2, Plus, Search, ArrowRight, MoreVertical, Users, TrendingUp,
   DollarSign, Pause, Play, Trash2, Edit2, X, CheckCircle2, Zap, Star,
-  MessageSquare, LogIn, Rocket, Palette, KeyRound,
+  MessageSquare, LogIn, Rocket, Palette, KeyRound, CreditCard, Copy, ExternalLink,
 } from 'lucide-react';
 import { createUser } from '../../services/auth';
+import { loadStripeConfig, saveStripeConfig, billingFor, updateBilling, createCheckout } from '../../services/billing';
+import type { StripeConfig } from '../../services/billing';
 import Header from '../Layout/Header';
 import {
   loadSubAccounts, saveSubAccounts, createSubAccount, updateSubAccount, deleteSubAccount,
@@ -33,6 +35,8 @@ export default function AgencyDashboard() {
   const [creating, setCreating] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editAgency, setEditAgency] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [billFor, setBillFor] = useState<SubAccount | undefined>();
 
   const persist = (list: SubAccount[]) => { setAccounts(list); saveSubAccounts(list); };
 
@@ -85,6 +89,7 @@ export default function AgencyDashboard() {
             <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: FAINT }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sub-accounts…" style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1px solid #e6e9f0', borderRadius: 10, fontSize: 13, outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
           </div>
+          <button onClick={() => { setBillFor(undefined); setBillingOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><CreditCard size={13} /> Billing</button>
           <button onClick={() => setEditAgency(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Edit2 size={13} /> Agency settings</button>
           <button onClick={() => { setCreating(true); setEditing(blankSubAccount()); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Plus size={15} /> New Sub-Account</button>
         </div>
@@ -118,6 +123,7 @@ export default function AgencyDashboard() {
                         {menuFor === a.id && (
                           <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 28, right: 0, zIndex: 50, background: '#fff', borderRadius: 12, boxShadow: '0 12px 32px rgba(16,24,40,0.16)', minWidth: 170, overflow: 'hidden', padding: 4 }}>
                             <MenuItem icon={Edit2} label="Edit" onClick={() => { setEditing(a); setMenuFor(null); }} />
+                            <MenuItem icon={CreditCard} label="Billing" onClick={() => { setBillFor(a); setBillingOpen(true); setMenuFor(null); }} />
                             {a.status === 'paused' || a.status === 'cancelled'
                               ? <MenuItem icon={Play} label="Activate" onClick={() => setStatus(a.id, 'active')} />
                               : <MenuItem icon={Pause} label="Pause billing" onClick={() => setStatus(a.id, 'paused')} />}
@@ -129,9 +135,10 @@ export default function AgencyDashboard() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: st.bg, color: st.color }}>{st.label}</span>
                       <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#f3f4f6', color: INK }}>{plan.name}</span>
+                      {(() => { const b = billingFor(a.id); if (b.status === 'none') return null; const map: Record<string, [string, string, string]> = { active: ['#e9f4e6', '#3f9142', 'Paid'], checkout_sent: ['#eceff9', '#3e63dd', 'Checkout sent'], past_due: ['#fdf5e7', '#c77414', 'Past due'], cancelled: ['#fceaea', '#e5484d', 'Cancelled'] }; const m = map[b.status]; return m ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: m[0], color: m[1] }}><CreditCard size={9} />{m[2]}</span> : null; })()}
                       <span style={{ marginLeft: 'auto', fontSize: 15, fontWeight: 800, color: INK }}>${a.price}<span style={{ fontSize: 11, color: FAINT, fontWeight: 600 }}>/mo</span></span>
                     </div>
 
@@ -163,6 +170,7 @@ export default function AgencyDashboard() {
 
       {editing && <SubAccountModal account={editing} creating={creating} onSave={saveAccount} onClose={() => { setEditing(undefined); setCreating(false); }} />}
       {editAgency && <AgencyModal agency={agency} onSave={a => { saveAgency(a); setAgencyState(a); setEditAgency(false); }} onClose={() => setEditAgency(false)} />}
+      {billingOpen && <BillingModal account={billFor} onClose={() => { setBillingOpen(false); setAccounts(loadSubAccounts()); }} />}
     </div>
   );
 }
@@ -295,6 +303,92 @@ function AgencyModal({ agency, onSave, onClose }: { agency: { name: string; owne
         <div style={{ padding: '14px 24px', borderTop: '1px solid #e9edf3', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} style={{ padding: '9px 16px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => onSave(a)} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: INK, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Stripe billing modal ── */
+function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () => void }) {
+  const [cfg, setCfg] = useState<StripeConfig>(loadStripeConfig);
+  const [savedMsg, setSavedMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [checkoutUrl, setCheckoutUrl] = useState(account ? billingFor(account.id).checkoutUrl ?? '' : '');
+  const [err, setErr] = useState('');
+
+  const saveKeys = () => { saveStripeConfig(cfg); setCfg(loadStripeConfig()); setSavedMsg('Stripe keys saved'); setTimeout(() => setSavedMsg(''), 2500); };
+
+  const subscribe = async () => {
+    if (!account) return;
+    setBusy(true); setErr(''); setCheckoutUrl('');
+    const res = await createCheckout({ accountId: account.id, productName: `${planById(account.plan).name} — ${account.name}`, amount: account.price, customerEmail: account.contactEmail });
+    setBusy(false);
+    if (res.ok && res.url) setCheckoutUrl(res.url);
+    else setErr(res.error || 'Could not create checkout.');
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.28)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e9edf3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#635bff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CreditCard size={17} color="#fff" /></div>
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 800, color: INK, margin: 0 }}>Stripe Billing</h2>
+              <p style={{ fontSize: 12, color: MUTED, margin: '1px 0 0' }}>{account ? `Subscribe ${account.name}` : 'Connect your Stripe account'}</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 9, padding: 7, cursor: 'pointer', display: 'flex' }}><X size={16} color="#64748b" /></button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'grid', gap: 16 }}>
+          {/* Stripe keys */}
+          <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Stripe API keys</span>
+              {cfg.connected && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: '#e9f4e6', color: '#3f9142' }}>CONNECTED</span>}
+            </div>
+            <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>From your Stripe dashboard → Developers → API keys. Keys stay in your browser and are only sent to your own server.</p>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div><label style={lbl}>Secret key (sk_…)</label><input style={inp} type="password" value={cfg.secretKey} onChange={e => setCfg({ ...cfg, secretKey: e.target.value })} placeholder="sk_live_… or sk_test_…" /></div>
+              <div><label style={lbl}>Publishable key (pk_…) — optional</label><input style={inp} value={cfg.publishableKey} onChange={e => setCfg({ ...cfg, publishableKey: e.target.value })} placeholder="pk_live_…" /></div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+              <button onClick={saveKeys} style={{ padding: '8px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Save keys</button>
+              {savedMsg && <span style={{ fontSize: 12, color: '#3f9142', fontWeight: 600 }}>{savedMsg}</span>}
+            </div>
+          </div>
+
+          {/* Per-account subscription */}
+          {account && (
+            <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>Subscription for {account.name}</div>
+              <p style={{ fontSize: 12, color: MUTED, margin: '0 0 12px' }}>{planById(account.plan).name} plan · <strong style={{ color: INK }}>${account.price}/mo</strong> · billed to {account.contactEmail || '(no email)'}</p>
+
+              <button onClick={subscribe} disabled={busy || !cfg.secretKey || !account.contactEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '11px', background: (cfg.secretKey && account.contactEmail) ? '#635bff' : '#c7cbd1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: (cfg.secretKey && account.contactEmail) ? 'pointer' : 'not-allowed' }}>
+                <CreditCard size={15} /> {busy ? 'Creating checkout…' : 'Create Stripe Checkout link'}
+              </button>
+              {!cfg.secretKey && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>Add your Stripe secret key above first.</p>}
+              {!account.contactEmail && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>This client needs a contact email (set it in Edit).</p>}
+              {err && <p style={{ fontSize: 12, color: '#e5484d', margin: '8px 0 0', fontWeight: 600 }}>{err}</p>}
+
+              {checkoutUrl && (
+                <div style={{ marginTop: 12, padding: '10px 12px', background: '#f7f8f9', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: INK, marginBottom: 6 }}>Checkout link ready — send it to your client:</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input readOnly value={checkoutUrl} style={{ ...inp, fontSize: 12, background: '#fff' }} onFocus={e => e.currentTarget.select()} />
+                    <button onClick={() => navigator.clipboard?.writeText(checkoutUrl)} title="Copy" style={{ padding: '0 12px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Copy size={14} color={INK} /></button>
+                    <a href={checkoutUrl} target="_blank" rel="noreferrer" title="Open" style={{ padding: '0 12px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', display: 'flex', alignItems: 'center' }}><ExternalLink size={14} color={INK} /></a>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                    <button onClick={() => { updateBilling(account.id, { status: 'active' }); onClose(); }} style={{ flex: 1, padding: '7px', border: 'none', borderRadius: 8, background: '#e9f4e6', color: '#3f9142', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Mark as paid</button>
+                    <button onClick={() => { updateBilling(account.id, { status: 'checkout_sent' }); onClose(); }} style={{ flex: 1, padding: '7px', border: '1px solid #e6e9f0', borderRadius: 8, background: '#fff', color: '#5c6066', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Mark as sent</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
