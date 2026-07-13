@@ -5,7 +5,7 @@ import {
   Zap, Music, Mic, RefreshCw, Copy,
   Film, AlignLeft, SkipBack, SkipForward, Pause,
   Volume2, VolumeX, MoreHorizontal, Search, Layers,
-  MonitorPlay, Smartphone, Square as SquareIcon, Send,
+  MonitorPlay, Smartphone, Square as SquareIcon, Send, Image as ImageIcon,
 } from 'lucide-react';
 import type { VideoProject, VideoClip, Caption, BRollClip } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -13,6 +13,8 @@ import Header from '../Layout/Header';
 import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
 import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo } from '../../lib/videoExport';
+import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
+import type { ThumbPreset } from '../../lib/thumbnail';
 
 /* A real, public long-form video used for the one-click demo so anyone can try
    the module end-to-end without an API key or their own upload. */
@@ -255,6 +257,45 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
   });
 }
 
+/* ── Auto thumbnails: a unique, click-optimized image per clip ── */
+const YT_FRAME_VARIANTS = ['hq1', 'hq2', 'hq3', 'hqdefault'];
+
+/** First few words of the title as a punchy thumbnail hook. */
+function thumbHook(title: string): string {
+  const words = title.replace(/["""]/g, '').split(/\s+/).filter(Boolean);
+  return words.slice(0, 5).join(' ');
+}
+
+async function autoThumbnails(
+  clips: VideoClip[],
+  src: { sourceType: VideoProject['sourceType']; sourceUrl?: string; sourceBlobUrl?: string },
+): Promise<VideoClip[]> {
+  const ytId = src.sourceUrl ? getYouTubeId(src.sourceUrl) : null;
+  const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
+  const presets = THUMB_PRESETS.map(p => p.id);
+  return Promise.all(clips.map(async (clip, i) => {
+    try {
+      let bgImageUrl: string | undefined;
+      if (src.sourceBlobUrl && src.sourceType !== 'youtube') {
+        // Real frame from inside this clip's own segment
+        bgImageUrl = (await captureVideoFrame(src.sourceBlobUrl, clip.startTime + Math.min(2, clip.duration / 2))) ?? undefined;
+      } else if (ytId) {
+        // Rotate through YouTube's auto-generated frames so clips differ
+        bgImageUrl = `${apiBase}/api/yt-thumb.php?id=${ytId}&f=${YT_FRAME_VARIANTS[i % YT_FRAME_VARIANTS.length]}`;
+      }
+      const thumbnailUrl = await composeThumbnail({
+        bgImageUrl,
+        gradient: clip.thumbnailGradient,
+        headline: thumbHook(clip.title),
+        emoji: THUMB_EMOJIS[i % THUMB_EMOJIS.length],
+        preset: presets[i % presets.length],
+        aspectRatio: clip.aspectRatio,
+      });
+      return { ...clip, thumbnailUrl };
+    } catch { return clip; }
+  }));
+}
+
 /* ── YouTube ID extractor ── */
 function getYouTubeId(url: string): string | null {
   const m = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
@@ -317,6 +358,17 @@ function ClipThumbnail({
     const seek = () => { v.currentTime = clip.startTime; };
     if (v.readyState >= 1) { seek(); } else { v.addEventListener('loadedmetadata', seek, { once: true }); }
   }, [clip.startTime, sourceBlobUrl]);
+
+  // Composed custom thumbnail wins — unique and click-optimized per clip
+  if (clip.thumbnailUrl) {
+    return (
+      <img
+        src={clip.thumbnailUrl}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        alt=""
+      />
+    );
+  }
 
   if (sourceType === 'youtube' && sourceUrl) {
     const ytId = getYouTubeId(sourceUrl);
@@ -579,9 +631,10 @@ function ProcessingScreen({ project, onRetry, onUseDemo }: { project: VideoProje
 }
 
 /* ── Clip Card ── */
-function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDuplicate, sourceBlobUrl, sourceType, sourceUrl }: {
+function ClipCard({ clip, onEdit, onEditThumb, onLike, onDislike, onTrash, onPublish, onDuplicate, sourceBlobUrl, sourceType, sourceUrl }: {
   clip: VideoClip;
   onEdit: () => void;
+  onEditThumb: () => void;
   onLike: () => void;
   onDislike: () => void;
   onTrash: () => void;
@@ -718,6 +771,7 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
               <div style={{ position: 'absolute', bottom: '110%', right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '140px', padding: '4px' }}>
                 {[
                   { icon: Download, label: isSynthetic ? 'Download (branded)' : 'Download HD', action: handleDownload },
+                  { icon: ImageIcon, label: 'Edit thumbnail', action: () => { onEditThumb(); setShowMenu(false); } },
                   { icon: Copy, label: 'Duplicate', action: () => { onDuplicate(); setShowMenu(false); } },
                   { icon: Trash2, label: 'Move to Trash', action: () => { onTrash(); setShowMenu(false); }, danger: true },
                 ].map(item => (
@@ -848,12 +902,12 @@ function PublishModal({ clip, onClose, onPublish }: { clip: VideoClip; onClose: 
 }
 
 /* ── Clip Editor ── */
-function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; project: VideoProject; onBack: () => void; onSave: (updates: Partial<VideoClip>) => void }) {
+function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: VideoClip; project: VideoProject; onBack: () => void; onSave: (updates: Partial<VideoClip>) => void; initialPanel?: 'details' | 'thumb' }) {
   const { addNotification } = useApp();
   const [localClip, setLocalClip] = useState(clip);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
-  const [activePanel, setActivePanel] = useState<'details' | 'captions' | 'audio' | 'broll' | 'publish'>('details');
+  const [activePanel, setActivePanel] = useState<'details' | 'thumb' | 'captions' | 'audio' | 'broll' | 'publish'>(initialPanel ?? 'details');
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [editingCapIdx, setEditingCapIdx] = useState<number | null>(null);
@@ -1030,6 +1084,72 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
     if (videoRef.current) videoRef.current.currentTime = trimStart + clamped;
   };
 
+  /* ── Thumbnail editor state ── */
+  const [thumbHeadline, setThumbHeadline] = useState(thumbHook(clip.title));
+  const [thumbPreset, setThumbPreset] = useState<ThumbPreset>('bold');
+  const [thumbEmoji, setThumbEmoji] = useState<string>('🔥');
+  const [thumbFrame, setThumbFrame] = useState(0);
+  const [framePreviews, setFramePreviews] = useState<(string | null)[]>([]);
+  const [thumbPreview, setThumbPreview] = useState<string | null>(clip.thumbnailUrl ?? null);
+  const [thumbBusy, setThumbBusy] = useState(false);
+
+  /* Load candidate background frames when the Thumb tab is first opened. */
+  useEffect(() => {
+    if (activePanel !== 'thumb' || framePreviews.length > 0) return;
+    const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
+    if (ytId) {
+      setFramePreviews(YT_FRAME_VARIANTS.map(f => `${apiBase}/api/yt-thumb.php?id=${ytId}&f=${f}`));
+    } else if (project.sourceBlobUrl) {
+      const offsets = [0.1, 0.35, 0.6, 0.85];
+      Promise.all(offsets.map(o => captureVideoFrame(project.sourceBlobUrl!, trimStart + (trimEnd - trimStart) * o)))
+        .then(setFramePreviews);
+    } else {
+      setFramePreviews([null]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel]);
+
+  /* Live-compose the thumbnail preview whenever any option changes. */
+  useEffect(() => {
+    if (activePanel !== 'thumb' || framePreviews.length === 0) return;
+    let cancelled = false;
+    setThumbBusy(true);
+    composeThumbnail({
+      bgImageUrl: framePreviews[thumbFrame] ?? undefined,
+      gradient: localClip.thumbnailGradient,
+      headline: thumbHeadline || thumbHook(localClip.title),
+      emoji: thumbEmoji || undefined,
+      preset: thumbPreset,
+      aspectRatio: localClip.aspectRatio,
+    })
+      .then(url => { if (!cancelled) setThumbPreview(url); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setThumbBusy(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel, thumbHeadline, thumbPreset, thumbEmoji, thumbFrame, framePreviews, localClip.aspectRatio]);
+
+  const applyThumb = () => {
+    if (!thumbPreview) return;
+    set({ thumbnailUrl: thumbPreview });
+    onSave({ thumbnailUrl: thumbPreview });
+  };
+
+  const downloadThumb = async () => {
+    const url = await composeThumbnail({
+      bgImageUrl: framePreviews[thumbFrame] ?? undefined,
+      gradient: localClip.thumbnailGradient,
+      headline: thumbHeadline || thumbHook(localClip.title),
+      emoji: thumbEmoji || undefined,
+      preset: thumbPreset,
+      aspectRatio: localClip.aspectRatio,
+      width: 1080,
+      quality: 0.9,
+    });
+    downloadDataUrl(url, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 40) || 'clip'}-thumbnail.jpg`);
+    addNotification('Thumbnail downloaded (1080p).', 'success');
+  };
+
   const handleSave = () => {
     onSave(localClip);
     onBack();
@@ -1183,6 +1303,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
             {([
               { id: 'details', icon: Edit2, label: 'Details' },
+              { id: 'thumb', icon: ImageIcon, label: 'Thumb' },
               { id: 'captions', icon: AlignLeft, label: 'Captions' },
               { id: 'audio', icon: Music, label: 'Audio' },
               { id: 'broll', icon: Film, label: 'B-Roll' },
@@ -1237,6 +1358,72 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
                       style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* THUMBNAIL PANEL */}
+            {activePanel === 'thumb' && (
+              <div>
+                <p style={{ margin: '0 0 12px', color: 'white', fontWeight: 700, fontSize: '13px' }}>Custom Thumbnail</p>
+
+                {/* Live preview */}
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
+                  <div style={{ position: 'relative', width: localClip.aspectRatio === '16:9' ? 220 : localClip.aspectRatio === '1:1' ? 170 : 150, aspectRatio: localClip.aspectRatio.replace(':', '/'), borderRadius: '10px', overflow: 'hidden', background: localClip.thumbnailGradient, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                    {thumbPreview && <img src={thumbPreview} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
+                    {thumbBusy && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />}
+                  </div>
+                </div>
+
+                {/* Headline */}
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Headline (short & punchy)</label>
+                <input value={thumbHeadline} onChange={e => setThumbHeadline(e.target.value)} maxLength={48}
+                  style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '14px' }} />
+
+                {/* Style presets */}
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Style</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '14px' }}>
+                  {THUMB_PRESETS.map(p => (
+                    <button key={p.id} onClick={() => setThumbPreset(p.id)}
+                      style={{ padding: '8px', borderRadius: '7px', border: `1px solid ${thumbPreset === p.id ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: thumbPreset === p.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', color: thumbPreset === p.id ? '#a5b4fc' : '#94a3b8', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Emoji */}
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Emoji sticker</label>
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                  {['', ...THUMB_EMOJIS].map(e => (
+                    <button key={e || 'none'} onClick={() => setThumbEmoji(e)}
+                      style={{ width: 34, height: 34, borderRadius: '7px', border: `1px solid ${thumbEmoji === e ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: thumbEmoji === e ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', fontSize: e ? '16px' : '10px', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {e || 'none'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Background frame */}
+                {framePreviews.filter(Boolean).length > 1 && (
+                  <>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Background frame</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px', marginBottom: '16px' }}>
+                      {framePreviews.map((f, i) => f ? (
+                        <button key={i} onClick={() => setThumbFrame(i)}
+                          style={{ padding: 0, height: 40, borderRadius: '6px', overflow: 'hidden', border: `2px solid ${thumbFrame === i ? '#6366f1' : 'transparent'}`, cursor: 'pointer', background: '#0f172a' }}>
+                          <img src={f} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </button>
+                      ) : null)}
+                    </div>
+                  </>
+                )}
+
+                <button onClick={applyThumb} disabled={!thumbPreview || thumbBusy}
+                  style={{ width: '100%', padding: '10px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '7px', fontSize: '13px', fontWeight: 700, cursor: thumbPreview ? 'pointer' : 'not-allowed', opacity: thumbPreview ? 1 : 0.5, marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                  <Check size={14} /> Apply to clip
+                </button>
+                <button onClick={downloadThumb} disabled={thumbBusy}
+                  style={{ width: '100%', padding: '10px', background: 'none', color: 'white', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                  <Download size={14} /> Download thumbnail (1080p)
+                </button>
               </div>
             )}
 
@@ -1491,7 +1678,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
 }
 
 /* ── Project View ── */
-function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip) => void; onRetry: () => void; onUseDemo: () => void }) {
+function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip, panel?: 'details' | 'thumb') => void; onRetry: () => void; onUseDemo: () => void }) {
   const { updateVideoProject, updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip, addNotification } = useApp();
   const [sortBy, setSortBy] = useState<'virality' | 'duration' | 'date'>('virality');
   const [filterFocus, setFilterFocus] = useState<'all' | 'emotional' | 'educational' | 'funny'>('all');
@@ -1661,6 +1848,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { proj
                     key={clip.id}
                     clip={clip}
                     onEdit={() => onEditClip(clip)}
+                    onEditThumb={() => onEditClip(clip, 'thumb')}
                     onLike={() => updateVideoClip(project.id, clip.id, { status: clip.status === 'liked' ? 'neutral' : 'liked' })}
                     onDislike={() => updateVideoClip(project.id, clip.id, { status: 'disliked' })}
                     onTrash={() => trashVideoClip(project.id, clip.id)}
@@ -1711,6 +1899,7 @@ export default function VideoShorts() {
   const [view, setView] = useState<'dashboard' | 'project' | 'editor'>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [editorPanel, setEditorPanel] = useState<'details' | 'thumb'>('details');
   const [showUpload, setShowUpload] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const processingRefs = useRef<Map<string, number>>(new Map());
@@ -1740,6 +1929,9 @@ export default function VideoShorts() {
         if (project) {
           const clips = generateClips({ ...project, status: 'ready', progress: 100 });
           updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done!', clips, isDemo: true });
+          // Compose unique, click-optimized thumbnails in the background
+          autoThumbnails(clips, project).then(withThumbs =>
+            updateVideoProjectRef.current(projectId, { clips: withThumbs }));
         } else {
           updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done! Your clips are ready.', isDemo: true });
         }
@@ -1848,6 +2040,8 @@ export default function VideoShorts() {
         isDemo: false,
       });
       addNotificationRef.current(`AI Shorts ready! ${clips.length} clips generated from your video.`, 'success');
+      // Compose unique, click-optimized thumbnails in the background
+      autoThumbnails(clips, project).then(withThumbs => upd({ clips: withThumbs }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       console.error('[Gemini]', msg);
@@ -1944,6 +2138,7 @@ export default function VideoShorts() {
       <ClipEditor
         clip={selectedClip}
         project={selectedProject}
+        initialPanel={editorPanel}
         onBack={() => setView('project')}
         onSave={updates => {
           updateVideoClip(selectedProject.id, selectedClip.id, updates);
@@ -1959,7 +2154,7 @@ export default function VideoShorts() {
       <ProjectView
         project={selectedProject}
         onBack={() => setView('dashboard')}
-        onEditClip={clip => { setSelectedClipId(clip.id); setView('editor'); }}
+        onEditClip={(clip, panel) => { setSelectedClipId(clip.id); setEditorPanel(panel ?? 'details'); setView('editor'); }}
         onRetry={() => retryProcessing(selectedProject.id)}
         onUseDemo={() => handleUseDemo(selectedProject.id)}
       />
@@ -2053,7 +2248,7 @@ export default function VideoShorts() {
                     {project.status === 'ready' ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         {project.clips.slice(0, 3).map((c, i) => (
-                          <div key={c.id} style={{ width: 48, height: 80, borderRadius: '6px', background: c.thumbnailGradient, border: '2px solid rgba(255,255,255,0.4)', transform: `rotate(${(i - 1) * 4}deg)`, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', flexShrink: 0 }} />
+                          <div key={c.id} style={{ width: 48, height: 80, borderRadius: '6px', background: c.thumbnailUrl ? `url(${c.thumbnailUrl}) center/cover` : c.thumbnailGradient, border: '2px solid rgba(255,255,255,0.4)', transform: `rotate(${(i - 1) * 4}deg)`, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', flexShrink: 0 }} />
                         ))}
                       </div>
                     ) : (

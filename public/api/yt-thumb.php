@@ -5,15 +5,23 @@
  * taint the canvas). Restricted to valid 11-char YouTube video ids — this is
  * NOT a general-purpose proxy.
  *
- * GET ?id=<videoId> → image/jpeg
+ * GET ?id=<videoId>[&f=<frame>] → image/jpeg
+ * f (optional) picks one of YouTube's auto-generated frames so different clips
+ * can use different images: hq1 / hq2 / hq3 (25% / 50% / 75% of the video).
  */
 $id = $_GET['id'] ?? '';
 if (!preg_match('/^[a-zA-Z0-9_-]{11}$/', $id)) { http_response_code(400); exit('bad id'); }
 
+$allowedFrames = ['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault', 'hq1', 'hq2', 'hq3', 'sd1', 'sd2', 'sd3'];
+$frame = $_GET['f'] ?? '';
+$candidates = in_array($frame, $allowedFrames, true)
+    ? [$frame, 'hqdefault', 'mqdefault']
+    : ['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault'];
+
 header('Access-Control-Allow-Origin: *');
 header('Cache-Control: public, max-age=86400');
 
-foreach (['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault'] as $q) {
+foreach ($candidates as $q) {
     $ch = curl_init("https://i.ytimg.com/vi/{$id}/{$q}.jpg");
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,

@@ -381,6 +381,8 @@ export interface VideoClip {
   endTime: number;
   duration: number;
   thumbnailGradient: string;
+  /** Composed custom thumbnail (small JPEG data URL); editable in the clip editor. */
+  thumbnailUrl?: string;
   viralityScore: number;
   transcript: string;
   captions: Caption[];
