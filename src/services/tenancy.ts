@@ -64,7 +64,18 @@ const GLOBAL_KEYS = new Set([
   'crm_subaccounts', 'crm_active_account', 'crm_agency', 'crm_sidebar_mode',
   'crm_anthropic_key', 'crm_openai_key',
 ]);
-const PREFIX = 'crm_acct_';
+export const ACCT_PREFIX = 'crm_acct_';
+const PREFIX = ACCT_PREFIX;
+
+// Raw (un-patched) accessors + a write listener the cloud-sync layer registers.
+let _rawGetFn: (k: string) => string | null = (k) => window.localStorage.getItem(k);
+let _rawSetFn: (k: string, v: string) => void = (k, v) => window.localStorage.setItem(k, v);
+type ScopedWrite = (accountId: string, key: string, value: string | null) => void;
+let scopedWriteListener: ScopedWrite | null = null;
+/** The cloud-sync layer registers here to be told of every scoped write. */
+export function onScopedWrite(fn: ScopedWrite | null) { scopedWriteListener = fn; }
+/** Write a scoped value WITHOUT notifying the listener (used when pulling from server). */
+export function rawSetScoped(accountId: string, key: string, value: string) { _rawSetFn(`${PREFIX}${accountId}_${key}`, value); }
 
 let installed = false;
 /** Monkey-patch localStorage so every non-global crm_* key is scoped to the active account. */
@@ -75,10 +86,13 @@ export function installTenantStorage() {
   const _get = ls.getItem.bind(ls);
   const _set = ls.setItem.bind(ls);
   const _remove = ls.removeItem.bind(ls);
+  _rawGetFn = _get; _rawSetFn = _set;
 
+  const activeId = () => _get('crm_active_account');
+  const isScopable = (key: string) => key.startsWith('crm_') && !GLOBAL_KEYS.has(key) && !key.startsWith(PREFIX);
   const scoped = (key: string): string => {
-    if (!key.startsWith('crm_') || GLOBAL_KEYS.has(key) || key.startsWith(PREFIX)) return key;
-    const active = _get('crm_active_account');
+    if (!isScopable(key)) return key;
+    const active = activeId();
     if (!active) return key;   // no account yet → leave un-prefixed (pre-migration)
     return `${PREFIX}${active}_${key}`;
   };
@@ -87,11 +101,21 @@ export function installTenantStorage() {
     return this === ls ? _get(scoped(key)) : Storage.prototype.getItem.call(this, key);
   };
   Storage.prototype.setItem = function (key: string, value: string) {
-    if (this === ls) return _set(scoped(key), value);
+    if (this === ls) {
+      _set(scoped(key), value);
+      const a = activeId();
+      if (scopedWriteListener && a && isScopable(key)) scopedWriteListener(a, key, value);
+      return;
+    }
     return Storage.prototype.setItem.call(this, key, value);
   };
   Storage.prototype.removeItem = function (key: string) {
-    if (this === ls) return _remove(scoped(key));
+    if (this === ls) {
+      _remove(scoped(key));
+      const a = activeId();
+      if (scopedWriteListener && a && isScopable(key)) scopedWriteListener(a, key, null);
+      return;
+    }
     return Storage.prototype.removeItem.call(this, key);
   };
 

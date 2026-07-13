@@ -4,7 +4,9 @@ import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
 import LoginScreen from './components/Auth/LoginScreen';
 import { getSession } from './services/auth';
-import { getActiveAccountId, setActiveAccountId } from './services/tenancy';
+import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
+import { initCloudSync } from './services/serverData';
+import { Layers, Loader } from 'lucide-react';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import Conversations from './components/Conversations/Conversations';
@@ -82,6 +84,28 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   );
 }
 
+function SyncGate({ children }: { children: React.ReactNode }) {
+  const [syncing, setSyncing] = useState(true);
+  const brand = activeBranding();
+  useEffect(() => {
+    let alive = true;
+    initCloudSync().finally(() => { if (alive) setSyncing(false); });
+    return () => { alive = false; };
+  }, []);
+  if (!syncing) return <>{children}</>;
+  return (
+    <div style={{ minHeight: '100vh', background: '#e9ebee', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Layers size={26} color="#17191c" strokeWidth={2.4} />
+        <span style={{ fontSize: 22, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>{brand.appName}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8a8f98', fontSize: 13, fontWeight: 500 }}>
+        <Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading your workspace…
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(getSession());
 
@@ -98,10 +122,12 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
-      <AppProvider>
-        <AppLayout isClient={session.user.role === 'client'} />
-      </AppProvider>
-    </BrowserRouter>
+    <SyncGate>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <AppProvider>
+          <AppLayout isClient={session.user.role === 'client'} />
+        </AppProvider>
+      </BrowserRouter>
+    </SyncGate>
   );
 }

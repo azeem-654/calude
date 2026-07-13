@@ -7,6 +7,8 @@ import {
 import { createUser } from '../../services/auth';
 import { loadStripeConfig, saveStripeConfig, billingFor, updateBilling, createCheckout } from '../../services/billing';
 import type { StripeConfig } from '../../services/billing';
+import { cloudStatus, isConfigured } from '../../services/serverData';
+import { Database, Cloud, HardDrive } from 'lucide-react';
 import Header from '../Layout/Header';
 import {
   loadSubAccounts, saveSubAccounts, createSubAccount, updateSubAccount, deleteSubAccount,
@@ -37,6 +39,8 @@ export default function AgencyDashboard() {
   const [editAgency, setEditAgency] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   const [billFor, setBillFor] = useState<SubAccount | undefined>();
+  const [cloudOpen, setCloudOpen] = useState(false);
+  const [cloud, setCloud] = useState<'cloud' | 'local'>(cloudStatus());
 
   const persist = (list: SubAccount[]) => { setAccounts(list); saveSubAccounts(list); };
 
@@ -89,6 +93,9 @@ export default function AgencyDashboard() {
             <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: FAINT }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sub-accounts…" style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1px solid #e6e9f0', borderRadius: 10, fontSize: 13, outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
           </div>
+          <button onClick={() => setCloudOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: cloud === 'cloud' ? '#3f9142' : '#c77414' }}>
+            {cloud === 'cloud' ? <Cloud size={13} /> : <HardDrive size={13} />} {cloud === 'cloud' ? 'Cloud synced' : 'Local only'}
+          </button>
           <button onClick={() => { setBillFor(undefined); setBillingOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><CreditCard size={13} /> Billing</button>
           <button onClick={() => setEditAgency(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Edit2 size={13} /> Agency settings</button>
           <button onClick={() => { setCreating(true); setEditing(blankSubAccount()); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Plus size={15} /> New Sub-Account</button>
@@ -171,6 +178,7 @@ export default function AgencyDashboard() {
       {editing && <SubAccountModal account={editing} creating={creating} onSave={saveAccount} onClose={() => { setEditing(undefined); setCreating(false); }} />}
       {editAgency && <AgencyModal agency={agency} onSave={a => { saveAgency(a); setAgencyState(a); setEditAgency(false); }} onClose={() => setEditAgency(false)} />}
       {billingOpen && <BillingModal account={billFor} onClose={() => { setBillingOpen(false); setAccounts(loadSubAccounts()); }} />}
+      {cloudOpen && <CloudModal current={cloud} onDone={s => setCloud(s)} onClose={() => setCloudOpen(false)} />}
     </div>
   );
 }
@@ -389,6 +397,81 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
               )}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Cloud database (Freehostia MySQL) installer + status ── */
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+function CloudModal({ current, onDone, onClose }: { current: 'cloud' | 'local'; onDone: (s: 'cloud' | 'local') => void; onClose: () => void }) {
+  const [form, setForm] = useState({ host: 'localhost', db: '', user: '', pass: '' });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [configured, setConfigured] = useState(current === 'cloud');
+
+  const install = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`${API_BASE}/api/install.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      const data = await r.json() as { success: boolean; error?: string };
+      if (data.success) {
+        setMsg({ ok: true, text: 'Connected! Cloud database is set up. Reloading to sync…' });
+        setConfigured(true); onDone('cloud');
+        setTimeout(() => window.location.reload(), 1400);
+      } else setMsg({ ok: false, text: data.error || 'Install failed.' });
+    } catch {
+      setMsg({ ok: false, text: 'Could not reach install.php. Make sure the app is deployed to your host (this won\'t work in local preview).' });
+    } finally { setBusy(false); }
+  };
+
+  const check = async () => {
+    setBusy(true); const ok = await isConfigured(); setConfigured(ok); onDone(ok ? 'cloud' : 'local');
+    setMsg({ ok, text: ok ? 'Cloud database is connected and syncing.' : 'Not connected yet — fill in your MySQL details below.' }); setBusy(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.28)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e9edf3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Database size={17} color="#fff" /></div>
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 800, color: INK, margin: 0 }}>Cloud Database</h2>
+              <p style={{ fontSize: 12, color: MUTED, margin: '1px 0 0' }}>Store data server-side so it follows every login.</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 9, padding: 7, cursor: 'pointer', display: 'flex' }}><X size={16} color="#64748b" /></button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'grid', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderRadius: 12, background: configured ? '#e9f4e6' : '#fdf5e7' }}>
+            {configured ? <Cloud size={16} color="#3f9142" /> : <HardDrive size={16} color="#c77414" />}
+            <span style={{ fontSize: 13, fontWeight: 700, color: configured ? '#3f9142' : '#c77414' }}>{configured ? 'Cloud sync is ON — data follows your logins.' : 'Local only — data lives in this browser.'}</span>
+            <button onClick={check} disabled={busy} style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 700, color: INK, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Re-check</button>
+          </div>
+
+          {!configured && (
+            <>
+              <div style={{ fontSize: 12.5, color: '#5c6066', lineHeight: 1.6, background: '#f7f8f9', borderRadius: 12, padding: '12px 14px' }}>
+                <strong style={{ color: INK }}>Freehostia setup:</strong> in your cPanel → <em>MySQL Databases</em>, create a database + user and add the user to the database (all privileges). Then paste those details here — we'll test the connection, create the table, and turn on cloud sync.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><label style={lbl}>MySQL host</label><input style={inp} value={form.host} onChange={e => setForm({ ...form, host: e.target.value })} placeholder="localhost" /></div>
+                <div><label style={lbl}>Database name</label><input style={inp} value={form.db} onChange={e => setForm({ ...form, db: e.target.value })} placeholder="user_crm" /></div>
+                <div><label style={lbl}>DB username</label><input style={inp} value={form.user} onChange={e => setForm({ ...form, user: e.target.value })} placeholder="user_crmuser" /></div>
+                <div><label style={lbl}>DB password</label><input style={inp} type="password" value={form.pass} onChange={e => setForm({ ...form, pass: e.target.value })} placeholder="••••••••" /></div>
+              </div>
+            </>
+          )}
+
+          {msg && <div style={{ fontSize: 12.5, fontWeight: 600, color: msg.ok ? '#3f9142' : '#e5484d' }}>{msg.text}</div>}
+        </div>
+
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #e9edf3', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={{ padding: '9px 16px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
+          {!configured && <button onClick={install} disabled={busy || !form.db || !form.user} style={{ padding: '9px 20px', border: 'none', borderRadius: 10, background: (form.db && form.user) ? INK : '#c7cbd1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: (form.db && form.user) ? 'pointer' : 'not-allowed' }}>{busy ? 'Connecting…' : 'Connect & install'}</button>}
         </div>
       </div>
     </div>
