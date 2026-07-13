@@ -11,6 +11,8 @@
  */
 import { onScopedWrite, rawSetScoped, getActiveAccountId } from './tenancy';
 import { getSession } from './auth';
+import { updateBilling } from './billing';
+import type { BillingRecord } from './billing';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 const STATUS_KEY = 'crm_cloud_status';   // global: 'cloud' | 'local'
@@ -62,6 +64,20 @@ async function pull(accountId: string, token: string): Promise<boolean> {
   return true;
 }
 
+/** Agency-only: pull Stripe-webhook-updated billing statuses and apply them locally. */
+export async function syncBillingStatuses(token: string): Promise<void> {
+  const res = await call('get_all', { token, accountId: '__agency__' });
+  if (!res || !res.success) return;
+  const rows = (res.rows ?? {}) as Record<string, string>;
+  for (const [key, value] of Object.entries(rows)) {
+    if (!key.startsWith('crm_billing_status_')) continue;
+    try {
+      const rec = JSON.parse(value) as { accountId: string; status: BillingRecord['status'] };
+      if (rec.accountId && rec.status) updateBilling(rec.accountId, { status: rec.status });
+    } catch { /* ignore */ }
+  }
+}
+
 /**
  * Initialise cloud sync. Returns quickly with a status. Safe to call once at
  * startup after auth. Never throws — degrades to local-only on any failure.
@@ -77,6 +93,8 @@ export async function initCloudSync(timeoutMs = 6000): Promise<'cloud' | 'local'
     pushAccount = accountId;
     pushToken = session.token;
     await pull(accountId, session.token);
+    // agency owners: apply any Stripe-webhook billing status updates
+    if (session.user.role === 'agency') await syncBillingStatuses(session.token);
     // register the write listener so future changes sync up
     onScopedWrite((a, key, value) => queue(a, key, value));
     window.localStorage.setItem(STATUS_KEY, 'cloud');

@@ -368,6 +368,17 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
             </div>
           </div>
 
+          {/* Webhook for auto-updating status */}
+          <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>Auto-update status (webhook)</div>
+            <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 10px', lineHeight: 1.5 }}>In Stripe → Developers → Webhooks, add this endpoint so paid / past-due / cancelled updates apply automatically:</p>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input readOnly value={`${window.location.origin}${import.meta.env.BASE_URL || '/'}api/stripe-webhook.php`} style={{ ...inp, fontSize: 12, background: '#f7f8f9' }} onFocus={e => e.currentTarget.select()} />
+              <button onClick={e => { navigator.clipboard?.writeText(`${window.location.origin}${import.meta.env.BASE_URL || '/'}api/stripe-webhook.php`); (e.currentTarget as HTMLButtonElement).textContent = 'Copied'; }} style={{ padding: '0 14px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: INK }}>Copy</button>
+            </div>
+            <p style={{ fontSize: 11, color: FAINT, margin: '8px 0 0', lineHeight: 1.5 }}>Then paste the webhook signing secret into <code style={{ fontFamily: 'monospace' }}>api/config.php</code> as <code style={{ fontFamily: 'monospace' }}>'stripe_webhook_secret'</code>. Statuses refresh on your next login/sync.</p>
+          </div>
+
           {/* Per-account subscription */}
           {account && (
             <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
