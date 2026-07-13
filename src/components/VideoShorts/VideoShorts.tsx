@@ -467,7 +467,7 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
 }
 
 /* ── Processing Screen ── */
-function ProcessingScreen({ project, onRetry }: { project: VideoProject; onRetry?: () => void }) {
+function ProcessingScreen({ project, onRetry, onUseDemo }: { project: VideoProject; onRetry?: () => void; onUseDemo?: () => void }) {
   const stepIdx = PROCESSING_STEPS.findIndex(s => s.pct >= project.progress) ?? PROCESSING_STEPS.length - 1;
   const step = PROCESSING_STEPS[Math.max(0, stepIdx)];
 
@@ -482,13 +482,20 @@ function ProcessingScreen({ project, onRetry }: { project: VideoProject; onRetry
           {project.error || 'Something went wrong while analyzing your video.'}
         </p>
         <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 28px', maxWidth: '460px' }}>
-          No fake or placeholder clips were generated — only real AI analysis of your video is shown here.
+          No fake clips were generated from your video. You can retry the AI, or generate sample clips to preview the workflow.
         </p>
-        {onRetry && (
-          <button onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
-            <RefreshCw size={15} /> Retry
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {onRetry && (
+            <button onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: INK, color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+              <RefreshCw size={15} /> Retry AI
+            </button>
+          )}
+          {onUseDemo && (
+            <button onClick={onUseDemo} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+              <Zap size={15} /> Generate sample clips instead
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -1347,7 +1354,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
 }
 
 /* ── Project View ── */
-function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip) => void; onRetry: () => void }) {
+function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip) => void; onRetry: () => void; onUseDemo: () => void }) {
   const { updateVideoProject, updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip, addNotification } = useApp();
   const [sortBy, setSortBy] = useState<'virality' | 'duration' | 'date'>('virality');
   const [filterFocus, setFilterFocus] = useState<'all' | 'emotional' | 'educational' | 'funny'>('all');
@@ -1441,7 +1448,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoP
         )}
 
         {project.status !== 'ready' ? (
-          <ProcessingScreen project={project} onRetry={onRetry} />
+          <ProcessingScreen project={project} onRetry={onRetry} onUseDemo={onUseDemo} />
         ) : project.isDemo ? (
           <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Zap size={14} />
@@ -1777,6 +1784,15 @@ export default function VideoShorts() {
     }, true);
   };
 
+  /* Fallback when real AI analysis fails (e.g. Gemini quota exhausted): generate
+     sample clips so the user still gets a usable, editable, downloadable result. */
+  const handleUseDemo = useCallback((projectId: string) => {
+    const timer = processingRefs.current.get(projectId);
+    if (timer) { clearTimeout(timer); processingRefs.current.delete(projectId); }
+    updateVideoProjectRef.current(projectId, { status: 'processing', progress: 0, processingStep: 'Generating sample clips...', error: undefined });
+    startProcessing(projectId, 0);
+  }, [startProcessing]);
+
   /* Stats */
   const totalClips = videoProjects.reduce((s, p) => s + p.clips.length, 0);
   const avgScore = totalClips > 0
@@ -1808,6 +1824,7 @@ export default function VideoShorts() {
         onBack={() => setView('dashboard')}
         onEditClip={clip => { setSelectedClipId(clip.id); setView('editor'); }}
         onRetry={() => retryProcessing(selectedProject.id)}
+        onUseDemo={() => handleUseDemo(selectedProject.id)}
       />
     );
   }

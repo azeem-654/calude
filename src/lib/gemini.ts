@@ -8,6 +8,22 @@ export function hasGeminiKey() {
 /** Transient errors worth retrying: rate limit, or Google's servers being overloaded. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
+/** Turn Gemini's verbose JSON error bodies into a short, human-readable message. */
+function friendlyGeminiError(status: number, raw: string): string {
+  let msg = raw;
+  try { msg = (JSON.parse(raw) as { error?: { message?: string } })?.error?.message || raw; } catch { /* raw isn't JSON */ }
+  if (status === 429) {
+    return "Gemini quota/rate limit reached (429). This API key's free-tier quota is exhausted or not enabled for these models. Wait a minute and retry, enable billing on the key, or generate sample clips instead.";
+  }
+  if (status === 403) return 'Gemini rejected the API key (403). Check the key is valid and the Generative Language API is enabled for its project.';
+  if (status === 400 && /Unsupported MIME type/i.test(msg)) {
+    return "The AI model couldn't read this video source. For YouTube links this can happen on some models — try downloading the video and uploading the file directly.";
+  }
+  // Trim overly long messages so the UI stays readable.
+  const short = msg.length > 300 ? msg.slice(0, 300) + '…' : msg;
+  return `Gemini API error (${status}): ${short}`;
+}
+
 interface GeminiResponse {
   error?: { message?: string };
   candidates?: { content?: { parts?: { text?: string }[] } }[];
@@ -42,7 +58,7 @@ async function postGeminiWithFallback(
         // a text/html MIME error) — when asked, fall through to the next model
         // instead of failing the whole request.
         if (fallThroughOnBadRequest) break;
-        throw new Error(`Gemini API error (${res.status}): ${lastError}`);
+        throw new Error(friendlyGeminiError(res.status, lastError));
       }
       if (attempt < attempts) {
         await new Promise(r => setTimeout(r, 1000 * attempt));
@@ -50,7 +66,7 @@ async function postGeminiWithFallback(
     }
     // Exhausted retries / unsupported input for this model — try the next one.
   }
-  throw new Error(`Gemini API error (${lastStatus || 'unknown'}): ${lastError || 'all models failed'}`);
+  throw new Error(friendlyGeminiError(lastStatus, lastError || 'all models failed'));
 }
 
 /** Upload a video file to Gemini File API, returns the file URI. */
