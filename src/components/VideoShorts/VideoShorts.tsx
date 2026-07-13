@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import type { VideoProject, VideoClip, Caption, BRollClip } from '../../types';
 import { useApp } from '../../context/AppContext';
-import Header from '../Layout/Header';
+import Header, { Toasts } from '../Layout/Header';
 import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
 import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo } from '../../lib/videoExport';
@@ -414,7 +414,7 @@ function ScoreBadge({ score, size = 'md' }: { score: number; size?: 'sm' | 'md' 
 }
 
 /* ── Upload Modal ── */
-function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }) => void }) {
+function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number; settings?: VideoProject['settings'] }) => void }) {
   const [tab, setTab] = useState<'upload' | 'youtube' | 'url'>('upload');
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -439,14 +439,31 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
 
   const canSubmit = (tab === 'upload' && file) || ((tab === 'youtube' || tab === 'url') && url.trim());
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
-    const dur = 1800 + Math.floor(Math.random() * 3600);
+    // URLs: real duration comes back from analysis. Uploads: read it from the file.
+    let dur = 1800 + Math.floor(Math.random() * 3600);
+    if (tab === 'upload' && file) {
+      dur = await new Promise<number>(resolve => {
+        const v = document.createElement('video');
+        const objUrl = URL.createObjectURL(file);
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => {
+          const d = Math.round(v.duration || 0);
+          URL.revokeObjectURL(objUrl);
+          // Some recordings (e.g. MediaRecorder webm) report Infinity — fall back.
+          resolve(Number.isFinite(d) && d > 0 ? d : 600);
+        };
+        v.onerror = () => { URL.revokeObjectURL(objUrl); resolve(600); };
+        v.src = objUrl;
+      });
+    }
     onSubmit(name || 'My Video Project', {
       type: tab,
       url: tab !== 'upload' ? url : undefined,
       file: tab === 'upload' ? file ?? undefined : undefined,
       duration: dur,
+      settings: { maxClipDuration: maxDur, focus, aspectRatio: ratio, autoCaption: true },
     });
   };
 
@@ -892,8 +909,9 @@ function PublishModal({ clip, onClose, onPublish }: { clip: VideoClip; onClose: 
             )}
           </div>
 
-          <button onClick={handlePublish} style={{ width: '100%', padding: '12px', background: `linear-gradient(135deg,${pl.color},${pl.color}cc)`, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            <Send size={15} /> {mode === 'now' ? `Publish to ${pl.label}` : `Schedule for ${schedDate || 'selected date'}`}
+          <button onClick={handlePublish} disabled={mode === 'schedule' && !schedDate}
+            style={{ width: '100%', padding: '12px', background: (mode === 'schedule' && !schedDate) ? '#c7cbd1' : `linear-gradient(135deg,${pl.color},${pl.color}cc)`, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: (mode === 'schedule' && !schedDate) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <Send size={15} /> {mode === 'now' ? `Publish to ${pl.label}` : schedDate ? `Schedule for ${schedDate}` : 'Pick a date to schedule'}
           </button>
         </div>
       </div>
@@ -1432,7 +1450,9 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: '13px' }}>Auto-Captions</p>
-                  <button style={{ fontSize: '11px', padding: '4px 8px', background: '#6366f120', color: '#6366f1', border: '1px solid #6366f130', borderRadius: '5px', cursor: 'pointer' }}>
+                  <button
+                    onClick={() => { set({ captions: generateCaptions(localClip.transcript || localClip.title, localClip.startTime) }); addNotification('Captions regenerated from the transcript.'); }}
+                    style={{ fontSize: '11px', padding: '4px 8px', background: '#6366f120', color: '#6366f1', border: '1px solid #6366f130', borderRadius: '5px', cursor: 'pointer' }}>
                     <RefreshCw size={10} style={{ marginRight: '3px', verticalAlign: 'middle' }} /> Regenerate
                   </button>
                 </div>
@@ -1456,7 +1476,11 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                     </div>
                     <div>
                       <label style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '3px' }}>Font Size</label>
-                      <input type="number" min={14} max={36} defaultValue={22}
+                      <input type="number" min={14} max={36} value={localClip.captions[0]?.style?.fontSize ?? 22}
+                        onChange={e => {
+                          const fs = Math.max(14, Math.min(36, Number(e.target.value) || 22));
+                          set({ captions: localClip.captions.map(c => ({ ...c, style: { ...c.style, fontSize: fs } })) });
+                        }}
                         style={{ width: '100%', padding: '5px 7px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', color: 'white', fontSize: '12px', boxSizing: 'border-box' }} />
                     </div>
                   </div>
@@ -1673,6 +1697,8 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
       </div>
 
       {showPublish && <PublishModal clip={localClip} onClose={() => setShowPublish(false)} onPublish={handlePublish} />}
+      {/* Editor has no <Header>, so it needs its own toast layer */}
+      <Toasts />
     </div>
   );
 }
@@ -1785,7 +1811,11 @@ function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { proj
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Trashed Clips</h3>
               {project.trashedClips.length > 0 && (
-                <button style={{ fontSize: '12px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Delete All Permanently</button>
+                <button
+                  onClick={() => { updateVideoProject(project.id, { trashedClips: [] }); addNotification('Trash emptied.'); }}
+                  style={{ fontSize: '12px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                  Delete All Permanently
+                </button>
               )}
             </div>
             {project.trashedClips.length === 0 ? (
@@ -1914,6 +1944,17 @@ export default function VideoShorts() {
   const selectedProject = videoProjects.find(p => p.id === selectedProjectId) ?? null;
   const selectedClip = selectedProject?.clips.find(c => c.id === selectedClipId) ?? null;
 
+  /* Merge composed thumbnails onto the CURRENT clips by id (never replace the
+     array — the user may have trashed/edited clips while thumbs were rendering). */
+  const applyThumbs = useCallback((projectId: string, withThumbs: VideoClip[]) => {
+    const cur = videoProjectsRef.current.find(p => p.id === projectId);
+    if (!cur) return;
+    const thumbById = new Map(withThumbs.filter(c => c.thumbnailUrl).map(c => [c.id, c.thumbnailUrl!]));
+    updateVideoProjectRef.current(projectId, {
+      clips: cur.clips.map(c => thumbById.has(c.id) ? { ...c, thumbnailUrl: thumbById.get(c.id) } : c),
+    });
+  }, []);
+
   /* ── Processing simulation ── */
   const startProcessing = useCallback((projectId: string, fromProgress = 0) => {
     // Resume from the right step so page-navigation doesn't restart from 0
@@ -1930,8 +1971,7 @@ export default function VideoShorts() {
           const clips = generateClips({ ...project, status: 'ready', progress: 100 });
           updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done!', clips, isDemo: true });
           // Compose unique, click-optimized thumbnails in the background
-          autoThumbnails(clips, project).then(withThumbs =>
-            updateVideoProjectRef.current(projectId, { clips: withThumbs }));
+          autoThumbnails(clips, project).then(withThumbs => applyThumbs(projectId, withThumbs));
         } else {
           updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done! Your clips are ready.', isDemo: true });
         }
@@ -1945,7 +1985,7 @@ export default function VideoShorts() {
     };
     const timer = window.setTimeout(tick, 200);
     processingRefs.current.set(projectId, timer);
-  }, []);
+  }, [applyThumbs]);
 
   /* Cleanup timers on unmount */
   useEffect(() => {
@@ -2041,14 +2081,14 @@ export default function VideoShorts() {
       });
       addNotificationRef.current(`AI Shorts ready! ${clips.length} clips generated from your video.`, 'success');
       // Compose unique, click-optimized thumbnails in the background
-      autoThumbnails(clips, project).then(withThumbs => upd({ clips: withThumbs }));
+      autoThumbnails(clips, project).then(withThumbs => applyThumbs(projectId, withThumbs));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       console.error('[Gemini]', msg);
       upd({ status: 'failed', processingStep: 'Failed', error: msg });
       addNotificationRef.current(`AI processing failed: ${msg}`, 'error');
     }
-  }, []);
+  }, [applyThumbs]);
 
   /** Reconstructs the original source (file/url) from a stored project so it can be reprocessed. */
   const retryProcessing = useCallback(async (projectId: string) => {
@@ -2069,7 +2109,7 @@ export default function VideoShorts() {
     }
   }, [processWithGemini]);
 
-  const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }, forceDemo = false) => {
+  const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number; settings?: VideoProject['settings'] }, forceDemo = false) => {
     const id = `proj-${Date.now()}`;
     const blobUrl = source.file ? URL.createObjectURL(source.file) : undefined;
     const project: VideoProject = {
@@ -2085,7 +2125,7 @@ export default function VideoShorts() {
       processingStep: 'Starting...',
       clips: [],
       trashedClips: [],
-      settings: { maxClipDuration: 60, focus: 'all', aspectRatio: '9:16', autoCaption: true },
+      settings: source.settings ?? { maxClipDuration: 60, focus: 'all', aspectRatio: '9:16', autoCaption: true },
       totalViews: 0,
       createdAt: new Date().toISOString(),
     };

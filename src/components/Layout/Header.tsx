@@ -13,26 +13,13 @@ const miniBtn: React.CSSProperties = {
   color: '#17191c', boxShadow: '0 1px 2px rgba(23,25,28,0.06)',
 };
 
-export default function Header({ title, subtitle }: HeaderProps) {
+/** Floating toast stack. Rendered by Header, and standalone by full-screen
+    views that don't use Header (e.g. the AI Shorts clip editor). */
+export function Toasts() {
   const { notifications, dismissNotification } = useApp();
 
   return (
     <>
-      <div style={{
-        padding: '18px 28px 4px',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16,
-      }}>
-        <div style={{ minWidth: 0 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#17191c', margin: 0, letterSpacing: '-0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
-          {subtitle && <p style={{ fontSize: 13, color: '#8a8f98', margin: '3px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</p>}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button title="Add" style={miniBtn}><Plus size={15} strokeWidth={2.2} /></button>
-          <button title="Share" style={miniBtn}><Share2 size={14} strokeWidth={2.2} /></button>
-          <button title="Schedule" style={miniBtn}><Calendar size={14} strokeWidth={2.2} /></button>
-        </div>
-      </div>
-
       {notifications.length > 0 && (
         <div style={{ position: 'fixed', top: 76, right: 24, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
           {notifications.map(n => {
@@ -58,6 +45,28 @@ export default function Header({ title, subtitle }: HeaderProps) {
           })}
         </div>
       )}
+    </>
+  );
+}
+
+export default function Header({ title, subtitle }: HeaderProps) {
+  return (
+    <>
+      <div style={{
+        padding: '18px 28px 4px',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16,
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#17191c', margin: 0, letterSpacing: '-0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
+          {subtitle && <p style={{ fontSize: 13, color: '#8a8f98', margin: '3px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</p>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button title="Add" style={miniBtn}><Plus size={15} strokeWidth={2.2} /></button>
+          <button title="Share" style={miniBtn}><Share2 size={14} strokeWidth={2.2} /></button>
+          <button title="Schedule" style={miniBtn}><Calendar size={14} strokeWidth={2.2} /></button>
+        </div>
+      </div>
+      <Toasts />
     </>
   );
 }
