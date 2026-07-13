@@ -45,12 +45,17 @@ async function downloadClip(
     downloadBlob(result.blob, `${filename}.${result.fileExt}`);
     return;
   }
+  // YouTube footage can't be captured in-browser, but the real thumbnail can
+  // (via the CORS proxy) — render over it with motion instead of a flat gradient.
+  const ytId = project.sourceUrl ? getYouTubeId(project.sourceUrl) : null;
+  const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
   const result = await renderSyntheticClip({
     gradient: clip.thumbnailGradient,
     title: clip.title,
     captions: clip.captions,
     aspectRatio: clip.aspectRatio,
     durationSec: Math.min(clip.duration, 15),
+    backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
     onProgress,
   });
   downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -212,7 +217,11 @@ function generateClips(project: VideoProject): VideoClip[] {
 function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject): VideoClip[] {
   return analysis.clips.map((gc, i) => {
     const dur = Math.round(gc.endTime - gc.startTime);
-    const captions = generateCaptions(gc.transcript, gc.startTime);
+    // Speech-free videos: the model may still return a placeholder transcript.
+    // Never burn that into captions — narrate from the description/title instead.
+    const noSpeech = !gc.transcript?.trim() || /no (spoken|speech|dialogue|audio)|^\(.*\)$/i.test(gc.transcript.trim());
+    const captionSource = noSpeech ? (gc.description || gc.title) : gc.transcript;
+    const captions = generateCaptions(captionSource, gc.startTime);
     const focus = (['emotional', 'educational', 'funny'] as const).includes(gc.focus as never)
       ? (gc.focus as 'emotional' | 'educational' | 'funny')
       : 'educational';
@@ -231,7 +240,7 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
       duration: Math.max(dur, 5),
       thumbnailGradient: GRADIENTS[(i + 2) % GRADIENTS.length] as string,
       viralityScore: Math.min(99, Math.max(55, gc.viralityScore)),
-      transcript: gc.transcript,
+      transcript: captionSource,
       captions,
       aspectRatio: project.settings.aspectRatio,
       status: 'neutral' as const,
@@ -250,6 +259,45 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
 function getYouTubeId(url: string): string | null {
   const m = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
   return m ? m[1] : null;
+}
+
+/* ── YouTube IFrame Player API loader (singleton) ── */
+interface YTPlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  getCurrentTime: () => number;
+  destroy: () => void;
+}
+interface YTNamespace {
+  Player: new (el: HTMLElement, opts: {
+    videoId: string;
+    width?: string | number;
+    height?: string | number;
+    playerVars?: Record<string, string | number>;
+    events?: {
+      onReady?: (e: { target: YTPlayer }) => void;
+      onStateChange?: (e: { data: number; target: YTPlayer }) => void;
+    };
+  }) => YTPlayer;
+  PlayerState: { ENDED: number; PLAYING: number; PAUSED: number };
+}
+declare global {
+  interface Window { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void }
+}
+let ytApiPromise: Promise<YTNamespace> | null = null;
+function loadYouTubeApi(): Promise<YTNamespace> {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (!ytApiPromise) {
+    ytApiPromise = new Promise(resolve => {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { prev?.(); resolve(window.YT!); };
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(s);
+    });
+  }
+  return ytApiPromise;
 }
 
 /* ── Clip thumbnail for card grid ── */
@@ -568,7 +616,7 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
     setExportPct(0);
     try {
       await downloadClip(clip, { sourceBlobUrl, sourceType, sourceUrl } as VideoProject, setExportPct);
-      addNotification(isSynthetic ? 'Clip downloaded (branded render).' : 'Clip downloaded!', 'success');
+      addNotification(isSynthetic ? 'Downloaded! YouTube blocks capturing its footage, so this is a motion render of the clip (thumbnail + captions).' : 'Clip downloaded!', 'success');
     } catch (err) {
       addNotification(err instanceof Error ? err.message : 'Export failed', 'error');
     } finally {
@@ -814,10 +862,67 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
   const [trimEnd, setTrimEnd] = useState(clip.endTime);
   const [brollSearch, setBrollSearch] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
+  const ytContainerRef = useRef<HTMLDivElement>(null);
+  const ytPlayerRef = useRef<YTPlayer | null>(null);
+  const [ytReady, setYtReady] = useState(false);
 
   const dur = localClip.duration;
   const ytId = (project.sourceType === 'youtube' && project.sourceUrl) ? getYouTubeId(project.sourceUrl) : null;
   const hasRealVideo = !!(project.sourceBlobUrl || ytId);
+
+  /* ── YouTube: real player via the IFrame API so our own controls drive it
+        (controls hidden → no YouTube chrome/avatar in the preview). ── */
+  useEffect(() => {
+    if (!ytId || !ytContainerRef.current) return;
+    let disposed = false;
+    const mountEl = document.createElement('div');
+    ytContainerRef.current.appendChild(mountEl);
+    loadYouTubeApi().then(YT => {
+      if (disposed) return;
+      ytPlayerRef.current = new YT.Player(mountEl, {
+        videoId: ytId,
+        width: '100%',
+        height: '100%',
+        playerVars: {
+          controls: 0, rel: 0, iv_load_policy: 3, fs: 0, disablekb: 1,
+          playsinline: 1, start: Math.floor(trimStart), origin: window.location.origin,
+        },
+        events: {
+          onReady: e => { if (!disposed) { e.target.seekTo(trimStart, true); e.target.pauseVideo(); setYtReady(true); } },
+          onStateChange: e => {
+            if (disposed) return;
+            if (e.data === YT.PlayerState.ENDED) setPlaying(false);
+          },
+        },
+      });
+    });
+    return () => {
+      disposed = true;
+      try { ytPlayerRef.current?.destroy(); } catch { /* already gone */ }
+      ytPlayerRef.current = null;
+      setYtReady(false);
+    };
+    // trimStart intentionally excluded: seeks are handled live, not by remounting
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ytId]);
+
+  /* Poll the YouTube player for the playhead + stop at the trim end. */
+  useEffect(() => {
+    if (!ytId || !ytReady) return;
+    const int = window.setInterval(() => {
+      const p = ytPlayerRef.current;
+      if (!p) return;
+      const t = p.getCurrentTime();
+      setPlayhead(Math.max(0, t - trimStart));
+      if (t >= trimEnd) {
+        p.pauseVideo();
+        p.seekTo(trimStart, true);
+        setPlaying(false);
+        setPlayhead(0);
+      }
+    }, 250);
+    return () => window.clearInterval(int);
+  }, [ytId, ytReady, trimStart, trimEnd]);
 
   const set = (updates: Partial<VideoClip>) => setLocalClip(prev => ({ ...prev, ...updates }));
 
@@ -842,17 +947,19 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
       } else {
+        const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
         const result = await renderSyntheticClip({
           gradient: localClip.thumbnailGradient,
           title: localClip.title,
           captions: localClip.captions,
           aspectRatio: localClip.aspectRatio,
           durationSec: Math.min(trimEnd - trimStart, 15),
+          backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50) || 'clip'}.${result.fileExt}`);
       }
-      addNotification(canRealExport ? 'Clip downloaded!' : 'Clip downloaded (branded render).', 'success');
+      addNotification(canRealExport ? 'Clip downloaded!' : 'Downloaded! YouTube blocks capturing its footage, so this is a motion render of the clip (thumbnail + captions).', 'success');
     } catch (err) {
       addNotification(err instanceof Error ? err.message : 'Export failed', 'error');
     } finally {
@@ -879,13 +986,19 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
     }
   };
 
-  // Drive real video from playing state
+  // Drive real video / YouTube player from playing state
   useEffect(() => {
+    if (ytId) {
+      const p = ytPlayerRef.current;
+      if (!p || !ytReady) return;
+      if (playing) p.playVideo(); else p.pauseVideo();
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     if (playing) { v.play().catch(() => setPlaying(false)); }
     else { v.pause(); }
-  }, [playing]);
+  }, [playing, ytId, ytReady]);
 
   const handlePublish = (data: VideoClip['publishedTo'][0]) => {
     const publishedTo = [...localClip.publishedTo.filter(p => p.platform !== data.platform), data];
@@ -901,7 +1014,21 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
   const previewWidth = localClip.aspectRatio === '9:16' ? 200 : localClip.aspectRatio === '1:1' ? 240 : 340;
   const previewHeight = localClip.aspectRatio === '9:16' ? 355 : localClip.aspectRatio === '1:1' ? 240 : 191;
 
+  // Cover-crop the 16:9 YouTube player to fill the clip's frame (like a real short),
+  // which also crops out most of YouTube's corner branding.
+  const ytCover = previewWidth / previewHeight < 16 / 9
+    ? { w: Math.ceil(previewHeight * (16 / 9)), h: previewHeight }
+    : { w: previewWidth, h: Math.ceil(previewWidth * (9 / 16)) };
+
   const activeCaptionIdx = localClip.captions.findIndex(c => playhead >= c.startTime - localClip.startTime && playhead < c.endTime - localClip.startTime);
+
+  /* Seek both the UI playhead and whichever real player is active. */
+  const seekTo = (elapsed: number) => {
+    const clamped = Math.max(0, Math.min(elapsed, trimEnd - trimStart));
+    setPlayhead(clamped);
+    if (ytId) { ytPlayerRef.current?.seekTo(trimStart + clamped, true); return; }
+    if (videoRef.current) videoRef.current.currentTime = trimStart + clamped;
+  };
 
   const handleSave = () => {
     onSave(localClip);
@@ -939,15 +1066,27 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           {/* Phone/screen frame with video preview */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             <div style={{ position: 'relative', width: `${previewWidth}px`, height: `${previewHeight}px`, borderRadius: '12px', overflow: 'hidden', background: localClip.thumbnailGradient, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', flexShrink: 0 }}>
-              {/* Real video / YouTube embed */}
+              {/* Real video / YouTube player (IFrame API, chrome hidden) */}
               {ytId ? (
-                <iframe
-                  key={`${ytId}-${trimStart}`}
-                  src={`https://www.youtube.com/embed/${ytId}?start=${Math.floor(trimStart)}&end=${Math.ceil(trimEnd)}&autoplay=0&rel=0&modestbranding=1`}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+                <>
+                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: ytCover.w, height: ytCover.h, pointerEvents: 'none' }}>
+                    <div ref={ytContainerRef} style={{ width: '100%', height: '100%' }} />
+                  </div>
+                  {/* Poster overlay hides YouTube chrome (title bar, avatar, big play button) whenever paused */}
+                  {!playing && (
+                    <div onClick={() => ytReady && setPlaying(true)} style={{ position: 'absolute', inset: 0, cursor: ytReady ? 'pointer' : 'wait', background: '#000' }}>
+                      <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt=""
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.15)' }}>
+                        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(8px)', border: '2px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: ytReady ? 1 : 0.5 }}>
+                          <Play size={22} color="white" fill="white" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* While playing, we own the surface: click pauses, and YouTube hover UI never triggers */}
+                  {playing && <div onClick={() => setPlaying(false)} style={{ position: 'absolute', inset: 0, cursor: 'pointer' }} />}
+                </>
               ) : project.sourceBlobUrl ? (
                 <video
                   ref={videoRef}
@@ -1003,11 +1142,11 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
           <div style={{ width: '100%', maxWidth: '600px', background: '#1e293b', borderRadius: '12px', padding: '16px', flexShrink: 0 }}>
             {/* Playback controls */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '12px' }}>
-              <button onClick={() => { setPlayhead(0); if (videoRef.current) videoRef.current.currentTime = trimStart; }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><SkipBack size={16} /></button>
-              <button onClick={() => setPlaying(!playing)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', background: '#6366f1', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={() => seekTo(0)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><SkipBack size={16} /></button>
+              <button onClick={() => setPlaying(!playing)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', background: INK, cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {playing ? <Pause size={16} /> : <Play size={16} fill="white" />}
               </button>
-              <button onClick={() => setPlayhead(dur)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><SkipForward size={16} /></button>
+              <button onClick={() => { seekTo(trimEnd - trimStart); setPlaying(false); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><SkipForward size={16} /></button>
               <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>{fmtDuration(Math.floor(playhead))} / {fmtDuration(dur)}</span>
             </div>
 
@@ -1015,9 +1154,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
             <div style={{ position: 'relative', height: '48px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer' }}
               onClick={e => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                const elapsed = ((e.clientX - rect.left) / rect.width) * dur;
-                setPlayhead(elapsed);
-                if (videoRef.current) videoRef.current.currentTime = trimStart + elapsed;
+                seekTo(((e.clientX - rect.left) / rect.width) * dur);
               }}>
               {/* Waveform bars */}
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: '1px', padding: '0 2px' }}>
@@ -1324,7 +1461,7 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
                     <div style={{ textAlign: 'left', flex: 1 }}>
                       <div style={{ fontSize: '12px', fontWeight: 600 }}>{exporting ? `Exporting… ${exportPct}%` : canRealExport ? 'Download HD (1080p)' : 'Download clip (1080p)'}</div>
                       <div style={{ fontSize: '10px', color: '#64748b' }}>
-                        {`${localClip.aspectRatio === '9:16' ? '1080×1920' : localClip.aspectRatio === '1:1' ? '1080×1080' : '1920×1080'} · ${canRealExport ? 'exact crop + burned-in captions' : 'branded render with captions'}`}
+                        {`${localClip.aspectRatio === '9:16' ? '1080×1920' : localClip.aspectRatio === '1:1' ? '1080×1080' : '1920×1080'} · ${canRealExport ? 'exact crop + burned-in captions' : 'motion render (thumbnail + captions)'}`}
                       </div>
                     </div>
                   </button>

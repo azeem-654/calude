@@ -152,6 +152,12 @@ Language handling:
 - Write each clip's "title", "description", and "transcript" in that SAME original spoken language of the video — do not translate them to English.
 - If the detected language is NOT English, ALSO provide "titleTranslated" and "descriptionTranslated" fields with accurate English translations of the title and description. If the video IS English, omit "titleTranslated" and "descriptionTranslated" entirely (do not repeat the same text).
 
+Videos with little or no speech (CCTV footage, montages, music videos, b-roll):
+- Analyze the VISUAL content instead: what happens on screen, the setting, the key action, and why it grabs attention.
+- "title" and "description" must describe the actual visual events and the video's purpose (e.g. a security-awareness caption for CCTV robbery footage) — never generic filler.
+- Set "transcript" to a short, punchy present-tense narration of the on-screen action (e.g. "A man snatches a phone and sprints across the street as bystanders give chase"). NEVER return placeholders like "(No spoken content)", "(no dialogue)", or empty text — these get burned into the clip as captions.
+- Set "videoLanguage" to "English" for speech-free videos.
+
 Rules:
 - Clips must NOT overlap
 - Each clip must be at most ${settings.maxClipDuration} seconds long

@@ -171,7 +171,20 @@ export interface SyntheticClipParams {
   captions: Caption[];
   aspectRatio: '9:16' | '1:1' | '16:9';
   durationSec: number;              // wall-clock length to render (kept short for previews)
+  /** Optional CORS-safe image (e.g. the YouTube thumbnail via the yt-thumb.php
+      proxy) drawn as the background with a slow Ken Burns zoom. */
+  backgroundImageUrl?: string;
   onProgress?: (pct: number) => void;
+}
+
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 }
 
 /**
@@ -193,6 +206,9 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas rendering is not supported in this browser.');
+
+  // Real footage thumbnail (when available) beats a flat gradient.
+  const bgImg = params.backgroundImageUrl ? await loadImage(params.backgroundImageUrl) : null;
 
   // Pull the two accent colours out of the CSS gradient string.
   const hexes = params.gradient.match(/#[0-9a-fA-F]{3,8}/g) ?? ['#6366f1', '#8b5cf6'];
@@ -225,14 +241,29 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
   let rafId = 0;
 
   const drawFrame = (elapsed: number) => {
-    // Animated diagonal gradient (subtle shimmer between the two accents).
-    const shift = (Math.sin(elapsed * 0.8) + 1) / 2;
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, c1);
-    g.addColorStop(Math.min(0.9, 0.4 + shift * 0.2), c2);
-    g.addColorStop(1, c1);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
+    if (bgImg) {
+      // Ken Burns: slow zoom + gentle drift over the real thumbnail, cover-cropped.
+      const t = Math.min(1, elapsed / durationSec);
+      const zoom = 1.08 + t * 0.14;
+      const iw = bgImg.naturalWidth, ih = bgImg.naturalHeight;
+      const srcRatio = iw / ih, dstRatio = w / h;
+      let sw = iw, sh = ih;
+      if (srcRatio > dstRatio) sw = ih * dstRatio; else sh = iw / dstRatio;
+      sw /= zoom; sh /= zoom;
+      const maxX = iw - sw, maxY = ih - sh;
+      const sx = maxX * (0.5 + 0.18 * Math.sin(t * Math.PI));
+      const sy = maxY * 0.5;
+      ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+    } else {
+      // Animated diagonal gradient (subtle shimmer between the two accents).
+      const shift = (Math.sin(elapsed * 0.8) + 1) / 2;
+      const g = ctx.createLinearGradient(0, 0, w, h);
+      g.addColorStop(0, c1);
+      g.addColorStop(Math.min(0.9, 0.4 + shift * 0.2), c2);
+      g.addColorStop(1, c1);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
 
     // Soft vignette for legibility.
     const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.75);
@@ -240,6 +271,15 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
     vg.addColorStop(1, 'rgba(0,0,0,0.45)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, w, h);
+
+    // Top scrim keeps the title readable over bright footage.
+    if (bgImg) {
+      const top = ctx.createLinearGradient(0, 0, 0, h * 0.32);
+      top.addColorStop(0, 'rgba(0,0,0,0.6)');
+      top.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = top;
+      ctx.fillRect(0, 0, w, h * 0.32);
+    }
 
     // Title card near the top.
     ctx.textAlign = 'center';
