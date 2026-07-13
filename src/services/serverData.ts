@@ -72,8 +72,8 @@ export async function syncBillingStatuses(token: string): Promise<void> {
   for (const [key, value] of Object.entries(rows)) {
     if (!key.startsWith('crm_billing_status_')) continue;
     try {
-      const rec = JSON.parse(value) as { accountId: string; status: BillingRecord['status'] };
-      if (rec.accountId && rec.status) updateBilling(rec.accountId, { status: rec.status });
+      const rec = JSON.parse(value) as { accountId: string; status: BillingRecord['status']; customer?: string };
+      if (rec.accountId && rec.status) updateBilling(rec.accountId, { status: rec.status, ...(rec.customer ? { customerId: rec.customer } : {}) });
     } catch { /* ignore */ }
   }
 }

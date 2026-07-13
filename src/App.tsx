@@ -24,6 +24,7 @@ import VideoShorts from './components/VideoShorts/VideoShorts';
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
+import ClientBilling from './components/Billing/ClientBilling';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -77,6 +78,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/reputation" element={<Reputation />} />
           {/* Agency dashboard is off-limits to client logins */}
           <Route path="/agency" element={isClient ? <Navigate to="/" replace /> : <AgencyDashboard />} />
+          <Route path="/billing" element={<ClientBilling />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

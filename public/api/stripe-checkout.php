@@ -1,27 +1,37 @@
 <?php
 /**
  * stripe-checkout.php — creates a real Stripe Checkout Session (subscription).
- * Uses the Stripe REST API directly (no SDK needed). The agency's Stripe
- * SECRET key is passed per request and never stored server-side.
+ * Uses the Stripe REST API directly (no SDK needed).
+ *
+ * Two ways to authorise the Stripe secret:
+ *   1. Agency passes `secretKey` (sk_…) directly per request (never stored).
+ *   2. Client self-service: pass a session `token` instead; the secret is read
+ *      from the server-side config (set once by the agency via stripe-config.php),
+ *      and access is checked against the caller's account.
  *
  * POST JSON:
- *   { secretKey, mode:'subscription', priceId?, amount?, currency?, productName,
- *     customerEmail, successUrl, cancelUrl, accountId }
+ *   { secretKey|token, mode:'subscription', priceId?, amount?, currency?,
+ *     productName, customerEmail, successUrl, cancelUrl, accountId }
  * Returns: { success, url, id, error }
  *
  * Provide EITHER priceId (a Stripe Price you created) OR amount+productName
  * (we create an inline recurring price on the fly).
  */
-header('Content-Type: application/json');
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
-header("Access-Control-Allow-Origin: {$origin}");
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-header('Vary: Origin');
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
+require __DIR__ . '/_db.php';
+crm_cors();
 
 $d          = json_decode(file_get_contents('php://input'), true) ?? [];
 $secret     = trim($d['secretKey'] ?? '');
+$accountIdIn = $d['accountId'] ?? '';
+
+/* Client self-service path: no key passed, resolve it server-side. */
+if (!$secret && !empty($d['token'])) {
+    $user = crm_user_from_token($d['token']);
+    if (!$user || !crm_can_access($user, $accountIdIn)) { echo json_encode(['success' => false, 'error' => 'Not authorised.']); exit; }
+    $cfg = crm_config();
+    $secret = trim($cfg['stripe_secret'] ?? '');
+    if (!$secret) { echo json_encode(['success' => false, 'error' => 'Billing is not enabled for this account yet.']); exit; }
+}
 $priceId    = trim($d['priceId'] ?? '');
 $amount     = intval($d['amount'] ?? 0);          // in major units (dollars)
 $currency   = strtolower($d['currency'] ?? 'usd');

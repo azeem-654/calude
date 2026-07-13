@@ -24,6 +24,33 @@ function crm_pdo() {
 
 function crm_is_configured() { return file_exists(__DIR__ . '/config.php'); }
 
+/** Load the full config array (DB creds + optional stripe keys), or []. */
+function crm_config() {
+    $f = __DIR__ . '/config.php';
+    if (!file_exists($f)) return [];
+    $c = require $f;
+    return is_array($c) ? $c : [];
+}
+/** Merge keys into config.php (preserving existing), 0600. */
+function crm_config_write($patch) {
+    $f = __DIR__ . '/config.php';
+    $cur = crm_config();
+    $merged = array_merge($cur, $patch);
+    $php = "<?php\nreturn " . var_export($merged, true) . ";\n";
+    if (@file_put_contents($f, $php) === false) return false;
+    @chmod($f, 0600);
+    return true;
+}
+/** Read a stored per-account billing record (customer id + status) from crm_data. */
+function crm_billing_record($pdo, $accountId) {
+    try {
+        $stmt = $pdo->prepare('SELECT v FROM crm_data WHERE account_id = ? AND k = ?');
+        $stmt->execute(['__agency__', "crm_billing_status_{$accountId}"]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? (json_decode($row['v'], true) ?: []) : [];
+    } catch (Throwable $e) { return []; }
+}
+
 /** Resolve the current user from a session token stored by auth.php (data/users.json). */
 function crm_user_from_token($token) {
     $file = __DIR__ . '/data/users.json';

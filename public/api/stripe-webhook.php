@@ -49,10 +49,15 @@ switch ($type) {
     default: http_response_code(200); echo 'ignored'; exit;
 }
 
+/* Capture the Stripe customer id so the client can open the billing portal */
+$customer = '';
+if (isset($obj['customer'])) $customer = is_array($obj['customer']) ? ($obj['customer']['id'] ?? '') : $obj['customer'];
+
 if ($accountId && $status) {
-    // Store as an agency-global record the frontend reads on sync.
-    // Key is un-scoped (account_id column 'agency') so it isn't tied to a workspace namespace.
-    $val = json_encode(['accountId' => $accountId, 'status' => $status, 'at' => date('c'), 'source' => 'stripe']);
+    // Merge with any existing record so we don't lose the customer id.
+    $prev = crm_billing_record($pdo, $accountId);
+    if (!$customer && !empty($prev['customer'])) $customer = $prev['customer'];
+    $val = json_encode(['accountId' => $accountId, 'status' => $status, 'customer' => $customer, 'at' => date('c'), 'source' => 'stripe']);
     $stmt = $pdo->prepare('INSERT INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,NOW())
                            ON DUPLICATE KEY UPDATE v = VALUES(v), updated_at = NOW()');
     $stmt->execute(['__agency__', "crm_billing_status_{$accountId}", $val]);

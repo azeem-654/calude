@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Building2, Plus, Search, ArrowRight, MoreVertical, Users, TrendingUp,
   DollarSign, Pause, Play, Trash2, Edit2, X, CheckCircle2, Zap, Star,
   MessageSquare, LogIn, Rocket, Palette, KeyRound, CreditCard, Copy, ExternalLink,
 } from 'lucide-react';
-import { createUser } from '../../services/auth';
-import { loadStripeConfig, saveStripeConfig, billingFor, updateBilling, createCheckout } from '../../services/billing';
+import { createUser, getSession } from '../../services/auth';
+import { loadStripeConfig, saveStripeConfig, billingFor, updateBilling, createCheckout, saveStripeSecretToServer, serverBillingEnabled } from '../../services/billing';
 import type { StripeConfig } from '../../services/billing';
 import { cloudStatus, isConfigured } from '../../services/serverData';
 import { Database, Cloud, HardDrive } from 'lucide-react';
@@ -324,8 +324,25 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
   const [busy, setBusy] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState(account ? billingFor(account.id).checkoutUrl ?? '' : '');
   const [err, setErr] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [srvBusy, setSrvBusy] = useState(false);
+  const [srvMsg, setSrvMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [srvEnabled, setSrvEnabled] = useState(false);
+
+  useEffect(() => { serverBillingEnabled().then(setSrvEnabled); }, []);
 
   const saveKeys = () => { saveStripeConfig(cfg); setCfg(loadStripeConfig()); setSavedMsg('Stripe keys saved'); setTimeout(() => setSavedMsg(''), 2500); };
+
+  const saveToServer = async () => {
+    const token = getSession()?.token;
+    if (!token) { setSrvMsg({ ok: false, text: 'Sign in again to continue.' }); return; }
+    if (!cfg.secretKey) { setSrvMsg({ ok: false, text: 'Enter your Stripe secret key first.' }); return; }
+    setSrvBusy(true); setSrvMsg(null);
+    const res = await saveStripeSecretToServer(token, cfg.secretKey, webhookSecret || undefined);
+    setSrvBusy(false);
+    if (res.ok) { setSrvEnabled(true); setSrvMsg({ ok: true, text: 'Saved — clients can now subscribe & manage billing themselves.' }); }
+    else setSrvMsg({ ok: false, text: res.error || 'Could not save to server.' });
+  };
 
   const subscribe = async () => {
     if (!account) return;
@@ -376,7 +393,24 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
               <input readOnly value={`${window.location.origin}${import.meta.env.BASE_URL || '/'}api/stripe-webhook.php`} style={{ ...inp, fontSize: 12, background: '#f7f8f9' }} onFocus={e => e.currentTarget.select()} />
               <button onClick={e => { navigator.clipboard?.writeText(`${window.location.origin}${import.meta.env.BASE_URL || '/'}api/stripe-webhook.php`); (e.currentTarget as HTMLButtonElement).textContent = 'Copied'; }} style={{ padding: '0 14px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: INK }}>Copy</button>
             </div>
-            <p style={{ fontSize: 11, color: FAINT, margin: '8px 0 0', lineHeight: 1.5 }}>Then paste the webhook signing secret into <code style={{ fontFamily: 'monospace' }}>api/config.php</code> as <code style={{ fontFamily: 'monospace' }}>'stripe_webhook_secret'</code>. Statuses refresh on your next login/sync.</p>
+            <p style={{ fontSize: 11, color: FAINT, margin: '8px 0 0', lineHeight: 1.5 }}>Then paste the webhook signing secret into <code style={{ fontFamily: 'monospace' }}>api/config.php</code> as <code style={{ fontFamily: 'monospace' }}>'stripe_webhook_secret'</code> — or use the box below. Statuses refresh on your next login/sync.</p>
+          </div>
+
+          {/* Client self-service — store secret server-side */}
+          <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Client self-service billing</span>
+              {srvEnabled && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: '#e9f4e6', color: '#3f9142' }}>ENABLED</span>}
+            </div>
+            <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>Store your secret key securely on the server (in <code style={{ fontFamily: 'monospace' }}>config.php</code>, never exposed) so clients can subscribe and manage their own card from their <strong style={{ color: INK }}>Billing</strong> page. Requires the Cloud Database.</p>
+            <div style={{ marginBottom: 10 }}>
+              <label style={lbl}>Webhook signing secret (whsec_…) — optional</label>
+              <input style={inp} type="password" value={webhookSecret} onChange={e => setWebhookSecret(e.target.value)} placeholder="whsec_…" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={saveToServer} disabled={srvBusy || !cfg.secretKey} style={{ padding: '8px 16px', background: cfg.secretKey ? '#635bff' : '#c7cbd1', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: cfg.secretKey ? 'pointer' : 'not-allowed' }}>{srvBusy ? 'Saving…' : 'Save secret to server'}</button>
+              {srvMsg && <span style={{ fontSize: 12, color: srvMsg.ok ? '#3f9142' : '#e5484d', fontWeight: 600 }}>{srvMsg.text}</span>}
+            </div>
           </div>
 
           {/* Per-account subscription */}

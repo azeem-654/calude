@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
-  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut,
+  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard,
 } from 'lucide-react';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
@@ -228,6 +228,9 @@ export default function TopNav() {
                 <div style={{ fontSize: 11.5, color: '#8a8f98', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session?.user.email}</div>
                 <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: isClient ? '#eceff9' : '#e9f4e6', color: isClient ? '#3e63dd' : '#3f9142', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{isClient ? 'Client' : 'Agency'}</span>
               </div>
+              <NavLink to="/billing" onClick={() => setUserOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', borderRadius: 10, textDecoration: 'none', color: '#374151', fontSize: 13, fontWeight: 500 }}>
+                <CreditCard size={14} /> Billing & subscription
+              </NavLink>
               {!isClient && (
                 <NavLink to="/settings" onClick={() => setUserOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', borderRadius: 10, textDecoration: 'none', color: '#374151', fontSize: 13, fontWeight: 500 }}>
                   <SettingsIcon size={14} /> Settings
