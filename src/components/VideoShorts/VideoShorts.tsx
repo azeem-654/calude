@@ -12,9 +12,55 @@ import { useApp } from '../../context/AppContext';
 import Header from '../Layout/Header';
 import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
-import { exportClipToVideo, downloadBlob, canExportVideo } from '../../lib/videoExport';
+import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo } from '../../lib/videoExport';
+
+/* A real, public long-form video used for the one-click demo so anyone can try
+   the module end-to-end without an API key or their own upload. */
+const EXAMPLE_VIDEO = {
+  url: 'https://www.youtube.com/watch?v=UF8uR6Z6KLc',
+  name: 'Steve Jobs — Stanford Commencement (Example)',
+  duration: 15 * 60 + 4,
+};
+
+/**
+ * Downloads a clip as a real video file. Uses the uploaded source when we have
+ * it (pixel-accurate crop + burned captions); otherwise renders a branded
+ * synthetic clip so YouTube/demo clips are still downloadable.
+ */
+async function downloadClip(
+  clip: VideoClip,
+  project: VideoProject,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  const filename = `${clip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50) || 'clip'}`;
+  if (project.sourceBlobUrl && project.sourceType !== 'youtube') {
+    const result = await exportClipToVideo({
+      sourceBlobUrl: project.sourceBlobUrl,
+      startTime: clip.startTime,
+      endTime: clip.endTime,
+      aspectRatio: clip.aspectRatio,
+      captions: clip.captions,
+      onProgress,
+    });
+    downloadBlob(result.blob, `${filename}.${result.fileExt}`);
+    return;
+  }
+  const result = await renderSyntheticClip({
+    gradient: clip.thumbnailGradient,
+    title: clip.title,
+    captions: clip.captions,
+    aspectRatio: clip.aspectRatio,
+    durationSec: Math.min(clip.duration, 15),
+    onProgress,
+  });
+  downloadBlob(result.blob, `${filename}.${result.fileExt}`);
+}
 
 /* ── Constants ── */
+
+/* App "journey theme" tokens (monochrome). */
+const INK = '#17191c';
+const MUTED = '#8a8f98';
 
 const GRADIENTS = [
   'linear-gradient(135deg,#6366f1,#8b5cf6)',
@@ -306,7 +352,7 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
 
   const tabStyle = (t: typeof tab) => ({
     flex: 1, padding: '9px', border: 'none', borderRadius: '8px', cursor: 'pointer',
-    backgroundColor: tab === t ? '#6366f1' : 'transparent',
+    backgroundColor: tab === t ? INK : 'transparent',
     color: tab === t ? 'white' : '#64748b',
     fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
   } as React.CSSProperties);
@@ -411,7 +457,7 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
           </div>
 
           <button onClick={handleSubmit} disabled={!canSubmit}
-            style={{ width: '100%', padding: '12px', background: canSubmit ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#e2e8f0', color: canSubmit ? 'white' : '#94a3b8', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            style={{ width: '100%', padding: '12px', background: canSubmit ? INK : '#e2e8f0', color: canSubmit ? 'white' : '#94a3b8', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <Zap size={16} /> Generate AI Shorts
           </button>
         </div>
@@ -503,12 +549,10 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
   const displayTitle = showTranslated && clip.titleTranslated ? clip.titleTranslated : clip.title;
   const displayDescription = showTranslated && clip.descriptionTranslated ? clip.descriptionTranslated : clip.description;
 
+  const isSynthetic = sourceType === 'youtube' || !sourceBlobUrl;
+
   const handleDownload = async () => {
     setShowMenu(false);
-    if (sourceType === 'youtube' || !sourceBlobUrl) {
-      addNotification('Download is only available for uploaded videos — YouTube-sourced clips can\'t be exported due to platform restrictions.', 'error');
-      return;
-    }
     if (!canExportVideo()) {
       addNotification('Your browser does not support in-browser video export. Try Chrome or Edge.', 'error');
       return;
@@ -516,16 +560,8 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
     setExporting(true);
     setExportPct(0);
     try {
-      const result = await exportClipToVideo({
-        sourceBlobUrl,
-        startTime: clip.startTime,
-        endTime: clip.endTime,
-        aspectRatio: clip.aspectRatio,
-        captions: clip.captions,
-        onProgress: setExportPct,
-      });
-      downloadBlob(result.blob, `${clip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
-      addNotification('Clip downloaded!', 'success');
+      await downloadClip(clip, { sourceBlobUrl, sourceType, sourceUrl } as VideoProject, setExportPct);
+      addNotification(isSynthetic ? 'Clip downloaded (branded render).' : 'Clip downloaded!', 'success');
     } catch (err) {
       addNotification(err instanceof Error ? err.message : 'Export failed', 'error');
     } finally {
@@ -626,7 +662,7 @@ function ClipCard({ clip, onEdit, onLike, onDislike, onTrash, onPublish, onDupli
             {showMenu && (
               <div style={{ position: 'absolute', bottom: '110%', right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '140px', padding: '4px' }}>
                 {[
-                  { icon: Download, label: 'Download HD', action: handleDownload },
+                  { icon: Download, label: isSynthetic ? 'Download (branded)' : 'Download HD', action: handleDownload },
                   { icon: Copy, label: 'Duplicate', action: () => { onDuplicate(); setShowMenu(false); } },
                   { icon: Trash2, label: 'Move to Trash', action: () => { onTrash(); setShowMenu(false); }, danger: true },
                 ].map(item => (
@@ -778,11 +814,9 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
 
   const set = (updates: Partial<VideoClip>) => setLocalClip(prev => ({ ...prev, ...updates }));
 
+  const canRealExport = !!project.sourceBlobUrl && project.sourceType !== 'youtube';
+
   const handleDownload = async () => {
-    if (!project.sourceBlobUrl) {
-      addNotification('Download is only available for uploaded videos — YouTube-sourced clips can\'t be exported due to platform restrictions.', 'error');
-      return;
-    }
     if (!canExportVideo()) {
       addNotification('Your browser does not support in-browser video export. Try Chrome or Edge.', 'error');
       return;
@@ -790,16 +824,28 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
     setExporting(true);
     setExportPct(0);
     try {
-      const result = await exportClipToVideo({
-        sourceBlobUrl: project.sourceBlobUrl,
-        startTime: trimStart,
-        endTime: trimEnd,
-        aspectRatio: localClip.aspectRatio,
-        captions: localClip.captions,
-        onProgress: setExportPct,
-      });
-      downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
-      addNotification('Clip downloaded!', 'success');
+      if (canRealExport) {
+        const result = await exportClipToVideo({
+          sourceBlobUrl: project.sourceBlobUrl!,
+          startTime: trimStart,
+          endTime: trimEnd,
+          aspectRatio: localClip.aspectRatio,
+          captions: localClip.captions,
+          onProgress: setExportPct,
+        });
+        downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
+      } else {
+        const result = await renderSyntheticClip({
+          gradient: localClip.thumbnailGradient,
+          title: localClip.title,
+          captions: localClip.captions,
+          aspectRatio: localClip.aspectRatio,
+          durationSec: Math.min(trimEnd - trimStart, 15),
+          onProgress: setExportPct,
+        });
+        downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50) || 'clip'}.${result.fileExt}`);
+      }
+      addNotification(canRealExport ? 'Clip downloaded!' : 'Clip downloaded (branded render).', 'success');
     } catch (err) {
       addNotification(err instanceof Error ? err.message : 'Export failed', 'error');
     } finally {
@@ -1265,14 +1311,13 @@ function ClipEditor({ clip, project, onBack, onSave }: { clip: VideoClip; projec
                   <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Export</p>
                   <button
                     onClick={handleDownload}
-                    disabled={exporting || !project.sourceBlobUrl}
-                    title={!project.sourceBlobUrl ? 'Download is only available for uploaded videos' : undefined}
-                    style={{ width: '100%', padding: '10px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', cursor: (exporting || !project.sourceBlobUrl) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', color: 'white', opacity: (exporting || !project.sourceBlobUrl) ? 0.5 : 1 }}>
+                    disabled={exporting}
+                    style={{ width: '100%', padding: '10px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', cursor: exporting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', color: 'white', opacity: exporting ? 0.6 : 1 }}>
                     <Download size={14} color="#94a3b8" />
                     <div style={{ textAlign: 'left', flex: 1 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600 }}>{exporting ? `Exporting… ${exportPct}%` : 'Download HD (1080p)'}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>{exporting ? `Exporting… ${exportPct}%` : canRealExport ? 'Download HD (1080p)' : 'Download clip (1080p)'}</div>
                       <div style={{ fontSize: '10px', color: '#64748b' }}>
-                        {project.sourceBlobUrl ? `${localClip.aspectRatio === '9:16' ? '1080×1920' : localClip.aspectRatio === '1:1' ? '1080×1080' : '1920×1080'} · with burned-in captions` : 'Upload a video to enable export'}
+                        {`${localClip.aspectRatio === '9:16' ? '1080×1920' : localClip.aspectRatio === '1:1' ? '1080×1080' : '1920×1080'} · ${canRealExport ? 'exact crop + burned-in captions' : 'branded render with captions'}`}
                       </div>
                     </div>
                   </button>
@@ -1326,10 +1371,6 @@ function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoP
   const avgScore = project.clips.length ? Math.round(project.clips.reduce((s, c) => s + c.viralityScore, 0) / project.clips.length) : 0;
 
   const handleExportAll = async () => {
-    if (!project.sourceBlobUrl) {
-      addNotification('Export All is only available for uploaded videos — YouTube-sourced clips can\'t be exported due to platform restrictions.', 'error');
-      return;
-    }
     if (!canExportVideo()) {
       addNotification('Your browser does not support in-browser video export. Try Chrome or Edge.', 'error');
       return;
@@ -1339,14 +1380,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoP
     for (const clip of clips) {
       setExportAllStatus(`Exporting ${done + 1}/${clips.length}: ${clip.title}`);
       try {
-        const result = await exportClipToVideo({
-          sourceBlobUrl: project.sourceBlobUrl,
-          startTime: clip.startTime,
-          endTime: clip.endTime,
-          aspectRatio: clip.aspectRatio,
-          captions: clip.captions,
-        });
-        downloadBlob(result.blob, `${clip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
+        await downloadClip(clip, project, () => {});
         done++;
       } catch (err) {
         addNotification(`Failed to export "${clip.title}": ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
@@ -1393,8 +1427,8 @@ function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoP
               <Trash2 size={13} /> Trash ({project.trashedClips.length})
             </button>
             <button onClick={handleExportAll} disabled={exportingAll || project.status !== 'ready' || clips.length === 0}
-              title={!project.sourceBlobUrl ? 'Export is only available for uploaded videos' : undefined}
-              style={{ padding: '8px 14px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: (exportingAll || clips.length === 0) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px', opacity: (exportingAll || clips.length === 0) ? 0.6 : 1 }}>
+              title="Download every clip as a video file"
+              style={{ padding: '8px 14px', background: INK, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: (exportingAll || clips.length === 0) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px', opacity: (exportingAll || clips.length === 0) ? 0.6 : 1 }}>
               <Download size={13} /> {exportingAll ? 'Exporting…' : 'Export All'}
             </button>
           </div>
@@ -1569,11 +1603,11 @@ export default function VideoShorts() {
         return;
       }
       stepIdx++;
-      const delay = 1200 + Math.random() * 800;
+      const delay = 260 + Math.random() * 180;
       const timer = window.setTimeout(tick, delay);
       processingRefs.current.set(projectId, timer);
     };
-    const timer = window.setTimeout(tick, 800);
+    const timer = window.setTimeout(tick, 200);
     processingRefs.current.set(projectId, timer);
   }, []);
 
@@ -1731,6 +1765,16 @@ export default function VideoShorts() {
     }
   };
 
+  /* One-click demo: create a project from a real public YouTube video and
+     generate sample shorts immediately (no upload / API key needed). */
+  const handleTryExample = () => {
+    handleNewProject(EXAMPLE_VIDEO.name, {
+      type: 'youtube',
+      url: EXAMPLE_VIDEO.url,
+      duration: EXAMPLE_VIDEO.duration,
+    });
+  };
+
   /* Stats */
   const totalClips = videoProjects.reduce((s, p) => s + p.clips.length, 0);
   const avgScore = totalClips > 0
@@ -1795,10 +1839,16 @@ export default function VideoShorts() {
         {/* Toolbar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '12px', flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Your Projects</h2>
-          <button onClick={() => setShowUpload(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
-            <Plus size={16} /> New Project
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button onClick={handleTryExample}
+              style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 16px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              <Play size={14} fill={INK} /> Try example video
+            </button>
+            <button onClick={() => setShowUpload(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: INK, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(23,25,28,0.25)' }}>
+              <Plus size={16} /> New Project
+            </button>
+          </div>
         </div>
 
         {/* Project grid */}
@@ -1811,13 +1861,22 @@ export default function VideoShorts() {
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '24px' }}>
               {['Webinars', 'Podcasts', 'YouTube Videos', 'Zoom Calls', 'Interviews', 'Tutorials'].map(t => (
-                <span key={t} style={{ padding: '6px 12px', background: '#f5f3ff', color: '#6366f1', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>{t}</span>
+                <span key={t} style={{ padding: '6px 12px', background: '#f1f2f4', color: INK, borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>{t}</span>
               ))}
             </div>
-            <button onClick={() => setShowUpload(true)}
-              style={{ padding: '12px 28px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-              <Upload size={16} /> Upload Your First Video
-            </button>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button onClick={handleTryExample}
+                style={{ padding: '12px 24px', background: INK, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <Play size={16} fill="white" /> Try with an example video
+              </button>
+              <button onClick={() => setShowUpload(true)}
+                style={{ padding: '12px 24px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <Upload size={16} /> Upload your own
+              </button>
+            </div>
+            <p style={{ fontSize: '12px', color: MUTED, margin: '16px 0 0' }}>
+              No API key needed — the example generates sample shorts you can preview, edit, and download.
+            </p>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
