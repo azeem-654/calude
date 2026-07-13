@@ -18,8 +18,13 @@ interface GeminiResponse {
  * failures (429/500/502/503/504) with backoff before falling through to the next
  * model. Non-transient errors (bad request, permission, etc.) throw immediately.
  */
-async function postGeminiWithFallback(models: string[], body: unknown): Promise<GeminiResponse> {
+async function postGeminiWithFallback(
+  models: string[],
+  body: unknown,
+  fallThroughOnBadRequest = false,
+): Promise<GeminiResponse> {
   let lastError = '';
+  let lastStatus = 0;
   for (const model of models) {
     const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -30,17 +35,22 @@ async function postGeminiWithFallback(models: string[], body: unknown): Promise<
       if (res.ok) return await res.json();
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
+      lastStatus = res.status;
       if (!RETRYABLE_STATUS.has(res.status)) {
-        // Non-transient (e.g. 400 bad request) — retrying won't help, fail now.
+        // Non-transient (e.g. 400 bad request). Some models don't support a
+        // given input (e.g. flash-lite can't ingest a YouTube URL and returns
+        // a text/html MIME error) — when asked, fall through to the next model
+        // instead of failing the whole request.
+        if (fallThroughOnBadRequest) break;
         throw new Error(`Gemini API error (${res.status}): ${lastError}`);
       }
       if (attempt < attempts) {
         await new Promise(r => setTimeout(r, 1000 * attempt));
       }
     }
-    // Exhausted retries for this model — fall through to the next one.
+    // Exhausted retries / unsupported input for this model — try the next one.
   }
-  throw new Error(`All Gemini models are temporarily unavailable after retries. ${lastError}`);
+  throw new Error(`Gemini API error (${lastStatus || 'unknown'}): ${lastError || 'all models failed'}`);
 }
 
 /** Upload a video file to Gemini File API, returns the file URI. */
@@ -169,13 +179,15 @@ Return ONLY valid JSON with NO markdown fences:
     },
   };
 
-  const MODELS = [
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-flash',
-    'gemini-2.5-flash',
-  ];
+  // YouTube URLs (mimeType === null) require native YouTube-video understanding,
+  // which flash-lite lacks — it fetches the watch page and returns a text/html
+  // MIME error. Use the models that support YouTube ingestion for that path.
+  const isYouTube = mimeType === null;
+  const MODELS = isYouTube
+    ? ['gemini-2.5-flash', 'gemini-2.0-flash']
+    : ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'];
 
-  const data = await postGeminiWithFallback(MODELS, body);
+  const data = await postGeminiWithFallback(MODELS, body, isYouTube);
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();

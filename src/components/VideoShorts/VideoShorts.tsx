@@ -1445,7 +1445,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry }: { project: VideoP
         ) : project.isDemo ? (
           <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Zap size={14} />
-            <strong>Demo mode:</strong> no Gemini API key is configured, so these are sample clips — not analyzed from your actual video.
+            <strong>Demo mode:</strong> these are sample clips for previewing the workflow — not analyzed from the actual video. Upload your own video (with a Gemini key configured) for real AI analysis. You can still edit and download these.
           </div>
         ) : null}
         {project.status === 'ready' && (showTrash ? (
@@ -1599,7 +1599,7 @@ export default function VideoShorts() {
         } else {
           updateVideoProjectRef.current(projectId, { status: 'ready', progress: 100, processingStep: 'Done! Your clips are ready.', isDemo: true });
         }
-        addNotificationRef.current('Demo clips generated (no Gemini API key configured — these are sample clips, not analyzed from your video).', 'info');
+        addNotificationRef.current('Sample clips generated — preview, edit, and download them. Upload your own video for real AI analysis.', 'info');
         return;
       }
       stepIdx++;
@@ -1731,7 +1731,7 @@ export default function VideoShorts() {
     }
   }, [processWithGemini]);
 
-  const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }) => {
+  const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number }, forceDemo = false) => {
     const id = `proj-${Date.now()}`;
     const blobUrl = source.file ? URL.createObjectURL(source.file) : undefined;
     const project: VideoProject = {
@@ -1758,7 +1758,7 @@ export default function VideoShorts() {
     setSelectedProjectId(id);
     setView('project');
 
-    if (hasGeminiKey()) {
+    if (hasGeminiKey() && !forceDemo) {
       processWithGemini(id, source);
     } else {
       startProcessing(id, 0);
@@ -1766,13 +1766,15 @@ export default function VideoShorts() {
   };
 
   /* One-click demo: create a project from a real public YouTube video and
-     generate sample shorts immediately (no upload / API key needed). */
+     generate sample shorts immediately. Always uses the demo generator (not
+     Gemini) so it works instantly and reliably regardless of API key or
+     YouTube-ingestion limits. */
   const handleTryExample = () => {
     handleNewProject(EXAMPLE_VIDEO.name, {
       type: 'youtube',
       url: EXAMPLE_VIDEO.url,
       duration: EXAMPLE_VIDEO.duration,
-    });
+    }, true);
   };
 
   /* Stats */
