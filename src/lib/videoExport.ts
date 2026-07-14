@@ -21,7 +21,42 @@ export interface ExportClipParams {
   /** Synthesized sound effect mixed into the output. */
   sfx?: SfxKind;
   resolution?: ExportResolution;
+  /** AI Image B-Roll: cutaway cards drawn during [start,end] (seconds relative to clip start). */
+  brollImages?: { url: string; start: number; end: number }[];
   onProgress?: (pct: number) => void;
+}
+
+/** Draw a rounded B-roll cutaway card across the top half of the frame. */
+export function drawBrollCard(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
+  const cardW = w * 0.86, cardH = cardW * (9 / 16);
+  const x = (w - cardW) / 2, y = h * 0.08;
+  const r = Math.min(24, cardW * 0.04);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + cardW, y, x + cardW, y + cardH, r);
+  ctx.arcTo(x + cardW, y + cardH, x, y + cardH, r);
+  ctx.arcTo(x, y + cardH, x, y, r);
+  ctx.arcTo(x, y, x + cardW, y, r);
+  ctx.closePath();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = '#000';
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.clip();
+  // cover-fit the image into the card
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const srcRatio = iw / ih, dstRatio = cardW / cardH;
+  let sx = 0, sy = 0, sw = iw, sh = ih;
+  if (srcRatio > dstRatio) { sw = ih * dstRatio; sx = (iw - sw) / 2; }
+  else { sh = iw / dstRatio; sy = (ih - sh) / 2; }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, cardW, cardH);
+  ctx.restore();
+  ctx.lineWidth = Math.max(2, w * 0.004);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.stroke();
 }
 
 /* ── Shared caption painter (used by real + synthetic exports) ──
@@ -265,6 +300,13 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   const focusX = params.focusX ?? 0.5;
   const focusY = params.focusY ?? 0.5;
 
+  // AI Image B-Roll: preload cutaway images (failed loads are skipped).
+  const brollLoaded: { img: HTMLImageElement; start: number; end: number }[] = [];
+  if (params.brollImages?.length) {
+    const loaded = await Promise.all(params.brollImages.map(async b => ({ ...b, img: await loadImage(b.url) })));
+    loaded.forEach(b => { if (b.img) brollLoaded.push({ img: b.img, start: b.start, end: b.end }); });
+  }
+
   const drawFrame = () => {
     // cover-fit crop from source video, anchored on the AI Reframe focal point
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -273,6 +315,11 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     if (srcRatio > dstRatio) { sw = vh * dstRatio; sx = (vw - sw) * focusX; }
     else { sh = vw / dstRatio; sy = (vh - sh) * focusY; }
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+
+    // B-roll cutaway active at this moment?
+    const rel = video.currentTime - params.startTime;
+    const activeBroll = brollLoaded.find(b => rel >= b.start && rel < b.end);
+    if (activeBroll) drawBrollCard(ctx, activeBroll.img, w, h);
 
     const cap = activeCaptionFor(video.currentTime);
     if (cap) {
@@ -332,6 +379,8 @@ export interface SyntheticClipParams {
   captionStyle?: CaptionStyle;
   resolution?: ExportResolution;
   sfx?: SfxKind;
+  /** Script-to-Video: per-caption background images (aligned by index). */
+  sceneImages?: (string | null)[];
   onProgress?: (pct: number) => void;
 }
 
@@ -359,7 +408,7 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
   const synthScale = RES_SCALE[params.resolution ?? '1080p'];
   const w = Math.round(CANVAS_DIMS[params.aspectRatio].w * synthScale);
   const h = Math.round(CANVAS_DIMS[params.aspectRatio].h * synthScale);
-  const durationSec = Math.max(3, Math.min(params.durationSec || 10, 20));
+  const durationSec = Math.max(3, Math.min(params.durationSec || 10, 40));
 
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -369,6 +418,11 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
 
   // Real footage thumbnail (when available) beats a flat gradient.
   const bgImg = params.backgroundImageUrl ? await loadImage(params.backgroundImageUrl) : null;
+
+  // Script-to-Video: per-scene backgrounds aligned to caption indices.
+  const sceneImgs: (HTMLImageElement | null)[] = params.sceneImages?.length
+    ? await Promise.all(params.sceneImages.map(u => (u ? loadImage(u) : Promise.resolve(null))))
+    : [];
 
   // Pull the two accent colours out of the CSS gradient string.
   const hexes = params.gradient.match(/#[0-9a-fA-F]{3,8}/g) ?? ['#6366f1', '#8b5cf6'];
@@ -416,11 +470,13 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
   let rafId = 0;
 
   const drawFrame = (elapsed: number) => {
-    if (bgImg) {
-      // Ken Burns: slow zoom + gentle drift over the real thumbnail, cover-cropped.
+    const sceneIdx = Math.min(captions.length - 1, Math.floor(elapsed / perCaption));
+    const frameImg = sceneImgs[sceneIdx] ?? bgImg;
+    if (frameImg) {
+      // Ken Burns: slow zoom + gentle drift over the image, cover-cropped.
       const t = Math.min(1, elapsed / durationSec);
       const zoom = 1.08 + t * 0.14;
-      const iw = bgImg.naturalWidth, ih = bgImg.naturalHeight;
+      const iw = frameImg.naturalWidth, ih = frameImg.naturalHeight;
       const srcRatio = iw / ih, dstRatio = w / h;
       let sw = iw, sh = ih;
       if (srcRatio > dstRatio) sw = ih * dstRatio; else sh = iw / dstRatio;
@@ -428,7 +484,7 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
       const maxX = iw - sw, maxY = ih - sh;
       const sx = maxX * (0.5 + 0.18 * Math.sin(t * Math.PI));
       const sy = maxY * 0.5;
-      ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+      ctx.drawImage(frameImg, sx, sy, sw, sh, 0, 0, w, h);
     } else {
       // Animated diagonal gradient (subtle shimmer between the two accents).
       const shift = (Math.sin(elapsed * 0.8) + 1) / 2;
@@ -448,7 +504,7 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
     ctx.fillRect(0, 0, w, h);
 
     // Top scrim keeps the title readable over bright footage.
-    if (bgImg) {
+    if (frameImg) {
       const top = ctx.createLinearGradient(0, 0, 0, h * 0.32);
       top.addColorStop(0, 'rgba(0,0,0,0.6)');
       top.addColorStop(1, 'rgba(0,0,0,0)');

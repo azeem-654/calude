@@ -246,6 +246,63 @@ Return ONLY JSON: {"hooks": ["hook 1", "hook 2", "hook 3", "hook 4", "hook 5"]}`
   return (r.hooks ?? []).filter(h => typeof h === 'string' && h.trim()).slice(0, 5);
 }
 
+/**
+ * Video Dubbing: translate a clip's title, description, and caption lines to
+ * a target language, preserving order (timings are reused as-is).
+ */
+export async function translateClip(
+  clip: { title: string; description: string; captions: string[] },
+  targetLanguage: string,
+): Promise<{ title: string; description: string; captions: string[] }> {
+  const prompt = `Translate this short-form video content to ${targetLanguage}. Keep each caption SHORT (same rough length as the original — they are on-screen captions). Keep emoji as-is. Return the SAME number of captions in the SAME order.
+
+Title: ${clip.title}
+Description: ${clip.description.slice(0, 400)}
+Captions (JSON array): ${JSON.stringify(clip.captions.slice(0, 40))}
+
+Return ONLY JSON: {"title": "...", "description": "...", "captions": ["...", ...]}`;
+  const json = await callGemini(prompt, 0.3);
+  const r = JSON.parse(json) as { title?: string; description?: string; captions?: string[] };
+  if (!Array.isArray(r.captions) || r.captions.length === 0) throw new Error('Translation returned no captions.');
+  return { title: r.title || clip.title, description: r.description || clip.description, captions: r.captions };
+}
+
+/** AI Image B-Roll: suggest visual cutaway keywords matched to the clip's content. */
+export async function suggestBroll(transcript: string): Promise<{ keyword: string; title: string }[]> {
+  const prompt = `Suggest 4 stock-image B-roll cutaways for this short video clip. Each needs a simple 1-2 word image search keyword (lowercase, generic objects/scenes like "city", "handshake", "money", "gym") and a short display title.
+
+Clip content: "${transcript.slice(0, 500)}"
+
+Return ONLY JSON: {"broll": [{"keyword": "city", "title": "City skyline"}, ...]}`;
+  const json = await callGemini(prompt, 0.6);
+  const r = JSON.parse(json) as { broll?: { keyword?: string; title?: string }[] };
+  return (r.broll ?? [])
+    .filter(b => b.keyword && /^[a-zA-Z0-9 ,-]{2,40}$/.test(b.keyword))
+    .map(b => ({ keyword: b.keyword!.toLowerCase(), title: b.title || b.keyword! }))
+    .slice(0, 4);
+}
+
+/** Script to Video: write (or structure) a short-form script as timed scenes. */
+export async function generateScript(topic: string): Promise<{ title: string; scenes: { caption: string; keyword: string }[] }> {
+  const prompt = `Write a punchy 20-30 second short-form video script about: "${topic}".
+
+Rules:
+- 6 to 8 scenes. Each scene is ONE short on-screen caption line (max 10 words).
+- Scene 1 must be a scroll-stopping hook.
+- The last scene is a call to action.
+- Each scene gets a simple 1-2 word stock-image keyword describing its visual.
+
+Return ONLY JSON: {"title": "video title under 60 chars", "scenes": [{"caption": "...", "keyword": "..."}, ...]}`;
+  const json = await callGemini(prompt, 0.8);
+  const r = JSON.parse(json) as { title?: string; scenes?: { caption?: string; keyword?: string }[] };
+  const scenes = (r.scenes ?? [])
+    .filter(s => s.caption)
+    .map(s => ({ caption: s.caption!, keyword: (s.keyword && /^[a-zA-Z0-9 ,-]{2,40}$/.test(s.keyword) ? s.keyword.toLowerCase() : 'abstract') }))
+    .slice(0, 8);
+  if (!scenes.length) throw new Error('The AI returned no scenes.');
+  return { title: r.title || topic.slice(0, 60), scenes };
+}
+
 export interface AIDesignElement {
   type: 'text' | 'shape' | 'sticker';
   x: number;

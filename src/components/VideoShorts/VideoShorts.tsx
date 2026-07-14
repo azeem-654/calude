@@ -6,12 +6,12 @@ import {
   Film, AlignLeft, SkipBack, SkipForward, Pause,
   Volume2, VolumeX, MoreHorizontal, Search, Layers,
   MonitorPlay, Smartphone, Square as SquareIcon, Send, Image as ImageIcon,
-  Sparkles, Crop, Maximize2,
+  Sparkles, Crop, Maximize2, Globe, FileText,
 } from 'lucide-react';
 import type { VideoProject, VideoClip, Caption, BRollClip } from '../../types';
 import { useApp } from '../../context/AppContext';
 import Header, { Toasts } from '../Layout/Header';
-import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini, generateHooks } from '../../lib/gemini';
+import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini, generateHooks, translateClip, suggestBroll, generateScript } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
 import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo } from '../../lib/videoExport';
 import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExport';
@@ -49,6 +49,7 @@ async function downloadClip(
       focusY: clip.focusY,
       enhanceSpeech: clip.enhanceSpeech,
       sfx: clip.sfx,
+      brollImages: brollWindows(clip.broll ?? [], clip.endTime - clip.startTime),
       onProgress,
     });
     downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -63,10 +64,11 @@ async function downloadClip(
     title: clip.title,
     captions: clip.captions,
     aspectRatio: clip.aspectRatio,
-    durationSec: Math.min(clip.duration, 15),
+    durationSec: clip.sceneImages?.length ? Math.min(clip.duration, 40) : Math.min(clip.duration, 15),
     backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
     captionStyle: clip.captionStyle,
     sfx: clip.sfx,
+    sceneImages: clip.sceneImages,
     onProgress,
   });
   downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -304,6 +306,29 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
 
 /* Editor side-panel ids (deep-linkable from the dashboard tools row). */
 type EditorPanel = 'details' | 'thumb' | 'captions' | 'audio' | 'broll' | 'publish';
+
+const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
+/* Video Dubbing target languages (speechSynthesis codes for voice preview). */
+const DUB_LANGUAGES: { name: string; code: string }[] = [
+  { name: 'English', code: 'en' },
+  { name: 'Spanish', code: 'es' },
+  { name: 'French', code: 'fr' },
+  { name: 'German', code: 'de' },
+  { name: 'Portuguese', code: 'pt' },
+  { name: 'Hindi', code: 'hi' },
+  { name: 'Urdu', code: 'ur' },
+  { name: 'Arabic', code: 'ar' },
+  { name: 'Turkish', code: 'tr' },
+];
+
+/** Timed windows for AI image b-roll cutaways within a clip. */
+function brollWindows(broll: BRollClip[], clipDuration: number): { url: string; start: number; end: number }[] {
+  return broll.filter(b => b.imageUrl).slice(0, 6).map((b, i) => {
+    const start = Math.min(2 + i * 4, Math.max(0.5, clipDuration - 3));
+    return { url: b.imageUrl!, start, end: start + 2.5 };
+  });
+}
 
 /* ── Auto thumbnails: a unique, click-optimized image per clip ── */
 const YT_FRAME_VARIANTS = ['hq1', 'hq2', 'hq3', 'hqdefault'];
@@ -1069,6 +1094,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           enhanceSpeech: localClip.enhanceSpeech,
           sfx: localClip.sfx,
           resolution: exportRes,
+          brollImages: brollWindows(localClip.broll ?? [], trimEnd - trimStart),
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
@@ -1084,6 +1110,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           captionStyle: localClip.captionStyle,
           sfx: localClip.sfx,
           resolution: exportRes,
+          sceneImages: localClip.sceneImages,
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50) || 'clip'}.${result.fileExt}`);
@@ -1220,6 +1247,65 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   const [hooks, setHooks] = useState<string[]>([]);
   const [hooksBusy, setHooksBusy] = useState(false);
   const [exportRes, setExportRes] = useState<ExportResolution>('1080p');
+
+  /* ── Video Dubbing + AI B-Roll state ── */
+  const [dubLang, setDubLang] = useState('Spanish');
+  const [dubBusy, setDubBusy] = useState(false);
+  const [brollBusy, setBrollBusy] = useState(false);
+
+  const dubNow = async () => {
+    if (!hasGeminiKey()) { addNotification('Video dubbing needs a Gemini API key configured (Settings).', 'error'); return; }
+    setDubBusy(true);
+    try {
+      const res = await translateClip(
+        { title: localClip.title, description: localClip.description, captions: localClip.captions.map(c => c.text) },
+        dubLang,
+      );
+      const caps = localClip.captions.map((c, i) => ({ ...c, text: res.captions[i] ?? c.text }));
+      set({ captions: caps, title: res.title, description: res.description, language: dubLang });
+      addNotification(`Dubbed to ${dubLang} — captions, title & description translated. Exports burn the ${dubLang} captions.`, 'success');
+    } catch (err) {
+      addNotification(err instanceof Error ? err.message : 'Translation failed', 'error');
+    } finally { setDubBusy(false); }
+  };
+
+  const speakDub = () => {
+    const synth = window.speechSynthesis;
+    if (!synth) { addNotification('Voice preview is not supported in this browser.', 'error'); return; }
+    if (synth.speaking) { synth.cancel(); return; }
+    const u = new SpeechSynthesisUtterance(localClip.captions.map(c => c.text).join('. '));
+    u.lang = DUB_LANGUAGES.find(l => l.name === dubLang)?.code ?? 'en';
+    const voice = synth.getVoices().find(v => v.lang.startsWith(u.lang));
+    if (voice) u.voice = voice;
+    synth.speak(u);
+  };
+
+  const suggestBrollNow = async () => {
+    setBrollBusy(true);
+    try {
+      let suggestions: { keyword: string; title: string }[] = [];
+      if (hasGeminiKey()) {
+        try { suggestions = await suggestBroll(localClip.transcript || localClip.title); } catch { /* fall through */ }
+      }
+      if (!suggestions.length) {
+        // Offline fallback: longest distinctive words from the transcript
+        const words = (localClip.transcript || localClip.title).toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(word => word.length > 5);
+        suggestions = [...new Set(words)].slice(0, 4).map(word => ({ keyword: word, title: word[0].toUpperCase() + word.slice(1) }));
+      }
+      if (!suggestions.length) { addNotification('Could not derive b-roll keywords for this clip.', 'error'); return; }
+      const items: BRollClip[] = suggestions.map((sug, i) => ({
+        id: `ai-br-${Date.now()}-${i}`,
+        keyword: sug.keyword,
+        title: sug.title,
+        thumbnail: GRADIENTS[i % GRADIENTS.length],
+        duration: 3,
+        source: 'AI · stock image',
+        imageUrl: `${API_BASE_URL}/api/img-proxy.php?q=${encodeURIComponent(sug.keyword)}&sig=${i + 1}`,
+      }));
+      set({ broll: [...localClip.broll.filter(b => !b.id.startsWith('ai-br-')), ...items] });
+      addNotification(`${items.length} AI image b-roll cutaways added — they'll be burned into the export.`, 'success');
+    } finally { setBrollBusy(false); }
+  };
 
   const generateHooksNow = async () => {
     setHooksBusy(true);
@@ -1676,6 +1762,30 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                     </div>
                   ))}
                 </div>
+
+                {/* Video Dubbing */}
+                <div style={{ marginTop: '16px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px' }}>
+                  <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Globe size={13} color="#0ea5e9" /> Video Dubbing
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+                    Translate the captions, title & description — the translated captions are burned into exports. Use the voice preview to hear the dub.
+                  </p>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                    <select value={dubLang} onChange={e => setDubLang(e.target.value)}
+                      style={{ flex: 1, padding: '7px 9px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px' }}>
+                      {DUB_LANGUAGES.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+                    </select>
+                    <button onClick={dubNow} disabled={dubBusy}
+                      style={{ padding: '7px 14px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: dubBusy ? 'wait' : 'pointer' }}>
+                      {dubBusy ? 'Translating…' : 'Dub'}
+                    </button>
+                  </div>
+                  <button onClick={speakDub}
+                    style={{ width: '100%', padding: '7px', background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#94a3b8', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <Volume2 size={12} /> Voice preview (click again to stop)
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1793,7 +1903,16 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
             {/* B-ROLL PANEL */}
             {activePanel === 'broll' && (
               <div>
-                <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 12px' }}>B-Roll Library</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: 0 }}>B-Roll Library</p>
+                  <button onClick={suggestBrollNow} disabled={brollBusy}
+                    style={{ fontSize: '11px', padding: '4px 10px', background: '#6366f120', color: '#818cf8', border: '1px solid #6366f130', borderRadius: '5px', cursor: brollBusy ? 'wait' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Sparkles size={11} /> {brollBusy ? 'Finding images…' : 'AI Image B-Roll'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 12px', lineHeight: 1.5 }}>
+                  AI picks cutaway images matched to your clip's content — they're overlaid as cards and burned into the export.
+                </p>
                 <div style={{ position: 'relative', marginBottom: '12px' }}>
                   <Search size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                   <input value={brollSearch} onChange={e => setBrollSearch(e.target.value)} placeholder="Search footage..."
@@ -1807,8 +1926,13 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                       {localClip.broll.map(b => (
                         <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(99,102,241,0.1)', borderRadius: '6px', padding: '6px 8px', border: '1px solid rgba(99,102,241,0.2)' }}>
-                          <div style={{ width: '28px', height: '28px', borderRadius: '4px', background: b.thumbnail, flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: '11px', color: '#a5b4fc' }}>{b.title}</span>
+                          {b.imageUrl
+                            ? <img src={b.imageUrl} alt="" style={{ width: '42px', height: '28px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0, background: '#0f172a' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                            : <div style={{ width: '28px', height: '28px', borderRadius: '4px', background: b.thumbnail, flexShrink: 0 }} />}
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: '11px', color: '#a5b4fc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.title}</span>
+                            <span style={{ display: 'block', fontSize: '9px', color: '#64748b' }}>{b.source}</span>
+                          </span>
                           <button onClick={() => set({ broll: localClip.broll.filter(x => x.id !== b.id) })} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={12} /></button>
                         </div>
                       ))}
@@ -2148,6 +2272,80 @@ function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { proj
   );
 }
 
+/* ── Script to Video ── */
+function ScriptToVideoModal({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, scenes: { caption: string; keyword: string }[]) => void }) {
+  const [topic, setTopic] = useState('');
+  const [script, setScript] = useState('');
+  const [busy, setBusy] = useState<'' | 'write'>('');
+  const [err, setErr] = useState('');
+
+  const aiWrite = async () => {
+    if (!topic.trim()) { setErr('Enter a topic first.'); return; }
+    setBusy('write'); setErr('');
+    try {
+      if (!hasGeminiKey()) throw new Error('no-key');
+      const r = await generateScript(topic.trim());
+      setScript(r.scenes.map(s => s.caption).join('\n'));
+    } catch {
+      // Offline fallback: proven short-form structure filled with the topic
+      setScript([
+        `Stop scrolling — this is about ${topic.trim()}`,
+        `Most people get ${topic.trim()} completely wrong`,
+        "Here's the truth nobody tells you",
+        'Step 1: start smaller than you think',
+        'Step 2: stay consistent for 30 days',
+        'The results speak for themselves',
+        `Follow for more on ${topic.trim()}`,
+      ].join('\n'));
+    } finally { setBusy(''); }
+  };
+
+  const create = () => {
+    const lines = script.split(/\n+/).map(l => l.trim()).filter(Boolean).slice(0, 10);
+    if (lines.length < 2) { setErr('Write or generate a script first — one scene per line.'); return; }
+    const scenes = lines.map(l => {
+      const words = l.toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(word => word.length > 4);
+      return { caption: l, keyword: words[0] || 'abstract' };
+    });
+    onCreate(topic.trim() || lines[0].slice(0, 50), scenes);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '560px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={18} /> Script to Video</h2>
+            <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>Turn a topic or script into a ready-to-download short — scenes, images & captions included</p>
+          </div>
+          <button onClick={onClose} style={{ padding: '6px', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={18} /></button>
+        </div>
+        <div style={{ padding: '20px 24px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Topic</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. How to get more clients with email marketing"
+              style={{ flex: 1, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none' }} />
+            <button onClick={aiWrite} disabled={busy === 'write'}
+              style={{ padding: '10px 16px', background: INK, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: busy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+              <Sparkles size={14} /> {busy === 'write' ? 'Writing…' : 'AI write script'}
+            </button>
+          </div>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Script — one scene per line (each becomes a timed caption with a matching image)</label>
+          <textarea value={script} onChange={e => setScript(e.target.value)} rows={9}
+            placeholder={'Stop scrolling — you need to hear this\nMost businesses waste their ad budget\nHere are 3 fixes that cost nothing…'}
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6, marginBottom: '8px' }} />
+          {err && <p style={{ fontSize: '12px', color: '#e5484d', margin: '0 0 8px', fontWeight: 600 }}>{err}</p>}
+          <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '0 0 16px' }}>Each scene runs ~3s with an AI-matched stock image, bold captions, and an intro sound effect. You can edit everything afterwards.</p>
+          <button onClick={create}
+            style={{ width: '100%', padding: '12px', background: INK, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <Zap size={16} /> Create video
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Dashboard ── */
 export default function VideoShorts() {
   const { videoProjects, addVideoProject, updateVideoProject, deleteVideoProject, updateVideoClip, addNotification } = useApp();
@@ -2156,6 +2354,7 @@ export default function VideoShorts() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [editorPanel, setEditorPanel] = useState<EditorPanel>('details');
   const [showUpload, setShowUpload] = useState(false);
+  const [showScript, setShowScript] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const processingRefs = useRef<Map<string, number>>(new Map());
   // Always-current ref so timers can read latest state without stale closures
@@ -2380,6 +2579,63 @@ export default function VideoShorts() {
     }, true);
   };
 
+  /* Script to Video: build a ready project from timed scenes. */
+  const handleScriptVideo = (title: string, scenes: { caption: string; keyword: string }[]) => {
+    const id = `proj-${Date.now()}`;
+    const perScene = 3;
+    const dur = scenes.length * perScene;
+    const captions: Caption[] = scenes.map((s, i) => ({
+      id: `sc-${id}-${i}`,
+      startTime: i * perScene,
+      endTime: (i + 1) * perScene,
+      text: s.caption,
+      highlighted: i === 0,
+      style: { fontSize: 24, color: '#ffffff', position: 'bottom', fontWeight: '800' },
+    }));
+    const gradient = GRADIENTS[videoProjects.length % GRADIENTS.length];
+    const clip: VideoClip = {
+      id: `clip-${id}-0`,
+      projectId: id,
+      title,
+      description: scenes.map(s => s.caption).join(' '),
+      language: 'English',
+      hashtags: ['#shorts', '#ai', '#viral'],
+      startTime: 0,
+      endTime: dur,
+      duration: dur,
+      thumbnailGradient: gradient,
+      viralityScore: 78,
+      transcript: scenes.map(s => s.caption).join(' '),
+      captions,
+      aspectRatio: '9:16',
+      status: 'neutral',
+      focus: 'educational',
+      musicTrack: 'none',
+      hasVoiceover: false,
+      broll: [],
+      publishedTo: [],
+      views: 0,
+      createdAt: new Date().toISOString(),
+      captionStyle: 'bold',
+      sfx: 'riser',
+      sceneImages: scenes.map((s, i) => `${API_BASE_URL}/api/img-proxy.php?q=${encodeURIComponent(s.keyword)}&sig=${i + 1}`),
+    };
+    const project: VideoProject = {
+      id, name: title, sourceType: 'upload', sourceName: 'Script to video',
+      duration: dur, thumbnailGradient: gradient, status: 'ready', progress: 100,
+      processingStep: 'Done', clips: [clip], trashedClips: [],
+      settings: { maxClipDuration: 60, focus: 'all', aspectRatio: '9:16', autoCaption: true },
+      totalViews: 0, createdAt: new Date().toISOString(), isDemo: false,
+    };
+    addVideoProject(project);
+    videoProjectsRef.current = [project, ...videoProjectsRef.current];
+    setShowScript(false);
+    setSelectedProjectId(id);
+    setView('project');
+    autoThumbnails([clip], project).then(withThumbs => applyThumbs(id, withThumbs));
+    addNotification('Script video created — open the clip to preview, edit, and download it.', 'success');
+  };
+
   /* Tools row: deep-link into the clip editor at the tool's panel. */
   const openTool = (panel: EditorPanel) => {
     const proj = videoProjects.find(p => p.status === 'ready' && p.clips.length > 0);
@@ -2478,8 +2734,10 @@ export default function VideoShorts() {
               { label: 'AI Reframe', icon: Crop, isNew: true, action: () => openTool('audio') },
               { label: 'AI Hook', icon: Sparkles, isNew: true, action: () => openTool('details') },
               { label: 'AI Thumbnail', icon: ImageIcon, action: () => openTool('thumb') },
-              { label: 'B-Roll', icon: Film, action: () => openTool('broll') },
+              { label: 'AI Image B-Roll', icon: Film, isNew: true, action: () => openTool('broll') },
               { label: 'Upscale', icon: Maximize2, isNew: true, action: () => openTool('publish') },
+              { label: 'Video dubbing', icon: Globe, isNew: true, action: () => openTool('captions') },
+              { label: 'Script to video', icon: FileText, isNew: true, action: () => setShowScript(true) },
             ] as { label: string; icon: typeof Scissors; isNew?: boolean; action: () => void }[]).map(tool => (
               <button key={tool.label} onClick={tool.action}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', position: 'relative', minWidth: '86px' }}
@@ -2636,6 +2894,7 @@ export default function VideoShorts() {
       </div>
 
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} onSubmit={handleNewProject} />}
+      {showScript && <ScriptToVideoModal onClose={() => setShowScript(false)} onCreate={handleScriptVideo} />}
 
       {deleteConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>

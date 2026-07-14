@@ -363,6 +363,8 @@ export interface BRollClip {
   duration: number;
   title: string;
   source: string;
+  /** AI Image B-Roll: real image (via img-proxy.php) burned into exports as a cutaway card. */
+  imageUrl?: string;
 }
 
 export interface VideoClip {
@@ -402,6 +404,8 @@ export interface VideoClip {
   sfx?: 'none' | 'riser' | 'whoosh' | 'pops';
   /** AI Hook line applied as the opening caption. */
   hook?: string;
+  /** Script-to-Video: per-scene background image URLs aligned to captions. */
+  sceneImages?: (string | null)[];
   broll: BRollClip[];
   publishedTo: {
     platform: 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'linkedin';
