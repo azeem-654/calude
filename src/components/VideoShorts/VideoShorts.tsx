@@ -49,6 +49,10 @@ async function downloadClip(
       focusY: clip.focusY,
       enhanceSpeech: clip.enhanceSpeech,
       sfx: clip.sfx,
+      music: clip.musicTrack,
+      intro: clip.intro,
+      outro: clip.outro,
+      cardGradient: clip.thumbnailGradient,
       segments: clip.segments,
       brollImages: brollWindows(clip.broll ?? [], clip.duration),
       onProgress,
@@ -69,6 +73,9 @@ async function downloadClip(
     backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
     captionStyle: clip.captionStyle,
     sfx: clip.sfx,
+    music: clip.musicTrack,
+    intro: clip.intro,
+    outro: clip.outro,
     sceneImages: clip.sceneImages,
     onProgress,
   });
@@ -164,6 +171,13 @@ const RESOLUTIONS: { id: ExportResolution; label: string }[] = [
 
 /* AI Reframe: 3×3 focal-point grid. */
 const FOCUS_POINTS = [0.15, 0.5, 0.85];
+
+/* Auto background-music selection by the clip's mood/intent. */
+function autoMusicForFocus(focus: 'emotional' | 'educational' | 'funny'): string {
+  if (focus === 'emotional') return 'cinematic';
+  if (focus === 'funny') return 'upbeat';
+  return 'corporate'; // educational / default
+}
 
 /* Offline hook templates (used when no Gemini key / API unavailable). */
 const HOOK_TEMPLATES = [
@@ -289,7 +303,8 @@ function generateClips(project: VideoProject): VideoClip[] {
     const picks = [0, Math.floor(sentences.length / 2), sentences.length - 1];
     const segments = anchors.map((a, k) => {
       const text = sentences[Math.min(picks[k], sentences.length - 1)] || t.transcript;
-      const segLen = Math.max(3, Math.min(6, Math.round(text.split(' ').length / 2.5)));
+      // A touch longer so shorts have room to breathe (matches the "make it longer" ask).
+      const segLen = Math.max(6, Math.min(11, Math.round(text.split(' ').length / 1.8)));
       return { start: Math.max(0, a), end: Math.max(0, a) + segLen, text };
     }).filter(s => s.end > s.start);
     const captions = buildMontageCaptions(segments);
@@ -311,7 +326,8 @@ function generateClips(project: VideoProject): VideoClip[] {
       aspectRatio: ratio,
       status: 'neutral' as const,
       focus: t.focus,
-      musicTrack: 'none',
+      musicTrack: autoMusicForFocus(t.focus),
+      musicAuto: true,
       hasVoiceover: false,
       broll: [],
       publishedTo: [],
@@ -364,7 +380,8 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
       aspectRatio: project.settings.aspectRatio,
       status: 'neutral' as const,
       focus,
-      musicTrack: 'none',
+      musicTrack: autoMusicForFocus(focus),
+      musicAuto: true,
       hasVoiceover: false,
       broll: [],
       publishedTo: [],
@@ -1184,6 +1201,10 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           focusY: localClip.focusY,
           enhanceSpeech: localClip.enhanceSpeech,
           sfx: localClip.sfx,
+          music: localClip.musicTrack,
+          intro: localClip.intro,
+          outro: localClip.outro,
+          cardGradient: localClip.thumbnailGradient,
           resolution: exportRes,
           segments: localClip.segments,
           brollImages: brollWindows(localClip.broll ?? [], localClip.duration),
@@ -1201,6 +1222,9 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
           captionStyle: localClip.captionStyle,
           sfx: localClip.sfx,
+          music: localClip.musicTrack,
+          intro: localClip.intro,
+          outro: localClip.outro,
           resolution: exportRes,
           sceneImages: localClip.sceneImages,
           onProgress: setExportPct,
@@ -1496,13 +1520,13 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
             <div style={{ color: '#64748b', fontSize: '11px' }}>{project.name} · {fmtDuration(localClip.duration)}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <ScoreBadge score={localClip.viralityScore} size="md" />
-          <button onClick={() => setShowPublish(true)} style={{ padding: '8px 16px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Share2 size={14} /> Publish
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <ScoreBadge score={localClip.viralityScore} size="lg" />
+          <button onClick={() => setShowPublish(true)} style={{ padding: '11px 20px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <Share2 size={16} /> Publish
           </button>
-          <button onClick={handleSave} style={{ padding: '8px 16px', background: '#22c55e', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Check size={14} /> Save
+          <button onClick={handleSave} style={{ padding: '11px 20px', background: '#22c55e', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <Check size={16} /> Save
           </button>
         </div>
       </div>
@@ -1662,9 +1686,9 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
         </div>
 
         {/* Right panel */}
-        <div style={{ width: '320px', background: '#1e293b', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-          {/* Panel tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+        <div style={{ width: '390px', background: '#1e293b', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+          {/* Panel tabs — larger, scrollable */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0, overflowX: 'auto' }}>
             {([
               { id: 'details', icon: Edit2, label: 'Details' },
               { id: 'thumb', icon: ImageIcon, label: 'Thumb' },
@@ -1675,14 +1699,14 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
               { id: 'publish', icon: Share2, label: 'Publish' },
             ] as const).map(tab => (
               <button key={tab.id} onClick={() => setActivePanel(tab.id)}
-                style={{ flex: 1, padding: '12px 0', border: 'none', background: 'none', cursor: 'pointer', color: activePanel === tab.id ? '#6366f1' : '#64748b', borderBottom: `2px solid ${activePanel === tab.id ? '#6366f1' : 'transparent'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', transition: 'all 0.15s' }}>
-                <tab.icon size={15} />
-                <span style={{ fontSize: '10px', fontWeight: 600 }}>{tab.label}</span>
+                style={{ flex: '1 0 auto', minWidth: '54px', padding: '14px 4px', border: 'none', background: activePanel === tab.id ? 'rgba(99,102,241,0.1)' : 'none', cursor: 'pointer', color: activePanel === tab.id ? '#a5b4fc' : '#94a3b8', borderBottom: `2.5px solid ${activePanel === tab.id ? '#6366f1' : 'transparent'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}>
+                <tab.icon size={18} strokeWidth={2} />
+                <span style={{ fontSize: '11px', fontWeight: 700 }}>{tab.label}</span>
               </button>
             ))}
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
             {/* DETAILS PANEL */}
             {activePanel === 'details' && (
               <div>
@@ -1697,16 +1721,16 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
 
                 {/* Original-language title/description */}
                 <div style={{ marginBottom: '18px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '7px' }}>
                     Title {localClip.language && localClip.language.toLowerCase() !== 'english' ? `(${localClip.language})` : ''}
                   </label>
                   <input value={localClip.title} onChange={e => set({ title: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '10px' }} />
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    style={{ width: '100%', padding: '11px 13px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '9px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box', marginBottom: '12px' }} />
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '7px' }}>
                     Description {localClip.language && localClip.language.toLowerCase() !== 'english' ? `(${localClip.language})` : ''}
                   </label>
                   <textarea value={localClip.description} onChange={e => set({ description: e.target.value })} rows={4}
-                    style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
+                    style={{ width: '100%', padding: '11px 13px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '9px', color: 'white', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.55 }} />
                 </div>
 
                 {/* English translation, only for non-English videos */}
@@ -2033,20 +2057,60 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                   <p style={{ fontSize: '10px', color: '#64748b', margin: '8px 0 0' }}>Synthesized and mixed into the exported video's audio.</p>
                 </div>
 
-                {/* Background music */}
-                <div style={{ marginBottom: '20px' }}>
-                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 10px' }}>Background Music</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {/* Background music — mood-matched, mixed into the export */}
+                <div style={{ marginBottom: '22px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <p style={{ color: 'white', fontWeight: 700, fontSize: '14px', margin: 0 }}>Background Music</p>
+                    {localClip.musicAuto && localClip.musicTrack !== 'none' && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 9px', borderRadius: '99px', background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>AUTO · matched to mood</span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>Auto-picked from the clip's mood and mixed under the voice on export. Change it any time.</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {MUSIC_TRACKS.map(track => (
-                      <button key={track.id} onClick={() => set({ musicTrack: track.id })}
-                        style={{ padding: '10px 12px', borderRadius: '7px', border: `1px solid ${localClip.musicTrack === track.id ? '#6366f1' : 'rgba(255,255,255,0.08)'}`, background: localClip.musicTrack === track.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: localClip.musicTrack === track.id ? '#a5b4fc' : '#94a3b8', fontSize: '12px', textAlign: 'left' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {localClip.musicTrack === track.id && track.id !== 'none' ? <Volume2 size={12} color="#6366f1" /> : track.id === 'none' ? <VolumeX size={12} /> : <Music size={12} />}
+                      <button key={track.id} onClick={() => set({ musicTrack: track.id, musicAuto: false })}
+                        style={{ padding: '12px 14px', borderRadius: '9px', border: `1.5px solid ${localClip.musicTrack === track.id ? '#6366f1' : 'rgba(255,255,255,0.08)'}`, background: localClip.musicTrack === track.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: localClip.musicTrack === track.id ? '#a5b4fc' : '#cbd5e1', fontSize: '13px', fontWeight: 600, textAlign: 'left' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {localClip.musicTrack === track.id && track.id !== 'none' ? <Volume2 size={15} color="#818cf8" /> : track.id === 'none' ? <VolumeX size={15} /> : <Music size={15} />}
                           {track.label}
                         </span>
-                        {localClip.musicTrack === track.id && <Check size={12} color="#6366f1" />}
+                        {localClip.musicTrack === track.id && <Check size={15} color="#818cf8" />}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Intro & Outro cards */}
+                <div style={{ marginBottom: '22px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '14px', margin: '0 0 4px' }}>Intro & Outro</p>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '0 0 12px', lineHeight: 1.5 }}>Optional title cards shown for ~2s at the start and end of the exported video.</p>
+                  {/* Intro */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#cbd5e1' }}>Intro card</label>
+                      <button onClick={() => set({ intro: localClip.intro !== undefined ? undefined : (localClip.hook || localClip.title).slice(0, 40) })}
+                        style={{ width: '40px', height: '22px', borderRadius: '11px', background: localClip.intro !== undefined ? '#6366f1' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', position: 'relative' }}>
+                        <div style={{ width: '18px', height: '18px', borderRadius: '9px', background: 'white', position: 'absolute', top: '2px', left: localClip.intro !== undefined ? '20px' : '2px', transition: 'left 0.15s' }} />
+                      </button>
+                    </div>
+                    {localClip.intro !== undefined && (
+                      <input value={localClip.intro} onChange={e => set({ intro: e.target.value })} maxLength={48} placeholder="e.g. Watch till the end"
+                        style={{ width: '100%', padding: '10px 12px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                    )}
+                  </div>
+                  {/* Outro */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#cbd5e1' }}>Outro card</label>
+                      <button onClick={() => set({ outro: localClip.outro !== undefined ? undefined : 'Follow for more 🔥' })}
+                        style={{ width: '40px', height: '22px', borderRadius: '11px', background: localClip.outro !== undefined ? '#6366f1' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', position: 'relative' }}>
+                        <div style={{ width: '18px', height: '18px', borderRadius: '9px', background: 'white', position: 'absolute', top: '2px', left: localClip.outro !== undefined ? '20px' : '2px', transition: 'left 0.15s' }} />
+                      </button>
+                    </div>
+                    {localClip.outro !== undefined && (
+                      <input value={localClip.outro} onChange={e => set({ outro: e.target.value })} maxLength={48} placeholder="e.g. Follow for more"
+                        style={{ width: '100%', padding: '10px 12px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                    )}
                   </div>
                 </div>
 

@@ -164,19 +164,20 @@ Videos with little or no speech (CCTV footage, montages, music videos, b-roll):
 
 Rules:
 - Clips must NOT overlap
-- Each clip must be at most ${settings.maxClipDuration} seconds long
+- Each clip should use most of the ${settings.maxClipDuration}-second budget (longer, complete clips beat short ones) but never exceed it
 - Start and end times must be accurate to the actual video content
 - Find between 6 and 12 clips
 - viralityScore must be between 60 and 99
 - "description" should be a short, engaging 2-3 sentence caption suitable for a social media post (not just a repeat of the transcript)
 
-CRITICAL — build each clip as a coherent MONTAGE that fully delivers on its title, with CLEAN cuts:
-- Give each clip a "segments" array of 2 to 4 NON-OVERLAPPING ranges from DIFFERENT parts of the video that, stitched in order, form ONE coherent short that completely delivers the promise in the title (setup → key point → payoff).
-- SENTENCE BOUNDARIES ARE MANDATORY: every segment MUST begin exactly at the START of a spoken sentence (right after a natural pause/breath) and MUST end exactly at the END of a completed sentence (at a natural pause). NEVER start or end a segment in the middle of a word or sentence. A listener must hear complete sentences with no clipped words.
-- Each segment must be a COMPLETE THOUGHT on its own. Prefer FEWER, longer, complete segments over many short choppy ones — 2 clean segments beat 4 fragmented ones.
-- When stitched in order, the segments must read as continuous, logical speech — the end of one segment should flow into the next without a jarring non-sequitur.
-- For EACH segment, include a "text" field: the EXACT complete sentence(s) spoken during that segment, verbatim, in the video's original language. The segment's time range must tightly bracket exactly those sentences.
-- Each segment 3-15 seconds; combined length ≤ ${settings.maxClipDuration} seconds. Every segment must be directly relevant to the title — no filler.
+CRITICAL — build each clip as a coherent short that fully delivers on its title, with CLEAN cuts:
+- Give each clip a "segments" array of 1 to 3 NON-OVERLAPPING ranges that, played in order, form ONE coherent short that completely delivers the promise in the title (hook → point → payoff).
+- STRONGLY PREFER FEWER, LONGER, COMPLETE segments. Often the BEST clip is a SINGLE continuous passage where the speaker makes a full, self-contained point — use 1 segment when the point is delivered in one place. Only add a 2nd or 3rd segment when it genuinely completes the story (e.g. the setup is in one place and the payoff in another). Never chop a coherent passage into pieces.
+- SENTENCE BOUNDARIES ARE MANDATORY: every segment MUST begin exactly at the START of a spoken sentence (right after a natural pause/breath) and MUST end exactly at the END of a completed sentence (at a natural pause). NEVER cut in the middle of a word or sentence — the viewer must hear complete sentences with no clipped words and no dangling half-thoughts.
+- When there are multiple segments, the end of one must flow logically into the start of the next — no jarring non-sequitur.
+- Aim to USE THE FULL LENGTH BUDGET: make the combined length close to (but not over) ${settings.maxClipDuration} seconds so the short has enough context to make sense — do not return tiny 8-second clips when the budget is larger.
+- For EACH segment, include a "text" field: the EXACT complete sentence(s) spoken during that segment, verbatim, in the video's original language. The time range must tightly bracket exactly those sentences.
+- Each segment at least 6 seconds (unless the whole clip is shorter); combined length between ${Math.max(15, settings.maxClipDuration - 20)} and ${settings.maxClipDuration} seconds. Every segment must be directly relevant to the title — no filler.
 - "startTime"/"endTime" span the earliest segment start to the latest segment end.
 - "transcript" = the concatenation of every segment's "text", in play order.
 

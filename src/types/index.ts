@@ -415,6 +415,11 @@ export interface VideoClip {
   sfx?: 'none' | 'riser' | 'whoosh' | 'pops';
   /** AI Hook line applied as the opening caption. */
   hook?: string;
+  /** Optional intro/outro title cards burned onto the export. */
+  intro?: string;
+  outro?: string;
+  /** Whether the music track was auto-picked from the clip's mood. */
+  musicAuto?: boolean;
   /** Script-to-Video: per-scene background image URLs aligned to captions. */
   sceneImages?: (string | null)[];
   broll: BRollClip[];

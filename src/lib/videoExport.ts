@@ -26,8 +26,17 @@ export interface ExportClipParams {
   /** Montage segments cut from different parts of the source, stitched in order.
       When absent, the single [startTime,endTime] range is used. */
   segments?: ClipSegment[];
+  /** Mood-matched background music id (see MUSIC_MOODS), mixed under the voice. */
+  music?: string;
+  /** Optional intro/outro title cards, rendered before/after the body. */
+  intro?: string;
+  outro?: string;
+  /** Gradient for the intro/outro cards. */
+  cardGradient?: string;
   onProgress?: (pct: number) => void;
 }
+
+const CARD_SECONDS = 1.8;
 
 /** Normalize a clip's segments; falls back to the single [start,end] span. */
 export function normalizeSegments(segments: ClipSegment[] | undefined, start: number, end: number): ClipSegment[] {
@@ -195,6 +204,112 @@ export function scheduleSfx(
   }
 }
 
+/* ── Mood-matched background music (WebAudio-synthesized, no assets) ── */
+interface MoodParams { tempo: number; wave: OscillatorType; gain: number; prog: number[]; arp: boolean; kick: boolean }
+const MUSIC_MOODS: Record<string, MoodParams> = {
+  lofi:         { tempo: 74,  wave: 'sine',     gain: 0.075, prog: [220, 196, 174, 196], arp: true,  kick: false },
+  upbeat:       { tempo: 122, wave: 'sawtooth', gain: 0.05,  prog: [261, 329, 392, 349], arp: true,  kick: true  },
+  motivational: { tempo: 102, wave: 'triangle', gain: 0.06,  prog: [261, 293, 329, 392], arp: true,  kick: true  },
+  cinematic:    { tempo: 60,  wave: 'sine',     gain: 0.085, prog: [130, 146, 174, 196], arp: false, kick: false },
+  corporate:    { tempo: 104, wave: 'triangle', gain: 0.05,  prog: [261, 329, 349, 392], arp: true,  kick: false },
+  acoustic:     { tempo: 88,  wave: 'triangle', gain: 0.06,  prog: [196, 246, 293, 246], arp: true,  kick: false },
+  hiphop:       { tempo: 90,  wave: 'square',   gain: 0.045, prog: [110, 146, 130, 164], arp: true,  kick: true  },
+};
+
+/** Schedule a low-volume musical bed under the voice for `duration` seconds. */
+export function scheduleMusic(
+  audioCtx: AudioContext | OfflineAudioContext,
+  dest: AudioNode,
+  mood: string | undefined,
+  startAt: number,
+  duration: number,
+) {
+  const p = mood && mood !== 'none' ? MUSIC_MOODS[mood] : undefined;
+  if (!p) return;
+  const master = audioCtx.createGain();
+  master.gain.value = p.gain;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4200;
+  master.connect(lp); lp.connect(dest);
+
+  const beat = 60 / p.tempo;
+  const bars = Math.ceil(duration / (beat * 4));
+  for (let bar = 0; bar < bars; bar++) {
+    const barStart = startAt + bar * beat * 4;
+    const root = p.prog[bar % p.prog.length];
+    // Sustained pad chord (root + fifth) for the whole bar.
+    [root / 2, (root / 2) * 1.5].forEach(freq => {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = p.wave; osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, barStart);
+      g.gain.exponentialRampToValueAtTime(0.5, barStart + 0.3);
+      g.gain.setValueAtTime(0.5, barStart + beat * 4 - 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, barStart + beat * 4);
+      osc.connect(g); g.connect(master);
+      osc.start(barStart); osc.stop(barStart + beat * 4);
+    });
+    // Arpeggio (eighth notes over the chord).
+    if (p.arp) {
+      const ratios = [1, 1.25, 1.5, 2];
+      for (let e = 0; e < 8; e++) {
+        const t = barStart + e * (beat / 2);
+        if (t > startAt + duration) break;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = p.wave; osc.frequency.value = root * ratios[e % ratios.length];
+        g.gain.setValueAtTime(0.22, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + beat * 0.45);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + beat * 0.5);
+      }
+    }
+    // Kick on beats 1 & 3.
+    if (p.kick) {
+      [0, 2].forEach(bt => {
+        const t = barStart + bt * beat;
+        if (t > startAt + duration) return;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(140, t);
+        osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+        g.gain.setValueAtTime(0.9, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + 0.18);
+      });
+    }
+  }
+}
+
+/** Draw a full-frame intro/outro title card. */
+export function drawTitleCard(ctx: CanvasRenderingContext2D, w: number, h: number, text: string, gradient: string, progress: number) {
+  const hexes = gradient.match(/#[0-9a-fA-F]{3,8}/g) ?? ['#6366f1', '#8b5cf6'];
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, hexes[0]); g.addColorStop(1, hexes[1] ?? hexes[0]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  // Fade/scale in.
+  const a = Math.min(1, progress * 3);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(0.9 + 0.1 * a, 0.9 + 0.1 * a);
+  ctx.textAlign = 'center';
+  const fs = Math.round(w * 0.09);
+  ctx.font = `900 ${fs}px Inter, 'Arial Black', Arial, sans-serif`;
+  const words = text.toUpperCase().split(/\s+/);
+  const lines: string[] = []; let line = '';
+  for (const word of words) { const test = line ? `${line} ${word}` : word; if (ctx.measureText(test).width > w * 0.8 && line) { lines.push(line); line = word; } else line = test; }
+  if (line) lines.push(line);
+  const startY = -((lines.length - 1) * fs * 1.15) / 2;
+  ctx.lineWidth = fs * 0.14; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillStyle = '#ffffff';
+  lines.slice(0, 4).forEach((ln, i) => { const y = startY + i * fs * 1.15; ctx.strokeText(ln, 0, y); ctx.fillText(ln, 0, y); });
+  ctx.restore();
+}
+
 export interface ExportResult {
   blob: Blob;
   mimeType: string;
@@ -294,18 +409,23 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-  // Caption windows on the OUTPUT timeline. Montage captions are already stored
-  // in output time (built per-segment from each segment's sentences); single-cut
-  // captions carry absolute source times, so shift them by startTime.
-  const captionOut = params.captions.map(c => multiSeg
-    ? { cap: c, start: c.startTime, end: c.endTime }
-    : { cap: c, start: c.startTime - params.startTime, end: c.endTime - params.startTime });
+  const introDur = params.intro?.trim() ? CARD_SECONDS : 0;
+  const outroDur = params.outro?.trim() ? CARD_SECONDS : 0;
+  const totalOut = introDur + clipDuration + outroDur;
+  const cardGradient = params.cardGradient ?? 'linear-gradient(135deg,#6366f1,#8b5cf6)';
 
-  // AI Sound Effect: schedule synthesized SFX into the recorded track.
+  // Caption windows on the OUTPUT timeline, offset past the intro card. Montage
+  // captions are already output-timed; single-cut captions carry source times.
+  const captionOut = params.captions.map(c => multiSeg
+    ? { cap: c, start: introDur + c.startTime, end: introDur + c.endTime }
+    : { cap: c, start: introDur + (c.startTime - params.startTime), end: introDur + (c.endTime - params.startTime) });
+
+  // AI Sound Effect + mood music, scheduled into the recorded track.
   if (params.sfx && params.sfx !== 'none') {
-    const offsets = captionOut.map(c => c.start).filter(o => o >= 0 && o < clipDuration);
-    scheduleSfx(audioCtx, audioDest, params.sfx, audioCtx.currentTime + 0.1, offsets);
+    const offsets = captionOut.map(c => c.start).filter(o => o >= 0 && o < totalOut);
+    scheduleSfx(audioCtx, audioDest, params.sfx, audioCtx.currentTime + 0.1 + introDur, offsets.map(o => o - introDur));
   }
+  scheduleMusic(audioCtx, audioDest, params.music, audioCtx.currentTime + 0.05, totalOut);
 
   const canvasStream = (canvas as HTMLCanvasElement & { captureStream: (fps?: number) => MediaStream }).captureStream(30);
   const combined = new MediaStream([
@@ -321,9 +441,8 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   const focusX = params.focusX ?? 0.5;
   const focusY = params.focusY ?? 0.5;
 
-  // Segment playback state + the elapsed position on the OUTPUT timeline.
+  // Segment playback state.
   let segIdx = 0;
-  const outputElapsed = () => segOutStart[segIdx] + Math.max(0, video.currentTime - segs[segIdx].start);
   const activeCaptionFor = (outElapsed: number) => captionOut.find(c => outElapsed >= c.start && outElapsed < c.end);
 
   // AI Image B-Roll: preload cutaway images (failed loads are skipped).
@@ -333,7 +452,10 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     loaded.forEach(b => { if (b.img) brollLoaded.push({ img: b.img, start: b.start, end: b.end }); });
   }
 
-  const drawFrame = () => {
+  // Output-timeline position accounting for the intro card offset.
+  const outputElapsed = () => introDur + segOutStart[segIdx] + Math.max(0, video.currentTime - segs[segIdx].start);
+
+  const drawBody = () => {
     // cover-fit crop from source video, anchored on the AI Reframe focal point
     const vw = video.videoWidth, vh = video.videoHeight;
     const srcRatio = vw / vh, dstRatio = w / h;
@@ -343,7 +465,6 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
 
     const rel = outputElapsed();
-    // B-roll cutaway active at this moment?
     const activeBroll = brollLoaded.find(b => rel >= b.start && rel < b.end);
     if (activeBroll) drawBrollCard(ctx, activeBroll.img, w, h);
 
@@ -355,13 +476,9 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   };
 
   let rafId = 0;
-  const tick = () => {
-    drawFrame();
-    if (params.onProgress) {
-      params.onProgress(Math.min(100, Math.round((outputElapsed() / clipDuration) * 100)));
-    }
-    rafId = requestAnimationFrame(tick);
-  };
+  let recStart = 0;
+  let phase: 'intro' | 'body' | 'outro' = introDur ? 'intro' : 'body';
+  let outroStart = 0;
 
   const cleanup = () => {
     cancelAnimationFrame(rafId);
@@ -379,21 +496,41 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     };
     recorder.onerror = () => { cleanup(); reject(new Error('Recording failed.')); };
 
+    const tick = (ts: number) => {
+      if (!recStart) recStart = ts;
+      const elapsed = (ts - recStart) / 1000;
+      if (phase === 'intro') {
+        drawTitleCard(ctx, w, h, params.intro!, cardGradient, Math.min(1, elapsed / introDur));
+        if (elapsed >= introDur) { phase = 'body'; video.play().catch(() => {}); }
+        params.onProgress?.(Math.min(100, Math.round((elapsed / totalOut) * 100)));
+      } else if (phase === 'body') {
+        drawBody();
+        params.onProgress?.(Math.min(100, Math.round((outputElapsed() / totalOut) * 100)));
+      } else {
+        drawTitleCard(ctx, w, h, params.outro!, cardGradient, Math.min(1, (elapsed - outroStart) / outroDur));
+        if (elapsed - outroStart >= outroDur) { if (recorder.state === 'recording') recorder.stop(); return; }
+        params.onProgress?.(Math.min(100, Math.round(((introDur + clipDuration + (elapsed - outroStart)) / totalOut) * 100)));
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    const endBody = () => {
+      if (outroDur) { phase = 'outro'; outroStart = (performance.now() - recStart) / 1000; video.pause(); }
+      else if (recorder.state === 'recording') recorder.stop();
+    };
+
     video.ontimeupdate = () => {
+      if (phase !== 'body') return;
       if (video.currentTime >= segs[segIdx].end - 0.02) {
-        if (segIdx < segs.length - 1) {
-          segIdx++;
-          video.currentTime = segs[segIdx].start;   // jump to the next montage segment
-        } else if (recorder.state === 'recording') {
-          recorder.stop();
-        }
+        if (segIdx < segs.length - 1) { segIdx++; video.currentTime = segs[segIdx].start; }
+        else endBody();
       }
     };
-    video.onended = () => { if (recorder.state === 'recording') recorder.stop(); };
+    video.onended = () => { if (phase === 'body') endBody(); };
 
     recorder.start(250);
     rafId = requestAnimationFrame(tick);
-    video.play().catch(err => { cleanup(); reject(err); });
+    if (!introDur) video.play().catch(err => { cleanup(); reject(err); });
   });
 }
 
@@ -409,6 +546,9 @@ export interface SyntheticClipParams {
   captionStyle?: CaptionStyle;
   resolution?: ExportResolution;
   sfx?: SfxKind;
+  music?: string;
+  intro?: string;
+  outro?: string;
   /** Script-to-Video: per-caption background images (aligned by index). */
   sceneImages?: (string | null)[];
   onProgress?: (pct: number) => void;
@@ -475,18 +615,26 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
     return lines;
   };
 
+  const introDur = params.intro?.trim() ? CARD_SECONDS : 0;
+  const outroDur = params.outro?.trim() ? CARD_SECONDS : 0;
+  const totalDur = introDur + durationSec + outroDur;
+
   const canvasStream = (canvas as HTMLCanvasElement & { captureStream: (fps?: number) => MediaStream }).captureStream(30);
   const { mimeType, fileExt } = pickMimeType();
 
-  // AI Sound Effect: give the synthetic render a real audio track with the SFX.
+  // Give the synthetic render a real audio track with SFX + mood music.
   let sfxCtx: AudioContext | null = null;
   const tracks = [...canvasStream.getVideoTracks()];
-  if (params.sfx && params.sfx !== 'none') {
+  const wantsAudio = (params.sfx && params.sfx !== 'none') || (params.music && params.music !== 'none');
+  if (wantsAudio) {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     sfxCtx = new AudioCtx();
     const dest = sfxCtx.createMediaStreamDestination();
-    const offsets = captions.map((_, i) => i * perCaption);
-    scheduleSfx(sfxCtx, dest, params.sfx, sfxCtx.currentTime + 0.1, offsets);
+    if (params.sfx && params.sfx !== 'none') {
+      const offsets = captions.map((_, i) => introDur + i * perCaption);
+      scheduleSfx(sfxCtx, dest, params.sfx, sfxCtx.currentTime + 0.1 + introDur, offsets.map(o => o - introDur));
+    }
+    scheduleMusic(sfxCtx, dest, params.music, sfxCtx.currentTime + 0.05, totalDur);
     if (sfxCtx.state === 'suspended') await sfxCtx.resume();
     tracks.push(...dest.stream.getAudioTracks());
   }
@@ -575,12 +723,21 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
     };
     recorder.onerror = () => { finish(); reject(new Error('Recording failed.')); };
 
+    const cardGradient = params.gradient;
     const tick = (ts: number) => {
       if (!startTs) startTs = ts;
       const elapsed = (ts - startTs) / 1000;
-      drawFrame(elapsed);
-      params.onProgress?.(Math.min(100, Math.round((elapsed / durationSec) * 100)));
-      if (elapsed >= durationSec) { if (recorder.state === 'recording') recorder.stop(); return; }
+      if (introDur && elapsed < introDur) {
+        drawTitleCard(ctx, w, h, params.intro!, cardGradient, elapsed / introDur);
+      } else if (elapsed < introDur + durationSec) {
+        drawFrame(elapsed - introDur);
+      } else if (outroDur && elapsed < totalDur) {
+        drawTitleCard(ctx, w, h, params.outro!, cardGradient, (elapsed - introDur - durationSec) / outroDur);
+      } else {
+        if (recorder.state === 'recording') recorder.stop();
+        return;
+      }
+      params.onProgress?.(Math.min(100, Math.round((elapsed / totalDur) * 100)));
       rafId = requestAnimationFrame(tick);
     };
 
