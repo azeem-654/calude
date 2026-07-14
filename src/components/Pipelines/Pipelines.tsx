@@ -270,6 +270,8 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
   const pc = PRIORITY[p];
   const checklist = deal.checklist ?? [];
   const done = checklist.filter(c => c.done).length;
+  const subtasks = deal.subtasks ?? [];
+  const subDone = subtasks.filter(s => s.done).length;
   const labels = deal.labels ?? [];
   const overdue = isOverdue(deal.expectedClose);
   const status = deal.status ?? 'active';
@@ -302,28 +304,28 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
       }}
     >
       {/* Progress segments */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         {Array.from({ length: segCount }).map((_, i) => (
-          <div key={i} style={{ flex: 1, height: 5, borderRadius: 999, background: i < segFilled ? segColor : '#eceef2' }} />
+          <div key={i} style={{ flex: 1, height: 5, borderRadius: 999, background: i < segFilled ? segColor : '#e8eaee' }} />
         ))}
       </div>
 
-      {/* Hover actions (edit / won / lost / delete) */}
-      <div className="card-actions" style={{ position: 'absolute', top: 14, right: 12, display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
-        {status === 'active' && <>
-          <button onClick={() => onMarkWon(deal)} title="Mark Won" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#94a3b8', display: 'flex' }}><Trophy size={13} /></button>
-          <button onClick={() => onMarkLost(deal)} title="Mark Lost" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#94a3b8', display: 'flex' }}><ThumbsDown size={13} /></button>
-        </>}
-        {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 6, color: '#475569', fontSize: 11, fontWeight: 700 }}>Reopen</button>}
-        <button onClick={() => onEdit(deal)} title="Edit" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#94a3b8', display: 'flex' }}><Edit2 size={13} /></button>
-        <button onClick={() => onDelete(deal)} title="Delete" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#94a3b8', display: 'flex' }}><Trash2 size={13} /></button>
-      </div>
-
-      {/* Date range */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#8a8f98', fontWeight: 500, marginBottom: 8 }}>
-        <span>{fmtDay(deal.createdAt) || '—'}</span>
-        <span style={{ width: 12, height: 1, background: '#c7ccd3' }} />
-        <span style={{ color: overdue && status === 'active' ? '#ef4444' : '#8a8f98', fontWeight: overdue && status === 'active' ? 700 : 500 }}>{fmtDay(deal.expectedClose) || '—'}</span>
+      {/* Date range + inline actions (revealed on hover, in-flow — no overlap) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8, minHeight: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#8a8f98', fontWeight: 500 }}>
+          <span>{fmtDay(deal.createdAt) || '—'}</span>
+          <span style={{ width: 12, height: 1, background: '#c7ccd3' }} />
+          <span style={{ color: overdue && status === 'active' ? '#ef4444' : '#8a8f98', fontWeight: overdue && status === 'active' ? 700 : 500 }}>{fmtDay(deal.expectedClose) || '—'}</span>
+        </div>
+        <div className="card-actions" style={{ display: 'flex', gap: 1, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          {status === 'active' && <>
+            <button onClick={() => onMarkWon(deal)} title="Mark Won" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#a4abb5', display: 'flex' }}><Trophy size={14} /></button>
+            <button onClick={() => onMarkLost(deal)} title="Mark Lost" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#a4abb5', display: 'flex' }}><ThumbsDown size={14} /></button>
+          </>}
+          {(isWon || isLost) && <button onClick={() => onEdit(deal)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 6, color: '#475569', fontSize: 11, fontWeight: 700 }}>Reopen</button>}
+          <button onClick={() => onEdit(deal)} title="Edit" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#a4abb5', display: 'flex' }}><Edit2 size={14} /></button>
+          <button onClick={() => onDelete(deal)} title="Delete" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#a4abb5', display: 'flex' }}><Trash2 size={14} /></button>
+        </div>
       </div>
 
       {/* Title with status check */}
@@ -350,6 +352,29 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
         </div>
       )}
 
+      {/* Sub-tasks preview on the cover */}
+      {subtasks.length > 0 && (
+        <div style={{ margin: '11px 0 0 29px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8f98', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sub-tasks</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8f98' }}>{subDone}/{subtasks.length}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {subtasks.slice(0, 3).map(st => (
+              <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {st.done
+                  ? <CheckCircle2 size={15} color="#22c55e" strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                  : <Circle size={15} color="#c7ccd3" strokeWidth={2} style={{ flexShrink: 0 }} />}
+                <span style={{ fontSize: 12.5, color: st.done ? '#a4abb5' : '#5c6270', textDecoration: st.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.title}</span>
+              </div>
+            ))}
+            {subtasks.length > 3 && (
+              <span style={{ fontSize: 11.5, color: '#8a8f98', fontWeight: 600, marginLeft: 23 }}>+{subtasks.length - 3} more</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Divider */}
       <div style={{ height: 1, background: '#f0f1f4', margin: '14px 0 12px' }} />
 
@@ -370,6 +395,9 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {subtasks.length > 0 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: subDone === subtasks.length ? '#22c55e' : '#8a8f98', fontWeight: 600 }}><CheckSquare size={14} />{subDone}/{subtasks.length}</span>
+          )}
           {attachCount > 0 && (
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#8a8f98', fontWeight: 600 }}><Paperclip size={14} />{attachCount}</span>
           )}
