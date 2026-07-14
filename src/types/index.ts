@@ -367,6 +367,12 @@ export interface BRollClip {
   imageUrl?: string;
 }
 
+/** A single source range used to build a clip (clips are montages of these). */
+export interface ClipSegment {
+  start: number;
+  end: number;
+}
+
 export interface VideoClip {
   id: string;
   projectId: string;
@@ -382,6 +388,9 @@ export interface VideoClip {
   startTime: number;
   endTime: number;
   duration: number;
+  /** Montage segments cut from different parts of the source (in play order).
+      When absent or single, the clip is one continuous [startTime,endTime] cut. */
+  segments?: ClipSegment[];
   thumbnailGradient: string;
   /** Composed custom thumbnail (small JPEG data URL); editable in the clip editor. */
   thumbnailUrl?: string;

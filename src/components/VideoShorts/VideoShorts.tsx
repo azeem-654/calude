@@ -13,7 +13,7 @@ import { useApp } from '../../context/AppContext';
 import Header, { Toasts } from '../Layout/Header';
 import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini, generateHooks, translateClip, suggestBroll, generateScript } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
-import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo } from '../../lib/videoExport';
+import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo, normalizeSegments, segmentsDuration } from '../../lib/videoExport';
 import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExport';
 import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
 import type { ThumbPreset } from '../../lib/thumbnail';
@@ -49,7 +49,8 @@ async function downloadClip(
       focusY: clip.focusY,
       enhanceSpeech: clip.enhanceSpeech,
       sfx: clip.sfx,
-      brollImages: brollWindows(clip.broll ?? [], clip.endTime - clip.startTime),
+      segments: clip.segments,
+      brollImages: brollWindows(clip.broll ?? [], clip.duration),
       onProgress,
     });
     downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -140,6 +141,19 @@ const SFX_OPTIONS: { id: SfxKind; label: string; desc: string }[] = [
   { id: 'riser', label: 'Riser', desc: 'Tension build at the start' },
   { id: 'whoosh', label: 'Whoosh', desc: 'Swoosh intro transition' },
   { id: 'pops', label: 'Pops', desc: 'Subtle pop on each caption' },
+];
+
+/* Social-platform size presets → the app's supported aspect ratios. */
+const PLATFORM_PRESETS: { label: string; ratio: '9:16' | '1:1' | '16:9'; note: string }[] = [
+  { label: 'Instagram Reel', ratio: '9:16', note: '1080×1920' },
+  { label: 'Instagram Post', ratio: '1:1', note: '1080×1080' },
+  { label: 'TikTok', ratio: '9:16', note: '1080×1920' },
+  { label: 'YouTube Short', ratio: '9:16', note: '1080×1920' },
+  { label: 'YouTube Video', ratio: '16:9', note: '1920×1080' },
+  { label: 'Facebook Reel', ratio: '9:16', note: '1080×1920' },
+  { label: 'Facebook Post', ratio: '1:1', note: '1080×1080' },
+  { label: 'Facebook Ad', ratio: '1:1', note: '1080×1080' },
+  { label: 'LinkedIn', ratio: '1:1', note: '1080×1080' },
 ];
 
 const RESOLUTIONS: { id: ExportResolution; label: string }[] = [
@@ -235,6 +249,15 @@ function generateClips(project: VideoProject): VideoClip[] {
     const dur = [30, 38, 45, 52, 58][i % 5] as number;
     const start = Math.floor(i * (project.duration / maxClips));
     const captions = generateCaptions(t.transcript, start);
+    // Demo montage: 3 short segments pulled from different parts of the source.
+    const span = Math.max(dur, 12);
+    const total = Math.max(span, project.duration || span);
+    const seg = Math.round(dur / 3);
+    const segments = [
+      { start, end: start + seg },
+      { start: Math.min(total - seg, start + Math.round(total * 0.35)), end: Math.min(total, start + Math.round(total * 0.35) + seg) },
+      { start: Math.min(total - seg, start + Math.round(total * 0.7)), end: Math.min(total, start + Math.round(total * 0.7) + seg) },
+    ].filter(s => s.end > s.start);
     return {
       id: `clip-${project.id}-${i}`,
       projectId: project.id,
@@ -245,6 +268,7 @@ function generateClips(project: VideoProject): VideoClip[] {
       startTime: start,
       endTime: start + dur,
       duration: dur,
+      segments,
       thumbnailGradient: GRADIENTS[(i + 2) % GRADIENTS.length] as string,
       viralityScore: Math.max(55, t.score - Math.floor(Math.random() * 5)),
       transcript: t.transcript,
@@ -275,6 +299,10 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
       ? (gc.focus as 'emotional' | 'educational' | 'funny')
       : 'educational';
     const isEnglish = analysis.videoLanguage?.trim().toLowerCase() === 'english';
+    // Montage segments cut from different parts of the source (falls back to the single span).
+    const segments = (gc.segments ?? [])
+      .filter(s => typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
+      .map(s => ({ start: s.start, end: s.end }));
     return {
       id: `clip-${project.id}-${i}`,
       projectId: project.id,
@@ -286,7 +314,8 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
       hashtags: gc.hashtags.slice(0, 8),
       startTime: gc.startTime,
       endTime: gc.endTime,
-      duration: Math.max(dur, 5),
+      duration: segments.length ? Math.round(segments.reduce((s, sg) => s + (sg.end - sg.start), 0)) : Math.max(dur, 5),
+      segments: segments.length ? segments : undefined,
       thumbnailGradient: GRADIENTS[(i + 2) % GRADIENTS.length] as string,
       viralityScore: Math.min(99, Math.max(55, gc.viralityScore)),
       transcript: captionSource,
@@ -305,7 +334,7 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
 }
 
 /* Editor side-panel ids (deep-linkable from the dashboard tools row). */
-type EditorPanel = 'details' | 'thumb' | 'captions' | 'audio' | 'broll' | 'publish';
+type EditorPanel = 'details' | 'thumb' | 'display' | 'captions' | 'audio' | 'broll' | 'publish';
 
 const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
@@ -1010,8 +1039,19 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   const ytContainerRef = useRef<HTMLDivElement>(null);
   const ytPlayerRef = useRef<YTPlayer | null>(null);
   const [ytReady, setYtReady] = useState(false);
+  const segIdxRef = useRef(0);
 
-  const dur = localClip.duration;
+  // Montage segments (the clip plays these back-to-back on the output timeline).
+  const segs = normalizeSegments(clip.segments, clip.startTime, clip.endTime);
+  const isMontage = segs.length > 1;
+  const segOutStart = segs.reduce<number[]>((acc, s, i) => { acc[i] = (acc[i - 1] ?? 0) + (i > 0 ? segs[i - 1].end - segs[i - 1].start : 0); return acc; }, []);
+  const dur = isMontage ? segmentsDuration(segs) : localClip.duration;
+  /** Map an output-timeline position (0..dur) to a source time. */
+  const outToSource = (out: number): number => {
+    let acc = 0;
+    for (const s of segs) { const len = s.end - s.start; if (out < acc + len) return s.start + (out - acc); acc += len; }
+    return segs[segs.length - 1].end;
+  };
   const ytId = (project.sourceType === 'youtube' && project.sourceUrl) ? getYouTubeId(project.sourceUrl) : null;
   const hasRealVideo = !!(project.sourceBlobUrl || ytId);
 
@@ -1030,10 +1070,10 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
         height: '100%',
         playerVars: {
           controls: 0, rel: 0, iv_load_policy: 3, fs: 0, disablekb: 1,
-          playsinline: 1, start: Math.floor(trimStart), origin: window.location.origin,
+          playsinline: 1, start: Math.floor(segs[0].start), origin: window.location.origin,
         },
         events: {
-          onReady: e => { if (!disposed) { e.target.seekTo(trimStart, true); e.target.pauseVideo(); setYtReady(true); } },
+          onReady: e => { if (!disposed) { segIdxRef.current = 0; e.target.seekTo(segs[0].start, true); e.target.pauseVideo(); setYtReady(true); } },
           onStateChange: e => {
             if (disposed) return;
             if (e.data === YT.PlayerState.ENDED) setPlaying(false);
@@ -1051,13 +1091,22 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ytId]);
 
-  /* Poll the YouTube player for the playhead + stop at the trim end. */
+  /* Poll the YouTube player for the playhead; advance across montage segments. */
   useEffect(() => {
     if (!ytId || !ytReady) return;
     const int = window.setInterval(() => {
       const p = ytPlayerRef.current;
       if (!p) return;
       const t = p.getCurrentTime();
+      if (isMontage) {
+        const seg = segs[segIdxRef.current];
+        setPlayhead(Math.max(0, Math.min(dur, segOutStart[segIdxRef.current] + (t - seg.start))));
+        if (t >= seg.end - 0.1) {
+          if (segIdxRef.current < segs.length - 1) { segIdxRef.current++; p.seekTo(segs[segIdxRef.current].start, true); }
+          else { p.pauseVideo(); segIdxRef.current = 0; p.seekTo(segs[0].start, true); setPlaying(false); setPlayhead(0); }
+        }
+        return;
+      }
       setPlayhead(Math.max(0, t - trimStart));
       if (t >= trimEnd) {
         p.pauseVideo();
@@ -1067,7 +1116,8 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
       }
     }, 250);
     return () => window.clearInterval(int);
-  }, [ytId, ytReady, trimStart, trimEnd]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ytId, ytReady, trimStart, trimEnd, isMontage]);
 
   const set = (updates: Partial<VideoClip>) => setLocalClip(prev => ({ ...prev, ...updates }));
 
@@ -1094,7 +1144,8 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           enhanceSpeech: localClip.enhanceSpeech,
           sfx: localClip.sfx,
           resolution: exportRes,
-          brollImages: brollWindows(localClip.broll ?? [], trimEnd - trimStart),
+          segments: localClip.segments,
+          brollImages: brollWindows(localClip.broll ?? [], localClip.duration),
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
@@ -1123,17 +1174,34 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
     }
   };
 
-  // Seek real video to trim start when source loads
+  // Seek real video to the montage's first segment (or trim start) when source loads
   const handleVideoLoaded = () => {
-    if (videoRef.current) videoRef.current.currentTime = trimStart;
+    segIdxRef.current = 0;
+    if (videoRef.current) videoRef.current.currentTime = isMontage ? segs[0].start : trimStart;
   };
 
-  // Update playhead from real video and stop at trimEnd
+  // Update playhead from real video; advance across montage segments, stop at the end
   const handleTimeUpdate = () => {
     const v = videoRef.current;
     if (!v) return;
-    const elapsed = v.currentTime - trimStart;
-    setPlayhead(Math.max(0, elapsed));
+    if (isMontage) {
+      const seg = segs[segIdxRef.current];
+      setPlayhead(Math.max(0, Math.min(dur, segOutStart[segIdxRef.current] + (v.currentTime - seg.start))));
+      if (v.currentTime >= seg.end - 0.05) {
+        if (segIdxRef.current < segs.length - 1) {
+          segIdxRef.current++;
+          v.currentTime = segs[segIdxRef.current].start;
+        } else {
+          v.pause();
+          segIdxRef.current = 0;
+          v.currentTime = segs[0].start;
+          setPlaying(false);
+          setPlayhead(0);
+        }
+      }
+      return;
+    }
+    setPlayhead(Math.max(0, v.currentTime - trimStart));
     if (v.currentTime >= trimEnd) {
       v.pause();
       v.currentTime = trimStart;
@@ -1182,12 +1250,26 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   const ytShiftX = (0.5 - focusX) * Math.max(0, ytCover.w - previewWidth);
   const ytShiftY = (0.5 - focusY) * Math.max(0, ytCover.h - previewHeight);
 
-  const activeCaptionIdx = localClip.captions.findIndex(c => playhead >= c.startTime - localClip.startTime && playhead < c.endTime - localClip.startTime);
+  // Caption timing: montage clips distribute captions evenly across the stitched
+  // output; single-cut clips keep their absolute source timestamps.
+  const activeCaptionIdx = isMontage
+    ? (localClip.captions.length ? Math.min(localClip.captions.length - 1, Math.floor(playhead / (dur / localClip.captions.length))) : -1)
+    : localClip.captions.findIndex(c => playhead >= c.startTime - localClip.startTime && playhead < c.endTime - localClip.startTime);
 
   /* Seek both the UI playhead and whichever real player is active. */
   const seekTo = (elapsed: number) => {
-    const clamped = Math.max(0, Math.min(elapsed, trimEnd - trimStart));
+    const clamped = Math.max(0, Math.min(elapsed, dur));
     setPlayhead(clamped);
+    if (isMontage) {
+      // Map the output position back to a source time + the owning segment.
+      let acc = 0, idx = 0;
+      for (let i = 0; i < segs.length; i++) { const len = segs[i].end - segs[i].start; if (clamped < acc + len || i === segs.length - 1) { idx = i; break; } acc += len; }
+      segIdxRef.current = idx;
+      const src = outToSource(clamped);
+      if (ytId) ytPlayerRef.current?.seekTo(src, true);
+      else if (videoRef.current) videoRef.current.currentTime = src;
+      return;
+    }
     if (ytId) { ytPlayerRef.current?.seekTo(trimStart + clamped, true); return; }
     if (videoRef.current) videoRef.current.currentTime = trimStart + clamped;
   };
@@ -1514,16 +1596,27 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                   return <div key={i} style={{ flex: 1, height: `${h}px`, borderRadius: '1px', background: active ? '#6366f1' : 'rgba(255,255,255,0.15)' }} />;
                 })}
               </div>
+              {/* Montage scene boundary markers */}
+              {isMontage && segOutStart.slice(1).map((o, i) => (
+                <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(o / dur) * 100}%`, width: '2px', background: 'rgba(129,140,248,0.9)', pointerEvents: 'none' }} />
+              ))}
               {/* Playhead line */}
               <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${(playhead / dur) * 100}%`, width: '2px', background: 'white', pointerEvents: 'none' }} />
             </div>
 
-            {/* Trim handles label */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>Start: {fmtDuration(Math.floor(trimStart - clip.startTime))}</span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>Duration: {fmtDuration(Math.floor(trimEnd - trimStart))}</span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>End: {fmtDuration(Math.floor(trimEnd - clip.startTime))}</span>
-            </div>
+            {/* Trim / montage label */}
+            {isMontage ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#818cf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}><Scissors size={11} /> Montage · {segs.length} scenes from across the video</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Total: {fmtDuration(Math.floor(dur))}</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Start: {fmtDuration(Math.floor(trimStart - clip.startTime))}</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Duration: {fmtDuration(Math.floor(trimEnd - trimStart))}</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>End: {fmtDuration(Math.floor(trimEnd - clip.startTime))}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1534,6 +1627,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
             {([
               { id: 'details', icon: Edit2, label: 'Details' },
               { id: 'thumb', icon: ImageIcon, label: 'Thumb' },
+              { id: 'display', icon: MonitorPlay, label: 'Display' },
               { id: 'captions', icon: AlignLeft, label: 'Captions' },
               { id: 'audio', icon: Music, label: 'Audio' },
               { id: 'broll', icon: Film, label: 'B-Roll' },
@@ -1790,8 +1884,27 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
             )}
 
             {/* AUDIO PANEL */}
-            {activePanel === 'audio' && (
+            {/* DISPLAY PANEL — size, platform presets, reframe */}
+            {activePanel === 'display' && (
               <div>
+                {/* Platform presets */}
+                <div style={{ marginBottom: '20px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 4px' }}>Platform size</p>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>Pick where you'll post — the clip is sized to that platform's recommended format.</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    {PLATFORM_PRESETS.map(p => {
+                      const active = localClip.aspectRatio === p.ratio;
+                      return (
+                        <button key={p.label} onClick={() => set({ aspectRatio: p.ratio })}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', cursor: 'pointer', textAlign: 'left' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: active ? '#a5b4fc' : '#cbd5e1' }}>{p.label}</div>
+                          <div style={{ fontSize: '9.5px', color: '#64748b' }}>{p.ratio} · {p.note}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Aspect ratio */}
                 <div style={{ marginBottom: '20px' }}>
                   <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 10px' }}>Aspect Ratio</p>
@@ -1823,7 +1936,11 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                     }))}
                   </div>
                 </div>
+              </div>
+            )}
 
+            {activePanel === 'audio' && (
+              <div>
                 {/* Enhance Speech */}
                 <div style={{ marginBottom: '20px' }}>
                   <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}><Mic size={13} color="#22c55e" /> Enhance Speech</p>
@@ -2731,7 +2848,8 @@ export default function VideoShorts() {
               { label: 'Video editor', icon: Edit2, action: () => openTool('details') },
               { label: 'Enhance speech', icon: Mic, isNew: true, action: () => openTool('audio') },
               { label: 'AI Sound Effect', icon: Music, isNew: true, action: () => openTool('audio') },
-              { label: 'AI Reframe', icon: Crop, isNew: true, action: () => openTool('audio') },
+              { label: 'AI Reframe', icon: Crop, isNew: true, action: () => openTool('display') },
+              { label: 'Resize / Display', icon: MonitorPlay, isNew: true, action: () => openTool('display') },
               { label: 'AI Hook', icon: Sparkles, isNew: true, action: () => openTool('details') },
               { label: 'AI Thumbnail', icon: ImageIcon, action: () => openTool('thumb') },
               { label: 'AI Image B-Roll', icon: Film, isNew: true, action: () => openTool('broll') },

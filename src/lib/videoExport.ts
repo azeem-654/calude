@@ -1,4 +1,4 @@
-import type { Caption } from '../types';
+import type { Caption, ClipSegment } from '../types';
 
 export type CaptionStyle = 'classic' | 'karaoke' | 'bold' | 'minimal' | 'neon';
 export type ExportResolution = '720p' | '1080p' | '4k';
@@ -23,7 +23,20 @@ export interface ExportClipParams {
   resolution?: ExportResolution;
   /** AI Image B-Roll: cutaway cards drawn during [start,end] (seconds relative to clip start). */
   brollImages?: { url: string; start: number; end: number }[];
+  /** Montage segments cut from different parts of the source, stitched in order.
+      When absent, the single [startTime,endTime] range is used. */
+  segments?: ClipSegment[];
   onProgress?: (pct: number) => void;
+}
+
+/** Normalize a clip's segments; falls back to the single [start,end] span. */
+export function normalizeSegments(segments: ClipSegment[] | undefined, start: number, end: number): ClipSegment[] {
+  const segs = (segments ?? []).filter(s => s.end > s.start).sort((a, b) => a.start - b.start);
+  return segs.length ? segs : [{ start, end }];
+}
+
+export function segmentsDuration(segs: ClipSegment[]): number {
+  return segs.reduce((sum, s) => sum + (s.end - s.start), 0);
 }
 
 /** Draw a rounded B-roll cutaway card across the top half of the frame. */
@@ -225,8 +238,13 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   const scale = RES_SCALE[params.resolution ?? '1080p'];
   const w = Math.round(CANVAS_DIMS[params.aspectRatio].w * scale);
   const h = Math.round(CANVAS_DIMS[params.aspectRatio].h * scale);
-  const clipDuration = params.endTime - params.startTime;
+  const segs = normalizeSegments(params.segments, params.startTime, params.endTime);
+  const clipDuration = segmentsDuration(segs);
+  const multiSeg = segs.length > 1;
   if (clipDuration <= 0) throw new Error('Invalid clip duration.');
+  // Output-timeline start of each segment (cumulative).
+  const segOutStart: number[] = [];
+  segs.reduce((acc, s, i) => { segOutStart[i] = acc; return acc + (s.end - s.start); }, 0);
 
   const video = document.createElement('video');
   video.src = params.sourceBlobUrl;
@@ -242,7 +260,7 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   await new Promise<void>((resolve) => {
     const onSeeked = () => { video.removeEventListener('seeked', onSeeked); resolve(); };
     video.addEventListener('seeked', onSeeked);
-    video.currentTime = params.startTime;
+    video.currentTime = segs[0].start;
   });
 
   const canvas = document.createElement('canvas');
@@ -275,9 +293,16 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     audioSource.connect(audioDest);
   }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  // Output-timeline caption windows (relative to the stitched result).
+  const perCaption = clipDuration / Math.max(1, params.captions.length);
+  const captionOut = params.captions.map((c, i) => multiSeg
+    ? { cap: c, start: i * perCaption, end: (i + 1) * perCaption }
+    : { cap: c, start: c.startTime - params.startTime, end: c.endTime - params.startTime });
+
   // AI Sound Effect: schedule synthesized SFX into the recorded track.
   if (params.sfx && params.sfx !== 'none') {
-    const offsets = params.captions.map(c => c.startTime - params.startTime).filter(o => o >= 0 && o < clipDuration);
+    const offsets = captionOut.map(c => c.start).filter(o => o >= 0 && o < clipDuration);
     scheduleSfx(audioCtx, audioDest, params.sfx, audioCtx.currentTime + 0.1, offsets);
   }
 
@@ -292,13 +317,13 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
 
-  // Captions carry absolute video-timeline timestamps (they're generated from the
-  // clip's original startTime), so match them directly against video.currentTime.
-  const activeCaptionFor = (currentTime: number) =>
-    params.captions.find(c => currentTime >= c.startTime && currentTime < c.endTime);
-
   const focusX = params.focusX ?? 0.5;
   const focusY = params.focusY ?? 0.5;
+
+  // Segment playback state + the elapsed position on the OUTPUT timeline.
+  let segIdx = 0;
+  const outputElapsed = () => segOutStart[segIdx] + Math.max(0, video.currentTime - segs[segIdx].start);
+  const activeCaptionFor = (outElapsed: number) => captionOut.find(c => outElapsed >= c.start && outElapsed < c.end);
 
   // AI Image B-Roll: preload cutaway images (failed loads are skipped).
   const brollLoaded: { img: HTMLImageElement; start: number; end: number }[] = [];
@@ -316,15 +341,15 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     else { sh = vw / dstRatio; sy = (vh - sh) * focusY; }
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
 
+    const rel = outputElapsed();
     // B-roll cutaway active at this moment?
-    const rel = video.currentTime - params.startTime;
     const activeBroll = brollLoaded.find(b => rel >= b.start && rel < b.end);
     if (activeBroll) drawBrollCard(ctx, activeBroll.img, w, h);
 
-    const cap = activeCaptionFor(video.currentTime);
+    const cap = activeCaptionFor(rel);
     if (cap) {
-      const progress = Math.max(0, Math.min(1, (video.currentTime - cap.startTime) / Math.max(0.001, cap.endTime - cap.startTime)));
-      drawStyledCaption(ctx, { w, h, text: cap.text, emoji: cap.emoji, style: params.captionStyle ?? 'classic', progress });
+      const progress = Math.max(0, Math.min(1, (rel - cap.start) / Math.max(0.001, cap.end - cap.start)));
+      drawStyledCaption(ctx, { w, h, text: cap.cap.text, emoji: cap.cap.emoji, style: params.captionStyle ?? 'classic', progress });
     }
   };
 
@@ -332,8 +357,7 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   const tick = () => {
     drawFrame();
     if (params.onProgress) {
-      const pct = Math.min(100, Math.round(((video.currentTime - params.startTime) / clipDuration) * 100));
-      params.onProgress(pct);
+      params.onProgress(Math.min(100, Math.round((outputElapsed() / clipDuration) * 100)));
     }
     rafId = requestAnimationFrame(tick);
   };
@@ -355,8 +379,13 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     recorder.onerror = () => { cleanup(); reject(new Error('Recording failed.')); };
 
     video.ontimeupdate = () => {
-      if (video.currentTime >= params.endTime) {
-        if (recorder.state === 'recording') recorder.stop();
+      if (video.currentTime >= segs[segIdx].end - 0.02) {
+        if (segIdx < segs.length - 1) {
+          segIdx++;
+          video.currentTime = segs[segIdx].start;   // jump to the next montage segment
+        } else if (recorder.state === 'recording') {
+          recorder.stop();
+        }
       }
     };
     video.onended = () => { if (recorder.state === 'recording') recorder.stop(); };

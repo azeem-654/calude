@@ -111,6 +111,9 @@ export interface GeminiClip {
   descriptionTranslated?: string;
   startTime: number;
   endTime: number;
+  /** Montage segments cut from different parts of the video that together tell
+      a complete story matching the title. */
+  segments?: { start: number; end: number }[];
   transcript: string;
   viralityScore: number;
   focus: 'emotional' | 'educational' | 'funny' | 'motivational';
@@ -166,6 +169,14 @@ Rules:
 - viralityScore must be between 60 and 99
 - "description" should be a short, engaging 2-3 sentence caption suitable for a social media post (not just a repeat of the transcript)
 
+CRITICAL — build each clip as a coherent MONTAGE that fully delivers on its title:
+- A single continuous cut often misses context. Instead, give each clip a "segments" array of 2 to 4 NON-OVERLAPPING time ranges taken from DIFFERENT parts of the video that, stitched together in order, tell a complete self-contained story matching the title (e.g. the setup, the key moment, and the payoff/punchline).
+- Segments should be in the order they should play (not necessarily chronological in the source) and each 2-12 seconds long.
+- The combined length of all segments must be ≤ ${settings.maxClipDuration} seconds.
+- Every segment must contain content that is directly relevant to the clip's title — do not include filler or unrelated footage.
+- "startTime"/"endTime" must span the earliest segment start to the latest segment end.
+- "transcript" must be the spoken words across ALL the chosen segments, in order.
+
 Return ONLY valid JSON with NO markdown fences:
 {
   "videoSummary": "1-2 sentence summary of the video, in English",
@@ -177,9 +188,10 @@ Return ONLY valid JSON with NO markdown fences:
       "titleTranslated": "English translation of title — OMIT this field entirely if videoLanguage is English",
       "description": "engaging 2-3 sentence social caption, in the video's original language",
       "descriptionTranslated": "English translation of description — OMIT this field entirely if videoLanguage is English",
-      "startTime": <number, seconds>,
-      "endTime": <number, seconds>,
-      "transcript": "verbatim quote of what is said in this segment, in the video's original language",
+      "startTime": <number, seconds — earliest segment start>,
+      "endTime": <number, seconds — latest segment end>,
+      "segments": [{"start": <seconds>, "end": <seconds>}, {"start": <seconds>, "end": <seconds>}],
+      "transcript": "verbatim quote of what is said across the chosen segments, in order, in the video's original language",
       "viralityScore": <number 60-99>,
       "focus": "emotional|educational|funny|motivational",
       "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4"],
