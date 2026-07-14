@@ -112,8 +112,9 @@ export interface GeminiClip {
   startTime: number;
   endTime: number;
   /** Montage segments cut from different parts of the video that together tell
-      a complete story matching the title. */
-  segments?: { start: number; end: number }[];
+      a complete story matching the title. Each carries the exact sentences
+      spoken in that segment (so cuts land on sentence boundaries). */
+  segments?: { start: number; end: number; text?: string }[];
   transcript: string;
   viralityScore: number;
   focus: 'emotional' | 'educational' | 'funny' | 'motivational';
@@ -169,13 +170,15 @@ Rules:
 - viralityScore must be between 60 and 99
 - "description" should be a short, engaging 2-3 sentence caption suitable for a social media post (not just a repeat of the transcript)
 
-CRITICAL — build each clip as a coherent MONTAGE that fully delivers on its title:
-- A single continuous cut often misses context. Instead, give each clip a "segments" array of 2 to 4 NON-OVERLAPPING time ranges taken from DIFFERENT parts of the video that, stitched together in order, tell a complete self-contained story matching the title (e.g. the setup, the key moment, and the payoff/punchline).
-- Segments should be in the order they should play (not necessarily chronological in the source) and each 2-12 seconds long.
-- The combined length of all segments must be ≤ ${settings.maxClipDuration} seconds.
-- Every segment must contain content that is directly relevant to the clip's title — do not include filler or unrelated footage.
-- "startTime"/"endTime" must span the earliest segment start to the latest segment end.
-- "transcript" must be the spoken words across ALL the chosen segments, in order.
+CRITICAL — build each clip as a coherent MONTAGE that fully delivers on its title, with CLEAN cuts:
+- Give each clip a "segments" array of 2 to 4 NON-OVERLAPPING ranges from DIFFERENT parts of the video that, stitched in order, form ONE coherent short that completely delivers the promise in the title (setup → key point → payoff).
+- SENTENCE BOUNDARIES ARE MANDATORY: every segment MUST begin exactly at the START of a spoken sentence (right after a natural pause/breath) and MUST end exactly at the END of a completed sentence (at a natural pause). NEVER start or end a segment in the middle of a word or sentence. A listener must hear complete sentences with no clipped words.
+- Each segment must be a COMPLETE THOUGHT on its own. Prefer FEWER, longer, complete segments over many short choppy ones — 2 clean segments beat 4 fragmented ones.
+- When stitched in order, the segments must read as continuous, logical speech — the end of one segment should flow into the next without a jarring non-sequitur.
+- For EACH segment, include a "text" field: the EXACT complete sentence(s) spoken during that segment, verbatim, in the video's original language. The segment's time range must tightly bracket exactly those sentences.
+- Each segment 3-15 seconds; combined length ≤ ${settings.maxClipDuration} seconds. Every segment must be directly relevant to the title — no filler.
+- "startTime"/"endTime" span the earliest segment start to the latest segment end.
+- "transcript" = the concatenation of every segment's "text", in play order.
 
 Return ONLY valid JSON with NO markdown fences:
 {
@@ -190,8 +193,8 @@ Return ONLY valid JSON with NO markdown fences:
       "descriptionTranslated": "English translation of description — OMIT this field entirely if videoLanguage is English",
       "startTime": <number, seconds — earliest segment start>,
       "endTime": <number, seconds — latest segment end>,
-      "segments": [{"start": <seconds>, "end": <seconds>}, {"start": <seconds>, "end": <seconds>}],
-      "transcript": "verbatim quote of what is said across the chosen segments, in order, in the video's original language",
+      "segments": [{"start": <seconds>, "end": <seconds>, "text": "the exact COMPLETE sentence(s) spoken in this segment"}, {"start": <seconds>, "end": <seconds>, "text": "..."}],
+      "transcript": "concatenation of every segment's text, in play order, in the video's original language",
       "viralityScore": <number 60-99>,
       "focus": "emotional|educational|funny|motivational",
       "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4"],

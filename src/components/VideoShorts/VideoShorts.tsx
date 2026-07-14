@@ -226,6 +226,39 @@ function generateCaptions(transcript: string, startTime: number): Caption[] {
   }));
 }
 
+/**
+ * Build captions for a montage clip: each segment's OWN sentences are laid out
+ * across that segment's window on the OUTPUT timeline (0..totalDur), so captions
+ * match what's actually spoken in each stitched piece and never drift.
+ */
+function buildMontageCaptions(segments: { start: number; end: number; text?: string }[]): Caption[] {
+  const caps: Caption[] = [];
+  let outStart = 0;
+  segments.forEach((seg, si) => {
+    const len = seg.end - seg.start;
+    const text = (seg.text ?? '').trim();
+    if (text) {
+      const words = text.split(/\s+/);
+      const chunks: string[] = [];
+      for (let i = 0; i < words.length; i += 4) chunks.push(words.slice(i, i + 4).join(' '));
+      const per = len / Math.max(1, chunks.length);
+      chunks.forEach((chunk, ci) => {
+        caps.push({
+          id: `cap-${si}-${ci}-${caps.length}`,
+          startTime: outStart + ci * per,
+          endTime: outStart + (ci + 1) * per,
+          text: chunk,
+          emoji: caps.length % 5 === 0 ? ['🔥', '💡', '🚀', '✨', '💪'][caps.length % 5] : undefined,
+          highlighted: caps.length % 3 === 0,
+          style: { fontSize: 22, color: '#ffffff', position: 'bottom' as const, fontWeight: '800' },
+        });
+      });
+    }
+    outStart += len;
+  });
+  return caps;
+}
+
 function generateClips(project: VideoProject): VideoClip[] {
   const templates = [
     { title: 'The #1 mistake most people make (and how to avoid it)', focus: 'educational' as const, score: 94, transcript: 'The number one mistake I see people make is trying to do everything at once. You need to focus on one thing at a time. Pick the most important task and work on it until it is done.' },
@@ -248,16 +281,18 @@ function generateClips(project: VideoProject): VideoClip[] {
   return templates.slice(0, maxClips).map((t, i) => {
     const dur = [30, 38, 45, 52, 58][i % 5] as number;
     const start = Math.floor(i * (project.duration / maxClips));
-    const captions = generateCaptions(t.transcript, start);
-    // Demo montage: 3 short segments pulled from different parts of the source.
-    const span = Math.max(dur, 12);
-    const total = Math.max(span, project.duration || span);
-    const seg = Math.round(dur / 3);
-    const segments = [
-      { start, end: start + seg },
-      { start: Math.min(total - seg, start + Math.round(total * 0.35)), end: Math.min(total, start + Math.round(total * 0.35) + seg) },
-      { start: Math.min(total - seg, start + Math.round(total * 0.7)), end: Math.min(total, start + Math.round(total * 0.7) + seg) },
-    ].filter(s => s.end > s.start);
+    // Demo montage: 3 segments from different parts of the source, each carrying
+    // a COMPLETE sentence from the transcript so cuts land on sentence boundaries.
+    const sentences = t.transcript.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+    const total = Math.max(dur, project.duration || dur);
+    const anchors = [start, Math.min(total - 8, Math.round(total * 0.4)), Math.min(total - 8, Math.round(total * 0.72))];
+    const picks = [0, Math.floor(sentences.length / 2), sentences.length - 1];
+    const segments = anchors.map((a, k) => {
+      const text = sentences[Math.min(picks[k], sentences.length - 1)] || t.transcript;
+      const segLen = Math.max(3, Math.min(6, Math.round(text.split(' ').length / 2.5)));
+      return { start: Math.max(0, a), end: Math.max(0, a) + segLen, text };
+    }).filter(s => s.end > s.start);
+    const captions = buildMontageCaptions(segments);
     return {
       id: `clip-${project.id}-${i}`,
       projectId: project.id,
@@ -267,7 +302,7 @@ function generateClips(project: VideoProject): VideoClip[] {
       hashtags: ['#viral', '#shorts', '#tips', '#growth', '#mindset', `#${t.focus}`],
       startTime: start,
       endTime: start + dur,
-      duration: dur,
+      duration: Math.round(segments.reduce((s, sg) => s + (sg.end - sg.start), 0)) || dur,
       segments,
       thumbnailGradient: GRADIENTS[(i + 2) % GRADIENTS.length] as string,
       viralityScore: Math.max(55, t.score - Math.floor(Math.random() * 5)),
@@ -293,16 +328,22 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
     // Speech-free videos: the model may still return a placeholder transcript.
     // Never burn that into captions — narrate from the description/title instead.
     const noSpeech = !gc.transcript?.trim() || /no (spoken|speech|dialogue|audio)|^\(.*\)$/i.test(gc.transcript.trim());
-    const captionSource = noSpeech ? (gc.description || gc.title) : gc.transcript;
-    const captions = generateCaptions(captionSource, gc.startTime);
     const focus = (['emotional', 'educational', 'funny'] as const).includes(gc.focus as never)
       ? (gc.focus as 'emotional' | 'educational' | 'funny')
       : 'educational';
     const isEnglish = analysis.videoLanguage?.trim().toLowerCase() === 'english';
     // Montage segments cut from different parts of the source (falls back to the single span).
+    // A small tail pad keeps the last word of each sentence from being clipped.
     const segments = (gc.segments ?? [])
       .filter(s => typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
-      .map(s => ({ start: s.start, end: s.end }));
+      .map(s => ({ start: Math.max(0, s.start), end: s.end + 0.4, text: typeof s.text === 'string' ? s.text : undefined }));
+    const isMontage = segments.length > 1;
+    // Captions: montage → per-segment sentences on the output timeline (matches
+    // what's actually said in each stitched piece). Single cut → source-time.
+    const captions = isMontage && segments.some(s => s.text?.trim())
+      ? buildMontageCaptions(segments)
+      : generateCaptions(noSpeech ? (gc.description || gc.title) : gc.transcript, isMontage ? 0 : gc.startTime);
+    const captionSource = noSpeech ? (gc.description || gc.title) : gc.transcript;
     return {
       id: `clip-${project.id}-${i}`,
       projectId: project.id,
@@ -1250,10 +1291,10 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   const ytShiftX = (0.5 - focusX) * Math.max(0, ytCover.w - previewWidth);
   const ytShiftY = (0.5 - focusY) * Math.max(0, ytCover.h - previewHeight);
 
-  // Caption timing: montage clips distribute captions evenly across the stitched
-  // output; single-cut clips keep their absolute source timestamps.
+  // Caption timing: montage captions are stored in OUTPUT time (per-segment
+  // sentences), so match the playhead directly; single-cut clips use source time.
   const activeCaptionIdx = isMontage
-    ? (localClip.captions.length ? Math.min(localClip.captions.length - 1, Math.floor(playhead / (dur / localClip.captions.length))) : -1)
+    ? localClip.captions.findIndex(c => playhead >= c.startTime && playhead < c.endTime)
     : localClip.captions.findIndex(c => playhead >= c.startTime - localClip.startTime && playhead < c.endTime - localClip.startTime);
 
   /* Seek both the UI playhead and whichever real player is active. */
@@ -1680,6 +1721,27 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                     <textarea value={localClip.descriptionTranslated ?? ''} onChange={e => set({ descriptionTranslated: e.target.value })} rows={4}
                       placeholder="English description translation"
                       style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
+                  </div>
+                )}
+
+                {/* Montage scenes — the sentences stitched into this short */}
+                {isMontage && (
+                  <div style={{ marginTop: '18px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px' }}>
+                    <p style={{ margin: '0 0 4px', fontSize: '12px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Scissors size={13} color="#818cf8" /> Montage scenes ({segs.length})
+                    </p>
+                    <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>Sentences pulled from across the video, stitched in order to deliver the title. Each cut lands on a sentence boundary.</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {segs.map((s, si) => (
+                        <div key={si} style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', padding: '8px 10px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#818cf8', flexShrink: 0, marginTop: '1px' }}>{si + 1}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: '11.5px', color: '#cbd5e1', lineHeight: 1.4 }}>{s.text || '(scene from the video)'}</span>
+                            <span style={{ display: 'block', fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>{fmtDuration(Math.floor(s.start))}–{fmtDuration(Math.floor(s.end))} · {Math.round(s.end - s.start)}s</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

@@ -371,6 +371,8 @@ export interface BRollClip {
 export interface ClipSegment {
   start: number;
   end: number;
+  /** The exact sentence(s) spoken in this segment (for sentence-aligned captions). */
+  text?: string;
 }
 
 export interface VideoClip {

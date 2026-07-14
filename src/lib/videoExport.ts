@@ -294,10 +294,11 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
   }
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-  // Output-timeline caption windows (relative to the stitched result).
-  const perCaption = clipDuration / Math.max(1, params.captions.length);
-  const captionOut = params.captions.map((c, i) => multiSeg
-    ? { cap: c, start: i * perCaption, end: (i + 1) * perCaption }
+  // Caption windows on the OUTPUT timeline. Montage captions are already stored
+  // in output time (built per-segment from each segment's sentences); single-cut
+  // captions carry absolute source times, so shift them by startTime.
+  const captionOut = params.captions.map(c => multiSeg
+    ? { cap: c, start: c.startTime, end: c.endTime }
     : { cap: c, start: c.startTime - params.startTime, end: c.endTime - params.startTime });
 
   // AI Sound Effect: schedule synthesized SFX into the recorded track.
