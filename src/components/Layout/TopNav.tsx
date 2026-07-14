@@ -3,10 +3,11 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
-  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard,
+  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
 } from 'lucide-react';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
+import { getTheme, toggleTheme } from '../../services/theme';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
@@ -51,6 +52,7 @@ export default function TopNav() {
   const brand = activeBranding();
   const [userOpen, setUserOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState(getTheme());
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -206,6 +208,9 @@ export default function TopNav() {
 
       {/* Right: circular icon buttons + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} style={circleBtn}>
+          {theme === 'dark' ? <Sun size={16} strokeWidth={2.2} /> : <Moon size={16} strokeWidth={2.2} />}
+        </button>
         <button title="Search" style={circleBtn}><Search size={16} strokeWidth={2.2} /></button>
         <button title="Inbox" style={circleBtn}><Mail size={16} strokeWidth={2.2} /></button>
         <button title="Notifications" style={{ ...circleBtn, position: 'relative' }}>
@@ -251,6 +256,7 @@ export default function TopNav() {
 export function IconRail() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [theme, setTheme] = useState(getTheme());
 
   const railBtn = (active: boolean): React.CSSProperties => ({
     width: 38, height: 38, borderRadius: 999, border: 'none', cursor: 'pointer',
@@ -317,9 +323,10 @@ export function IconRail() {
           style={railBtn(location.pathname.startsWith('/settings'))}>
           <SettingsIcon size={15} strokeWidth={2} />
         </button>
-        <button className="rail-btn" data-tip="Dark mode — coming soon"
+        <button className="rail-btn" data-tip={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert
+          onClick={() => setTheme(toggleTheme())}
           style={{ ...railBtn(false), backgroundColor: '#17191c', color: '#fff' }}>
-          <Moon size={15} strokeWidth={2} />
+          {theme === 'dark' ? <Sun size={15} strokeWidth={2} /> : <Moon size={15} strokeWidth={2} />}
         </button>
       </div>
     </div>

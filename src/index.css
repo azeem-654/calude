@@ -218,6 +218,32 @@ button:focus-visible, a:focus-visible {
 .fade-in { animation: fadeIn 0.25s ease both; }
 .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* ─────────────────────────────────────────────────────────────
+   Dark mode — flip <html data-theme="dark"> and invert the whole
+   app in one shot (the CRM is styled with inline colors, so this
+   gives every screen a dark theme without touching each component).
+   Media (images, video, avatars) and anything marked [data-noinvert]
+   are inverted back so they render normally.
+   ───────────────────────────────────────────────────────────── */
+html[data-theme="dark"] {
+  background: #0d0e10;
+  color-scheme: dark;
+}
+html[data-theme="dark"] #root {
+  filter: invert(1) hue-rotate(180deg);
+}
+html[data-theme="dark"] #root img,
+html[data-theme="dark"] #root video,
+html[data-theme="dark"] #root iframe,
+html[data-theme="dark"] #root [data-noinvert] {
+  filter: invert(1) hue-rotate(180deg);
+}
+/* Keep the page scrollbar dark to match. */
+html[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: #3a3f46;
+  background-clip: padding-box;
+}
+
 /* ── Sidebar nav (hover states inline styles can't express) ── */
 .nav-item {
   display: flex;
@@ -250,4 +276,13 @@ button:focus-visible, a:focus-visible {
 .hover-lift:hover {
   box-shadow: var(--shadow-pop);
   transform: translateY(-1px);
+}
+
+/* ── Deal card hover-reveal actions ── */
+.card-actions {
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.hover-lift:hover .card-actions {
+  opacity: 1;
 }

@@ -193,6 +193,8 @@ export interface SubTask {
   dueDate?: string;
   priority?: 'urgent' | 'high' | 'normal' | 'low';
   createdAt: string;
+  /** Optional blocker note shown under the sub-task (e.g. "Waiting for sitemap"). */
+  blocker?: string;
 }
 
 export interface ChecklistItem {
