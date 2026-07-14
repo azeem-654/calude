@@ -391,6 +391,17 @@ export interface VideoClip {
   focus: 'emotional' | 'educational' | 'funny';
   musicTrack: string;
   hasVoiceover: boolean;
+  /** Caption rendering style (AI Captions). */
+  captionStyle?: 'classic' | 'karaoke' | 'bold' | 'minimal' | 'neon';
+  /** AI Reframe focal point (0-1 within the source frame); defaults to center. */
+  focusX?: number;
+  focusY?: number;
+  /** Enhance Speech: apply a cleanup audio chain (high-pass + compressor + gain) on export. */
+  enhanceSpeech?: boolean;
+  /** AI Sound Effect mixed into exports. */
+  sfx?: 'none' | 'riser' | 'whoosh' | 'pops';
+  /** AI Hook line applied as the opening caption. */
+  hook?: string;
   broll: BRollClip[];
   publishedTo: {
     platform: 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'linkedin';

@@ -229,6 +229,23 @@ async function callGemini(prompt: string, temperature = 0.7): Promise<string> {
   return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
 }
 
+/**
+ * AI Hook: generate scroll-stopping opening lines for a short clip.
+ * Returns 5 hook lines in the clip's language.
+ */
+export async function generateHooks(clip: { title: string; transcript: string; language?: string }): Promise<string[]> {
+  const lang = clip.language && clip.language.toLowerCase() !== 'english' ? clip.language : 'English';
+  const prompt = `You are a short-form video expert. Write 5 scroll-stopping HOOK lines (max 8 words each) for the first 2 seconds of this clip. They must create curiosity or tension and match the clip's content. Write them in ${lang}.
+
+Clip title: "${clip.title}"
+Clip transcript/description: "${clip.transcript.slice(0, 500)}"
+
+Return ONLY JSON: {"hooks": ["hook 1", "hook 2", "hook 3", "hook 4", "hook 5"]}`;
+  const json = await callGemini(prompt, 0.9);
+  const r = JSON.parse(json) as { hooks?: string[] };
+  return (r.hooks ?? []).filter(h => typeof h === 'string' && h.trim()).slice(0, 5);
+}
+
 export interface AIDesignElement {
   type: 'text' | 'shape' | 'sticker';
   x: number;

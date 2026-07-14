@@ -6,13 +6,15 @@ import {
   Film, AlignLeft, SkipBack, SkipForward, Pause,
   Volume2, VolumeX, MoreHorizontal, Search, Layers,
   MonitorPlay, Smartphone, Square as SquareIcon, Send, Image as ImageIcon,
+  Sparkles, Crop, Maximize2,
 } from 'lucide-react';
 import type { VideoProject, VideoClip, Caption, BRollClip } from '../../types';
 import { useApp } from '../../context/AppContext';
 import Header, { Toasts } from '../Layout/Header';
-import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini } from '../../lib/gemini';
+import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini, generateHooks } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
 import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo } from '../../lib/videoExport';
+import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExport';
 import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
 import type { ThumbPreset } from '../../lib/thumbnail';
 
@@ -42,6 +44,11 @@ async function downloadClip(
       endTime: clip.endTime,
       aspectRatio: clip.aspectRatio,
       captions: clip.captions,
+      captionStyle: clip.captionStyle,
+      focusX: clip.focusX,
+      focusY: clip.focusY,
+      enhanceSpeech: clip.enhanceSpeech,
+      sfx: clip.sfx,
       onProgress,
     });
     downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -58,6 +65,8 @@ async function downloadClip(
     aspectRatio: clip.aspectRatio,
     durationSec: Math.min(clip.duration, 15),
     backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
+    captionStyle: clip.captionStyle,
+    sfx: clip.sfx,
     onProgress,
   });
   downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -114,6 +123,42 @@ const BROLL_LIBRARY: BRollClip[] = [
   { id: 'br10', keyword: 'motivation', thumbnail: 'linear-gradient(135deg,#06b6d4,#6366f1)', duration: 11, title: 'Motivation Run', source: 'Unsplash' },
   { id: 'br11', keyword: 'finance', thumbnail: 'linear-gradient(135deg,#22c55e,#065f46)', duration: 7, title: 'Finance Charts', source: 'Pexels' },
   { id: 'br12', keyword: 'education', thumbnail: 'linear-gradient(135deg,#f59e0b,#92400e)', duration: 9, title: 'Study Session', source: 'Pixabay' },
+];
+
+const CAPTION_STYLES: { id: CaptionStyle; label: string }[] = [
+  { id: 'classic', label: 'Classic' },
+  { id: 'karaoke', label: 'Karaoke' },
+  { id: 'bold', label: 'Bold Yellow' },
+  { id: 'minimal', label: 'Minimal' },
+  { id: 'neon', label: 'Neon' },
+];
+
+const SFX_OPTIONS: { id: SfxKind; label: string; desc: string }[] = [
+  { id: 'none', label: 'None', desc: 'No sound effect' },
+  { id: 'riser', label: 'Riser', desc: 'Tension build at the start' },
+  { id: 'whoosh', label: 'Whoosh', desc: 'Swoosh intro transition' },
+  { id: 'pops', label: 'Pops', desc: 'Subtle pop on each caption' },
+];
+
+const RESOLUTIONS: { id: ExportResolution; label: string }[] = [
+  { id: '720p', label: '720p' },
+  { id: '1080p', label: '1080p HD' },
+  { id: '4k', label: '4K Upscale' },
+];
+
+/* AI Reframe: 3×3 focal-point grid. */
+const FOCUS_POINTS = [0.15, 0.5, 0.85];
+
+/* Offline hook templates (used when no Gemini key / API unavailable). */
+const HOOK_TEMPLATES = [
+  'Wait for it…',
+  'Nobody talks about this',
+  "Here's what they don't tell you",
+  'This changes everything',
+  'Watch this before you scroll',
+  "You're doing this wrong",
+  'This took me years to learn',
+  'The part at the end is wild',
 ];
 
 const PROCESSING_STEPS = [
@@ -256,6 +301,9 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
     };
   });
 }
+
+/* Editor side-panel ids (deep-linkable from the dashboard tools row). */
+type EditorPanel = 'details' | 'thumb' | 'captions' | 'audio' | 'broll' | 'publish';
 
 /* ── Auto thumbnails: a unique, click-optimized image per clip ── */
 const YT_FRAME_VARIANTS = ['hq1', 'hq2', 'hq3', 'hqdefault'];
@@ -920,12 +968,12 @@ function PublishModal({ clip, onClose, onPublish }: { clip: VideoClip; onClose: 
 }
 
 /* ── Clip Editor ── */
-function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: VideoClip; project: VideoProject; onBack: () => void; onSave: (updates: Partial<VideoClip>) => void; initialPanel?: 'details' | 'thumb' }) {
+function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: VideoClip; project: VideoProject; onBack: () => void; onSave: (updates: Partial<VideoClip>) => void; initialPanel?: EditorPanel }) {
   const { addNotification } = useApp();
   const [localClip, setLocalClip] = useState(clip);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
-  const [activePanel, setActivePanel] = useState<'details' | 'thumb' | 'captions' | 'audio' | 'broll' | 'publish'>(initialPanel ?? 'details');
+  const [activePanel, setActivePanel] = useState<EditorPanel>(initialPanel ?? 'details');
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [editingCapIdx, setEditingCapIdx] = useState<number | null>(null);
@@ -1015,6 +1063,12 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           endTime: trimEnd,
           aspectRatio: localClip.aspectRatio,
           captions: localClip.captions,
+          captionStyle: localClip.captionStyle,
+          focusX: localClip.focusX,
+          focusY: localClip.focusY,
+          enhanceSpeech: localClip.enhanceSpeech,
+          sfx: localClip.sfx,
+          resolution: exportRes,
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
@@ -1027,6 +1081,9 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           aspectRatio: localClip.aspectRatio,
           durationSec: Math.min(trimEnd - trimStart, 15),
           backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
+          captionStyle: localClip.captionStyle,
+          sfx: localClip.sfx,
+          resolution: exportRes,
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50) || 'clip'}.${result.fileExt}`);
@@ -1092,6 +1149,12 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
     ? { w: Math.ceil(previewHeight * (16 / 9)), h: previewHeight }
     : { w: previewWidth, h: Math.ceil(previewWidth * (9 / 16)) };
 
+  // AI Reframe: shift the crop window toward the chosen focal point.
+  const focusX = localClip.focusX ?? 0.5;
+  const focusY = localClip.focusY ?? 0.5;
+  const ytShiftX = (0.5 - focusX) * Math.max(0, ytCover.w - previewWidth);
+  const ytShiftY = (0.5 - focusY) * Math.max(0, ytCover.h - previewHeight);
+
   const activeCaptionIdx = localClip.captions.findIndex(c => playhead >= c.startTime - localClip.startTime && playhead < c.endTime - localClip.startTime);
 
   /* Seek both the UI playhead and whichever real player is active. */
@@ -1153,6 +1216,44 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
     onSave({ thumbnailUrl: thumbPreview });
   };
 
+  /* ── AI Hook state ── */
+  const [hooks, setHooks] = useState<string[]>([]);
+  const [hooksBusy, setHooksBusy] = useState(false);
+  const [exportRes, setExportRes] = useState<ExportResolution>('1080p');
+
+  const generateHooksNow = async () => {
+    setHooksBusy(true);
+    try {
+      if (hasGeminiKey()) {
+        const list = await generateHooks({ title: localClip.title, transcript: localClip.transcript, language: localClip.language });
+        if (list.length) { setHooks(list); return; }
+      }
+      throw new Error('fallback');
+    } catch {
+      // Offline fallback: curated templates, shuffled
+      const shuffled = [...HOOK_TEMPLATES].sort(() => Math.random() - 0.5).slice(0, 5);
+      setHooks(shuffled);
+    } finally {
+      setHooksBusy(false);
+    }
+  };
+
+  const applyHook = (h: string) => {
+    const start = localClip.startTime;
+    const hookCap: Caption = {
+      id: `hook-${localClip.id}`,
+      startTime: start,
+      endTime: start + 2.2,
+      text: h,
+      emoji: '🔥',
+      highlighted: true,
+      style: { fontSize: 24, color: '#ffffff', position: 'bottom', fontWeight: '900' },
+    };
+    const rest = localClip.captions.filter(c => !c.id.startsWith('hook-'));
+    set({ hook: h, captions: [hookCap, ...rest] });
+    addNotification('Hook applied as the opening caption.');
+  };
+
   const downloadThumb = async () => {
     const url = await composeThumbnail({
       bgImageUrl: framePreviews[thumbFrame] ?? undefined,
@@ -1207,7 +1308,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
               {/* Real video / YouTube player (IFrame API, chrome hidden) */}
               {ytId ? (
                 <>
-                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: ytCover.w, height: ytCover.h, pointerEvents: 'none' }}>
+                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(calc(-50% + ${ytShiftX}px), calc(-50% + ${ytShiftY}px))`, width: ytCover.w, height: ytCover.h, pointerEvents: 'none' }}>
                     <div ref={ytContainerRef} style={{ width: '100%', height: '100%' }} />
                   </div>
                   {/* Poster overlay hides YouTube chrome (title bar, avatar, big play button) whenever paused */}
@@ -1229,7 +1330,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                 <video
                   ref={videoRef}
                   src={project.sourceBlobUrl}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focusX * 100}% ${focusY * 100}%` }}
                   playsInline
                   muted={false}
                   preload="auto"
@@ -1253,14 +1354,39 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
               </div>
               )}
 
-              {/* Active caption overlay */}
-              {activeCaptionIdx >= 0 && (
-                <div style={{ position: 'absolute', bottom: '16%', left: '8px', right: '8px', textAlign: 'center' }}>
-                  <span style={{ display: 'inline-block', background: 'rgba(0,0,0,0.75)', color: 'white', fontSize: '13px', fontWeight: 800, padding: '4px 8px', borderRadius: '4px', lineHeight: 1.3 }}>
-                    {localClip.captions[activeCaptionIdx]?.emoji} {localClip.captions[activeCaptionIdx]?.text}
-                  </span>
-                </div>
-              )}
+              {/* Active caption overlay — styled per AI Captions preset */}
+              {activeCaptionIdx >= 0 && (() => {
+                const cap = localClip.captions[activeCaptionIdx];
+                const cs = localClip.captionStyle ?? 'classic';
+                const capProgress = Math.max(0, Math.min(1, (playhead - (cap.startTime - localClip.startTime)) / Math.max(0.001, cap.endTime - cap.startTime)));
+                const base: React.CSSProperties = { display: 'inline-block', padding: '4px 8px', borderRadius: '4px', lineHeight: 1.3, fontWeight: 800, fontSize: cs === 'minimal' ? '11px' : '13px' };
+                if (cs === 'karaoke') {
+                  const words = `${cap.emoji ? cap.emoji + ' ' : ''}${cap.text}`.split(' ');
+                  const activeW = Math.min(words.length - 1, Math.floor(capProgress * words.length));
+                  return (
+                    <div style={{ position: 'absolute', bottom: '16%', left: '8px', right: '8px', textAlign: 'center' }}>
+                      <span style={{ ...base, background: 'rgba(0,0,0,0.75)' }}>
+                        {words.map((word, i) => (
+                          <span key={i} style={{ color: i === activeW ? '#17191c' : i < activeW ? '#ffe14d' : '#fff', background: i === activeW ? '#ffe14d' : 'none', borderRadius: 2, padding: i === activeW ? '0 2px' : 0 }}>{word}{' '}</span>
+                        ))}
+                      </span>
+                    </div>
+                  );
+                }
+                const styleMap: Record<string, React.CSSProperties> = {
+                  classic: { ...base, background: 'rgba(0,0,0,0.75)', color: '#fff' },
+                  bold: { ...base, background: 'none', color: '#ffe14d', textTransform: 'uppercase', WebkitTextStroke: '1px #000', textShadow: '0 2px 4px rgba(0,0,0,0.7)' },
+                  minimal: { ...base, background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.95)' },
+                  neon: { ...base, background: 'none', color: '#fff', textShadow: '0 0 8px #8b5cf6, 0 0 16px #8b5cf6' },
+                };
+                return (
+                  <div style={{ position: 'absolute', bottom: '16%', left: '8px', right: '8px', textAlign: 'center' }}>
+                    <span style={styleMap[cs] ?? styleMap.classic}>
+                      {cap.emoji} {cs === 'bold' ? cap.text.toUpperCase() : cap.text}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Aspect ratio label */}
               <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px', backdropFilter: 'blur(4px)' }}>
@@ -1376,6 +1502,31 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                       style={{ width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
                   </div>
                 )}
+
+                {/* AI Hook */}
+                <div style={{ marginTop: '18px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Sparkles size={13} color="#f59e0b" /> AI Hook
+                    </span>
+                    <button onClick={generateHooksNow} disabled={hooksBusy}
+                      style={{ fontSize: '11px', padding: '4px 10px', background: '#6366f120', color: '#818cf8', border: '1px solid #6366f130', borderRadius: '5px', cursor: hooksBusy ? 'wait' : 'pointer', fontWeight: 600 }}>
+                      {hooksBusy ? 'Generating…' : hooks.length ? 'Regenerate' : 'Generate hooks'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 8px', lineHeight: 1.5 }}>A scroll-stopping opening line shown as the first caption (first ~2 seconds).</p>
+                  {localClip.hook && (
+                    <div style={{ fontSize: '11.5px', color: '#ffe14d', fontWeight: 700, marginBottom: '8px' }}>Current: 🔥 {localClip.hook}</div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    {hooks.map(h => (
+                      <button key={h} onClick={() => applyHook(h)}
+                        style={{ textAlign: 'left', padding: '8px 10px', background: localClip.hook === h ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${localClip.hook === h ? '#6366f1' : 'rgba(255,255,255,0.08)'}`, borderRadius: '6px', color: 'white', fontSize: '12px', cursor: 'pointer' }}>
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1457,7 +1608,21 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                   </button>
                 </div>
 
-                {/* Caption style */}
+                {/* AI Captions: rendering style presets (preview + burned into exports) */}
+                <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
+                  <p style={{ margin: '0 0 8px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Caption style</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                    {CAPTION_STYLES.map(s => (
+                      <button key={s.id} onClick={() => set({ captionStyle: s.id })}
+                        style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${(localClip.captionStyle ?? 'classic') === s.id ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: (localClip.captionStyle ?? 'classic') === s.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', color: (localClip.captionStyle ?? 'classic') === s.id ? '#a5b4fc' : '#94a3b8', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: '10px', color: '#64748b', margin: '8px 0 0' }}>Karaoke highlights each word as it plays. Styles apply in the preview and exported video.</p>
+                </div>
+
+                {/* Caption position & size */}
                 <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px', marginBottom: '14px' }}>
                   <p style={{ margin: '0 0 8px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Style</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -1530,6 +1695,53 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* AI Reframe: focal point for the crop */}
+                <div style={{ marginBottom: '20px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '6px' }}><Crop size={13} color="#818cf8" /> AI Reframe</p>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>Pick where the subject is — the crop keeps that spot in frame (preview + export).</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', maxWidth: '140px' }}>
+                    {FOCUS_POINTS.map(fy => FOCUS_POINTS.map(fx => {
+                      const active = Math.abs((localClip.focusX ?? 0.5) - fx) < 0.01 && Math.abs((localClip.focusY ?? 0.5) - fy) < 0.01;
+                      return (
+                        <button key={`${fx}-${fy}`} onClick={() => set({ focusX: fx, focusY: fy })}
+                          style={{ height: '34px', borderRadius: '6px', border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.04)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ width: 7, height: 7, borderRadius: 99, background: active ? '#818cf8' : '#475569' }} />
+                        </button>
+                      );
+                    }))}
+                  </div>
+                </div>
+
+                {/* Enhance Speech */}
+                <div style={{ marginBottom: '20px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}><Mic size={13} color="#22c55e" /> Enhance Speech</p>
+                  <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.45, paddingRight: '10px' }}>Clean up the voice on export: cut rumble, even out volume, lift clarity.</span>
+                    <button onClick={() => set({ enhanceSpeech: !localClip.enhanceSpeech })}
+                      style={{ width: '36px', height: '20px', borderRadius: '10px', background: localClip.enhanceSpeech ? '#22c55e' : 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.15s', flexShrink: 0 }}>
+                      <div style={{ width: '16px', height: '16px', borderRadius: '8px', background: 'white', position: 'absolute', top: '2px', left: localClip.enhanceSpeech ? '18px' : '2px', transition: 'left 0.15s' }} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* AI Sound Effect */}
+                <div style={{ marginBottom: '20px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}><Zap size={13} color="#f59e0b" /> AI Sound Effect</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                    {SFX_OPTIONS.map(o => {
+                      const active = (localClip.sfx ?? 'none') === o.id;
+                      return (
+                        <button key={o.id} onClick={() => set({ sfx: o.id })}
+                          style={{ padding: '8px 10px', borderRadius: '7px', border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.08)'}`, background: active ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', textAlign: 'left' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: active ? '#a5b4fc' : '#94a3b8' }}>{o.label}</div>
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>{o.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontSize: '10px', color: '#64748b', margin: '8px 0 0' }}>Synthesized and mixed into the exported video's audio.</p>
                 </div>
 
                 {/* Background music */}
@@ -1664,15 +1876,28 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
 
                 <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '12px' }}>
                   <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Export</p>
+                  {/* Upscale: output resolution */}
+                  <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+                    {RESOLUTIONS.map(r => (
+                      <button key={r.id} onClick={() => setExportRes(r.id)}
+                        style={{ flex: 1, padding: '7px 4px', borderRadius: '6px', border: `1px solid ${exportRes === r.id ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: exportRes === r.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', color: exportRes === r.id ? '#a5b4fc' : '#94a3b8', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                        {r.id === '4k' && <Maximize2 size={10} />} {r.label}
+                      </button>
+                    ))}
+                  </div>
                   <button
                     onClick={handleDownload}
                     disabled={exporting}
                     style={{ width: '100%', padding: '10px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', cursor: exporting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', color: 'white', opacity: exporting ? 0.6 : 1 }}>
                     <Download size={14} color="#94a3b8" />
                     <div style={{ textAlign: 'left', flex: 1 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600 }}>{exporting ? `Exporting… ${exportPct}%` : canRealExport ? 'Download HD (1080p)' : 'Download clip (1080p)'}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>{exporting ? `Exporting… ${exportPct}%` : `Download clip (${RESOLUTIONS.find(r => r.id === exportRes)?.label})`}</div>
                       <div style={{ fontSize: '10px', color: '#64748b' }}>
-                        {`${localClip.aspectRatio === '9:16' ? '1080×1920' : localClip.aspectRatio === '1:1' ? '1080×1080' : '1920×1080'} · ${canRealExport ? 'exact crop + burned-in captions' : 'motion render (thumbnail + captions)'}`}
+                        {(() => {
+                          const mult = exportRes === '4k' ? 2 : exportRes === '720p' ? 2 / 3 : 1;
+                          const dims = localClip.aspectRatio === '9:16' ? [1080, 1920] : localClip.aspectRatio === '1:1' ? [1080, 1080] : [1920, 1080];
+                          return `${Math.round(dims[0] * mult)}×${Math.round(dims[1] * mult)} · ${canRealExport ? 'exact crop + burned-in captions' : 'motion render (thumbnail + captions)'}`;
+                        })()}
                       </div>
                     </div>
                   </button>
@@ -1704,7 +1929,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
 }
 
 /* ── Project View ── */
-function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip, panel?: 'details' | 'thumb') => void; onRetry: () => void; onUseDemo: () => void }) {
+function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { project: VideoProject; onBack: () => void; onEditClip: (clip: VideoClip, panel?: EditorPanel) => void; onRetry: () => void; onUseDemo: () => void }) {
   const { updateVideoProject, updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip, addNotification } = useApp();
   const [sortBy, setSortBy] = useState<'virality' | 'duration' | 'date'>('virality');
   const [filterFocus, setFilterFocus] = useState<'all' | 'emotional' | 'educational' | 'funny'>('all');
@@ -1929,7 +2154,7 @@ export default function VideoShorts() {
   const [view, setView] = useState<'dashboard' | 'project' | 'editor'>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [editorPanel, setEditorPanel] = useState<'details' | 'thumb'>('details');
+  const [editorPanel, setEditorPanel] = useState<EditorPanel>('details');
   const [showUpload, setShowUpload] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const processingRefs = useRef<Map<string, number>>(new Map());
@@ -2155,6 +2380,20 @@ export default function VideoShorts() {
     }, true);
   };
 
+  /* Tools row: deep-link into the clip editor at the tool's panel. */
+  const openTool = (panel: EditorPanel) => {
+    const proj = videoProjects.find(p => p.status === 'ready' && p.clips.length > 0);
+    if (!proj) {
+      addNotification('These tools work on a clip — create a project first.', 'info');
+      setShowUpload(true);
+      return;
+    }
+    setSelectedProjectId(proj.id);
+    setSelectedClipId(proj.clips[0].id);
+    setEditorPanel(panel);
+    setView('editor');
+  };
+
   /* Fallback when real AI analysis fails (e.g. Gemini quota exhausted): generate
      sample clips so the user still gets a usable, editable, downloadable result. */
   const handleUseDemo = useCallback((projectId: string) => {
@@ -2225,6 +2464,35 @@ export default function VideoShorts() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Tools row — OpusClip-style quick access to every AI tool */}
+        <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '18px 20px 14px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            {([
+              { label: 'Long to shorts', icon: Scissors, action: () => setShowUpload(true) },
+              { label: 'AI Captions', icon: AlignLeft, action: () => openTool('captions') },
+              { label: 'Video editor', icon: Edit2, action: () => openTool('details') },
+              { label: 'Enhance speech', icon: Mic, isNew: true, action: () => openTool('audio') },
+              { label: 'AI Sound Effect', icon: Music, isNew: true, action: () => openTool('audio') },
+              { label: 'AI Reframe', icon: Crop, isNew: true, action: () => openTool('audio') },
+              { label: 'AI Hook', icon: Sparkles, isNew: true, action: () => openTool('details') },
+              { label: 'AI Thumbnail', icon: ImageIcon, action: () => openTool('thumb') },
+              { label: 'B-Roll', icon: Film, action: () => openTool('broll') },
+              { label: 'Upscale', icon: Maximize2, isNew: true, action: () => openTool('publish') },
+            ] as { label: string; icon: typeof Scissors; isNew?: boolean; action: () => void }[]).map(tool => (
+              <button key={tool.label} onClick={tool.action}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', position: 'relative', minWidth: '86px' }}
+                onMouseEnter={e => { const c = e.currentTarget.querySelector('span') as HTMLElement; if (c) c.style.transform = 'scale(1.07)'; }}
+                onMouseLeave={e => { const c = e.currentTarget.querySelector('span') as HTMLElement; if (c) c.style.transform = 'scale(1)'; }}>
+                {tool.isNew && <span style={{ position: 'absolute', top: '-2px', right: '6px', background: INK, color: 'white', fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '99px', zIndex: 1, transform: 'none' }}>New</span>}
+                <span style={{ width: '52px', height: '52px', borderRadius: '99px', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.15s' }}>
+                  <tool.icon size={20} color="#fff" strokeWidth={1.8} />
+                </span>
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{tool.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Toolbar */}
