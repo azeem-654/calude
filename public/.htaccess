@@ -1,3 +1,21 @@
+# SPA fallback — serve index.html for client-side routes (/book, /billing, …)
+# while leaving real files and the PHP API untouched.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Existing files and directories are served as-is
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Never rewrite API calls
+  RewriteRule ^api/ - [L]
+
+  # Everything else goes to the app shell
+  RewriteRule . /index.html [L]
+</IfModule>
+
 # Never cache the SPA entry point — hashed asset filenames handle versioning.
 <IfModule mod_headers.c>
   <FilesMatch "^index\.html$">

@@ -1,7 +1,12 @@
-import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Clock, MapPin, Check, Calendar } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Clock, MapPin, Check, Calendar, Globe, Download, X, CalendarPlus } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { sendEmail, loadEmailConfig } from '../../services/emailService';
+import type { Booking, EventType, ScheduleAvailability } from '../../types';
+import {
+  fetchPublicConfig, fetchBookedSlots, createRemoteBooking,
+  getRemoteBooking, cancelRemoteBooking, rescheduleRemoteBooking,
+  buildIcs, googleCalendarUrl,
+} from '../../services/booking';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -23,31 +28,81 @@ function generateTimeSlots(from: string, to: string, duration: number, bufferAft
   return slots;
 }
 
-function fmt12(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  return `${h % 12 || 12}:${pad(m)} ${ampm}`;
+/** Interpret `date time` as wall-clock in ownerTz and return the real instant. */
+function ownerInstant(dateStr: string, time: string, ownerTz: string): Date {
+  const utcGuess = new Date(`${dateStr}T${time}:00Z`);
+  try {
+    const tzAsUtc = new Date(utcGuess.toLocaleString('en-US', { timeZone: ownerTz }));
+    return new Date(utcGuess.getTime() + (utcGuess.getTime() - tzAsUtc.getTime()));
+  } catch { return new Date(`${dateStr}T${time}:00`); }
 }
 
-type Step = 'calendar' | 'form' | 'confirmed';
+function fmt12(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  return `${h % 12 || 12}:${pad(m)} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+type Step = 'event' | 'calendar' | 'form' | 'confirmed' | 'manage' | 'cancelled';
 
 export default function BookingPage() {
   const { schedule, bookings, addBooking, addAppointment, contacts, addContact, addContactActivity } = useApp();
 
-  const [today] = useState(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
+  const [today] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const [remoteCfg, setRemoteCfg] = useState<(Partial<ScheduleAvailability>) | null | 'loading'>('loading');
   const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [eventType, setEventType] = useState<EventType | null>(null);
   const [step, setStep] = useState<Step>('calendar');
   const [guestForm, setGuestForm] = useState({ name: '', email: '', phone: '', notes: '' });
   const [submitting, setSubmitting] = useState(false);
-  const [confirmedBooking, setConfirmedBooking] = useState<{ date: string; time: string; name: string } | null>(null);
+  const [error, setError] = useState('');
+  const [bookedRemote, setBookedRemote] = useState<Record<string, { time: string; duration: number }[]>>({});
+  const [confirmed, setConfirmed] = useState<{ date: string; time: string; name: string; manageUrl?: string } | null>(null);
+
+  // Guest manage mode (?manage=<id>.<key>)
+  const [manage, setManage] = useState<{ id: string; key: string; booking: Booking | null } | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
 
   const visitorTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  /* Load the published config; fall back to this browser's local schedule. */
+  useEffect(() => {
+    let alive = true;
+    fetchPublicConfig().then(cfg => { if (alive) setRemoteCfg(cfg); });
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get('manage');
+    if (m && m.includes('.')) {
+      const [id, key] = m.split('.');
+      getRemoteBooking(id, key).then(b => {
+        if (!alive) return;
+        setManage({ id, key, booking: b });
+        setStep('manage');
+      });
+    }
+    return () => { alive = false; };
+  }, []);
+
+  // Effective schedule = published config when available, else local (dev/preview).
+  const cfg: ScheduleAvailability = useMemo(() => {
+    if (remoteCfg && remoteCfg !== 'loading') return { ...schedule, ...remoteCfg } as ScheduleAvailability;
+    return schedule;
+  }, [remoteCfg, schedule]);
+
+  const eventTypes = (cfg.eventTypes ?? []).length > 0 ? cfg.eventTypes! : [];
+  const activeDuration = eventType?.duration ?? cfg.duration;
+  const activeLocation = eventType?.location || cfg.location;
+  const activeTitle = eventType?.name ?? cfg.title;
+  const minNoticeMin = cfg.minNoticeMin ?? 0;
+  const windowDays = cfg.windowDays ?? 365;
+  const usingServer = !!(remoteCfg && remoteCfg !== 'loading');
+
+  /* First step: event picker only when there are 2+ event types. */
+  useEffect(() => {
+    if (step === 'calendar' && eventTypes.length > 1 && !eventType) setStep('event');
+    if (eventTypes.length === 1 && !eventType) setEventType(eventTypes[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventTypes.length, step]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -61,151 +116,228 @@ export default function BookingPage() {
     return arr;
   }, [year, month, firstDayOfWeek, daysInMonth]);
 
+  const dateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+  /* Booked slots for a date: server (real) + local fallback. */
+  const bookedFor = (dateStr: string): { time: string; duration: number }[] => {
+    const local = bookings.filter(b => b.slotDate === dateStr && b.status !== 'cancelled')
+      .map(b => ({ time: b.slotTime, duration: b.duration ?? cfg.duration }));
+    return [...(bookedRemote[dateStr] ?? []), ...local];
+  };
+
   const isDayAvailable = (date: Date): boolean => {
     if (date < today) return false;
-    const dayKey = DAY_KEYS[date.getDay()];
-    const avail = schedule.weekly[dayKey];
+    const daysAhead = Math.round((date.getTime() - today.getTime()) / 86400000);
+    if (daysAhead > windowDays) return false;
+    const avail = cfg.weekly[DAY_KEYS[date.getDay()]];
     if (!avail.enabled) return false;
-    const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    const bookedToday = bookings.filter(b => b.slotDate === dateStr && b.status !== 'cancelled').length;
-    return bookedToday < schedule.dailyLimit;
+    return bookedFor(dateKey(date)).length < cfg.dailyLimit;
   };
 
   const getAvailableSlots = (date: Date): string[] => {
-    const dayKey = DAY_KEYS[date.getDay()];
-    const avail = schedule.weekly[dayKey];
+    const avail = cfg.weekly[DAY_KEYS[date.getDay()]];
     if (!avail.enabled) return [];
-    const all = generateTimeSlots(avail.from, avail.to, schedule.duration, schedule.bufferAfter);
-    const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    const bookedTimes = bookings.filter(b => b.slotDate === dateStr && b.status !== 'cancelled').map(b => b.slotTime);
-    return all.filter(t => !bookedTimes.includes(t));
+    const dateStr = dateKey(date);
+    const all = generateTimeSlots(avail.from, avail.to, activeDuration, cfg.bufferAfter);
+    const booked = bookedFor(dateStr).map(b => b.time);
+    const now = Date.now();
+    return all.filter(t => {
+      if (booked.includes(t)) return false;
+      // Minimum notice, computed against the real instant in the owner's timezone
+      const instant = ownerInstant(dateStr, t, cfg.timezone);
+      return instant.getTime() - now >= minNoticeMin * 60000;
+    });
+  };
+
+  const handleDateClick = async (date: Date) => {
+    if (!isDayAvailable(date)) return;
+    setSelectedDate(date);
+    setSelectedTime(null);
+    if (usingServer) {
+      const ds = dateKey(date);
+      const booked = await fetchBookedSlots(ds);
+      if (booked) setBookedRemote(prev => ({ ...prev, [ds]: booked }));
+    }
   };
 
   const slots = selectedDate ? getAvailableSlots(selectedDate) : [];
 
-  const handleDateClick = (date: Date) => {
-    if (!isDayAvailable(date)) return;
-    setSelectedDate(date);
-    setSelectedTime(null);
+  /** Visitor-local display for a slot (converted from the owner's timezone). */
+  const slotLabel = (dateStr: string, t: string) => {
+    try {
+      return ownerInstant(dateStr, t, cfg.timezone).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch { return fmt12(t); }
+  };
+
+  const finalizeLocalRecords = (dateStr: string, time: string) => {
+    // Also record locally (owner previewing / dev). Harmless for real visitors.
+    addBooking({
+      slotDate: dateStr, slotTime: time,
+      guestName: guestForm.name.trim(), guestEmail: guestForm.email.trim(),
+      guestPhone: guestForm.phone.trim(), notes: guestForm.notes.trim(),
+      status: 'confirmed', timezone: visitorTz, createdAt: new Date().toISOString(),
+      eventTypeId: eventType?.id, eventTypeName: activeTitle, duration: activeDuration, location: activeLocation,
+    });
+    addAppointment({
+      title: `${activeTitle} — ${guestForm.name}`,
+      contactId: '', contactName: guestForm.name.trim(),
+      date: dateStr, time: fmt12(time), duration: activeDuration,
+      status: 'scheduled', type: 'Video Call',
+      notes: `Booked via scheduling page. ${guestForm.notes}`.trim(),
+    });
+    const existing = contacts.find(c => c.email.toLowerCase() === guestForm.email.toLowerCase());
+    if (!existing) {
+      addContact({
+        name: guestForm.name.trim(), email: guestForm.email.trim(), phone: guestForm.phone.trim(),
+        status: 'lead', tags: ['Booked Meeting'], source: 'Booking Page',
+        createdAt: new Date().toISOString().split('T')[0], lastActivity: new Date().toISOString().split('T')[0], value: 0,
+      });
+    } else {
+      addContactActivity(existing.id, {
+        type: 'meeting',
+        description: `Meeting booked: ${activeTitle} on ${dateStr} at ${fmt12(time)}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
   };
 
   const handleBook = async () => {
     if (!selectedDate || !selectedTime || !guestForm.name.trim() || !guestForm.email.trim()) return;
     setSubmitting(true);
+    setError('');
+    const dateStr = dateKey(selectedDate);
 
-    const dateStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}`;
+    if (rescheduling && manage) {
+      const res = await rescheduleRemoteBooking(manage.id, manage.key, dateStr, selectedTime);
+      setSubmitting(false);
+      if (!res.ok) { setError(res.error || 'Reschedule failed.'); return; }
+      setConfirmed({ date: dateStr, time: selectedTime, name: manage.booking?.guestName ?? '', manageUrl: `${window.location.origin}/book?manage=${manage.id}.${manage.key}` });
+      setStep('confirmed');
+      return;
+    }
 
-    // Create booking
-    const bookingData = {
-      slotDate: dateStr,
-      slotTime: selectedTime,
-      guestName: guestForm.name.trim(),
-      guestEmail: guestForm.email.trim(),
-      guestPhone: guestForm.phone.trim(),
-      notes: guestForm.notes.trim(),
-      status: 'confirmed' as const,
-      timezone: visitorTz,
-      createdAt: new Date().toISOString(),
-    };
-    addBooking(bookingData);
-
-    // Create appointment
-    addAppointment({
-      title: `${schedule.title} — ${guestForm.name}`,
-      contactId: '',
-      contactName: guestForm.name.trim(),
-      date: dateStr,
-      time: fmt12(selectedTime),
-      duration: schedule.duration,
-      status: 'scheduled',
-      type: 'Video Call',
-      notes: `Booked via scheduling page. ${guestForm.notes}`.trim(),
+    // Server first (real cross-device booking + emails), local fallback.
+    const res = await createRemoteBooking({
+      eventTypeId: eventType?.id,
+      slotDate: dateStr, slotTime: selectedTime,
+      guestName: guestForm.name.trim(), guestEmail: guestForm.email.trim(),
+      guestPhone: guestForm.phone.trim(), notes: guestForm.notes.trim(), timezone: visitorTz,
     });
-
-    // Create/update contact
-    const existingContact = contacts.find(c => c.email.toLowerCase() === guestForm.email.toLowerCase());
-    if (!existingContact) {
-      addContact({
-        name: guestForm.name.trim(),
-        email: guestForm.email.trim(),
-        phone: guestForm.phone.trim(),
-        status: 'lead',
-        tags: ['Booked Meeting'],
-        source: 'Booking Page',
-        createdAt: new Date().toISOString().split('T')[0],
-        lastActivity: new Date().toISOString().split('T')[0],
-        value: 0,
-      });
-    } else {
-      addContactActivity(existingContact.id, {
-        type: 'meeting',
-        description: `Meeting booked: ${schedule.title} on ${dateStr} at ${fmt12(selectedTime)}`,
-        timestamp: new Date().toISOString(),
-      });
+    if (!res.ok && res.error !== 'unreachable') {
+      setSubmitting(false);
+      setError(res.error || 'Booking failed — please pick another slot.');
+      return;
     }
-
-    // Send confirmation email
-    const cfg = loadEmailConfig();
-    if (cfg.provider !== 'none') {
-      const confirmHtml = `
-        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
-          <div style="background:#17191c;border-radius:12px;padding:24px;color:white;text-align:center;margin-bottom:24px">
-            <div style="font-size:32px;margin-bottom:8px">✅</div>
-            <h1 style="margin:0;font-size:22px">Meeting Confirmed!</h1>
-          </div>
-          <p style="font-size:16px;color:#374151">Hi <strong>${guestForm.name}</strong>,</p>
-          <p style="color:#374151">Your meeting has been confirmed. Here are the details:</p>
-          <div style="background:#f8fafc;border-radius:10px;padding:20px;border:1px solid #e2e8f0;margin:20px 0">
-            <div style="margin-bottom:12px"><strong style="color:#64748b;font-size:12px;text-transform:uppercase">Meeting</strong><br><span style="font-size:15px;color:#0f172a">${schedule.title}</span></div>
-            <div style="margin-bottom:12px"><strong style="color:#64748b;font-size:12px;text-transform:uppercase">Date & Time</strong><br><span style="font-size:15px;color:#0f172a">${new Date(dateStr+'T12:00:00').toLocaleDateString([],{weekday:'long',month:'long',day:'numeric',year:'numeric'})} at ${fmt12(selectedTime)}</span></div>
-            <div style="margin-bottom:12px"><strong style="color:#64748b;font-size:12px;text-transform:uppercase">Duration</strong><br><span style="font-size:15px;color:#0f172a">${schedule.duration} minutes</span></div>
-            ${schedule.location ? `<div><strong style="color:#64748b;font-size:12px;text-transform:uppercase">Location</strong><br><span style="font-size:15px;color:#0f172a">${schedule.location}</span></div>` : ''}
-          </div>
-          <p style="color:#64748b;font-size:13px">You'll receive a calendar invite shortly. If you need to reschedule or have questions, please reply to this email.</p>
-        </div>`;
-
-      await sendEmail(cfg, {
-        to: guestForm.email.trim(),
-        toName: guestForm.name.trim(),
-        subject: `Meeting Confirmed: ${schedule.title}`,
-        html: confirmHtml,
-      }).catch(() => {/* silent fail */});
-    }
-
+    finalizeLocalRecords(dateStr, selectedTime);
     setSubmitting(false);
-    setConfirmedBooking({ date: dateStr, time: selectedTime, name: guestForm.name });
+    setConfirmed({
+      date: dateStr, time: selectedTime, name: guestForm.name,
+      manageUrl: res.ok && res.id ? `${window.location.origin}/book?manage=${res.id}.${res.key}` : undefined,
+    });
     setStep('confirmed');
   };
 
-  // Confirmed screen
-  if (step === 'confirmed' && confirmedBooking) {
+  const downloadIcs = (date: string, time: string) => {
+    const blob = buildIcs({ title: activeTitle, description: cfg.description, location: activeLocation, date, time, durationMin: activeDuration });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'meeting.ics';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 800);
+  };
+
+  /* ── Manage screen (guest cancel / reschedule) ── */
+  if (step === 'manage') {
+    const b = manage?.booking ?? null;
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '48px 40px', maxWidth: 480, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '40px 36px', maxWidth: 480, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.1)' }}>
+          {!b ? (
+            <div style={{ textAlign: 'center' }}>
+              <X size={40} color="#ef4444" style={{ margin: '0 auto 12px' }} />
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>Booking not found</h1>
+              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>This link is invalid or the booking no longer exists.</p>
+            </div>
+          ) : (
+            <>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>Manage your booking</h1>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 20px' }}>Hi {b.guestName} — here are your meeting details.</p>
+              <div style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: 18, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{b.eventTypeName ?? cfg.title}</div>
+                <div style={{ fontSize: 14, color: '#374151', marginBottom: 4 }}>
+                  {new Date(b.slotDate + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at {fmt12(b.slotTime)}
+                </div>
+                <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Status: <strong style={{ color: b.status === 'confirmed' ? '#16a34a' : '#ef4444', textTransform: 'capitalize' }}>{b.status}</strong></div>
+              </div>
+              {b.status === 'confirmed' && (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setRescheduling(true); setStep(eventTypes.length > 1 ? 'calendar' : 'calendar'); }}
+                    style={{ flex: 1, padding: '12px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Reschedule
+                  </button>
+                  <button onClick={async () => {
+                    if (manage && await cancelRemoteBooking(manage.id, manage.key)) setStep('cancelled');
+                  }}
+                    style={{ flex: 1, padding: '12px', backgroundColor: 'white', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Cancel booking
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'cancelled') {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '48px 40px', maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+            <X size={30} color="#dc2626" />
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>Booking cancelled</h1>
+          <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>A cancellation confirmation has been emailed to you. You can book a new time any time.</p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Confirmed screen ── */
+  if (step === 'confirmed' && confirmed) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '48px 40px', maxWidth: 500, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.1)', textAlign: 'center' }}>
           <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #22c55e, #16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
             <Check size={36} color="white" />
           </div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>You're booked!</h1>
-          <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 28px' }}>A confirmation email has been sent to you.</p>
-          <div style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: '20px', border: '1px solid #e2e8f0', marginBottom: 24, textAlign: 'left' }}>
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>Meeting</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{schedule.title}</div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>{rescheduling ? 'Rescheduled!' : "You're booked!"}</h1>
+          <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 24px' }}>A confirmation email is on its way to you.</p>
+          <div style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: 20, border: '1px solid #e2e8f0', marginBottom: 20, textAlign: 'left' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{activeTitle}</div>
+            <div style={{ fontSize: 14, color: '#374151', marginBottom: 4 }}>
+              {new Date(confirmed.date + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} at {fmt12(confirmed.time)}
             </div>
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>Date & Time</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
-                {new Date(confirmedBooking.date + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })} at {fmt12(confirmedBooking.time)}
-              </div>
-            </div>
-            {schedule.location && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 3 }}>Location</div>
-                <div style={{ fontSize: 14, color: '#374151' }}>{schedule.location}</div>
-              </div>
-            )}
+            {activeLocation && <div style={{ fontSize: 13, color: '#64748b' }}>{activeLocation}</div>}
           </div>
-          <button onClick={() => { setStep('calendar'); setSelectedDate(null); setSelectedTime(null); setGuestForm({ name: '', email: '', phone: '', notes: '' }); }}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <button onClick={() => downloadIcs(confirmed.date, confirmed.time)}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px', backgroundColor: 'white', color: '#17191c', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              <Download size={14} /> Download .ics
+            </button>
+            <a href={googleCalendarUrl({ title: activeTitle, description: cfg.description, location: activeLocation, date: confirmed.date, time: confirmed.time, durationMin: activeDuration })}
+              target="_blank" rel="noopener noreferrer"
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px', backgroundColor: 'white', color: '#17191c', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+              <CalendarPlus size={14} /> Google Calendar
+            </a>
+          </div>
+          {confirmed.manageUrl && (
+            <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#94a3b8' }}>
+              Need changes? <a href={confirmed.manageUrl} style={{ color: '#17191c', fontWeight: 700 }}>Reschedule or cancel</a>
+            </p>
+          )}
+          <button onClick={() => { setStep(eventTypes.length > 1 ? 'event' : 'calendar'); setSelectedDate(null); setSelectedTime(null); setRescheduling(false); setGuestForm({ name: '', email: '', phone: '', notes: '' }); }}
             style={{ padding: '12px 28px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             Book Another Meeting
           </button>
@@ -214,50 +346,86 @@ export default function BookingPage() {
     );
   }
 
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.12)', overflow: 'hidden', width: '100%', maxWidth: step === 'form' ? 540 : 820, display: 'flex', flexDirection: step === 'form' ? 'column' : 'row', minHeight: 560 }}>
-
-        {/* Left panel */}
-        <div style={{ padding: '36px 28px', width: step === 'form' ? '100%' : 260, borderRight: step === 'form' ? 'none' : '1px solid #e2e8f0', borderBottom: step === 'form' ? '1px solid #e2e8f0' : 'none', backgroundColor: '#fafafa', flexShrink: 0 }}>
+  /* ── Event type picker ── */
+  if (step === 'event') {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ backgroundColor: 'white', borderRadius: 20, padding: '40px 36px', maxWidth: 520, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.12)' }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
             <Calendar size={22} color="white" />
           </div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>{schedule.title}</h1>
-          <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 20px', lineHeight: 1.5 }}>{schedule.description}</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>{cfg.title}</h1>
+          <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 22px' }}>{cfg.description || 'Pick the type of meeting you need.'}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {eventTypes.map(et => (
+              <button key={et.id} onClick={() => { setEventType(et); setStep('calendar'); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', border: '1px solid #e2e8f0', borderRadius: 14, backgroundColor: 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#17191c'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(16,24,40,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}>
+                <span style={{ width: 12, height: 44, borderRadius: 6, background: et.color || '#17191c', flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{et.name}</span>
+                  {et.description && <span style={{ display: 'block', fontSize: 13, color: '#64748b', marginTop: 2 }}>{et.description}</span>}
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b', fontWeight: 600, flexShrink: 0 }}>
+                  <Clock size={14} /> {et.duration} min
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Calendar + form ── */
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.12)', overflow: 'hidden', width: '100%', maxWidth: step === 'form' ? 540 : 860, display: 'flex', flexDirection: step === 'form' ? 'column' : 'row', minHeight: 560 }}>
+
+        {/* Left panel */}
+        <div style={{ padding: '36px 28px', width: step === 'form' ? '100%' : 270, borderRight: step === 'form' ? 'none' : '1px solid #e2e8f0', borderBottom: step === 'form' ? '1px solid #e2e8f0' : 'none', backgroundColor: '#fafafa', flexShrink: 0, boxSizing: 'border-box' }}>
+          {eventTypes.length > 1 && (
+            <button onClick={() => { setEventType(null); setStep('event'); setSelectedDate(null); setSelectedTime(null); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 12.5, fontWeight: 600, padding: '0 0 12px' }}>
+              <ChevronLeft size={14} /> All meeting types
+            </button>
+          )}
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: eventType?.color || '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Calendar size={22} color="white" />
+          </div>
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>{rescheduling ? `Reschedule: ${manage?.booking?.eventTypeName ?? activeTitle}` : activeTitle}</h1>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 20px', lineHeight: 1.5 }}>{eventType?.description || cfg.description}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
-              <Clock size={14} color="#17191c" /> {schedule.duration} minutes
+              <Clock size={14} color="#17191c" /> {activeDuration} minutes
             </div>
-            {schedule.location && (
+            {activeLocation && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
-                <MapPin size={14} color="#17191c" /> {schedule.location}
+                <MapPin size={14} color="#17191c" /> {activeLocation}
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8' }}>
-              <span>🌍</span> {visitorTz}
+              <Globe size={13} /> Times shown in {visitorTz}
             </div>
           </div>
           {selectedDate && selectedTime && step === 'form' && (
             <div style={{ marginTop: 20, padding: '12px 14px', backgroundColor: '#eceef1', borderRadius: 10, border: '1px solid #d5d8dd' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#17191c', textTransform: 'uppercase', marginBottom: 4 }}>Selected Time</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#4338ca' }}>
-                {new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#17191c' }}>
+                {selectedDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
               </div>
-              <div style={{ fontSize: 13, color: '#4338ca' }}>{fmt12(selectedTime)}</div>
+              <div style={{ fontSize: 13, color: '#374151' }}>{slotLabel(dateKey(selectedDate), selectedTime)}</div>
             </div>
           )}
         </div>
 
-        {/* Right panel — calendar */}
+        {/* Calendar step */}
         {step === 'calendar' && (
           <div style={{ flex: 1, padding: '32px 28px', display: 'flex', gap: 24 }}>
-            {/* Calendar grid */}
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
-                  {MONTHS[month]} {year}
-                </h2>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{MONTHS[month]} {year}</h2>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button onClick={() => setViewDate(new Date(year, month - 1, 1))}
                     style={{ width: 32, height: 32, border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -270,14 +438,12 @@ export default function BookingPage() {
                 </div>
               </div>
 
-              {/* Day headers */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
                 {DAYS_SHORT.map(d => (
                   <div key={d} style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'center', padding: '4px 0' }}>{d}</div>
                 ))}
               </div>
 
-              {/* Calendar cells */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
                 {cells.map((date, i) => {
                   if (!date) return <div key={i} />;
@@ -287,7 +453,7 @@ export default function BookingPage() {
                   return (
                     <button key={i} onClick={() => handleDateClick(date)} disabled={!available}
                       style={{
-                        padding: '8px 4px', borderRadius: 8, border: isSelected ? '2px solid #17191c' : '1px solid transparent',
+                        padding: '9px 4px', borderRadius: 8, border: isSelected ? '2px solid #17191c' : '1px solid transparent',
                         backgroundColor: isSelected ? '#17191c' : (available ? '#f8faff' : 'transparent'),
                         color: isSelected ? 'white' : (available ? '#0f172a' : '#d1d5db'),
                         fontSize: 13, fontWeight: isToday ? 700 : 400, cursor: available ? 'pointer' : 'default',
@@ -303,9 +469,8 @@ export default function BookingPage() {
               </div>
             </div>
 
-            {/* Time slots */}
             {selectedDate && (
-              <div style={{ width: 160, flexShrink: 0 }}>
+              <div style={{ width: 170, flexShrink: 0 }}>
                 <h3 style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 700, color: '#374151' }}>
                   {selectedDate.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
                 </h3>
@@ -314,19 +479,20 @@ export default function BookingPage() {
                     <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '20px 0' }}>No slots available</div>
                   ) : (
                     slots.map(slot => (
-                      <button key={slot} onClick={() => { setSelectedTime(slot); setStep('form'); }}
+                      <button key={slot} onClick={() => { setSelectedTime(slot); if (rescheduling) { handleBookReschedule(slot); } else { setStep('form'); } }}
                         style={{ padding: '10px 8px', border: `1.5px solid ${selectedTime === slot ? '#17191c' : '#e2e8f0'}`, borderRadius: 8, backgroundColor: selectedTime === slot ? '#17191c' : 'white', color: selectedTime === slot ? 'white' : '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.1s', textAlign: 'center' }}>
-                        {fmt12(slot)}
+                        {slotLabel(dateKey(selectedDate), slot)}
                       </button>
                     ))
                   )}
                 </div>
+                {error && <p style={{ marginTop: 10, fontSize: 12, color: '#dc2626', fontWeight: 600 }}>{error}</p>}
               </div>
             )}
           </div>
         )}
 
-        {/* Right panel — booking form */}
+        {/* Form step */}
         {step === 'form' && (
           <div style={{ flex: 1, padding: '32px 28px', display: 'flex', flexDirection: 'column' }}>
             <button onClick={() => setStep('calendar')}
@@ -348,7 +514,7 @@ export default function BookingPage() {
                   style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Phone (optional)</label>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Phone (for SMS reminders)</label>
                 <input value={guestForm.phone} onChange={e => setGuestForm(p => ({ ...p, phone: e.target.value }))} placeholder="+1 (555) 000-0000"
                   style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
               </div>
@@ -357,12 +523,13 @@ export default function BookingPage() {
                 <textarea value={guestForm.notes} onChange={e => setGuestForm(p => ({ ...p, notes: e.target.value }))} placeholder="Anything you'd like to discuss..."
                   rows={3} style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
               </div>
+              {error && <p style={{ margin: 0, fontSize: 13, color: '#dc2626', fontWeight: 600 }}>{error}</p>}
               <button onClick={handleBook} disabled={submitting || !guestForm.name.trim() || !guestForm.email.trim()}
                 style={{ padding: '13px 24px', backgroundColor: (submitting || !guestForm.name.trim() || !guestForm.email.trim()) ? '#d5d8dd' : '#17191c', color: 'white', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: (submitting || !guestForm.name.trim() || !guestForm.email.trim()) ? 'default' : 'pointer', marginTop: 4 }}>
                 {submitting ? 'Booking...' : 'Confirm Booking'}
               </button>
               <p style={{ margin: 0, fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
-                By confirming, you agree to receive a confirmation email.
+                You'll get a confirmation email with reschedule & cancel links.
               </p>
             </div>
           </div>
@@ -370,4 +537,17 @@ export default function BookingPage() {
       </div>
     </div>
   );
+
+  /* Reschedule shortcut: picking a slot in reschedule mode confirms immediately. */
+  async function handleBookReschedule(slot: string) {
+    if (!selectedDate || !manage) return;
+    setSubmitting(true);
+    setError('');
+    const dateStr = dateKey(selectedDate);
+    const res = await rescheduleRemoteBooking(manage.id, manage.key, dateStr, slot);
+    setSubmitting(false);
+    if (!res.ok) { setError(res.error || 'Reschedule failed.'); return; }
+    setConfirmed({ date: dateStr, time: slot, name: manage.booking?.guestName ?? '', manageUrl: `${window.location.origin}/book?manage=${manage.id}.${manage.key}` });
+    setStep('confirmed');
+  }
 }

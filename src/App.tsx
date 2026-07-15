@@ -119,6 +119,23 @@ export default function App() {
     }
   }, [session]);
 
+  // The public booking page must work for anonymous visitors — never gate it
+  // behind the login screen.
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  const isPublicBooking = window.location.pathname.startsWith(`${base}/book`);
+  if (!session && isPublicBooking) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <AppProvider>
+          <Routes>
+            <Route path="/book/:slug" element={<BookingPage />} />
+            <Route path="*" element={<BookingPage />} />
+          </Routes>
+        </AppProvider>
+      </BrowserRouter>
+    );
+  }
+
   if (!session) {
     return <LoginScreen onAuthed={() => setSession(getSession())} />;
   }

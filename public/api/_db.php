@@ -11,13 +11,17 @@ function crm_pdo() {
     $tried = true;
     $cfgFile = __DIR__ . '/config.php';
     if (!file_exists($cfgFile)) return null;
-    $cfg = require $cfgFile;   // returns ['host'=>,'db'=>,'user'=>,'pass'=>]
+    $cfg = require $cfgFile;   // returns ['host'=>,'db'=>,'user'=>,'pass'=>] (or sqlite for dev/tests)
     try {
-        $pdo = new PDO(
-            "mysql:host={$cfg['host']};dbname={$cfg['db']};charset=utf8mb4",
-            $cfg['user'], $cfg['pass'],
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 8]
-        );
+        if (($cfg['driver'] ?? '') === 'sqlite') {
+            $pdo = new PDO('sqlite:' . $cfg['file'], null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        } else {
+            $pdo = new PDO(
+                "mysql:host={$cfg['host']};dbname={$cfg['db']};charset=utf8mb4",
+                $cfg['user'], $cfg['pass'],
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 8]
+            );
+        }
     } catch (Throwable $e) { $pdo = null; }
     return $pdo;
 }

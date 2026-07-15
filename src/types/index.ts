@@ -87,6 +87,31 @@ export interface DayAvailability {
   to: string;
 }
 
+/** A bookable meeting type (Calendly-style event type). */
+export interface EventType {
+  id: string;
+  name: string;
+  duration: number;          // minutes
+  description: string;
+  location: string;          // Zoom/Meet link or address
+  color: string;
+}
+
+/** Calendly-style workflow settings for the booking page. */
+export interface SchedulingAutomations {
+  confirmEmail: boolean;       // send guest a confirmation email on booking
+  ownerNotify: boolean;        // notify the owner of new/cancelled bookings
+  ownerEmail: string;
+  reminderEmail: boolean;      // email reminder before the meeting
+  reminderMinutes: number;     // how long before (minutes)
+  reminderSms: boolean;        // also SMS via Twilio
+  twilioSid: string;
+  twilioToken: string;
+  twilioFrom: string;
+  followupEmail: boolean;      // thank-you email after the meeting
+  followupText: string;
+}
+
 export interface ScheduleAvailability {
   userId: string;
   title: string;
@@ -98,6 +123,13 @@ export interface ScheduleAvailability {
   slug: string;
   description: string;
   location: string;
+  /** Minimum notice before a slot can be booked (minutes). */
+  minNoticeMin?: number;
+  /** Rolling booking window (days into the future). */
+  windowDays?: number;
+  /** Bookable meeting types; when present visitors pick one first. */
+  eventTypes?: EventType[];
+  automations?: SchedulingAutomations;
   weekly: {
     mon: DayAvailability;
     tue: DayAvailability;
@@ -121,6 +153,13 @@ export interface Booking {
   timezone: string;
   createdAt: string;
   appointmentId?: string;
+  /** Which event type was booked (Calendly-style). */
+  eventTypeId?: string;
+  eventTypeName?: string;
+  duration?: number;
+  location?: string;
+  /** Present when the booking lives on the server (cross-device). */
+  remote?: boolean;
 }
 
 export interface FunnelBlock {
