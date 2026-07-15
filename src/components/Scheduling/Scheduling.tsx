@@ -189,8 +189,8 @@ export default function Scheduling() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, fontSize: 12.5, fontWeight: 600, color: pubState === 'published' ? '#16a34a' : pubState === 'local' ? '#b45309' : '#64748b' }}>
           <CloudUpload size={14} />
           {pubState === 'saving' ? 'Publishing booking page…'
-            : pubState === 'published' ? 'Booking page published — visitors see the latest settings and bookings sync to the cloud.'
-            : pubState === 'local' ? 'Local only — sign in with the cloud backend deployed to publish the booking page for visitors.'
+            : pubState === 'published' ? 'Booking page live — visitors see your latest settings, and their bookings appear here automatically.'
+            : pubState === 'local' ? "Couldn't publish the booking page — make sure you're signed in and the site is deployed, then reopen this page."
             : ''}
         </div>
 
@@ -557,6 +557,12 @@ export default function Scheduling() {
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={LABEL}>Meeting Location / Link</label>
                 <input value={schedule.location} onChange={e => updateSchedule({ location: e.target.value })} placeholder="Zoom link, Google Meet, or address..."
+                  style={INPUT} />
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={LABEL}>Intro Video — YouTube URL (shown on booking page)</label>
+                <input value={schedule.videoUrl ?? ''} onChange={e => updateSchedule({ videoUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=…  (a short welcome video builds trust)"
                   style={INPUT} />
               </div>
 

@@ -127,6 +127,8 @@ export interface ScheduleAvailability {
   minNoticeMin?: number;
   /** Rolling booking window (days into the future). */
   windowDays?: number;
+  /** Optional short YouTube intro video shown on the booking page. */
+  videoUrl?: string;
   /** Bookable meeting types; when present visitors pick one first. */
   eventTypes?: EventType[];
   automations?: SchedulingAutomations;

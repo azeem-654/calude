@@ -33,23 +33,51 @@ $d = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $d['action'] ?? '';
 function out($x) { echo json_encode($x); exit; }
 
+// MySQL when the cloud DB is installed; otherwise a server-side JSON file
+// (same zero-config storage auth.php uses) so booking works out of the box.
 $pdo = crm_pdo();
-if (!$pdo) out(['success' => false, 'error' => 'not-configured']);
 
 const BK = '__booking__';
+const BK_FILE = __DIR__ . '/data/booking.json';
+
+function bk_file_load() {
+    if (!file_exists(BK_FILE)) return ['kv' => []];
+    $j = json_decode(@file_get_contents(BK_FILE), true);
+    return is_array($j) && isset($j['kv']) ? $j : ['kv' => []];
+}
+function bk_file_save($data) {
+    $dir = dirname(BK_FILE);
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    $fp = @fopen(BK_FILE, 'c+');
+    if (!$fp) return false;
+    flock($fp, LOCK_EX);
+    ftruncate($fp, 0);
+    fwrite($fp, json_encode($data));
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    return true;
+}
 
 function bk_get($pdo, $k) {
+    if (!$pdo) { $f = bk_file_load(); return $f['kv'][$k] ?? null; }
     $s = $pdo->prepare('SELECT v FROM crm_data WHERE account_id = ? AND k = ?');
     $s->execute([BK, $k]);
     $row = $s->fetch(PDO::FETCH_ASSOC);
     return $row ? (json_decode($row['v'], true) ?: null) : null;
 }
 function bk_set($pdo, $k, $v) {
+    if (!$pdo) { $f = bk_file_load(); $f['kv'][$k] = $v; bk_file_save($f); return; }
     // REPLACE INTO is portable across MySQL and SQLite (dev/tests).
     $s = $pdo->prepare('REPLACE INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,?)');
     $s->execute([BK, $k, json_encode($v), date('Y-m-d H:i:s')]);
 }
 function bk_all_bookings($pdo) {
+    if (!$pdo) {
+        $f = bk_file_load();
+        $out = [];
+        foreach ($f['kv'] as $k => $v) { if (strpos($k, 'bk_') === 0 && is_array($v)) $out[] = $v; }
+        return $out;
+    }
     $s = $pdo->prepare("SELECT v FROM crm_data WHERE account_id = ? AND k LIKE 'bk_%'");
     $s->execute([BK]);
     $out = [];

@@ -37,6 +37,7 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       dailyLimit: schedule.dailyLimit,
       minNoticeMin: schedule.minNoticeMin ?? 120,
       windowDays: schedule.windowDays ?? 60,
+      videoUrl: schedule.videoUrl ?? '',
       eventTypes: schedule.eventTypes ?? [],
     },
     private: {

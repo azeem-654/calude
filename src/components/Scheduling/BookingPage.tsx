@@ -37,6 +37,12 @@ function ownerInstant(dateStr: string, time: string, ownerTz: string): Date {
   } catch { return new Date(`${dateStr}T${time}:00`); }
 }
 
+function ytIdFrom(url?: string): string | null {
+  if (!url) return null;
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 function fmt12(time: string): string {
   const [h, m] = time.split(':').map(Number);
   return `${h % 12 || 12}:${pad(m)} ${h >= 12 ? 'PM' : 'AM'}`;
@@ -380,42 +386,70 @@ export default function BookingPage() {
 
   /* ── Calendar + form ── */
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.12)', overflow: 'hidden', width: '100%', maxWidth: step === 'form' ? 540 : 860, display: 'flex', flexDirection: step === 'form' ? 'column' : 'row', minHeight: 560 }}>
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(1200px 600px at 80% -10%, #e6e9f2 0%, transparent 60%), radial-gradient(900px 500px at -10% 110%, #e9e6f2 0%, transparent 55%), #f4f5f8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: 26, boxShadow: '0 30px 80px -20px rgba(16,24,40,0.25)', overflow: 'hidden', width: '100%', maxWidth: step === 'form' ? 560 : 900, display: 'flex', flexDirection: step === 'form' ? 'column' : 'row', minHeight: 580 }}>
 
-        {/* Left panel */}
-        <div style={{ padding: '36px 28px', width: step === 'form' ? '100%' : 270, borderRight: step === 'form' ? 'none' : '1px solid #e2e8f0', borderBottom: step === 'form' ? '1px solid #e2e8f0' : 'none', backgroundColor: '#fafafa', flexShrink: 0, boxSizing: 'border-box' }}>
+        {/* Left panel — brand side */}
+        <div style={{ padding: '34px 28px', width: step === 'form' ? '100%' : 300, background: 'linear-gradient(160deg, #17191c 0%, #23262c 70%, #2b2333 100%)', color: 'white', flexShrink: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
           {eventTypes.length > 1 && (
             <button onClick={() => { setEventType(null); setStep('event'); setSelectedDate(null); setSelectedTime(null); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 12.5, fontWeight: 600, padding: '0 0 12px' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.65)', fontSize: 12.5, fontWeight: 600, padding: '0 0 14px' }}>
               <ChevronLeft size={14} /> All meeting types
             </button>
           )}
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: eventType?.color || '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-            <Calendar size={22} color="white" />
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: eventType?.color || 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+            <Calendar size={24} color="white" />
           </div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>{rescheduling ? `Reschedule: ${manage?.booking?.eventTypeName ?? activeTitle}` : activeTitle}</h1>
-          <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 20px', lineHeight: 1.5 }}>{eventType?.description || cfg.description}</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
-              <Clock size={14} color="#17191c" /> {activeDuration} minutes
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px', letterSpacing: '-0.02em' }}>{rescheduling ? `Reschedule: ${manage?.booking?.eventTypeName ?? activeTitle}` : activeTitle}</h1>
+          <p style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.65)', margin: '0 0 18px', lineHeight: 1.55 }}>{eventType?.description || cfg.description}</p>
+
+          {/* Short intro video */}
+          {ytIdFrom(cfg.videoUrl) && step !== 'form' && (
+            <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', marginBottom: 18, boxShadow: '0 12px 32px rgba(0,0,0,0.4)', aspectRatio: '16/9', background: '#000' }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${ytIdFrom(cfg.videoUrl)}?rel=0&modestbranding=1`}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title="Intro video"
+              />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
+              <span style={{ width: 28, height: 28, borderRadius: 9, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={14} /></span>
+              {activeDuration} minutes
             </div>
             {activeLocation && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}>
-                <MapPin size={14} color="#17191c" /> {activeLocation}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
+                <span style={{ width: 28, height: 28, borderRadius: 9, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MapPin size={14} /></span>
+                {activeLocation}
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8' }}>
-              <Globe size={13} /> Times shown in {visitorTz}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12.5, color: 'rgba(255,255,255,0.55)' }}>
+              <span style={{ width: 28, height: 28, borderRadius: 9, background: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Globe size={13} /></span>
+              Times shown in {visitorTz}
             </div>
           </div>
+
           {selectedDate && selectedTime && step === 'form' && (
-            <div style={{ marginTop: 20, padding: '12px 14px', backgroundColor: '#eceef1', borderRadius: 10, border: '1px solid #d5d8dd' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#17191c', textTransform: 'uppercase', marginBottom: 4 }}>Selected Time</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#17191c' }}>
+            <div style={{ marginTop: 20, padding: '13px 15px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)' }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Selected Time</div>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>
                 {selectedDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
               </div>
-              <div style={{ fontSize: 13, color: '#374151' }}>{slotLabel(dateKey(selectedDate), selectedTime)}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>{slotLabel(dateKey(selectedDate), selectedTime)}</div>
+            </div>
+          )}
+
+          {/* Step indicator */}
+          {step !== 'form' && (
+            <div style={{ marginTop: 'auto', paddingTop: 22, display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>
+              <span style={{ width: 22, height: 4, borderRadius: 99, background: '#8b8ff5' }} />
+              <span style={{ width: 22, height: 4, borderRadius: 99, background: selectedDate ? '#8b8ff5' : 'rgba(255,255,255,0.15)' }} />
+              <span style={{ width: 22, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.15)' }} />
+              <span style={{ marginLeft: 6 }}>{selectedDate ? 'Pick a time' : 'Pick a date'}</span>
             </div>
           )}
         </div>
@@ -474,13 +508,15 @@ export default function BookingPage() {
                 <h3 style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 700, color: '#374151' }}>
                   {selectedDate.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 380, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 390, overflowY: 'auto', paddingRight: 4 }}>
                   {slots.length === 0 ? (
                     <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '20px 0' }}>No slots available</div>
                   ) : (
                     slots.map(slot => (
                       <button key={slot} onClick={() => { setSelectedTime(slot); if (rescheduling) { handleBookReschedule(slot); } else { setStep('form'); } }}
-                        style={{ padding: '10px 8px', border: `1.5px solid ${selectedTime === slot ? '#17191c' : '#e2e8f0'}`, borderRadius: 8, backgroundColor: selectedTime === slot ? '#17191c' : 'white', color: selectedTime === slot ? 'white' : '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.1s', textAlign: 'center' }}>
+                        style={{ padding: '11px 8px', border: `1.5px solid ${selectedTime === slot ? '#17191c' : '#e6e9f0'}`, borderRadius: 11, backgroundColor: selectedTime === slot ? '#17191c' : 'white', color: selectedTime === slot ? 'white' : '#17191c', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s', textAlign: 'center' }}
+                        onMouseEnter={e => { if (selectedTime !== slot) { e.currentTarget.style.borderColor = '#17191c'; e.currentTarget.style.transform = 'translateY(-1px)'; } }}
+                        onMouseLeave={e => { if (selectedTime !== slot) { e.currentTarget.style.borderColor = '#e6e9f0'; e.currentTarget.style.transform = 'none'; } }}>
                         {slotLabel(dateKey(selectedDate), slot)}
                       </button>
                     ))
