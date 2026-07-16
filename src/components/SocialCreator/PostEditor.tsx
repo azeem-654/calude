@@ -14,6 +14,17 @@ import { FONT_FAMILIES, EMOJI_STICKERS, RATIO_SIZES } from './templates';
 /* ── Helpers ── */
 const uid = () => `el-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
+/** Canva-style text effect presets → CSS text-shadow. */
+const TEXT_EFFECT_CSS: Record<string, (color: string) => string> = {
+  none: () => 'none',
+  shadow: () => '2px 4px 10px rgba(0,0,0,0.45)',
+  lift: () => '0 10px 28px rgba(0,0,0,0.35)',
+  neon: c => `0 0 6px rgba(255,255,255,0.9), 0 0 18px ${c}, 0 0 36px ${c}`,
+  echo: c => `4px 4px 0 ${c}55, 8px 8px 0 ${c}2e`,
+};
+
 const SHAPE_PATHS: Record<string, (w: number, h: number) => string> = {
   triangle: (w, h) => `M${w / 2},0 L${w},${h} L0,${h} Z`,
   star: (w, h) => {
@@ -101,7 +112,7 @@ function CanvasElementView({
         textAlign: td.textAlign, lineHeight: td.lineHeight, letterSpacing: td.letterSpacing,
         textDecoration: td.textDecoration, whiteSpace: 'pre-wrap', overflow: 'hidden',
         textTransform: td.uppercase ? 'uppercase' : 'none',
-        textShadow: td.textShadow ?? 'none',
+        textShadow: td.effect && td.effect !== 'none' ? TEXT_EFFECT_CSS[td.effect](td.color) : (td.textShadow ?? 'none'),
         backgroundColor: td.backgroundColor ?? 'transparent',
         padding: td.padding ?? 0,
         borderRadius: td.borderRadius ?? 0,
@@ -384,6 +395,17 @@ function PropertiesPanel({
             </div>
             <ColorPicker label="Text Color" value={td.color} onChange={v => updateData({ color: v })} />
             <div style={{ marginTop: 12 }}>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Effects</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+                {(['none', 'shadow', 'lift', 'neon', 'echo'] as const).map(fx => (
+                  <button key={fx} onClick={() => updateData({ effect: fx })}
+                    style={{ padding: '7px 2px', border: '1px solid', borderRadius: 6, background: (td.effect ?? 'none') === fx ? '#ede9fe' : '#fff', borderColor: (td.effect ?? 'none') === fx ? '#6366f1' : '#e2e8f0', cursor: 'pointer', fontSize: 10, textTransform: 'capitalize', color: '#374151' }}>
+                    {fx}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Background Color</label>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <div style={{ width: 28, height: 28, borderRadius: 6, background: td.backgroundColor ?? 'transparent', border: '1px solid #e2e8f0' }} />
@@ -662,7 +684,9 @@ async function exportToPNG(post: DesignPost): Promise<void> {
   } else if (bg.imageUrl) {
     await new Promise<void>(res => {
       const img = new window.Image();
+      if (/^https?:/i.test(bg.imageUrl!)) img.crossOrigin = 'anonymous';
       img.onload = () => { ctx.drawImage(img, 0, 0, post.canvasWidth, post.canvasHeight); res(); };
+      img.onerror = () => res();
       img.src = bg.imageUrl!;
     });
   }
@@ -680,6 +704,11 @@ async function exportToPNG(post: DesignPost): Promise<void> {
       ctx.font = `${td.fontStyle} ${td.fontWeight} ${td.fontSize}px ${td.fontFamily}`;
       ctx.fillStyle = td.color;
       ctx.textBaseline = 'top';
+      // Text effect presets (match the live CSS rendering)
+      if (td.effect === 'shadow') { ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 4; ctx.shadowBlur = 10; }
+      else if (td.effect === 'lift') { ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowOffsetY = 10; ctx.shadowBlur = 28; }
+      else if (td.effect === 'neon') { ctx.shadowColor = td.color; ctx.shadowBlur = 18; }
+      else if (td.effect === 'echo') { ctx.shadowColor = td.color + '55'; ctx.shadowOffsetX = 4; ctx.shadowOffsetY = 4; }
       if (td.backgroundColor) {
         ctx.fillStyle = td.backgroundColor;
         ctx.fillRect(0, 0, el.width, el.height);
@@ -691,18 +720,22 @@ async function exportToPNG(post: DesignPost): Promise<void> {
         const txt = td.uppercase ? line.toUpperCase() : line;
         let tx = td.textAlign === 'center' ? el.width / 2 : td.textAlign === 'right' ? el.width : 0;
         ctx.textAlign = td.textAlign as CanvasTextAlign;
+        if (td.effect === 'neon') ctx.fillText(txt, tx, li * lh); // double pass = stronger glow
         ctx.fillText(txt, tx, li * lh);
       });
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
     } else if (el.data.kind === 'image') {
       const id = el.data as ImageElement;
       await new Promise<void>(res => {
         const img = new window.Image();
+        if (/^https?:/i.test(id.src)) img.crossOrigin = 'anonymous';
         img.onload = () => {
           ctx.globalAlpha = id.opacity;
           ctx.drawImage(img, 0, 0, el.width, el.height);
           ctx.globalAlpha = 1;
           res();
         };
+        img.onerror = () => res();   // never hang the export on a dead image
         img.src = id.src;
       });
     } else if (el.data.kind === 'shape') {
@@ -775,6 +808,12 @@ export default function PostEditor() {
   const [exporting, setExporting] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageUploadRef = useRef<HTMLInputElement>(null);
+  // Smart snapping guides (Canva-style magenta lines while dragging)
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+  const clipboardRef = useRef<CanvasElement | null>(null);
+  // Stock photo search
+  const [photoQuery, setPhotoQuery] = useState('');
+  const [photoResults, setPhotoResults] = useState<string[]>([]);
 
   // Drag / resize / rotate state
   const dragRef = useRef<{
@@ -838,6 +877,29 @@ export default function PostEditor() {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save(); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         deleteElement(selectedId);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd' && selectedId) { e.preventDefault(); duplicateElement(selectedId); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedId) {
+        const el = elements.find(el => el.id === selectedId);
+        if (el) clipboardRef.current = { ...el, data: { ...el.data } };
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboardRef.current) {
+        e.preventDefault();
+        const c = clipboardRef.current;
+        addElement({ ...c, id: uid(), x: c.x + 20, y: c.y + 20, zIndex: Math.max(0, ...elements.map(el => el.zIndex)) + 1 });
+      }
+      if (e.key === 'Escape') { setSelectedId(null); setEditingId(null); }
+      // Arrow-key nudging (Shift = 10px)
+      if (selectedId && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const el = elements.find(el => el.id === selectedId);
+        if (el && !el.locked) {
+          updateElementAndHistory(selectedId, {
+            x: el.x + (e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0),
+            y: el.y + (e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0),
+          });
+        }
       }
     };
     window.addEventListener('keydown', handler);
@@ -943,7 +1005,25 @@ export default function PostEditor() {
     const orig = dr.origEl;
 
     if (dr.type === 'drag') {
-      updateElement(dr.id, { x: orig.x + dx, y: orig.y + dy });
+      // Smart snapping: canvas edges/center + other elements' edges/centers
+      let nx = orig.x + dx, ny = orig.y + dy;
+      const SNAP = 6 / zoom;
+      const vTargets = [0, post.canvasWidth / 2, post.canvasWidth];
+      const hTargets = [0, post.canvasHeight / 2, post.canvasHeight];
+      for (const other of elements) {
+        if (other.id === dr.id || !other.visible) continue;
+        vTargets.push(other.x, other.x + other.width / 2, other.x + other.width);
+        hTargets.push(other.y, other.y + other.height / 2, other.y + other.height);
+      }
+      const gv: number[] = [], gh: number[] = [];
+      outerV: for (const off of [0, orig.width / 2, orig.width]) {
+        for (const t of vTargets) { if (Math.abs(nx + off - t) < SNAP) { nx = t - off; gv.push(t); break outerV; } }
+      }
+      outerH: for (const off of [0, orig.height / 2, orig.height]) {
+        for (const t of hTargets) { if (Math.abs(ny + off - t) < SNAP) { ny = t - off; gh.push(t); break outerH; } }
+      }
+      setGuides({ v: gv, h: gh });
+      updateElement(dr.id, { x: nx, y: ny });
     } else if (dr.type === 'resize') {
       const h = dr.handle!;
       let { x, y, width, height } = orig;
@@ -964,6 +1044,7 @@ export default function PostEditor() {
   };
 
   const handleCanvasPointerUp = () => {
+    setGuides({ v: [], h: [] });
     if (dragRef.current) {
       const el = elements.find(e => e.id === dragRef.current!.id);
       if (el) pushHistory(elements, background);
@@ -1027,6 +1108,54 @@ export default function PostEditor() {
     };
     reader.readAsDataURL(file);
     setTool('select');
+  };
+
+  /** Align the selected element to the canvas (Canva's Position menu). */
+  const alignElement = (id: string, mode: 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom') => {
+    const el = elements.find(e => e.id === id);
+    if (!el) return;
+    const updates: Partial<CanvasElement> = {};
+    if (mode === 'left') updates.x = 0;
+    if (mode === 'centerX') updates.x = (post.canvasWidth - el.width) / 2;
+    if (mode === 'right') updates.x = post.canvasWidth - el.width;
+    if (mode === 'top') updates.y = 0;
+    if (mode === 'centerY') updates.y = (post.canvasHeight - el.height) / 2;
+    if (mode === 'bottom') updates.y = post.canvasHeight - el.height;
+    updateElementAndHistory(id, updates);
+  };
+
+  /** Canva-style text presets. */
+  const addTextPreset = (preset: 'heading' | 'subheading' | 'body') => {
+    const cfgMap = {
+      heading:    { text: 'Add a heading',    fontSize: Math.round(post.canvasWidth * 0.075), fontWeight: '800' as const },
+      subheading: { text: 'Add a subheading', fontSize: Math.round(post.canvasWidth * 0.045), fontWeight: '600' as const },
+      body:       { text: 'Add a little bit of body text', fontSize: Math.round(post.canvasWidth * 0.028), fontWeight: 'normal' as const },
+    }[preset];
+    const w = post.canvasWidth * 0.8;
+    const h = cfgMap.fontSize * 1.5;
+    const el: CanvasElement = {
+      id: uid(), type: 'text', x: (post.canvasWidth - w) / 2, y: post.canvasHeight / 2 - h / 2,
+      width: w, height: h, rotation: 0, zIndex: elements.length + 1, locked: false, visible: true,
+      data: { kind: 'text', text: cfgMap.text, fontSize: cfgMap.fontSize, fontFamily: 'Inter', color: '#1e293b', fontWeight: cfgMap.fontWeight, fontStyle: 'normal', textAlign: 'center', lineHeight: 1.15, letterSpacing: 0, textDecoration: 'none' },
+    };
+    addElement(el);
+    setTimeout(() => setEditingId(el.id), 100);
+  };
+
+  /** Stock photo search (keyword images via the server-side image proxy). */
+  const searchPhotos = () => {
+    const q = photoQuery.trim();
+    if (!q) return;
+    setPhotoResults(Array.from({ length: 8 }, (_, i) => `${API_BASE}/api/img-proxy.php?q=${encodeURIComponent(q)}&sig=${i + 1}`));
+  };
+
+  const addStockPhoto = (url: string) => {
+    const w = post.canvasWidth * 0.6, h = w * (9 / 16);
+    addElement({
+      id: uid(), type: 'image', x: (post.canvasWidth - w) / 2, y: (post.canvasHeight - h) / 2,
+      width: w, height: h, rotation: 0, zIndex: elements.length + 1, locked: false, visible: true,
+      data: { kind: 'image', src: url, objectFit: 'cover', opacity: 1, borderRadius: 0 },
+    });
   };
 
   const handleCanvasClick = (e: React.MouseEvent) => {
@@ -1160,9 +1289,26 @@ export default function PostEditor() {
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {leftPanel === 'elements' && (
               <div style={{ padding: 12 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {/* Canva-style text presets */}
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Text</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                  <button onClick={() => addTextPreset('heading')}
+                    style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 17, fontWeight: 800, color: '#17191c', textAlign: 'left' }}>
+                    Add a heading
+                  </button>
+                  <button onClick={() => addTextPreset('subheading')}
+                    style={{ padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#374151', textAlign: 'left' }}>
+                    Add a subheading
+                  </button>
+                  <button onClick={() => addTextPreset('body')}
+                    style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 12, color: '#64748b', textAlign: 'left' }}>
+                    Add a little bit of body text
+                  </button>
+                </div>
+
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Elements</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
                   {[
-                    { icon: <Type size={16} />, label: 'Add Text', fn: addText, color: '#6366f1' },
                     { icon: <Square size={16} />, label: 'Add Shape', fn: () => addShape(), color: '#0ea5e9' },
                     { icon: <Image size={16} />, label: 'Upload Image', fn: () => imageUploadRef.current?.click(), color: '#22c55e' },
                     { icon: <Smile size={16} />, label: 'Add Sticker', fn: () => setShowStickers(s => !s), color: '#f59e0b' },
@@ -1173,6 +1319,27 @@ export default function PostEditor() {
                     </button>
                   ))}
                 </div>
+
+                {/* Stock photo search */}
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Stock Photos</div>
+                <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+                  <input value={photoQuery} onChange={e => setPhotoQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchPhotos()}
+                    placeholder="Search photos… e.g. city"
+                    style={{ flex: 1, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12.5, outline: 'none', minWidth: 0 }} />
+                  <button onClick={searchPhotos}
+                    style={{ padding: '8px 12px', border: 'none', borderRadius: 8, background: '#17191c', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Go</button>
+                </div>
+                {photoResults.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    {photoResults.map((url, i) => (
+                      <button key={i} onClick={() => addStockPhoto(url)} title="Add to canvas"
+                        style={{ padding: 0, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#f1f5f9', aspectRatio: '16/10' }}>
+                        <img src={url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          onError={e => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {leftPanel === 'layers' && (
@@ -1212,6 +1379,13 @@ export default function PostEditor() {
             }}
           >
             <CanvasBg bg={background} width={post.canvasWidth} height={post.canvasHeight} />
+            {/* Smart snap guides */}
+            {guides.v.map((x, i) => (
+              <div key={`gv${i}`} style={{ position: 'absolute', left: x, top: 0, bottom: 0, width: 1.5, background: '#ec4899', zIndex: 9999, pointerEvents: 'none' }} />
+            ))}
+            {guides.h.map((y, i) => (
+              <div key={`gh${i}`} style={{ position: 'absolute', top: y, left: 0, right: 0, height: 1.5, background: '#ec4899', zIndex: 9999, pointerEvents: 'none' }} />
+            ))}
             {[...elements].sort((a, b) => a.zIndex - b.zIndex).map(el => (
               <CanvasElementView
                 key={el.id}
@@ -1254,6 +1428,38 @@ export default function PostEditor() {
             ))}
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
+            {rightPanel === 'properties' && selectedEl && (
+              <div style={{ padding: '14px 16px 4px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Arrange</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, marginBottom: 10 }}>
+                  {([['left', 'L'], ['centerX', 'C'], ['right', 'R'], ['top', 'T'], ['centerY', 'M'], ['bottom', 'B']] as const).map(([mode, label]) => (
+                    <button key={mode} onClick={() => alignElement(selectedEl.id, mode)}
+                      title={{ left: 'Align left', centerX: 'Center horizontally', right: 'Align right', top: 'Align top', centerY: 'Center vertically', bottom: 'Align bottom' }[mode]}
+                      style={{ padding: '7px 0', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#374151' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+                  {([['x', 'X'], ['y', 'Y'], ['width', 'W'], ['height', 'H']] as const).map(([key, label]) => (
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8', width: 12 }}>{label}</span>
+                      <input type="number" value={Math.round(selectedEl[key] as number)}
+                        onChange={e => updateElementAndHistory(selectedEl.id, { [key]: Number(e.target.value) })}
+                        style={{ flex: 1, padding: '5px 7px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, outline: 'none', minWidth: 0 }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8' }}>Rotate</span>
+                  <input type="range" min={-180} max={180} value={Math.round(selectedEl.rotation)}
+                    onChange={e => updateElement(selectedEl.id, { rotation: Number(e.target.value) })}
+                    onMouseUp={() => pushHistory(elements, background)}
+                    style={{ flex: 1 }} />
+                  <span style={{ fontSize: 11, color: '#374151', minWidth: 34, textAlign: 'right' }}>{Math.round(selectedEl.rotation)}°</span>
+                </div>
+              </div>
+            )}
             {rightPanel === 'properties' ? (
               <PropertiesPanel
                 el={selectedEl}

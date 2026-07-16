@@ -3,9 +3,13 @@ export type AspectRatio = '1:1' | '9:16' | '16:9' | '4:5' | '3:2';
 export type ElementType = 'text' | 'image' | 'shape' | 'sticker';
 export type ShapeType = 'rect' | 'circle' | 'triangle' | 'star' | 'diamond' | 'arrow' | 'line' | 'rounded-rect' | 'heart' | 'hexagon';
 
+export type TextEffect = 'none' | 'shadow' | 'lift' | 'neon' | 'echo';
+
 export interface TextElement {
   kind: 'text';
   text: string;
+  /** Canva-style text effect preset (rendered live and in PNG export). */
+  effect?: TextEffect;
   fontSize: number;
   fontFamily: string;
   color: string;
