@@ -129,70 +129,113 @@ function PostCard({
   );
 }
 
+/** True miniature render of a template — background + every element, scaled. */
+function MiniPreview({ t, width }: { t: typeof TEMPLATES[0]; width: number }) {
+  const scale = width / t.canvasWidth;
+  const height = t.canvasHeight * scale;
+  const bg = t.background;
+  const bgStyle: React.CSSProperties = bg.type === 'gradient'
+    ? { background: `linear-gradient(${bg.gradientAngle}deg, ${bg.gradientStart}, ${bg.gradientEnd})` }
+    : { background: bg.color };
+  return (
+    <div style={{ width, height, position: 'relative', overflow: 'hidden', ...bgStyle }}>
+      {[...t.elements].sort((a, b) => a.zIndex - b.zIndex).map((el, i) => {
+        const st: React.CSSProperties = {
+          position: 'absolute',
+          left: el.x * scale, top: el.y * scale,
+          width: el.width * scale, height: el.height * scale,
+          transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+          pointerEvents: 'none',
+        };
+        const d = el.data as unknown as Record<string, unknown>;
+        if (d.kind === 'text') {
+          return (
+            <div key={i} style={{ ...st, color: d.color as string, fontSize: Math.max(3, (d.fontSize as number) * scale), fontFamily: d.fontFamily as string, fontWeight: d.fontWeight as React.CSSProperties['fontWeight'], fontStyle: d.fontStyle as string, textAlign: d.textAlign as React.CSSProperties['textAlign'], lineHeight: d.lineHeight as number, letterSpacing: (d.letterSpacing as number) * scale, whiteSpace: 'pre-wrap', textTransform: d.uppercase ? 'uppercase' : 'none', overflow: 'hidden' }}>
+              {d.text as string}
+            </div>
+          );
+        }
+        if (d.kind === 'shape') {
+          const shapeType = d.shapeType as string;
+          const radius = shapeType === 'circle' ? '50%' : shapeType === 'rounded-rect' ? 6 * scale + 4 : 0;
+          return <div key={i} style={{ ...st, background: (d.fill as string) === 'transparent' ? 'transparent' : d.fill as string, border: (d.strokeWidth as number) > 0 ? `${Math.max(1, (d.strokeWidth as number) * scale)}px solid ${d.stroke}` : 'none', borderRadius: radius, opacity: d.opacity as number }} />;
+        }
+        if (d.kind === 'image') {
+          return (
+            <div key={i} style={{ ...st, background: '#26262666', borderRadius: (d.borderRadius as number) * scale, overflow: 'hidden' }}>
+              <img src={d.src as string} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                onError={e => { e.currentTarget.style.display = 'none'; }} />
+            </div>
+          );
+        }
+        if (d.kind === 'sticker') {
+          return <div key={i} style={{ ...st, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: (d.fontSize as number) * scale }}>{d.emoji as string}</div>;
+        }
+        return null;
+      })}
+    </div>
+  );
+}
+
 function TemplateGallery({ onSelect }: { onSelect: (template: typeof TEMPLATES[0]) => void }) {
   const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState('');
   const categories = ['All', ...new Set(TEMPLATES.map(t => t.category))];
-  const filtered = category === 'All' ? TEMPLATES : TEMPLATES.filter(t => t.category === category);
+  const q = query.trim().toLowerCase();
+  const filtered = TEMPLATES.filter(t =>
+    (category === 'All' || t.category === category) &&
+    (!q || t.name.toLowerCase().includes(q) || t.tags.some(tag => tag.includes(q)))
+  );
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        {categories.map(c => (
-          <button
-            key={c}
-            onClick={() => setCategory(c)}
-            style={{
-              padding: '6px 14px', borderRadius: 99, border: '1px solid', fontSize: 13, cursor: 'pointer',
-              fontWeight: category === c ? 600 : 400,
-              background: category === c ? '#6366f1' : 'transparent',
-              borderColor: category === c ? '#6366f1' : '#e2e8f0',
-              color: category === c ? '#fff' : '#64748b',
-            }}
-          >{c}</button>
-        ))}
+      {/* Search + category chips */}
+      <div style={{ position: 'sticky', top: 0, background: '#fff', paddingBottom: 12, zIndex: 5 }}>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search 40+ templates… try 'fashion' or 'sale'"
+          style={{ width: '100%', padding: '11px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }} />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {categories.map(c => (
+            <button key={c} onClick={() => setCategory(c)}
+              style={{
+                padding: '6px 14px', borderRadius: 99, border: '1px solid', fontSize: 12.5, cursor: 'pointer',
+                fontWeight: 600,
+                background: category === c ? '#17191c' : '#fff',
+                borderColor: category === c ? '#17191c' : '#e2e8f0',
+                color: category === c ? '#fff' : '#64748b',
+              }}
+            >{c}</button>
+          ))}
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-        {filtered.map(t => {
-          const thumb = t.thumbnail;
-          let bg: React.CSSProperties = {};
-          if (thumb.startsWith('gradient:')) {
-            const [, rest] = thumb.split('gradient:');
-            const [angle, ...colors] = rest.split(',');
-            bg = { background: `linear-gradient(${angle}deg, ${colors.join(',')})` };
-          } else if (thumb.startsWith('color:')) {
-            bg = { backgroundColor: thumb.replace('color:', '') };
-          }
 
-          const [rw, rh] = t.aspectRatio.split(':').map(Number);
-          const tw = 160, th = Math.round((rh / rw) * tw);
+      {filtered.length === 0 && (
+        <div style={{ padding: '40px 0', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No templates match "{query}"</div>
+      )}
 
-          return (
-            <div
-              key={t.id}
-              onClick={() => onSelect(t)}
-              style={{ cursor: 'pointer', borderRadius: 10, overflow: 'hidden', border: '2px solid transparent', transition: 'all 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366f1')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
-            >
-              <div style={{ width: tw, height: Math.min(th, 200), ...bg, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                <div style={{ width: '80%', textAlign: 'center' }}>
-                  {t.elements.slice(0, 2).map((el, i) =>
-                    el.type === 'text'
-                      ? <p key={i} style={{ color: (el.data as any).color ?? '#fff', fontSize: Math.max(6, ((el.data as any).fontSize ?? 16) * 0.25), fontWeight: (el.data as any).fontWeight ?? 'normal', margin: '2px 0', lineHeight: 1.2, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                          {(el.data as any).text}
-                        </p>
-                      : null
-                  )}
-                </div>
-              </div>
-              <div style={{ padding: '8px 10px', background: '#fff', borderTop: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>{t.category}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
+        {filtered.map(t => (
+          <div
+            key={t.id}
+            onClick={() => onSelect(t)}
+            className="tpl-card"
+            style={{ cursor: 'pointer', borderRadius: 12, overflow: 'hidden', border: '1px solid #eceef2', background: '#fff', position: 'relative', transition: 'box-shadow 0.15s, transform 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 12px 32px -8px rgba(16,24,40,0.2)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
+          >
+            <div style={{ position: 'relative', maxHeight: 240, overflow: 'hidden', display: 'flex', justifyContent: 'center', background: '#f4f5f7' }}>
+              <MiniPreview t={t} width={170} />
+              <div className="tpl-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(15,17,20,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s' }}>
+                <span style={{ padding: '9px 18px', background: '#fff', borderRadius: 99, fontSize: 12.5, fontWeight: 700, color: '#17191c' }}>Use template</span>
               </div>
             </div>
-          );
-        })}
+            <div style={{ padding: '9px 12px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+              <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>{t.category} · {t.aspectRatio}</div>
+            </div>
+          </div>
+        ))}
       </div>
+      <style>{`.tpl-card:hover .tpl-overlay { opacity: 1 !important; }`}</style>
     </div>
   );
 }
