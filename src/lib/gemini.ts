@@ -355,6 +355,44 @@ Return ONLY JSON: {"months": [{"theme": "...", "focus": "...", "holidays": ["...
   return months;
 }
 
+/**
+ * Onboarding: generate one month's email + SMS campaign content from the
+ * business profile and that month's planned theme.
+ */
+export async function generateMonthCampaigns(input: {
+  company: string; industry: string; description: string; audience: string; voice: string;
+  monthLabel: string; theme: string; focus: string; ideas: string[]; holidays: string[];
+  wantSms: boolean;
+}): Promise<{ emails: { day: number; subject: string; body: string }[]; sms: { day: number; message: string }[] }> {
+  const prompt = `You are an expert email/SMS copywriter. Write a ${input.monthLabel} campaign for this business.
+
+Business: ${input.company} (${input.industry})
+What they do: ${input.description.slice(0, 350)}
+Audience: ${input.audience.slice(0, 250)}
+Brand voice: ${input.voice}
+Monthly theme: ${input.theme} — ${input.focus.slice(0, 200)}
+Planned ideas: ${input.ideas.join('; ')}
+Key dates: ${input.holidays.join(', ') || 'none'}
+
+Write:
+- 5 marketing EMAILS spread across the month (days 1, 7, 13, 19, 26). Each: a subject line under 55 chars, and a 90-160 word plain-text body. Use {{firstName}} exactly once per body as the greeting merge tag. Vary angles: value/education, social proof, offer, holiday tie-in, last-chance. End each with a short call to action.
+${input.wantSms ? '- 4 SMS messages (days 3, 10, 17, 24). Each under 160 characters, starts with the business name, includes {{firstName}} where natural, one clear CTA. No links other than "reply YES".' : ''}
+
+Return ONLY JSON: {"emails": [{"day": 1, "subject": "...", "body": "..."}, ...5 items], "sms": [${input.wantSms ? '{"day": 3, "message": "..."}, ...4 items' : ''}]}`;
+  const json = await callGemini(prompt, 0.75);
+  const r = JSON.parse(json) as { emails?: { day?: number; subject?: string; body?: string }[]; sms?: { day?: number; message?: string }[] };
+  const emails = (r.emails ?? [])
+    .filter(e => e.subject && e.body)
+    .map((e, i) => ({ day: typeof e.day === 'number' ? e.day : [1, 7, 13, 19, 26][i] ?? i * 6 + 1, subject: e.subject!, body: e.body! }))
+    .slice(0, 5);
+  const sms = (r.sms ?? [])
+    .filter(s => s.message)
+    .map((s, i) => ({ day: typeof s.day === 'number' ? s.day : [3, 10, 17, 24][i] ?? i * 7 + 3, message: s.message! }))
+    .slice(0, 4);
+  if (emails.length < 3) throw new Error('The AI returned too few emails.');
+  return { emails, sms };
+}
+
 export interface AIDesignElement {
   type: 'text' | 'shape' | 'sticker';
   x: number;

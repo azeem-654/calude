@@ -7,19 +7,126 @@
  * with the theme, focus, holidays, ideas and audit trail.
  */
 import { useMemo, useState } from 'react';
-import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History } from 'lucide-react';
-import { loadOnboarding, statusMeta } from '../../services/onboarding';
+import { createPortal } from 'react-dom';
+import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X } from 'lucide-react';
+import { loadOnboarding, saveOnboarding, statusMeta, auditEntry, sanitizeText } from '../../services/onboarding';
+import { startMonthGeneration, publishMonth } from '../../services/contentGen';
+import { useApp } from '../../context/AppContext';
+import { getSession } from '../../services/auth';
+import type { ContentMonth } from '../../types/onboarding';
 
 const INK = '#17191c';
 const MUTED = '#8a8f98';
 const FROST: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 24, padding: 20 };
 const CARD: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)' };
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e4e6ea',
+  fontSize: 12.5, color: INK, outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box', fontFamily: 'inherit',
+};
+
+/* ── Review & approve modal for a month awaiting approval ── */
+function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth; onClose: () => void; onPublished: () => void }) {
+  const { addSequence, addCampaign, addNotification } = useApp();
+  const [content, setContent] = useState(() => month.generated!);
+  const actor = getSession()?.user.email || 'owner';
+
+  const persistEdits = (next: typeof content) => {
+    setContent(next);
+    const ob = loadOnboarding();
+    saveOnboarding({
+      ...ob,
+      plan: ob.plan.map(m => m.index === month.index
+        ? { ...m, generated: next, audit: [...m.audit.filter(a => a.action !== 'Content edited during review'), auditEntry('Content edited during review', actor)] }
+        : m),
+    });
+  };
+
+  const approve = () => {
+    const published = publishMonth(month.index, { addSequence, addCampaign }, actor);
+    if (published) {
+      addNotification(`${month.label} approved — email sequence${content.sms.length ? ' + SMS flow' : ''} are now live in Marketing`, 'success');
+      onPublished();
+      onClose();
+    } else {
+      addNotification('Could not publish this month — refresh and try again', 'error');
+    }
+  };
+
+  // Portal to <body>: the widget sits inside an animated container whose
+  // stacking context would otherwise trap this fixed overlay below siblings.
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 4200, backgroundColor: 'rgba(23,25,28,0.55)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ width: 'min(760px, 100%)', maxHeight: '90vh', backgroundColor: '#f7f8fa', borderRadius: 22, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px -16px rgba(23,25,28,0.5)' }}>
+        <div style={{ padding: '18px 24px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eceef1', backgroundColor: '#fff' }}>
+          <div>
+            <h3 style={{ fontSize: 16.5, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Review {month.label}</h3>
+            <p style={{ fontSize: 12, color: MUTED, margin: '3px 0 0' }}>
+              "{month.theme}" — edit anything below, then approve to push it live into Marketing.
+            </p>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, border: 'none', backgroundColor: '#f0f1f3', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Mail size={12} /> Email sequence — {content.emails.length} emails
+          </span>
+          {content.emails.map((e, i) => (
+            <div key={i} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: INK, padding: '3px 10px', borderRadius: 999, flexShrink: 0 }}>DAY {e.day}</span>
+                <input style={{ ...inputStyle, fontWeight: 700 }} value={e.subject} maxLength={80}
+                  onChange={ev => persistEdits({ ...content, emails: content.emails.map((x, xi) => xi === i ? { ...x, subject: sanitizeText(ev.target.value, 80) || x.subject } : x) })} />
+              </div>
+              <textarea style={{ ...inputStyle, minHeight: 92, resize: 'vertical', lineHeight: 1.55 }} value={e.body} maxLength={1600}
+                onChange={ev => persistEdits({ ...content, emails: content.emails.map((x, xi) => xi === i ? { ...x, body: ev.target.value.slice(0, 1600) } : x) })} />
+            </div>
+          ))}
+
+          {content.sms.length > 0 && (
+            <>
+              <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <MessageSquare size={12} /> SMS flow — {content.sms.length} messages
+              </span>
+              {content.sms.map((s, i) => (
+                <div key={i} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: '#8b5cf6', padding: '3px 10px', borderRadius: 999, flexShrink: 0, marginTop: 8 }}>DAY {s.day}</span>
+                  <div style={{ flex: 1 }}>
+                    <textarea style={{ ...inputStyle, minHeight: 52, resize: 'vertical' }} value={s.message} maxLength={160}
+                      onChange={ev => persistEdits({ ...content, sms: content.sms.map((x, xi) => xi === i ? { ...x, message: ev.target.value.slice(0, 160) } : x) })} />
+                    <span style={{ fontSize: 10.5, color: s.message.length > 150 ? '#c77414' : MUTED, fontWeight: 600 }}>{s.message.length}/160</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'flex-end', gap: 10, borderTop: '1px solid #eceef1', backgroundColor: '#fff' }}>
+          <button onClick={onClose} style={{ padding: '10px 18px', borderRadius: 999, border: '1.5px solid #e4e6ea', backgroundColor: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: INK }}>
+            Keep in review
+          </button>
+          <button onClick={approve} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 20px', borderRadius: 999, border: 'none', backgroundColor: INK, color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 800 }}>
+            <CheckCheck size={14} color="#c7f441" /> Approve & publish
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: () => void; refreshKey: number }) {
-  // refreshKey busts the memo whenever the wizard closes (it writes to localStorage).
-  const ob = useMemo(() => loadOnboarding(), [refreshKey]);
+  const { addNotification } = useApp();
+  const [bump, setBump] = useState(0);
+  // refreshKey/bump bust the memo whenever the wizard closes or a job/publish updates storage.
+  const ob = useMemo(() => loadOnboarding(), [refreshKey, bump]);
   const [openMonth, setOpenMonth] = useState<number | null>(null);
   const [showAudit, setShowAudit] = useState(false);
+  const [reviewMonth, setReviewMonth] = useState<number | null>(null);
+  const actor = getSession()?.user.email || 'owner';
 
   if (!ob.completed || !ob.plan.length) {
     return (
@@ -151,14 +258,49 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
                 ))}
               </div>
               {open.status === 'PLAN_GENERATED' && (
-                <p style={{ fontSize: 11, color: MUTED, margin: '10px 0 0', lineHeight: 1.5 }}>
-                  Full content for this month (emails, posts, tasks) is generated with your approval when the month approaches — nothing goes live without review.
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ fontSize: 11, color: MUTED, margin: '0 0 8px', lineHeight: 1.5 }}>
+                    Full content for this month is generated on demand and never goes live without your review.
+                  </p>
+                  <button onClick={() => { startMonthGeneration(open.index, addNotification, actor); setBump(b => b + 1); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999, border: 'none', backgroundColor: INK, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    <Wand2 size={13} color="#c7f441" /> Generate content for {open.label.split(' ')[0]}
+                  </button>
+                </div>
+              )}
+              {open.status === 'GENERATING' && (
+                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 12, backgroundColor: '#fdeeda' }}>
+                  <Loader size={14} color="#c77414" style={{ animation: 'spin 0.9s linear infinite' }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#c77414' }}>Generating emails & SMS in the background — you'll get a notification.</span>
+                </div>
+              )}
+              {open.status === 'AWAITING_APPROVAL' && open.generated && (
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 8px' }}>
+                    <span style={{ fontWeight: 700, color: INK }}>{open.counts.emails} emails</span> and <span style={{ fontWeight: 700, color: INK }}>{open.counts.sms} SMS</span> are ready. Nothing sends until you approve.
+                  </p>
+                  <button onClick={() => setReviewMonth(open.index)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999, border: 'none', backgroundColor: '#8b5cf6', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    <CheckCheck size={13} /> Review & approve
+                  </button>
+                </div>
+              )}
+              {open.status === 'PUBLISHED' && (
+                <p style={{ fontSize: 11.5, color: '#3f9142', fontWeight: 700, margin: '12px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCheck size={13} /> Live in Marketing: {open.counts.emails}-email sequence{open.counts.sms ? ` + ${open.counts.sms}-message SMS flow` : ''}.
                 </p>
               )}
             </div>
           </div>
         )}
       </div>
+
+      {reviewMonth != null && (() => {
+        const m = ob.plan.find(x => x.index === reviewMonth);
+        return m?.generated ? (
+          <MonthReviewModal month={m} onClose={() => setReviewMonth(null)} onPublished={() => setBump(b => b + 1)} />
+        ) : null;
+      })()}
     </div>
   );
 }

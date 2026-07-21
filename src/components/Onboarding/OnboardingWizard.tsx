@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Building2, Target, Megaphone, CalendarRange, X, ArrowRight, ArrowLeft,
-  Check, Loader, Plus, Trash2, Wand2, PencilLine,
+  Check, Loader, Plus, Trash2, Wand2, PencilLine, Users, UploadCloud, FileText,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { activeAccount, getActiveAccountId, updateSubAccount } from '../../services/tenancy';
@@ -22,6 +22,9 @@ import {
   sanitizeText, isValidEmail, isValidUrl, statusMeta,
   INDUSTRIES, VOICE_OPTIONS, GOAL_OPTIONS, CHANNEL_OPTIONS, defaultStagesFor,
 } from '../../services/onboarding';
+import { parseCsv, autoMapHeaders, buildContacts, CRM_FIELDS } from '../../services/csvImport';
+import type { CrmFieldId } from '../../services/csvImport';
+import { startMonthGeneration } from '../../services/contentGen';
 import type { OnboardingState, ContentMonth } from '../../types/onboarding';
 
 const INK = '#17191c';
@@ -68,18 +71,44 @@ const STEPS = [
   { icon: Building2, title: 'Business profile' },
   { icon: Target, title: 'Goals & sales process' },
   { icon: Megaphone, title: 'Channels' },
+  { icon: Users, title: 'Contacts' },
   { icon: CalendarRange, title: '12-month plan' },
 ];
+const PLAN_STEP = STEPS.length - 1;
 
 export default function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { updateSchedule, createPipeline, updatePipeline, addNotification } = useApp();
+  const { updateSchedule, createPipeline, updatePipeline, addNotification, bulkImportContacts, addCustomFieldDefs, addCampaign, contacts } = useApp();
   const [ob, setOb] = useState<OnboardingState>(() => loadOnboarding());
-  const [step, setStep] = useState(() => Math.min(loadOnboarding().step, 3));
+  const [step, setStep] = useState(() => Math.min(loadOnboarding().step, PLAN_STEP));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [launching, setLaunching] = useState(false);
+
+  /* ── Step 4: CSV import state ── */
+  const [csv, setCsv] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [csvName, setCsvName] = useState('');
+  const [csvError, setCsvError] = useState('');
+  const [mapping, setMapping] = useState<CrmFieldId[]>([]);
+  const importResult = useMemo(() => {
+    if (!csv || !csv.rows.length) return null;
+    return buildContacts(csv.headers, csv.rows, mapping, contacts.map(c => ({ email: c.email, phone: c.phone })));
+  }, [csv, mapping, contacts]);
+
+  const ingestCsvText = (text: string, name: string) => {
+    setCsvError('');
+    const parsed = parseCsv(text);
+    if (!parsed.headers.length || !parsed.rows.length) {
+      setCsvError('That file doesn\'t look like a CSV with a header row and at least one contact.');
+      setCsv(null);
+      return;
+    }
+    if (parsed.rows.length > 5000) parsed.rows = parsed.rows.slice(0, 5000);
+    setCsv(parsed);
+    setCsvName(name);
+    setMapping(autoMapHeaders(parsed.headers));
+  };
 
   // Prefill from the sub-account record the first time the wizard opens.
   useEffect(() => {
@@ -137,7 +166,7 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
     const next = { ...ob, step: step + 1, goals: { ...ob.goals, salesStages: stages } };
     persist(next);
     setStep(step + 1);
-    if (step === 2 && !ob.plan.length) void generatePlan(next);
+    if (step === PLAN_STEP - 1 && !ob.plan.length) void generatePlan(next);
   };
 
   const generatePlan = async (state: OnboardingState) => {
@@ -146,7 +175,7 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
     try {
       const { months, source } = await buildTwelveMonthPlan(state.profile, state.goals, state.channels);
       persist({
-        ...state, step: 3, plan: months, planSource: source,
+        ...state, step: PLAN_STEP, plan: months, planSource: source,
         audit: [...state.audit, auditEntry(`12-month plan generated via ${source === 'ai' ? 'Gemini AI' : 'smart templates'}`, actorEmail())],
       });
     } catch {
@@ -203,15 +232,62 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
       })),
     });
 
-    // 4) Persist onboarding as completed
+    // 4) Contacts import + AI segments + auto welcome campaigns
+    const extraAudit = [];
+    let importSummary: OnboardingState['importSummary'];
+    if (csv && importResult && importResult.contacts.length) {
+      bulkImportContacts(importResult.contacts);
+      if (importResult.customHeaders.length) {
+        addCustomFieldDefs(importResult.customHeaders.map(h => ({ key: h, label: h, createdAt: new Date().toISOString() })));
+      }
+      importSummary = {
+        total: csv.rows.length, imported: importResult.contacts.length,
+        duplicates: importResult.duplicates, invalid: importResult.invalid,
+        segments: importResult.segments,
+      };
+      extraAudit.push(auditEntry(`Imported ${importResult.contacts.length} contacts into ${importResult.segments.length} AI segments (${importResult.duplicates} duplicates, ${importResult.invalid} invalid skipped)`, actorEmail()));
+
+      const emailSeg = importResult.segments.find(s => s.tag === 'Email-Ready');
+      if (emailSeg) {
+        addCampaign({
+          name: `Welcome: new ${cleanName} contacts`,
+          description: 'Auto-created by onboarding for freshly imported contacts.',
+          type: 'email', status: 'draft', goal: 'Warm up imported contacts', audience: 'Email-Ready',
+          subject: `Welcome to ${cleanName}, {{firstName}}!`,
+          emailBody: `Hi {{firstName}},\n\nThanks for being part of the ${cleanName} community! We help ${sanitizeText(p.audience, 120) || 'our customers'} and we're glad you're here.\n\nExpect useful tips (never spam) about ${sanitizeText(p.description, 100).toLowerCase() || 'what we do'} — and if you ever need us, just hit reply.\n\n— The ${cleanName} team`,
+          sent: 0, opened: 0, clicked: 0, replied: 0, createdAt: new Date().toISOString(),
+        });
+        extraAudit.push(auditEntry(`Draft welcome email campaign created for ${emailSeg.count} Email-Ready contacts`, actorEmail()));
+      }
+      const smsSeg = importResult.segments.find(s => s.tag === 'SMS-Ready');
+      if (smsSeg && ob.channels.includes('sms')) {
+        addCampaign({
+          name: `SMS welcome: ${cleanName}`,
+          description: 'Auto-created by onboarding for SMS-Ready imported contacts.',
+          type: 'sms', status: 'draft', goal: 'Confirm SMS opt-in', audience: 'SMS-Ready',
+          smsBody: `${cleanName}: Hi {{firstName}}! You're on our VIP text list for tips & offers. Reply STOP anytime to opt out.`,
+          sent: 0, opened: 0, clicked: 0, replied: 0, createdAt: new Date().toISOString(),
+        });
+        extraAudit.push(auditEntry(`Draft SMS welcome campaign created for ${smsSeg.count} SMS-Ready contacts`, actorEmail()));
+      }
+    }
+
+    // 5) Persist onboarding as completed
     persist({
-      ...ob, completed: true, skipped: false, completedAt: new Date().toISOString(), step: 3,
-      createdPipelineId: pipe.id,
+      ...ob, completed: true, skipped: false, completedAt: new Date().toISOString(), step: PLAN_STEP,
+      createdPipelineId: pipe.id, importSummary,
       audit: [...ob.audit,
         auditEntry('Workspace configured: brand kit, business hours, sales pipeline', actorEmail()),
+        ...extraAudit,
         auditEntry('Onboarding completed — 12-month content pipeline is live', actorEmail())],
     });
     addNotification(`${cleanName} is set up — your 12-month content plan is ready on the dashboard`, 'success');
+
+    // 6) Background job: generate Month 1 content (emails + SMS) right away
+    const now = new Date();
+    const firstIdx = ob.plan.find(m => m.year === now.getFullYear() && m.month === now.getMonth())?.index ?? ob.plan[0].index;
+    startMonthGeneration(firstIdx, addNotification, actorEmail());
+
     setLaunching(false);
     onClose();
   };
@@ -417,6 +493,100 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
 
           {step === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <p style={{ fontSize: 13, color: '#5c6066', margin: 0 }}>
+                Import your contacts now and the AI auto-segments them into marketing-ready audiences (Hot Lead, SMS-Ready, B2B/B2C…).
+                This step is optional — you can also import later from the Contacts module.
+              </p>
+
+              {!csv && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <label style={{
+                    border: '2px dashed #cfd3d9', borderRadius: 16, padding: '30px 18px', cursor: 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, backgroundColor: '#fff',
+                  }}>
+                    <UploadCloud size={26} color={MUTED} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Upload a .csv file</span>
+                    <span style={{ fontSize: 11.5, color: MUTED }}>Header row required — up to 5,000 contacts</span>
+                    <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = () => ingestCsvText(String(reader.result || ''), f.name);
+                      reader.onerror = () => setCsvError('Could not read that file — try again.');
+                      reader.readAsText(f);
+                    }} />
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <textarea style={{ ...inputStyle, flex: 1, minHeight: 100, resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}
+                      placeholder={'…or paste CSV here:\nname,email,phone\nJane Doe,jane@acme.com,+1 555 0100'}
+                      onBlur={e => { if (e.target.value.trim()) ingestCsvText(e.target.value, 'pasted data'); }} />
+                    <span style={{ fontSize: 11, color: MUTED }}>Paste then click outside the box to parse.</span>
+                  </div>
+                </div>
+              )}
+              {csvError && <span style={{ fontSize: 12, color: RED, fontWeight: 600 }}>{csvError}</span>}
+
+              {csv && importResult && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: INK }}>
+                      <FileText size={15} /> {csvName} — {csv.rows.length.toLocaleString()} rows
+                    </span>
+                    <button onClick={() => { setCsv(null); setCsvName(''); }} style={{ padding: '7px 14px', borderRadius: 999, border: '1.5px solid #e4e6ea', backgroundColor: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#5c6066' }}>
+                      Use a different file
+                    </button>
+                  </div>
+
+                  {/* Column mapping */}
+                  <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Column mapping</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
+                      {csv.headers.map((h, i) => (
+                        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={h}>{h}</span>
+                          <select value={mapping[i]} onChange={e => setMapping(mp => mp.map((m, mi) => mi === i ? e.target.value as CrmFieldId : m))}
+                            style={{ ...inputStyle, padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}>
+                            {CRM_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                          </select>
+                          <span style={{ fontSize: 10.5, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>e.g. {csv.rows[0]?.[i] || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Validation stats + AI segments */}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {([['Ready to import', importResult.contacts.length, '#3f9142', '#e2f5dc'],
+                       ['Duplicates skipped', importResult.duplicates, '#c77414', '#fdeeda'],
+                       ['Invalid rows', importResult.invalid, '#e5484d', '#fceaea']] as const).map(([label, n, color, bg]) => (
+                      <div key={label} style={{ backgroundColor: '#fff', borderRadius: 12, padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: INK }}>{n.toLocaleString()}</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color, backgroundColor: bg, padding: '3px 9px', borderRadius: 999 }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {importResult.segments.length > 0 && (
+                    <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 14 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em' }}>AI segments (added as tags on import)</span>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 9 }}>
+                        {importResult.segments.map(s => (
+                          <span key={s.tag} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 999, backgroundColor: INK, color: '#fff', fontSize: 11.5, fontWeight: 700 }}>
+                            {s.tag} <span style={{ color: '#c7f441' }}>{s.count.toLocaleString()}</span>
+                          </span>
+                        ))}
+                      </div>
+                      <p style={{ fontSize: 11.5, color: MUTED, margin: '10px 0 0' }}>
+                        A draft welcome campaign is created for your Email-Ready segment{importResult.segments.some(s => s.tag === 'SMS-Ready') ? ' and an SMS welcome for SMS-Ready contacts' : ''} when you launch.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {step === PLAN_STEP && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {generating && (
                 <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 52, height: 52, borderRadius: 999, backgroundColor: INK, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -529,12 +699,12 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
                 <ArrowLeft size={14} /> Back
               </button>
             )}
-            {step < 3 && (
+            {step < PLAN_STEP && (
               <button onClick={() => void goNext()} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 22px', borderRadius: 999, border: 'none', backgroundColor: INK, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-                Continue <ArrowRight size={14} />
+                {step === 3 && !csv ? 'Skip — import later' : 'Continue'} <ArrowRight size={14} />
               </button>
             )}
-            {step === 3 && (
+            {step === PLAN_STEP && (
               <button onClick={launch} disabled={generating || launching || !ob.plan.length}
                 style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '11px 24px', borderRadius: 999, border: 'none', backgroundColor: generating || !ob.plan.length ? '#c3c7cd' : INK, color: '#fff', cursor: generating || !ob.plan.length ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 800 }}>
                 <Sparkles size={14} color="#c7f441" /> {launching ? 'Launching…' : 'Launch my workspace'}

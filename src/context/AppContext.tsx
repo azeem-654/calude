@@ -38,7 +38,7 @@ interface AppContextType {
   addAppointment: (appt: Omit<Appointment, 'id'>) => void;
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   deleteAppointment: (id: string) => void;
-  addCampaign: (campaign: Omit<Campaign, 'id'>) => void;
+  addCampaign: (campaign: Omit<Campaign, 'id'>) => Campaign;
   updateCampaign: (id: string, updates: Partial<Campaign>) => void;
   deleteCampaign: (id: string) => void;
   toggleCampaignStatus: (id: string) => void;
@@ -53,7 +53,7 @@ interface AppContextType {
   deleteWebsite: (id: string) => void;
   addReview: (review: Omit<Review, 'id'>) => void;
   replyToReview: (id: string, replyText: string) => void;
-  addSequence: (seq: Omit<EmailSequence, 'id'>) => void;
+  addSequence: (seq: Omit<EmailSequence, 'id'>) => EmailSequence;
   updateSequence: (id: string, updates: Partial<EmailSequence>) => void;
   deleteSequence: (id: string) => void;
   addAutomation: (auto: Omit<Automation, 'id'>) => void;
@@ -206,10 +206,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Campaigns ── */
-  const addCampaign = (campaign: Omit<Campaign, 'id'>) => {
-    const c = { ...campaign, id: `camp-${Date.now()}` };
+  const addCampaign = (campaign: Omit<Campaign, 'id'>): Campaign => {
+    const c = { ...campaign, id: `camp-${Date.now()}-${Math.floor(Math.random() * 1e4)}` };
     setCampaigns(prev => { const next = [c, ...prev]; saveLS('crm_campaigns', next); return next; });
     notify(`Campaign "${campaign.name}" created!`);
+    return c;
   };
   const updateCampaign = (id: string, updates: Partial<Campaign>) => {
     setCampaigns(prev => { const next = prev.map(c => c.id === id ? { ...c, ...updates } : c); saveLS('crm_campaigns', next); return next; });
@@ -307,9 +308,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Sequences ── */
-  const addSequence = (seq: Omit<EmailSequence, 'id'>) => {
-    const s = { ...seq, id: `seq-${Date.now()}` };
+  const addSequence = (seq: Omit<EmailSequence, 'id'>): EmailSequence => {
+    const s = { ...seq, id: `seq-${Date.now()}-${Math.floor(Math.random() * 1e4)}` };
     setSequences(prev => { const next = [s, ...prev]; saveLS('crm_sequences', next); return next; });
+    return s;
   };
   const updateSequence = (id: string, updates: Partial<EmailSequence>) => {
     setSequences(prev => { const next = prev.map(s => s.id === id ? { ...s, ...updates } : s); saveLS('crm_sequences', next); return next; });
