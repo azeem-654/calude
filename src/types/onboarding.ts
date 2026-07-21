@@ -93,6 +93,9 @@ export interface OnboardingState {
   planSource?: 'ai' | 'smart-templates';
   /** IDs of records the wizard created, so a rollback can undo them. */
   createdPipelineId?: string;
+  createdFunnelId?: string;
+  createdWebsiteId?: string;
+  createdTaskPipelineId?: string;
   /** Result of the Step-4 contacts import (for the dashboard + audit). */
   importSummary?: {
     total: number; imported: number; duplicates: number; invalid: number;

@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X } from 'lucide-react';
 import { loadOnboarding, saveOnboarding, statusMeta, auditEntry, sanitizeText } from '../../services/onboarding';
 import { startMonthGeneration, publishMonth } from '../../services/contentGen';
+import { applyLaunchAssets } from '../../services/launchAssets';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import type { ContentMonth } from '../../types/onboarding';
@@ -119,7 +120,7 @@ function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth
 }
 
 export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: () => void; refreshKey: number }) {
-  const { addNotification } = useApp();
+  const { addNotification, addFunnel, addWebsite, updateSchedule, createPipeline, updatePipeline } = useApp();
   const [bump, setBump] = useState(0);
   // refreshKey/bump bust the memo whenever the wizard closes or a job/publish updates storage.
   const ob = useMemo(() => loadOnboarding(), [refreshKey, bump]);
@@ -178,6 +179,25 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
           <p style={{ fontSize: 12, color: MUTED, margin: '4px 0 0' }}>
             This month: <span style={{ fontWeight: 700, color: INK }}>{current.theme}</span> — {current.label}
           </p>
+          {!ob.createdTaskPipelineId && (
+            <button
+              onClick={() => {
+                const state = loadOnboarding();
+                const assets = applyLaunchAssets(state, { addFunnel, addWebsite, updateSchedule, createPipeline, updatePipeline }, actor);
+                saveOnboarding({
+                  ...state,
+                  createdFunnelId: assets.funnelId ?? state.createdFunnelId,
+                  createdWebsiteId: assets.websiteId ?? state.createdWebsiteId,
+                  createdTaskPipelineId: assets.taskPipelineId,
+                  audit: [...state.audit, ...assets.audit],
+                });
+                addNotification(`Launch assets ready — ${assets.taskCount} tasks in your 90-Day Launch Plan${assets.blogCount ? `, website + ${assets.blogCount} blog posts` : ''}${assets.funnelId ? ', lead funnel' : ''}${assets.eventTypeCount ? `, ${assets.eventTypeCount} booking pages` : ''}`, 'success');
+                setBump(b => b + 1);
+              }}
+              style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 999, border: 'none', backgroundColor: INK, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+              <Sparkles size={12} color="#c7f441" /> Generate launch assets (90-day plan, site, funnel)
+            </button>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {([['Published', stats.published, '#3f9142', '#e2f5dc'], ['In review', stats.review, '#8b5cf6', '#f1edfb'], ['Generating', stats.generating, '#c77414', '#fdeeda'], ['Planned', stats.planned, '#3e63dd', '#eceff9']] as const)

@@ -25,6 +25,7 @@ import {
 import { parseCsv, autoMapHeaders, buildContacts, CRM_FIELDS } from '../../services/csvImport';
 import type { CrmFieldId } from '../../services/csvImport';
 import { startMonthGeneration } from '../../services/contentGen';
+import { applyLaunchAssets } from '../../services/launchAssets';
 import type { OnboardingState, ContentMonth } from '../../types/onboarding';
 
 const INK = '#17191c';
@@ -77,7 +78,7 @@ const STEPS = [
 const PLAN_STEP = STEPS.length - 1;
 
 export default function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { updateSchedule, createPipeline, updatePipeline, addNotification, bulkImportContacts, addCustomFieldDefs, addCampaign, contacts } = useApp();
+  const { updateSchedule, createPipeline, updatePipeline, addNotification, bulkImportContacts, addCustomFieldDefs, addCampaign, contacts, addFunnel, addWebsite } = useApp();
   const [ob, setOb] = useState<OnboardingState>(() => loadOnboarding());
   const [step, setStep] = useState(() => Math.min(loadOnboarding().step, PLAN_STEP));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -272,18 +273,23 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
       }
     }
 
-    // 5) Persist onboarding as completed
+    // 5) Launch assets: funnel, website + blog, service booking pages, 90-day task board
+    const assets = applyLaunchAssets(ob, { addFunnel, addWebsite, updateSchedule, createPipeline, updatePipeline }, actorEmail());
+
+    // 6) Persist onboarding as completed
     persist({
       ...ob, completed: true, skipped: false, completedAt: new Date().toISOString(), step: PLAN_STEP,
       createdPipelineId: pipe.id, importSummary,
+      createdFunnelId: assets.funnelId, createdWebsiteId: assets.websiteId, createdTaskPipelineId: assets.taskPipelineId,
       audit: [...ob.audit,
         auditEntry('Workspace configured: brand kit, business hours, sales pipeline', actorEmail()),
         ...extraAudit,
+        ...assets.audit,
         auditEntry('Onboarding completed — 12-month content pipeline is live', actorEmail())],
     });
-    addNotification(`${cleanName} is set up — your 12-month content plan is ready on the dashboard`, 'success');
+    addNotification(`${cleanName} is set up — ${assets.taskCount} launch tasks and your 12-month plan are on the dashboard`, 'success');
 
-    // 6) Background job: generate Month 1 content (emails + SMS) right away
+    // 7) Background job: generate Month 1 content (emails + SMS) right away
     const now = new Date();
     const firstIdx = ob.plan.find(m => m.year === now.getFullYear() && m.month === now.getMonth())?.index ?? ob.plan[0].index;
     startMonthGeneration(firstIdx, addNotification, actorEmail());
