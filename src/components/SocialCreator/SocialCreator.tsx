@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Trash2, Edit3, Copy, Share2,
   Image, LayoutGrid,
-  List, Clock, Eye, X, Wand2, AlertCircle,
+  List, Clock, Eye, X, Wand2, AlertCircle, Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import type { DesignPost, Platform, CanvasElement } from './types';
+import type { DesignPost, Platform, CanvasElement, CanvasBackground } from './types';
 import { PLATFORM_PRESETS, RATIO_SIZES, TEMPLATES } from './templates';
 import { generateSocialPostDesign, hasGeminiKey } from '../../lib/gemini';
 
@@ -20,29 +20,12 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
 };
 
 function ThumbnailPreview({ post }: { post: DesignPost }) {
-  const bg = post.background;
-  let backgroundStyle: React.CSSProperties = {};
-  if (bg.type === 'gradient') {
-    backgroundStyle = { background: `linear-gradient(${bg.gradientAngle}deg, ${bg.gradientStart}, ${bg.gradientEnd})` };
-  } else if (bg.type === 'color') {
-    backgroundStyle = { backgroundColor: bg.color };
-  } else if (bg.imageUrl) {
-    backgroundStyle = { backgroundImage: `url(${bg.imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' };
-  }
-
-  const ratio = post.aspectRatio;
-  const [w, h] = ratio.split(':').map(Number);
-  const thumbH = 160;
+  const [w, h] = post.aspectRatio.split(':').map(Number);
+  const thumbH = 170;
   const thumbW = Math.round((w / h) * thumbH);
-
   return (
-    <div style={{ width: thumbW, height: thumbH, maxWidth: '100%', borderRadius: 6, overflow: 'hidden', position: 'relative', flexShrink: 0, ...backgroundStyle }}>
-      {post.thumbnail
-        ? <img src={post.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Image size={28} color="rgba(255,255,255,0.4)" />
-          </div>
-      }
+    <div style={{ width: thumbW, maxWidth: '100%', maxHeight: thumbH, borderRadius: 8, overflow: 'hidden', position: 'relative', flexShrink: 0, boxShadow: '0 2px 10px rgba(16,24,40,0.12)' }}>
+      <MiniPreview t={post as unknown as MiniDoc} width={thumbW} />
     </div>
   );
 }
@@ -129,8 +112,10 @@ function PostCard({
   );
 }
 
-/** True miniature render of a template — background + every element, scaled. */
-function MiniPreview({ t, width }: { t: typeof TEMPLATES[0]; width: number }) {
+type MiniDoc = { canvasWidth: number; canvasHeight: number; background: CanvasBackground; elements: Omit<CanvasElement, 'id'>[] };
+
+/** True miniature render of a design/template — background + every element, scaled. */
+function MiniPreview({ t, width }: { t: MiniDoc; width: number }) {
   const scale = width / t.canvasWidth;
   const height = t.canvasHeight * scale;
   const bg = t.background;
@@ -177,9 +162,9 @@ function MiniPreview({ t, width }: { t: typeof TEMPLATES[0]; width: number }) {
   );
 }
 
-function TemplateGallery({ onSelect }: { onSelect: (template: typeof TEMPLATES[0]) => void }) {
-  const [category, setCategory] = useState('All');
-  const [query, setQuery] = useState('');
+function TemplateGallery({ onSelect, initialCategory, initialQuery }: { onSelect: (template: typeof TEMPLATES[0]) => void; initialCategory?: string; initialQuery?: string }) {
+  const [category, setCategory] = useState(initialCategory ?? 'All');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const categories = ['All', ...new Set(TEMPLATES.map(t => t.category))];
   const q = query.trim().toLowerCase();
   const filtered = TEMPLATES.filter(t =>
@@ -240,8 +225,10 @@ function TemplateGallery({ onSelect }: { onSelect: (template: typeof TEMPLATES[0
   );
 }
 
-function NewPostModal({ onClose, onCreate }: { onClose: () => void; onCreate: (post: Omit<DesignPost, 'id' | 'createdAt' | 'updatedAt'>) => void }) {
-  const [step, setStep] = useState<'choose' | 'blank' | 'template' | 'ai'>('choose');
+interface ModalInit { step?: 'choose' | 'blank' | 'template' | 'ai'; category?: string; query?: string }
+
+function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onCreate: (post: Omit<DesignPost, 'id' | 'createdAt' | 'updatedAt'>) => void; initial?: ModalInit }) {
+  const [step, setStep] = useState<'choose' | 'blank' | 'template' | 'ai'>(initial?.step ?? 'choose');
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [ratio, setRatio] = useState<string>('1:1');
   const [name, setName] = useState('Untitled Design');
@@ -430,7 +417,7 @@ function NewPostModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p
           )}
 
           {step === 'template' && (
-            <TemplateGallery onSelect={createFromTemplate} />
+            <TemplateGallery onSelect={createFromTemplate} initialCategory={initial?.category} initialQuery={initial?.query} />
           )}
         </div>
 
@@ -467,7 +454,11 @@ export default function SocialCreator() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [showNew, setShowNew] = useState(false);
+  const [modalInit, setModalInit] = useState<ModalInit | undefined>(undefined);
+  const [heroQuery, setHeroQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'created' | 'name'>('updated');
+
+  const openTemplates = (init?: ModalInit) => { setModalInit({ step: 'template', ...init }); setShowNew(true); };
 
   const posts: DesignPost[] = socialPosts ?? [];
 
@@ -500,6 +491,20 @@ export default function SocialCreator() {
     navigate(`/social-creator/editor/${id}`);
   };
 
+  const quickCreate = (t: typeof TEMPLATES[0]) => {
+    handleCreate({
+      name: t.name,
+      platform: t.platform === 'all' ? 'instagram' : t.platform as Platform,
+      aspectRatio: t.aspectRatio,
+      canvasWidth: t.canvasWidth,
+      canvasHeight: t.canvasHeight,
+      background: { ...t.background },
+      elements: t.elements.map((el, i) => ({ ...el, id: `el-${Date.now()}-${i}` })) as CanvasElement[],
+      status: 'draft',
+      tags: t.tags,
+    });
+  };
+
   const handleDuplicate = (post: DesignPost) => {
     const now = new Date().toISOString();
     const id = `post-${Date.now()}`;
@@ -513,23 +518,78 @@ export default function SocialCreator() {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#1e293b' }}>Social Creator</h1>
-          <p style={{ margin: '6px 0 0', fontSize: 15, color: '#64748b' }}>Design stunning social media posts with AI</p>
-        </div>
+      {/* ── Canva-style hero ── */}
+      <div style={{ position: 'relative', borderRadius: 22, overflow: 'hidden', marginBottom: 26, padding: '44px 40px 30px', background: 'linear-gradient(100deg, #a21caf 0%, #7c3aed 40%, #2563eb 75%, #06b6d4 100%)' }}>
         <button
-          onClick={() => setShowNew(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', border: 'none', borderRadius: 10,
-            background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
-          }}
-        >
-          <Plus size={18} />
-          New Design
+          onClick={() => { setModalInit(undefined); setShowNew(true); }}
+          style={{ position: 'absolute', top: 18, right: 18, display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', border: 'none', borderRadius: 10, background: 'rgba(255,255,255,0.95)', color: '#6d28d9', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>
+          <Plus size={16} /> New Design
         </button>
+        <h1 style={{ margin: '0 0 20px', fontSize: 32, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: '-0.02em', textShadow: '0 2px 12px rgba(0,0,0,0.2)' }}>
+          What will you design today?
+        </h1>
+        {/* Hero search */}
+        <div style={{ maxWidth: 620, margin: '0 auto 26px', position: 'relative' }}>
+          <Search size={17} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+          <input
+            value={heroQuery}
+            onChange={e => setHeroQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') openTemplates({ query: heroQuery }); }}
+            placeholder="Search templates… try 'fashion', 'sale' or 'quote'"
+            style={{ width: '100%', padding: '14px 18px 14px 44px', border: 'none', borderRadius: 12, fontSize: 15, outline: 'none', boxSizing: 'border-box', boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}
+          />
+        </div>
+        {/* Category shortcuts */}
+        <div style={{ display: 'flex', gap: 26, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {[
+            { label: 'For you', emoji: '✨', act: () => openTemplates() },
+            { label: 'Trending', emoji: '🔥', act: () => openTemplates({ category: 'Trending' }) },
+            { label: 'Fashion', emoji: '🛍️', act: () => openTemplates({ category: 'Fashion' }) },
+            { label: 'Promotion', emoji: '💸', act: () => openTemplates({ category: 'Promotion' }) },
+            { label: 'Quote', emoji: '💬', act: () => openTemplates({ category: 'Quote' }) },
+            { label: 'Business', emoji: '💼', act: () => openTemplates({ category: 'Business' }) },
+            { label: 'Aesthetic', emoji: '🎨', act: () => openTemplates({ category: 'Aesthetic' }) },
+            { label: 'AI Generate', emoji: '🪄', act: () => { setModalInit({ step: 'ai' }); setShowNew(true); } },
+          ].map(c => (
+            <button key={c.label} onClick={c.act}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, background: 'none', border: 'none', cursor: 'pointer' }}>
+              <span style={{ width: 52, height: 52, borderRadius: 99, background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, backdropFilter: 'blur(6px)', transition: 'transform 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.1)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}>
+                {c.emoji}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{c.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── You might want to try… ── */}
+      <div style={{ marginBottom: 30 }}>
+        <h2 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Sparkles size={17} color="#7c3aed" /> You might want to try…
+        </h2>
+        <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8 }}>
+          {[...TEMPLATES.filter(t => t.category === 'Trending'), ...TEMPLATES.filter(t => t.category === 'Fashion')].slice(0, 9).map(t => (
+            <div key={t.id} onClick={() => quickCreate(t)}
+              style={{ cursor: 'pointer', borderRadius: 12, overflow: 'hidden', border: '1px solid #eceef2', background: '#fff', flexShrink: 0, transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 28px -8px rgba(16,24,40,0.22)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <div style={{ maxHeight: 190, overflow: 'hidden' }}>
+                <MiniPreview t={t} width={150} />
+              </div>
+              <div style={{ padding: '8px 11px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 128 }}>{t.name}</div>
+                <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>{t.category}</div>
+              </div>
+            </div>
+          ))}
+          <div onClick={() => openTemplates()}
+            style={{ cursor: 'pointer', borderRadius: 12, border: '2px dashed #d6d3e0', background: '#faf9fc', flexShrink: 0, width: 150, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 190, color: '#7c3aed' }}>
+            <LayoutGrid size={26} />
+            <span style={{ fontSize: 12.5, fontWeight: 700 }}>Browse all templates</span>
+          </div>
+        </div>
       </div>
 
       {/* Stats */}
@@ -656,7 +716,7 @@ export default function SocialCreator() {
         </div>
       )}
 
-      {showNew && <NewPostModal onClose={() => setShowNew(false)} onCreate={handleCreate} />}
+      {showNew && <NewPostModal onClose={() => { setShowNew(false); setModalInit(undefined); }} onCreate={handleCreate} initial={modalInit} />}
     </div>
   );
 }
