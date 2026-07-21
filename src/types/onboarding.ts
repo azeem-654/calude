@@ -110,6 +110,8 @@ export interface OnboardingState {
   skipped: boolean;
   completedAt?: string;
   planSource?: 'ai' | 'smart-templates';
+  /** When on, freshly generated months publish without manual review. */
+  autoApprove?: boolean;
   /** IDs of records the wizard created, so a rollback can undo them. */
   createdPipelineId?: string;
   createdFunnelId?: string;

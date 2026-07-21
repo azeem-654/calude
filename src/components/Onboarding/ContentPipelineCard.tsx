@@ -8,9 +8,9 @@
  */
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X, Share2, Clapperboard, Copy } from 'lucide-react';
+import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X, Share2, Clapperboard, Copy, Layers, Zap, Undo2, ScrollText } from 'lucide-react';
 import { loadOnboarding, saveOnboarding, statusMeta, auditEntry, sanitizeText } from '../../services/onboarding';
-import { startMonthGeneration, publishMonth } from '../../services/contentGen';
+import { startMonthGeneration, publishMonth, generateAllRemaining, approveAllPending, rollbackMonth } from '../../services/contentGen';
 import { applyLaunchAssets } from '../../services/launchAssets';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
@@ -189,14 +189,59 @@ function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth
   );
 }
 
+/* ── Full audit-trail modal (workspace + every month, newest first) ── */
+function AuditTrailModal({ onClose }: { onClose: () => void }) {
+  const ob = loadOnboarding();
+  const entries = [
+    ...ob.audit.map(a => ({ ...a, scope: 'Workspace' })),
+    ...ob.plan.flatMap(m => m.audit.map(a => ({ ...a, scope: m.label }))),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 4200, backgroundColor: 'rgba(23,25,28,0.55)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ width: 'min(680px, 100%)', maxHeight: '86vh', backgroundColor: '#f7f8fa', borderRadius: 22, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px -16px rgba(23,25,28,0.5)' }}>
+        <div style={{ padding: '18px 24px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eceef1', backgroundColor: '#fff' }}>
+          <div>
+            <h3 style={{ fontSize: 16.5, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ScrollText size={16} /> Audit trail
+            </h3>
+            <p style={{ fontSize: 12, color: MUTED, margin: '3px 0 0' }}>{entries.length} events — every generation, edit, approval and rollback.</p>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, border: 'none', backgroundColor: '#f0f1f3', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED }}>
+            <X size={15} />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 24px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {entries.map((e, i) => (
+            <div key={i} style={{ backgroundColor: '#fff', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ flexShrink: 0, textAlign: 'right', width: 106 }}>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: INK }}>
+                  {new Date(e.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} {new Date(e.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span style={{ display: 'block', fontSize: 10, fontWeight: 700, color: MUTED }}>{e.scope}</span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 12.5, color: INK, margin: 0, lineHeight: 1.45 }}>{e.action}</p>
+                <p style={{ fontSize: 10.5, color: MUTED, margin: '2px 0 0', fontWeight: 600 }}>{e.actor}</p>
+              </div>
+            </div>
+          ))}
+          {!entries.length && <p style={{ fontSize: 13, color: MUTED, textAlign: 'center', padding: '30px 0' }}>No events yet.</p>}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: () => void; refreshKey: number }) {
-  const { addNotification, addFunnel, addWebsite, updateSchedule, createPipeline, updatePipeline } = useApp();
+  const { addNotification, addFunnel, addWebsite, updateSchedule, createPipeline, updatePipeline, addSequence, addCampaign, addSocialPost, deleteSequence, deleteCampaign, deleteSocialPosts } = useApp();
   const [bump, setBump] = useState(0);
   // refreshKey/bump bust the memo whenever the wizard closes or a job/publish updates storage.
   const ob = useMemo(() => loadOnboarding(), [refreshKey, bump]);
   const [openMonth, setOpenMonth] = useState<number | null>(null);
   const [showAudit, setShowAudit] = useState(false);
   const [reviewMonth, setReviewMonth] = useState<number | null>(null);
+  const [showFullAudit, setShowFullAudit] = useState(false);
   const actor = getSession()?.user.email || 'owner';
 
   if (!ob.completed || !ob.plan.length) {
@@ -279,6 +324,40 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
               </div>
             ))}
         </div>
+      </div>
+
+      {/* Workflow action bar */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 4px 12px' }}>
+        {stats.planned > 0 && (
+          <button
+            onClick={() => { generateAllRemaining(addNotification, actor); setBump(b => b + 1); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 15px', borderRadius: 999, border: 'none', backgroundColor: INK, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+            <Layers size={12} color="#c7f441" /> Generate all remaining ({stats.planned})
+          </button>
+        )}
+        {stats.review > 0 && (
+          <button
+            onClick={() => { approveAllPending({ addSequence, addCampaign, addSocialPost }, addNotification, actor); setBump(b => b + 1); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 15px', borderRadius: 999, border: 'none', backgroundColor: '#8b5cf6', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+            <CheckCheck size={12} /> Approve all ({stats.review})
+          </button>
+        )}
+        <button
+          onClick={() => {
+            const state = loadOnboarding();
+            const next = !state.autoApprove;
+            saveOnboarding({ ...state, autoApprove: next, audit: [...state.audit, auditEntry(`Auto-approve turned ${next ? 'ON — new generations publish immediately' : 'OFF — generations wait for review'}`, actor)] });
+            addNotification(next ? 'Auto-approve is ON — newly generated months publish automatically' : 'Auto-approve is OFF — months wait for your review', 'info');
+            setBump(b => b + 1);
+          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 15px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, border: ob.autoApprove ? 'none' : '1.5px solid #e4e6ea', backgroundColor: ob.autoApprove ? '#3f9142' : '#fff', color: ob.autoApprove ? '#fff' : '#5c6066' }}>
+          <Zap size={12} /> Auto-approve {ob.autoApprove ? 'ON' : 'OFF'}
+        </button>
+        <button
+          onClick={() => setShowFullAudit(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 15px', borderRadius: 999, border: '1.5px solid #e4e6ea', backgroundColor: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: '#5c6066' }}>
+          <ScrollText size={12} /> Audit trail
+        </button>
       </div>
 
       {/* Month strip */}
@@ -376,9 +455,22 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
                 </div>
               )}
               {open.status === 'PUBLISHED' && (
-                <p style={{ fontSize: 11.5, color: '#3f9142', fontWeight: 700, margin: '12px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CheckCheck size={13} /> Live: {[`${open.counts.emails}-email sequence`, open.counts.sms ? `${open.counts.sms}-message SMS flow` : '', open.counts.social ? `${open.counts.social} social designs` : '', open.counts.videos ? `${open.counts.videos} video scripts` : ''].filter(Boolean).join(' + ')}.
-                </p>
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ fontSize: 11.5, color: '#3f9142', fontWeight: 700, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <CheckCheck size={13} /> Live: {[`${open.counts.emails}-email sequence`, open.counts.sms ? `${open.counts.sms}-message SMS flow` : '', open.counts.social ? `${open.counts.social} social designs` : '', open.counts.videos ? `${open.counts.videos} video scripts` : ''].filter(Boolean).join(' + ')}.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`Roll back ${open.label}? The published sequence, SMS flow and social designs are removed and the month returns to review (its content is kept for editing).`)) return;
+                      if (rollbackMonth(open.index, { deleteSequence, deleteCampaign, deleteSocialPosts }, actor)) {
+                        addNotification(`${open.label} rolled back — content is back in review, published records removed`, 'info');
+                        setBump(b => b + 1);
+                      }
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 999, border: '1.5px solid #f3c9cb', backgroundColor: '#fff', color: '#e5484d', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                    <Undo2 size={12} /> Roll back this month
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -391,6 +483,7 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
           <MonthReviewModal month={m} onClose={() => setReviewMonth(null)} onPublished={() => setBump(b => b + 1)} />
         ) : null;
       })()}
+      {showFullAudit && <AuditTrailModal onClose={() => setShowFullAudit(false)} />}
     </div>
   );
 }

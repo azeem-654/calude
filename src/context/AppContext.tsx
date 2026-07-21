@@ -88,6 +88,8 @@ interface AppContextType {
   addSocialPost: (post: DesignPost) => void;
   updateSocialPost: (id: string, updates: Partial<DesignPost>) => void;
   deleteSocialPost: (id: string) => void;
+  /** Bulk removal without per-item toasts (used by month rollback). */
+  deleteSocialPosts: (ids: string[]) => void;
   customFieldDefs: CustomFieldDef[];
   addCustomFieldDefs: (defs: CustomFieldDef[]) => void;
 }
@@ -373,6 +375,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSocialPosts(prev => { const next = prev.filter(p => p.id !== id); saveLS('crm_social_posts', next); return next; });
     notify('Design deleted', 'info');
   };
+  const deleteSocialPosts = (ids: string[]) => {
+    if (!ids.length) return;
+    const drop = new Set(ids);
+    setSocialPosts(prev => { const next = prev.filter(p => !drop.has(p.id)); saveLS('crm_social_posts', next); return next; });
+  };
 
   /* ── Websites ── */
   const addWebsite = (w: Website | Omit<Website, 'id'>) => {
@@ -407,7 +414,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sidebarMode, setSidebarMode,
       videoProjects, addVideoProject, updateVideoProject, deleteVideoProject,
       updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip,
-      socialPosts, addSocialPost, updateSocialPost, deleteSocialPost,
+      socialPosts, addSocialPost, updateSocialPost, deleteSocialPost, deleteSocialPosts,
       customFieldDefs, addCustomFieldDefs,
     }}>
       {children}

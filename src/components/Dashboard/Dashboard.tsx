@@ -11,7 +11,7 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { loadOnboarding } from '../../services/onboarding';
-import { onContentJobsChange, resumePendingGeneration } from '../../services/contentGen';
+import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import type { Deal } from '../../types';
@@ -456,7 +456,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, addNotification } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -465,10 +465,12 @@ export default function Dashboard() {
     const ob = loadOnboarding();
     if (!ob.completed && !ob.skipped) setWizardOpen(true);
     // Refresh the pipeline widget when a background content job changes state,
-    // and resume any generation interrupted by a reload.
+    // resume any generation interrupted by a reload, and register the publish
+    // API so auto-approve can publish straight from a background job.
     onContentJobsChange(() => setObRefresh(k => k + 1));
+    registerPublishApi({ addSequence, addCampaign, addSocialPost });
     resumePendingGeneration(addNotification);
-    return () => onContentJobsChange(null);
+    return () => { onContentJobsChange(null); registerPublishApi(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

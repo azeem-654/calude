@@ -221,6 +221,14 @@ let changeListener: (() => void) | null = null;
 /** The dashboard registers here to refresh its widgets when a job finishes. */
 export function onContentJobsChange(cb: (() => void) | null) { changeListener = cb; }
 
+/**
+ * The dashboard also registers the publish API so background jobs can
+ * auto-approve months when that setting is on (publishing needs the
+ * AppContext creators, which services can't import directly).
+ */
+let publishApiRef: PublishApi | null = null;
+export function registerPublishApi(api: PublishApi | null) { publishApiRef = api; }
+
 function patchMonth(index: number, patch: (m: ContentMonth) => ContentMonth) {
   const ob = loadOnboarding();
   const next = { ...ob, plan: ob.plan.map(m => m.index === index ? patch(m) : m) };
@@ -264,7 +272,13 @@ export function startMonthGeneration(index: number, notify: Notify, actor = 'sys
         audit: [...m.audit, auditEntry(`Generated ${content.emails.length} emails, ${content.sms.length} SMS, ${nSocial} social posts, ${nVideos} video scripts via ${source === 'ai' ? 'Gemini AI' : 'smart templates'}`, actor)],
       }));
       const bits = [`${content.emails.length} emails`, content.sms.length ? `${content.sms.length} SMS` : '', nSocial ? `${nSocial} social posts` : '', nVideos ? `${nVideos} video scripts` : ''].filter(Boolean).join(', ');
-      notify(`${monthShort(index)} content is ready for review — ${bits}`, 'info');
+      if (loadOnboarding().autoApprove && publishApiRef) {
+        const published = publishMonth(index, publishApiRef, 'auto-approve');
+        if (published) notify(`${monthShort(index)} generated & auto-approved — ${bits} published`, 'success');
+        else notify(`${monthShort(index)} content is ready for review — ${bits}`, 'info');
+      } else {
+        notify(`${monthShort(index)} content is ready for review — ${bits}`, 'info');
+      }
     } catch {
       patchMonth(index, m => ({
         ...m, status: 'PLAN_GENERATED',
@@ -289,6 +303,58 @@ export function resumePendingGeneration(notify: Notify) {
   if (!ob.completed) return;
   ob.plan.filter(m => m.status === 'GENERATING' && !inFlight.has(m.index))
     .forEach(m => startMonthGeneration(m.index, notify));
+}
+
+/**
+ * Queue generation for every month still in PLAN_GENERATED, staggered so a
+ * dozen Gemini calls don't fire at once. Returns how many were queued.
+ */
+export function generateAllRemaining(notify: Notify, actor: string): number {
+  const pending = loadOnboarding().plan.filter(m => m.status === 'PLAN_GENERATED' && !inFlight.has(m.index));
+  pending.forEach((m, i) => {
+    window.setTimeout(() => startMonthGeneration(m.index, notify, actor), i * 1800);
+  });
+  if (pending.length) notify(`Generating content for ${pending.length} remaining month${pending.length > 1 ? 's' : ''} in the background…`, 'info');
+  return pending.length;
+}
+
+/** Approve & publish every month currently awaiting approval. Returns count published. */
+export function approveAllPending(api: PublishApi, notify: Notify, actor: string): number {
+  const pending = loadOnboarding().plan.filter(m => m.status === 'AWAITING_APPROVAL' && m.generated);
+  let done = 0;
+  for (const m of pending) { if (publishMonth(m.index, api, actor)) done++; }
+  if (done) notify(`${done} month${done > 1 ? 's' : ''} approved & published across your modules`, 'success');
+  return done;
+}
+
+/* ── Rollback ── */
+
+export interface RollbackApi {
+  deleteSequence: (id: string) => void;
+  deleteCampaign: (id: string) => void;
+  deleteSocialPosts: (ids: string[]) => void;
+}
+
+/**
+ * Undo a published month: remove the sequence, SMS campaign and social
+ * designs it created, and put the month back into AWAITING_APPROVAL with its
+ * generated content intact (so it can be edited and re-approved).
+ */
+export function rollbackMonth(index: number, api: RollbackApi, actor: string): boolean {
+  const month = loadOnboarding().plan.find(m => m.index === index);
+  if (!month || month.status !== 'PUBLISHED') return false;
+  const refs = month.publishedRefs ?? {};
+  if (refs.sequenceId) api.deleteSequence(refs.sequenceId);
+  if (refs.smsCampaignId) api.deleteCampaign(refs.smsCampaignId);
+  if (refs.socialPostIds?.length) api.deleteSocialPosts(refs.socialPostIds);
+  patchMonth(index, m => ({
+    ...m,
+    status: 'AWAITING_APPROVAL',
+    publishedRefs: undefined, approvedAt: undefined, approvedBy: undefined, publishedAt: undefined,
+    audit: [...m.audit, auditEntry(`Rolled back: removed published sequence${refs.smsCampaignId ? ', SMS flow' : ''}${refs.socialPostIds?.length ? ` and ${refs.socialPostIds.length} social designs` : ''} — month returned to review`, actor)],
+  }));
+  changeListener?.();
+  return true;
 }
 
 /* ── Approve & publish ── */
