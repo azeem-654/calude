@@ -356,6 +356,11 @@ function taskTemplates(state: OnboardingState): TaskTpl[] {
   return all;
 }
 
+/** How many 90-day tasks a launch with the current answers will create. */
+export function plannedTaskCount(state: OnboardingState): number {
+  return taskTemplates(state).length;
+}
+
 const STAGE_DEFS = [
   { name: 'Weeks 1–2 · Foundation', color: '#e5484d', dayFrom: 2, dayTo: 14 },
   { name: 'Month 1 · Launch',       color: '#3e63dd', dayFrom: 15, dayTo: 40 },

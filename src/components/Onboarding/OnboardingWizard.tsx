@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Building2, Target, Megaphone, CalendarRange, X, ArrowRight, ArrowLeft,
-  Check, Loader, Plus, Trash2, Wand2, PencilLine, Users, UploadCloud, FileText,
+  Check, Loader, Plus, Trash2, Wand2, PencilLine, Users, UploadCloud, FileText, Rocket,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { activeAccount, getActiveAccountId, updateSubAccount } from '../../services/tenancy';
@@ -25,7 +25,7 @@ import {
 import { parseCsv, autoMapHeaders, buildContacts, CRM_FIELDS } from '../../services/csvImport';
 import type { CrmFieldId } from '../../services/csvImport';
 import { startMonthGeneration } from '../../services/contentGen';
-import { applyLaunchAssets } from '../../services/launchAssets';
+import { applyLaunchAssets, plannedTaskCount } from '../../services/launchAssets';
 import type { OnboardingState, ContentMonth } from '../../types/onboarding';
 
 const INK = '#17191c';
@@ -74,8 +74,10 @@ const STEPS = [
   { icon: Megaphone, title: 'Channels' },
   { icon: Users, title: 'Contacts' },
   { icon: CalendarRange, title: '12-month plan' },
+  { icon: Rocket, title: 'Review & launch' },
 ];
-const PLAN_STEP = STEPS.length - 1;
+const PLAN_STEP = STEPS.length - 2;
+const REVIEW_STEP = STEPS.length - 1;
 
 export default function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { updateSchedule, createPipeline, updatePipeline, addNotification, bulkImportContacts, addCustomFieldDefs, addCampaign, contacts, addFunnel, addWebsite } = useApp();
@@ -164,6 +166,7 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
 
   const goNext = async () => {
     if (!validateStep(step)) return;
+    if (step === PLAN_STEP && (generating || !ob.plan.length)) return;
     const next = { ...ob, step: step + 1, goals: { ...ob.goals, salesStages: stages } };
     persist(next);
     setStep(step + 1);
@@ -692,6 +695,70 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
               )}
             </div>
           )}
+
+          {step === REVIEW_STEP && (() => {
+            const channelLabels = ob.channels.map(id => CHANNEL_OPTIONS.find(c => c.id === id)?.label ?? id);
+            const socialCount = ['facebook', 'instagram', 'linkedin'].filter(c => ob.channels.includes(c)).length;
+            const willCreate: string[] = [
+              `Brand kit, business hours (${p.workDays.length} days/week) and booking availability applied`,
+              `Sales pipeline "${p.companyName || 'My Business'} Sales" with ${stages.length} stages`,
+              `90-Day Launch Plan task board with ${plannedTaskCount(ob)} tasks`,
+            ];
+            if (csv && importResult?.contacts.length) willCreate.push(`${importResult.contacts.length} contacts imported into ${importResult.segments.length} AI segments + welcome campaign drafts`);
+            if (ob.channels.includes('funnels')) willCreate.push('Lead-magnet funnel (landing + thank-you page)');
+            if (ob.channels.includes('blog')) willCreate.push('Website with 3 SEO starter blog posts');
+            if (ob.channels.includes('booking')) willCreate.push('Service booking pages with confirmation + reminder emails');
+            const genBits = ['5 emails', ob.channels.includes('sms') ? '4 SMS' : '', socialCount ? '12 social posts' : '', ob.channels.includes('video') ? '4 video scripts' : ''].filter(Boolean).join(', ');
+            willCreate.push(`Month-1 content generation starts in the background (${genBits}) — nothing sends without your approval`);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Business</span>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: INK, margin: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 12, height: 12, borderRadius: 4, backgroundColor: p.brandColor, display: 'inline-block' }} />
+                      {p.companyName}
+                    </p>
+                    <p style={{ fontSize: 12, color: '#5c6066', margin: 0 }}>{p.industry} · {p.brandVoice}</p>
+                    <p style={{ fontSize: 11.5, color: MUTED, margin: '4px 0 0' }}>{p.workFrom}–{p.workTo}, {p.workDays.map(d => d[0].toUpperCase() + d.slice(1)).join(' ')}</p>
+                  </div>
+                  <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Goals & pipeline</span>
+                    <p style={{ fontSize: 12.5, fontWeight: 700, color: INK, margin: '6px 0 2px' }}>{ob.goals.goals.join(' · ') || '—'}</p>
+                    <p style={{ fontSize: 12, color: '#5c6066', margin: 0 }}>{ob.goals.monthlyLeadTarget} leads/month target · {stages.length} pipeline stages</p>
+                  </div>
+                  <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Channels ({channelLabels.length})</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      {channelLabels.map(l => <span key={l} style={{ fontSize: 11, fontWeight: 700, color: '#fff', backgroundColor: INK, padding: '4px 11px', borderRadius: 999 }}>{l}</span>)}
+                    </div>
+                  </div>
+                  <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Contacts & plan</span>
+                    <p style={{ fontSize: 12.5, fontWeight: 700, color: INK, margin: '6px 0 2px' }}>
+                      {csv && importResult ? `${importResult.contacts.length} contacts ready (${importResult.duplicates} dupes, ${importResult.invalid} invalid skipped)` : 'Contact import: skipped for now'}
+                    </p>
+                    <p style={{ fontSize: 12, color: '#5c6066', margin: 0 }}>
+                      12-month plan {ob.planSource === 'ai' ? 'by Gemini AI' : 'by smart templates'} — starts with "{ob.plan[0]?.theme}"
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: INK, borderRadius: 16, padding: '18px 20px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#c7f441', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Rocket size={13} /> What happens when you launch
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                    {willCreate.map((w, i) => (
+                      <span key={i} style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.9)', display: 'flex', gap: 9, lineHeight: 1.45 }}>
+                        <Check size={14} color="#c7f441" strokeWidth={3} style={{ flexShrink: 0, marginTop: 1 }} /> {w}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer */}
@@ -705,12 +772,14 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
                 <ArrowLeft size={14} /> Back
               </button>
             )}
-            {step < PLAN_STEP && (
-              <button onClick={() => void goNext()} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 22px', borderRadius: 999, border: 'none', backgroundColor: INK, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-                {step === 3 && !csv ? 'Skip — import later' : 'Continue'} <ArrowRight size={14} />
+            {step < REVIEW_STEP && (
+              <button onClick={() => void goNext()}
+                disabled={step === PLAN_STEP && (generating || !ob.plan.length)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 22px', borderRadius: 999, border: 'none', backgroundColor: step === PLAN_STEP && (generating || !ob.plan.length) ? '#c3c7cd' : INK, color: '#fff', cursor: step === PLAN_STEP && (generating || !ob.plan.length) ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
+                {step === 3 && !csv ? 'Skip — import later' : step === PLAN_STEP ? 'Review & launch' : 'Continue'} <ArrowRight size={14} />
               </button>
             )}
-            {step === PLAN_STEP && (
+            {step === REVIEW_STEP && (
               <button onClick={launch} disabled={generating || launching || !ob.plan.length}
                 style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '11px 24px', borderRadius: 999, border: 'none', backgroundColor: generating || !ob.plan.length ? '#c3c7cd' : INK, color: '#fff', cursor: generating || !ob.plan.length ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 800 }}>
                 <Sparkles size={14} color="#c7f441" /> {launching ? 'Launching…' : 'Launch my workspace'}

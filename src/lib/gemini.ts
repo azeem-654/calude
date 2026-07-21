@@ -393,6 +393,57 @@ Return ONLY JSON: {"emails": [{"day": 1, "subject": "...", "body": "..."}, ...5 
   return { emails, sms };
 }
 
+/**
+ * Onboarding: generate one month's 30-day social calendar + short-video scripts.
+ */
+export async function generateSocialCalendar(input: {
+  company: string; industry: string; description: string; audience: string; voice: string;
+  monthLabel: string; theme: string; ideas: string[]; holidays: string[];
+  platforms: string[]; wantVideos: boolean;
+}): Promise<{
+  posts: { day: number; platform: string; headline: string; caption: string; hashtags: string[] }[];
+  videos: { day: number; title: string; hook: string; script: string[] }[];
+}> {
+  const prompt = `You are a social media manager. Plan ${input.monthLabel} for this business.
+
+Business: ${input.company} (${input.industry})
+What they do: ${input.description.slice(0, 300)}
+Audience: ${input.audience.slice(0, 200)}
+Voice: ${input.voice}
+Monthly theme: ${input.theme}
+Ideas to work in: ${input.ideas.join('; ')}
+Key dates: ${input.holidays.join(', ') || 'none'}
+Platforms: ${input.platforms.join(', ')}
+
+Create:
+- 12 social POSTS spread across days 2-28 (roughly 3 per week), rotating between the platforms listed. Each: "headline" (max 8 words, goes on the image), "caption" (2-3 sentences ending with a call to action, no emojis at the start), "hashtags" (4-6, no # symbol).
+${input.wantVideos ? '- 4 short-form VIDEOS (days 4, 11, 18, 25). Each: "title" (under 55 chars), "hook" (scroll-stopping opening line under 12 words), "script" (6 on-screen caption lines, max 10 words each, last one a call to action).' : ''}
+
+Return ONLY JSON: {"posts": [{"day": 2, "platform": "instagram", "headline": "...", "caption": "...", "hashtags": ["..."]}, ...12], "videos": [${input.wantVideos ? '{"day": 4, "title": "...", "hook": "...", "script": ["..."]}, ...4' : ''}]}`;
+  const json = await callGemini(prompt, 0.8);
+  const r = JSON.parse(json) as {
+    posts?: { day?: number; platform?: string; headline?: string; caption?: string; hashtags?: string[] }[];
+    videos?: { day?: number; title?: string; hook?: string; script?: string[] }[];
+  };
+  const posts = (r.posts ?? [])
+    .filter(p => p.headline && p.caption)
+    .map((p, i) => ({
+      day: typeof p.day === 'number' ? Math.min(Math.max(1, Math.round(p.day)), 28) : (i * 2 + 2),
+      platform: p.platform || input.platforms[i % Math.max(input.platforms.length, 1)] || 'instagram',
+      headline: p.headline!, caption: p.caption!, hashtags: (p.hashtags ?? []).slice(0, 6),
+    }))
+    .slice(0, 14);
+  const videos = (r.videos ?? [])
+    .filter(v => v.title && v.hook && (v.script?.length ?? 0) >= 3)
+    .map((v, i) => ({
+      day: typeof v.day === 'number' ? Math.min(Math.max(1, Math.round(v.day)), 28) : [4, 11, 18, 25][i] ?? i * 7 + 4,
+      title: v.title!, hook: v.hook!, script: v.script!.slice(0, 8),
+    }))
+    .slice(0, 4);
+  if (posts.length < 6) throw new Error('The AI returned too few posts.');
+  return { posts, videos };
+}
+
 export interface AIDesignElement {
   type: 'text' | 'shape' | 'sticker';
   x: number;

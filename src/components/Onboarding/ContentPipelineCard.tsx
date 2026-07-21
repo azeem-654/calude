@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X } from 'lucide-react';
+import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X, Share2, Clapperboard, Copy } from 'lucide-react';
 import { loadOnboarding, saveOnboarding, statusMeta, auditEntry, sanitizeText } from '../../services/onboarding';
 import { startMonthGeneration, publishMonth } from '../../services/contentGen';
 import { applyLaunchAssets } from '../../services/launchAssets';
@@ -26,10 +26,19 @@ const inputStyle: React.CSSProperties = {
 };
 
 /* ── Review & approve modal for a month awaiting approval ── */
+const PLATFORM_META: Record<string, { label: string; color: string }> = {
+  instagram: { label: 'Instagram', color: '#d946ef' },
+  facebook: { label: 'Facebook', color: '#3e63dd' },
+  linkedin: { label: 'LinkedIn', color: '#0ea5e9' },
+};
+
 function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth; onClose: () => void; onPublished: () => void }) {
-  const { addSequence, addCampaign, addNotification } = useApp();
+  const { addSequence, addCampaign, addSocialPost, addNotification } = useApp();
   const [content, setContent] = useState(() => month.generated!);
+  const [copiedVideo, setCopiedVideo] = useState<number | null>(null);
   const actor = getSession()?.user.email || 'owner';
+  const social = content.social ?? [];
+  const videos = content.videos ?? [];
 
   const persistEdits = (next: typeof content) => {
     setContent(next);
@@ -43,9 +52,10 @@ function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth
   };
 
   const approve = () => {
-    const published = publishMonth(month.index, { addSequence, addCampaign }, actor);
+    const published = publishMonth(month.index, { addSequence, addCampaign, addSocialPost }, actor);
     if (published) {
-      addNotification(`${month.label} approved — email sequence${content.sms.length ? ' + SMS flow' : ''} are now live in Marketing`, 'success');
+      const bits = ['email sequence', content.sms.length ? 'SMS flow' : '', social.length ? `${social.length} social designs` : ''].filter(Boolean).join(' + ');
+      addNotification(`${month.label} approved — ${bits} published across your modules`, 'success');
       onPublished();
       onClose();
     } else {
@@ -98,6 +108,66 @@ function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth
                     <textarea style={{ ...inputStyle, minHeight: 52, resize: 'vertical' }} value={s.message} maxLength={160}
                       onChange={ev => persistEdits({ ...content, sms: content.sms.map((x, xi) => xi === i ? { ...x, message: ev.target.value.slice(0, 160) } : x) })} />
                     <span style={{ fontSize: 10.5, color: s.message.length > 150 ? '#c77414' : MUTED, fontWeight: 600 }}>{s.message.length}/160</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {social.length > 0 && (
+            <>
+              <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <Share2 size={12} /> 30-day social calendar — {social.length} posts (approving creates editable designs in Social Creator)
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {social.map((p, i) => {
+                  const meta = PLATFORM_META[p.platform] ?? PLATFORM_META.instagram;
+                  return (
+                    <div key={i} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: INK, padding: '3px 9px', borderRadius: 999 }}>DAY {p.day}</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: meta.color, padding: '3px 9px', borderRadius: 999 }}>{meta.label}</span>
+                      </div>
+                      <input style={{ ...inputStyle, fontWeight: 700 }} value={p.headline} maxLength={60}
+                        onChange={ev => persistEdits({ ...content, social: social.map((x, xi) => xi === i ? { ...x, headline: sanitizeText(ev.target.value, 60) || x.headline } : x) })} />
+                      <textarea style={{ ...inputStyle, minHeight: 62, resize: 'vertical' }} value={p.caption} maxLength={400}
+                        onChange={ev => persistEdits({ ...content, social: social.map((x, xi) => xi === i ? { ...x, caption: ev.target.value.slice(0, 400) } : x) })} />
+                      <span style={{ fontSize: 10.5, color: MUTED, fontWeight: 600 }}>{p.hashtags.map(h => `#${h}`).join(' ')}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {videos.length > 0 && (
+            <>
+              <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <Clapperboard size={12} /> Short-video scripts — {videos.length} (copy into AI Shorts → Script to Video)
+              </span>
+              {videos.map((v, i) => (
+                <div key={i} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: '#c77414', padding: '3px 9px', borderRadius: 999 }}>DAY {v.day}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>{v.title}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const text = `${v.title}\n\n${v.script.join('\n')}`;
+                        void navigator.clipboard?.writeText(text).then(() => { setCopiedVideo(i); setTimeout(() => setCopiedVideo(null), 1600); });
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 999, border: '1px solid #e4e6ea', backgroundColor: copiedVideo === i ? '#e2f5dc' : '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: copiedVideo === i ? '#3f9142' : INK }}>
+                      <Copy size={11} /> {copiedVideo === i ? 'Copied!' : 'Copy script'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 11.5, color: '#8b5cf6', fontWeight: 700, margin: '8px 0 6px' }}>Hook: {v.hook}</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {v.script.map((line, li) => (
+                      <span key={li} style={{ fontSize: 12, color: '#5c6066', display: 'flex', gap: 8 }}>
+                        <span style={{ fontWeight: 800, color: MUTED, flexShrink: 0 }}>{li + 1}.</span> {line}
+                      </span>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -297,7 +367,7 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
               {open.status === 'AWAITING_APPROVAL' && open.generated && (
                 <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 8px' }}>
-                    <span style={{ fontWeight: 700, color: INK }}>{open.counts.emails} emails</span> and <span style={{ fontWeight: 700, color: INK }}>{open.counts.sms} SMS</span> are ready. Nothing sends until you approve.
+                    Ready for review: <span style={{ fontWeight: 700, color: INK }}>{[`${open.counts.emails} emails`, open.counts.sms ? `${open.counts.sms} SMS` : '', open.counts.social ? `${open.counts.social} social posts` : '', open.counts.videos ? `${open.counts.videos} video scripts` : ''].filter(Boolean).join(' · ')}</span>. Nothing goes live until you approve.
                   </p>
                   <button onClick={() => setReviewMonth(open.index)}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999, border: 'none', backgroundColor: '#8b5cf6', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
@@ -307,7 +377,7 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
               )}
               {open.status === 'PUBLISHED' && (
                 <p style={{ fontSize: 11.5, color: '#3f9142', fontWeight: 700, margin: '12px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CheckCheck size={13} /> Live in Marketing: {open.counts.emails}-email sequence{open.counts.sms ? ` + ${open.counts.sms}-message SMS flow` : ''}.
+                  <CheckCheck size={13} /> Live: {[`${open.counts.emails}-email sequence`, open.counts.sms ? `${open.counts.sms}-message SMS flow` : '', open.counts.social ? `${open.counts.social} social designs` : '', open.counts.videos ? `${open.counts.videos} video scripts` : ''].filter(Boolean).join(' + ')}.
                 </p>
               )}
             </div>

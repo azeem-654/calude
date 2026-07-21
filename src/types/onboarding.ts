@@ -26,17 +26,36 @@ export interface PlanAuditEntry {
 export interface GeneratedEmail { day: number; subject: string; body: string; }
 /** One generated SMS in a month's content package. */
 export interface GeneratedSms { day: number; message: string; }
+/** One planned social post in the month's 30-day calendar. */
+export interface GeneratedSocialPost {
+  day: number;
+  platform: 'instagram' | 'facebook' | 'linkedin';
+  headline: string;      // short on-image text
+  caption: string;       // post caption
+  hashtags: string[];
+}
+/** One planned short-form video: a ready-to-shoot script outline. */
+export interface GeneratedVideo {
+  day: number;
+  title: string;
+  hook: string;          // scroll-stopping first line
+  script: string[];      // scene-by-scene caption lines (paste into Script-to-Video)
+}
 
-/** The full content package generated for one month (grows in Parts 3-4). */
+/** The full content package generated for one month. */
 export interface MonthContent {
   emails: GeneratedEmail[];
   sms: GeneratedSms[];
+  /** Optional because months generated before Part 4 won't have them. */
+  social?: GeneratedSocialPost[];
+  videos?: GeneratedVideo[];
 }
 
 /** CRM records created when a month is published — kept for rollback. */
 export interface PublishedRefs {
   sequenceId?: string;
   smsCampaignId?: string;
+  socialPostIds?: string[];
 }
 
 /** Per-month record — the unit the approval workflow operates on. */
@@ -57,7 +76,7 @@ export interface ContentMonth {
   approvedBy?: string;
   publishedAt?: string;
   /** How many artifacts generation produced for this month (filled in Parts 2-4). */
-  counts: { emails: number; sms: number; social: number; blogs: number; tasks: number };
+  counts: { emails: number; sms: number; social: number; blogs: number; tasks: number; videos?: number };
   audit: PlanAuditEntry[];
 }
 
