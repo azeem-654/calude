@@ -319,6 +319,42 @@ Return ONLY JSON: {"title": "video title under 60 chars", "scenes": [{"caption":
   return { title: r.title || topic.slice(0, 60), scenes };
 }
 
+/**
+ * Onboarding: plan a full 12-month marketing calendar (themes + topics only —
+ * lightweight; actual content generation happens month-by-month later).
+ */
+export async function generateMarketingPlan(profile: {
+  company: string; industry: string; description: string; audience: string;
+  voice: string; goals: string[]; channels: string[]; startMonthLabel: string;
+}): Promise<{ theme: string; focus: string; holidays: string[]; ideas: string[] }[]> {
+  const prompt = `You are a senior marketing strategist. Create a 12-month content marketing plan for this business, starting in ${profile.startMonthLabel}.
+
+Business: ${profile.company} (${profile.industry})
+What they do: ${profile.description.slice(0, 400)}
+Audience: ${profile.audience.slice(0, 300)}
+Brand voice: ${profile.voice}
+Goals: ${profile.goals.join(', ')}
+Channels: ${profile.channels.join(', ')}
+
+For EACH of the 12 months provide:
+- "theme": a punchy monthly campaign theme (max 6 words) tailored to the business
+- "focus": 1-2 sentences on what marketing focuses on that month and why
+- "holidays": 1-3 real holidays/observances in that calendar month worth leveraging (respect the actual month)
+- "ideas": 4 specific content/campaign ideas for that month (each max 12 words)
+
+Return ONLY JSON: {"months": [{"theme": "...", "focus": "...", "holidays": ["..."], "ideas": ["...", "...", "...", "..."]}, ... 12 items]}`;
+  const json = await callGemini(prompt, 0.7);
+  const r = JSON.parse(json) as { months?: { theme?: string; focus?: string; holidays?: string[]; ideas?: string[] }[] };
+  const months = (r.months ?? []).slice(0, 12).map(m => ({
+    theme: m.theme || 'Brand Momentum',
+    focus: m.focus || 'Consistent multi-channel presence.',
+    holidays: (m.holidays ?? []).slice(0, 3),
+    ideas: (m.ideas ?? []).slice(0, 4),
+  }));
+  if (months.length < 12) throw new Error('Plan incomplete');
+  return months;
+}
+
 export interface AIDesignElement {
   type: 'text' | 'shape' | 'sticker';
   x: number;

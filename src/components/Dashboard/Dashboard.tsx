@@ -10,6 +10,9 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
+import { loadOnboarding } from '../../services/onboarding';
+import OnboardingWizard from '../Onboarding/OnboardingWizard';
+import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import type { Deal } from '../../types';
 
 /* ── Animated count-up ── */
@@ -454,6 +457,14 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 export default function Dashboard() {
   const { contacts, pipelines, appointments, reviews, campaigns } = useApp();
 
+  /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [obRefresh, setObRefresh] = useState(0);
+  useEffect(() => {
+    const ob = loadOnboarding();
+    if (!ob.completed && !ob.skipped) setWizardOpen(true);
+  }, []);
+
   const pipelineStages = pipelines[0]?.stages ?? [];
   const allDeals: Deal[] = pipelineStages.flatMap(s => s.deals);
 
@@ -611,6 +622,11 @@ export default function Dashboard() {
           <Ticker items={tickerItems} />
         </div>
 
+        {/* ── 12-month content pipeline / AI setup ── */}
+        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+          <ContentPipelineCard onSetup={() => setWizardOpen(true)} refreshKey={obRefresh} />
+        </div>
+
         {/* ── Journey board ── */}
         <div className="slide-up" style={{ ...FROST, animationDelay: '0.08s' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 16px' }}>
@@ -739,6 +755,8 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      <OnboardingWizard open={wizardOpen} onClose={() => { setWizardOpen(false); setObRefresh(k => k + 1); }} />
     </div>
   );
 }
