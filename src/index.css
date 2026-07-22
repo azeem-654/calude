@@ -286,3 +286,9 @@ html[data-theme="dark"] *::-webkit-scrollbar-thumb {
 .hover-lift:hover .card-actions {
   opacity: 1;
 }
+
+/* ── FAQ accordion (Funnel/Website builders + site preview) ── */
+summary::-webkit-details-marker { display: none; }
+summary::marker { content: ""; }
+.faq-chevron { transition: transform 0.18s ease; display: inline-block; }
+details[open] > summary .faq-chevron { transform: rotate(180deg); }

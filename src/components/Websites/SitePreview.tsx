@@ -23,23 +23,42 @@ function BlockRender({ block }: { block: FunnelBlock }) {
       </nav>
     );
     case 'hero': return (
-      <section style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center', minHeight: s.minHeight ?? 420, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <h1 style={{ fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 900, color: s.textColor ?? '#fff', margin: '0 0 18px', maxWidth: 800, lineHeight: 1.12 }}>{block.content}</h1>
-        {s.subheading && <p style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: `${s.textColor ?? '#fff'}cc`, margin: '0 0 36px', maxWidth: 600, lineHeight: 1.65 }}>{s.subheading}</p>}
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {s.buttonText && <button style={{ padding: '14px 30px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#1e3a5f', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
-          {s.secondaryButtonText && <button style={{ padding: '14px 30px', background: 'transparent', color: s.textColor ?? '#fff', border: `2px solid ${s.textColor ?? '#fff'}66`, borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
+      <section style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center', minHeight: s.minHeight ?? 420, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.15), transparent 70%)', top: -170, right: -110, pointerEvents: 'none' }} />
+        {s.eyebrow && (
+          <span style={{ position: 'relative', display: 'inline-flex', padding: '6px 16px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(6px)', color: s.textColor ?? '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 20 }}>
+            {s.eyebrow}
+          </span>
+        )}
+        <h1 style={{ position: 'relative', fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 900, color: s.textColor ?? '#fff', margin: '0 0 18px', maxWidth: 800, lineHeight: 1.12, letterSpacing: '-1px' }}>{block.content}</h1>
+        {s.subheading && <p style={{ position: 'relative', fontSize: 'clamp(15px, 2vw, 20px)', color: `${s.textColor ?? '#fff'}cc`, margin: '0 0 36px', maxWidth: 600, lineHeight: 1.65 }}>{s.subheading}</p>}
+        <div style={{ position: 'relative', display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {s.buttonText && (
+            <button
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 26px rgba(0,0,0,0.2)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 18px rgba(0,0,0,0.14)'; }}
+              style={{ padding: '14px 30px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#1e3a5f', border: 'none', borderRadius: 999, fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 18px rgba(0,0,0,0.14)', transition: 'transform 0.15s ease, box-shadow 0.15s ease' }}>
+              {s.buttonText}
+            </button>
+          )}
+          {s.secondaryButtonText && <button style={{ padding: '14px 30px', background: 'transparent', color: s.textColor ?? '#fff', border: `2px solid ${s.textColor ?? '#fff'}66`, borderRadius: 999, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
         </div>
       </section>
     );
     case 'features': return (
       <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        <div style={{ textAlign: s.align ?? 'center' }}>
+          {s.eyebrow && <span style={{ display: 'inline-block', padding: '5px 14px', borderRadius: 999, background: `${s.iconColor ?? '#6366f1'}15`, color: s.iconColor ?? '#6366f1', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 14 }}>{s.eyebrow}</span>}
+        </div>
         {block.content && <h2 style={{ textAlign: s.align ?? 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 8px' }}>{block.content}</h2>}
         {s.subtitle && <p style={{ textAlign: 'center', fontSize: 17, color: `${s.textColor ?? '#0f172a'}99`, margin: '0 0 44px' }}>{s.subtitle}</p>}
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(s.columns ?? 3, 3)}, 1fr)`, gap: 28, maxWidth: 1100, margin: '0 auto' }}>
           {(s.featureItems ?? []).map((f, i) => (
-            <div key={i} style={{ padding: 28, borderRadius: 14, background: 'rgba(255,255,255,0.7)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.06)' }}>
-              <div style={{ fontSize: 36, marginBottom: 14 }}>{f.icon}</div>
+            <div key={i}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 12px 28px rgba(0,0,0,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'none'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)'; }}
+              style={{ padding: 28, borderRadius: 14, background: 'rgba(255,255,255,0.7)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.06)', transition: 'transform 0.18s ease, box-shadow 0.18s ease' }}>
+              <div style={{ width: 56, height: 56, borderRadius: 14, background: `linear-gradient(135deg, ${s.iconColor ?? '#6366f1'}22, ${s.iconColor ?? '#6366f1'}0d)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, marginBottom: 16 }}>{f.icon}</div>
               <div style={{ fontWeight: 700, fontSize: 18, color: s.textColor ?? '#0f172a', marginBottom: 8 }}>{f.title}</div>
               <div style={{ fontSize: 14, color: `${s.textColor ?? '#0f172a'}99`, lineHeight: 1.7 }}>{f.desc}</div>
             </div>
@@ -93,12 +112,14 @@ function BlockRender({ block }: { block: FunnelBlock }) {
       </section>
     );
     case 'cta': return (
-      <section style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}>
-        <h2 style={{ fontSize: 38, fontWeight: 900, color: s.textColor ?? '#fff', margin: '0 0 12px' }}>{block.content}</h2>
-        {s.subheading && <p style={{ fontSize: 18, color: `${s.textColor ?? '#fff'}cc`, margin: '0 0 32px' }}>{s.subheading}</p>}
-        <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-          {s.buttonText && <button style={{ padding: '15px 36px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
-          {s.secondaryButtonText && <button style={{ padding: '15px 36px', background: 'transparent', color: s.textColor ?? '#fff', border: `2px solid ${s.textColor ?? '#fff'}66`, borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
+      <section style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%)', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none' }} />
+        {s.eyebrow && <span style={{ position: 'relative', display: 'inline-flex', padding: '6px 16px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', color: s.textColor ?? '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 18 }}>{s.eyebrow}</span>}
+        <h2 style={{ position: 'relative', fontSize: 38, fontWeight: 900, color: s.textColor ?? '#fff', margin: '0 0 12px' }}>{block.content}</h2>
+        {s.subheading && <p style={{ position: 'relative', fontSize: 18, color: `${s.textColor ?? '#fff'}cc`, margin: '0 0 32px' }}>{s.subheading}</p>}
+        <div style={{ position: 'relative', display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {s.buttonText && <button style={{ padding: '15px 36px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 999, fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>{s.buttonText}</button>}
+          {s.secondaryButtonText && <button style={{ padding: '15px 36px', background: 'transparent', color: s.textColor ?? '#fff', border: `2px solid ${s.textColor ?? '#fff'}66`, borderRadius: 999, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
         </div>
       </section>
     );
@@ -117,13 +138,18 @@ function BlockRender({ block }: { block: FunnelBlock }) {
     );
     case 'faq': return (
       <section style={{ ...bg, padding: `${pad}px 60px` }}>
+        <div style={{ textAlign: 'center' }}>
+          {s.eyebrow && <span style={{ display: 'inline-block', padding: '5px 14px', borderRadius: 999, background: '#6366f115', color: '#6366f1', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 14 }}>{s.eyebrow}</span>}
+        </div>
         {block.content && <h2 style={{ textAlign: 'center', fontSize: 34, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 40px' }}>{block.content}</h2>}
         <div style={{ maxWidth: 760, margin: '0 auto' }}>
           {(s.faqItems ?? []).map((f, i) => (
-            <div key={i} style={{ borderBottom: '1px solid #f1f5f9', padding: '22px 0' }}>
-              <div style={{ fontWeight: 700, fontSize: 17, color: s.textColor ?? '#0f172a', marginBottom: 8 }}>{f.q}</div>
-              <div style={{ fontSize: 15, color: `${s.textColor ?? '#0f172a'}99`, lineHeight: 1.75 }}>{f.a}</div>
-            </div>
+            <details key={i} style={{ borderBottom: '1px solid #f1f5f9', padding: '22px 0' }}>
+              <summary style={{ fontWeight: 700, fontSize: 17, color: s.textColor ?? '#0f172a', marginBottom: 8, cursor: 'pointer', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {f.q}<span className="faq-chevron" style={{ color: '#6366f1', fontSize: 13, fontWeight: 700, flexShrink: 0, marginLeft: 12 }}>▼</span>
+              </summary>
+              <div style={{ fontSize: 15, color: `${s.textColor ?? '#0f172a'}99`, lineHeight: 1.75, marginTop: 8 }}>{f.a}</div>
+            </details>
           ))}
         </div>
       </section>

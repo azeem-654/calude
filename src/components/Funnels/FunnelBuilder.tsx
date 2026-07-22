@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { Funnel, FunnelStep, FunnelBlock } from '../../types';
 import { useHistory } from '../../hooks/useHistory';
+import { GradientSwatchRow } from '../shared/gradientPresets';
 
 /* ─── Step type config ─── */
 const STEP_TYPE_CONFIG: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
@@ -492,12 +493,32 @@ function BlockRender({ block }: { block: FunnelBlock }) {
       <section style={{ background: bg, minHeight: s.minHeight ?? 520, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: `${s.padding ?? 80}px 40px`, position: 'relative', overflow: 'hidden' }}>
         {s.bgImage && <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${s.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />}
         {s.overlay && <div style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${s.overlayOpacity ?? 0.5})` }} />}
+        {/* Decorative gradient orbs for visual depth */}
+        <div style={{ position: 'absolute', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.16), transparent 70%)', top: -180, right: -120, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', width: 340, height: 340, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.1), transparent 70%)', bottom: -140, left: -100, pointerEvents: 'none' }} />
         <div style={{ position: 'relative', textAlign: s.align ?? 'center', maxWidth: 860, width: '100%' }}>
-          <h1 style={{ fontSize: 54, fontWeight: 900, color: s.textColor ?? '#fff', lineHeight: 1.1, margin: '0 0 20px', letterSpacing: '-1px' }}>{block.content}</h1>
+          {s.eyebrow && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 16px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(6px)', color: s.textColor ?? '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.04em', marginBottom: 22, textTransform: 'uppercase' }}>
+              {s.eyebrow}
+            </span>
+          )}
+          <h1 style={{ fontSize: 58, fontWeight: 900, color: s.textColor ?? '#fff', lineHeight: 1.08, margin: '0 0 20px', letterSpacing: '-1.5px' }}>{block.content}</h1>
           {s.subheading && <p style={{ fontSize: 20, color: `${s.textColor ?? '#fff'}cc`, marginBottom: 36, lineHeight: 1.7 }}>{s.subheading}</p>}
           <div style={{ display: 'flex', gap: 14, justifyContent: s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center', flexWrap: 'wrap' }}>
-            <button style={{ padding: '15px 34px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>{s.buttonText ?? 'Get Started'}</button>
-            {s.secondaryButtonText && <button style={{ padding: '15px 34px', background: 'transparent', color: s.textColor ?? '#fff', border: '2px solid rgba(255,255,255,0.45)', borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
+            <button
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 28px rgba(0,0,0,0.22)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(0,0,0,0.15)'; }}
+              style={{ padding: '15px 34px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 999, fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', transition: 'transform 0.15s ease, box-shadow 0.15s ease' }}>
+              {s.buttonText ?? 'Get Started'}
+            </button>
+            {s.secondaryButtonText && (
+              <button
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                style={{ padding: '15px 34px', background: 'transparent', color: s.textColor ?? '#fff', border: '2px solid rgba(255,255,255,0.45)', borderRadius: 999, fontSize: 16, fontWeight: 600, cursor: 'pointer', transition: 'background 0.15s ease' }}>
+                {s.secondaryButtonText}
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -506,12 +527,16 @@ function BlockRender({ block }: { block: FunnelBlock }) {
     case 'features': return (
       <section style={{ background: bg, padding: `${s.padding ?? 80}px 40px` }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', textAlign: s.align ?? 'center' }}>
+          {s.eyebrow && <span style={{ display: 'inline-block', padding: '5px 14px', borderRadius: 999, background: `${s.iconColor ?? '#6366f1'}15`, color: s.iconColor ?? '#6366f1', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 14 }}>{s.eyebrow}</span>}
           <h2 style={{ fontSize: 38, fontWeight: 800, color: s.textColor ?? '#0f172a', marginBottom: 12, letterSpacing: '-0.5px' }}>{block.content}</h2>
           {s.subtitle && <p style={{ fontSize: 18, color: '#64748b', marginBottom: 52, lineHeight: 1.7 }}>{s.subtitle}</p>}
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${s.columns ?? 3}, 1fr)`, gap: 24 }}>
             {(s.featureItems ?? []).map((f, i) => (
-              <div key={i} style={{ background: '#fff', borderRadius: 16, padding: 28, textAlign: 'left', border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                <div style={{ width: 52, height: 52, borderRadius: 14, background: `${s.iconColor ?? '#6366f1'}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 16 }}>{f.icon}</div>
+              <div key={i}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 12px 28px rgba(0,0,0,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'none'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 12px rgba(0,0,0,0.04)'; }}
+                style={{ background: '#fff', borderRadius: 16, padding: 28, textAlign: 'left', border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)', transition: 'transform 0.18s ease, box-shadow 0.18s ease' }}>
+                <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg, ${s.iconColor ?? '#6366f1'}22, ${s.iconColor ?? '#6366f1'}0d)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 16 }}>{f.icon}</div>
                 <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0f172a', marginBottom: 8, margin: '0 0 8px' }}>{f.title}</h3>
                 <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
               </div>
@@ -594,13 +619,19 @@ function BlockRender({ block }: { block: FunnelBlock }) {
     }
 
     case 'cta': return (
-      <section style={{ background: bg, padding: `${s.padding ?? 80}px 40px`, textAlign: s.align ?? 'center' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      <section style={{ background: bg, padding: `${s.padding ?? 80}px 40px`, textAlign: s.align ?? 'center', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%)', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'relative', maxWidth: 800, margin: '0 auto' }}>
+          {s.eyebrow && (
+            <span style={{ display: 'inline-flex', padding: '6px 16px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', color: s.textColor ?? '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 18 }}>
+              {s.eyebrow}
+            </span>
+          )}
           <h2 style={{ fontSize: 44, fontWeight: 900, color: s.textColor ?? '#fff', marginBottom: 16, lineHeight: 1.1, letterSpacing: '-1px' }}>{block.content}</h2>
           {s.subheading && <p style={{ fontSize: 18, color: `${s.textColor ?? '#fff'}bb`, marginBottom: 36, lineHeight: 1.7 }}>{s.subheading}</p>}
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button style={{ padding: '16px 36px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>{s.buttonText ?? 'Get Started'}</button>
-            {s.secondaryButtonText && <button style={{ padding: '16px 36px', background: 'transparent', color: s.textColor ?? '#fff', border: '2px solid rgba(255,255,255,0.4)', borderRadius: 10, fontSize: 17, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
+            <button style={{ padding: '16px 36px', background: s.buttonColor ?? '#fff', color: s.buttonTextColor ?? '#6366f1', border: 'none', borderRadius: 999, fontSize: 17, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>{s.buttonText ?? 'Get Started'}</button>
+            {s.secondaryButtonText && <button style={{ padding: '16px 36px', background: 'transparent', color: s.textColor ?? '#fff', border: '2px solid rgba(255,255,255,0.4)', borderRadius: 999, fontSize: 17, fontWeight: 600, cursor: 'pointer' }}>{s.secondaryButtonText}</button>}
           </div>
         </div>
       </section>
@@ -623,16 +654,17 @@ function BlockRender({ block }: { block: FunnelBlock }) {
     case 'faq': return (
       <section style={{ background: bg, padding: `${s.padding ?? 80}px 40px` }}>
         <div style={{ maxWidth: 780, margin: '0 auto' }}>
+          {s.eyebrow && <span style={{ display: 'inline-block', padding: '5px 14px', borderRadius: 999, background: '#6366f115', color: '#6366f1', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 14 }}>{s.eyebrow}</span>}
           <h2 style={{ fontSize: 38, fontWeight: 800, color: s.textColor ?? '#0f172a', marginBottom: 12, textAlign: s.align ?? 'left' }}>{block.content}</h2>
           {s.subtitle && <p style={{ fontSize: 16, color: '#64748b', marginBottom: 40, textAlign: s.align ?? 'left' }}>{s.subtitle}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {(s.faqItems ?? []).map((f, i) => (
-              <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-                <div style={{ padding: '18px 22px', background: '#f8fafc', fontWeight: 600, color: '#0f172a', fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {f.q}<span style={{ color: '#6366f1', fontSize: 20, fontWeight: 300, marginLeft: 12 }}>+</span>
-                </div>
+              <details key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                <summary style={{ padding: '18px 22px', background: '#f8fafc', fontWeight: 600, color: '#0f172a', fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', listStyle: 'none' }}>
+                  {f.q}<span className="faq-chevron" style={{ color: '#6366f1', fontSize: 13, fontWeight: 700, marginLeft: 12, flexShrink: 0 }}>▼</span>
+                </summary>
                 <div style={{ padding: '14px 22px', fontSize: 14, color: '#64748b', lineHeight: 1.8, background: '#fff' }}>{f.a}</div>
-              </div>
+              </details>
             ))}
           </div>
         </div>
@@ -944,6 +976,7 @@ function PropertiesPanel({ block, onChange }: PropPanelProps) {
           <span style={label}>Bg Gradient (CSS)</span>
           <input value={s.bgGradient ?? ''} onChange={e => set({ bgGradient: e.target.value })}
             placeholder="linear-gradient(135deg, #667eea, #764ba2)" style={input} />
+          <GradientSwatchRow value={s.bgGradient} onPick={css => set({ bgGradient: css })} />
         </div>
         <div style={row}>
           <span style={label}>Bg Image URL</span>

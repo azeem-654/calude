@@ -213,6 +213,8 @@ export interface FunnelBlock {
     navLinks?: { label: string; url: string }[];
     footerColumns?: { heading: string; links: { label: string; url: string }[] }[];
     footerCopyright?: string;
+    /** Small kicker/badge text shown above a section's heading, e.g. "WHY CHOOSE US". */
+    eyebrow?: string;
   };
 }
 

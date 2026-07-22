@@ -92,12 +92,13 @@ export function buildFunnel(state: OnboardingState): Funnel {
     id: `ob-page-${now}-l`, name: 'Landing', type: 'optin', slug: 'start', visitors: 0, conversions: 0,
     blocks: [
       blk('hero', `${magnet} from ${co}`, {
+        eyebrow: p.industry || 'Limited time offer',
         subheading: `${sanitizeText(p.description, 160)} Built for ${sanitizeText(p.audience, 110).toLowerCase() || 'people like you'}.`,
         bgGradient: grad, textColor: '#ffffff', buttonText: `Claim my ${magnet.toLowerCase()}`, buttonColor: '#c7f441', buttonTextColor: '#17191c',
         secondaryButtonText: 'How it works', minHeight: 460, align: 'center', padding: 70,
       }),
       blk('features', `Why ${co}?`, {
-        subtitle: 'Three reasons our customers stay with us', bgColor: '#f8fafc', padding: 60, columns: 3,
+        eyebrow: 'Why us', subtitle: 'Three reasons our customers stay with us', bgColor: '#f8fafc', padding: 60, columns: 3, iconColor: p.brandColor,
         featureItems: [
           { icon: '⚡', title: 'Fast to start', desc: `Claim your ${magnet.toLowerCase()} in under a minute — we handle the rest and get back to you the same business day.` },
           { icon: '🏆', title: `${p.industry || 'Industry'} experts`, desc: `This is all we do. You get a team that knows ${(p.industry || 'your industry').toLowerCase()} inside-out, not generalists.` },
@@ -200,26 +201,36 @@ export function buildWebsite(state: OnboardingState): Website {
     blocks: [
       nav,
       blk('hero', co, {
+        eyebrow: p.industry || undefined,
         subheading: `${sanitizeText(p.description, 180)}`,
         bgGradient: grad, textColor: '#ffffff', buttonText: 'Get started', buttonColor: '#c7f441', buttonTextColor: '#17191c',
         secondaryButtonText: 'Learn more', minHeight: 440, padding: 70,
       }),
+      blk('stats', '', {
+        bgColor: '#0f172a', textColor: '#ffffff', padding: 56,
+        statItems: [
+          { value: '5★', label: 'Average rating', icon: '⭐' },
+          { value: '100%', label: 'Satisfaction focus', icon: '🤝' },
+          { value: '24h', label: 'Response time', icon: '⚡' },
+          { value: 'Local', label: `${sanitizeText(p.industry, 30) || 'Industry'} specialists`, icon: '🏆' },
+        ],
+      }),
       blk('features', 'What we do', {
-        subtitle: `Built for ${sanitizeText(p.audience, 90).toLowerCase() || 'you'}`, bgColor: '#f8fafc', padding: 60, columns: 3,
+        eyebrow: 'Services', subtitle: `Built for ${sanitizeText(p.audience, 90).toLowerCase() || 'you'}`, bgColor: '#f8fafc', padding: 60, columns: 3, iconColor: p.brandColor,
         featureItems: (SERVICES[p.industry] ?? [
           { name: 'Consultation', duration: 30, description: 'A first conversation about what you need.' },
           { name: 'Full Service', duration: 60, description: 'The complete experience, end to end.' },
         ]).slice(0, 3).map((s, i) => ({ icon: ['✨', '🎯', '🤝'][i % 3], title: s.name, desc: s.description })),
       }),
       blk('testimonials', 'What customers say', {
-        bgColor: '#ffffff', padding: 60,
+        eyebrow: 'Reviews', bgColor: '#ffffff', padding: 60,
         testimonialItems: [
           { stars: 5, quote: `Working with ${co} was the easiest part of my month. Fast, clear and genuinely helpful.`, author: 'Recent customer', role: 'Google review' },
           { stars: 5, quote: 'They did what they said, when they said, for the price they quoted. Rare these days.', author: 'Verified client', role: 'Facebook review' },
         ],
       }),
       blk('cta', 'Ready when you are', {
-        subheading: 'Book a time that suits you — it takes under a minute.',
+        eyebrow: 'Get started', subheading: 'Book a time that suits you — it takes under a minute.',
         bgGradient: grad, textColor: '#ffffff', buttonText: 'Book now', buttonColor: '#c7f441', buttonTextColor: '#17191c', padding: 70,
       }),
       footer(),
@@ -255,6 +266,7 @@ export function buildWebsite(state: OnboardingState): Website {
     name: `${co} Website`,
     description: `Auto-generated starter website for ${co} with SEO blog.`,
     status: 'published',
+    template: templateIdFor(p.industry),
     subdomain: slugify(co),
     seoTitle: `${co} — ${p.industry || 'Services'} for ${sanitizeText(p.audience, 60) || 'you'}`,
     seoDescription: sanitizeText(p.description, 155),
@@ -262,6 +274,17 @@ export function buildWebsite(state: OnboardingState): Website {
     pages: [home, about, ...blogPages],
     visitors: 0, pageViews: 0, createdAt: new Date().toISOString(),
   };
+}
+
+/** Maps an industry to one of the Websites module's starter-template card looks (thumbnail only — content stays custom-generated). */
+function templateIdFor(industry: string): string {
+  const map: Record<string, string> = {
+    'Restaurant & Food': 'restaurant', 'Technology & SaaS': 'saas', 'Marketing Agency': 'agency',
+    'E-commerce & Retail': 'ecommerce', 'Legal': 'consulting', 'Finance & Insurance': 'consulting',
+    'Professional Services': 'consulting', 'Education & Coaching': 'consulting', 'Nonprofit': 'nonprofit',
+    'Events & Entertainment': 'portfolio', 'Travel & Hospitality': 'portfolio',
+  };
+  return map[industry] ?? 'business';
 }
 
 /* ── 90-day launch plan (task board) ── */

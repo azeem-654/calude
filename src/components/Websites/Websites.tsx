@@ -178,6 +178,16 @@ export default function Websites() {
         </button>
       </div>
 
+      {/* Funnels | Websites tabs — same control as the Funnels page, for parity */}
+      <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9', marginBottom: 24 }}>
+        <button onClick={() => navigate('/funnels')} style={{ padding: '6px 18px', border: 'none', borderRadius: 8, backgroundColor: 'transparent', color: '#64748b', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+          Funnels
+        </button>
+        <button onClick={() => {}} style={{ padding: '6px 18px', border: 'none', borderRadius: 8, backgroundColor: 'white', color: '#0f172a', fontSize: 13, fontWeight: 600, cursor: 'default', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
+          Websites
+        </button>
+      </div>
+
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
         {[

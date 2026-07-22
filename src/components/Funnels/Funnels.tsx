@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Eye, TrendingUp, DollarSign, MousePointer, ExternalLink, Edit2, Trash2, Copy, BarChart2, X, Search, Check, Rocket } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -415,7 +416,7 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
 
 export default function Funnels() {
   const { funnels, addFunnel, updateFunnel, deleteFunnel } = useApp();
-  const [activeTab, setActiveTab] = useState<'funnels' | 'websites'>('funnels');
+  const navigate = useNavigate();
   const [builderFunnel, setBuilderFunnel] = useState<FunnelType | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -502,14 +503,15 @@ export default function Funnels() {
         {/* Tabs + New button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'inline-flex', gap: '2px', padding: '3px', borderRadius: '10px', border: '1px solid #e6e9f0', backgroundColor: '#f1f5f9' }}>
-            {(['funnels', 'websites'] as const).map(t => (
-              <button key={t} onClick={() => setActiveTab(t)} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: activeTab === t ? 'white' : 'transparent', color: activeTab === t ? '#0f172a' : '#64748b', fontSize: '13px', fontWeight: activeTab === t ? 600 : 500, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.15s', boxShadow: activeTab === t ? '0 1px 2px rgba(16,24,40,0.08)' : 'none' }}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
+            <button onClick={() => {}} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: 'white', color: '#0f172a', fontSize: '13px', fontWeight: 600, cursor: 'default', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
+              Funnels
+            </button>
+            <button onClick={() => navigate('/websites')} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}>
+              Websites
+            </button>
           </div>
           <button onClick={() => setShowWizard(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
-            <Plus size={15} /> New {activeTab === 'funnels' ? 'Funnel' : 'Website'}
+            <Plus size={15} /> New Funnel
           </button>
         </div>
 
