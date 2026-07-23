@@ -1,0 +1,50 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Deploy to Cloudflare Pages
+#
+# Target: gohighlevelinstitute.com (Cloudflare Pages project "gohighlevelinstitute")
+#
+# Required GitHub Secret (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   Cloudflare API token with "Cloudflare Pages: Edit" permission
+#
+# The custom domain itself is attached in the Cloudflare dashboard:
+#   Pages project → Custom domains → Add → gohighlevelinstitute.com
+# (DNS is auto-configured since the domain is already a zone in this account.)
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - claude/gohighlevel-app-testing-5sNjJ
+      - claude/cloudflare-agent-setup-prompt-0oy294
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_BASE: /
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: pages deploy dist --project-name=gohighlevelinstitute
