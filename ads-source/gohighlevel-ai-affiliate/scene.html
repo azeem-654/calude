@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: 'Inter';
+    src: local('Arial');
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1920px; height:1080px; overflow:hidden; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .stage {
+    width:1920px; height:1080px; position:relative;
+    background: radial-gradient(1200px 800px at 75% 20%, #123b3a 0%, #0a1622 55%, #060b12 100%);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff;
+  }
+  .glow {
+    position:absolute; border-radius:50%; filter: blur(120px); opacity:0.55;
+  }
+  .glow1 { width:700px; height:700px; background:#1fd1a8; top:-200px; right:-150px; }
+  .glow2 { width:600px; height:600px; background:#2451ff; bottom:-220px; left:-150px; opacity:0.35;}
+
+  .content { position:relative; z-index:2; width:1620px; text-align:center; }
+
+  .kicker {
+    display:inline-block; padding:14px 36px; border-radius:999px;
+    background:rgba(31,209,168,0.12); border:2px solid rgba(31,209,168,0.55);
+    color:#5ff0cd; font-size:30px; font-weight:700; letter-spacing:1px;
+    margin-bottom:44px;
+  }
+  .headline {
+    font-size:96px; font-weight:800; line-height:1.08; letter-spacing:-1px;
+    margin-bottom:36px;
+  }
+  .headline .accent { color:#33e6bd; }
+  .sub {
+    font-size:42px; font-weight:400; color:#c8d3d8; line-height:1.4; max-width:1400px; margin:0 auto;
+  }
+
+  .crossrow { display:flex; gap:36px; justify-content:center; margin-top:56px; }
+  .crosschip {
+    display:flex; align-items:center; gap:14px; padding:20px 32px; border-radius:20px;
+    background:rgba(255,255,255,0.05); border:2px solid rgba(255,255,255,0.12);
+    font-size:32px; color:#9fb0b8; position:relative;
+  }
+  .crosschip::after {
+    content:""; position:absolute; left:14px; right:14px; top:50%; height:4px; background:#ff5d6c; border-radius:4px;
+  }
+
+  .featlist { display:flex; flex-direction:column; gap:34px; text-align:left; margin-top:20px; }
+  .feat { display:flex; align-items:flex-start; gap:28px; }
+  .tick {
+    flex:0 0 auto; width:64px; height:64px; border-radius:50%; background:#1fd1a8;
+    display:flex; align-items:center; justify-content:center; font-size:38px; color:#06231c; font-weight:900;
+  }
+  .feat-text { font-size:44px; font-weight:600; color:#eef7f5; line-height:1.3; padding-top:6px;}
+  .feat-text b { color:#33e6bd; }
+
+  .offercard {
+    background:linear-gradient(135deg, rgba(31,209,168,0.16), rgba(36,81,255,0.10));
+    border:3px solid rgba(51,230,189,0.65); border-radius:36px; padding:70px 90px;
+  }
+  .offer-top { font-size:34px; font-weight:700; color:#8be6cf; letter-spacing:2px; margin-bottom:24px;}
+  .offer-amt { font-size:120px; font-weight:900; color:#fff; margin-bottom:10px; }
+  .offer-amt span { color:#33e6bd; }
+  .offer-desc { font-size:40px; color:#dbeae6; font-weight:500; margin-bottom:8px; }
+  .offer-fine { font-size:24px; color:#7f9490; margin-top:30px; }
+
+  .ctaurl {
+    font-size:56px; font-weight:800; color:#fff; margin-top:10px;
+    background:rgba(255,255,255,0.08); display:inline-block; padding:24px 56px; border-radius:20px;
+    border:2px solid rgba(255,255,255,0.18);
+  }
+  .ctabtn {
+    margin-top:50px; display:inline-block; padding:32px 90px; border-radius:20px;
+    background:#1fd1a8; color:#04241d; font-size:52px; font-weight:800;
+  }
+  .fine { margin-top:46px; font-size:26px; color:#7f9490; }
+
+  .badge-row { display:flex; gap:26px; justify-content:center; margin-top:50px; }
+  .badge { font-size:28px; color:#9fb0b8; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); padding:16px 30px; border-radius:14px; }
+
+  .wordmark { font-size:64px; font-weight:800; letter-spacing:-1px; }
+  .wordmark .go { color:#fff; }
+  .wordmark .high { color:#33e6bd; }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="glow glow1"></div>
+    <div class="glow glow2"></div>
+    <div class="content" id="content"></div>
+  </div>
+</body>
+</html>
