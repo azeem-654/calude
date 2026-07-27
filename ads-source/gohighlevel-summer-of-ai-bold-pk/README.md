@@ -10,7 +10,12 @@ sale-banner-style layout, still hitting only the main points:
 2. **"+ Rs 1000 Gift"** — money hook, in yellow
 3. **"+ Course Joining Motivation bhi!"** — the specific phrase requested
 4. **"Abhi Hasil Karein!"** — red punch-tag urgency line
-5. **WhatsApp Karein — 0320-0045364** — the CTA
+5. **"Seekhein: Voice AI, Automation, CRM & AI Employees" / "Practical
+   training se apna AI career shuru karein"** — 2-line course-content blurb
+   (added per feedback), sitting between the punch tag and the CTA
+6. **WhatsApp Karein — 0320-0045364** — the CTA, with the number itself now
+   noticeably larger (46×scale vs the earlier 32×scale) so it's the most
+   readable line on the CTA bar
 
 Text sizes were bumped further per "make text more big more bold" — each
 format uses a different `scale` multiplier (1.08 / 1.38 / 1.85 for
@@ -31,10 +36,13 @@ expected and still reads fine.
    creative** — make sure whatever you deliver over WhatsApp (the 30-day
    training, encouragement, etc.) actually matches what someone would
    expect from that phrase.
-2. **Rs 1000 Gift + payout details are not spelled out on the image** —
+2. **"Voice AI, Automation, CRM & AI Employees" is now a specific curriculum
+   claim** — make sure the actual training covers these, since it's on the
+   creative now, not just implied.
+3. **Rs 1000 Gift + payout details are not spelled out on the image** —
    same as the previous version, you explain JazzCash/EasyPaisa/etc. and
    verify sign-ups yourself over WhatsApp.
-3. **Affiliate link still isn't on the image** — add your tracked link in
+4. **Affiliate link still isn't on the image** — add your tracked link in
    the caption/bio wherever you post these.
 
 ## Regenerating

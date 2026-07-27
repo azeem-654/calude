@@ -38,26 +38,31 @@ function buildHtml({ width, height, scale }) {
   .headline .l3 { font-size:${44*s}px; font-weight:800; line-height:1.15; letter-spacing:-0.5px; color:#fff; margin-top:${6*s}px; }
 
   .punch {
-    align-self:flex-start; margin-top:${10*s}px; margin-bottom:${20*s}px;
+    align-self:flex-start; margin-top:${10*s}px; margin-bottom:${22*s}px;
     font-size:${40*s}px; font-weight:900; color:#fff; background:#ff3b30;
     padding:${10*s}px ${28*s}px; border-radius:${14*s}px; transform:rotate(-2deg);
     box-shadow:0 ${8*s}px ${20*s}px rgba(255,59,48,0.45);
   }
 
+  .courseinfo { text-align:left; margin-bottom:${8*s}px; }
+  .courseinfo .c1 { font-size:${25*s}px; font-weight:700; color:#fff; line-height:1.32; }
+  .courseinfo .c1 b { color:#ffd166; }
+  .courseinfo .c2 { font-size:${25*s}px; font-weight:700; color:rgba(255,255,255,0.88); line-height:1.32; }
+
   .spacer { flex:1 1 auto; }
 
   .waCta {
-    display:flex; align-items:center; gap:${16*s}px; background:#04240f; color:#fff;
-    border-radius:${20*s}px; padding:${20*s}px ${36*s}px; align-self:stretch; justify-content:center;
+    display:flex; align-items:center; gap:${18*s}px; background:#04240f; color:#fff;
+    border-radius:${20*s}px; padding:${22*s}px ${36*s}px; align-self:stretch; justify-content:center;
     box-shadow:0 ${10*s}px ${26*s}px rgba(0,0,0,0.35); border:${3*s}px solid #25D366; margin-bottom:${18*s}px;
   }
   .waCta .icon {
-    width:${52*s}px; height:${52*s}px; border-radius:50%; background:#25D366; display:flex; align-items:center;
-    justify-content:center; font-size:${28*s}px; flex:0 0 auto;
+    width:${60*s}px; height:${60*s}px; border-radius:50%; background:#25D366; display:flex; align-items:center;
+    justify-content:center; font-size:${32*s}px; flex:0 0 auto;
   }
   .waCta .txt { text-align:left; }
-  .waCta .txt .l1 { font-size:${17*s}px; font-weight:700; color:#bdf5d3; }
-  .waCta .txt .l2 { font-size:${32*s}px; font-weight:900; color:#fff; }
+  .waCta .txt .l1 { font-size:${18*s}px; font-weight:700; color:#bdf5d3; }
+  .waCta .txt .l2 { font-size:${46*s}px; font-weight:900; color:#fff; letter-spacing:0.5px; }
 
   .fine { position:relative; z-index:2; font-size:${13*s}px; color:rgba(255,255,255,0.7); text-align:center; }
 </style>
@@ -76,6 +81,10 @@ function buildHtml({ width, height, scale }) {
         <div class="l3">+ Course Joining Motivation bhi!</div>
       </div>
       <div class="punch">Abhi Hasil Karein!</div>
+      <div class="courseinfo">
+        <div class="c1">Seekhein: <b>Voice AI, Automation, CRM &amp; AI Employees</b></div>
+        <div class="c2">Practical training se apna AI career shuru karein</div>
+      </div>
       <div class="spacer"></div>
       <div class="waCta">
         <div class="icon">&#128172;</div>
