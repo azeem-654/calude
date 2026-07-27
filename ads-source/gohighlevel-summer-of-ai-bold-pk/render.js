@@ -4,12 +4,11 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { buildHtml } = require('./template');
-const content = require('./content');
 
 const FORMATS = [
-  { name: 'facebook_1080x1080', width: 1080, height: 1080, heroHeight: 290, compact: true },
-  { name: 'instagram_1080x1350', width: 1080, height: 1350, heroHeight: 400, snug: true },
-  { name: 'whatsapp_status_1080x1920', width: 1080, height: 1920, heroHeight: 540, expanded: true },
+  { name: 'facebook_1080x1080', width: 1080, height: 1080, scale: 1 },
+  { name: 'instagram_1080x1350', width: 1080, height: 1350, scale: 1.12 },
+  { name: 'whatsapp_status_1080x1920', width: 1080, height: 1920, scale: 1.62 },
 ];
 
 (async () => {
@@ -24,9 +23,6 @@ const FORMATS = [
     const page = await browser.newPage({ viewport: { width: fmt.width, height: fmt.height }, deviceScaleFactor: 1 });
     const html = buildHtml(fmt);
     await page.setContent(html, { waitUntil: 'load' });
-    await page.evaluate((html) => {
-      document.getElementById('body-content').innerHTML = html;
-    }, content);
     await page.waitForTimeout(80);
     const outPath = path.join(outDir, `${fmt.name}.png`);
     await page.screenshot({ path: outPath });

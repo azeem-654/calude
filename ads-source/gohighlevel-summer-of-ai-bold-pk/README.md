@@ -1,20 +1,16 @@
-# GoHighLevel "Summer of AI" — bold Pakistan-market version
+# GoHighLevel "Summer of AI" — bold Pakistan-market version (poster style)
 
-A louder, higher-urgency remix of `../gohighlevel-summer-of-ai/`, written in
-Roman Urdu/English mixed copy for a Pakistani audience. Leads with **"AI
-Skills Seekhein — Bilkul FREE!"** (learn AI skills for free / build a
-career), with the Rs 1000 instant transfer kept as a bold, high-contrast
-secondary hook (red "INSTANT" tag, corner ribbon, glowing number) rather
-than the headline itself — per the request to make skills the major message
-while keeping the money hook visually loud.
+A minimal, poster-style ad for a Pakistani audience: one focal composition
+instead of a stacked list of sections, hitting only 3 points —
 
-Visual changes vs. the original version: a red/orange urgency bar across
-the top, a diagonal "FREE Rs 1000" ribbon badge, a highlighted "Seekhein AI
-Skills" chip, an "INSTANT" tag next to the Rs 1000 figure, and a 4th offer
-bullet tying AI skills to freelancing/job/business outcomes — all things
-that read as high-urgency, aspirational value in Pakistani social ad
-creative (Daraz/Jazz/Telenor-style banners) without inventing fake scarcity
-numbers.
+1. **"AI Skills Seekhein — Bilkul FREE!"** — the headline, learn AI skills for free
+2. **Rs 1000 INSTANT** — a glowing circular badge, the money hook
+3. **WhatsApp Karein — 0320-0045364** — the single call to action
+
+Everything else from the earlier, more detailed version (feature chips,
+the 4-bullet offer list, the urgency bar, the long disclosure paragraph)
+was cut in favor of fewer, bigger elements — per feedback to change the
+style and lead with main points instead of detail.
 
 ## Output
 
@@ -22,23 +18,24 @@ numbers.
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/instagram_1080x1350.png`
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/whatsapp_status_1080x1920.png`
 
+Single full-bleed gradient background (no separate hero/body sections),
+centered composition, one scale factor per format so type and the badge
+size up for the taller Instagram/WhatsApp Status canvases instead of just
+leaving empty space.
+
 ## ⚠️ Before you post these
 
-Same commitments as the original version apply (see
-`../gohighlevel-summer-of-ai/README.md`), plus:
-
-1. **No fake scarcity was added on purpose.** Real Pakistani ad creative
-   often uses "only 50 spots left" style urgency — that was deliberately
-   left out here because it wasn't true information you gave me. If you add
-   a real cap (e.g. "first 50 sign-ups only"), make sure it's actually true
-   and actually enforced — advertising a limit you don't honor is the kind
-   of thing that gets ads reported.
-2. **"AI Skills" is now the headline promise**, so the 30-day training
-   needs to actually teach the features listed (Voice AI, Automation, CRM,
-   AI Employees) at a level people would call "skills," not just a signup
-   walkthrough — expectations will be higher than the money-first version.
-3. **Affiliate link is still not on the image** — add your tracked link in
-   the caption/bio/WhatsApp message wherever you post these.
+1. **The 30-day training / JazzCash-EasyPaisa-NayaPay-SadaPay/bank-transfer
+   details are gone from the image** — they're still the real commitment
+   behind "Rs 1000 INSTANT," just no longer spelled out on the creative
+   itself. Say the specifics yourself once someone messages you on
+   WhatsApp, and make sure you can still deliver them (instant payout +
+   showing up for training) at whatever volume this drives.
+2. **Affiliate link still isn't on the image** — add your tracked link in
+   the caption/bio wherever you post these; the only in-image CTA is the
+   WhatsApp number.
+3. **No fake scarcity was added.** If you want real urgency (e.g. "first 50
+   sign-ups only"), only add it if it's true and you'll actually enforce it.
 
 ## Regenerating
 
@@ -52,6 +49,5 @@ Copy the results into `../../public/ads/gohighlevel-summer-of-ai-bold-pk/images/
 
 ## Files
 
-- `content.js` — Roman Urdu/English copy (feature chips, offer bullets, WhatsApp CTA, disclosure)
-- `template.js` — HTML/CSS generator, extends the base template with an urgency bar, ribbon badge, and glowing offer number
-- `render.js` — renders all 3 formats via Playwright screenshots
+- `template.js` — single-composition poster template; takes `{width, height, scale}` and scales every size/spacing value by `scale`
+- `render.js` — renders all 3 formats via Playwright screenshots (scale: 1 / 1.12 / 1.62 for Facebook / Instagram / WhatsApp Status)
