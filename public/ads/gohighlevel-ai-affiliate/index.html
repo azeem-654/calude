@@ -28,7 +28,22 @@
   h1 .accent{color:var(--accent);}
   .sub{font-size:19px;color:var(--muted);max-width:640px;line-height:1.6;margin-bottom:40px;}
 
-  video{width:100%;border-radius:20px;border:1px solid rgba(255,255,255,0.12);display:block;margin-bottom:48px;background:#000;}
+  video{width:100%;border-radius:20px;border:1px solid rgba(255,255,255,0.12);display:block;margin-bottom:16px;background:#000;}
+
+  .section-label{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin:0 0 16px;}
+
+  .single-ad{width:100%;max-width:480px;margin:0 auto 48px;display:block;border-radius:20px;border:1px solid rgba(255,255,255,0.12);}
+
+  .carousel{position:relative;width:100%;max-width:480px;margin:0 auto 48px;}
+  .carousel-frame{position:relative;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.12);aspect-ratio:1/1;background:#000;}
+  .carousel-frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.25s ease;}
+  .carousel-frame img.active{opacity:1;}
+  .carousel-nav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .carousel-nav.prev{left:12px;}
+  .carousel-nav.next{right:12px;}
+  .carousel-dots{display:flex;justify-content:center;gap:8px;margin-top:14px;}
+  .carousel-dots button{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.25);border:none;padding:0;cursor:pointer;}
+  .carousel-dots button.active{background:var(--accent);width:20px;border-radius:5px;}
 
   .card{
     background:linear-gradient(135deg, rgba(31,209,168,0.14), rgba(36,81,255,0.08));
@@ -65,10 +80,50 @@
     <h1>Try <span class="accent">GoHighLevel AI</span> free —<br>get a $<span class="accent">25</span> Amazon gift card*</h1>
     <p class="sub">GoHighLevel AI is an all-in-one AI-powered platform for agencies and growing businesses — AI employees, CRM, funnels, automations, marketing and reputation tools in one place. Start your free trial through my link below.</p>
 
+    <p class="section-label">Video ad</p>
     <video controls poster="" preload="metadata">
       <source src="./gohighlevel_ai_affiliate_ad_16x9.mp4" type="video/mp4">
       Your browser does not support the video tag.
     </video>
+
+    <p class="section-label">Single image ad</p>
+    <img class="single-ad" src="./images/single_image_ad.png" alt="GoHighLevel AI free trial + $25 Amazon gift card offer — single image ad">
+
+    <p class="section-label">Carousel ad (5 cards)</p>
+    <div class="carousel" id="carousel">
+      <div class="carousel-frame">
+        <img class="active" src="./images/carousel_01_hook.png" alt="Carousel card 1: stop juggling 10 different apps">
+        <img src="./images/carousel_02_intro.png" alt="Carousel card 2: introducing GoHighLevel AI">
+        <img src="./images/carousel_03_features.png" alt="Carousel card 3: AI employees, CRM, funnels, automations">
+        <img src="./images/carousel_04_offer.png" alt="Carousel card 4: free trial plus $25 Amazon gift card offer">
+        <img src="./images/carousel_05_cta.png" alt="Carousel card 5: start your free trial today">
+        <button class="carousel-nav prev" aria-label="Previous card">&larr;</button>
+        <button class="carousel-nav next" aria-label="Next card">&rarr;</button>
+      </div>
+      <div class="carousel-dots"></div>
+    </div>
+    <script>
+      (function () {
+        const root = document.getElementById('carousel');
+        const imgs = Array.from(root.querySelectorAll('.carousel-frame img'));
+        const dotsWrap = root.querySelector('.carousel-dots');
+        let i = 0;
+        imgs.forEach((_, idx) => {
+          const b = document.createElement('button');
+          if (idx === 0) b.className = 'active';
+          b.addEventListener('click', () => show(idx));
+          dotsWrap.appendChild(b);
+        });
+        const dots = Array.from(dotsWrap.children);
+        function show(idx) {
+          i = (idx + imgs.length) % imgs.length;
+          imgs.forEach((img, n) => img.classList.toggle('active', n === i));
+          dots.forEach((d, n) => d.classList.toggle('active', n === i));
+        }
+        root.querySelector('.prev').addEventListener('click', () => show(i - 1));
+        root.querySelector('.next').addEventListener('click', () => show(i + 1));
+      })();
+    </script>
 
     <div class="card">
       <div class="card-top">LIMITED-TIME BONUS</div>
