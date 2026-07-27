@@ -8,7 +8,7 @@ const content = require('./content');
 
 const FORMATS = [
   { name: 'facebook_1080x1080', width: 1080, height: 1080, heroHeight: 290, compact: true },
-  { name: 'instagram_1080x1350', width: 1080, height: 1350, heroHeight: 440 },
+  { name: 'instagram_1080x1350', width: 1080, height: 1350, heroHeight: 400, snug: true },
   { name: 'whatsapp_status_1080x1920', width: 1080, height: 1920, heroHeight: 540, expanded: true },
 ];
 
