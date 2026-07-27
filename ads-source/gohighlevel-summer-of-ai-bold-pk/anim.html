@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1080px; height:1920px; overflow:hidden; font-family:'Helvetica Neue', Arial, sans-serif; }
+
+  .stage {
+    position:relative; width:100%; height:100%; overflow:hidden;
+    background: linear-gradient(160deg, #12163c 0%, #1a1f6e 55%, #3b2a9e 100%);
+    color:#fff;
+  }
+  .diag {
+    position:absolute; left:0; right:0; bottom:0; height:46%;
+    background: linear-gradient(100deg, #ff3b30 0%, #ff7a1a 55%, #ffb020 100%);
+    clip-path: polygon(0 38%, 100% 0%, 100% 100%, 0% 100%);
+    opacity:0; animation: fadeIn 0.8s ease-out 0.1s forwards;
+  }
+  .glow { position:absolute; border-radius:50%; filter:blur(90px); }
+  .glow1 { width:777px; height:777px; background:rgba(255,255,255,0.14); top:-259px; left:-185px; }
+
+  .content { position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:89px 104px; }
+
+  .brand { font-size:44px; font-weight:800; margin-bottom:33px; opacity:0; animation: slideDown 0.6s ease-out 0.15s forwards; }
+  .brand .go{ color:#fff; } .brand .hl{ color:#ffd166; }
+
+  .kicker {
+    display:inline-flex; align-self:flex-start; padding:18px 44px; border-radius:999px;
+    background:rgba(255,255,255,0.14); border:2.8px solid rgba(255,255,255,0.5);
+    color:#fff; font-size:33px; font-weight:800; letter-spacing:0.5px; margin-bottom:41px;
+    opacity:0; animation: slideRight 0.6s ease-out 0.45s forwards;
+  }
+
+  .headline { text-align:left; margin-bottom:30px; }
+  .headline div { opacity:0; }
+  .headline .l1a { font-size:133px; font-weight:900; line-height:1.02; letter-spacing:-2.7px; color:#fff; animation: slideUp 0.65s ease-out 0.8s forwards; }
+  .headline .l1b { font-size:133px; font-weight:900; line-height:1.02; letter-spacing:-2.7px; color:#fff; animation: slideUp 0.65s ease-out 1.05s forwards; }
+  .headline .l1c { font-size:133px; font-weight:900; line-height:1.02; letter-spacing:-2.7px; color:#fff; animation: slideUp 0.65s ease-out 1.3s forwards; }
+  .headline .l2 { font-size:133px; font-weight:900; line-height:1.05; letter-spacing:-2.7px; color:#ffd166; margin-top:8px; animation: popIn 0.7s cubic-bezier(.34,1.56,.64,1) 1.7s forwards; }
+  .headline .l3 { font-size:81px; font-weight:800; line-height:1.15; letter-spacing:-0.9px; color:#fff; margin-top:11px; animation: fadeIn 0.6s ease-out 2.3s forwards; }
+
+  .punch {
+    align-self:flex-start; margin-top:18px; margin-bottom:41px;
+    font-size:74px; font-weight:900; color:#fff; background:#ff3b30;
+    padding:18px 52px; border-radius:26px;
+    box-shadow:0 15px 37px rgba(255,59,48,0.45);
+    opacity:0; transform:rotate(-2deg) scale(0.7);
+    animation: punchIn 0.5s cubic-bezier(.34,1.56,.64,1) 2.7s forwards, wiggle 2.4s ease-in-out 3.3s infinite;
+  }
+
+  .courseinfo { text-align:left; margin-bottom:15px; }
+  .courseinfo div { opacity:0; }
+  .courseinfo .c1 { font-size:46px; font-weight:700; color:#fff; line-height:1.32; animation: fadeIn 0.6s ease-out 3.3s forwards; }
+  .courseinfo .c1 b { color:#ffd166; }
+  .courseinfo .c2 { font-size:46px; font-weight:700; color:rgba(255,255,255,0.88); line-height:1.32; animation: fadeIn 0.6s ease-out 3.6s forwards; }
+
+  .spacer { flex:1 1 auto; }
+
+  .waCta {
+    display:flex; align-items:center; gap:33px; background:#04240f; color:#fff;
+    border-radius:37px; padding:41px 67px; align-self:stretch; justify-content:center;
+    box-shadow:0 19px 48px rgba(0,0,0,0.35); border:5.5px solid #25D366; margin-bottom:33px;
+    opacity:0; transform:translateY(60px);
+    animation: slideUpCta 0.6s ease-out 4.1s forwards, ctaPulse 1.3s ease-in-out 4.9s infinite;
+  }
+  .waCta .icon {
+    width:111px; height:111px; border-radius:50%; background:#25D366; display:flex; align-items:center;
+    justify-content:center; font-size:59px; flex:0 0 auto;
+  }
+  .waCta .txt { text-align:left; }
+  .waCta .txt .l1 { font-size:33px; font-weight:700; color:#bdf5d3; }
+  .waCta .txt .l2 { font-size:85px; font-weight:900; color:#fff; letter-spacing:0.9px; }
+
+  .fine { position:relative; z-index:2; font-size:24px; color:rgba(255,255,255,0.7); text-align:center; opacity:0; animation: fadeIn 0.6s ease-out 4.6s forwards; }
+
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @keyframes slideDown { from { opacity:0; transform:translateY(-24px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes slideRight { from { opacity:0; transform:translateX(-30px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes slideUp { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes popIn { from { opacity:0; transform:scale(0.6); } to { opacity:1; transform:scale(1); } }
+  @keyframes punchIn { from { opacity:0; transform:rotate(-2deg) scale(0.7); } to { opacity:1; transform:rotate(-2deg) scale(1); } }
+  @keyframes wiggle { 0%,100% { transform:rotate(-2deg); } 50% { transform:rotate(2deg); } }
+  @keyframes slideUpCta { from { opacity:0; transform:translateY(60px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes ctaPulse { 0%,100% { transform:translateY(0) scale(1); } 50% { transform:translateY(0) scale(1.035); } }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="glow glow1"></div>
+    <div class="diag"></div>
+    <div class="content">
+      <div class="brand"><span class="go">Go</span><span class="hl">HighLevel</span></div>
+      <div class="kicker">SUMMER OF AI &mdash; LIMITED TIME</div>
+      <div class="headline">
+        <div class="l1a">FREE AI</div>
+        <div class="l1b">Skills</div>
+        <div class="l1c">Seekhein</div>
+        <div class="l2">+ Rs 1000 Gift</div>
+        <div class="l3">+ Course Joining Motivation bhi!</div>
+      </div>
+      <div class="punch">Abhi Hasil Karein!</div>
+      <div class="courseinfo">
+        <div class="c1">Seekhein: <b>Voice AI, Automation, CRM &amp; AI Employees</b></div>
+        <div class="c2">Practical training se apna AI career shuru karein</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="waCta">
+        <div class="icon">&#128172;</div>
+        <div class="txt">
+          <div class="l1">WhatsApp Karein</div>
+          <div class="l2">0320-0045364</div>
+        </div>
+      </div>
+      <div class="fine">Independent GoHighLevel affiliate offer. Terms apply.</div>
+    </div>
+  </div>
+</body>
+</html>

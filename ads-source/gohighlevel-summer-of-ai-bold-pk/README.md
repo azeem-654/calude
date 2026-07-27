@@ -29,6 +29,19 @@ expected and still reads fine.
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/facebook_1080x1080.png`
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/instagram_1080x1350.png`
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/whatsapp_status_1080x1920.png`
+- `public/ads/gohighlevel-summer-of-ai-bold-pk/summer_of_ai_animated_whatsapp_status.mp4` — animated version of the WhatsApp Status creative (1080x1920, ~8s, H.264/AAC)
+
+### Animated version
+
+Same content and layout as `whatsapp_status_1080x1920.png`, animated into an
+~8s video: each element (kicker, headline lines, the "+ Rs 1000 Gift" pop,
+the punch tag, the course-content lines, the WhatsApp CTA) slides/fades in
+in sequence, then the punch tag keeps a gentle wiggle and the CTA bar a
+slow pulse for the remainder of the clip so it doesn't go static. Built by
+recording a CSS-keyframe-animated HTML page with Playwright's video
+capture (`recordVideo`), then converting the raw `.webm` to `.mp4` with a
+system ffmpeg (Playwright's own bundled ffmpeg is stripped down and can't
+encode H.264/AAC).
 
 ## ⚠️ Before you post these
 
@@ -45,7 +58,7 @@ expected and still reads fine.
 4. **Affiliate link still isn't on the image** — add your tracked link in
    the caption/bio wherever you post these.
 
-## Regenerating
+## Regenerating the images
 
 ```bash
 npm install playwright
@@ -55,7 +68,28 @@ node render.js   # writes images/*.png
 
 Copy the results into `../../public/ads/gohighlevel-summer-of-ai-bold-pk/images/`.
 
+## Regenerating the animated video
+
+Requires a system ffmpeg with libx264 + aac support in addition to
+Playwright (e.g. `apt-get install ffmpeg` — Playwright's own bundled
+ffmpeg only supports webm/vp8 and can't produce this output):
+
+```bash
+npm install playwright
+npx playwright install chromium
+node record.js     # records anim.html, writes video_raw/*.webm
+./convert.sh        # converts to the final mp4 in public/ads/.../
+```
+
+Edit `anim.html` to change copy, timing, or animation style — it's the
+same content as `template.js`'s WhatsApp Status output but with CSS
+`@keyframes` added per element and hardcoded to 1080x1920 (no `scale`
+parameter, since it isn't reused across formats).
+
 ## Files
 
 - `template.js` — diagonal split-background template; takes `{width, height, scale}`, scales every size/spacing value by `scale`
-- `render.js` — renders all 3 formats via Playwright screenshots
+- `render.js` — renders all 3 static formats via Playwright screenshots
+- `anim.html` — animated (CSS keyframes) version of the WhatsApp Status creative
+- `record.js` — records `anim.html` to a `.webm` via Playwright's video capture
+- `convert.sh` — converts the recorded `.webm` to the final `.mp4` via ffmpeg
