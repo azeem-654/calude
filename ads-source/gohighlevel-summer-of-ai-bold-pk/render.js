@@ -6,9 +6,9 @@ const path = require('path');
 const { buildHtml } = require('./template');
 
 const FORMATS = [
-  { name: 'facebook_1080x1080', width: 1080, height: 1080, scale: 1 },
-  { name: 'instagram_1080x1350', width: 1080, height: 1350, scale: 1.12 },
-  { name: 'whatsapp_status_1080x1920', width: 1080, height: 1920, scale: 1.62 },
+  { name: 'facebook_1080x1080', width: 1080, height: 1080, scale: 1.08 },
+  { name: 'instagram_1080x1350', width: 1080, height: 1350, scale: 1.38 },
+  { name: 'whatsapp_status_1080x1920', width: 1080, height: 1920, scale: 1.85 },
 ];
 
 (async () => {
