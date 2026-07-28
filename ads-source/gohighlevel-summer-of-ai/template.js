@@ -114,7 +114,7 @@ function buildHtml({ width, height, heroHeight, compact, expanded }) {
 <body>
   <div class="hero">
     <div class="brand"><span class="go">Go</span><span class="hl">HighLevel</span></div>
-    <div class="kicker">SUMMER OF AI &mdash; LIMITED TIME</div>
+    <div class="kicker">Summer of AI &mdash; limited time</div>
     <h1>Enjoy the Summer of AI<br><span class="accent">on us. Ask AI? FREE.</span></h1>
     <p class="sub">Voice AI &bull; 24/7 AI Team &bull; Automations &bull; CRM &mdash; all in one platform</p>
   </div>

@@ -6,11 +6,11 @@ module.exports = `
   </div>
 
   <div class="offercard">
-    <div class="offer-top">SIGN UP THROUGH MY LINK &amp; GET</div>
+    <div class="offer-top">Sign up through my link &amp; get</div>
     <div class="offer-amt">Rs <span>1000</span> Instantly</div>
     <ul class="offer-list">
       <li>Rs 1000 sent <b>instantly</b> to your JazzCash, EasyPaisa, NayaPay, SadaPay, or bank account</li>
-      <li><b>FREE 30-day live AI training</b> &mdash; 1 hour daily, 10&ndash;11 PM</li>
+      <li><b>Free 30-day live AI training</b> &mdash; 1 hour daily, 10&ndash;11 PM</li>
       <li>Step-by-step <b>WhatsApp guidance</b> through your entire sign-up</li>
     </ul>
   </div>

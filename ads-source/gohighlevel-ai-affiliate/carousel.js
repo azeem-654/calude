@@ -3,7 +3,7 @@ module.exports = [
     name: '01_hook',
     swipe: true,
     content: `
-      <div class="kicker">STOP THE CHAOS</div>
+      <div class="kicker">Stop the chaos</div>
       <div class="headline">Running your business<br>shouldn't take <span class="accent">10 different apps</span></div>
       <div class="crossrow">
         <div class="crosschip">CRM Tool</div>
@@ -17,7 +17,7 @@ module.exports = [
   {
     name: '02_intro',
     content: `
-      <div class="kicker">INTRODUCING</div>
+      <div class="kicker">Introducing</div>
       <div class="wordmark big"><span class="go">Go</span><span class="high">High</span><span class="go">Level</span> <span class="high">AI</span></div>
       <div class="sub" style="margin-top:30px;">The all-in-one AI-powered platform built for agencies &amp; growing businesses.</div>
     `,
@@ -37,8 +37,8 @@ module.exports = [
     name: '04_offer',
     content: `
       <div class="offercard">
-        <div class="offer-top">LIMITED-TIME AFFILIATE OFFER</div>
-        <div class="offer-amt">FREE Trial + <span>$25</span></div>
+        <div class="offer-top">Limited-time affiliate offer</div>
+        <div class="offer-amt">Free Trial + <span>$25</span></div>
         <div class="offer-desc">Amazon Gift Card* when you start your free trial through my link</div>
         <div class="offer-fine">*While supplies last. Terms apply. Not sponsored, endorsed, or associated with Amazon.</div>
       </div>

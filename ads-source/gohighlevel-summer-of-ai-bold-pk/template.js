@@ -73,9 +73,9 @@ function buildHtml({ width, height, scale }) {
     <div class="diag"></div>
     <div class="content">
       <div class="brand"><span class="go">Go</span><span class="hl">HighLevel</span></div>
-      <div class="kicker">SUMMER OF AI &mdash; LIMITED TIME</div>
+      <div class="kicker">Summer of AI &mdash; limited time</div>
       <div class="headline">
-        <div class="l1">FREE AI Skills</div>
+        <div class="l1">Free AI Skills</div>
         <div class="l1">Seekhein</div>
         <div class="l2">+ Rs 1000 Gift</div>
         <div class="l3">+ Course Joining Motivation bhi!</div>
