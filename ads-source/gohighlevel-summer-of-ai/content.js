@@ -10,7 +10,7 @@ module.exports = `
     <div class="offer-amt">Rs <span>1000</span> Instantly</div>
     <ul class="offer-list">
       <li>Rs 1000 sent <b>instantly</b> to your JazzCash, EasyPaisa, NayaPay, SadaPay, or bank account</li>
-      <li><b>Free 30-day live AI training</b> &mdash; 1 hour daily, 10&ndash;11 PM</li>
+      <li><b>Free 30-day live AI training</b> &mdash; Monday-Friday, 10&ndash;11 PM</li>
       <li>Step-by-step <b>WhatsApp guidance</b> through your entire sign-up</li>
     </ul>
   </div>

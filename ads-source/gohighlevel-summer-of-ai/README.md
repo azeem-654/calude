@@ -21,7 +21,7 @@ aspect ratio.
    nowhere to click — you must add your tracked GoHighLevel affiliate link in
    the post caption / bio link / WhatsApp message yourself wherever you share
    these.
-2. **Rs 1000 + daily 10–11 PM training is a real commitment, not a mockup.**
+2. **Rs 1000 + Monday-Friday 10–11 PM training is a real commitment, not a mockup.**
    Every viewer who messages the WhatsApp number expects: (a) an instant
    payout to their JazzCash/EasyPaisa/NayaPay/SadaPay/bank on verified
    sign-up, and (b) you personally showing up live every night for 30 days.

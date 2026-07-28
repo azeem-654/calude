@@ -12,15 +12,14 @@ training offer used across the image/video ads.
    normal Mon-Fri rhythm kicks in the following week; worth deciding now
    whether "30 din" means 30 calendar days or 30 actual sessions so you're
    not stuck deciding that mid-way through.
-2. **"Monday-Friday, 10-11 PM" is now the correct schedule** — earlier ad
-   copy said "roz raat" (daily); this message uses Mon-Fri only. If you
-   want the ad images/video to match, they still say "daily" — let me know
-   if you want those updated too.
+2. **"Monday-Friday, 10-11 PM" is now the schedule everywhere** — the ad
+   images, the bold-pk animated video, and the Google Ads horizontal image
+   were all updated to say Monday-Friday too, so this message and the ad
+   creative are consistent.
 3. **This references your real tracked link**
-   (`?fp_ref=gohighlevelinstitute`) for the first time in this campaign —
-   the landing page and other ad CTAs still point to the plain
-   `gohighlevel.com/ai` URL. Say the word if you want those swapped to the
-   tracked link as well.
+   (`?fp_ref=gohighlevelinstitute`) — per your instruction, the landing
+   page and other ad CTAs were deliberately left pointing at the plain
+   `gohighlevel.com/ai` URL and were NOT changed to match.
 4. Everything else from the ad disclosures still applies here: the Rs 1000
    and training are funded/delivered by you personally, not GoHighLevel —
    make sure you can actually verify sign-ups and pay out at whatever

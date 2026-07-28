@@ -83,7 +83,7 @@ function buildHtml({ width, height, scale }) {
       <div class="punch">Abhi Hasil Karein!</div>
       <div class="courseinfo">
         <div class="c1">Seekhein: <b>Voice AI, Automation, CRM &amp; AI Employees</b></div>
-        <div class="c2">Practical training se apna AI career shuru karein</div>
+        <div class="c2">Monday-Friday, raat 10-11 baje &mdash; AI career shuru karein</div>
       </div>
       <div class="spacer"></div>
       <div class="waCta">
