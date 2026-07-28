@@ -13,7 +13,7 @@ sale-banner-style layout, still hitting only the main points:
 5. **"Seekhein: Voice AI, Automation, CRM & AI Employees" / "Practical
    training se apna AI career shuru karein"** — 2-line course-content blurb
    (added per feedback), sitting between the punch tag and the CTA
-6. **WhatsApp Karein — 0320-0045364** — the CTA, with the number itself now
+6. **WhatsApp Karein — 0302-1202000** — the CTA, with the number itself now
    noticeably larger (46×scale vs the earlier 32×scale) so it's the most
    readable line on the CTA bar
 
