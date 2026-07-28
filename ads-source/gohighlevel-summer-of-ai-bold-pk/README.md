@@ -30,6 +30,7 @@ expected and still reads fine.
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/instagram_1080x1350.png`
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/whatsapp_status_1080x1920.png`
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/summer_of_ai_animated_whatsapp_status.mp4` — animated version of the WhatsApp Status creative (1080x1920, ~8s, H.264/AAC)
+- `public/ads/gohighlevel-summer-of-ai-bold-pk/images/google_ads_horizontal_1200x628.png` — 1.91:1 horizontal image for Google Ads Performance Max / Display asset groups
 
 ### Animated version
 
@@ -42,6 +43,16 @@ recording a CSS-keyframe-animated HTML page with Playwright's video
 capture (`recordVideo`), then converting the raw `.webm` to `.mp4` with a
 system ffmpeg (Playwright's own bundled ffmpeg is stripped down and can't
 encode H.264/AAC).
+
+### Google Ads horizontal image
+
+`horizontal.html` / `render_horizontal.js` produce a simplified 1200x628
+version for Google's "Add at least 1 horizontal image" requirement
+(Performance Max / Display asset groups). It drops the punch tag,
+course-content lines, and disclosure that the social formats carry — those
+render separately as the asset group's Headlines/Long headline/Descriptions
+fields, so the image only needs the brand, hook, and WhatsApp CTA to stay
+readable at a glance.
 
 ## ⚠️ Before you post these
 
@@ -93,3 +104,5 @@ parameter, since it isn't reused across formats).
 - `anim.html` — animated (CSS keyframes) version of the WhatsApp Status creative
 - `record.js` — records `anim.html` to a `.webm` via Playwright's video capture
 - `convert.sh` — converts the recorded `.webm` to the final `.mp4` via ffmpeg
+- `horizontal.html` — simplified 1200x628 layout for the Google Ads horizontal image requirement
+- `render_horizontal.js` — renders `horizontal.html` via Playwright screenshot
