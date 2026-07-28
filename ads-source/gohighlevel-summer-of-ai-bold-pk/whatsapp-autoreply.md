@@ -24,6 +24,15 @@ training offer used across the image/video ads.
    and training are funded/delivered by you personally, not GoHighLevel —
    make sure you can actually verify sign-ups and pay out at whatever
    volume this drives.
+5. **Sessions are now specified as Zoom**, delivered as "live hands-on"
+   training, with the Zoom link sent daily via WhatsApp broadcast before
+   each session — the message tells people to save your number, since
+   WhatsApp only delivers broadcast messages to senders saved in the
+   recipient's contacts. Make sure you actually have a recurring Zoom
+   meeting set up before this goes out.
+6. **Ask changed from "sign-up email screenshot" to "sign-up success
+   screenshot"** — i.e. a screenshot of the trial-created/welcome screen,
+   not necessarily an email.
 
 ## The message
 
@@ -31,13 +40,16 @@ training offer used across the image/video ads.
 Assalam-o-Alaikum! 👋
 GoHighLevel AI ke Summer of AI offer mein khush aamdeed!
 
+⚠️ *Zaroori: Ye number apne Contacts mein save kar lein!*
+Roz session shuru hone se pehle isi number se WhatsApp Broadcast par Zoom link bheja jayega — agar number save nahi kiya to broadcast message miss ho sakta hai.
+
 Yahan se aapko 3 cheezein milengi:
 
 1️⃣ *Rs 1000 Instant* — JazzCash, EasyPaisa, NayaPay, SadaPay ya Bank Account mein, free trial sign-up verify hote hi
-2️⃣ *30-Din Live AI Training* — Monday se Friday, raat *10:00 se 11:00 PM* tak
-3️⃣ *WhatsApp Broadcast List* — isi list se roz ka class link, reminders aur updates seedha aapko milenge
+2️⃣ *30-Din Live Hands-On Training (Zoom par)* — Monday se Friday, raat *10:00 se 11:00 PM* tak
+3️⃣ *WhatsApp Broadcast List* — har session se pehle isi list par Zoom link milega
 
-📚 *Course mein kya seekhenge:*
+📚 *Course mein kya seekhenge (Live Hands-On, Zoom par):*
 ✅ Voice AI — AI se calls aur customer support automate karna
 ✅ AI Employees / 24x7 AI Team — apna khud ka AI assistant banana
 ✅ Automation & Workflows — leads ka follow-up khud-ba-khud
@@ -49,11 +61,11 @@ Neeche diye link se GoHighLevel AI ka free trial start karein:
 https://www.gohighlevel.com/ai?fp_ref=gohighlevelinstitute
 
 Sign up ke baad:
-1. Apni sign-up email ka screenshot yahan bhej dein
+1. *Sign-up success ka screenshot* yahan bhej dein
 2. Apna JazzCash / EasyPaisa / NayaPay / SadaPay number ya bank details share karein
 3. Verify hote hi Rs 1000 *instantly* transfer kar diya jayega
 
-📅 Training *28 July* se shuru ho rahi hai — Monday se Friday, raat 10-11 baje, isi WhatsApp broadcast list par.
+📅 Training *28 July* se shuru ho rahi hai — Monday se Friday, raat 10-11 baje, *Zoom* par. Roz ka Zoom link isi WhatsApp broadcast list par milega — is liye number contacts mein zaroor save karein.
 
 Koi bhi sawal ho to bila jhijhak yahan message karein — main khud reply karunga. 🙌
 
