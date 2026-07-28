@@ -7,7 +7,11 @@ training offer used across the image/video ads.
 
 ## ⚠️ Before you use this
 
-1. **Fill in the training start date** — marked `[DATE]` below.
+1. **Training start date is set to 28 July** (today) — note that's a
+   Tuesday, so the first week only runs Tue-Fri (4 sessions) before the
+   normal Mon-Fri rhythm kicks in the following week; worth deciding now
+   whether "30 din" means 30 calendar days or 30 actual sessions so you're
+   not stuck deciding that mid-way through.
 2. **"Monday-Friday, 10-11 PM" is now the correct schedule** — earlier ad
    copy said "roz raat" (daily); this message uses Mon-Fri only. If you
    want the ad images/video to match, they still say "daily" — let me know
@@ -50,7 +54,7 @@ Sign up ke baad:
 2. Apna JazzCash / EasyPaisa / NayaPay / SadaPay number ya bank details share karein
 3. Verify hote hi Rs 1000 *instantly* transfer kar diya jayega
 
-📅 Training *[DATE]* se shuru ho rahi hai — Monday se Friday, raat 10-11 baje, isi WhatsApp broadcast list par.
+📅 Training *28 July* se shuru ho rahi hai — Monday se Friday, raat 10-11 baje, isi WhatsApp broadcast list par.
 
 Koi bhi sawal ho to bila jhijhak yahan message karein — main khud reply karunga. 🙌
 
