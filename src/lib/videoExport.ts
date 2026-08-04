@@ -1,4 +1,4 @@
-import type { Caption, ClipSegment } from '../types';
+import type { Caption, ClipSegment, BrandPosition } from '../types';
 
 export type CaptionStyle = 'classic' | 'karaoke' | 'bold' | 'minimal' | 'neon';
 export type ExportResolution = '720p' | '1080p' | '4k';
@@ -33,7 +33,21 @@ export interface ExportClipParams {
   outro?: string;
   /** Gradient for the intro/outro cards. */
   cardGradient?: string;
+  /** Branding overlays burned onto every frame. */
+  branding?: BrandingOptions;
   onProgress?: (pct: number) => void;
+}
+
+export interface BrandingOptions {
+  logoUrl?: string;
+  logoPosition?: BrandPosition;
+  logoScale?: number;
+  logoOpacity?: number;
+  brandText?: string;
+  brandTextPosition?: BrandPosition;
+  brandTextStyle?: 'pill' | 'bar' | 'plain';
+  brandTextColor?: string;
+  brandTextBg?: string;
 }
 
 const CARD_SECONDS = 1.8;
@@ -284,6 +298,96 @@ export function scheduleMusic(
   }
 }
 
+/**
+ * Resolve a BrandPosition to an anchor box inside the frame, keeping overlays
+ * clear of the caption band that sits across the lower-middle of the frame.
+ */
+function brandAnchor(pos: BrandPosition | undefined, w: number, h: number) {
+  const p = pos ?? 'top-right';
+  const margin = Math.round(w * 0.045);
+  const top = p.startsWith('top');
+  const y = top ? margin : h - margin;
+  const align: CanvasTextAlign = p.endsWith('left') ? 'left' : p.endsWith('right') ? 'right' : 'center';
+  const x = p.endsWith('left') ? margin : p.endsWith('right') ? w - margin : w / 2;
+  return { x, y, align, top, margin };
+}
+
+/** Draw the brand logo onto the current frame. */
+export function drawLogo(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number, opts: BrandingOptions) {
+  if (!img.naturalWidth || !img.naturalHeight) return;
+  const scale = Math.min(0.35, Math.max(0.06, opts.logoScale ?? 0.16));
+  const targetW = w * scale;
+  const targetH = targetW * (img.naturalHeight / img.naturalWidth);
+  const { x, y, align, top } = brandAnchor(opts.logoPosition ?? 'top-right', w, h);
+  const dx = align === 'left' ? x : align === 'right' ? x - targetW : x - targetW / 2;
+  const dy = top ? y : y - targetH;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, Math.max(0.1, opts.logoOpacity ?? 1));
+  // Soft shadow keeps light logos readable over bright footage.
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = Math.round(w * 0.02);
+  ctx.drawImage(img, dx, dy, targetW, targetH);
+  ctx.restore();
+}
+
+/** Draw the website / CTA text overlay onto the current frame. */
+export function drawBrandText(ctx: CanvasRenderingContext2D, w: number, h: number, opts: BrandingOptions) {
+  const text = (opts.brandText ?? '').trim();
+  if (!text) return;
+  const style = opts.brandTextStyle ?? 'pill';
+  const fs = Math.round(w * 0.042);
+  const padX = Math.round(fs * 0.75);
+  const padY = Math.round(fs * 0.45);
+  const color = opts.brandTextColor || '#ffffff';
+  const bg = opts.brandTextBg || 'rgba(15,23,42,0.72)';
+  const { x, y, align, top, margin } = brandAnchor(opts.brandTextPosition ?? 'bottom-center', w, h);
+
+  ctx.save();
+  ctx.font = `700 ${fs}px Inter, system-ui, -apple-system, sans-serif`;
+  ctx.textBaseline = 'middle';
+  const textW = ctx.measureText(text).width;
+  const boxW = textW + padX * 2;
+  const boxH = fs + padY * 2;
+  const boxX = align === 'left' ? x : align === 'right' ? x - boxW : x - boxW / 2;
+  const boxY = top ? y : y - boxH;
+  const cy = boxY + boxH / 2;
+
+  if (style === 'bar') {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, boxY, w, boxH);
+  } else if (style === 'pill') {
+    const r = boxH / 2;
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(boxX + r, boxY);
+    ctx.lineTo(boxX + boxW - r, boxY);
+    ctx.arcTo(boxX + boxW, boxY, boxX + boxW, boxY + r, r);
+    ctx.lineTo(boxX + boxW, boxY + boxH - r);
+    ctx.arcTo(boxX + boxW, boxY + boxH, boxX + boxW - r, boxY + boxH, r);
+    ctx.lineTo(boxX + r, boxY + boxH);
+    ctx.arcTo(boxX, boxY + boxH, boxX, boxY + boxH - r, r);
+    ctx.lineTo(boxX, boxY + r);
+    ctx.arcTo(boxX, boxY, boxX + r, boxY, r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // A full-width bar always centres its label; pill/plain follow the anchor box.
+  const textX = style === 'bar' ? w / 2 : boxX + boxW / 2;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  if (style === 'plain') {
+    // No plate behind the text — outline it so it stays legible on any footage.
+    ctx.lineWidth = Math.max(2, fs * 0.13);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, textX, cy);
+  }
+  ctx.fillText(text, textX, cy);
+  ctx.restore();
+}
+
 /** Draw a full-frame intro/outro title card. */
 export function drawTitleCard(ctx: CanvasRenderingContext2D, w: number, h: number, text: string, gradient: string, progress: number) {
   const hexes = gradient.match(/#[0-9a-fA-F]{3,8}/g) ?? ['#6366f1', '#8b5cf6'];
@@ -452,6 +556,17 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     loaded.forEach(b => { if (b.img) brollLoaded.push({ img: b.img, start: b.start, end: b.end }); });
   }
 
+  // Branding: preload the logo once so every frame can stamp it cheaply.
+  const brand = params.branding;
+  const brandLogo = brand?.logoUrl ? await loadImage(brand.logoUrl) : null;
+  const hasBranding = !!(brandLogo || brand?.brandText?.trim());
+  /** Stamp logo + website text over the current frame (drawn last, above captions). */
+  const drawBranding = () => {
+    if (!brand) return;
+    if (brandLogo) drawLogo(ctx, brandLogo, w, h, brand);
+    drawBrandText(ctx, w, h, brand);
+  };
+
   // Output-timeline position accounting for the intro card offset.
   const outputElapsed = () => introDur + segOutStart[segIdx] + Math.max(0, video.currentTime - segs[segIdx].start);
 
@@ -473,6 +588,7 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
       const progress = Math.max(0, Math.min(1, (rel - cap.start) / Math.max(0.001, cap.end - cap.start)));
       drawStyledCaption(ctx, { w, h, text: cap.cap.text, emoji: cap.cap.emoji, style: params.captionStyle ?? 'classic', progress });
     }
+    if (hasBranding) drawBranding();
   };
 
   let rafId = 0;
@@ -501,6 +617,7 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
       const elapsed = (ts - recStart) / 1000;
       if (phase === 'intro') {
         drawTitleCard(ctx, w, h, params.intro!, cardGradient, Math.min(1, elapsed / introDur));
+        if (hasBranding) drawBranding();
         if (elapsed >= introDur) { phase = 'body'; video.play().catch(() => {}); }
         params.onProgress?.(Math.min(100, Math.round((elapsed / totalOut) * 100)));
       } else if (phase === 'body') {
@@ -508,6 +625,7 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
         params.onProgress?.(Math.min(100, Math.round((outputElapsed() / totalOut) * 100)));
       } else {
         drawTitleCard(ctx, w, h, params.outro!, cardGradient, Math.min(1, (elapsed - outroStart) / outroDur));
+        if (hasBranding) drawBranding();
         if (elapsed - outroStart >= outroDur) { if (recorder.state === 'recording') recorder.stop(); return; }
         params.onProgress?.(Math.min(100, Math.round(((introDur + clipDuration + (elapsed - outroStart)) / totalOut) * 100)));
       }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Scissors, Upload, Link, Play, Heart, Edit2, Trash2,
   Download, Share2, Plus, ArrowLeft, X, Check, TrendingUp,
@@ -8,7 +9,7 @@ import {
   MonitorPlay, Smartphone, Square as SquareIcon, Send, Image as ImageIcon,
   Sparkles, Crop, Maximize2, Globe, FileText,
 } from 'lucide-react';
-import type { VideoProject, VideoClip, Caption, BRollClip } from '../../types';
+import type { VideoProject, VideoClip, Caption, BRollClip, BrandPosition } from '../../types';
 import { useApp } from '../../context/AppContext';
 import Header, { Toasts } from '../Layout/Header';
 import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini, generateHooks, translateClip, suggestBroll, generateScript } from '../../lib/gemini';
@@ -55,6 +56,7 @@ async function downloadClip(
       cardGradient: clip.thumbnailGradient,
       segments: clip.segments,
       brollImages: brollWindows(clip.broll ?? [], clip.duration),
+      branding: brandingFromClip(clip),
       onProgress,
     });
     downloadBlob(result.blob, `${filename}.${result.fileExt}`);
@@ -87,6 +89,44 @@ async function downloadClip(
 /* App "journey theme" tokens (monochrome). */
 const INK = '#17191c';
 const MUTED = '#8a8f98';
+
+/** Sentinel error marking "no Gemini key configured" so the UI can offer a fix. */
+const AI_KEY_MISSING = 'AI_KEY_MISSING';
+
+/** Placement options offered for the logo and website/CTA overlays. */
+const BRAND_POSITIONS: { id: BrandPosition; label: string; short: string }[] = [
+  { id: 'top-left', label: 'Top left', short: '↖' },
+  { id: 'top-center', label: 'Top center', short: '↑' },
+  { id: 'top-right', label: 'Top right', short: '↗' },
+  { id: 'bottom-left', label: 'Bottom left', short: '↙' },
+  { id: 'bottom-center', label: 'Bottom center', short: '↓' },
+  { id: 'bottom-right', label: 'Bottom right', short: '↘' },
+];
+
+/** Colour inputs need #rrggbb; brand backgrounds may be stored as rgba(). */
+function hexFromRgba(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value.startsWith('#')) return value.slice(0, 7);
+  const m = value.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+  if (!m) return undefined;
+  return '#' + [m[1], m[2], m[3]].map(n => Number(n).toString(16).padStart(2, '0')).join('');
+}
+
+/** Collect a clip's logo/website overlay settings for the export renderer. */
+function brandingFromClip(clip: VideoClip) {
+  if (!clip.logoUrl && !clip.brandText?.trim()) return undefined;
+  return {
+    logoUrl: clip.logoUrl,
+    logoPosition: clip.logoPosition,
+    logoScale: clip.logoScale,
+    logoOpacity: clip.logoOpacity,
+    brandText: clip.brandText,
+    brandTextPosition: clip.brandTextPosition,
+    brandTextStyle: clip.brandTextStyle,
+    brandTextColor: clip.brandTextColor,
+    brandTextBg: clip.brandTextBg,
+  };
+}
 
 const GRADIENTS = [
   'linear-gradient(135deg,#6366f1,#8b5cf6)',
@@ -392,7 +432,7 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
 }
 
 /* Editor side-panel ids (deep-linkable from the dashboard tools row). */
-type EditorPanel = 'details' | 'thumb' | 'display' | 'captions' | 'audio' | 'broll' | 'publish';
+type EditorPanel = 'details' | 'thumb' | 'display' | 'captions' | 'audio' | 'broll' | 'brand' | 'publish';
 
 const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
@@ -745,8 +785,44 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
 
 /* ── Processing Screen ── */
 function ProcessingScreen({ project, onRetry, onUseDemo }: { project: VideoProject; onRetry?: () => void; onUseDemo?: () => void }) {
+  const navigate = useNavigate();
   const stepIdx = PROCESSING_STEPS.findIndex(s => s.pct >= project.progress) ?? PROCESSING_STEPS.length - 1;
   const step = PROCESSING_STEPS[Math.max(0, stepIdx)];
+
+  /* No AI key — the one blocker that makes clips irrelevant. Explain and fix it. */
+  if (project.status === 'failed' && project.error === AI_KEY_MISSING) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '72px 40px', textAlign: 'center' }}>
+        <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+          <Sparkles size={36} color="#c7f441" />
+        </div>
+        <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px' }}>Connect AI to analyze this video</h2>
+        <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 6px', maxWidth: '520px', lineHeight: 1.65 }}>
+          AI Shorts needs a Google Gemini API key to actually watch your video and find the moments worth clipping.
+        </p>
+        <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 28px', maxWidth: '520px', lineHeight: 1.6 }}>
+          Without it we won't invent clips — sample clips would have nothing to do with your video's content.
+          A free key takes about 2 minutes to create.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button onClick={() => navigate('/settings')}
+            style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: INK, color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+            <Sparkles size={15} color="#c7f441" /> Add API key in Settings
+          </button>
+          {onRetry && (
+            <button onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+              <RefreshCw size={15} /> I've added it — retry
+            </button>
+          )}
+          {onUseDemo && (
+            <button onClick={onUseDemo} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: 'white', color: MUTED, border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+              <Zap size={15} /> Just show me sample clips
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (project.status === 'failed') {
     return (
@@ -1208,6 +1284,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
           resolution: exportRes,
           segments: localClip.segments,
           brollImages: brollWindows(localClip.broll ?? [], localClip.duration),
+          branding: brandingFromClip(localClip),
           onProgress: setExportPct,
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
@@ -1621,6 +1698,38 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                 );
               })()}
 
+              {/* Branding overlays — live preview of what gets burned into the export */}
+              {localClip.logoUrl && (() => {
+                const pos = localClip.logoPosition ?? 'top-right';
+                const box: React.CSSProperties = { position: 'absolute', width: `${Math.round((localClip.logoScale ?? 0.16) * 100)}%`, opacity: localClip.logoOpacity ?? 1, pointerEvents: 'none' };
+                if (pos.startsWith('top')) box.top = '4.5%'; else box.bottom = '4.5%';
+                if (pos.endsWith('left')) box.left = '4.5%';
+                else if (pos.endsWith('right')) box.right = '4.5%';
+                else { box.left = '50%'; box.transform = 'translateX(-50%)'; }
+                return <img src={localClip.logoUrl} alt="" style={{ ...box, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.35))' }} />;
+              })()}
+              {(localClip.brandText ?? '').trim() && (() => {
+                const pos = localClip.brandTextPosition ?? 'bottom-center';
+                const st = localClip.brandTextStyle ?? 'pill';
+                const wrap: React.CSSProperties = { position: 'absolute', pointerEvents: 'none', display: 'flex' };
+                if (pos.startsWith('top')) wrap.top = '4.5%'; else wrap.bottom = '4.5%';
+                if (st === 'bar') { wrap.left = 0; wrap.right = 0; wrap.justifyContent = 'center'; }
+                else if (pos.endsWith('left')) { wrap.left = '4.5%'; }
+                else if (pos.endsWith('right')) { wrap.right = '4.5%'; }
+                else { wrap.left = '50%'; wrap.transform = 'translateX(-50%)'; }
+                const chip: React.CSSProperties = {
+                  fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
+                  color: localClip.brandTextColor ?? '#ffffff',
+                  padding: st === 'plain' ? 0 : '4px 9px',
+                  borderRadius: st === 'pill' ? 999 : 0,
+                  background: st === 'plain' ? 'none' : (localClip.brandTextBg ?? 'rgba(15,23,42,0.72)'),
+                  width: st === 'bar' ? '100%' : undefined,
+                  textAlign: 'center',
+                  textShadow: st === 'plain' ? '0 1px 3px rgba(0,0,0,0.8)' : undefined,
+                };
+                return <div style={wrap}><span style={chip}>{localClip.brandText}</span></div>;
+              })()}
+
               {/* Aspect ratio label */}
               <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px', backdropFilter: 'blur(4px)' }}>
                 {localClip.aspectRatio}
@@ -1696,6 +1805,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
               { id: 'captions', icon: AlignLeft, label: 'Captions' },
               { id: 'audio', icon: Music, label: 'Audio' },
               { id: 'broll', icon: Film, label: 'B-Roll' },
+              { id: 'brand', icon: Sparkles, label: 'Brand' },
               { id: 'publish', icon: Share2, label: 'Publish' },
             ] as const).map(tab => (
               <button key={tab.id} onClick={() => setActivePanel(tab.id)}
@@ -2207,6 +2317,138 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* BRAND PANEL — logo + website/CTA text burned onto the short */}
+            {activePanel === 'brand' && (
+              <div>
+                {/* Logo */}
+                <div style={{ marginBottom: '22px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 4px' }}>Logo watermark</p>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+                    PNG with transparency works best. Burned into the downloaded video.
+                  </p>
+                  {localClip.logoUrl ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', marginBottom: '10px' }}>
+                      <div style={{ width: 54, height: 54, borderRadius: 8, background: 'repeating-conic-gradient(#334155 0% 25%, #1e293b 0% 50%) 50%/12px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                        <img src={localClip.logoUrl} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                      </div>
+                      <span style={{ flex: 1, fontSize: '11.5px', color: '#cbd5e1' }}>Logo added</span>
+                      <button onClick={() => set({ logoUrl: undefined })}
+                        style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.12)', color: '#fca5a5', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '18px', borderRadius: '10px', border: '1.5px dashed rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', marginBottom: '10px' }}>
+                      <Upload size={18} color="#64748b" />
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1' }}>Upload logo</span>
+                      <span style={{ fontSize: '10.5px', color: '#64748b' }}>PNG, JPG or SVG · max 2 MB</span>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) { addNotification('Logo must be under 2 MB', 'error'); return; }
+                        const reader = new FileReader();
+                        reader.onload = () => set({ logoUrl: String(reader.result || '') });
+                        reader.onerror = () => addNotification('Could not read that image', 'error');
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }} />
+                    </label>
+                  )}
+
+                  {localClip.logoUrl && (
+                    <>
+                      <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', margin: '12px 0 6px' }}>Position</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '12px' }}>
+                        {BRAND_POSITIONS.map(pos => {
+                          const active = (localClip.logoPosition ?? 'top-right') === pos.id;
+                          return (
+                            <button key={pos.id} onClick={() => set({ logoPosition: pos.id })} title={pos.label}
+                              style={{ padding: '8px 4px', borderRadius: '7px', border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.16)' : 'rgba(255,255,255,0.04)', color: active ? '#a5b4fc' : '#94a3b8', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}>
+                              {pos.short}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                        Size — {Math.round((localClip.logoScale ?? 0.16) * 100)}% of width
+                      </label>
+                      <input type="range" min={6} max={35} value={Math.round((localClip.logoScale ?? 0.16) * 100)}
+                        onChange={e => set({ logoScale: Number(e.target.value) / 100 })}
+                        style={{ width: '100%', marginBottom: '10px', accentColor: '#6366f1' }} />
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                        Opacity — {Math.round((localClip.logoOpacity ?? 1) * 100)}%
+                      </label>
+                      <input type="range" min={20} max={100} value={Math.round((localClip.logoOpacity ?? 1) * 100)}
+                        onChange={e => set({ logoOpacity: Number(e.target.value) / 100 })}
+                        style={{ width: '100%', accentColor: '#6366f1' }} />
+                    </>
+                  )}
+                </div>
+
+                {/* Website / CTA text */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '18px' }}>
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: '13px', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Globe size={13} color="#818cf8" /> Website / CTA text
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+                    Show your site, handle or a call to action on every frame.
+                  </p>
+                  <input
+                    value={localClip.brandText ?? ''}
+                    onChange={e => set({ brandText: e.target.value.slice(0, 60) })}
+                    placeholder="yourbusiness.com"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '4px' }}
+                  />
+                  <p style={{ fontSize: '10px', color: '#475569', margin: '0 0 12px', textAlign: 'right' }}>{(localClip.brandText ?? '').length}/60</p>
+
+                  {(localClip.brandText ?? '').trim() && (
+                    <>
+                      <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', margin: '0 0 6px' }}>Position</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '12px' }}>
+                        {BRAND_POSITIONS.map(pos => {
+                          const active = (localClip.brandTextPosition ?? 'bottom-center') === pos.id;
+                          return (
+                            <button key={pos.id} onClick={() => set({ brandTextPosition: pos.id })} title={pos.label}
+                              style={{ padding: '8px 4px', borderRadius: '7px', border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.16)' : 'rgba(255,255,255,0.04)', color: active ? '#a5b4fc' : '#94a3b8', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}>
+                              {pos.short}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', margin: '0 0 6px' }}>Style</p>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                        {(['pill', 'bar', 'plain'] as const).map(st => {
+                          const active = (localClip.brandTextStyle ?? 'pill') === st;
+                          return (
+                            <button key={st} onClick={() => set({ brandTextStyle: st })}
+                              style={{ flex: 1, padding: '9px 6px', borderRadius: '8px', border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.16)' : 'rgba(255,255,255,0.04)', color: active ? '#a5b4fc' : '#94a3b8', fontSize: '11px', fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
+                              {st}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', display: 'block', marginBottom: '5px' }}>Text color</label>
+                          <input type="color" value={localClip.brandTextColor ?? '#ffffff'} onChange={e => set({ brandTextColor: e.target.value })}
+                            style={{ width: '100%', height: 32, padding: 2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, cursor: 'pointer', background: 'transparent' }} />
+                        </div>
+                        {(localClip.brandTextStyle ?? 'pill') !== 'plain' && (
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', display: 'block', marginBottom: '5px' }}>Background</label>
+                            <input type="color" value={hexFromRgba(localClip.brandTextBg) ?? '#0f172a'} onChange={e => set({ brandTextBg: e.target.value })}
+                              style={{ width: '100%', height: 32, padding: 2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, cursor: 'pointer', background: 'transparent' }} />
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -2725,7 +2967,7 @@ export default function VideoShorts() {
       const project = videoProjectsRef.current.find(p => p.id === projectId);
       if (!project) throw new Error('Project not found');
 
-      const analysis = await analyzeVideoWithGemini(fileUri, mimeType, project.settings);
+      const analysis = await analyzeVideoWithGemini(fileUri, mimeType, project.settings, project.duration);
       if (!analysis.clips || analysis.clips.length === 0) {
         throw new Error('The AI could not find any clip-worthy moments in this video. Try a longer or more eventful video.');
       }
@@ -2803,10 +3045,20 @@ export default function VideoShorts() {
     setSelectedProjectId(id);
     setView('project');
 
-    if (hasGeminiKey() && !forceDemo) {
+    if (forceDemo) {
+      // Explicit "Try an example" — sample clips are expected here.
+      startProcessing(id, 0);
+    } else if (hasGeminiKey()) {
       processWithGemini(id, source);
     } else {
-      startProcessing(id, 0);
+      // No AI key: never fabricate clips for a REAL user video — they wouldn't
+      // match its content. Surface a clear, actionable state instead.
+      updateVideoProject(id, {
+        status: 'failed',
+        progress: 0,
+        processingStep: 'AI key required',
+        error: AI_KEY_MISSING,
+      });
     }
   };
 

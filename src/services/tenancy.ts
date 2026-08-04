@@ -62,7 +62,7 @@ export interface AgencyProfile {
 /* ── Global (un-scoped) keys ── */
 const GLOBAL_KEYS = new Set([
   'crm_subaccounts', 'crm_active_account', 'crm_agency', 'crm_sidebar_mode',
-  'crm_anthropic_key', 'crm_openai_key', 'crm_theme',
+  'crm_anthropic_key', 'crm_openai_key', 'crm_gemini_key', 'crm_theme',
 ]);
 export const ACCT_PREFIX = 'crm_acct_';
 const PREFIX = ACCT_PREFIX;

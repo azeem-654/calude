@@ -420,6 +420,9 @@ export interface ClipSegment {
   text?: string;
 }
 
+/** Corner/edge placement for logo and brand-text overlays on a short. */
+export type BrandPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
 export interface VideoClip {
   id: string;
   projectId: string;
@@ -463,6 +466,19 @@ export interface VideoClip {
   /** Optional intro/outro title cards burned onto the export. */
   intro?: string;
   outro?: string;
+  /** Branding: logo image (data URL) burned onto every frame. */
+  logoUrl?: string;
+  logoPosition?: BrandPosition;
+  /** Logo width as a fraction of frame width (0.06–0.35). */
+  logoScale?: number;
+  logoOpacity?: number;
+  /** Branding: website/handle/CTA text burned onto every frame. */
+  brandText?: string;
+  brandTextPosition?: BrandPosition;
+  /** Visual treatment for the brand text bar. */
+  brandTextStyle?: 'pill' | 'bar' | 'plain';
+  brandTextColor?: string;
+  brandTextBg?: string;
   /** Whether the music track was auto-picked from the clip's mood. */
   musicAuto?: boolean;
   /** Script-to-Video: per-scene background image URLs aligned to captions. */

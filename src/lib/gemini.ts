@@ -1,8 +1,51 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+const BUILD_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 const BASE = 'https://generativelanguage.googleapis.com';
 
+/** localStorage key holding a user-supplied Gemini API key (global, not tenant-scoped). */
+export const GEMINI_KEY_STORAGE = 'crm_gemini_key';
+
+/**
+ * The active Gemini API key. A key saved in Settings wins over the build-time
+ * VITE_GEMINI_API_KEY, so the app can be pointed at a working key without a
+ * rebuild/redeploy.
+ */
+export function getGeminiKey(): string {
+  try {
+    const saved = localStorage.getItem(GEMINI_KEY_STORAGE);
+    if (saved && saved.trim()) return saved.trim();
+  } catch { /* storage blocked — fall through to build key */ }
+  return (BUILD_KEY ?? '').trim();
+}
+
+export function setGeminiKey(key: string) {
+  try {
+    if (key.trim()) localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
+    else localStorage.removeItem(GEMINI_KEY_STORAGE);
+  } catch { /* storage blocked */ }
+}
+
 export function hasGeminiKey() {
-  return !!API_KEY;
+  return !!getGeminiKey();
+}
+
+/** Verify a key actually works before saving it (cheap 1-token generate call). */
+export async function testGeminiKey(key: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const k = key.trim();
+  if (!k) return { ok: false, error: 'Enter an API key first.' };
+  try {
+    const res = await fetch(`${BASE}/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${k}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Reply with the single word: ok' }] }],
+        generationConfig: { maxOutputTokens: 5 },
+      }),
+    });
+    if (res.ok) return { ok: true };
+    return { ok: false, error: friendlyGeminiError(res.status, await res.text().catch(() => '')) };
+  } catch {
+    return { ok: false, error: 'Could not reach Google. Check your internet connection.' };
+  }
 }
 
 /** Transient errors worth retrying: rate limit, or Google's servers being overloaded. */
@@ -45,7 +88,7 @@ async function postGeminiWithFallback(
     const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const res = await fetch(
-        `${BASE}/v1beta/models/${model}:generateContent?key=${API_KEY}`,
+        `${BASE}/v1beta/models/${model}:generateContent?key=${getGeminiKey()}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       );
       if (res.ok) return await res.json();
@@ -79,7 +122,7 @@ export async function uploadFileToGemini(file: File): Promise<string> {
   form.append('file', file, file.name);
 
   const res = await fetch(
-    `${BASE}/upload/v1beta/files?uploadType=multipart&key=${API_KEY}`,
+    `${BASE}/upload/v1beta/files?uploadType=multipart&key=${getGeminiKey()}`,
     { method: 'POST', body: form }
   );
 
@@ -93,7 +136,7 @@ export async function waitForFileActive(fileUri: string, maxWaitMs = 120_000): P
   const name = fileUri.split('/').pop();
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
-    const res = await fetch(`${BASE}/v1beta/files/${name}?key=${API_KEY}`);
+    const res = await fetch(`${BASE}/v1beta/files/${name}?key=${getGeminiKey()}`);
     const data = await res.json();
     if (data.state === 'ACTIVE') return;
     if (data.state === 'FAILED') throw new Error('Gemini file processing failed');
@@ -138,7 +181,9 @@ export interface GeminiAnalysis {
 export async function analyzeVideoWithGemini(
   fileUri: string,
   mimeType: string | null,
-  settings: { maxClipDuration: number; focus: string }
+  settings: { maxClipDuration: number; focus: string },
+  /** Real source duration, when known — used to clamp AI timestamps. */
+  knownDuration?: number,
 ): Promise<GeminiAnalysis> {
   const focusHint = {
     emotional: 'Focus on emotionally resonant, personal, or inspiring moments.',
@@ -147,9 +192,26 @@ export async function analyzeVideoWithGemini(
     all: 'Find a diverse mix: emotional, educational, funny, and motivational moments.',
   }[settings.focus] ?? '';
 
-  const prompt = `You are a viral short-form content expert. Analyze this video and identify the best ${settings.maxClipDuration}-second (or shorter) segments most likely to go viral on TikTok, YouTube Shorts, and Instagram Reels.
+  const prompt = `You are a viral short-form content expert. WATCH this video end-to-end, then identify the best ${settings.maxClipDuration}-second (or shorter) segments most likely to go viral on TikTok, YouTube Shorts, and Instagram Reels.
 
 ${focusHint}
+
+STEP 1 — UNDERSTAND THE VIDEO FIRST (do this before choosing any clip):
+Identify what this specific video is actually about: its topic, who is speaking, the main arguments/moments, and how it is structured over time. Every clip you return must come from what you ACTUALLY observed in this video — never from generic assumptions about the genre.
+
+STEP 2 — PICK ONLY GENUINELY STRONG MOMENTS (relevance is the top priority):
+A moment qualifies ONLY if it passes ALL of these:
+- SELF-CONTAINED: a stranger who has not seen the video understands it completely without any prior context. No unexplained "he/she/it/that/this" referring to something said earlier.
+- ONE COMPLETE IDEA: it sets up and finishes a single point, story, insight, question→answer, or reveal. Never a fragment of a longer argument.
+- SUBSTANCE: it contains a real claim, story, number, insight, emotion, or punchline that someone would stop scrolling for.
+- THE TITLE IS LITERALLY TRUE: the title must describe exactly what is said/shown in those seconds — not the video's overall theme.
+
+NEVER select (these are the usual cause of irrelevant clips):
+- Intros, outros, greetings, "welcome back", "don't forget to subscribe", channel promos, sponsor/ad reads
+- Filler, rambling, throat-clearing, repeated restatements, dead air, long pauses
+- Setup that never reaches its payoff, or a payoff whose setup is missing
+- Anything that only makes sense if you watched the earlier part of the video
+Quality beats quantity: if the video only contains 4 genuinely strong moments, return only those 4. Do NOT pad the list with weak filler to reach a count.
 
 Language handling:
 - First detect the video's primary spoken language and report its full English name in "videoLanguage" (e.g. "English", "Turkish", "Arabic", "Spanish").
@@ -165,9 +227,9 @@ Videos with little or no speech (CCTV footage, montages, music videos, b-roll):
 Rules:
 - Clips must NOT overlap
 - Each clip should use most of the ${settings.maxClipDuration}-second budget (longer, complete clips beat short ones) but never exceed it
-- Start and end times must be accurate to the actual video content
-- Find between 6 and 12 clips
-- viralityScore must be between 60 and 99
+- TIMESTAMP ACCURACY IS CRITICAL: start/end times must correspond to the REAL moment in this video where those exact words are spoken. Before returning, re-check each timestamp against the video — a clip cut at the wrong time is worse than no clip. Spread selections across the whole video, not all from one region.
+- Return between 4 and 10 clips, ordered best-first (highest quality first). Prefer 5-6 excellent clips over 10 mediocre ones.
+- viralityScore must be between 60 and 99 and must honestly reflect quality — reserve 90+ for genuinely exceptional moments
 - "description" should be a short, engaging 2-3 sentence caption suitable for a social media post (not just a repeat of the transcript)
 
 CRITICAL — build each clip as a coherent short that fully delivers on its title, with CLEAN cuts:
@@ -229,7 +291,90 @@ Return ONLY valid JSON with NO markdown fences:
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  return JSON.parse(json) as GeminiAnalysis;
+  const parsed = JSON.parse(json) as GeminiAnalysis;
+  return sanitizeAnalysis(parsed, settings.maxClipDuration, knownDuration);
+}
+
+/** Text that means "the model had nothing to say" — never usable as a caption. */
+const PLACEHOLDER_TRANSCRIPT = /^\s*[([]?\s*(no|none|n\/a|silence|no spoken|no dialogue|no audio|inaudible|music only|unknown)\b/i;
+
+/**
+ * Repair and filter a raw Gemini analysis so bad timings can't produce
+ * mis-cut or irrelevant clips:
+ *  - clamps every time to [0, videoDuration] and drops inverted/zero ranges
+ *  - removes overlapping segments within a clip and caps total length
+ *  - recomputes startTime/endTime/transcript from the surviving segments
+ *  - drops clips that end up too short, empty, or placeholder-only
+ *  - de-duplicates clips that cover essentially the same moment
+ */
+export function sanitizeAnalysis(analysis: GeminiAnalysis, maxClipDuration: number, videoDuration?: number): GeminiAnalysis {
+  // For YouTube links the app only has a rough duration estimate, so clamp to
+  // the MORE generous of (app estimate, model's reported length). That still
+  // catches absurd hallucinated timestamps without truncating real content.
+  const candidates = [videoDuration, analysis.totalDuration].filter((d): d is number => typeof d === 'number' && d > 0);
+  const limit = candidates.length ? Math.max(...candidates) : Number.POSITIVE_INFINITY;
+  const MIN_CLIP = 5;
+
+  const cleaned: GeminiClip[] = [];
+  for (const clip of analysis.clips ?? []) {
+    // Build the segment list, falling back to the clip's own span.
+    const rawSegs = (clip.segments?.length ? clip.segments : [{ start: clip.startTime, end: clip.endTime, text: clip.transcript }])
+      .map(s => ({
+        start: Math.max(0, Math.min(Number(s.start) || 0, limit)),
+        end: Math.max(0, Math.min(Number(s.end) || 0, limit)),
+        text: typeof s.text === 'string' ? s.text.trim() : '',
+      }))
+      .filter(s => s.end - s.start >= 1)          // drop inverted / hairline ranges
+      .sort((a, b) => a.start - b.start);
+
+    // Drop overlaps (keep the earlier segment) and respect the length budget.
+    const segs: typeof rawSegs = [];
+    let total = 0;
+    for (const s of rawSegs) {
+      const prev = segs[segs.length - 1];
+      if (prev && s.start < prev.end) continue;
+      const room = maxClipDuration - total;
+      if (room <= 0.5) break;
+      const seg = { ...s, end: Math.min(s.end, s.start + room) };
+      if (seg.end - seg.start < 1) continue;
+      segs.push(seg);
+      total += seg.end - seg.start;
+    }
+    if (!segs.length || total < MIN_CLIP) continue;
+
+    const transcript = segs.map(s => s.text).filter(Boolean).join(' ').trim();
+    const title = (clip.title ?? '').trim();
+    if (!title) continue;
+    // A clip whose only transcript is a placeholder would burn "(no dialogue)"
+    // into the captions — drop it rather than ship that.
+    if (transcript && PLACEHOLDER_TRANSCRIPT.test(transcript) && transcript.length < 40) continue;
+
+    cleaned.push({
+      ...clip,
+      title,
+      segments: segs,
+      startTime: segs[0].start,
+      endTime: segs[segs.length - 1].end,
+      transcript: transcript || clip.transcript || title,
+      viralityScore: Math.max(60, Math.min(99, Math.round(Number(clip.viralityScore) || 75))),
+      hashtags: Array.isArray(clip.hashtags) ? clip.hashtags.filter(h => typeof h === 'string').slice(0, 6) : [],
+    });
+  }
+
+  // De-duplicate near-identical selections (same moment returned twice).
+  const deduped: GeminiClip[] = [];
+  for (const c of cleaned.sort((a, b) => a.startTime - b.startTime)) {
+    const clash = deduped.some(d => {
+      const overlap = Math.min(d.endTime, c.endTime) - Math.max(d.startTime, c.startTime);
+      const shorter = Math.min(d.endTime - d.startTime, c.endTime - c.startTime);
+      return shorter > 0 && overlap / shorter > 0.6;
+    });
+    if (!clash) deduped.push(c);
+  }
+
+  // Best-first so the strongest clips are what the user sees at the top.
+  deduped.sort((a, b) => b.viralityScore - a.viralityScore);
+  return { ...analysis, clips: deduped };
 }
 
 /** Shared helper: call Gemini text models with fallback chain. */

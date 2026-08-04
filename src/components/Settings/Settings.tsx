@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles } from 'lucide-react';
+import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
@@ -845,8 +846,106 @@ function IntegrationsTab() {
 
 /* ─── Main Settings ─── */
 
+/* ── AI Engine: Gemini API key (powers AI Shorts, content generation, design AI) ── */
+function AIEngineTab() {
+  const { addNotification } = useApp();
+  const [key, setKey] = useState(() => getGeminiKey());
+  const [show, setShow] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const savedKey = getGeminiKey();
+
+  const handleSaveAndTest = async () => {
+    setTesting(true);
+    setResult(null);
+    const res = await testGeminiKey(key);
+    setTesting(false);
+    if (res.ok) {
+      setGeminiKey(key);
+      setResult({ ok: true, msg: 'Key verified and saved. AI features are now live.' });
+      addNotification('Gemini API key verified — AI Shorts will now analyze your real videos', 'success');
+    } else {
+      setResult({ ok: false, msg: res.error });
+    }
+  };
+
+  const handleRemove = () => {
+    setGeminiKey('');
+    setKey('');
+    setResult(null);
+    addNotification('API key removed — AI features are disabled', 'info');
+  };
+
+  const card: React.CSSProperties = { backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={card}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Google Gemini API Key</h3>
+        <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
+          Required for real AI analysis. Without a key, AI Shorts can only show sample clips — it can't
+          watch your video, so the clips won't match its content. Powers AI Shorts, content generation and design AI.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', borderRadius: 10, backgroundColor: savedKey ? '#ecfdf5' : '#fff7ed', border: `1px solid ${savedKey ? '#a7f3d0' : '#fed7aa'}` }}>
+          {savedKey
+            ? <><CheckCircle size={15} color="#059669" /><span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>AI is connected — real video analysis enabled</span></>
+            : <><XCircle size={15} color="#c2410c" /><span style={{ fontSize: 13, fontWeight: 600, color: '#9a3412' }}>No API key — AI features are disabled</span></>}
+        </div>
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>API Key</label>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <input
+              type={show ? 'text' : 'password'}
+              value={key}
+              onChange={e => { setKey(e.target.value); setResult(null); }}
+              placeholder="AIza..."
+              style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: 'ui-monospace, monospace' }}
+            />
+            <button onClick={() => setShow(v => !v)} title={show ? 'Hide' : 'Show'}
+              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 4 }}>
+              {show ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+          <button onClick={handleSaveAndTest} disabled={testing || !key.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', backgroundColor: testing || !key.trim() ? '#cbd5e1' : '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: testing || !key.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+            {testing ? <><Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Verifying…</> : <><Save size={14} /> Verify & Save</>}
+          </button>
+          {savedKey && (
+            <button onClick={handleRemove}
+              style={{ padding: '10px 14px', backgroundColor: 'white', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Remove
+            </button>
+          )}
+        </div>
+
+        {result && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', borderRadius: 10, backgroundColor: result.ok ? '#ecfdf5' : '#fef2f2', border: `1px solid ${result.ok ? '#a7f3d0' : '#fecaca'}`, marginBottom: 12 }}>
+            {result.ok ? <CheckCircle size={15} color="#059669" style={{ flexShrink: 0, marginTop: 1 }} /> : <XCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />}
+            <span style={{ fontSize: 12.5, color: result.ok ? '#065f46' : '#991b1b', lineHeight: 1.5 }}>{result.msg}</span>
+          </div>
+        )}
+
+        <div style={{ padding: '14px 16px', borderRadius: 10, backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>How to get a free key (2 minutes)</p>
+          <ol style={{ fontSize: 12.5, color: '#475569', margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
+            <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{ color: '#17191c', fontWeight: 600 }}>aistudio.google.com/apikey <ExternalLink size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /></a></li>
+            <li>Sign in with your Google account and click <strong>Create API key</strong></li>
+            <li>Copy the key (starts with <code>AIza</code>) and paste it above, then Verify &amp; Save</li>
+          </ol>
+          <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
+            The key is stored only in this browser and sent directly to Google — never to our servers.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
+  { id: 'ai-engine', label: 'AI Engine', icon: Sparkles },
   { id: 'email-sms', label: 'Email & SMS', icon: Mail },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'api-validation', label: 'API Validation', icon: FlaskConical },
@@ -895,6 +994,7 @@ export default function Settings() {
         {/* Content */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {activeTab === 'email-sms' && <EmailSMSTab />}
+          {activeTab === 'ai-engine' && <AIEngineTab />}
           {activeTab === 'api-validation' && <IntegrationsTab />}
 
           {activeTab === 'profile' && (
