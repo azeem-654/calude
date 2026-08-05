@@ -55,8 +55,37 @@ rule-based, so it works offline with no API key and every number can be explaine
 - **List view** — health bar and lifecycle stage as sortable columns, plus a
   lifecycle filter; clicking any row opens the command center.
 
-Parts 2–5 (email tab, deals tab, scheduling tab, lists/merge/permissions) build on
-this foundation.
+### Email from the contact profile
+
+`src/services/contactEmail.ts` plus `public/api/track.php` make the Email tab a
+working outbound channel rather than a log viewer.
+
+- **Compose and send** through whichever provider is configured in Settings →
+  Email & SMS (SMTP, Mailtrap, Resend, ActiveCampaign). Eight starter templates,
+  merge tokens (`{{firstName}}`, `{{company}}`, …) inserted at the cursor,
+  attachments, and AI-generated subject lines when a Gemini key is present.
+- **Scheduling** — pick a future date/time and the email is queued as `scheduled`.
+  A background job on the dashboard sends anything whose time has come.
+- **Real open and click tracking.** Outbound HTML is instrumented with a 1×1
+  tracking pixel and rewritten links before it leaves. `api/track.php` records
+  each hit (MySQL via `crm_pdo()`, JSON file fallback), then `syncTracking()`
+  folds the events back into history — status advances sent → opened → clicked,
+  with open counts, click counts and the exact URLs clicked. The click
+  redirector only accepts `http(s)` targets, so it can't be used as an open
+  redirect. If the endpoint isn't reachable, history simply stays as it is.
+- **Engagement stats** — open rate, click rate and replies for this contact,
+  each shown against the account-wide average so a number has context, plus an
+  overall email-health band.
+- **Sequences** — enrol the contact in any sequence built in Marketing, then
+  skip a step, pause, resume or remove them. Every action is written to the
+  enrolment history. A dashboard job sends due steps and stops the sequence
+  when the contact replies.
+- **Threaded history** — expandable per message with attachments, tracking
+  detail and a "Log a reply" action that records the inbound message and marks
+  the thread replied.
+
+Parts 3–5 (deals tab, scheduling tab, lists/merge/permissions) build on this
+foundation.
 
 ## Funnel & Website Builder
 

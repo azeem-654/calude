@@ -589,6 +589,31 @@ Return ONLY JSON: {"posts": [{"day": 2, "platform": "instagram", "headline": "..
   return { posts, videos };
 }
 
+/**
+ * Contact email: suggest subject lines for a specific person and intent.
+ */
+export async function generateSubjectLines(input: {
+  contactName: string; company?: string; jobTitle?: string;
+  intent: string; bodyPreview: string;
+}): Promise<string[]> {
+  const prompt = `You are an expert at short-form email subject lines that get opened by busy people.
+
+Recipient: ${input.contactName}${input.company ? ` at ${input.company}` : ''}${input.jobTitle ? ` (${input.jobTitle})` : ''}
+Purpose of the email: ${input.intent}
+Body so far: "${input.bodyPreview.slice(0, 400)}"
+
+Write 5 subject lines. Rules:
+- Under 55 characters each
+- Specific to this recipient and purpose — no generic filler
+- No clickbait, no ALL CAPS, no exclamation marks
+- Vary the angle: direct, curiosity, benefit, question, brief
+
+Return ONLY JSON: {"subjects": ["...", "...", "...", "...", "..."]}`;
+  const json = await callGemini(prompt, 0.85);
+  const r = JSON.parse(json) as { subjects?: string[] };
+  return (r.subjects ?? []).filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 80)).slice(0, 5);
+}
+
 export interface AIDesignElement {
   type: 'text' | 'shape' | 'sticker';
   x: number;

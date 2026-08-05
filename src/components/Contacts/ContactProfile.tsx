@@ -10,6 +10,7 @@ import {
   appointmentsForContact, buildTimeline, type LifecycleStage, type NextAction,
 } from '../../services/contactIntelligence';
 import { HealthRing, LifecycleBar, NextBestActions, UnifiedTimeline, ModuleSummary } from './CommandCenter';
+import EmailTab from './EmailTab';
 import type { Contact, ContactActivity } from '../../types';
 import { sendEmail, loadEmailConfig, personalizeHtml } from '../../services/emailService';
 
@@ -47,7 +48,7 @@ interface Props {
 }
 
 export default function ContactProfile({ contact, onClose }: Props) {
-  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, appointments } = useApp();
+  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, appointments, sequences } = useApp();
   const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'videos'>('overview');
   const contactClips = videoProjects.filter(p => p.contactId === contact.id).flatMap(p => p.clips);
   const [activityFilter, setActivityFilter] = useState<ContactActivity['type'] | 'all'>('all');
@@ -225,7 +226,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'activity', label: `Activity (${activities.length})`, icon: <Activity size={14} /> },
             { id: 'tasks', label: `Tasks (${pendingTasks.length})`, icon: <CheckSquare size={14} /> },
             { id: 'notes', label: `Notes (${notes.length})`, icon: <FileText size={14} /> },
-            { id: 'email', label: 'Send Email', icon: <Send size={14} /> },
+            { id: 'email', label: 'Email', icon: <Send size={14} /> },
             { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -411,33 +412,11 @@ export default function ContactProfile({ contact, onClose }: Props) {
 
           {/* ── Email Tab ── */}
           {tab === 'email' && (
-            <div>
-              <div style={{ padding: '14px 16px', backgroundColor: '#f0f9ff', borderRadius: 10, border: '1px solid #bae6fd', marginBottom: 20 }}>
-                <p style={{ margin: 0, fontSize: 13, color: '#0369a1' }}>
-                  Sending to: <strong>{contact.name}</strong> &lt;{contact.email}&gt;
-                </p>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Subject</label>
-                  <input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Email subject..." style={inp} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Message</label>
-                  <div style={{ marginBottom: 4, fontSize: 11, color: '#94a3b8' }}>
-                    Use: {'{{firstName}}'}, {'{{lastName}}'}, {'{{email}}'} for personalization
-                  </div>
-                  <textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} placeholder={`Hi {{firstName}},\n\n`} rows={10}
-                    style={{ ...inp, resize: 'vertical' }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={sendContactEmail} disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', backgroundColor: (sendingEmail || !emailSubject.trim() || !emailBody.trim()) ? '#d5d8dd' : '#17191c', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: (sendingEmail || !emailSubject.trim() || !emailBody.trim()) ? 'default' : 'pointer' }}>
-                    <Send size={14} /> {sendingEmail ? 'Sending...' : 'Send Email'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <EmailTab
+              contact={contact}
+              sequences={sequences}
+              onActivity={(desc, type) => addContactActivity(contact.id, { type: type ?? 'email_sent', description: desc, timestamp: new Date().toISOString() })}
+            />
           )}
 
           {/* ── Videos Tab ── */}

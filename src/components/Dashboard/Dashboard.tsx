@@ -12,6 +12,7 @@ import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { loadOnboarding } from '../../services/onboarding';
 import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
+import { processScheduled, processSequences, syncTracking } from '../../services/contactEmail';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import type { Deal } from '../../types';
@@ -456,7 +457,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost, sequences } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -470,6 +471,16 @@ export default function Dashboard() {
     onContentJobsChange(() => setObRefresh(k => k + 1));
     registerPublishApi({ addSequence, addCampaign, addSocialPost });
     resumePendingGeneration(addNotification);
+
+    // Email background work: send anything due, advance sequences, and pull in
+    // opens/clicks recorded by the tracking endpoint.
+    void (async () => {
+      const sent = await processScheduled(contacts);
+      const seq = await processSequences(contacts, sequences);
+      await syncTracking();
+      if (sent) addNotification(`${sent} scheduled email${sent > 1 ? 's' : ''} sent`, 'info');
+      if (seq) addNotification(`${seq} sequence email${seq > 1 ? 's' : ''} sent`, 'info');
+    })();
     return () => { onContentJobsChange(null); registerPublishApi(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
