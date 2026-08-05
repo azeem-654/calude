@@ -1,4 +1,4 @@
-import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
+import { useState, useRef, Fragment, useEffect, useCallback, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import {
   X, Save, Eye, EyeOff,
@@ -10,6 +10,9 @@ import {
 import type { Funnel, FunnelStep, FunnelBlock } from '../../types';
 import { useHistory } from '../../hooks/useHistory';
 import { GradientSwatchRow } from '../shared/gradientPresets';
+import { ScaledPage } from '../shared/BlockRender';
+import { TEMPLATE_CATALOG, buildTemplatePages } from '../shared/pageTemplates';
+import { activeAccount } from '../../services/tenancy';
 
 /* ─── Step type config ─── */
 const STEP_TYPE_CONFIG: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
@@ -1226,6 +1229,31 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
   const [blockSearch, setBlockSearch] = useState('');
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  /* Themes offered inside the editor come from the SAME shared catalog as the
+     creation gallery, rendered as real previews rather than abstract wireframes. */
+  const editorThemes = useMemo(() => {
+    const acct = activeAccount();
+    const ctx = {
+      name: acct?.businessName?.trim() || acct?.name?.trim() || 'Your Business',
+      color: acct?.color || '#6366f1',
+      tagline: acct?.industry ? `Trusted ${acct.industry.toLowerCase()} experts` : undefined,
+    };
+    return TEMPLATE_CATALOG.filter(t => t.kind === 'funnel').map(meta => {
+      const built = buildTemplatePages(meta, ctx);
+      return {
+        id: meta.id,
+        name: meta.name,
+        category: meta.category,
+        emoji: '🎨',
+        heroColor: meta.accent || ctx.color,
+        desc: meta.description,
+        sections: built[0]?.blocks.length ?? 0,
+        preview: built[0],
+        pages: built.map(pg => ({ name: pg.name, type: pg.type, blocks: pg.blocks })),
+      };
+    });
+  }, []);
+
   const activePage = pages.find(p => p.id === activePageId) ?? pages[0];
   const blocks = activePage.blocks;
 
@@ -1512,45 +1540,31 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
               {/* Templates tab */}
               {(leftTab as string) === 'templates' && (
                 <div style={{ padding: '10px' }}>
-                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>Preview or apply a full page template</p>
-                  {TEMPLATES.map(t => (
-                    <div key={t.name}
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+                    {editorThemes.length} themes · hover to scroll, click to preview or apply
+                  </p>
+                  {editorThemes.map(t => (
+                    <div key={t.id}
                       style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #e8ecf0', background: '#fff', transition: 'all 0.15s' }}
                       onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#6366f1'; el.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)'; }}
                       onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = '#e8ecf0'; el.style.boxShadow = 'none'; }}>
-                      {/* Visual preview thumbnail */}
-                      <div style={{ height: 90, background: t.heroColor, position: 'relative', overflow: 'hidden', cursor: 'pointer' }} onClick={() => setPreviewTemplate(t)}>
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px' }}>
-                          <div style={{ width: '65%', height: 7, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.8)' }} />
-                          <div style={{ width: '45%', height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.55)' }} />
-                          <div style={{ width: '28%', height: 11, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.85)', marginTop: 5 }} />
-                          <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, display: 'flex', gap: 4 }}>
-                            {[1,2,3].map(i => <div key={i} style={{ flex: 1, height: 16, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.18)' }} />)}
-                          </div>
-                        </div>
-                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: '16px' }}>{t.emoji}</div>
-                        <div style={{ position: 'absolute', top: 6, right: 8, padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.35)', color: 'white', fontSize: '10px', fontWeight: 700 }}>{t.category}</div>
-                        {/* Hover overlay */}
-                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(99,102,241,0)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-                          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0.25)'}
-                          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0)'}>
-                          <div style={{ opacity: 0, transition: 'opacity 0.15s', padding: '5px 10px', background: 'white', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#6366f1' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = '0'; }}>
-                            👁 Preview
-                          </div>
-                        </div>
+                      {/* Real rendered preview of the theme's first page */}
+                      <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setPreviewTemplate(t)}>
+                        <ScaledPage page={t.preview} height={104} />
+                        <span style={{ position: 'absolute', top: 6, right: 6, padding: '2px 6px', borderRadius: 4, background: 'rgba(15,23,42,0.72)', color: '#fff', fontSize: 9, fontWeight: 700 }}>
+                          {t.sections} sections
+                        </span>
                       </div>
                       <div style={{ padding: '8px 10px' }}>
                         <div style={{ fontWeight: 700, fontSize: '12px', color: '#0f172a', marginBottom: '2px' }}>{t.name}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4, marginBottom: 6 }}>{t.desc}</div>
-                        <div style={{ display: 'flex', gap: 5 }}>
+                        <div style={{ fontSize: '10.5px', color: '#64748b', lineHeight: 1.4, marginBottom: 8 }}>{t.desc}</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => setPreviewTemplate(t)}
-                            style={{ flex: 1, padding: '5px 0', border: '1px solid #e2e8f0', borderRadius: 6, background: 'white', color: '#374151', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
-                            👁 Preview
+                            style={{ flex: 1, padding: '6px 0', borderRadius: 7, border: '1px solid #e8ecf0', background: '#fff', color: '#374151', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                            Preview
                           </button>
                           <button onClick={() => applyTemplate(t)}
-                            style={{ flex: 1, padding: '5px 0', border: 'none', borderRadius: 6, background: '#6366f1', color: 'white', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                            style={{ flex: 1, padding: '6px 0', borderRadius: 7, border: 'none', background: '#6366f1', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                             Apply
                           </button>
                         </div>
@@ -1560,7 +1574,6 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
                 </div>
               )}
 
-              {/* Pages tab */}
               {(leftTab as string) === 'pages' && (
                 <div style={{ padding: 10 }}>
                   {pages.map(p => (

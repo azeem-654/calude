@@ -6,6 +6,7 @@ import type { Website } from '../../types';
 import WebsiteBuilder from './WebsiteBuilder';
 import { buildWebsiteTemplatePages } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
+import { ScaledPage } from '../shared/BlockRender';
 import { activeAccount } from '../../services/tenancy';
 
 const STARTER_TEMPLATES = [
@@ -257,9 +258,15 @@ export default function Websites() {
               <div key={w.id} style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.07)', border: '1px solid #f1f5f9', transition: 'box-shadow 0.15s' }}
                 onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)'}
                 onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 6px rgba(0,0,0,0.07)'}>
-                {/* Preview thumbnail */}
-                <div style={{ height: 140, background: tpl.color, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                  <span style={{ fontSize: 52 }}>{tpl.emoji}</span>
+                {/* Live preview thumbnail — hover to scroll the real page */}
+                <div style={{ height: 150, position: 'relative', borderBottom: '1px solid #f1f5f9' }}>
+                  {w.pages?.length ? (
+                    <ScaledPage page={w.pages[0]} height={150} />
+                  ) : (
+                    <div style={{ height: 150, background: tpl.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 52 }}>{tpl.emoji}</span>
+                    </div>
+                  )}
                   <div style={{ position: 'absolute', top: 10, right: 10 }}><StatusBadge status={w.status} /></div>
                 </div>
 

@@ -7,6 +7,7 @@ import FunnelBuilder from './FunnelBuilder';
 import type { Funnel as FunnelType, FunnelStep } from '../../types';
 import { buildFunnelPage, type BrandContext, type TemplateMeta } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
+import { PagesStrip, ScaledPage } from '../shared/BlockRender';
 import { activeAccount } from '../../services/tenancy';
 
 /* ─── Funnel type definitions (ClickFunnels-style) ─── */
@@ -558,6 +559,14 @@ export default function Funnels() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
                 {/* Card header with color accent */}
                 <div style={{ height: '4px', background: ftype ? `linear-gradient(90deg, ${ftype.color}, ${ftype.color}88)` : '#17191c' }} />
+                {/* Every step previewed in one strip — hover to scroll them */}
+                {(funnel.pages?.length ?? 0) > 0 && (
+                  <div style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => setBuilderFunnel(funnel)}>
+                    {funnel.pages!.length > 1
+                      ? <PagesStrip pages={funnel.pages!} height={132} />
+                      : <ScaledPage page={funnel.pages![0]} height={132} />}
+                  </div>
+                )}
                 <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>

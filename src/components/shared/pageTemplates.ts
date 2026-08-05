@@ -855,7 +855,156 @@ const HERO_COPY: Record<string, { title: string; eyebrow?: string; cta?: string 
   'se-ny': { title: 'New year, and this time it sticks', eyebrow: 'New year offer', cta: 'Start January strong' },
   'se-summer': { title: 'Summer sale — up to 40% off', eyebrow: 'Summer sale', cta: 'Shop the sale' },
   'se-valentine': { title: "Valentine's night, done properly", eyebrow: "Valentine's", cta: 'Book our table' },
+  'lf-saas': { title: 'The operating system for your whole business', eyebrow: 'All-in-one', cta: 'Start free trial' },
+  'lf-agency': { title: 'Work that earns its place in the budget', eyebrow: 'Agency', cta: 'Start a project' },
+  'lf-studio': { title: 'Design with a point of view', eyebrow: 'Studio', cta: 'See our work' },
+  'lf-store': { title: 'Made well. Priced honestly. Shipped fast.', eyebrow: 'New collection', cta: 'Shop now' },
+  'lf-consult': { title: 'Advice you can actually act on Monday morning', eyebrow: 'Consulting', cta: 'Book a consult' },
+  'lf-fitness': { title: 'Train properly. See it in 8 weeks.', eyebrow: 'Memberships open', cta: 'Claim free week' },
+  'lf-course': { title: 'The complete programme, start to finish', eyebrow: 'Enrolment open', cta: 'Enrol now' },
+  'lf-coach': { title: 'Coaching for people who are done guessing', eyebrow: 'Private coaching', cta: 'Apply now' },
+  'lf-product': { title: 'The one you will still be using in five years', eyebrow: 'Now shipping', cta: 'Add to cart' },
+  'lf-app': { title: 'The app that finally makes this effortless', eyebrow: 'iOS & Android', cta: 'Download free' },
+  'lf-realestate': { title: 'Homes worth queuing for', eyebrow: 'Featured listing', cta: 'Book a viewing' },
+  'lf-restaurant': { title: 'Cooked properly, every single service', eyebrow: 'Now taking bookings', cta: 'Reserve a table' },
 };
+
+
+/* ── Long-form "premium" layouts (10-14 sections each) ───────────────────── */
+
+/** Extra sections that turn a standard page into a long-form, modern one. */
+function longFormSections(ctx: BrandContext, variant: 'saas' | 'agency' | 'course' | 'store' | 'studio'): FunnelBlock[] {
+  const g = heroGrad(ctx.color);
+  const common: FunnelBlock[] = [
+    blk('columns', 'Built around how you actually work', {
+      eyebrow: 'The approach', subheading: 'No retraining your team, no six-week onboarding. It fits the way you already do things and removes the friction around it.',
+      bgColor: '#ffffff', padding: 84, imagePosition: 'right', buttonText: 'See how it works', buttonColor: ctx.color, buttonTextColor: '#ffffff',
+      listItems: ['Set up in an afternoon, not a quarter', 'Works with the tools you already pay for', 'Every change is reversible', 'Your data stays yours, exportable any time'],
+    }),
+    blk('features', 'Everything included, nothing upsold', {
+      eyebrow: 'What you get', subtitle: 'Six things that usually cost extra elsewhere', bgColor: '#f8fafc', padding: 84, columns: 3, iconColor: ctx.color,
+      featureItems: [
+        { icon: '⚡', title: 'Fast by default', desc: 'Pages load in under a second, everywhere, on any connection.' },
+        { icon: '🔐', title: 'Security built in', desc: 'Encryption at rest and in transit, with audited access logs.' },
+        { icon: '📈', title: 'Reporting that helps', desc: 'The three numbers that matter, not forty you will never read.' },
+        { icon: '🤝', title: 'Onboarding included', desc: 'A real person walks you through setup at no extra cost.' },
+        { icon: '🔁', title: 'Free migration', desc: 'We move your existing data across and check it with you.' },
+        { icon: '💬', title: 'Support that answers', desc: 'Median first reply under two hours during business days.' },
+      ],
+    }),
+    blk('columns', 'A workflow that pays for itself', {
+      eyebrow: 'Results', subheading: 'Customers routinely save a full day a week within the first month. That is the whole pitch — you get time back and nothing breaks.',
+      bgColor: '#ffffff', padding: 84, imagePosition: 'left',
+      listItems: ['Cut manual admin by around 60%', 'Fewer dropped follow-ups', 'One place to look instead of five'],
+    }),
+    trustStats(ctx),
+    testimonials(ctx),
+    blk('gallery', 'A look inside', {
+      eyebrow: 'Screenshots', subtitle: 'Real screens, not marketing mockups', bgColor: '#f8fafc', padding: 80, columns: 3,
+      galleryImages: [ctx.color, '#8b5cf6', '#0ea5e9', '#22c55e', '#f59e0b', '#ec4899'],
+    }),
+  ];
+
+  const tail: FunnelBlock[] = [
+    blk('pricing', 'Straightforward pricing', {
+      eyebrow: 'Pricing', subtitle: 'Every plan includes onboarding, migration and support', bgColor: '#ffffff', padding: 84,
+      pricingPlans: [
+        { name: 'Starter', price: '$39', period: '/mo', features: ['1 workspace', 'Core features', 'Email support', 'Free migration'], buttonText: 'Start free' },
+        { name: 'Professional', price: '$99', period: '/mo', highlighted: true, features: ['5 workspaces', 'Everything in Starter', 'Automations', 'Priority support', 'Onboarding call'], buttonText: 'Start free trial' },
+        { name: 'Scale', price: '$249', period: '/mo', features: ['Unlimited workspaces', 'Advanced reporting', 'SSO & audit logs', 'Dedicated manager'], buttonText: 'Talk to sales' },
+      ],
+    }),
+    faq(ctx),
+    blk('cta', 'Try it free for 14 days', {
+      eyebrow: 'Get started', subheading: 'No card required. Full access. Cancel in one click if it is not for you.',
+      bgGradient: g, textColor: '#ffffff', buttonText: 'Start my free trial', buttonColor: '#c7f441', buttonTextColor: '#17191c',
+      secondaryButtonText: 'Book a walkthrough', padding: 88,
+    }),
+  ];
+
+  if (variant === 'agency' || variant === 'studio') {
+    return [
+      blk('gallery', 'Recent work', { eyebrow: 'Portfolio', subtitle: 'A selection from the last twelve months', bgColor: '#0f172a', textColor: '#ffffff', padding: 84, columns: 3, galleryImages: [ctx.color, '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#0ea5e9'] }),
+      common[0], common[1], trustStats(ctx), testimonials(ctx),
+      blk('columns', 'How we run a project', {
+        eyebrow: 'Process', subheading: 'Four stages, fixed price, no surprise invoices. You know what happens next at every point.',
+        bgColor: '#ffffff', padding: 84, imagePosition: 'left',
+        listItems: ['1. Discovery — we learn the business', '2. Strategy — written plan you approve', '3. Build — weekly demos, no black box', '4. Handover — training and documentation'],
+      }),
+      faq(ctx),
+      blk('cta', 'Tell us what you are working on', { eyebrow: 'Next step', subheading: 'A 30-minute call. We will tell you honestly whether we can help.', bgGradient: g, textColor: '#ffffff', buttonText: 'Book a call', buttonColor: '#c7f441', buttonTextColor: '#17191c', padding: 88 }),
+    ];
+  }
+  if (variant === 'course') {
+    return [
+      common[0],
+      blk('features', 'What is inside the programme', { eyebrow: 'Curriculum', subtitle: 'Six modules, released weekly', bgColor: '#f8fafc', padding: 84, columns: 3, iconColor: ctx.color,
+        featureItems: [
+          { icon: '1️⃣', title: 'Foundations', desc: 'The mental model everything else builds on.' },
+          { icon: '2️⃣', title: 'The system', desc: 'Build your version, step by step, with templates.' },
+          { icon: '3️⃣', title: 'Getting traction', desc: 'The first ten customers and how to reach them.' },
+          { icon: '4️⃣', title: 'Scaling it', desc: 'What to automate and what to never automate.' },
+          { icon: '5️⃣', title: 'Common traps', desc: 'The mistakes that cost people six months.' },
+          { icon: '6️⃣', title: 'Staying consistent', desc: 'The routine that keeps it running without you.' },
+        ] }),
+      trustStats(ctx), testimonials(ctx), common[5],
+      blk('pricing', 'Enrol today', { eyebrow: 'Enrolment', subtitle: 'Lifetime access, including every future update', bgColor: '#ffffff', padding: 84,
+        pricingPlans: [
+          { name: 'Self-paced', price: '$249', period: 'once', features: ['All 6 modules', 'Templates & worksheets', 'Lifetime updates'], buttonText: 'Enrol now' },
+          { name: 'With coaching', price: '$899', period: 'once', highlighted: true, features: ['Everything in Self-paced', '6 group coaching calls', 'Private community', 'Feedback on your work'], buttonText: 'Enrol with coaching' },
+        ] }),
+      faq(ctx),
+      blk('cta', 'Doors close Friday', { eyebrow: 'Enrolment', subheading: 'The next cohort starts Monday. 30-day money-back guarantee.', bgGradient: g, textColor: '#ffffff', buttonText: 'Enrol now', buttonColor: '#c7f441', buttonTextColor: '#17191c', padding: 88 }),
+    ];
+  }
+  if (variant === 'store') {
+    return [
+      blk('gallery', 'Shop the collection', { eyebrow: 'New in', subtitle: 'Restocked weekly', bgColor: '#ffffff', padding: 80, columns: 3, galleryImages: [ctx.color, '#f59e0b', '#ec4899', '#10b981', '#0ea5e9', '#8b5cf6'] }),
+      common[1], common[2], trustStats(ctx), testimonials(ctx),
+      blk('gallery', 'As worn by our customers', { eyebrow: 'Community', bgColor: '#f8fafc', padding: 76, columns: 4, galleryImages: [ctx.color, '#ec4899', '#f59e0b', '#0ea5e9'] }),
+      faq(ctx),
+      blk('cta', 'Get 10% off your first order', { eyebrow: 'Welcome offer', subheading: 'Join the list for early access to every drop.', bgGradient: g, textColor: '#ffffff', buttonText: 'Claim 10% off', buttonColor: '#c7f441', buttonTextColor: '#17191c', padding: 84 }),
+    ];
+  }
+  return [...common, ...tail];
+}
+
+/** A long-form landing/sales page: hero + 10-13 further sections. */
+export function buildLongFormPage(name: string, ctx: BrandContext, variant: 'saas' | 'agency' | 'course' | 'store' | 'studio'): FunnelStep {
+  const g = heroGrad(ctx.color);
+  const blocks: FunnelBlock[] = [
+    navbar(ctx, ctx.heroCta || 'Get started'),
+    blk('hero', ctx.heroTitle || `${ctx.name} — ${ctx.tagline || 'built properly'}`, {
+      eyebrow: ctx.heroEyebrow || 'Welcome',
+      subheading: ctx.tagline || 'Everything you need in one place, without the complexity you do not.',
+      bgGradient: g, textColor: '#ffffff',
+      buttonText: ctx.heroCta || 'Get started free', buttonColor: '#c7f441', buttonTextColor: '#17191c',
+      secondaryButtonText: 'See how it works', minHeight: 600, padding: 96, align: 'center',
+    }),
+    ...longFormSections(ctx, variant),
+    footer(ctx),
+  ];
+  return { id: `step-${uid()}`, name, type: 'landing', slug: slug(name), blocks, visitors: 0, conversions: 0 };
+}
+
+/** Premium long-form templates (12) — each first page runs 12+ sections. */
+export const LONG_TEMPLATES: (TemplateMeta & { variant: 'saas' | 'agency' | 'course' | 'store' | 'studio' })[] = [
+  { id: 'lf-saas', name: 'SaaS Long-Form', category: 'Full Websites', industry: 'SaaS', popularity: 5, kind: 'website', variant: 'saas', accent: '#6366f1', description: 'A full 13-section SaaS site: features, proof, pricing, FAQ.' },
+  { id: 'lf-agency', name: 'Agency Long-Form', category: 'Full Websites', industry: 'Marketing Agency', popularity: 5, kind: 'website', variant: 'agency', accent: '#0f172a', description: 'Portfolio-led agency page with a documented process.' },
+  { id: 'lf-studio', name: 'Design Studio', category: 'Full Websites', industry: 'Creative', popularity: 4, kind: 'website', variant: 'studio', accent: '#ec4899', description: 'Editorial studio site with big imagery and process.' },
+  { id: 'lf-store', name: 'Modern Store', category: 'Full Websites', industry: 'E-commerce', popularity: 5, kind: 'website', variant: 'store', accent: '#f59e0b', description: 'Long-form storefront with collections and social proof.' },
+  { id: 'lf-consult', name: 'Consultancy Long-Form', category: 'Full Websites', industry: 'Consulting', popularity: 4, kind: 'website', variant: 'saas', accent: '#1e3a5f', description: 'Authority-first consultancy site with pricing and FAQ.' },
+  { id: 'lf-fitness', name: 'Fitness Studio', category: 'Full Websites', industry: 'Fitness', popularity: 4, kind: 'website', variant: 'store', accent: '#22c55e', description: 'Class schedule, transformations and membership tiers.' },
+  { id: 'lf-course', name: 'Course Launch', category: 'Sales Pages', industry: 'Education', popularity: 5, kind: 'funnel', variant: 'course', accent: '#8b5cf6', description: 'Long-form course page: curriculum, proof, enrolment.' },
+  { id: 'lf-coach', name: 'Coaching Programme', category: 'Sales Pages', industry: 'Coaching', popularity: 5, kind: 'funnel', variant: 'course', accent: '#0891b2', description: 'High-ticket coaching page with process and guarantee.' },
+  { id: 'lf-product', name: 'Product Launch Long-Form', category: 'Sales Pages', industry: 'E-commerce', popularity: 4, kind: 'funnel', variant: 'store', accent: '#f97316', description: 'Deep product page with gallery, specs and reviews.' },
+  { id: 'lf-app', name: 'App Landing Long-Form', category: 'Landing Pages', industry: 'Mobile', popularity: 4, kind: 'funnel', variant: 'saas', accent: '#0ea5e9', description: 'Feature tour, screenshots, pricing and FAQ in one scroll.' },
+  { id: 'lf-realestate', name: 'Property Showcase', category: 'Landing Pages', industry: 'Real Estate', popularity: 4, kind: 'funnel', variant: 'agency', accent: '#1e3a5f', description: 'Listing-led page with gallery, process and enquiry form.' },
+  { id: 'lf-restaurant', name: 'Restaurant Long-Form', category: 'Full Websites', industry: 'Restaurant', popularity: 4, kind: 'website', variant: 'store', accent: '#b45309', description: 'Menu, gallery, story and reservations in one long page.' },
+];
+
+// Long-form templates join the browsable catalog.
+TEMPLATE_CATALOG.push(...LONG_TEMPLATES);
 
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
   'Lead Capture', 'Sales Pages', 'Landing Pages', 'Event Pages', 'Thank You Pages', 'Full Websites', 'Seasonal',
@@ -864,11 +1013,19 @@ export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
 /** Build the real, populated pages for any catalog template. */
 export function buildTemplatePages(meta: TemplateMeta, ctx: BrandContext): FunnelStep[] {
   const copy = HERO_COPY[meta.id];
+  const long = LONG_TEMPLATES.find(t => t.id === meta.id);
   const withAccent: BrandContext = {
     ...ctx,
     ...(meta.accent ? { color: meta.accent } : {}),
     ...(copy ? { heroTitle: copy.title, heroEyebrow: copy.eyebrow, heroCta: copy.cta } : {}),
   };
+  if (long) {
+    // Long-form: a 12+ section main page, plus supporting pages where it helps.
+    const main = buildLongFormPage(long.kind === 'website' ? 'Home' : 'Landing', withAccent, long.variant);
+    return long.kind === 'website'
+      ? [main, ...buildWebsiteTemplatePages('business', withAccent).slice(1)]
+      : [main, buildFunnelPage('Thank You', 'thankyou', withAccent)];
+  }
   if (meta.kind === 'website') return buildWebsiteTemplatePages(meta.websiteTemplate ?? 'business', withAccent);
   return (meta.steps ?? [{ name: 'Landing', type: 'landing' as const }]).map(s => buildFunnelPage(s.name, s.type, withAccent));
 }

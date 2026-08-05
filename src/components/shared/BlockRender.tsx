@@ -5,6 +5,7 @@
  * thumbnails in both creation wizards, so what a user previews before choosing
  * a template is exactly what the builder creates.
  */
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { FunnelBlock, FunnelStep } from '../../types';
 
@@ -241,6 +242,84 @@ export function PagePreview({ page, height = 200, renderWidth = 1100, scrollOnHo
       >
         <PageBlocks page={page} />
       </div>
+    </div>
+  );
+}
+
+/* ── Responsive scaled previews ───────────────────────────────────────────── */
+
+/** Track a container's rendered width so a page can be scaled to fit it. */
+function useBoxWidth<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setW(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(entries => setW(entries[0].contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w] as const;
+}
+
+/**
+ * A real page, rendered at desktop width and scaled to fill its container.
+ * With `hoverScroll` the full page slowly scrolls while the pointer is over the
+ * card, so a thumbnail shows the whole design rather than just the hero.
+ */
+export function ScaledPage({ page, height, renderWidth = 1100, hoverScroll = true, shift = '-62%' }: {
+  page: FunnelStep; height: number; renderWidth?: number; hoverScroll?: boolean; shift?: string;
+}) {
+  const [ref, w] = useBoxWidth<HTMLDivElement>();
+  const scale = w > 0 ? w / renderWidth : 0;
+  return (
+    <div ref={ref} className={hoverScroll ? 'tpl-preview' : undefined}
+      style={{ position: 'relative', height, overflow: 'hidden', background: '#fff' }}>
+      {scale > 0 && (
+        <div className={hoverScroll ? 'tpl-preview-inner' : undefined}
+          style={{
+            position: 'absolute', top: 0, left: 0, width: renderWidth,
+            transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none',
+            ['--tpl-scale' as string]: String(scale),
+            ['--tpl-shift' as string]: shift,
+          }}>
+          <PageBlocks page={page} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * All steps of a funnel side by side in one thumbnail, each scrolling on hover.
+ * Multi-step funnels are hard to judge from a single page, so the card shows the
+ * whole flow at a glance.
+ */
+export function PagesStrip({ pages, height, max = 4 }: { pages: FunnelStep[]; height: number; max?: number }) {
+  const shown = pages.slice(0, max);
+  const extra = pages.length - shown.length;
+  if (!shown.length) return <div style={{ height, background: '#f1f5f9' }} />;
+  return (
+    <div style={{ display: 'flex', height, background: '#e2e8f0', gap: 2 }}>
+      {shown.map((p, i) => (
+        <div key={p.id} style={{ flex: 1, minWidth: 0, position: 'relative', background: '#fff' }}>
+          <ScaledPage page={p} height={height} renderWidth={1100} shift={'-58%'} />
+          <span style={{
+            position: 'absolute', left: 4, bottom: 4, padding: '1px 6px', borderRadius: 4,
+            background: 'rgba(15,23,42,0.75)', color: '#fff', fontSize: 8.5, fontWeight: 700,
+            maxWidth: 'calc(100% - 8px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}>
+            {i + 1}. {p.name}
+          </span>
+        </div>
+      ))}
+      {extra > 0 && (
+        <div style={{ width: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+          +{extra}
+        </div>
+      )}
     </div>
   );
 }

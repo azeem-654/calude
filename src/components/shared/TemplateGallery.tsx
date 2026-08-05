@@ -13,7 +13,7 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, Monitor, Smartphone, Star, Check, Layers } from 'lucide-react';
 import type { FunnelStep } from '../../types';
-import { PageBlocks } from './BlockRender';
+import { ScaledPage, PagesStrip, PageBlocks } from './BlockRender';
 import {
   TEMPLATE_CATALOG, TEMPLATE_CATEGORIES, buildTemplatePages,
   type TemplateMeta, type BrandContext, type TemplateCategory,
@@ -28,24 +28,6 @@ function Stars({ n }: { n: number }) {
         <Star key={i} size={10} strokeWidth={0} fill={i <= n ? '#f59e0b' : '#e2e8f0'} />
       ))}
     </span>
-  );
-}
-
-/** Scaled, non-interactive render of a real page. */
-function Thumb({ page, height, width = 1100, hoverScroll }: { page: FunnelStep; height: number; width?: number; hoverScroll?: boolean }) {
-  const scale = 300 / width;
-  return (
-    <div className={hoverScroll ? 'tpl-preview' : undefined}
-      style={{ position: 'relative', height, overflow: 'hidden', background: '#fff' }}>
-      <div className={hoverScroll ? 'tpl-preview-inner' : undefined}
-        style={{
-          position: 'absolute', top: 0, left: 0, width,
-          transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none',
-          ['--tpl-scale' as string]: String(scale),
-        }}>
-        <PageBlocks page={page} />
-      </div>
-    </div>
   );
 }
 
@@ -206,7 +188,9 @@ export default function TemplateGallery({ ctx, kind, onUse, onClose, title = 'Ch
                       onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = '0 10px 26px rgba(15,23,42,0.14)'; el.style.transform = 'translateY(-2px)'; }}
                       onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = 'none'; el.style.transform = 'none'; }}>
                       <div style={{ position: 'relative', borderBottom: '1px solid #f1f5f9' }}>
-                        <Thumb page={pages[0]} height={150} hoverScroll />
+                        {meta.kind === 'funnel' && pages.length > 1
+                          ? <PagesStrip pages={pages} height={150} />
+                          : <ScaledPage page={pages[0]} height={150} />}
                         <span style={{ position: 'absolute', top: 7, right: 7, padding: '2px 7px', borderRadius: 5, background: 'rgba(15,23,42,0.72)', color: '#fff', fontSize: 9.5, fontWeight: 700, backdropFilter: 'blur(2px)' }}>
                           {pages.length} page{pages.length > 1 ? 's' : ''}
                         </span>
