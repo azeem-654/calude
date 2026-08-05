@@ -287,6 +287,15 @@ html[data-theme="dark"] *::-webkit-scrollbar-thumb {
   opacity: 1;
 }
 
+/* ── Template thumbnails: scroll the full page on hover ── */
+.tpl-preview-inner {
+  transition: transform 0.35s ease-out;
+}
+.tpl-preview:hover .tpl-preview-inner {
+  transition: transform 3s ease-in-out;
+  transform: scale(var(--tpl-scale, 0.29)) translateY(var(--tpl-shift, -62%)) !important;
+}
+
 /* ── FAQ accordion (Funnel/Website builders + site preview) ── */
 summary::-webkit-details-marker { display: none; }
 summary::marker { content: ""; }

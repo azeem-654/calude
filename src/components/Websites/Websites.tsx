@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import type { Website } from '../../types';
 import WebsiteBuilder from './WebsiteBuilder';
+import { buildWebsiteTemplatePages } from '../shared/pageTemplates';
+import TemplateGallery from '../shared/TemplateGallery';
+import { activeAccount } from '../../services/tenancy';
 
 const STARTER_TEMPLATES = [
   { id: 'blank',       name: 'Blank Site',          emoji: '📄', desc: 'Start from scratch with an empty canvas.',           color: '#f1f5f9' },
@@ -115,17 +118,33 @@ export default function Websites() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // Name of a site just created from a template — opened once it exists in state.
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingOpen) return;
+    const fresh = websites.find(w => w.name === pendingOpen);
+    if (fresh) { setEditingId(fresh.id); setPendingOpen(null); }
+  }, [pendingOpen, websites]);
 
   const editingWebsite = editingId ? websites.find(w => w.id === editingId) : null;
 
   function handleCreate(name: string, template: string) {
+    const acct = activeAccount();
+    // Generate the template's REAL pages so the new site opens fully designed
+    // (it previously created an empty site and ignored the chosen template).
+    const pages = buildWebsiteTemplatePages(template, {
+      name: name.trim() || acct?.businessName || 'Your Business',
+      color: acct?.color || '#6366f1',
+      tagline: acct?.industry ? `Trusted ${acct.industry.toLowerCase()} experts` : undefined,
+    });
     addWebsite({
       name,
       template,
       status: 'draft',
       visitors: 0,
       pageViews: 0,
-      pages: [],
+      pages,
       createdAt: new Date().toISOString(),
     });
   }
@@ -156,6 +175,7 @@ export default function Websites() {
       <WebsiteBuilder
         website={editingWebsite}
         onSave={handleSaveFromBuilder}
+        onPersist={site => updateWebsite(site.id, site)}
         onClose={() => setEditingId(null)}
       />
     );
@@ -294,7 +314,33 @@ export default function Websites() {
         </div>
       )}
 
-      {showNew && <NewWebsiteModal onClose={() => setShowNew(false)} onCreate={handleCreate} />}
+      {showNew && (
+        <TemplateGallery
+          ctx={{
+            name: activeAccount()?.businessName || 'Your Business',
+            color: activeAccount()?.color || '#6366f1',
+            tagline: activeAccount()?.industry ? `Trusted ${activeAccount()!.industry.toLowerCase()} experts` : undefined,
+          }}
+          kind="website"
+          title="Choose a website template"
+          onClose={() => setShowNew(false)}
+          onUse={(meta, pages) => {
+            const site = {
+              name: meta.name,
+              template: meta.websiteTemplate ?? 'business',
+              description: meta.description,
+              status: 'draft' as const,
+              visitors: 0, pageViews: 0,
+              pages,
+              createdAt: new Date().toISOString(),
+            };
+            addWebsite(site);
+            setShowNew(false);
+            // Open the builder on the new site as soon as it lands in state.
+            setPendingOpen(meta.name);
+          }}
+        />
+      )}
       {deletingId && (
         <DeleteConfirm
           name={websites.find(w => w.id === deletingId)?.name ?? ''}

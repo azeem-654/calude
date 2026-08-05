@@ -5,6 +5,9 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import FunnelBuilder from './FunnelBuilder';
 import type { Funnel as FunnelType, FunnelStep } from '../../types';
+import { buildFunnelPage, type BrandContext, type TemplateMeta } from '../shared/pageTemplates';
+import TemplateGallery from '../shared/TemplateGallery';
+import { activeAccount } from '../../services/tenancy';
 
 /* ─── Funnel type definitions (ClickFunnels-style) ─── */
 
@@ -43,16 +46,22 @@ const FUNNEL_TYPES: FunnelTypeConfig[] = [
 
 const CATEGORIES = ['All', ...Array.from(new Set(FUNNEL_TYPES.map(f => f.category)))];
 
-function defaultPages(steps: { name: string; type: FunnelStep['type'] }[]): FunnelStep[] {
-  return steps.map((s, i) => ({
-    id: `step-${Date.now()}-${i}`,
-    name: s.name,
-    type: s.type,
-    slug: s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    blocks: [],
-    visitors: 0,
-    conversions: 0,
-  }));
+/**
+ * Build the funnel's pages with REAL block content from the shared template
+ * library, so a newly created funnel opens fully designed instead of blank.
+ */
+function defaultPages(steps: { name: string; type: FunnelStep['type'] }[], ctx: BrandContext): FunnelStep[] {
+  return steps.map(s => buildFunnelPage(s.name, s.type, ctx));
+}
+
+/** Brand context for generated pages, taken from the active sub-account. */
+function brandContext(): BrandContext {
+  const acct = activeAccount();
+  return {
+    name: acct?.businessName?.trim() || acct?.name?.trim() || 'Your Business',
+    color: acct?.color || '#6366f1',
+    tagline: acct?.industry ? `Trusted ${acct.industry.toLowerCase()} experts` : undefined,
+  };
 }
 
 /* ─── Page wireframe preview (used in wizard cards + side panel) ─── */
@@ -420,6 +429,7 @@ export default function Funnels() {
   const [builderFunnel, setBuilderFunnel] = useState<FunnelType | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [statsFunnel, setStatsFunnel] = useState<FunnelType | null>(null);
 
   const totalRevenue = funnels.reduce((s, f) => s + f.revenue, 0);
   const totalVisitors = funnels.reduce((s, f) => s + f.visitors, 0);
@@ -429,7 +439,7 @@ export default function Funnels() {
   const handleCreate = (name: string, type: FunnelTypeConfig) => {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const id = `funnel-${Date.now()}`;
-    const pages = defaultPages(type.defaultSteps);
+    const pages = defaultPages(type.defaultSteps, brandContext());
     const newFunnel: FunnelType = {
       id, name,
       steps: pages.length,
@@ -442,6 +452,26 @@ export default function Funnels() {
     };
     addFunnel(newFunnel);
     setShowWizard(false);
+    setBuilderFunnel(newFunnel);
+  };
+
+  /** Create a funnel from a catalog template — pages arrive fully populated. */
+  const handleUseTemplate = (meta: TemplateMeta, pages: FunnelStep[]) => {
+    const name = meta.name;
+    const newFunnel: FunnelType = {
+      id: `funnel-${Date.now()}`,
+      name,
+      steps: pages.length,
+      visitors: 0, conversions: 0, revenue: 0,
+      status: 'draft',
+      goal: meta.category,
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+      pages,
+      createdAt: new Date().toISOString(),
+    };
+    addFunnel(newFunnel);
+    setShowWizard(false);
+    // Straight into the editor with the content loaded.
     setBuilderFunnel(newFunnel);
   };
 
@@ -468,6 +498,7 @@ export default function Funnels() {
           updateFunnel(liveFunnel.id, updates);
           setBuilderFunnel(null);
         }}
+        onPersist={updates => updateFunnel(liveFunnel.id, updates)}
         onClose={() => setBuilderFunnel(null)}
       />
     );
@@ -591,11 +622,11 @@ export default function Funnels() {
                     style={{ flex: 1, padding: '8px', borderRadius: '9px', border: 'none', backgroundColor: '#17191c', color: 'white', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
                     <Edit2 size={13} /> Open Builder
                   </button>
-                  <button
+                  <button onClick={() => setStatsFunnel(funnel)} title="Funnel analytics"
                     style={{ flex: 1, padding: '8px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
                     <BarChart2 size={13} /> Analytics
                   </button>
-                  <button
+                  <button onClick={() => navigate(`/preview-funnel/${funnel.id}`)} title="Preview funnel"
                     style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <ExternalLink size={13} />
                   </button>
@@ -619,7 +650,40 @@ export default function Funnels() {
         </div>
       </div>
 
-      {showWizard && <FunnelWizard onClose={() => setShowWizard(false)} onCreate={handleCreate} />}
+      {statsFunnel && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setStatsFunnel(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 26, width: 'min(520px,100%)', boxShadow: '0 24px 60px rgba(15,23,42,0.3)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{statsFunnel.name}</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>Performance across {statsFunnel.pages?.length ?? 0} pages</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
+              {[
+                { l: 'Visitors', v: statsFunnel.visitors.toLocaleString(), c: '#17191c' },
+                { l: 'Conversions', v: statsFunnel.conversions.toLocaleString(), c: '#22c55e' },
+                { l: 'Conv. rate', v: statsFunnel.visitors > 0 ? `${((statsFunnel.conversions / statsFunnel.visitors) * 100).toFixed(1)}%` : '0%', c: '#6366f1' },
+              ].map(m => (
+                <div key={m.l} style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: m.c }}>{m.v}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{m.l}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
+              Conversions increment when a visitor submits a form on the funnel preview or published page.
+            </p>
+            <button onClick={() => setStatsFunnel(null)} style={{ width: '100%', padding: '10px 0', borderRadius: 9, border: 'none', background: '#17191c', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {showWizard && (
+        <TemplateGallery
+          ctx={brandContext()}
+          kind="funnel"
+          title="Choose a funnel template"
+          onClose={() => setShowWizard(false)}
+          onUse={handleUseTemplate}
+        />
+      )}
 
       {deleteConfirm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>

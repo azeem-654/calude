@@ -498,12 +498,14 @@ function SeoPanel({ website, onChange }: { website: Website; onChange: (patch: P
 
 // ── Main WebsiteBuilder ───────────────────────────────────────────────────────
 interface WebsiteBuilderProps {
+  /** Persist current work WITHOUT closing the builder (used by Live preview). */
+  onPersist?: (site: Website) => void;
   website: Website;
   onSave: (w: Website) => void;
   onClose: () => void;
 }
 
-export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuilderProps) {
+export default function WebsiteBuilder({ website, onSave, onClose, onPersist }: WebsiteBuilderProps) {
   const initialPages = website.pages && website.pages.length > 0 ? website.pages : [mkPage('Home', 'landing')];
   const { state: pages, push: pushHistory, undo, redo, canUndo, canRedo } = useHistory<FunnelStep[]>(initialPages);
   const setPages = useCallback((updater: FunnelStep[] | ((prev: FunnelStep[]) => FunnelStep[])) => {
@@ -590,6 +592,16 @@ export default function WebsiteBuilder({ website, onSave, onClose }: WebsiteBuil
         <button onClick={() => setDevice('tablet')} style={tbBtn(device === 'tablet')}><Tablet size={13} /></button>
         <button onClick={() => setDevice('mobile')} style={tbBtn(device === 'mobile')}><Smartphone size={13} /></button>
         <button onClick={() => { setPreview(p => !p); setSelectedId(null); }} style={tbBtn(preview)}>{preview ? '✏️ Edit' : '👁 Preview'}</button>
+        <button
+          onClick={() => {
+            onPersist?.({ ...siteData, pages } as Website);
+            const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+            window.open(`${base}/preview/${website.id}`, '_blank', 'noopener');
+          }}
+          title="Open the live site in a new tab"
+          style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          🔗 Live preview
+        </button>
         <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Save</button>
       </div>
 

@@ -16,6 +16,7 @@ import Marketing from './components/Marketing/Marketing';
 import Funnels from './components/Funnels/Funnels';
 import Websites from './components/Websites/Websites';
 import SitePreview from './components/Websites/SitePreview';
+import FunnelPreview from './components/Funnels/FunnelPreview';
 import Scheduling from './components/Scheduling/Scheduling';
 import BookingPage from './components/Scheduling/BookingPage';
 import Analytics from './components/Analytics/Analytics';
@@ -46,6 +47,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
     return (
       <Routes>
         <Route path="/preview/:siteId" element={<SitePreview />} />
+        <Route path="/preview-funnel/:funnelId" element={<FunnelPreview />} />
       </Routes>
     );
   }

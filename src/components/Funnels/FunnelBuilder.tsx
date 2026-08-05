@@ -4,7 +4,7 @@ import {
   X, Save, Eye, EyeOff,
   Plus, Trash2, Copy, ChevronUp, ChevronDown,
   Check, Undo2, Redo2,
-  Settings, Search, GitBranch, BarChart2, Users, ShoppingCart,
+  Settings, Search, GitBranch, BarChart2, Users, ShoppingCart, ExternalLink,
   Mail, Phone, MousePointerClick, Heart, ArrowRight, List,
 } from 'lucide-react';
 import type { Funnel, FunnelStep, FunnelBlock } from '../../types';
@@ -1199,12 +1199,14 @@ function PropertiesPanel({ block, onChange }: PropPanelProps) {
 
 // ─── Main FunnelBuilder ───────────────────────────────────────────────────────
 interface FunnelBuilderProps {
+  /** Persist current work WITHOUT closing the builder (used by Live preview). */
+  onPersist?: (updates: Partial<Funnel>) => void;
   funnel: Funnel;
   onSave: (funnel: Funnel) => void;
   onClose: () => void;
 }
 
-export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilderProps) {
+export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: FunnelBuilderProps) {
   const initialPages = funnel.pages && funnel.pages.length > 0 ? funnel.pages : [mkPage('Home')];
   const { state: pages, push: pushHistory, undo, redo, canUndo, canRedo } = useHistory<FunnelStep[]>(initialPages);
   const [editorMode, setEditorMode] = useState<'overview' | 'page-editor'>('overview');
@@ -1390,6 +1392,17 @@ export default function FunnelBuilder({ funnel, onSave, onClose }: FunnelBuilder
         <button onClick={() => { setPreview(p => !p); setSelectedId(null); }}
           style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf0', background: preview ? '#f5f3ff' : 'white', color: preview ? '#6366f1' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
           <Eye size={14} /> {preview ? 'Edit' : 'Preview'}
+        </button>
+        <button
+          onClick={() => {
+            // Save current pages first so the preview tab shows the latest edits.
+            onPersist?.({ pages, steps: pages.length });
+            const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+            window.open(`${base}/preview-funnel/${funnel.id}`, '_blank', 'noopener');
+          }}
+          title="Open the live funnel in a new tab"
+          style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf0', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <ExternalLink size={13} /> Live preview
         </button>
         <button onClick={handleSave}
           style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }}>

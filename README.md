@@ -12,7 +12,7 @@ An agency owns isolated client sub-accounts; every module below is tenant-scoped
 | Contacts | Contacts with notes/tasks/activities, custom fields, CSV import |
 | Pipelines | Kanban deal boards with subtasks, checklists, automations, WIP limits |
 | Marketing | Email/SMS campaigns, multi-step sequences, automations |
-| Funnels & Websites | Block-based page builder (hero/features/testimonials/faq/…), live site preview |
+| Funnels & Websites | Template library (53), block-based builder, live preview, lead capture into CRM |
 | Scheduling | Calendly-grade booking: event types, timezone slots, ics, reschedule/cancel, email + SMS reminders |
 | Social Creator | Canva-grade design editor: templates, snap guides, shortcuts, stock photos, effects |
 | AI Shorts | Long-video → shorts: captions, hooks, reframe, B-roll, dubbing, script-to-video, music, intro/outro |
@@ -30,6 +30,42 @@ that configures the entire workspace:
 4. **Contacts** — CSV upload/paste with fuzzy column mapping, validation, dedupe, custom fields and **AI segmentation** (Hot Lead / SMS-Ready / Email-Ready / B2B / B2C) + auto welcome-campaign drafts.
 5. **12-month plan** — theme/focus/holidays/ideas per month via Gemini, with a deterministic smart-template fallback so no API key is required. Fully editable.
 6. **Review & launch** — summary of everything, then one click applies it all: brand kit, business hours, sales pipeline, lead-magnet funnel, website + 3 SEO blog posts, per-service booking pages with reminders, and a **90-Day Launch Plan** task board (30–50 tasks in 4 phases).
+
+## Funnel & Website Builder
+
+A single template library (`src/components/shared/pageTemplates.ts`) is the source
+of truth for ready-made page content, so **what you preview is exactly what gets
+created** — previously each wizard produced pages with `blocks: []`, which is why
+new funnels and websites opened empty.
+
+- **53 templates** across Lead Capture, Sales Pages, Landing Pages, Event Pages,
+  Thank You Pages, Full Websites and Seasonal — each with its own hero copy,
+  industry tag, page count and popularity rating.
+- **Live previews, not screenshots.** Thumbnails render the real page through the
+  shared `BlockRender` and CSS-scale it, so they can never drift out of date and
+  need no screenshot pipeline. Hover scrolls the full page; clicking opens a
+  full-screen preview with **desktop/mobile toggle** and a page switcher.
+- **Use this template** clones the pages into a new funnel/website and drops you
+  straight into the builder with everything populated and editable.
+- **Preview that works**: `/preview-funnel/:id` and `/preview/:siteId` render live
+  from app state, so edits show up on the next preview. Both builders have a
+  *Live preview* button that saves first and opens the rendered page in a new tab.
+- **Forms capture real leads** — submitting on a funnel preview creates a CRM
+  contact (tagged with the funnel name) and increments the funnel's conversions,
+  which the card's Analytics view reports.
+
+Builder features already in place: drag-and-drop blocks with drop zones, a
+properties panel per block, page add/delete/rename/reorder, undo/redo, device
+widths, and gradient presets.
+
+### Not included (needs infrastructure this deployment doesn't have)
+
+This app is a static SPA on shared hosting with `localStorage` persistence and a
+few PHP endpoints — there is no application server, database or object store. So
+the following are deliberately **not** implemented rather than faked:
+custom-domain DNS verification and serving, S3/Cloudinary uploads (images are
+stored as data URLs), Stripe/PayPal checkout, and server-side screenshot
+generation. Wire up a backend before expecting those.
 
 ## 12-Month Content Pipeline
 
