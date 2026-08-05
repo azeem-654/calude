@@ -9,7 +9,7 @@ An agency owns isolated client sub-accounts; every module below is tenant-scoped
 | Module | What it does |
 |---|---|
 | Dashboard | Customer-journey overview, KPI ticker, live activity, growth forecast, **Content Pipeline widget** |
-| Contacts | Contacts with notes/tasks/activities, custom fields, CSV import |
+| Contacts | **Command center**: health score, lifecycle stages, next-best-action, unified cross-module timeline, custom fields, CSV import |
 | Pipelines | Kanban deal boards with subtasks, checklists, automations, WIP limits |
 | Marketing | Email/SMS campaigns, multi-step sequences, automations |
 | Funnels & Websites | Template library (53), block-based builder, live preview, lead capture into CRM |
@@ -30,6 +30,33 @@ that configures the entire workspace:
 4. **Contacts** — CSV upload/paste with fuzzy column mapping, validation, dedupe, custom fields and **AI segmentation** (Hot Lead / SMS-Ready / Email-Ready / B2B / B2C) + auto welcome-campaign drafts.
 5. **12-month plan** — theme/focus/holidays/ideas per month via Gemini, with a deterministic smart-template fallback so no API key is required. Fully editable.
 6. **Review & launch** — summary of everything, then one click applies it all: brand kit, business hours, sales pipeline, lead-magnet funnel, website + 3 SEO blog posts, per-service booking pages with reminders, and a **90-Day Launch Plan** task board (30–50 tasks in 4 phases).
+
+## Contacts — the command center
+
+`src/services/contactIntelligence.ts` derives everything below from data the CRM
+already holds (activities, deals, appointments, tasks). It is deterministic and
+rule-based, so it works offline with no API key and every number can be explained.
+
+- **Health score (0–100)** from four weighted signals — engagement (90-day
+  opens/clicks/forms/calls), recency, pipeline progress and reachability. The ring
+  opens a breakdown showing each component's contribution, so the score is
+  inspectable rather than a black box.
+- **Lifecycle stages** — Subscriber → Lead → MQL → SQL → Opportunity → Customer →
+  Evangelist. The system infers the stage the behaviour supports and offers it as a
+  suggestion; setting it explicitly is one click and is written to the timeline.
+- **Next best action** — ranked, reasoned suggestions ("They clicked a link 1 day
+  ago, which is the strongest intent signal you have"), each routing to the right
+  tool. Rules cover overdue tasks, opens without clicks, open deals with no meeting,
+  never-emailed contacts, and 30/60-day silence.
+- **Unified timeline** — activities, notes, tasks, appointments and deal stage
+  changes merged chronologically, filterable by type and exportable to text.
+- **Cross-module summary** — open deals and pipeline value, appointments, and
+  emails sent, read live from the Pipelines and Scheduling modules.
+- **List view** — health bar and lifecycle stage as sortable columns, plus a
+  lifecycle filter; clicking any row opens the command center.
+
+Parts 2–5 (email tab, deals tab, scheduling tab, lists/merge/permissions) build on
+this foundation.
 
 ## Funnel & Website Builder
 

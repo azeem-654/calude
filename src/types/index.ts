@@ -24,6 +24,8 @@ export interface Contact {
   customFields?: Record<string, string>;
   timezone?: string;
   assignedTo?: string;
+  /** Explicit lifecycle stage; when unset the command center infers one. */
+  lifecycle?: 'Subscriber' | 'Lead' | 'MQL' | 'SQL' | 'Opportunity' | 'Customer' | 'Evangelist';
 }
 
 export interface Conversation {

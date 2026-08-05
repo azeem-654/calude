@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   X, Mail, Phone, Building2, Briefcase, Link2, MessageCircle, Globe, MapPin,
   Plus, Check, Trash2, Edit2, Send, Calendar, Tag, Clock, User, Activity,
   FileText, CheckSquare, MessageSquare, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import {
+  computeHealthScore, inferLifecycle, nextBestActions, dealsForContact,
+  appointmentsForContact, buildTimeline, type LifecycleStage, type NextAction,
+} from '../../services/contactIntelligence';
+import { HealthRing, LifecycleBar, NextBestActions, UnifiedTimeline, ModuleSummary } from './CommandCenter';
 import type { Contact, ContactActivity } from '../../types';
 import { sendEmail, loadEmailConfig, personalizeHtml } from '../../services/emailService';
 
@@ -42,7 +47,7 @@ interface Props {
 }
 
 export default function ContactProfile({ contact, onClose }: Props) {
-  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects } = useApp();
+  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, appointments } = useApp();
   const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'videos'>('overview');
   const contactClips = videoProjects.filter(p => p.contactId === contact.id).flatMap(p => p.clips);
   const [activityFilter, setActivityFilter] = useState<ContactActivity['type'] | 'all'>('all');
@@ -74,6 +79,32 @@ export default function ContactProfile({ contact, onClose }: Props) {
   const doneTasks = tasks.filter(t => t.done);
 
   const filteredActivities = activityFilter === 'all' ? activities : activities.filter(a => a.type === activityFilter);
+
+  /* ── Command-center intelligence, derived from live cross-module data ── */
+  const contactDeals = useMemo(() => dealsForContact(contact, pipelines), [contact, pipelines]);
+  const contactAppts = useMemo(() => appointmentsForContact(contact, appointments), [contact, appointments]);
+  const health = useMemo(() => computeHealthScore(contact, contactDeals, contactAppts), [contact, contactDeals, contactAppts]);
+  const suggestedStage = useMemo(() => inferLifecycle(contact, contactDeals), [contact, contactDeals]);
+  const stage: LifecycleStage = contact.lifecycle ?? suggestedStage;
+  const actions = useMemo(() => nextBestActions(contact, contactDeals, contactAppts, health), [contact, contactDeals, contactAppts, health]);
+  const timeline = useMemo(() => buildTimeline(contact, contactDeals, contactAppts), [contact, contactDeals, contactAppts]);
+  const emailsSent = activities.filter(a => a.type === 'email_sent').length;
+
+  const setStage = (next: LifecycleStage) => {
+    if (next === stage) return;
+    updateContact(contact.id, { lifecycle: next });
+    addContactActivity(contact.id, { type: 'stage_change', description: `Lifecycle stage: ${stage} → ${next}`, timestamp: new Date().toISOString() });
+    addNotification(`${contact.name} moved to ${next}`);
+  };
+
+  /** Route a next-best-action to the right place in the profile. */
+  const runAction = (a: NextAction) => {
+    if (a.action === 'email') setTab('email');
+    else if (a.action === 'task') setTab('tasks');
+    else if (a.action === 'profile') { setEditing(true); setTab('overview'); }
+    else if (a.action === 'call' && contact.phone) window.location.href = `tel:${contact.phone}`;
+    else setTab('activity');
+  };
 
   const saveEdit = () => {
     updateContact(contact.id, editForm);
@@ -159,7 +190,8 @@ export default function ContactProfile({ contact, onClose }: Props) {
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <HealthRing health={health} />
               <button onClick={() => { setEditing(e => !e); setTab('overview'); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', border: editing ? 'none' : '1px solid #e2e8f0', borderRadius: 9, backgroundColor: editing ? '#17191c' : 'white', color: editing ? 'white' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: editing ? '0 1px 2px rgba(23,25,28,0.3)' : '0 1px 2px rgba(16,24,40,0.04)' }}>
                 <Edit2 size={13} /> {editing ? 'Editing' : 'Edit'}
@@ -170,20 +202,19 @@ export default function ContactProfile({ contact, onClose }: Props) {
             </div>
           </div>
 
-          {/* Quick stats */}
-          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-            {[
-              { label: 'Lifetime Value', value: contact.value > 0 ? `$${contact.value.toLocaleString()}` : '—' },
-              { label: 'Activities', value: activities.length },
-              { label: 'Tasks', value: `${pendingTasks.length} open` },
-              { label: 'Tags', value: contact.tags.length },
-              { label: 'Last Active', value: contact.lastActivity },
-            ].map(m => (
-              <div key={m.label} style={{ flex: 1, padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: 10, border: '1px solid #e6e9f0', textAlign: 'center' }}>
-                <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3, whiteSpace: 'nowrap' }}>{m.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>{m.value}</div>
-              </div>
-            ))}
+          {/* Lifecycle stage */}
+          <div style={{ marginTop: 18 }}>
+            <LifecycleBar current={stage} suggested={suggestedStage} onChange={setStage} />
+          </div>
+
+          {/* Cross-module summary */}
+          <div style={{ marginTop: 14 }}>
+            <ModuleSummary
+              deals={contactDeals}
+              appointments={contactAppts}
+              emailCount={emailsSent}
+              onOpen={what => setTab(what === 'email' ? 'email' : 'activity')}
+            />
           </div>
         </div>
 
@@ -208,6 +239,11 @@ export default function ContactProfile({ contact, onClose }: Props) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px', backgroundColor: '#fff' }}>
 
           {/* ── Overview Tab ── */}
+          {tab === 'overview' && (
+            <div style={{ marginBottom: 22 }}>
+              <NextBestActions actions={actions} onAct={runAction} />
+            </div>
+          )}
           {tab === 'overview' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
               {/* Contact info */}
@@ -289,44 +325,9 @@ export default function ContactProfile({ contact, onClose }: Props) {
 
           {/* ── Activity Tab ── */}
           {tab === 'activity' && (
-            <div>
-              {/* Filter chips */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                {(['all', 'email_sent', 'note', 'task_completed', 'meeting', 'call'] as const).map(f => (
-                  <button key={f} onClick={() => setActivityFilter(f === 'all' ? 'all' : f as ContactActivity['type'])}
-                    style={{ padding: '5px 12px', borderRadius: 999, border: `1px solid ${activityFilter === f ? '#d5d8dd' : '#e2e8f0'}`, backgroundColor: activityFilter === f ? '#eceef1' : 'white', color: activityFilter === f ? '#17191c' : '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
-                    {f === 'all' ? 'All' : f.replace('_', ' ')}
-                  </button>
-                ))}
-              </div>
-
-              {filteredActivities.length === 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '48px 0' }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                    <Activity size={28} color="#17191c" />
-                  </div>
-                  <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>No activity yet</p>
-                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>Interactions with this contact will appear here.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {filteredActivities.map((a, i) => (
-                    <div key={a.id} style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: i < filteredActivities.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                      <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: ACTIVITY_COLORS[a.type] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 14 }}>
-                        {ACTIVITY_ICONS[a.type]}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.4, marginBottom: 2 }}>{a.description}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtTime(a.timestamp)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <UnifiedTimeline contact={contact} entries={timeline} />
           )}
 
-          {/* ── Tasks Tab ── */}
           {tab === 'tasks' && (
             <div>
               {/* Add task */}

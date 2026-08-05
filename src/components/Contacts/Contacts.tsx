@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
   Filter, Download, Upload, Tag, X, Eye,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
+import {
+  computeHealthScore, inferLifecycle, dealsForContact, appointmentsForContact,
+  LIFECYCLE_META, LIFECYCLE_STAGES, type LifecycleStage,
+} from '../../services/contactIntelligence';
 import type { Contact } from '../../types';
 import ContactProfile from './ContactProfile';
 import ImportWizard from './ImportWizard';
@@ -132,7 +136,7 @@ const FILTER_OPS = [
 ];
 
 export default function Contacts() {
-  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs } = useApp();
+  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs, pipelines, appointments } = useApp();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -145,16 +149,30 @@ export default function Contacts() {
   const [sortField, setSortField] = useState<string>('lastActivity');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleStage | 'all'>('all');
+
   const addRule = () => setFilterRules(p => [...p, { field: 'name', op: 'contains', value: '' }]);
   const updateRule = (i: number, updates: Partial<FilterRule>) => setFilterRules(p => p.map((r, j) => j === i ? { ...r, ...updates } : r));
   const removeRule = (i: number) => setFilterRules(p => p.filter((_, j) => j !== i));
 
   const customFilter = buildFilterFn(filterRules);
 
+  /* Health + lifecycle for every contact, from live pipeline/appointment data. */
+  const intel = useMemo(() => {
+    const map = new Map<string, { health: ReturnType<typeof computeHealthScore>; stage: LifecycleStage }>();
+    for (const c of contacts) {
+      const d = dealsForContact(c, pipelines);
+      const ap = appointmentsForContact(c, appointments);
+      map.set(c.id, { health: computeHealthScore(c, d, ap), stage: c.lifecycle ?? inferLifecycle(c, d) });
+    }
+    return map;
+  }, [contacts, pipelines, appointments]);
+
   const filtered = contacts.filter(c => {
     const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase()) || (c.company || '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || c.status === statusFilter;
-    return matchSearch && matchStatus && customFilter(c);
+    const matchStage = lifecycleFilter === 'all' || intel.get(c.id)?.stage === lifecycleFilter;
+    return matchSearch && matchStatus && matchStage && customFilter(c);
   }).sort((a, b) => {
     const va = String((a as unknown as Record<string, unknown>)[sortField] ?? '');
     const vb = String((b as unknown as Record<string, unknown>)[sortField] ?? '');
@@ -219,6 +237,12 @@ export default function Contacts() {
               style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer' }}>
               <option value="all">All Status</option>
               {['lead','prospect','customer','churned'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+            </select>
+            <select value={lifecycleFilter} onChange={e => setLifecycleFilter(e.target.value as LifecycleStage | 'all')}
+              title="Filter by lifecycle stage"
+              style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer' }}>
+              <option value="all">All Stages</option>
+              {LIFECYCLE_STAGES.map(st => <option key={st} value={st}>{st}</option>)}
             </select>
             <button onClick={() => setShowFilter(p => !p)}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', border: `1px solid ${showFilter || filterRules.length > 0 ? '#d5d8dd' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: showFilter || filterRules.length > 0 ? '#eceef1' : 'white', color: showFilter || filterRules.length > 0 ? '#17191c' : '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
@@ -292,7 +316,7 @@ export default function Contacts() {
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
                   <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                 </th>
-                {[['name','Name'], ['email','Contact'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
+                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
                   <th key={field} onClick={() => sortHeader(field)} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                     {label}<SortIcon field={field} />
                   </th>
@@ -304,10 +328,10 @@ export default function Contacts() {
               {filtered.map((contact, i) => {
                 const sc = statusColors[contact.status];
                 return (
-                  <tr key={contact.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.1s' }}
+                  <tr key={contact.id} onClick={() => setProfileContact(contact)} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.1s', cursor: 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}>
-                    <td style={{ padding: '14px 16px' }}>
+                    <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={selected.has(contact.id)} onChange={() => toggleSelect(contact.id)} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                     </td>
                     <td style={{ padding: '14px 16px' }}>
@@ -330,6 +354,28 @@ export default function Contacts() {
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
+                      {(() => {
+                        const h = intel.get(contact.id)?.health;
+                        if (!h) return <span style={{ color: '#cbd5e1' }}>—</span>;
+                        return (
+                          <span title={`${h.band} — ${h.components.map(x => `${x.label} ${x.score}/${x.max}`).join(', ')}`}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 30, height: 5, borderRadius: 3, background: '#eef0f3', overflow: 'hidden', display: 'inline-block' }}>
+                              <span style={{ display: 'block', width: `${h.total}%`, height: '100%', background: h.color }} />
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: h.color }}>{h.total}</span>
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {(() => {
+                        const st = intel.get(contact.id)?.stage ?? 'Lead';
+                        const m = LIFECYCLE_META[st];
+                        return <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: m.bg, color: m.color, whiteSpace: 'nowrap' }}>{st}</span>;
+                      })()}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: '11px', fontWeight: 600, backgroundColor: sc.bg, color: sc.color }}>
                         {contact.status.charAt(0).toUpperCase() + contact.status.slice(1)}
                       </span>
@@ -347,7 +393,7 @@ export default function Contacts() {
                       {contact.value > 0 ? `$${contact.value.toLocaleString()}` : '—'}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#94a3b8' }}>{contact.lastActivity}</td>
-                    <td style={{ padding: '14px 16px' }}>
+                    <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button onClick={() => setProfileContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }} title="View Profile"><Eye size={13} color="#17191c" /></button>
                         <button onClick={() => setEditContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}><Edit2 size={13} color="#17191c" /></button>
