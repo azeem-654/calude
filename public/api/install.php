@@ -7,9 +7,14 @@
  * can't be used to overwrite a live config). Run it from the app's
  * "Cloud Database" setup screen.
  *
- * POST JSON { host, db, user, pass } → { success, error }
+ * Requires an agency session once any user account exists, so that a public
+ * endpoint cannot be used to point a running install at someone else's
+ * database. Before the first account is created there is nothing to protect
+ * and no way to authenticate, so first-run setup stays open.
+ *
+ * POST JSON { token, host, db, user, pass } → { success, error }
  */
-require __DIR__ . '/_db.php';   // for crm_cors()
+require __DIR__ . '/_db.php';   // for crm_cors() and the guarded user store
 crm_cors();
 
 $cfgFile = __DIR__ . '/config.php';
@@ -18,7 +23,17 @@ if (file_exists($cfgFile)) {
     exit;
 }
 
-$d    = json_decode(file_get_contents('php://input'), true) ?? [];
+$d = json_decode(file_get_contents('php://input'), true) ?? [];
+
+$users = crm_store_load('users', ['users' => []]);
+if (!empty($users['users'])) {
+    $me = crm_user_from_token($d['token'] ?? '');
+    if (!$me || ($me['role'] ?? '') !== 'agency') {
+        echo json_encode(['success' => false, 'error' => 'Sign in as an agency user to connect the database.']);
+        exit;
+    }
+}
+
 $host = trim($d['host'] ?? 'localhost');
 $dbn  = trim($d['db']   ?? '');
 $user = trim($d['user'] ?? '');

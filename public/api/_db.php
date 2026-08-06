@@ -1,8 +1,73 @@
 <?php
 /**
- * _db.php — shared helpers: MySQL connection + session/user resolution.
- * Included by data.php and install.php. Not a public endpoint.
+ * _db.php — shared helpers: MySQL connection, session/user resolution, and the
+ * guarded JSON stores under api/data/.
+ * Included by the endpoints. Not a public endpoint itself.
  */
+
+/* ── Guarded file stores ───────────────────────────────────────────────────
+ * api/data/ holds session tokens, password hashes and guest contact details.
+ * On shared hosting there is no directory outside the web root to put them in,
+ * and .htaccess is not guaranteed to be honoured — so every store is written
+ * as a .php file beginning with an exit guard. Fetched directly it is executed,
+ * returns 404 and prints nothing; read through these helpers the guard is
+ * stripped and the JSON behind it is returned.
+ */
+
+const CRM_STORE_GUARD = "<?php http_response_code(404); exit; ?>\n";
+
+function crm_store_dir() {
+    $dir = __DIR__ . '/data';
+    if (!is_dir($dir)) @mkdir($dir, 0700, true);
+    return $dir;
+}
+
+/** Absolute path of a store, e.g. crm_store_path('users') → …/data/users.php */
+function crm_store_path($name) { return crm_store_dir() . '/' . $name . '.php'; }
+
+/** Strip the exit guard, if present, and decode. Returns null when unusable. */
+function crm_store_decode($raw) {
+    if (!is_string($raw) || $raw === '') return null;
+    if (strncmp($raw, '<?php', 5) === 0) {
+        $end = strpos($raw, '?>');
+        if ($end === false) return null;
+        $raw = substr($raw, $end + 2);
+    }
+    $j = json_decode(trim($raw), true);
+    return is_array($j) ? $j : null;
+}
+
+function crm_store_encode($data) { return CRM_STORE_GUARD . json_encode($data); }
+
+/**
+ * Read a store, migrating a legacy unguarded data/<name>.json in place. The
+ * legacy file is rewritten as guarded and removed, so an install that predates
+ * this can never keep serving its tokens as plain JSON.
+ */
+function crm_store_load($name, $fallback = []) {
+    $path = crm_store_path($name);
+    if (file_exists($path)) {
+        $data = crm_store_decode(@file_get_contents($path));
+        return $data === null ? $fallback : $data;
+    }
+    $legacy = crm_store_dir() . '/' . $name . '.json';
+    if (file_exists($legacy)) {
+        $data = crm_store_decode(@file_get_contents($legacy));
+        if ($data !== null) {
+            crm_store_save($name, $data);
+            @unlink($legacy);
+            return $data;
+        }
+    }
+    return $fallback;
+}
+
+function crm_store_save($name, $data) {
+    $path = crm_store_path($name);
+    $ok = @file_put_contents($path, crm_store_encode($data), LOCK_EX) !== false;
+    if ($ok) @chmod($path, 0600);
+    return $ok;
+}
 
 /** Returns a PDO to the CRM database, or null if not configured / unreachable. */
 function crm_pdo() {
@@ -75,9 +140,8 @@ function crm_billing_record($pdo, $accountId) {
 
 /** Resolve the current user from a session token stored by auth.php (data/users.json). */
 function crm_user_from_token($token) {
-    $file = __DIR__ . '/data/users.json';
-    if (!$token || !file_exists($file)) return null;
-    $db = json_decode(file_get_contents($file), true);
+    if (!$token) return null;
+    $db = crm_store_load('users', null);
     if (!is_array($db)) return null;
     $s = $db['sessions'][$token] ?? null;
     if (!$s || ($s['exp'] ?? 0) < time()) return null;

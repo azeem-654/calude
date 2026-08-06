@@ -23,18 +23,24 @@ header('Access-Control-Allow-Headers: Content-Type');
 header('Vary: Origin');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
-$DIR  = __DIR__ . '/data';
-$FILE = $DIR . '/users.json';
-if (!is_dir($DIR)) @mkdir($DIR, 0700, true);
+require_once __DIR__ . '/_db.php';   // guarded store helpers
+
+// Kept as a parameter so the call sites below stay unchanged; the store name is
+// what actually identifies the file now (api/data/users.php, exit-guarded).
+$FILE = 'users';
 
 function db_load($FILE) {
-    if (!file_exists($FILE)) return ['users' => [], 'sessions' => []];
-    $j = json_decode(file_get_contents($FILE), true);
-    return is_array($j) ? $j : ['users' => [], 'sessions' => []];
+    $db = crm_store_load($FILE, ['users' => [], 'sessions' => []]);
+    if (!isset($db['users']))    $db['users'] = [];
+    if (!isset($db['sessions'])) $db['sessions'] = [];
+    return $db;
 }
 function db_save($FILE, $db) {
-    file_put_contents($FILE, json_encode($db), LOCK_EX);
-    @chmod($FILE, 0600);
+    // Drop expired sessions on every write so the token file cannot grow
+    // without bound and stale tokens cannot be replayed.
+    $now = time();
+    $db['sessions'] = array_filter($db['sessions'] ?? [], fn($s) => ($s['exp'] ?? 0) > $now);
+    crm_store_save($FILE, $db);
 }
 function out($x) { echo json_encode($x); exit; }
 function tok() { return bin2hex(random_bytes(24)); }

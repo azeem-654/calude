@@ -17,23 +17,21 @@
 require __DIR__ . '/_db.php';
 
 const TRK = '__track__';
-const TRK_FILE = __DIR__ . '/data/track.json';
-
+// Stored as an exit-guarded PHP file (see _db.php) so it cannot be fetched
+// directly even on a host that serves api/data/.
 function trk_file_load() {
-    if (!file_exists(TRK_FILE)) return ['events' => []];
-    $j = json_decode(@file_get_contents(TRK_FILE), true);
-    return is_array($j) && isset($j['events']) ? $j : ['events' => []];
+    $j = crm_store_load('track', ['events' => []]);
+    return isset($j['events']) && is_array($j['events']) ? $j : ['events' => []];
 }
 function trk_file_save($data) {
-    $dir = dirname(TRK_FILE);
-    if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $fp = @fopen(TRK_FILE, 'c+');
+    $fp = @fopen(crm_store_path('track'), 'c+');
     if (!$fp) return false;
     flock($fp, LOCK_EX);
     ftruncate($fp, 0);
-    fwrite($fp, json_encode($data));
+    fwrite($fp, crm_store_encode($data));
     flock($fp, LOCK_UN);
     fclose($fp);
+    @chmod(crm_store_path('track'), 0600);
     return true;
 }
 

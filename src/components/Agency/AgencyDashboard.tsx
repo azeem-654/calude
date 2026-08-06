@@ -459,7 +459,7 @@ function CloudModal({ current, onDone, onClose }: { current: 'cloud' | 'local'; 
   const install = async () => {
     setBusy(true); setMsg(null);
     try {
-      const r = await fetch(`${API_BASE}/api/install.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      const r = await fetch(`${API_BASE}/api/install.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, token: getSession()?.token }) });
       const data = await r.json() as { success: boolean; error?: string };
       if (data.success) {
         setMsg({ ok: true, text: 'Connected! Cloud database is set up. Reloading to sync…' });

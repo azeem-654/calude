@@ -262,6 +262,36 @@ endpoints carry them: **email open/click tracking** (`api/track.php`) and
 need `api/config.php` to exist — run the installer from Agency → Cloud
 Database once.
 
+## Deployment and host-side state
+
+Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml`:
+`npm ci` → `npm run build` with `VITE_BASE=/` → FTP-upload `./dist/` to `/` on
+protectedcentral.com (three attempts, since the host's FTP is flaky). Pushing to
+`testing` deploys to `testing.protectedcentral.com` instead. `dangerous-clean-slate`
+is off, so files the deploy never uploaded — including everything below — are
+left alone.
+
+Two kinds of file live only on the host and are never in the repo:
+
+| Path | What it holds | Created by |
+|---|---|---|
+| `api/config.php` | MySQL credentials | `install.php`, once |
+| `api/data/*.php` | Sessions, password hashes, bookings, tracking events | The endpoints, at runtime |
+
+**Those files are protected two ways, because one is not enough on shared
+hosting.** Each store under `api/data/` is written as a `.php` file that begins
+with `<?php http_response_code(404); exit; ?>` — fetched directly it executes,
+returns 404 and prints nothing, whatever the server config says. An install that
+predates this is migrated on first read: the plain `.json` file is rewritten in
+guarded form and deleted, so old tokens cannot keep leaking. On top of that,
+`api/.htaccess` denies `config.php` and the `_*.php` includes, and
+`api/data/.htaccess` denies the directory outright.
+
+`install.php` requires an agency session once any account exists, so a public
+endpoint cannot be used to repoint a running install at another database.
+First-run setup stays open, because at that point there is nothing to protect
+and nobody to authenticate as.
+
 ## 12-Month Content Pipeline
 
 The plan is stored **month-by-month** (`crm_onboarding` key, `ContentMonth[]` in

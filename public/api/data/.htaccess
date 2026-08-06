@@ -1,0 +1,19 @@
+# api/data/ holds session tokens, password hashes and guest contact details.
+# Nothing in here is ever fetched over HTTP — the PHP endpoints read it from
+# disk. Deny everything.
+#
+# The files themselves are also written as exit-guarded .php files (see
+# _db.php), so they stay protected even on a host that ignores this file.
+
+# Apache 2.4
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+
+# Apache 2.2
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>
+
+Options -Indexes

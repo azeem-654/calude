@@ -38,23 +38,21 @@ function out($x) { echo json_encode($x); exit; }
 $pdo = crm_pdo();
 
 const BK = '__booking__';
-const BK_FILE = __DIR__ . '/data/booking.json';
-
+// Stored as an exit-guarded PHP file (see _db.php): this holds guest names,
+// emails and phone numbers, which must not be fetchable as a plain JSON file.
 function bk_file_load() {
-    if (!file_exists(BK_FILE)) return ['kv' => []];
-    $j = json_decode(@file_get_contents(BK_FILE), true);
-    return is_array($j) && isset($j['kv']) ? $j : ['kv' => []];
+    $j = crm_store_load('booking', ['kv' => []]);
+    return isset($j['kv']) && is_array($j['kv']) ? $j : ['kv' => []];
 }
 function bk_file_save($data) {
-    $dir = dirname(BK_FILE);
-    if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $fp = @fopen(BK_FILE, 'c+');
+    $fp = @fopen(crm_store_path('booking'), 'c+');
     if (!$fp) return false;
     flock($fp, LOCK_EX);
     ftruncate($fp, 0);
-    fwrite($fp, json_encode($data));
+    fwrite($fp, crm_store_encode($data));
     flock($fp, LOCK_UN);
     fclose($fp);
+    @chmod(crm_store_path('booking'), 0600);
     return true;
 }
 
