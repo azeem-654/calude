@@ -111,8 +111,24 @@ export async function listUsers(): Promise<AuthUser[]> {
   if (res && res.ok) return res.data.users as AuthUser[];
   return loadLocalUsers().map(pub);
 }
-export async function deleteUser(email: string) {
+export async function deleteUser(email: string): Promise<{ ok: boolean; error?: string }> {
   const s = getSession();
   const res = await php('delete_user', { token: s?.token, email });
-  if (!res) saveLocalUsers(loadLocalUsers().filter(u => u.email !== email.toLowerCase()));
+  if (res) return res.ok ? { ok: true } : { ok: false, error: (res.data.error as string) || 'Could not remove that user.' };
+  saveLocalUsers(loadLocalUsers().filter(u => u.email !== email.toLowerCase()));
+  return { ok: true };
+}
+
+/** Agency: reset another member's password (or your own). */
+export async function setUserPassword(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
+  const s = getSession();
+  const res = await php('set_password', { token: s?.token, email, password });
+  if (res) return res.ok ? { ok: true } : { ok: false, error: (res.data.error as string) || 'Could not set the password.' };
+  const users = loadLocalUsers();
+  const idx = users.findIndex(u => u.email === email.toLowerCase());
+  if (idx < 0) return { ok: false, error: 'User not found.' };
+  users[idx] = { ...users[idx], password };
+  saveLocalUsers(users);
+  return { ok: true };
 }

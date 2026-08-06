@@ -1,16 +1,21 @@
 /**
  * contactPermissions.ts — ownership and what each role may do with a contact.
  *
- * IMPORTANT: this is a **UI-level** permission layer. It decides what the
- * interface offers, which is genuinely useful for keeping a team out of each
- * other's records, but it is not a security boundary — this app stores its
- * data in the browser, so anyone with devtools can bypass it. Real enforcement
- * needs a server that owns the data. That limitation is stated in the README
- * rather than glossed over.
+ * This decides what the interface offers. The matching rules are enforced
+ * server-side in `public/api/_perm.php`, which guards every write to the
+ * account store, so a user who edits the UI in devtools still cannot change
+ * data they are not allowed to change — the server refuses the write and the
+ * browser is resynced from the server's copy.
+ *
+ * When the cloud database is not configured the app runs local-only; then this
+ * layer is advisory, because there is no server to enforce anything. Use
+ * `enforcementMode()` to tell the user which of the two they are in rather
+ * than implying a guarantee that isn't there.
  */
 
 import type { Contact } from '../types';
 import { getSession, type Role } from './auth';
+import { cachedCapabilities, cloudStatus } from './serverData';
 
 export type Capability =
   | 'view' | 'edit' | 'delete' | 'export' | 'reassign' | 'merge' | 'bulk_edit' | 'manage_lists';
@@ -53,8 +58,33 @@ export function isOwner(c: Contact, actor: Actor): boolean {
 /** Restrict a role's write actions on records someone else owns. */
 const OWNER_ONLY: Capability[] = ['edit', 'delete', 'reassign', 'merge'];
 
+/**
+ * Whether the rules are actually enforced, or only presented.
+ *  - 'server'   the cloud database is configured and api/_perm.php guards writes
+ *  - 'local'    local-only deployment; the rules shape the UI but nothing else
+ */
+export function enforcementMode(): 'server' | 'local' {
+  const caps = cachedCapabilities();
+  return cloudStatus() === 'cloud' && caps?.enforced ? 'server' : 'local';
+}
+
+/**
+ * Capabilities the server granted this session, when it has spoken. Falling
+ * back to the local table keeps the UI working offline, and the server is the
+ * one that decides in the end either way.
+ */
+function capsFor(actor: Actor): Capability[] {
+  const server = cachedCapabilities();
+  if (server && server.email.toLowerCase() === actor.email.toLowerCase()) {
+    return (Object.entries(server.capabilities) as [Capability, boolean][])
+      .filter(([, allowed]) => allowed)
+      .map(([cap]) => cap);
+  }
+  return ROLE_CAPS[actor.role];
+}
+
 export function can(cap: Capability, actor: Actor = currentActor(), contact?: Contact): boolean {
-  if (!ROLE_CAPS[actor.role].includes(cap)) return false;
+  if (!capsFor(actor).includes(cap)) return false;
   if (actor.role === 'agency') return true;                  // agency sees the whole account
   if (contact && OWNER_ONLY.includes(cap)) return isOwner(contact, actor);
   return true;
@@ -62,7 +92,7 @@ export function can(cap: Capability, actor: Actor = currentActor(), contact?: Co
 
 /** Explain a denial, so the UI can say why instead of just going grey. */
 export function denyReason(cap: Capability, actor: Actor = currentActor(), contact?: Contact): string {
-  if (!ROLE_CAPS[actor.role].includes(cap)) {
+  if (!capsFor(actor).includes(cap)) {
     return `Your role (${actor.role}) cannot ${cap.replace('_', ' ')} contacts.`;
   }
   if (contact && !isOwner(contact, actor) && OWNER_ONLY.includes(cap)) {

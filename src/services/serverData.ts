@@ -46,11 +46,66 @@ function queue(accountId: string, key: string, value: string | null) {
   flushTimer = window.setTimeout(flush, 900);
 }
 
+/** Listeners told when the server refuses a write, so the UI can say so. */
+type RejectionHandler = (message: string, keys: string[]) => void;
+let onRejected: RejectionHandler | null = null;
+export function onServerRejection(fn: RejectionHandler | null) { onRejected = fn; }
+
 async function flush() {
   const items = pending;
   pending = {};
   if (Object.keys(items).length === 0) return;
-  await call('bulk_set', { token: pushToken, accountId: pushAccount, items });
+  const res = await call('bulk_set', { token: pushToken, accountId: pushAccount, items });
+  if (!res) return;   // offline — the next flush will retry
+
+  // The server enforces the permission model (api/_perm.php). When it refuses a
+  // change, take its version back rather than leaving the browser showing an
+  // edit that was never saved.
+  const rejected = (res.rejected ?? []) as string[];
+  if (!rejected.length) return;
+  const authoritative = (res.authoritative ?? {}) as Record<string, string | null>;
+  for (const key of rejected) {
+    const value = authoritative[key];
+    if (typeof value === 'string') rawSetScoped(pushAccount, key, value);
+  }
+  onRejected?.(String(res.error || 'That change was refused by the server.'), rejected);
+}
+
+/* ── Server-enforced capabilities ── */
+
+export interface ServerCapabilities {
+  role: string;
+  email: string;
+  name: string;
+  capabilities: Record<string, boolean>;
+  ownerOnly: string[];
+  enforced: boolean;
+}
+
+const CAPS_KEY = 'crm_server_caps';   // global (see tenancy GLOBAL_KEYS): a cache, not account data
+
+/** What the server says this user may do. Cached for synchronous UI reads. */
+export async function fetchCapabilities(): Promise<ServerCapabilities | null> {
+  const session = getSession();
+  const accountId = getActiveAccountId();
+  if (!session || !accountId) return null;
+  const res = await call('caps', { token: session.token, accountId });
+  if (!res?.success || !res.matrix) return null;
+  const matrix = res.matrix as unknown as ServerCapabilities;
+  try { window.localStorage.setItem(CAPS_KEY, JSON.stringify(matrix)); } catch { /* storage blocked */ }
+  return matrix;
+}
+
+/** The last capability matrix the server sent, or null if it never answered. */
+export function cachedCapabilities(): ServerCapabilities | null {
+  try {
+    const raw = window.localStorage.getItem(CAPS_KEY);
+    return raw ? JSON.parse(raw) as ServerCapabilities : null;
+  } catch { return null; }
+}
+
+export function clearCachedCapabilities() {
+  try { window.localStorage.removeItem(CAPS_KEY); } catch { /* storage blocked */ }
 }
 
 /* ── Pull the account's data down into localStorage ── */
@@ -85,14 +140,15 @@ export async function syncBillingStatuses(token: string): Promise<void> {
 export async function initCloudSync(timeoutMs = 6000): Promise<'cloud' | 'local'> {
   const session = getSession();
   const accountId = getActiveAccountId();
-  if (!session || !accountId) { window.localStorage.setItem(STATUS_KEY, 'local'); return 'local'; }
+  if (!session || !accountId) { window.localStorage.setItem(STATUS_KEY, 'local'); clearCachedCapabilities(); return 'local'; }
 
   const done = (async (): Promise<'cloud' | 'local'> => {
     const configured = await isConfigured();
-    if (!configured) { window.localStorage.setItem(STATUS_KEY, 'local'); return 'local'; }
+    if (!configured) { window.localStorage.setItem(STATUS_KEY, 'local'); clearCachedCapabilities(); return 'local'; }
     pushAccount = accountId;
     pushToken = session.token;
     await pull(accountId, session.token);
+    await fetchCapabilities();
     // agency owners: apply any Stripe-webhook billing status updates
     if (session.user.role === 'agency') await syncBillingStatuses(session.token);
     // register the write listener so future changes sync up

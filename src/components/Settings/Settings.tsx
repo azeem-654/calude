@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users } from 'lucide-react';
 import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import Header from '../Layout/Header';
+import TeamPermissions from './TeamPermissions';
 import { useApp } from '../../context/AppContext';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
 import type { EmailProviderConfig } from '../../services/emailService';
@@ -952,6 +953,7 @@ const tabs = [
   { id: 'integrations', label: 'Integrations', icon: Globe },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'security', label: 'Security', icon: Shield },
+  { id: 'team', label: 'Team & Permissions', icon: Users },
   { id: 'branding', label: 'Branding', icon: Palette },
 ];
 
@@ -1091,6 +1093,8 @@ export default function Settings() {
               </div>
             </div>
           )}
+
+          {activeTab === 'team' && <TeamPermissions />}
 
           {(activeTab === 'security' || activeTab === 'branding') && (
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>

@@ -181,11 +181,44 @@ can never double-book against a public one, and vice versa.
   workload read, filterable by owner. The per-contact timeline answers "what
   happened to this person"; this answers "what has the team been doing".
 
-**Honest limitation:** the permission layer is enforced in the UI, not on a
-server. It genuinely keeps a team out of each other's records in normal use,
-but because this deployment stores its data in the browser, anyone with
-devtools can bypass it. Real enforcement needs a backend that owns the data —
-see "Not included" below.
+### Permissions are enforced on the server
+
+The same rules live in two places that have to agree:
+
+| | |
+|---|---|
+| `src/services/contactPermissions.ts` | what the interface offers |
+| `public/api/_perm.php` | what the database accepts |
+
+Every write reaches the server through `api/data.php`, which is the only path
+to the account store, so the guard sits at the choke point. Before anything is
+written it diffs the incoming contact array against the stored one and refuses
+the request if it touches a record the caller may not touch:
+
+- A client user may edit or delete only records they own, or unowned ones.
+- Reassigning a record away from its owner needs the reassign capability *on
+  the record as it stands*, so nobody can hand themselves someone else's contact.
+- New records created by a non-agency user are stamped with them as owner, so
+  every record has someone accountable for it.
+- No non-agency user can clear a whole core key (`crm_contacts`,
+  `crm_pipelines`, `crm_appointments`, …) in one request.
+- Agency users are unrestricted within the workspaces they can access.
+
+When the server refuses a write it returns its own copy of the data along with
+the reason. `serverData.ts` writes that copy back, `AppContext` pulls it into
+React state, and the user sees *"Blocked: "Cara Lin" is owned by other@a.com and
+cannot be edited by you."* — so a change that did not save never sits on screen
+looking like it did.
+
+The UI reads its capability matrix from `api/data.php?action=caps` rather than
+deciding alone, so what a button offers is what the server will accept.
+**Settings → Team & Permissions** shows that matrix, manages team members and
+their roles, and states plainly whether enforcement is live.
+
+**The one caveat that remains:** enforcement requires the cloud database to be
+connected (Agency → Cloud Database). Running local-only, there is no server to
+enforce anything and the same screen says so rather than implying a guarantee
+that isn't there.
 
 ## Funnel & Website Builder
 
@@ -222,6 +255,12 @@ the following are deliberately **not** implemented rather than faked:
 custom-domain DNS verification and serving, S3/Cloudinary uploads (images are
 stored as data URLs), Stripe/PayPal checkout, and server-side screenshot
 generation. Wire up a backend before expecting those.
+
+Two things that *are* server-backed on this deployment, because the PHP
+endpoints carry them: **email open/click tracking** (`api/track.php`) and
+**permission enforcement** (`api/_perm.php`, guarding `api/data.php`). Both
+need `api/config.php` to exist — run the installer from Agency → Cloud
+Database once.
 
 ## 12-Month Content Pipeline
 

@@ -63,6 +63,8 @@ export interface AgencyProfile {
 const GLOBAL_KEYS = new Set([
   'crm_subaccounts', 'crm_active_account', 'crm_agency', 'crm_sidebar_mode',
   'crm_anthropic_key', 'crm_openai_key', 'crm_gemini_key', 'crm_theme',
+  // Server-issued capability matrix: a local cache, never account data to sync.
+  'crm_server_caps', 'crm_cloud_status',
 ]);
 export const ACCT_PREFIX = 'crm_acct_';
 const PREFIX = ACCT_PREFIX;

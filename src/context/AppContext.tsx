@@ -1,9 +1,10 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity, VideoProject, VideoClip } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
 import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
+import { onServerRejection } from '../services/serverData';
 
 interface Notification {
   id: string;
@@ -116,6 +117,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sequences, setSequences]       = useState<EmailSequence[]>(() => loadLS('crm_sequences',   []));
   const [automations, setAutomations]   = useState<Automation[]>(()   => loadLS('crm_automations',  []));
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  /* The server enforces the permission rules on every write (api/_perm.php).
+     When it refuses one, it also hands back its own copy, which serverData has
+     already written locally — so all that is left is to tell the user why the
+     change they just made has reverted. */
+  useEffect(() => {
+    onServerRejection((message, keys) => {
+      notify(message, 'error');
+      // serverData has already written the server's copy back to storage; pull
+      // it into React state so the screen stops showing the refused edit.
+      if (keys.includes('crm_contacts')) setContacts(loadLS<Contact[]>('crm_contacts', []));
+    });
+    return () => onServerRejection(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [sidebarMode, setSidebarModeState] = useState<'full' | 'icons' | 'hidden'>(() => (loadLS('crm_sidebar_mode', 'full') as 'full' | 'icons' | 'hidden'));
   const [videoProjects, setVideoProjects] = useState<VideoProject[]>(() => loadLS('crm_video_projects', []));
   const [socialPosts, setSocialPosts] = useState<DesignPost[]>(() => loadLS('crm_social_posts', []));

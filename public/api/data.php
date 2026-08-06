@@ -8,11 +8,18 @@
  *   get_all { accountId }                 → { success, rows: { key: value } }
  *   set     { accountId, key, value }      → { success }
  *   delete  { accountId, key }             → { success }
- *   bulk_set{ accountId, items: {k:v} }    → { success, count }
+ *   bulk_set{ accountId, items: {k:v} }    → { success, count, rejected: [...] }
+ *   caps    { }                            → { success, matrix }
  *
  * Values are the raw JSON strings the frontend already stores in localStorage.
+ *
+ * Writes to permission-sensitive keys (see _perm.php) are diffed against what
+ * is already stored and rejected if they touch a record the caller may not
+ * touch. This is the only path to the server store, so the permission model is
+ * enforced here rather than only in the UI.
  */
 require __DIR__ . '/_db.php';
+require __DIR__ . '/_perm.php';
 crm_cors();
 
 $d = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -43,36 +50,65 @@ try {
         out(['success' => true, 'rows' => $rows]);
     }
 
+    if ($action === 'caps') {
+        out(['success' => true, 'matrix' => crm_capability_matrix($user)]);
+    }
+
     if ($action === 'set') {
         $k = $d['key'] ?? ''; $v = $d['value'] ?? '';
         if (!$k) out(['success' => false, 'error' => 'key required']);
-        $stmt = $pdo->prepare('INSERT INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,NOW())
-                               ON DUPLICATE KEY UPDATE v = VALUES(v), updated_at = NOW()');
-        $stmt->execute([$accountId, $k, $v]);
+        $guard = crm_guard_write($pdo, $user, $accountId, $k, $v);
+        if (!$guard['ok']) out(['success' => false, 'error' => $guard['error'], 'rejected' => [$k], 'authoritative' => [$k => $guard['value']]]);
+        $stmt = $pdo->prepare(crm_upsert_sql($pdo));
+        $stmt->execute([$accountId, $k, $guard['value'], crm_now()]);
         out(['success' => true]);
     }
 
     if ($action === 'delete') {
+        $k = $d['key'] ?? '';
+        $guard = crm_guard_write($pdo, $user, $accountId, $k, null);
+        if (!$guard['ok']) out(['success' => false, 'error' => $guard['error'], 'rejected' => [$k]]);
         $stmt = $pdo->prepare('DELETE FROM crm_data WHERE account_id = ? AND k = ?');
-        $stmt->execute([$accountId, $d['key'] ?? '']);
+        $stmt->execute([$accountId, $k]);
         out(['success' => true]);
     }
 
     if ($action === 'bulk_set') {
         $items = $d['items'] ?? [];
         if (!is_array($items)) out(['success' => false, 'error' => 'items must be an object']);
-        $stmt = $pdo->prepare('INSERT INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,NOW())
-                               ON DUPLICATE KEY UPDATE v = VALUES(v), updated_at = NOW()');
+        $stmt = $pdo->prepare(crm_upsert_sql($pdo));
         $del = $pdo->prepare('DELETE FROM crm_data WHERE account_id = ? AND k = ?');
+        // Guard every item first: a batch that contains a forbidden change is
+        // applied without that item rather than being written wholesale, and the
+        // caller is told exactly what was refused plus the authoritative value
+        // so its local copy can be corrected instead of silently diverging.
+        $rejected = [];
+        $errors = [];
+        $authoritative = [];
+        $allowed = [];
+        foreach ($items as $k => $v) {
+            $guard = crm_guard_write($pdo, $user, $accountId, $k, $v);
+            if ($guard['ok']) { $allowed[$k] = $guard['value']; continue; }
+            $rejected[] = $k;
+            $errors[] = $guard['error'];
+            $authoritative[$k] = $guard['value'];
+        }
+
         $pdo->beginTransaction();
         $n = 0;
-        foreach ($items as $k => $v) {
+        foreach ($allowed as $k => $v) {
             if ($v === null) { $del->execute([$accountId, $k]); }
-            else { $stmt->execute([$accountId, $k, $v]); }
+            else { $stmt->execute([$accountId, $k, $v, crm_now()]); }
             $n++;
         }
         $pdo->commit();
-        out(['success' => true, 'count' => $n]);
+        out([
+            'success' => empty($rejected),
+            'count' => $n,
+            'rejected' => $rejected,
+            'error' => $errors ? implode(' ', array_unique($errors)) : null,
+            'authoritative' => $authoritative,
+        ]);
     }
 
     out(['success' => false, 'error' => 'Unknown action.']);

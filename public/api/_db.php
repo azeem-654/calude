@@ -28,6 +28,24 @@ function crm_pdo() {
 
 function crm_is_configured() { return file_exists(__DIR__ . '/config.php'); }
 
+/**
+ * Upsert statement for the crm_data table that works on both MySQL (production)
+ * and SQLite (local development and tests), so the same code path is exercised
+ * either way instead of only being provable against a live MySQL host.
+ */
+function crm_upsert_sql($pdo) {
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    if ($driver === 'sqlite') {
+        return 'INSERT INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,?)
+                ON CONFLICT(account_id, k) DO UPDATE SET v = excluded.v, updated_at = excluded.updated_at';
+    }
+    return 'INSERT INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,?)
+            ON DUPLICATE KEY UPDATE v = VALUES(v), updated_at = VALUES(updated_at)';
+}
+
+/** UTC timestamp in the format both drivers accept for a DATETIME column. */
+function crm_now() { return gmdate('Y-m-d H:i:s'); }
+
 /** Load the full config array (DB creds + optional stripe keys), or []. */
 function crm_config() {
     $f = __DIR__ . '/config.php';
@@ -65,7 +83,12 @@ function crm_user_from_token($token) {
     if (!$s || ($s['exp'] ?? 0) < time()) return null;
     foreach (($db['users'] ?? []) as $u) {
         if ($u['email'] === $s['email']) {
-            return ['email' => $u['email'], 'role' => $u['role'], 'accountId' => $u['accountId'] ?? null];
+            return [
+                'email'     => $u['email'],
+                'name'      => $u['name'] ?? '',
+                'role'      => $u['role'],
+                'accountId' => $u['accountId'] ?? null,
+            ];
         }
     }
     return null;
