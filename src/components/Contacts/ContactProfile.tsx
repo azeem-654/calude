@@ -12,6 +12,7 @@ import {
 import { HealthRing, LifecycleBar, NextBestActions, UnifiedTimeline, ModuleSummary } from './CommandCenter';
 import EmailTab from './EmailTab';
 import DealsTab from './DealsTab';
+import SchedulingTab from './SchedulingTab';
 import type { Contact, ContactActivity } from '../../types';
 import { sendEmail, loadEmailConfig, personalizeHtml } from '../../services/emailService';
 
@@ -49,8 +50,8 @@ interface Props {
 }
 
 export default function ContactProfile({ contact, onClose }: Props) {
-  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, updatePipeline, appointments, sequences } = useApp();
-  const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'deals' | 'videos'>('overview');
+  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, updatePipeline, appointments, addAppointment, updateAppointment, bookings, schedule, sequences } = useApp();
+  const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'deals' | 'meetings' | 'videos'>('overview');
   const contactClips = videoProjects.filter(p => p.contactId === contact.id).flatMap(p => p.clips);
   const [activityFilter, setActivityFilter] = useState<ContactActivity['type'] | 'all'>('all');
 
@@ -105,6 +106,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
     else if (a.action === 'task') setTab('tasks');
     else if (a.action === 'profile') { setEditing(true); setTab('overview'); }
     else if (a.action === 'deal') setTab('deals');
+    else if (a.action === 'schedule') setTab('meetings');
     else if (a.action === 'call' && contact.phone) window.location.href = `tel:${contact.phone}`;
     else setTab('activity');
   };
@@ -230,6 +232,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'notes', label: `Notes (${notes.length})`, icon: <FileText size={14} /> },
             { id: 'email', label: 'Email', icon: <Send size={14} /> },
             { id: 'deals', label: `Deals (${contactDeals.length})`, icon: <Briefcase size={14} /> },
+            { id: 'meetings', label: `Meetings (${contactAppts.length})`, icon: <Calendar size={14} /> },
             { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -436,6 +439,22 @@ export default function ContactProfile({ contact, onClose }: Props) {
               }}
               onActivity={text => addContactActivity(contact.id, { type: 'stage_change', description: text, timestamp: new Date().toISOString() })}
               onNotify={text => addNotification(text)}
+            />
+          )}
+
+          {/* ── Meetings Tab ── */}
+          {tab === 'meetings' && (
+            <SchedulingTab
+              contact={contact}
+              appointments={contactAppts}
+              allAppointments={appointments}
+              bookings={bookings}
+              schedule={schedule}
+              onBook={addAppointment}
+              onUpdate={updateAppointment}
+              onContactUpdate={updates => updateContact(contact.id, updates)}
+              onActivity={text => addContactActivity(contact.id, { type: 'meeting', description: text, timestamp: new Date().toISOString() })}
+              onNotify={(text, kind) => addNotification(text, kind)}
             />
           )}
 

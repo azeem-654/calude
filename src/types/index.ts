@@ -22,6 +22,7 @@ export interface Contact {
   tasks?: ContactTask[];
   activities?: ContactActivity[];
   customFields?: Record<string, string>;
+  /** IANA timezone; when unset it is inferred from the phone number's country. */
   timezone?: string;
   assignedTo?: string;
   /** Explicit lifecycle stage; when unset the command center infers one. */
@@ -48,17 +49,42 @@ export interface Message {
   type: 'text' | 'email' | 'sms';
 }
 
+export interface AppointmentReminder {
+  /** ISO instant the reminder should fire. */
+  at: string;
+  channel: 'email';
+  /** Minutes before the meeting, kept so the UI can label it. */
+  minutesBefore: number;
+  sentAt?: string;
+}
+
 export interface Appointment {
   id: string;
   title: string;
   contactId: string;
   contactName: string;
+  /** Owner-timezone calendar date, YYYY-MM-DD. */
   date: string;
+  /** Owner-timezone wall-clock time, 24h HH:MM. Older records may hold 12h. */
   time: string;
   duration: number;
   status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
   type: string;
   notes?: string;
+  /** IANA zone the owner's calendar runs in. */
+  ownerTimezone?: string;
+  /** IANA zone the contact is in, so both sides see their own clock. */
+  contactTimezone?: string;
+  location?: string;
+  eventTypeId?: string;
+  reminders?: AppointmentReminder[];
+  /** What happened, recorded when the meeting is closed out. */
+  outcome?: string;
+  cancelReason?: string;
+  rescheduledFrom?: { date: string; time: string };
+  createdAt?: string;
+  /** Post-meeting follow-up actions already run, so they run once. */
+  followUpDone?: boolean;
 }
 
 export interface ContactActivity {

@@ -119,7 +119,37 @@ at exactly the same data.
   that belong to a different pipeline rather than relocating them somewhere the
   stage id doesn't exist.
 
-Parts 4–5 (scheduling tab, lists/merge/permissions) build on this foundation.
+### Scheduling from the contact profile
+
+`src/services/contactScheduling.ts` books meetings against the **same
+availability rules the public booking page enforces** — weekly hours, daily
+limit, buffers, minimum notice and the rolling window — so an internal booking
+can never double-book against a public one, and vice versa.
+
+- **Both clocks, always.** Appointments store owner-timezone wall clock plus
+  the owner's and the contact's IANA zones. Slot buttons show your time with
+  theirs in brackets, and cards show both. The contact's zone is taken from
+  their record, else guessed from their phone's dialling code — and a guess is
+  **labelled as a guess** rather than presented as fact. One dropdown corrects it.
+- **Book, reschedule, cancel, close out.** Rescheduling records where the
+  meeting came from and rebuilds its reminder; cancelling takes a reason and
+  clears pending reminders. Meetings whose end time has passed surface under
+  "Needs closing out" so nothing quietly rots in the calendar as `scheduled`.
+- **Real calendar files.** Every meeting exports a valid `.ics` (importable
+  anywhere) and offers a Google Calendar "add event" link — no OAuth, no
+  connector to configure.
+- **Reminders that actually send.** A dashboard background job emails any
+  reminder whose time has arrived through the configured provider, stamps it
+  sent so it can't repeat, and logs it to the contact's timeline. Reminders
+  for meetings that already started are skipped rather than sent late.
+- **Post-meeting follow-up** — toggleable rules that run once per meeting after
+  you mark it completed or a no-show: a thank-you email, a follow-up task two
+  days out, an optional deal advance (off by default), and a re-book task for
+  no-shows. The deal advance obeys the same rule as the behaviour triggers: it
+  never moves a deal into the final stage.
+- **Show rate** — completed vs no-show, alongside upcoming and cancelled counts.
+
+Part 5 (lists, merge/dedupe, permissions) builds on this foundation.
 
 ## Funnel & Website Builder
 

@@ -12,8 +12,9 @@ import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { loadOnboarding } from '../../services/onboarding';
 import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
-import { processScheduled, processSequences, syncTracking } from '../../services/contactEmail';
-import { runBehaviourTriggers } from '../../services/contactDeals';
+import { processScheduled, processSequences, syncTracking, sendToContact } from '../../services/contactEmail';
+import { runBehaviourTriggers, moveDealToStage, findDeal } from '../../services/contactDeals';
+import { dueReminders, planFollowUps } from '../../services/contactScheduling';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import type { Deal } from '../../types';
@@ -458,7 +459,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -493,6 +494,52 @@ export default function Dashboard() {
       for (const f of beh.fired.slice(0, 4)) addNotification(`${f.contactName}: ${f.summary}`, 'info');
       if (beh.fired.length > 4) addNotification(`${beh.fired.length - 4} more deal${beh.fired.length - 4 > 1 ? 's' : ''} updated by behaviour triggers`, 'info');
     }
+    // Meeting reminders: email anything whose reminder time has arrived, then
+    // stamp it so it can only go out once.
+    const ownerTz = schedule.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    void (async () => {
+      const due = dueReminders(appointments, contacts, ownerTz);
+      for (const r of due) {
+        const out = await sendToContact(r.contact, { subject: r.subject, body: r.body });
+        if (!out.ok) continue;
+        const reminders = (r.appointment.reminders ?? []).map((x, i) =>
+          i === r.reminderIndex ? { ...x, sentAt: new Date().toISOString() } : x);
+        updateAppointment(r.appointmentId, { reminders });
+        addContactActivity(r.contact.id, {
+          type: 'meeting',
+          description: `Reminder sent for "${r.appointment.title}"`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      if (due.length) addNotification(`${due.length} meeting reminder${due.length > 1 ? 's' : ''} sent`, 'info');
+    })();
+
+    // Post-meeting follow-up: thank-you emails, follow-up tasks and optional
+    // deal advancement, each running once per meeting.
+    void (async () => {
+      const plan = planFollowUps(appointments, contacts, pipelines, ownerTz, schedule.automations?.followupText);
+      if (!plan.handled.length) return;
+      for (const e of plan.emails) await sendToContact(e.contact, { subject: e.subject, body: e.body });
+      for (const t of plan.tasks) {
+        addContactTask(t.contactId, { title: t.title, dueDate: t.dueDate, done: false, createdAt: new Date().toISOString() });
+      }
+      let nextPipelines = pipelines;
+      for (const d of plan.dealAdvances) {
+        const placed = findDeal(nextPipelines, d.dealId);
+        const pipeline = placed && nextPipelines.find(x => x.id === placed.pipelineId);
+        const target = pipeline?.stages[placed!.stageIndex + 1];
+        // Same safety rule as the behaviour triggers: never auto-close a deal.
+        if (!placed || !pipeline || !target || placed.stageIndex + 1 >= pipeline.stages.length - 1) continue;
+        nextPipelines = moveDealToStage(nextPipelines, d.dealId, target.id).pipelines;
+      }
+      for (const p of nextPipelines) {
+        const before = pipelines.find(x => x.id === p.id);
+        if (before !== p) updatePipeline(p.id, { stages: p.stages });
+      }
+      for (const id of plan.handled) updateAppointment(id, { followUpDone: true });
+      for (const note of plan.notes.slice(0, 4)) addNotification(note, 'info');
+    })();
+
     return () => { onContentJobsChange(null); registerPublishApi(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

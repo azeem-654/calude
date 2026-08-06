@@ -35,7 +35,7 @@ interface AppContextType {
   addConversation: (conv: Omit<Conversation, 'id'>) => void;
   sendMessage: (conversationId: string, content: string) => void;
   updateConversationStatus: (id: string, status: Conversation['status']) => void;
-  addAppointment: (appt: Omit<Appointment, 'id'>) => void;
+  addAppointment: (appt: Omit<Appointment, 'id'>) => Appointment;
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   deleteAppointment: (id: string) => void;
   addCampaign: (campaign: Omit<Campaign, 'id'>) => Campaign;
@@ -193,10 +193,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Appointments ── */
-  const addAppointment = (appt: Omit<Appointment, 'id'>) => {
-    const a = { ...appt, id: `appt-${Date.now()}` };
+  const addAppointment = (appt: Omit<Appointment, 'id'>): Appointment => {
+    const a: Appointment = { ...appt, id: `appt-${Date.now()}-${Math.floor(performance.now() * 1000) % 100000}` };
     setAppointments(prev => { const next = [...prev, a]; saveLS('crm_appointments', next); return next; });
     notify(`Appointment "${appt.title}" scheduled!`);
+    return a;
   };
   const updateAppointment = (id: string, updates: Partial<Appointment>) => {
     setAppointments(prev => { const next = prev.map(a => a.id === id ? { ...a, ...updates } : a); saveLS('crm_appointments', next); return next; });
