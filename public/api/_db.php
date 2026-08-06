@@ -62,6 +62,16 @@ function crm_store_load($name, $fallback = []) {
     return $fallback;
 }
 
+/** Can the store directory actually be written? Checked before claiming success. */
+function crm_store_writable() {
+    $dir = crm_store_dir();
+    if (!is_dir($dir)) return false;
+    $probe = $dir . '/.write-probe';
+    $ok = @file_put_contents($probe, 'x') !== false;
+    if ($ok) @unlink($probe);
+    return $ok;
+}
+
 function crm_store_save($name, $data) {
     $path = crm_store_path($name);
     $ok = @file_put_contents($path, crm_store_encode($data), LOCK_EX) !== false;

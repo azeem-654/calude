@@ -40,7 +40,7 @@ function db_save($FILE, $db) {
     // without bound and stale tokens cannot be replayed.
     $now = time();
     $db['sessions'] = array_filter($db['sessions'] ?? [], fn($s) => ($s['exp'] ?? 0) > $now);
-    crm_store_save($FILE, $db);
+    return crm_store_save($FILE, $db);
 }
 function out($x) { echo json_encode($x); exit; }
 function tok() { return bin2hex(random_bytes(24)); }
@@ -57,12 +57,40 @@ $d      = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $d['action'] ?? '';
 $db     = db_load($FILE);
 
+/* Public: has setup already happened, and can we write at all? The browser
+   cannot answer either question on its own — it only knows its own storage —
+   and guessing produced a setup screen that could never succeed. */
+if ($action === 'status') {
+    out([
+        'success'     => true,
+        'initialised' => count($db['users']) > 0,
+        'writable'    => crm_store_writable(),
+        'accounts'    => count($db['users']),
+    ]);
+}
+
 if ($action === 'bootstrap') {
-    if (count($db['users']) > 0) out(['success' => false, 'error' => 'Already initialised.']);
+    if (count($db['users']) > 0) {
+        out(['success' => false, 'error' => 'An owner account already exists on this server. Sign in instead.', 'code' => 'already_initialised']);
+    }
     $email = strtolower(trim($d['email'] ?? ''));
     if (!$email || !($d['password'] ?? '')) out(['success' => false, 'error' => 'Email and password required.']);
+    if (strlen($d['password']) < 8) out(['success' => false, 'error' => 'Use a password of at least 8 characters.']);
+    if (!crm_store_writable()) {
+        out(['success' => false, 'code' => 'not_writable',
+             'error' => 'The server cannot write to api/data/. Set that folder to 755 (or 777) in your host file manager and try again.']);
+    }
     $db['users'][] = ['email' => $email, 'name' => $d['name'] ?? 'Owner', 'role' => 'agency', 'accountId' => null, 'hash' => password_hash($d['password'], PASSWORD_BCRYPT)];
-    db_save($FILE, $db);
+    if (!db_save($FILE, $db)) {
+        out(['success' => false, 'code' => 'not_writable',
+             'error' => 'Could not save the account — api/data/ is not writable. Set that folder to 755 in your host file manager and try again.']);
+    }
+    // Read it back: a write that reported success but stored nothing would
+    // otherwise leave you unable to sign in with no explanation.
+    $check = db_load($FILE);
+    if (!count($check['users'])) {
+        out(['success' => false, 'code' => 'not_writable', 'error' => 'The account did not persist. Check that api/data/ is writable on your host.']);
+    }
     out(['success' => true]);
 }
 

@@ -49,6 +49,33 @@ export function hasAnyUser(): boolean {
   return loadLocalUsers().length > 0;
 }
 
+export interface AuthStatus {
+  /** True when an owner account already exists on the server. */
+  initialised: boolean;
+  /** False when api/data/ cannot be written — setup would fail silently. */
+  writable: boolean;
+  /** Null when the PHP backend is unreachable and we are running local-only. */
+  backend: 'php' | 'local';
+}
+
+/**
+ * Ask the server whether setup has already happened. The browser cannot know
+ * this on its own — it only sees its own storage — and assuming it could meant
+ * a fresh browser was shown a setup screen that could never succeed against a
+ * server that already had an owner.
+ */
+export async function authStatus(): Promise<AuthStatus> {
+  const res = await php('status', {});
+  if (res?.ok) {
+    return {
+      initialised: !!res.data.initialised,
+      writable: res.data.writable !== false,
+      backend: 'php',
+    };
+  }
+  return { initialised: hasAnyUser(), writable: true, backend: 'local' };
+}
+
 async function php(action: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: Record<string, unknown> } | null> {
   try {
     const r = await fetch(`${API_BASE}/api/auth.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...body }) });
@@ -58,12 +85,19 @@ async function php(action: string, body: Record<string, unknown>): Promise<{ ok:
 }
 
 /* ── Bootstrap: create the first (agency) owner ── */
-export async function bootstrap(email: string, password: string, name: string): Promise<{ ok: boolean; error?: string }> {
+export async function bootstrap(email: string, password: string, name: string): Promise<{ ok: boolean; error?: string; code?: string }> {
   const res = await php('bootstrap', { email, password, name });
   if (res) {
-    if (res.ok) return login(email, password).then(() => ({ ok: true }));
-    // if backend says already initialised, just try to log in
-    return login(email, password);
+    if (res.ok) return login(email, password);
+    // Surface the server's actual reason. Previously any refusal fell through
+    // to a login attempt, so "an owner already exists" was reported to the user
+    // as "Invalid email or password" — which sent them looking for the wrong
+    // problem entirely.
+    return {
+      ok: false,
+      error: (res.data.error as string) || 'Could not create the account.',
+      code: (res.data.code as string) || undefined,
+    };
   }
   // local fallback
   const users = loadLocalUsers();

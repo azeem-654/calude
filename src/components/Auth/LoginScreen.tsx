@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Layers, Mail, Lock, ArrowRight, Loader, UserPlus } from 'lucide-react';
-import { login, bootstrap, hasAnyUser } from '../../services/auth';
+import { useEffect, useState } from 'react';
+import { Layers, Mail, Lock, ArrowRight, Loader, UserPlus, AlertTriangle } from 'lucide-react';
+import { login, bootstrap, hasAnyUser, authStatus } from '../../services/auth';
 import { activeBranding } from '../../services/tenancy';
 
 const INK = '#17191c';
@@ -14,14 +14,44 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [checking, setChecking] = useState(true);
+
+  /* The server is the only thing that knows whether setup already happened.
+     Asking it first stops a fresh browser being offered a setup form that the
+     backend will always refuse. */
+  useEffect(() => {
+    let alive = true;
+    authStatus().then(st => {
+      if (!alive) return;
+      setMode(st.initialised ? 'login' : 'setup');
+      if (!st.writable) {
+        setError('This server cannot write to api/data/, so accounts cannot be saved. Set that folder to 755 in your host file manager, then reload.');
+      }
+      setChecking(false);
+    });
+    return () => { alive = false; };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(''); setBusy(true);
+    setError(''); setNotice(''); setBusy(true);
     try {
-      const res = mode === 'setup'
-        ? await bootstrap(email.trim(), password, name.trim() || 'Owner')
-        : await login(email.trim(), password);
+      if (mode === 'setup') {
+        const res = await bootstrap(email.trim(), password, name.trim() || 'Owner');
+        if (res.ok) { onAuthed(); return; }
+        // An owner already exists: switch to sign-in rather than repeating a
+        // form that cannot succeed.
+        if (res.code === 'already_initialised') {
+          setMode('login');
+          setPassword('');
+          setNotice('An owner account already exists on this server. Sign in with it below.');
+          return;
+        }
+        setError(res.error || 'Something went wrong.');
+        return;
+      }
+      const res = await login(email.trim(), password);
       if (res.ok) onAuthed();
       else setError(res.error || 'Something went wrong.');
     } finally { setBusy(false); }
@@ -63,16 +93,24 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
               <input style={inp} type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
             </div>
 
-            {error && <div style={{ fontSize: 12.5, color: '#e5484d', fontWeight: 600, textAlign: 'center' }}>{error}</div>}
+            {notice && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '9px 11px' }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>{notice}</span>
+              </div>
+            )}
+            {error && <div style={{ fontSize: 12.5, color: '#e5484d', fontWeight: 600, textAlign: 'center', lineHeight: 1.5 }}>{error}</div>}
 
             <button type="submit" disabled={busy} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', marginTop: 4 }}>
-              {busy ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>{mode === 'setup' ? 'Create account' : 'Sign in'} <ArrowRight size={15} /></>}
+              {busy || checking ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>{mode === 'setup' ? 'Create account' : 'Sign in'} <ArrowRight size={15} /></>}
             </button>
           </form>
         </div>
 
         <p style={{ fontSize: 11.5, color: MUTED, textAlign: 'center', marginTop: 18 }}>
-          {mode === 'login' ? 'Contact your account manager if you need access.' : 'You can add client logins later from the Agency dashboard.'}
+          {mode === 'login'
+            ? 'Locked out? Delete api/data/users.php on your host to reset the owner account, then reload.'
+            : 'You can add client logins later from the Agency dashboard.'}
         </p>
       </div>
     </div>
