@@ -149,7 +149,43 @@ can never double-book against a public one, and vice versa.
   never moves a deal into the final stage.
 - **Show rate** — completed vs no-show, alongside upcoming and cancelled counts.
 
-Part 5 (lists, merge/dedupe, permissions) builds on this foundation.
+### Lists, dedupe, ownership and the team feed
+
+- **Smart lists** (`src/services/contactLists.ts`) are saved rules re-evaluated
+  every time you open them, so they never go stale. Rules can reach past the
+  contact record into derived data — health score, lifecycle stage, open-deal
+  value, email open rate, days since last activity — which turns
+  "engaged leads with an open deal who have never been emailed" into one saved
+  segment instead of a manual sweep. The rule builder shows the live match
+  count as you type. Five starter segments are one click away.
+- **Static lists** are hand-curated: select rows and "Add to list…".
+  Deleting a contact removes it from every static list, so a list can never
+  point at a record that no longer exists.
+- **Dedupe** (`src/services/contactMerge.ts`) groups likely duplicates by
+  email (100% confidence), normalised phone number (85%) and name-at-company
+  (60%, flagged as weaker evidence to check first). The merge wizard shows
+  every field the records disagree on before anything is written, and defaults
+  the surviving record to the most complete one.
+  **Merging never orphans anything**: tags, notes, tasks and timeline entries
+  are combined rather than replaced; blank fields on the survivor are filled
+  from the duplicate; and every deal, meeting, email and list membership
+  pointing at the removed record is re-pointed at the survivor *before* it is
+  deleted.
+- **Ownership** — an Owner column, an owner filter (including "My contacts"
+  and "Unassigned"), and bulk assignment. Roles gate what the UI offers:
+  agency users can act on anything; client users can fully manage the contacts
+  they own but not someone else's, and merging is withheld from them because
+  it destroys records across owners. Denials explain themselves in the tooltip
+  rather than just going grey.
+- **Team feed** — recent activity across every contact with a per-owner
+  workload read, filterable by owner. The per-contact timeline answers "what
+  happened to this person"; this answers "what has the team been doing".
+
+**Honest limitation:** the permission layer is enforced in the UI, not on a
+server. It genuinely keeps a team out of each other's records in normal use,
+but because this deployment stores its data in the browser, anyone with
+devtools can bypass it. Real enforcement needs a backend that owns the data —
+see "Not included" below.
 
 ## Funnel & Website Builder
 

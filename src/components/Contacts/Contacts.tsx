@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
-  Filter, Download, Upload, Tag, X, Eye,
+  Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -12,6 +12,14 @@ import {
 import {
   placedDealsForContact, winProbability, summariseDeals, bulkMoveContactDeals,
 } from '../../services/contactDeals';
+import {
+  loadLists, listMembers, addToStaticList, purgeContactFromLists,
+  type ContactList,
+} from '../../services/contactLists';
+import { currentActor, can, denyReason, ownersInUse, ownerOf } from '../../services/contactPermissions';
+import ListsPanel from './ListsPanel';
+import MergeWizard from './MergeWizard';
+import TeamFeed from './TeamFeed';
 import type { Contact } from '../../types';
 import ContactProfile from './ContactProfile';
 import ImportWizard from './ImportWizard';
@@ -139,7 +147,7 @@ const FILTER_OPS = [
 ];
 
 export default function Contacts() {
-  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs, pipelines, updatePipeline, appointments } = useApp();
+  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs, pipelines, updatePipeline, appointments, updateAppointment } = useApp();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -153,6 +161,22 @@ export default function Contacts() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleStage | 'all'>('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+
+  /* ── Part 5: lists, merge, ownership ── */
+  const actor = useMemo(() => currentActor(), []);
+  const [lists, setLists] = useState<ContactList[]>(() => loadLists());
+  const [activeList, setActiveList] = useState<string | null>(null);
+  const [showMerge, setShowMerge] = useState(false);
+  const [showFeed, setShowFeed] = useState(false);
+
+  const listCtx = useMemo(() => ({ pipelines, appointments }), [pipelines, appointments]);
+  const listMemberIds = useMemo(() => {
+    if (!activeList) return null;
+    const l = lists.find(x => x.id === activeList);
+    if (!l) return null;
+    return new Set(listMembers(l, contacts, listCtx).map(c => c.id));
+  }, [activeList, lists, contacts, listCtx]);
 
   const addRule = () => setFilterRules(p => [...p, { field: 'name', op: 'contains', value: '' }]);
   const updateRule = (i: number, updates: Partial<FilterRule>) => setFilterRules(p => p.map((r, j) => j === i ? { ...r, ...updates } : r));
@@ -188,7 +212,11 @@ export default function Contacts() {
     const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase()) || (c.company || '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || c.status === statusFilter;
     const matchStage = lifecycleFilter === 'all' || intel.get(c.id)?.stage === lifecycleFilter;
-    return matchSearch && matchStatus && matchStage && customFilter(c);
+    const matchOwner = ownerFilter === 'all'
+      || (ownerFilter === '__mine' ? ownerOf(c) === actor.email || ownerOf(c) === actor.name
+        : ownerFilter === '__none' ? !ownerOf(c) : ownerOf(c) === ownerFilter);
+    const matchList = !listMemberIds || listMemberIds.has(c.id);
+    return matchSearch && matchStatus && matchStage && matchOwner && matchList && customFilter(c);
   }).sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1;
     // Derived columns aren't fields on the contact, so sort them off the intel map.
@@ -224,8 +252,44 @@ export default function Contacts() {
   };
 
   const bulkDelete = () => {
+    const picked = contacts.filter(c => selected.has(c.id));
+    const blocked = picked.filter(c => !can('delete', actor, c));
+    if (blocked.length) {
+      addNotification(denyReason('delete', actor, blocked[0]), 'error');
+      return;
+    }
     if (!window.confirm(`Delete ${selected.size} contacts?`)) return;
-    selected.forEach(id => deleteContact(id));
+    selected.forEach(id => { deleteContact(id); purgeContactFromLists(id); });
+    setLists(loadLists());
+    setSelected(new Set());
+  };
+
+  /** Assign every selected contact to an owner. */
+  const bulkAssign = (owner: string) => {
+    if (!owner) return;
+    const picked = contacts.filter(c => selected.has(c.id));
+    const blocked = picked.filter(c => !can('reassign', actor, c));
+    if (blocked.length) {
+      addNotification(denyReason('reassign', actor, blocked[0]), 'error');
+      return;
+    }
+    const value = owner === '__unassign' ? '' : owner;
+    picked.forEach(c => updateContact(c.id, { assignedTo: value }));
+    addNotification(value
+      ? `${picked.length} contact${picked.length === 1 ? '' : 's'} assigned to ${value}`
+      : `${picked.length} contact${picked.length === 1 ? '' : 's'} unassigned`);
+    setSelected(new Set());
+  };
+
+  /** Drop the selection into a static list. */
+  const bulkAddToList = (listId: string) => {
+    if (!listId) return;
+    const res = addToStaticList(listId, [...selected]);
+    setLists(res.lists);
+    const name = res.lists.find(l => l.id === listId)?.name ?? 'the list';
+    addNotification(res.added
+      ? `${res.added} contact${res.added === 1 ? '' : 's'} added to ${name}`
+      : `Already in ${name}`, res.added ? 'success' : 'info');
     setSelected(new Set());
   };
 
@@ -292,13 +356,32 @@ export default function Contacts() {
               <option value="all">All Stages</option>
               {LIFECYCLE_STAGES.map(st => <option key={st} value={st}>{st}</option>)}
             </select>
+            <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}
+              title="Filter by who owns the contact"
+              style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer' }}>
+              <option value="all">All Owners</option>
+              <option value="__mine">My contacts</option>
+              <option value="__none">Unassigned</option>
+              {ownersInUse(contacts).map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
             <button onClick={() => setShowFilter(p => !p)}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', border: `1px solid ${showFilter || filterRules.length > 0 ? '#d5d8dd' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: showFilter || filterRules.length > 0 ? '#eceef1' : 'white', color: showFilter || filterRules.length > 0 ? '#17191c' : '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Filter size={14} /> Filter{filterRules.length > 0 ? ` (${filterRules.length})` : ''}
             </button>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+            <button onClick={() => setShowFeed(true)} title="See what the team has been doing"
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+              <Activity size={14} color="#64748b" /> Team feed
+            </button>
+            <button title={can('merge', actor) ? 'Find and merge duplicate contacts' : denyReason('merge', actor)}
+              onClick={() => { if (!can('merge', actor)) { addNotification(denyReason('merge', actor), 'error'); return; } setShowMerge(true); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: can('merge', actor) ? '#374151' : '#94a3b8', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+              <Merge size={14} color="#64748b" /> Dedupe
+            </button>
+            <button onClick={() => { if (!can('export', actor)) { addNotification(denyReason('export', actor), 'error'); return; } exportCSV(); }}
+              title={can('export', actor) ? 'Export the current view to CSV' : denyReason('export', actor)}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Download size={14} color="#64748b" /> Export
             </button>
             <button onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
@@ -345,11 +428,36 @@ export default function Contacts() {
           </div>
         )}
 
+        {/* Saved lists */}
+        <ListsPanel
+          lists={lists} contacts={contacts} pipelines={pipelines} appointments={appointments}
+          activeId={activeList} canManage={can('manage_lists', actor)}
+          onActivate={setActiveList} onChange={setLists}
+          onNotify={(text, kind) => addNotification(text, kind)}
+          createdBy={actor.name}
+        />
+
         {/* Bulk action bar */}
         {selected.size > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', backgroundColor: '#eceef1', borderRadius: 12, marginBottom: 12, border: '1px solid #d5d8dd', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#17191c' }}>{selected.size} selected</span>
             <button onClick={bulkTag} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Tag size={12} /> Add Tag</button>
+            <select value="" onChange={e => { bulkAssign(e.target.value); e.target.value = ''; }}
+              title="Assign the selected contacts to an owner"
+              style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <option value="">Assign owner…</option>
+              <option value={actor.email}>Me ({actor.email})</option>
+              {ownersInUse(contacts).filter(o => o !== actor.email).map(o => <option key={o} value={o}>{o}</option>)}
+              <option value="__unassign">Unassign</option>
+            </select>
+            {lists.some(l => l.type === 'static') && (
+              <select value="" onChange={e => { bulkAddToList(e.target.value); e.target.value = ''; }}
+                title="Add the selected contacts to a static list"
+                style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                <option value="">Add to list…</option>
+                {lists.filter(l => l.type === 'static').map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            )}
             <select value="" onChange={e => { bulkMoveStage(e.target.value); e.target.value = ''; }}
               title="Move every open deal for the selected contacts into a stage"
               style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -374,7 +482,7 @@ export default function Contacts() {
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
                   <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                 </th>
-                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['deals','Deals'], ['dealStage','Pipeline'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
+                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['deals','Deals'], ['dealStage','Pipeline'], ['assignedTo','Owner'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
                   <th key={field} onClick={() => sortHeader(field)} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                     {label}<SortIcon field={field} />
                   </th>
@@ -464,6 +572,17 @@ export default function Contacts() {
                       })()}
                     </td>
                     <td style={{ padding: '14px 16px' }}>
+                      {ownerOf(contact)
+                        ? (
+                          <span title={`Owned by ${ownerOf(contact)}`}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#475569' }}>
+                            <UserCircle2 size={13} color="#94a3b8" />
+                            {ownerOf(contact).split('@')[0]}
+                          </span>
+                        )
+                        : <span style={{ fontSize: 12, color: '#cbd5e1' }}>Unassigned</span>}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: '11px', fontWeight: 600, backgroundColor: sc.bg, color: sc.color }}>
                         {contact.status.charAt(0).toUpperCase() + contact.status.slice(1)}
                       </span>
@@ -485,7 +604,14 @@ export default function Contacts() {
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button onClick={() => setProfileContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }} title="View Profile"><Eye size={13} color="#17191c" /></button>
                         <button onClick={() => setEditContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}><Edit2 size={13} color="#17191c" /></button>
-                        <button onClick={() => deleteContact(contact.id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', backgroundColor: '#fef2f2', cursor: 'pointer', display: 'flex' }}><Trash2 size={13} color="#ef4444" /></button>
+                        <button title={can('delete', actor, contact) ? 'Delete this contact' : denyReason('delete', actor, contact)}
+                          onClick={() => {
+                            if (!can('delete', actor, contact)) { addNotification(denyReason('delete', actor, contact), 'error'); return; }
+                            deleteContact(contact.id);
+                            purgeContactFromLists(contact.id);
+                            setLists(loadLists());
+                          }}
+                          style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', backgroundColor: '#fef2f2', cursor: 'pointer', display: 'flex' }}><Trash2 size={13} color="#ef4444" /></button>
                       </div>
                     </td>
                   </tr>
@@ -521,6 +647,34 @@ export default function Contacts() {
           }}
         />
       )}
+      {showMerge && (
+        <MergeWizard
+          contacts={contacts} pipelines={pipelines} appointments={appointments}
+          onClose={() => setShowMerge(false)}
+          onNotify={(text, kind) => addNotification(text, kind)}
+          onMerge={res => {
+            // Write the re-pointing FIRST, then remove the duplicates, so no
+            // deal or meeting is ever left pointing at a record that is gone.
+            updateContact(res.merged.id, res.merged);
+            for (const p of res.pipelines) {
+              const before = pipelines.find(x => x.id === p.id);
+              if (before !== p) updatePipeline(p.id, { stages: p.stages });
+            }
+            for (const a of res.appointments) {
+              const before = appointments.find(x => x.id === a.id);
+              if (before && before.contactId !== a.contactId) updateAppointment(a.id, { contactId: a.contactId, contactName: a.contactName });
+            }
+            res.removedIds.forEach(id => deleteContact(id));
+            setLists(loadLists());
+          }}
+        />
+      )}
+
+      {showFeed && (
+        <TeamFeed contacts={contacts} onClose={() => setShowFeed(false)}
+          onOpenContact={c => { setShowFeed(false); setProfileContact(c); }} />
+      )}
+
       {profileContact && <ContactProfile contact={contacts.find(c => c.id === profileContact.id) ?? profileContact} onClose={() => setProfileContact(null)} />}
     </div>
   );
