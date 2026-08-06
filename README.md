@@ -84,8 +84,42 @@ working outbound channel rather than a log viewer.
   detail and a "Log a reply" action that records the inbound message and marks
   the thread replied.
 
-Parts 3–5 (deals tab, scheduling tab, lists/merge/permissions) build on this
-foundation.
+### Deals from the contact profile
+
+`src/services/contactDeals.ts` treats deals from the contact's side. Deals live
+inside `pipeline.stages[].deals`, so every helper here is pure — it takes the
+pipeline array and returns a new one, and the caller persists through
+`updatePipeline`. That keeps the contact profile and the pipeline board looking
+at exactly the same data.
+
+- **Every deal in one place** — across all pipelines, matched by contact id,
+  email or name, with open deals first. Create, edit, delete, mark won, mark
+  lost with a reason, and reopen, all without leaving the profile.
+- **One-click stage moves.** Each open deal shows its pipeline's stages as
+  chips; clicking one moves the deal there and **runs the same automation
+  engine the kanban board uses** (`runAutomations`), so a rule like
+  "when moved to Proposal Sent → set priority urgent, add a Hot label" fires
+  identically from either surface and lands in the shared automation log.
+- **Explainable win probability.** A forecast from four factors — stage
+  position, contact health, momentum (days sitting in the current stage) and
+  whether the expected close date has already slipped. Click the percentage to
+  see each factor's contribution. The summary strip's weighted forecast is
+  value × probability across open deals.
+- **Behaviour triggers** — rules that fire on what the *contact* did rather
+  than what happened to the deal: a link click or booked meeting advances the
+  deal a stage, a pricing/demo form raises the win probability floor, a call
+  raises it less. They run as a background job on the dashboard, are toggleable
+  per rule, and fire at most once per (rule, deal, activity) so reloading is
+  safe. **They never advance a deal into the final stage** — that column is the
+  win column, and closing a deal stays a human decision.
+- **In the contact list** — a Deals column (open value, open/won/lost counts,
+  weighted forecast in the tooltip) and a Pipeline column showing which stages
+  the contact's open deals sit in. Both sort. Select contacts and
+  "Move deals to stage…" bulk-moves every open deal they own, skipping deals
+  that belong to a different pipeline rather than relocating them somewhere the
+  stage id doesn't exist.
+
+Parts 4–5 (scheduling tab, lists/merge/permissions) build on this foundation.
 
 ## Funnel & Website Builder
 

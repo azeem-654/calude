@@ -11,6 +11,7 @@ import {
 } from '../../services/contactIntelligence';
 import { HealthRing, LifecycleBar, NextBestActions, UnifiedTimeline, ModuleSummary } from './CommandCenter';
 import EmailTab from './EmailTab';
+import DealsTab from './DealsTab';
 import type { Contact, ContactActivity } from '../../types';
 import { sendEmail, loadEmailConfig, personalizeHtml } from '../../services/emailService';
 
@@ -48,8 +49,8 @@ interface Props {
 }
 
 export default function ContactProfile({ contact, onClose }: Props) {
-  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, appointments, sequences } = useApp();
-  const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'videos'>('overview');
+  const { updateContact, deleteContact, addContactNote, deleteContactNote, addContactTask, updateContactTask, deleteContactTask, addContactActivity, addNotification, videoProjects, pipelines, updatePipeline, appointments, sequences } = useApp();
+  const [tab, setTab] = useState<'overview' | 'activity' | 'tasks' | 'notes' | 'email' | 'deals' | 'videos'>('overview');
   const contactClips = videoProjects.filter(p => p.contactId === contact.id).flatMap(p => p.clips);
   const [activityFilter, setActivityFilter] = useState<ContactActivity['type'] | 'all'>('all');
 
@@ -103,6 +104,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
     if (a.action === 'email') setTab('email');
     else if (a.action === 'task') setTab('tasks');
     else if (a.action === 'profile') { setEditing(true); setTab('overview'); }
+    else if (a.action === 'deal') setTab('deals');
     else if (a.action === 'call' && contact.phone) window.location.href = `tel:${contact.phone}`;
     else setTab('activity');
   };
@@ -227,6 +229,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'tasks', label: `Tasks (${pendingTasks.length})`, icon: <CheckSquare size={14} /> },
             { id: 'notes', label: `Notes (${notes.length})`, icon: <FileText size={14} /> },
             { id: 'email', label: 'Email', icon: <Send size={14} /> },
+            { id: 'deals', label: `Deals (${contactDeals.length})`, icon: <Briefcase size={14} /> },
             { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -416,6 +419,23 @@ export default function ContactProfile({ contact, onClose }: Props) {
               contact={contact}
               sequences={sequences}
               onActivity={(desc, type) => addContactActivity(contact.id, { type: type ?? 'email_sent', description: desc, timestamp: new Date().toISOString() })}
+            />
+          )}
+
+          {/* ── Deals Tab ── */}
+          {tab === 'deals' && (
+            <DealsTab
+              contact={contact}
+              pipelines={pipelines}
+              health={health.total}
+              onPipelines={next => {
+                for (const p of next) {
+                  const before = pipelines.find(x => x.id === p.id);
+                  if (before !== p) updatePipeline(p.id, { stages: p.stages });
+                }
+              }}
+              onActivity={text => addContactActivity(contact.id, { type: 'stage_change', description: text, timestamp: new Date().toISOString() })}
+              onNotify={text => addNotification(text)}
             />
           )}
 

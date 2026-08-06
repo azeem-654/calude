@@ -9,6 +9,9 @@ import {
   computeHealthScore, inferLifecycle, dealsForContact, appointmentsForContact,
   LIFECYCLE_META, LIFECYCLE_STAGES, type LifecycleStage,
 } from '../../services/contactIntelligence';
+import {
+  placedDealsForContact, winProbability, summariseDeals, bulkMoveContactDeals,
+} from '../../services/contactDeals';
 import type { Contact } from '../../types';
 import ContactProfile from './ContactProfile';
 import ImportWizard from './ImportWizard';
@@ -136,7 +139,7 @@ const FILTER_OPS = [
 ];
 
 export default function Contacts() {
-  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs, pipelines, appointments } = useApp();
+  const { contacts, addContact, updateContact, deleteContact, bulkImportContacts, addNotification, customFieldDefs, addCustomFieldDefs, pipelines, updatePipeline, appointments } = useApp();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -159,11 +162,24 @@ export default function Contacts() {
 
   /* Health + lifecycle for every contact, from live pipeline/appointment data. */
   const intel = useMemo(() => {
-    const map = new Map<string, { health: ReturnType<typeof computeHealthScore>; stage: LifecycleStage }>();
+    const map = new Map<string, {
+      health: ReturnType<typeof computeHealthScore>;
+      stage: LifecycleStage;
+      deals: ReturnType<typeof summariseDeals>;
+      dealStages: string[];
+    }>();
     for (const c of contacts) {
       const d = dealsForContact(c, pipelines);
       const ap = appointmentsForContact(c, appointments);
-      map.set(c.id, { health: computeHealthScore(c, d, ap), stage: c.lifecycle ?? inferLifecycle(c, d) });
+      const health = computeHealthScore(c, d, ap);
+      const placed = placedDealsForContact(c, pipelines);
+      const open = placed.filter(x => (x.status ?? 'active') === 'active');
+      map.set(c.id, {
+        health,
+        stage: c.lifecycle ?? inferLifecycle(c, d),
+        deals: summariseDeals(placed, x => winProbability(x, health.total).percent),
+        dealStages: [...new Set(open.map(x => x.stageName))],
+      });
     }
     return map;
   }, [contacts, pipelines, appointments]);
@@ -174,9 +190,22 @@ export default function Contacts() {
     const matchStage = lifecycleFilter === 'all' || intel.get(c.id)?.stage === lifecycleFilter;
     return matchSearch && matchStatus && matchStage && customFilter(c);
   }).sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    // Derived columns aren't fields on the contact, so sort them off the intel map.
+    if (sortField === 'health') return dir * ((intel.get(a.id)?.health.total ?? 0) - (intel.get(b.id)?.health.total ?? 0));
+    if (sortField === 'lifecycle') {
+      const rank = (c: Contact) => LIFECYCLE_STAGES.indexOf(intel.get(c.id)?.stage ?? 'Lead');
+      return dir * (rank(a) - rank(b));
+    }
+    if (sortField === 'deals') return dir * ((intel.get(a.id)?.deals.openValue ?? 0) - (intel.get(b.id)?.deals.openValue ?? 0));
+    if (sortField === 'dealStage') {
+      const first = (c: Contact) => intel.get(c.id)?.dealStages[0] ?? '';
+      return dir * first(a).localeCompare(first(b));
+    }
+    if (sortField === 'value') return dir * ((a.value ?? 0) - (b.value ?? 0));
     const va = String((a as unknown as Record<string, unknown>)[sortField] ?? '');
     const vb = String((b as unknown as Record<string, unknown>)[sortField] ?? '');
-    return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    return dir * va.localeCompare(vb);
   });
 
   const toggleSelect = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -208,6 +237,25 @@ export default function Contacts() {
       if (c && !c.tags.includes(tag)) updateContact(id, { tags: [...c.tags, tag] });
     });
     addNotification(`Tag "${tag}" added to ${selected.size} contacts`);
+    setSelected(new Set());
+  };
+
+  /** Move every open deal owned by the selected contacts into one stage. */
+  const bulkMoveStage = (stageId: string) => {
+    if (!stageId) return;
+    const picked = contacts.filter(c => selected.has(c.id));
+    const res = bulkMoveContactDeals(pipelines, picked, stageId);
+    if (!res.moved) {
+      addNotification('No open deals in that pipeline to move.', 'error');
+      return;
+    }
+    for (const p of res.pipelines) {
+      const before = pipelines.find(x => x.id === p.id);
+      if (before !== p) updatePipeline(p.id, { stages: p.stages });
+    }
+    const stageName = pipelines.flatMap(p => p.stages).find(s => s.id === stageId)?.name ?? 'the stage';
+    addNotification(`${res.moved} deal${res.moved === 1 ? '' : 's'} moved to ${stageName}`);
+    for (const note of res.automationNotes) addNotification(`Automation: ${note}`);
     setSelected(new Set());
   };
 
@@ -302,6 +350,16 @@ export default function Contacts() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', backgroundColor: '#eceef1', borderRadius: 12, marginBottom: 12, border: '1px solid #d5d8dd', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#17191c' }}>{selected.size} selected</span>
             <button onClick={bulkTag} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Tag size={12} /> Add Tag</button>
+            <select value="" onChange={e => { bulkMoveStage(e.target.value); e.target.value = ''; }}
+              title="Move every open deal for the selected contacts into a stage"
+              style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <option value="">Move deals to stage…</option>
+              {pipelines.map(p => (
+                <optgroup key={p.id} label={p.name}>
+                  {p.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
             <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={12} /> Export</button>
             <button onClick={bulkDelete} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 9, backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Trash2 size={12} /> Delete</button>
             <button onClick={() => setSelected(new Set())} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={16} /></button>
@@ -316,7 +374,7 @@ export default function Contacts() {
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
                   <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                 </th>
-                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
+                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['deals','Deals'], ['dealStage','Pipeline'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
                   <th key={field} onClick={() => sortHeader(field)} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                     {label}<SortIcon field={field} />
                   </th>
@@ -373,6 +431,36 @@ export default function Contacts() {
                         const st = intel.get(contact.id)?.stage ?? 'Lead';
                         const m = LIFECYCLE_META[st];
                         return <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: m.bg, color: m.color, whiteSpace: 'nowrap' }}>{st}</span>;
+                      })()}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {(() => {
+                        const d = intel.get(contact.id)?.deals;
+                        if (!d || (!d.open && !d.won && !d.lost)) return <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>;
+                        return (
+                          <span title={`${d.open} open worth $${d.openValue.toLocaleString()} · weighted forecast $${d.weighted.toLocaleString()} · ${d.won} won, ${d.lost} lost`}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                              {d.open > 0 ? `$${d.openValue.toLocaleString()}` : '—'}
+                            </span>
+                            <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
+                              {d.open} open{d.won ? ` · ${d.won} won` : ''}{d.lost ? ` · ${d.lost} lost` : ''}
+                            </span>
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {(() => {
+                        const stages = intel.get(contact.id)?.dealStages ?? [];
+                        if (!stages.length) return <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>;
+                        return (
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {stages.slice(0, 2).map(s => (
+                              <span key={s} style={{ padding: '3px 9px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: '#eef2ff', color: '#4f46e5', whiteSpace: 'nowrap' }}>{s}</span>
+                            ))}
+                            {stages.length > 2 && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, alignSelf: 'center' }}>+{stages.length - 2}</span>}
+                          </div>
+                        );
                       })()}
                     </td>
                     <td style={{ padding: '14px 16px' }}>

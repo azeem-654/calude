@@ -13,6 +13,7 @@ import { isEmailConfigured } from '../../services/emailService';
 import { loadOnboarding } from '../../services/onboarding';
 import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
 import { processScheduled, processSequences, syncTracking } from '../../services/contactEmail';
+import { runBehaviourTriggers } from '../../services/contactDeals';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import type { Deal } from '../../types';
@@ -457,7 +458,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost, sequences } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -481,6 +482,17 @@ export default function Dashboard() {
       if (sent) addNotification(`${sent} scheduled email${sent > 1 ? 's' : ''} sent`, 'info');
       if (seq) addNotification(`${seq} sequence email${seq > 1 ? 's' : ''} sent`, 'info');
     })();
+
+    // Behaviour triggers: let what contacts actually did move their deals.
+    const beh = runBehaviourTriggers(pipelines, contacts);
+    if (beh.fired.length) {
+      for (const p of beh.pipelines) {
+        const before = pipelines.find(x => x.id === p.id);
+        if (before !== p) updatePipeline(p.id, { stages: p.stages });
+      }
+      for (const f of beh.fired.slice(0, 4)) addNotification(`${f.contactName}: ${f.summary}`, 'info');
+      if (beh.fired.length > 4) addNotification(`${beh.fired.length - 4} more deal${beh.fired.length - 4 > 1 ? 's' : ''} updated by behaviour triggers`, 'info');
+    }
     return () => { onContentJobsChange(null); registerPublishApi(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
