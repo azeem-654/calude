@@ -12,6 +12,7 @@ import {
   Ban, Trash2, Plus, KeyRound, Gauge, Globe, ChevronRight, ExternalLink, Search,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import WarmupPanel from './WarmupPanel';
 import { getSession } from '../../services/auth';
 import {
   loadSettings, saveSettings, hostCapabilities, checkAuthentication, checkBlacklists,
@@ -79,6 +80,25 @@ const REGISTRAR_GUIDES = [
 /* ── Component ───────────────────────────────────────────────────────────── */
 
 export default function Deliverability() {
+  const [tab, setTab] = useState<'health' | 'warmup'>('health');
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 16 }}>
+        {([['health', 'Reputation & authentication'], ['warmup', 'Warmup & providers']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} title={label}
+            style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+              border: `1px solid ${tab === id ? INK : '#e2e8f0'}`,
+              background: tab === id ? INK : '#fff', color: tab === id ? '#fff' : '#475569' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'health' ? <DeliverabilityHealth /> : <WarmupPanel />}
+    </div>
+  );
+}
+
+function DeliverabilityHealth() {
   const { addNotification, contacts } = useApp();
   const session = getSession();
   const isAgency = session?.user.role === 'agency';

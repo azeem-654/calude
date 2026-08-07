@@ -15,6 +15,7 @@ import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from
 import { processScheduled, processSequences, syncTracking, sendToContact } from '../../services/contactEmail';
 import { runBehaviourTriggers, moveDealToStage, findDeal } from '../../services/contactDeals';
 import { dueReminders, planFollowUps } from '../../services/contactScheduling';
+import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import type { Deal } from '../../types';
@@ -538,6 +539,14 @@ export default function Dashboard() {
       }
       for (const id of plan.handled) updateAppointment(id, { followUpDone: true });
       for (const note of plan.notes.slice(0, 4)) addNotification(note, 'info');
+    })();
+
+    // Warmup: send today's seed messages and re-derive the per-provider
+    // throttles from what actually happened. Idempotent per day.
+    void (async () => {
+      const res = await runWarmup();
+      if (res.sent) addNotification(`${res.sent} warmup message${res.sent > 1 ? 's' : ''} sent`, 'info');
+      for (const note of res.notes.slice(0, 3)) addNotification(note, 'info');
     })();
 
     return () => { onContentJobsChange(null); registerPublishApi(null); };

@@ -492,7 +492,10 @@ export interface ReputationMetrics {
  * is a number nobody should trust.
  */
 export function reputation(emails: ContactEmail[] = loadEmails()): ReputationMetrics {
-  const out = emails.filter(e => e.direction === 'outbound' && e.status !== 'scheduled');
+  // Messages we refused ourselves never reached a mail server; counting them
+  // as delivery failures would make our own caution look like bad reputation.
+  const out = emails.filter(e => e.direction === 'outbound' && e.status !== 'scheduled'
+    && !(e as unknown as { blockedLocally?: boolean }).blockedLocally);
   const sent = out.length;
   const hardBounces = out.filter(e => e.status === 'bounced').length;
   const failed = out.filter(e => e.status === 'failed').length;

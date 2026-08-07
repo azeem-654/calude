@@ -312,13 +312,45 @@ ZeroBounce or Kickbox can be connected in Settings. The key is written to
 only report whether one is present. Without a key everything above still works;
 the provider adds mailbox-level certainty that DNS alone cannot give.
 
+### Warmup and per-provider throttling
+
+`src/services/warmup.ts` plus **Settings → Email Deliverability → Warmup & providers**.
+
+- **The ramp is a ceiling, not a chart.** It starts at your chosen daily volume
+  and doubles roughly every four days, and `warmupGate()` is called inside
+  `sendToContact()` — so a send past the day's allowance is refused with the
+  reason, not merely discouraged. It halves itself automatically when bounces
+  or complaints go above target.
+- **Per-provider throttling from measured outcomes.** Recipients are bucketed by
+  provider (Google, Microsoft, Yahoo/AOL, Apple, business), and each bucket's
+  health comes from the last 30 days of our own mail. A 4xx deferral halves that
+  provider's rate; permanent rejections at volume pause it for 24 hours;
+  recovery is gradual, in 15% steps, because snapping back to full speed is what
+  caused the deferral. A throttle is a *fraction of the day*, so one provider
+  slowing down never starves the others.
+- **Seed mailboxes.** Add addresses you own at each provider; warmup sends real
+  messages to them on the ramp's schedule and you record where each landed. That
+  inbox-placement rate is the only measurement that says whether mail is
+  actually reaching inboxes.
+- **Sending identities.** Track each domain or dedicated IP and check its
+  authentication and blacklist status independently.
+
+Three bugs the tests caught and that are worth knowing about, because they are
+the kind that would silently ruin a warmup: an equal per-provider split gave
+every provider a zero allowance on early ramp days (so nothing could send); a
+single deferral was treated as a blockage and paused a provider for a day; and
+emails *we* refused were being fed back as provider failures, throttling a
+provider for our own caution. All three are fixed and covered by tests.
+
 ### What is not built, and why
 
-A **warmup network** — the pool of real mailboxes that send, open and reply to
-each other — is a paid service (Mailreach, Warmbox, Instantly). It cannot be
-fabricated, so it is not pretended: the ramp schedule, per-send volume ceiling
-and reputation feedback are real and enforced, but there is no simulated
-conversation network. **SMTP mailbox probes** need outbound port 25, which most
+A **third-party warmup network** — the pool of other people's mailboxes that
+send, open and reply to each other — is a paid service (Mailreach, Warmbox,
+Instantly). It cannot be fabricated, so it is not pretended. What is built is
+self-hosted warmup: a real ramp enforced on every send, real per-provider
+throttling driven by measured results, and real messages to seed mailboxes you
+own. What is absent is the simulated conversation network, and the panel says so
+on screen rather than implying otherwise. **SMTP mailbox probes** need outbound port 25, which most
 shared hosts block; the endpoint probes for it once and the UI says plainly
 whether this host can do it.
 

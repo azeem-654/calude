@@ -13,6 +13,7 @@ import type { EmailSequence } from '../types/marketing';
 import { loadEmailConfig, sendEmail, personalizeHtml } from './emailService';
 import { getActiveAccountId } from './tenancy';
 import { findSuppression, localCheck, loadSettings, suppress } from './deliverability';
+import { warmupGate, recordSend } from './warmup';
 
 /**
  * Decide whether an address may be emailed at all. Called on every outbound
@@ -28,6 +29,11 @@ function deliverabilityGate(email: string, opts: SendOptions): { ok: boolean; re
   if (suppressed) {
     return { ok: false, reason: `Blocked: ${addr} is on the suppression list (${suppressed.reason.replace('_', ' ')}). Remove it in Settings → Email Deliverability to send again.` };
   }
+
+  // The warmup ramp is a real ceiling, not a chart: once today's allowance for
+  // the day or for this provider is used up, the send is refused.
+  const gate = warmupGate(addr);
+  if (!gate.ok) return { ok: false, reason: gate.reason };
 
   const settings = loadSettings();
   if (!settings.verifyBeforeSend) return { ok: true, reason: '' };
@@ -75,6 +81,9 @@ export interface ContactEmail {
   threadId: string;
   /** Recipient address, kept so bounces can be traced back to an address. */
   toEmail?: string;
+  /** True when we refused to send this ourselves. It never reached a mail
+   *  server, so it must not be read as that provider rejecting us. */
+  blockedLocally?: boolean;
   error?: string;
 }
 
@@ -262,6 +271,7 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
       templateId: opts.templateId, sequenceId: opts.sequenceId,
       threadId: opts.threadId || id, error: gate.reason,
       toEmail: (contact.email || '').toLowerCase(),
+      blockedLocally: true,
     };
     const existing = loadEmails();
     existing.unshift(blockedRow);
@@ -308,7 +318,11 @@ async function deliver(email: ContactEmail, contact: Contact): Promise<SendOutco
   const rows = loadEmails();
   const row = rows.find(r => r.id === email.id);
   if (row) {
-    if (result.success) { row.status = 'sent'; row.sentAt = new Date().toISOString(); row.error = undefined; }
+    if (result.success) {
+      row.status = 'sent'; row.sentAt = new Date().toISOString(); row.error = undefined;
+      // Count it against the warmup ramp only once it genuinely left.
+      if (contact.email) recordSend(contact.email);
+    }
     else {
       // A permanent rejection is a hard bounce: the mailbox does not exist, so
       // suppress it immediately rather than discovering it again next send.
