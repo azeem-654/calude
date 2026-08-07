@@ -56,6 +56,8 @@ export interface AuthStatus {
   writable: boolean;
   /** Null when the PHP backend is unreachable and we are running local-only. */
   backend: 'php' | 'local';
+  /** The demo credentials the server will accept, when it offers any. */
+  testLogin?: { username: string; password: string } | null;
 }
 
 /**
@@ -71,9 +73,10 @@ export async function authStatus(): Promise<AuthStatus> {
       initialised: !!res.data.initialised,
       writable: res.data.writable !== false,
       backend: 'php',
+      testLogin: (res.data.testLogin as AuthStatus['testLogin']) ?? null,
     };
   }
-  return { initialised: hasAnyUser(), writable: true, backend: 'local' };
+  return { initialised: hasAnyUser(), writable: true, backend: 'local', testLogin: null };
 }
 
 async function php(action: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: Record<string, unknown> } | null> {

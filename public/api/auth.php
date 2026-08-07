@@ -60,27 +60,73 @@ $db     = db_load($FILE);
 /* Public: has setup already happened, and can we write at all? The browser
    cannot answer either question on its own — it only knows its own storage —
    and guessing produced a setup screen that could never succeed. */
+/* The demo login. It exists so the app can be tried without setting up a real
+   owner first, and is deliberately kept separate from real accounts: it does
+   not count towards "is this workspace set up", so signing up properly stays
+   available while it exists. Delete it from Settings → Team & Permissions, or
+   remove api/data/users.php, to get rid of it. */
+const TEST_USERNAME = 'test';
+const TEST_PASSWORD = 'test123';
+
+function is_test_user($u) { return !empty($u['isTest']); }
+
+/** Users excluding the demo login — what "set up" actually means. */
+function real_users($db) { return array_values(array_filter($db['users'] ?? [], fn($u) => !is_test_user($u))); }
+
 if ($action === 'status') {
+    $real = real_users($db);
     out([
         'success'     => true,
-        'initialised' => count($db['users']) > 0,
+        'initialised' => count($real) > 0,
         'writable'    => crm_store_writable(),
-        'accounts'    => count($db['users']),
+        'accounts'    => count($real),
+        'testLogin'   => ['username' => TEST_USERNAME, 'password' => TEST_PASSWORD],
     ]);
 }
 
+/**
+ * Validate a registration the way a real sign-up should: a usable name, a
+ * genuinely well-formed email, and a password that is not trivially guessable.
+ * Returns an error string, or '' when the details are acceptable.
+ */
+function signup_problem($name, $email, $password) {
+    if (strlen(trim($name)) < 2) return 'Enter your name.';
+    if (strlen(trim($name)) > 80) return 'That name is too long.';
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return 'Enter a valid email address.';
+    if (strlen($email) > 254) return 'That email address is too long.';
+    if (strlen($password) < 8) return 'Use a password of at least 8 characters.';
+    if (strlen($password) > 200) return 'That password is too long.';
+    if (!preg_match('/[a-zA-Z]/', $password) || !preg_match('/[0-9]/', $password)) {
+        return 'Include at least one letter and one number in your password.';
+    }
+    $weak = ['password', 'password1', '12345678', 'qwertyui', 'letmein1', 'welcome1', 'iloveyou', 'admin123'];
+    if (in_array(strtolower($password), $weak, true)) return 'That password is too common. Choose something harder to guess.';
+    // Only match on something distinctive. A four-letter local part like
+    // "real" or "mark" appears inside ordinary strong passwords, and rejecting
+    // those trains people to think the rules are arbitrary.
+    if (strlen(trim($name)) >= 5 && stripos($password, trim($name)) !== false) return 'Do not put your name in your password.';
+    $local = explode('@', $email)[0];
+    if (strlen($local) >= 5 && stripos($password, $local) !== false) return 'Do not put your email address in your password.';
+    return '';
+}
+
 if ($action === 'bootstrap') {
-    if (count($db['users']) > 0) {
+    if (count(real_users($db)) > 0) {
         out(['success' => false, 'error' => 'An owner account already exists on this server. Sign in instead.', 'code' => 'already_initialised']);
     }
     $email = strtolower(trim($d['email'] ?? ''));
-    if (!$email || !($d['password'] ?? '')) out(['success' => false, 'error' => 'Email and password required.']);
-    if (strlen($d['password']) < 8) out(['success' => false, 'error' => 'Use a password of at least 8 characters.']);
+    $name  = trim($d['name'] ?? '');
+    $problem = signup_problem($name, $email, (string)($d['password'] ?? ''));
+    if ($problem !== '') out(['success' => false, 'error' => $problem, 'code' => 'invalid']);
+    foreach ($db['users'] as $u) {
+        if ($u['email'] === $email) out(['success' => false, 'error' => 'An account with that email already exists.', 'code' => 'duplicate']);
+    }
     if (!crm_store_writable()) {
         out(['success' => false, 'code' => 'not_writable',
              'error' => 'The server cannot write to api/data/. Set that folder to 755 (or 777) in your host file manager and try again.']);
     }
-    $db['users'][] = ['email' => $email, 'name' => $d['name'] ?? 'Owner', 'role' => 'agency', 'accountId' => null, 'hash' => password_hash($d['password'], PASSWORD_BCRYPT)];
+    $db['users'][] = ['email' => $email, 'name' => $name, 'role' => 'agency', 'accountId' => null,
+                      'hash' => password_hash($d['password'], PASSWORD_BCRYPT), 'createdAt' => gmdate('c')];
     if (!db_save($FILE, $db)) {
         out(['success' => false, 'code' => 'not_writable',
              'error' => 'Could not save the account — api/data/ is not writable. Set that folder to 755 in your host file manager and try again.']);
@@ -88,18 +134,39 @@ if ($action === 'bootstrap') {
     // Read it back: a write that reported success but stored nothing would
     // otherwise leave you unable to sign in with no explanation.
     $check = db_load($FILE);
-    if (!count($check['users'])) {
+    if (!count(real_users($check))) {
         out(['success' => false, 'code' => 'not_writable', 'error' => 'The account did not persist. Check that api/data/ is writable on your host.']);
     }
     out(['success' => true]);
 }
 
 if ($action === 'login') {
-    $email = strtolower(trim($d['email'] ?? ''));
+    $ident = strtolower(trim($d['email'] ?? ''));
+    $pass  = (string)($d['password'] ?? '');
+
+    // The demo login is provisioned on first use rather than shipped in the
+    // repo, so a fresh install has no account until someone asks for one.
+    if ($ident === TEST_USERNAME && $pass === TEST_PASSWORD) {
+        $has = false;
+        foreach ($db['users'] as $u) if (is_test_user($u)) { $has = true; break; }
+        if (!$has && crm_store_writable()) {
+            $db['users'][] = [
+                'email' => 'test@example.test', 'username' => TEST_USERNAME,
+                'name' => 'Test Account', 'role' => 'agency', 'accountId' => null,
+                'isTest' => true, 'hash' => password_hash(TEST_PASSWORD, PASSWORD_BCRYPT),
+                'createdAt' => gmdate('c'),
+            ];
+            db_save($FILE, $db);
+        }
+    }
+
     foreach ($db['users'] as $u) {
-        if ($u['email'] === $email && password_verify($d['password'] ?? '', $u['hash'])) {
+        $matches = $u['email'] === $ident || (isset($u['username']) && strtolower($u['username']) === $ident);
+        if ($matches && password_verify($pass, $u['hash'])) {
             $t = tok();
-            $db['sessions'][$t] = ['email' => $email, 'exp' => time() + 60 * 60 * 24 * 30];
+            // Sessions key off the account's own email, not what was typed —
+            // signing in by username must resolve to the same identity.
+            $db['sessions'][$t] = ['email' => $u['email'], 'exp' => time() + 60 * 60 * 24 * 30];
             db_save($FILE, $db);
             out(['success' => true, 'token' => $t, 'user' => pub($u)]);
         }
