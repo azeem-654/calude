@@ -12,6 +12,35 @@ import type { Contact } from '../types';
 import type { EmailSequence } from '../types/marketing';
 import { loadEmailConfig, sendEmail, personalizeHtml } from './emailService';
 import { getActiveAccountId } from './tenancy';
+import { findSuppression, localCheck, loadSettings, suppress } from './deliverability';
+
+/**
+ * Decide whether an address may be emailed at all. Called on every outbound
+ * send; the reason is returned so the caller can show it rather than failing
+ * mysteriously.
+ */
+function deliverabilityGate(email: string, opts: SendOptions): { ok: boolean; reason: string } {
+  if (opts.ignoreDeliverability) return { ok: true, reason: '' };
+  const addr = (email || '').trim();
+  if (!addr) return { ok: false, reason: 'This contact has no email address.' };
+
+  const suppressed = findSuppression(addr);
+  if (suppressed) {
+    return { ok: false, reason: `Blocked: ${addr} is on the suppression list (${suppressed.reason.replace('_', ' ')}). Remove it in Settings → Email Deliverability to send again.` };
+  }
+
+  const settings = loadSettings();
+  if (!settings.verifyBeforeSend) return { ok: true, reason: '' };
+
+  const check = localCheck(addr);
+  if (check.verdict === 'invalid') {
+    return { ok: false, reason: `Blocked: ${check.reason}` };
+  }
+  if (check.verdict === 'risky' && settings.blockRisky) {
+    return { ok: false, reason: `Blocked: ${check.reason} Risky addresses are set to be blocked in your deliverability settings.` };
+  }
+  return { ok: true, reason: '' };
+}
 
 const EMAILS_KEY = 'crm_contact_emails';
 const ENROLL_KEY = 'crm_sequence_enrollments';
@@ -44,6 +73,8 @@ export interface ContactEmail {
   sequenceId?: string;
   /** Groups a reply with the message it answers. */
   threadId: string;
+  /** Recipient address, kept so bounces can be traced back to an address. */
+  toEmail?: string;
   error?: string;
 }
 
@@ -198,6 +229,9 @@ export interface SendOptions {
   body: string;
   attachments?: EmailAttachment[];
   templateId?: string;
+  /** Bypass the deliverability gate. Only for transactional mail the user
+   *  explicitly asked to send to a specific address. */
+  ignoreDeliverability?: boolean;
   /** ISO datetime — queues instead of sending now. */
   scheduledFor?: string;
   sequenceId?: string;
@@ -214,6 +248,27 @@ export interface SendOutcome { ok: boolean; email: ContactEmail; error?: string;
 export async function sendToContact(contact: Contact, opts: SendOptions): Promise<SendOutcome> {
   const id = `em-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
+
+  /* Deliverability gate. Sending to a suppressed or invalid address is how a
+     sender's reputation gets destroyed, so it is refused here — at the single
+     point every outbound email passes through — rather than relying on each
+     caller to remember. */
+  const gate = deliverabilityGate(contact.email, opts);
+  if (!gate.ok) {
+    const blockedRow: ContactEmail = {
+      id, contactId: contact.id, subject: opts.subject, body: opts.body,
+      status: 'failed', direction: 'outbound', createdAt: now,
+      opens: 0, clicks: 0, clickedUrls: [], attachments: opts.attachments ?? [],
+      templateId: opts.templateId, sequenceId: opts.sequenceId,
+      threadId: opts.threadId || id, error: gate.reason,
+      toEmail: (contact.email || '').toLowerCase(),
+    };
+    const existing = loadEmails();
+    existing.unshift(blockedRow);
+    saveEmails(existing);
+    return { ok: false, email: blockedRow, error: gate.reason };
+  }
+
   const email: ContactEmail = {
     id, contactId: contact.id,
     subject: opts.subject, body: opts.body,
@@ -226,6 +281,7 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
     templateId: opts.templateId,
     sequenceId: opts.sequenceId,
     threadId: opts.threadId || id,
+    toEmail: (contact.email || '').toLowerCase(),
   };
 
   const rows = loadEmails();
@@ -253,7 +309,17 @@ async function deliver(email: ContactEmail, contact: Contact): Promise<SendOutco
   const row = rows.find(r => r.id === email.id);
   if (row) {
     if (result.success) { row.status = 'sent'; row.sentAt = new Date().toISOString(); row.error = undefined; }
-    else { row.status = 'failed'; row.error = result.error || 'Send failed'; }
+    else {
+      // A permanent rejection is a hard bounce: the mailbox does not exist, so
+      // suppress it immediately rather than discovering it again next send.
+      const permanent = /(550|551|553|does not exist|no such user|unknown recipient|mailbox unavailable|user unknown|recipient rejected)/i
+        .test(result.error || '');
+      row.status = permanent ? 'bounced' : 'failed';
+      row.error = result.error || 'Send failed';
+      if (permanent && contact.email) {
+        suppress(contact.email, 'hard_bounce', `Rejected by the receiving server: ${(result.error || '').slice(0, 120)}`);
+      }
+    }
     saveEmails(rows);
   }
   return { ok: !!result.success, email: row ?? email, error: result.error };

@@ -262,6 +262,66 @@ endpoints carry them: **email open/click tracking** (`api/track.php`) and
 need `api/config.php` to exist — run the installer from Agency → Cloud
 Database once.
 
+## Email Deliverability engine
+
+Keeping mail out of spam is split between the two places that can actually do
+the work:
+
+| | |
+|---|---|
+| `src/services/deliverability.ts` | everything decidable from data we already hold — syntax, suppression, content scanning, reputation, volume and timing advice. Instant, offline. |
+| `public/api/deliverability.php` | the checks a browser physically cannot make — DNS for SPF/DKIM/DMARC/MX, DNSBL blacklist queries, SMTP mailbox probes, and any paid verification API. |
+
+### Authentication
+
+**Settings → Email Deliverability** looks up your sending domain's live records
+and judges them, rather than only reporting them: two SPF records is an error
+(the spec allows one), `+all` is an error, over ten DNS lookups is an error, a
+DKIM key with an empty `p=` is revoked, `p=none` DMARC is monitoring rather than
+protecting. Each verdict says what to change.
+
+The record generator produces the TXT records to publish, with the SPF mechanism
+matched to whichever provider you actually send through, plus step-by-step
+instructions for Cloudflare, GoDaddy, Namecheap and Google Domains.
+
+### List hygiene and suppression
+
+Addresses are checked for syntax, a real mail server, disposable domains, role
+accounts (`info@`, `sales@`) and spam-trap patterns. Contacts carry an **email
+health** column — Valid, Risky, Invalid, Unchecked — which sorts and filters, and
+**One-click clean** removes everything undeliverable.
+
+The suppression list is enforced at `sendToContact()`, the single point every
+outbound email passes through, so no caller can forget it. A permanent rejection
+(550, "user unknown", and similar) is recorded as a hard bounce and the address
+is suppressed on the spot — the next attempt never reaches the provider.
+
+### Reputation, content and pre-send
+
+Sender score is computed from mail this workspace actually sent: delivery 40,
+bounce rate 25, complaints 20, engagement 15 — each returned with its reasoning
+rather than asserted. The composer scores drafts against a real spam ruleset
+while you type and names both the phrase and the fix. `preSendCheck()` gates a
+campaign on suppression, list health, thresholds and today's safe volume, which
+follows a warmup ramp for new senders.
+
+### Verification provider (optional)
+
+ZeroBounce or Kickbox can be connected in Settings. The key is written to
+`api/config.php` **on the server** and never returned to the browser — the UI can
+only report whether one is present. Without a key everything above still works;
+the provider adds mailbox-level certainty that DNS alone cannot give.
+
+### What is not built, and why
+
+A **warmup network** — the pool of real mailboxes that send, open and reply to
+each other — is a paid service (Mailreach, Warmbox, Instantly). It cannot be
+fabricated, so it is not pretended: the ramp schedule, per-send volume ceiling
+and reputation feedback are real and enforced, but there is no simulated
+conversation network. **SMTP mailbox probes** need outbound port 25, which most
+shared hosts block; the endpoint probes for it once and the UI says plainly
+whether this host can do it.
+
 ## Deployment and host-side state
 
 Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml`:

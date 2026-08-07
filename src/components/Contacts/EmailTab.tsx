@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Mail, Send, Clock, Paperclip, Sparkles, X, ChevronDown, Check, Eye,
-  MousePointerClick, CornerUpLeft, AlertTriangle, Play, Pause, SkipForward, Loader, RefreshCw,
+  MousePointerClick, CornerUpLeft, AlertTriangle, Play, Pause, SkipForward, Loader, RefreshCw, ShieldCheck,
 } from 'lucide-react';
 import type { Contact } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
@@ -18,6 +18,7 @@ import {
 } from '../../services/contactEmail';
 import { isEmailConfigured } from '../../services/emailService';
 import { hasGeminiKey, generateSubjectLines } from '../../lib/gemini';
+import { scanContent, healthFor, localCheck, HEALTH_META } from '../../services/deliverability';
 
 const INK = '#17191c';
 
@@ -70,6 +71,70 @@ function StatsStrip({ emails }: { emails: ContactEmail[] }) {
         {cell('Click rate', `${s.clickRate}%`, `avg ${avg.clickRate}%`)}
         {cell('Replies', String(s.replied))}
       </div>
+    </div>
+  );
+}
+
+/* ── Live spam-risk scanner ── */
+
+/**
+ * Scores the message as a filter roughly would, while it is being written.
+ * Silent while the draft is empty or clean — advice only shows up when there
+ * is something worth changing.
+ */
+function SpamScan({ subject, body }: { subject: string; body: string }) {
+  const [open, setOpen] = useState(false);
+  const scan = useMemo(() => scanContent(subject, body), [subject, body]);
+  if (!subject.trim() && !body.trim()) return null;
+
+  const color = scan.band === 'good' ? '#16a34a' : scan.band === 'ok' ? '#d97706' : '#dc2626';
+  const bg = scan.band === 'good' ? '#f0fdf4' : scan.band === 'ok' ? '#fffbeb' : '#fef2f2';
+
+  return (
+    <div style={{ border: `1px solid ${color}33`, background: bg, borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
+      <button onClick={() => setOpen(o => !o)} disabled={!scan.issues.length}
+        title={scan.issues.length ? 'Show what might trigger a spam filter' : 'Nothing flagged'}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 11px', border: 'none', background: 'transparent', cursor: scan.issues.length ? 'pointer' : 'default', textAlign: 'left' }}>
+        <ShieldCheck size={13} color={color} style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 11.5, fontWeight: 700, color }}>Spam risk {scan.score}/100</span>
+        <span style={{ fontSize: 11.5, color: '#475569', flex: 1 }}>{scan.summary}</span>
+        {!!scan.issues.length && <ChevronDown size={12} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />}
+      </button>
+      {open && (
+        <div style={{ padding: '0 11px 10px' }}>
+          {scan.issues.map((issue, i) => (
+            <div key={i} style={{ borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: 7, marginTop: 7 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#0f172a' }}>
+                {issue.label}
+                {issue.matches.length > 0 && (
+                  <span style={{ fontWeight: 500, color: '#64748b' }}> — {issue.matches.slice(0, 4).join(', ')}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2, lineHeight: 1.5 }}>{issue.advice}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Recipient email health ── */
+
+function RecipientHealth({ email }: { email: string }) {
+  if (!email) return null;
+  const stored = healthFor(email);
+  const verdict = stored?.verdict ?? (localCheck(email).verdict === 'valid' ? 'unknown' : localCheck(email).verdict);
+  if (verdict === 'valid' || verdict === 'unknown') return null;
+  const m = HEALTH_META[verdict];
+  const reason = stored?.reason || localCheck(email).reason;
+  return (
+    <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', padding: '8px 11px', borderRadius: 9, marginBottom: 10, background: m.bg, border: `1px solid ${m.color}44` }}>
+      <AlertTriangle size={13} color={m.color} style={{ flexShrink: 0, marginTop: 1 }} />
+      <span style={{ fontSize: 11.5, color: m.color, lineHeight: 1.5 }}>
+        <strong>{m.label} address.</strong> {reason}
+        {verdict === 'invalid' && ' Sending is blocked to protect your sender reputation.'}
+      </span>
     </div>
   );
 }
@@ -148,6 +213,7 @@ function Composer({ contact, onSent }: { contact: Contact; onSent: () => void })
 
   return (
     <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16, background: '#fff' }}>
+      <RecipientHealth email={contact.email} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <span style={{ fontSize: 12.5, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
           <Send size={13} /> Compose
@@ -228,6 +294,8 @@ function Composer({ contact, onSent }: { contact: Contact; onSent: () => void })
           ))}
         </div>
       )}
+
+      <SpamScan subject={subject} body={body} />
 
       {showSchedule && (
         <div style={{ marginBottom: 10 }}>

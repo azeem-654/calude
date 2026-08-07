@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
-  Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2,
+  Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2, ShieldCheck,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -17,6 +17,10 @@ import {
   type ContactList,
 } from '../../services/contactLists';
 import { currentActor, can, denyReason, ownersInUse, ownerOf } from '../../services/contactPermissions';
+import {
+  healthFor, localCheck, verifyEmails, recordHealth, listHygiene, isSuppressed,
+  HEALTH_META, type Verdict,
+} from '../../services/deliverability';
 import ListsPanel from './ListsPanel';
 import MergeWizard from './MergeWizard';
 import TeamFeed from './TeamFeed';
@@ -162,6 +166,9 @@ export default function Contacts() {
 
   const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleStage | 'all'>('all');
   const [ownerFilter, setOwnerFilter] = useState('all');
+  const [healthFilter, setHealthFilter] = useState<Verdict | 'all'>('all');
+  const [verifying, setVerifying] = useState<{ done: number; total: number } | null>(null);
+  const [healthVersion, setHealthVersion] = useState(0);
 
   /* ── Part 5: lists, merge, ownership ── */
   const actor = useMemo(() => currentActor(), []);
@@ -169,6 +176,20 @@ export default function Contacts() {
   const [activeList, setActiveList] = useState<string | null>(null);
   const [showMerge, setShowMerge] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
+
+  /* Email health per contact: the stored verification verdict when we have
+     one, otherwise what can be decided locally right now. */
+  const emailHealth = useMemo(() => {
+    const map = new Map<string, Verdict>();
+    for (const c of contacts) {
+      if (!c.email) { map.set(c.id, 'invalid'); continue; }
+      const stored = healthFor(c.email);
+      map.set(c.id, stored ? stored.verdict : (localCheck(c.email).verdict === 'valid' ? 'unknown' : localCheck(c.email).verdict));
+    }
+    return map;
+  }, [contacts, healthVersion]);
+
+  const hygiene = useMemo(() => listHygiene(contacts), [contacts, healthVersion]);
 
   const listCtx = useMemo(() => ({ pipelines, appointments }), [pipelines, appointments]);
   const listMemberIds = useMemo(() => {
@@ -216,7 +237,8 @@ export default function Contacts() {
       || (ownerFilter === '__mine' ? ownerOf(c) === actor.email || ownerOf(c) === actor.name
         : ownerFilter === '__none' ? !ownerOf(c) : ownerOf(c) === ownerFilter);
     const matchList = !listMemberIds || listMemberIds.has(c.id);
-    return matchSearch && matchStatus && matchStage && matchOwner && matchList && customFilter(c);
+    const matchHealth = healthFilter === 'all' || emailHealth.get(c.id) === healthFilter;
+    return matchSearch && matchStatus && matchStage && matchOwner && matchList && matchHealth && customFilter(c);
   }).sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1;
     // Derived columns aren't fields on the contact, so sort them off the intel map.
@@ -226,6 +248,10 @@ export default function Contacts() {
       return dir * (rank(a) - rank(b));
     }
     if (sortField === 'deals') return dir * ((intel.get(a.id)?.deals.openValue ?? 0) - (intel.get(b.id)?.deals.openValue ?? 0));
+    if (sortField === 'emailHealth') {
+      const rank: Record<string, number> = { invalid: 0, risky: 1, unknown: 2, valid: 3 };
+      return dir * ((rank[emailHealth.get(a.id) ?? 'unknown'] ?? 2) - (rank[emailHealth.get(b.id) ?? 'unknown'] ?? 2));
+    }
     if (sortField === 'dealStage') {
       const first = (c: Contact) => intel.get(c.id)?.dealStages[0] ?? '';
       return dir * first(a).localeCompare(first(b));
@@ -323,6 +349,42 @@ export default function Contacts() {
     setSelected(new Set());
   };
 
+  /** Verify the addresses in view and store the verdicts as contact health. */
+  const runVerification = async (targets: Contact[]) => {
+    const emails = targets.map(c => c.email).filter(Boolean);
+    if (!emails.length) { addNotification('No email addresses to check.', 'error'); return; }
+    setVerifying({ done: 0, total: emails.length });
+    const results = await verifyEmails(emails, {
+      onProgress: (done, total) => setVerifying({ done, total }),
+    });
+    recordHealth(results);
+    setVerifying(null);
+    setHealthVersion(v => v + 1);
+    const bad = results.filter(r => r.verdict === 'invalid').length;
+    const risky = results.filter(r => r.verdict === 'risky').length;
+    addNotification(
+      `Checked ${results.length} address${results.length === 1 ? '' : 'es'} — ${bad} invalid, ${risky} risky`,
+      bad ? 'error' : 'success',
+    );
+  };
+
+  /** Remove every address that verification found unusable. */
+  const oneClickClean = () => {
+    const bad = contacts.filter(c => !c.email || emailHealth.get(c.id) === 'invalid' || isSuppressed(c.email));
+    if (!bad.length) { addNotification('Nothing to clean — no invalid addresses.', 'info'); return; }
+    const blocked = bad.filter(c => !can('delete', actor, c));
+    if (blocked.length) { addNotification(denyReason('delete', actor, blocked[0]), 'error'); return; }
+    if (!window.confirm(
+      `Delete ${bad.length} contact${bad.length === 1 ? '' : 's'} whose email cannot be delivered to?\n\n` +
+      'These are addresses that bounced, are suppressed, are disposable, or have no mail server. ' +
+      'Sending to them damages your sender reputation. This cannot be undone.',
+    )) return;
+    bad.forEach(c => { deleteContact(c.id); purgeContactFromLists(c.id); });
+    setLists(loadLists());
+    setHealthVersion(v => v + 1);
+    addNotification(`${bad.length} undeliverable contact${bad.length === 1 ? '' : 's'} removed`);
+  };
+
   const sortHeader = (field: string) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
@@ -363,6 +425,15 @@ export default function Contacts() {
               <option value="__mine">My contacts</option>
               <option value="__none">Unassigned</option>
               {ownersInUse(contacts).map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <select value={healthFilter} onChange={e => setHealthFilter(e.target.value as Verdict | 'all')}
+              title="Filter by email health"
+              style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer' }}>
+              <option value="all">All Email Health</option>
+              <option value="valid">Valid</option>
+              <option value="risky">Risky</option>
+              <option value="invalid">Invalid</option>
+              <option value="unknown">Unchecked</option>
             </select>
             <button onClick={() => setShowFilter(p => !p)}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', border: `1px solid ${showFilter || filterRules.length > 0 ? '#d5d8dd' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: showFilter || filterRules.length > 0 ? '#eceef1' : 'white', color: showFilter || filterRules.length > 0 ? '#17191c' : '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
@@ -428,6 +499,34 @@ export default function Contacts() {
           </div>
         )}
 
+        {/* Email list health */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', background: '#fff', border: '1px solid #e6e9f0', borderRadius: 14, marginBottom: 12, boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+          <ShieldCheck size={15} color={hygiene.cleanPercent >= 95 ? '#16a34a' : hygiene.cleanPercent >= 85 ? '#d97706' : '#dc2626'} />
+          <span style={{ fontSize: 12.5, color: '#475569' }}>
+            Email list health <strong style={{ color: '#17191c' }}>{hygiene.cleanPercent}%</strong>
+            <span style={{ color: '#94a3b8' }}>
+              {' '}· {hygiene.valid} valid · {hygiene.risky} risky · {hygiene.invalid} invalid · {hygiene.unchecked} unchecked
+            </span>
+          </span>
+          {verifying ? (
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
+              Checking {verifying.done}/{verifying.total}…
+            </span>
+          ) : (
+            <div style={{ display: 'flex', gap: 7, marginLeft: 'auto', flexWrap: 'wrap' }}>
+              <button onClick={() => void runVerification(selected.size ? contacts.filter(c => selected.has(c.id)) : filtered)}
+                title={selected.size ? `Verify the ${selected.size} selected contacts` : 'Verify every address currently shown'}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, background: '#fff', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                <ShieldCheck size={12} /> Verify {selected.size ? `${selected.size} selected` : 'these addresses'}
+              </button>
+              <button onClick={oneClickClean} title="Delete every contact whose address cannot be delivered to"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 9, background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                <Trash2 size={12} /> One-click clean
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Saved lists */}
         <ListsPanel
           lists={lists} contacts={contacts} pipelines={pipelines} appointments={appointments}
@@ -482,7 +581,7 @@ export default function Contacts() {
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
                   <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#17191c' }} />
                 </th>
-                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['deals','Deals'], ['dealStage','Pipeline'], ['assignedTo','Owner'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
+                {[['name','Name'], ['email','Contact'], ['health','Health'], ['lifecycle','Stage'], ['deals','Deals'], ['dealStage','Pipeline'], ['emailHealth','Email'], ['assignedTo','Owner'], ['status','Status'], ['company','Company'], ['tags','Tags'], ['value','Value'], ['lastActivity','Last Active']].map(([field, label]) => (
                   <th key={field} onClick={() => sortHeader(field)} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                     {label}<SortIcon field={field} />
                   </th>
@@ -568,6 +667,21 @@ export default function Contacts() {
                             ))}
                             {stages.length > 2 && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, alignSelf: 'center' }}>+{stages.length - 2}</span>}
                           </div>
+                        );
+                      })()}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {(() => {
+                        const v = emailHealth.get(contact.id) ?? 'unknown';
+                        const m = HEALTH_META[v];
+                        const reason = contact.email
+                          ? (healthFor(contact.email)?.reason || localCheck(contact.email).reason)
+                          : 'This contact has no email address.';
+                        return (
+                          <span title={reason}
+                            style={{ padding: '3px 9px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: m.bg, color: m.color, whiteSpace: 'nowrap' }}>
+                            {m.label}
+                          </span>
                         );
                       })()}
                     </td>
