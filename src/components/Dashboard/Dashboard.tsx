@@ -15,6 +15,7 @@ import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from
 import { processScheduled, processSequences, syncTracking, sendToContact } from '../../services/contactEmail';
 import { runBehaviourTriggers, moveDealToStage, findDeal } from '../../services/contactDeals';
 import { dueReminders, planFollowUps } from '../../services/contactScheduling';
+import { runQueuePass, loadJob } from '../../services/verifyQueue';
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
@@ -547,6 +548,17 @@ export default function Dashboard() {
       const res = await runWarmup();
       if (res.sent) addNotification(`${res.sent} warmup message${res.sent > 1 ? 's' : ''} sent`, 'info');
       for (const note of res.notes.slice(0, 3)) addNotification(note, 'info');
+    })();
+
+    // Bulk verification: advance one batch per dashboard visit so a queued
+    // list keeps moving without the settings screen being open.
+    void (async () => {
+      const before = loadJob();
+      if (!before || before.status !== 'running') return;
+      const after = await runQueuePass();
+      if (after?.status === 'done') {
+        addNotification(`Address verification finished — ${after.tally.invalid} invalid, ${after.tally.risky} risky`, 'info');
+      }
     })();
 
     return () => { onContentJobsChange(null); registerPublishApi(null); };

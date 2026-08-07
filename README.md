@@ -342,6 +342,29 @@ single deferral was treated as a blockage and paused a provider for a day; and
 emails *we* refused were being fed back as provider failures, throttling a
 provider for our own caution. All three are fixed and covered by tests.
 
+### Bulk verification and inbox placement
+
+`src/services/verifyQueue.ts` plus `public/api/placement.php` handle the two
+slow jobs.
+
+- **Bulk verification** runs as a durable queue, not an in-memory loop: the job
+  lives in storage, each pass takes 50 addresses, and closing the tab loses
+  nothing. It can be paused and resumed, and results are applied per batch — so
+  stopping half way still leaves the work done so far recorded as contact
+  health, with anything undeliverable suppressed. The dashboard advances it in
+  the background when the settings screen is closed.
+- **Inbox placement** is the only number in this module that says where a
+  message *ended up* rather than what the sending server did. It emails a
+  marked message to your seed mailboxes, then reads those mailboxes over IMAP
+  and reports inbox, spam or not delivered per provider. Spam folders are found
+  by reading the folder list and matching, because Gmail uses `[Gmail]/Spam`,
+  Outlook uses `Junk Email` and cPanel uses `INBOX.spam`.
+- **Seed mailbox credentials are stored server-side** in the guarded store and
+  never returned to the browser — the UI can only see whether a password is
+  present. Use app passwords, and prefer mailboxes that exist only for this.
+  When the host has no PHP IMAP extension the screen says so and falls back to
+  recording placement by hand.
+
 ### What is not built, and why
 
 A **third-party warmup network** — the pool of other people's mailboxes that
