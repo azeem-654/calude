@@ -56,8 +56,12 @@ export interface AuthStatus {
   writable: boolean;
   /** Null when the PHP backend is unreachable and we are running local-only. */
   backend: 'php' | 'local';
-  /** The demo credentials the server will accept, when it offers any. */
-  testLogin?: { username: string; password: string } | null;
+  /**
+   * The demo username, when the server is still offering one. The password is
+   * deliberately not part of this — the status endpoint is unauthenticated, so
+   * anything it returns is public.
+   */
+  testLogin?: { username: string } | null;
 }
 
 /**

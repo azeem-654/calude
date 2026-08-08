@@ -63,7 +63,7 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [checking, setChecking] = useState(true);
-  const [testLogin, setTestLogin] = useState<{ username: string; password: string } | null>(null);
+  const [testLogin, setTestLogin] = useState<{ username: string } | null>(null);
   const strength = passwordStrength(password);
 
   /* The server is the only thing that knows whether setup already happened.
@@ -208,17 +208,13 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
 
         {testLogin && mode === 'login' && (
           <div style={{ marginTop: 12, background: '#fff', border: '1px dashed #d5d8dd', borderRadius: 14, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Test account</div>
-            <p style={{ fontSize: 11.5, color: MUTED, margin: '4px 0 8px', lineHeight: 1.5 }}>
-              For trying the app out: username <code style={{ color: INK, fontWeight: 700 }}>{testLogin.username}</code>,
-              password <code style={{ color: INK, fontWeight: 700 }}>{testLogin.password}</code>.
-              It has full access, so remove it in Settings → Team &amp; Permissions before this site holds anything real.
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Demo account</div>
+            <p style={{ fontSize: 11.5, color: MUTED, margin: '4px 0 0', lineHeight: 1.5 }}>
+              This install has no owner yet, so the demo login{' '}
+              <code style={{ color: INK, fontWeight: 700 }}>{testLogin.username}</code> still works for trying
+              things out. It closes itself automatically the moment you create your real account below —
+              after that only your own login opens the app.
             </p>
-            <button type="button" title="Fill the form with the test credentials"
-              onClick={() => { setEmail(testLogin.username); setPassword(testLogin.password); setError(''); }}
-              style={{ padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, background: '#fff', color: INK, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
-              Fill test credentials
-            </button>
           </div>
         )}
       </div>

@@ -65,10 +65,26 @@ $db     = db_load($FILE);
    not count towards "is this workspace set up", so signing up properly stays
    available while it exists. Delete it from Settings → Team & Permissions, or
    remove api/data/users.php, to get rid of it. */
+/**
+ * Pre-launch demo login.
+ *
+ * It exists so the install can be exercised before anyone has signed up, and
+ * it closes itself the moment a real account exists — see test_login_open().
+ * Two rules keep it from becoming a back door into a live business:
+ *   1. the password is never sent to a client, only whether a demo is offered;
+ *   2. it stops being accepted as soon as the install has a real user.
+ */
 const TEST_USERNAME = 'test';
 const TEST_PASSWORD = 'test123';
 
 function is_test_user($u) { return !empty($u['isTest']); }
+
+/**
+ * The demo login is only live while nobody has actually signed up. Once the
+ * install has a real account it is carrying real customer data, and a shared
+ * password published in a public repo must not open it.
+ */
+function test_login_open($db) { return count(real_users($db)) === 0; }
 
 /** Users excluding the demo login — what "set up" actually means. */
 function real_users($db) { return array_values(array_filter($db['users'] ?? [], fn($u) => !is_test_user($u))); }
@@ -80,7 +96,9 @@ if ($action === 'status') {
         'initialised' => count($real) > 0,
         'writable'    => crm_store_writable(),
         'accounts'    => count($real),
-        'testLogin'   => ['username' => TEST_USERNAME, 'password' => TEST_PASSWORD],
+        // Whether a demo login is on offer — never the password itself. This
+        // response is unauthenticated, so anything in it is public.
+        'testLogin'   => test_login_open($db) ? ['username' => TEST_USERNAME] : null,
     ]);
 }
 
@@ -146,7 +164,7 @@ if ($action === 'login') {
 
     // The demo login is provisioned on first use rather than shipped in the
     // repo, so a fresh install has no account until someone asks for one.
-    if ($ident === TEST_USERNAME && $pass === TEST_PASSWORD) {
+    if ($ident === TEST_USERNAME && $pass === TEST_PASSWORD && test_login_open($db)) {
         $has = false;
         foreach ($db['users'] as $u) if (is_test_user($u)) { $has = true; break; }
         if (!$has && crm_store_writable()) {
@@ -161,6 +179,9 @@ if ($action === 'login') {
     }
 
     foreach ($db['users'] as $u) {
+        // A previously provisioned demo account stays on file but stops being
+        // a valid login the moment the install has a real owner.
+        if (is_test_user($u) && !test_login_open($db)) continue;
         $matches = $u['email'] === $ident || (isset($u['username']) && strtolower($u['username']) === $ident);
         if ($matches && password_verify($pass, $u['hash'])) {
             $t = tok();
