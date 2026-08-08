@@ -16,6 +16,7 @@ import { processScheduled, processSequences, syncTracking, sendToContact } from 
 import { runBehaviourTriggers, moveDealToStage, findDeal } from '../../services/contactDeals';
 import { dueReminders, planFollowUps } from '../../services/contactScheduling';
 import { runQueuePass, loadJob } from '../../services/verifyQueue';
+import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilityAlerts';
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
@@ -559,6 +560,20 @@ export default function Dashboard() {
       if (after?.status === 'done') {
         addNotification(`Address verification finished — ${after.tally.invalid} invalid, ${after.tally.risky} risky`, 'info');
       }
+    })();
+
+    // Deliverability alerts: evaluate the rules, raise anything new, and send
+    // it through whichever channels are configured.
+    void (async () => {
+      const res = await runAlertCheck(contacts);
+      for (const a of res.raised.slice(0, 3)) {
+        addNotification(`${a.title} — ${a.action}`, a.severity === 'critical' ? 'error' : 'info');
+      }
+      if (res.raised.length > 3) {
+        addNotification(`${res.raised.length - 3} more deliverability alert${res.raised.length - 3 > 1 ? 's' : ''} — see Settings → Email Deliverability`, 'info');
+      }
+      const bl = await checkBlacklistAlert();
+      if (bl) addNotification(`${bl.title} — ${bl.action}`, 'error');
     })();
 
     return () => { onContentJobsChange(null); registerPublishApi(null); };

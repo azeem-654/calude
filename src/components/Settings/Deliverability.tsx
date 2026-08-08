@@ -14,6 +14,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import WarmupPanel from './WarmupPanel';
 import VerifyPlacement from './VerifyPlacement';
+import AlertsAndHelp from './AlertsAndHelp';
 import { getSession } from '../../services/auth';
 import {
   loadSettings, saveSettings, hostCapabilities, checkAuthentication, checkBlacklists,
@@ -81,11 +82,11 @@ const REGISTRAR_GUIDES = [
 /* ── Component ───────────────────────────────────────────────────────────── */
 
 export default function Deliverability() {
-  const [tab, setTab] = useState<'health' | 'warmup' | 'verify'>('health');
+  const [tab, setTab] = useState<'health' | 'warmup' | 'verify' | 'alerts'>('health');
   return (
     <div>
       <div style={{ display: 'flex', gap: 7, marginBottom: 16 }}>
-        {([['health', 'Reputation & authentication'], ['warmup', 'Warmup & providers'], ['verify', 'Verification & placement']] as const).map(([id, label]) => (
+        {([['health', 'Reputation & authentication'], ['warmup', 'Warmup & providers'], ['verify', 'Verification & placement'], ['alerts', 'Alerts & help']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} title={label}
             style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
               border: `1px solid ${tab === id ? INK : '#e2e8f0'}`,
@@ -94,7 +95,7 @@ export default function Deliverability() {
           </button>
         ))}
       </div>
-      {tab === 'health' ? <DeliverabilityHealth /> : tab === 'warmup' ? <WarmupPanel /> : <VerifyPlacement />}
+      {tab === 'health' ? <DeliverabilityHealth /> : tab === 'warmup' ? <WarmupPanel /> : tab === 'verify' ? <VerifyPlacement /> : <AlertsAndHelp />}
     </div>
   );
 }

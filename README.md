@@ -365,6 +365,28 @@ slow jobs.
   When the host has no PHP IMAP extension the screen says so and falls back to
   recording placement by hand.
 
+### Alerts and the help centre
+
+`src/services/deliverabilityAlerts.ts` watches the numbers the rest of the
+module reports and speaks up when one crosses a line: complaints above 0.3%,
+bounces above 5%, sender score below your minimum, a blacklist listing, inbox
+placement under 60%, or a single provider rejecting far more than the rest.
+
+Two rules keep it worth reading. **Every alert says what to do** — a reading is
+not an alert. And **a condition fires once per day**: a standing problem is one
+problem, not one per page load.
+
+In-app alerts always record. Email and SMS are optional and default to
+critical-only. SMS is queued for the configured provider rather than sent from
+the browser, because reaching Twilio directly would mean shipping the token to
+the client.
+
+**Settings → Email Deliverability → Alerts & help** also holds the help centre:
+eight guides written for someone who does not know what SPF is and should not
+have to, each saying what the thing is, why it matters, and what to do — in
+that order. The warmup guide states plainly what a warmup network is and why
+this app does not have one.
+
 ### What is not built, and why
 
 A **third-party warmup network** — the pool of other people's mailboxes that
