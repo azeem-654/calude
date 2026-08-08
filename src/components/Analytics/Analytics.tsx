@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line
 } from 'recharts';
 import Header from '../Layout/Header';
+import DeliverabilityReport from './DeliverabilityReport';
 import { revenueData, channelData } from '../../data/mockData';
 
 const COLORS = ['#17191c', '#22c55e', '#f59e0b', '#ef4444', '#3b3f45'];
@@ -40,11 +41,26 @@ const teamData = [
 
 export default function Analytics() {
   const [period, setPeriod] = useState('12m');
+  const [section, setSection] = useState<'overview' | 'deliverability'>('overview');
 
   return (
     <div style={{ minHeight: '100vh' }}>
       <Header title="Analytics" subtitle="Insights and performance metrics" />
       <div style={{ padding: '28px' }}>
+        <div style={{ display: 'flex', gap: 7, marginBottom: 18 }}>
+          {([['overview', 'Overview'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setSection(id)} title={label}
+              style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                border: `1px solid ${section === id ? '#17191c' : '#e2e8f0'}`,
+                background: section === id ? '#17191c' : '#fff', color: section === id ? '#fff' : '#475569' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {section === 'deliverability' && <DeliverabilityReport />}
+
+        {section === 'overview' && <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>Overview</h2>
           <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: 'white', border: '1px solid #e6e9f0', borderRadius: '10px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
@@ -167,6 +183,7 @@ export default function Analytics() {
             </div>
           </div>
         </div>
+        </>}
       </div>
     </div>
   );

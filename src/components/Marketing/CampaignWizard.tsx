@@ -9,6 +9,9 @@ import {
   Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target,
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
+import PreSendCheck from './PreSendCheck';
+import { findSuppression, localCheck, loadSettings as loadDeliverability } from '../../services/deliverability';
+import { suppress } from '../../services/deliverability';
 import EmailTemplateGallery from './EmailTemplates';
 import { useApp } from '../../context/AppContext';
 
@@ -1153,6 +1156,24 @@ function StepAudience({ state, onChange, counts }: { state: WizardState; onChang
   );
 }
 
+/**
+ * Whether a campaign may email this address. Mirrors the gate in
+ * sendToContact, which campaigns bypass because they call sendEmail directly.
+ * Returns the reason to log, or '' when the send may go ahead.
+ */
+function campaignGate(email: string): string {
+  const addr = (email || '').trim();
+  if (!addr) return 'No email address';
+  const suppressed = findSuppression(addr);
+  if (suppressed) return `Suppressed (${suppressed.reason.replace('_', ' ')})`;
+  const settings = loadDeliverability();
+  if (!settings.verifyBeforeSend) return '';
+  const check = localCheck(addr);
+  if (check.verdict === 'invalid') return check.reason;
+  if (check.verdict === 'risky' && settings.blockRisky) return check.reason;
+  return '';
+}
+
 /* ─── Step 5: Review & Launch ─── */
 interface SendLog { email: string; name: string; status: 'pending' | 'sent' | 'failed'; error?: string; }
 
@@ -1167,7 +1188,9 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   const [testAddr, setTestAddr] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
   const [testMsg, setTestMsg] = useState('');
+  const { addNotification } = useApp();
   const [launching, setLaunching] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [launched, setLaunched] = useState(false);
   const [sendLogs, setSendLogs] = useState<SendLog[]>([]);
   const [sendProgress, setSendProgress] = useState(0);
@@ -1199,13 +1222,21 @@ function StepReview({ state, counts, contacts, onLaunch }: {
     setTestMsg(result.success ? `Delivered! ${result.id ? `ID: ${result.id}` : ''}` : result.error || 'Send failed');
   };
 
+  /* An immediate email send goes through the deliverability checklist first.
+     Scheduled sends and SMS skip it — there is nothing to check yet, or the
+     rules do not apply. */
   const handleLaunch = async () => {
     if (!state.name) return;
+    if (sendTime === 'now' && hasProvider && !isSMS && !checking) { setChecking(true); return; }
+    await runLaunch(getAudienceContacts());
+  };
+
+  const runLaunch = async (audience: Contact[]) => {
+    setChecking(false);
     setLaunching(true);
     let sentCount = 0;
 
     if (sendTime === 'now' && hasProvider && !isSMS) {
-      const audience = getAudienceContacts();
       const cfg = loadEmailConfig();
       const logs: SendLog[] = audience.map(c => ({ email: c.email, name: c.name, status: 'pending' as const }));
       setSendLogs(logs);
@@ -1214,7 +1245,19 @@ function StepReview({ state, counts, contacts, onLaunch }: {
         const contact = audience[i];
         const subject = personalizeHtml(state.steps[0]?.subject || state.subject || state.name, contact);
         const body = state.steps[0]?.body || state.emailBody || '';
+        // The suppression gate lives in sendToContact, which campaigns do not
+        // use — so the same rules are applied here rather than letting a
+        // campaign reach addresses a single send would refuse.
+        const blocked = campaignGate(contact.email);
+        if (blocked) {
+          setSendLogs(prev => prev.map((l, idx) => idx === i ? { ...l, status: 'failed', error: blocked } : l));
+          setSendProgress(Math.round(((i + 1) / audience.length) * 100));
+          continue;
+        }
         const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject, html: personalizeHtml(body, contact) });
+        if (!result.success && /(550|551|553|does not exist|no such user|unknown recipient|user unknown)/i.test(result.error || '')) {
+          suppress(contact.email, 'hard_bounce', `Rejected during campaign "${state.name}"`);
+        }
         setSendLogs(prev => prev.map((l, idx) => idx === i ? { ...l, status: result.success ? 'sent' : 'failed', error: result.error } : l));
         setSendProgress(Math.round(((i + 1) / audience.length) * 100));
         if (result.success) sentCount++;
@@ -1222,13 +1265,33 @@ function StepReview({ state, counts, contacts, onLaunch }: {
       }
     } else {
       await new Promise(r => setTimeout(r, 1200));
-      sentCount = sendTime === 'now' ? getAudienceContacts().length : 0;
+      sentCount = sendTime === 'now' ? audience.length : 0;
     }
 
     setLaunching(false);
     setLaunched(true);
     setTimeout(() => onLaunch(sendTime === 'now', scheduledAt, sentCount), 1400);
   };
+
+  if (checking) {
+    const first = state.steps[0];
+    return (
+      <div style={{ padding: '4px 0' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Pre-send check</h2>
+        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+          Run before every campaign. It removes what must not be sent to and flags anything likely to hurt delivery.
+        </p>
+        <PreSendCheck
+          audience={getAudienceContacts()}
+          subject={first?.subject || state.subject || state.name}
+          body={first?.body || state.emailBody || ''}
+          onCancel={() => setChecking(false)}
+          onNotify={addNotification}
+          onProceed={recipients => { void runLaunch(recipients); }}
+        />
+      </div>
+    );
+  }
 
   if (launched) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '50px 20px', textAlign: 'center' }}>
