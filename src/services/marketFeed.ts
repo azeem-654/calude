@@ -16,7 +16,8 @@
  * is opt-out, badged in the UI, and never allowed to change a candle's close —
  * see `applyTick`.
  */
-import type { Appointment, Campaign, Contact, Conversation, Deal, Funnel, Pipeline, Review, Website } from '../types';
+import type { Appointment, Campaign, Contact, Conversation, Deal, Funnel, Pipeline, Review, VideoProject, Website } from '../types';
+import type { DesignPost } from '../components/SocialCreator/types';
 import { loadEmails } from './contactEmail';
 
 /* ── Shapes ── */
@@ -30,6 +31,15 @@ export interface Component {
   hint: string;
 }
 
+/** The concrete next step that would raise a component. */
+export interface ActionSpec {
+  /** Imperative title. `{n}` is replaced by `step` for saturating components. */
+  title: string;
+  /** How many more records the suggestion asks for. */
+  step: number;
+  cta: string;
+}
+
 /**
  * A component either grows toward 100 as work accumulates (`saturate`, where
  * `half` is the count that scores 50), or is a ratio of two counts.
@@ -40,14 +50,18 @@ export interface Component {
  * reply rate needs far more, because 12% replies is already excellent.
  */
 type CompSpec =
-  | (Component & { kind: 'saturate'; key: string; half: number })
-  | (Component & { kind: 'ratio'; num: string; den: string; scale?: number });
+  | (Component & { kind: 'saturate'; key: string; half: number; action?: ActionSpec })
+  | (Component & { kind: 'ratio'; num: string; den: string; scale?: number; action?: ActionSpec });
+
+/** Groups the picker's left-hand rail. */
+export type Category = 'Revenue' | 'Demand' | 'Customer' | 'Content' | 'Operations';
 
 export interface Module {
   symbol: string;
   name: string;
   /** The department this stands for, shown under the symbol. */
   dept: string;
+  category: Category;
   route: string;
   dest: string;
   basis: string;
@@ -113,91 +127,137 @@ export const INDEX: Module = {
   symbol: INDEX_SYMBOL,
   name: 'Business Progress Index',
   dept: 'All departments',
+  category: 'Revenue',
   route: '/analytics',
   dest: 'Analytics',
-  basis: 'The average progress score across all eight modules',
+  basis: 'The average progress score across every department below',
   comps: [],
 };
 
 export const MODULES: Module[] = [
   {
-    symbol: 'CRM', name: 'Contacts & CRM', dept: 'Customer data',
+    symbol: 'CRM', name: 'Contacts & CRM', dept: 'Customer data', category: 'Customer',
     route: '/contacts', dest: 'Contacts',
     basis: 'How far the contact database has been built out and worked',
     comps: [
-      { kind: 'saturate', key: 'contacts', half: 150, weight: 2, label: 'Database', hint: 'Contacts on the books' },
-      { kind: 'saturate', key: 'activities', half: 200, weight: 1, label: 'Engagement', hint: 'Logged activity against contacts' },
-      { kind: 'ratio', num: 'tagged', den: 'contacts', weight: 1, label: 'Segmented', hint: 'Share of contacts carrying a tag' },
+      { kind: 'saturate', key: 'contacts', half: 150, weight: 2, label: 'Database', hint: 'Contacts on the books',
+        action: { title: 'Add {n} more contacts', step: 25, cta: 'Add contacts' } },
+      { kind: 'saturate', key: 'activities', half: 200, weight: 1, label: 'Engagement', hint: 'Logged activity against contacts',
+        action: { title: 'Log {n} more touchpoints', step: 30, cta: 'Open contacts' } },
+      { kind: 'ratio', num: 'tagged', den: 'contacts', weight: 1, label: 'Segmented', hint: 'Share of contacts carrying a tag',
+        action: { title: 'Tag your untagged contacts', step: 0, cta: 'Tag contacts' } },
     ],
   },
   {
-    symbol: 'SALES', name: 'Sales Pipeline', dept: 'Revenue',
+    symbol: 'SALES', name: 'Sales Pipeline', dept: 'Revenue', category: 'Revenue',
     route: '/pipelines', dest: 'Pipelines',
     basis: 'Deal flow created, closed, and the rate it closes at',
     comps: [
-      { kind: 'saturate', key: 'dealsOpened', half: 40, weight: 1, label: 'Deal flow', hint: 'Deals ever opened' },
-      { kind: 'saturate', key: 'dealsWon', half: 15, weight: 1.5, label: 'Closing', hint: 'Deals marked won' },
-      { kind: 'ratio', num: 'dealsWon', den: 'dealsClosed', weight: 1.5, label: 'Win rate', hint: 'Won ÷ (won + lost)' },
+      { kind: 'saturate', key: 'dealsOpened', half: 40, weight: 1, label: 'Deal flow', hint: 'Deals ever opened',
+        action: { title: 'Open {n} new deals', step: 10, cta: 'Add a deal' } },
+      { kind: 'saturate', key: 'dealsWon', half: 15, weight: 1.5, label: 'Closing', hint: 'Deals marked won',
+        action: { title: 'Close {n} more deals', step: 5, cta: 'Work the pipeline' } },
+      { kind: 'ratio', num: 'dealsWon', den: 'dealsClosed', weight: 1.5, label: 'Win rate', hint: 'Won ÷ (won + lost)',
+        action: { title: 'Qualify harder before quoting', step: 0, cta: 'Review lost deals' } },
     ],
   },
   {
-    symbol: 'MKTG', name: 'Marketing', dept: 'Demand',
+    symbol: 'MKTG', name: 'Marketing', dept: 'Demand', category: 'Demand',
     route: '/marketing', dest: 'Marketing',
     basis: 'Campaigns built, mail actually sent, and whether it gets opened',
     comps: [
-      { kind: 'saturate', key: 'campaigns', half: 8, weight: 1, label: 'Campaigns', hint: 'Campaigns created' },
-      { kind: 'saturate', key: 'emailsSent', half: 400, weight: 1, label: 'Reach', hint: 'Outbound emails sent' },
-      { kind: 'ratio', num: 'emailsOpened', den: 'emailsSent', weight: 1.5, label: 'Open rate', hint: 'Opened ÷ sent' },
+      { kind: 'saturate', key: 'campaigns', half: 8, weight: 1, label: 'Campaigns', hint: 'Campaigns created',
+        action: { title: 'Create {n} marketing campaigns', step: 2, cta: 'Create a campaign' } },
+      { kind: 'saturate', key: 'emailsSent', half: 400, weight: 1, label: 'Reach', hint: 'Outbound emails sent',
+        action: { title: 'Send {n} more emails', step: 100, cta: 'Launch a campaign' } },
+      { kind: 'ratio', num: 'emailsOpened', den: 'emailsSent', weight: 1.5, label: 'Open rate', hint: 'Opened ÷ sent',
+        action: { title: 'Rewrite subject lines that flopped', step: 0, cta: 'Open campaigns' } },
     ],
   },
   {
-    symbol: 'INBOX', name: 'Conversations', dept: 'Service',
+    symbol: 'INBOX', name: 'Conversations', dept: 'Service', category: 'Customer',
     route: '/conversations', dest: 'Conversations',
     basis: 'Two-way conversation volume and how much of it your team answers',
     comps: [
-      { kind: 'saturate', key: 'convos', half: 40, weight: 1, label: 'Threads', hint: 'Conversations opened' },
-      { kind: 'saturate', key: 'messages', half: 250, weight: 1, label: 'Volume', hint: 'Messages exchanged' },
-      { kind: 'ratio', num: 'agentMsgs', den: 'messages', weight: 1.5, label: 'Response', hint: 'Share of messages sent by your team' },
+      { kind: 'saturate', key: 'convos', half: 40, weight: 1, label: 'Threads', hint: 'Conversations opened',
+        action: { title: 'Start {n} conversations', step: 10, cta: 'Open inbox' } },
+      { kind: 'saturate', key: 'messages', half: 250, weight: 1, label: 'Volume', hint: 'Messages exchanged',
+        action: { title: 'Exchange {n} more messages', step: 50, cta: 'Open inbox' } },
+      { kind: 'ratio', num: 'agentMsgs', den: 'messages', weight: 1.5, label: 'Response', hint: 'Share of messages sent by your team',
+        action: { title: 'Answer the threads waiting on you', step: 0, cta: 'Reply now' } },
     ],
   },
   {
-    symbol: 'SCHED', name: 'Scheduling', dept: 'Operations',
+    symbol: 'SCHED', name: 'Scheduling', dept: 'Operations', category: 'Operations',
     route: '/calendar', dest: 'Calendar',
     basis: 'Meetings booked and how many of them actually happen',
     comps: [
-      { kind: 'saturate', key: 'appts', half: 30, weight: 1.5, label: 'Bookings', hint: 'Appointments booked' },
-      { kind: 'ratio', num: 'apptsDone', den: 'apptsPast', weight: 1.5, label: 'Show rate', hint: 'Completed ÷ meetings whose time has passed' },
+      { kind: 'saturate', key: 'appts', half: 30, weight: 1.5, label: 'Bookings', hint: 'Appointments booked',
+        action: { title: 'Book {n} more meetings', step: 8, cta: 'Open calendar' } },
+      { kind: 'ratio', num: 'apptsDone', den: 'apptsPast', weight: 1.5, label: 'Show rate', hint: 'Completed ÷ meetings whose time has passed',
+        action: { title: 'Turn on meeting reminders', step: 0, cta: 'Scheduling settings' } },
     ],
   },
   {
-    symbol: 'REP', name: 'Reputation', dept: 'Brand',
+    symbol: 'REP', name: 'Reputation', dept: 'Brand', category: 'Customer',
     route: '/reputation', dest: 'Reputation',
     basis: 'Review volume, how fast you answer, and the score they leave',
     comps: [
-      { kind: 'saturate', key: 'reviews', half: 25, weight: 1, label: 'Volume', hint: 'Reviews received' },
-      { kind: 'ratio', num: 'reviewsReplied', den: 'reviews', weight: 1.5, label: 'Reply rate', hint: 'Reviews you answered' },
-      { kind: 'ratio', num: 'ratingSum', den: 'reviews', scale: 20, weight: 1.5, label: 'Rating', hint: 'Average stars, scaled to 100' },
+      { kind: 'saturate', key: 'reviews', half: 25, weight: 1, label: 'Volume', hint: 'Reviews received',
+        action: { title: 'Ask {n} customers for a review', step: 5, cta: 'Request reviews' } },
+      { kind: 'ratio', num: 'reviewsReplied', den: 'reviews', weight: 1.5, label: 'Reply rate', hint: 'Reviews you answered',
+        action: { title: 'Reply to every unanswered review', step: 0, cta: 'Reply to reviews' } },
+      { kind: 'ratio', num: 'ratingSum', den: 'reviews', scale: 20, weight: 1.5, label: 'Rating', hint: 'Average stars, scaled to 100',
+        action: { title: 'Follow up on your low-star reviews', step: 0, cta: 'Open reputation' } },
     ],
   },
   {
-    symbol: 'WEB', name: 'Web & Funnels', dept: 'Acquisition',
+    symbol: 'SHORTS', name: 'AI Shorts', dept: 'Video', category: 'Content',
+    route: '/ai-shorts', dest: 'AI Shorts',
+    basis: 'Short-form clips cut from your videos, and how many go out',
+    comps: [
+      { kind: 'saturate', key: 'clips', half: 20, weight: 1.5, label: 'Clips', hint: 'Clips generated from your videos',
+        action: { title: 'Turn {n} videos into shorts', step: 6, cta: 'Create shorts' } },
+      { kind: 'ratio', num: 'clipsPublished', den: 'clips', weight: 1.5, label: 'Published', hint: 'Clips actually posted to a platform',
+        action: { title: 'Publish the clips sitting in drafts', step: 0, cta: 'Publish shorts' } },
+    ],
+  },
+  {
+    symbol: 'SOCIAL', name: 'Social Creator', dept: 'Content', category: 'Content',
+    route: '/social-creator', dest: 'Social Creator',
+    basis: 'Social posts designed, and how much of it actually ships',
+    comps: [
+      { kind: 'saturate', key: 'posts', half: 15, weight: 1.5, label: 'Designs', hint: 'Social posts created',
+        action: { title: 'Design {n} social posts', step: 5, cta: 'Create a post' } },
+      { kind: 'ratio', num: 'postsLive', den: 'posts', weight: 1.5, label: 'Published', hint: 'Posts published or scheduled',
+        action: { title: 'Schedule the posts still in draft', step: 0, cta: 'Schedule posts' } },
+    ],
+  },
+  {
+    symbol: 'WEB', name: 'Web & Funnels', dept: 'Acquisition', category: 'Demand',
     route: '/funnels', dest: 'Funnels',
     basis: 'Funnels and sites built, and how much of it is actually published',
     comps: [
-      { kind: 'saturate', key: 'funnels', half: 5, weight: 1, label: 'Funnels', hint: 'Funnels created' },
-      { kind: 'saturate', key: 'websites', half: 3, weight: 1, label: 'Sites', hint: 'Websites created' },
-      { kind: 'ratio', num: 'webLive', den: 'webAssets', weight: 1, label: 'Published', hint: 'Live ÷ total funnels and sites' },
+      { kind: 'saturate', key: 'funnels', half: 5, weight: 1, label: 'Funnels', hint: 'Funnels created',
+        action: { title: 'Build {n} more funnels', step: 2, cta: 'Build a funnel' } },
+      { kind: 'saturate', key: 'websites', half: 3, weight: 1, label: 'Sites', hint: 'Websites created',
+        action: { title: 'Launch {n} more sites', step: 1, cta: 'Build a site' } },
+      { kind: 'ratio', num: 'webLive', den: 'webAssets', weight: 1, label: 'Published', hint: 'Live ÷ total funnels and sites',
+        action: { title: 'Publish your draft funnels and sites', step: 0, cta: 'Publish now' } },
     ],
   },
   {
-    symbol: 'DLVR', name: 'Deliverability', dept: 'Email health',
+    symbol: 'DLVR', name: 'Deliverability', dept: 'Email health', category: 'Operations',
     route: '/settings', dest: 'Email settings',
     basis: 'Whether the mail you send is reaching inboxes at all',
     comps: [
-      { kind: 'ratio', num: 'emailsDelivered', den: 'emailsSent', weight: 2, label: 'Delivery', hint: 'Delivered ÷ sent' },
-      { kind: 'saturate', key: 'emailsSent', half: 200, weight: 1, label: 'Track record', hint: 'Volume sent — reputation needs history' },
+      { kind: 'ratio', num: 'emailsDelivered', den: 'emailsSent', weight: 2, label: 'Delivery', hint: 'Delivered ÷ sent',
+        action: { title: 'Clean the invalid addresses off your list', step: 0, cta: 'Verify addresses' } },
+      { kind: 'saturate', key: 'emailsSent', half: 200, weight: 1, label: 'Track record', hint: 'Volume sent — reputation needs history',
+        action: { title: 'Warm the domain with {n} more sends', step: 50, cta: 'Open warmup' } },
       // 12.5% replies is an excellent rate, so that is where this reaches 100.
-      { kind: 'ratio', num: 'emailsReplied', den: 'emailsSent', scale: 800, weight: 1, label: 'Replies', hint: 'Reply rate — the strongest inbox signal there is' },
+      { kind: 'ratio', num: 'emailsReplied', den: 'emailsSent', scale: 800, weight: 1, label: 'Replies', hint: 'Reply rate — the strongest inbox signal there is',
+        action: { title: 'Write mail that asks a question', step: 0, cta: 'Open campaigns' } },
     ],
   },
 ];
@@ -276,6 +336,8 @@ export interface FeedInput {
   reviews: Review[];
   funnels: Funnel[];
   websites: Website[];
+  videoProjects: VideoProject[];
+  socialPosts: DesignPost[];
 }
 
 type Streams = Map<string, Series>;
@@ -374,6 +436,27 @@ function buildStreams(input: FeedInput): Streams {
     if (r.replied) push('reviewsReplied', t);
   }
 
+  /* AI Shorts. The clip carries the date, not the project it came from. */
+  for (const proj of input.videoProjects) {
+    for (const clip of proj.clips ?? []) {
+      const t = ms(clip.createdAt);
+      if (!Number.isFinite(t)) continue;
+      earliest = Math.min(earliest, t);
+      push('clips', t);
+      const live = (clip.publishedTo ?? []).some(x => x.status === 'published' || x.status === 'scheduled');
+      if (live) push('clipsPublished', t);
+    }
+  }
+
+  /* Social Creator */
+  for (const post of input.socialPosts) {
+    const t = ms(post.createdAt);
+    if (!Number.isFinite(t)) continue;
+    earliest = Math.min(earliest, t);
+    push('posts', t);
+    if (post.status === 'published' || post.status === 'scheduled') push('postsLive', t);
+  }
+
   /* Funnels and websites. Both may predate the createdAt field, so anything
      undated is treated as having existed since the account's first record —
      which keeps it out of recent history instead of faking a fresh launch. */
@@ -435,6 +518,118 @@ function scoreAt(streams: Streams, m: Module, at: number): number {
 function keysFor(m: Module): string[] {
   if (m.symbol === INDEX_SYMBOL) return MODULES.flatMap(keysFor);
   return m.comps.flatMap(c => (c.kind === 'saturate' ? [c.key] : [c.num, c.den]));
+}
+
+/* ── Growth suggestions ── */
+
+export interface GrowthAction {
+  id: string;
+  symbol: string;
+  /** Department name, for the card's subtitle. */
+  module: string;
+  title: string;
+  detail: string;
+  cta: string;
+  route: string;
+  /** Index points this would add, computed rather than guessed. */
+  lift: number;
+  /** Where the component stands today. */
+  current: number;
+}
+
+/** A component's score if one of its inputs were larger. */
+function hypothetical(streams: Streams, c: CompSpec, at: number): number {
+  if (c.kind === 'saturate') {
+    const n = valueAt(streams.get(c.key), at) + (c.action?.step ?? 0);
+    return n <= 0 ? 0 : clamp((100 * n) / (n + c.half), 0, 100);
+  }
+  // Ratios have no record count to add to, so the suggestion is modelled as
+  // closing a quarter of the distance to a perfect score — the kind of move a
+  // focused week's work produces, not a fantasy jump to 100.
+  const today = compScore(streams, c, at);
+  return clamp(today + (100 - today) * 0.25, 0, 100);
+}
+
+/** A module's score with one component replaced by a hypothetical value. */
+function moduleScoreWith(streams: Streams, m: Module, at: number, idx: number, value: number): number {
+  let total = 0, weight = 0;
+  m.comps.forEach((c, i) => {
+    total += (i === idx ? value : compScore(streams, c, at)) * c.weight;
+    weight += c.weight;
+  });
+  return weight > 0 ? total / weight : 0;
+}
+
+/**
+ * The concrete next steps that would move the index most, computed by actually
+ * re-scoring with each suggestion applied and keeping the difference. Anything
+ * already strong is left alone — a suggestion to improve a 92 is noise.
+ */
+/** Two rounds' worth: every department's best move, then a ranked backlog. */
+export function growthActions(streams: Streams, at: number, limit = MODULES.length * 2): GrowthAction[] {
+  // Raising one department by d moves the mean by d/N, so the per-module
+  // deltas are all the ranking needs — no separate index baseline.
+  const baseScores = MODULES.map(m => moduleScore(streams, m, at));
+  const out: GrowthAction[] = [];
+
+  MODULES.forEach((m, mi) => {
+    m.comps.forEach((c, ci) => {
+      if (!c.action) return;
+      // A ratio with nothing in its denominator is not a weak rate, it is an
+      // empty one. Suggesting "rewrite the subject lines that flopped" to
+      // somebody who has never sent an email is worse than saying nothing —
+      // the saturating components in the same department carry the real advice.
+      if (c.kind === 'ratio' && valueAt(streams.get(c.den), at) <= 0) return;
+      const current = compScore(streams, c, at);
+      if (current >= 85) return;
+      const next = hypothetical(streams, c, at);
+      if (next <= current + 0.01) return;
+
+      const withAction = moduleScoreWith(streams, m, at, ci, next);
+      const lift = (withAction - baseScores[mi]) / MODULES.length;
+      if (lift <= 0.01) return;
+
+      out.push({
+        id: `${m.symbol}-${c.label}`,
+        symbol: m.symbol,
+        module: m.name,
+        title: c.action.title.replace('{n}', String(c.action.step)),
+        detail: `${c.label} sits at ${Math.round(current)}/100 — ${c.hint.toLowerCase()}.`,
+        cta: c.action.cta,
+        route: m.route,
+        lift,
+        current,
+      });
+    });
+  });
+
+  // Biggest mover first, but one suggestion per department before any
+  // department gets a second — otherwise a single weak module fills the list
+  // and whole parts of the business never get a mention. Past that first round
+  // the remainder is a ranked backlog, so the panel answers "what else" as well
+  // as "what next".
+  out.sort((a, b) => b.lift - a.lift);
+  const firstPass = out.filter((a, i) => out.findIndex(x => x.symbol === a.symbol) === i);
+  const rest = out.filter(a => !firstPass.includes(a));
+  return [...firstPass, ...rest].slice(0, limit).map(a => ({ ...a, lift: Math.round(a.lift * 100) / 100 }));
+}
+
+/** Suggestions for the demo book, phrased as the first steps in a new account. */
+function demoActions(): GrowthAction[] {
+  return MODULES.map((m, i) => {
+    const c = m.comps.find(x => x.action);
+    return {
+      id: `demo-${m.symbol}`,
+      symbol: m.symbol,
+      module: m.name,
+      title: c?.action ? c.action.title.replace('{n}', String(c.action.step)) : `Set up ${m.name}`,
+      detail: `${m.name} has no records yet — this is where it starts.`,
+      cta: c?.action?.cta ?? 'Open',
+      route: m.route,
+      lift: Math.round((3.2 - i * 0.35) * 100) / 100,
+      current: 0,
+    };
+  });
 }
 
 export function breakdownFor(streams: Streams, m: Module, at: number): Breakdown[] {
@@ -581,6 +776,8 @@ export function resetTicks(): void {
 
 export interface Book {
   quotes: Quote[];
+  /** Ranked next steps, each with the index lift it would produce. */
+  actions: GrowthAction[];
   /** True when the series were replayed from real records. */
   real: boolean;
   /** Records that fed the replay, shown so the badge can be justified. */
@@ -617,7 +814,12 @@ export function buildBook(input: FeedInput, timeframe: Timeframe, now = Date.now
     };
   });
 
-  return { quotes, real, recordCount };
+  return {
+    quotes,
+    actions: real ? growthActions(streams, now) : demoActions(),
+    real,
+    recordCount,
+  };
 }
 
 /**
@@ -736,6 +938,14 @@ export function buildTape(input: FeedInput, limit = 40): TapeRow[] {
   for (const conv of input.conversations) {
     const first = conv.messages?.[0];
     if (first) add(`conv-${conv.id}`, ms(first.timestamp), 'INBOX', 'buy', `${conv.contactName} — thread opened`);
+  }
+  for (const proj of input.videoProjects) {
+    for (const clip of proj.clips ?? []) {
+      add(`clip-${clip.id}`, ms(clip.createdAt), 'SHORTS', 'buy', `Clip "${clip.title}" cut`);
+    }
+  }
+  for (const post of input.socialPosts) {
+    add(`post-${post.id}`, ms(post.createdAt), 'SOCIAL', 'buy', `Post "${post.name}" designed`);
   }
 
   return rows.sort((a, b) => b.ts - a.ts).slice(0, limit);

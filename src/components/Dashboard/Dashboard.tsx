@@ -432,7 +432,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, videoProjects, socialPosts, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -595,7 +595,7 @@ export default function Dashboard() {
   const animWinRate = useCountUp(Math.round((wonCount / Math.max(wonCount + activeCount, 1)) * 100), 1200);
 
   /* Everything the department board replays, gathered in one place. */
-  const feedInput = { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites };
+  const feedInput = { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts };
 
   /* ── Growth history (won revenue by month, demo fallback) ── */
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpRight, LayoutGrid, Radio, Table2 } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, LayoutGrid, Radio, Table2 } from 'lucide-react';
 import {
   buildTape, formatBucket, formatClock, formatCountdown, formatValue,
   indexComposition, INDEX_SYMBOL, TIMEFRAMES, untilNextBucket,
   type FeedInput, type Quote, type Timeframe,
 } from '../../services/marketFeed';
 import CandleChart from './CandleChart';
+import GrowthActions from './GrowthActions';
+import MarketPicker from './MarketPicker';
+import { ModuleMark } from './moduleIcons';
 import Sparkline from './Sparkline';
 import { setSimEnabled, simEnabled, useMarketBook } from './useMarketBook';
 import { useTheme } from './useTheme';
@@ -71,27 +74,30 @@ function WatchRow({ quote, selected, tickSeq, p, onSelect }: {
       aria-pressed={selected}
       title={m.basis}
       style={{
-        display: 'grid', gridTemplateColumns: '1fr 62px 66px', alignItems: 'center', gap: 8,
+        display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 52px 62px', alignItems: 'center', gap: 8,
         width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', cursor: 'pointer',
         borderLeft: `2px solid ${selected ? p.accent : 'transparent'}`,
         backgroundColor: selected ? p.panelHi : 'transparent',
         borderBottom: `1px solid ${p.border}`,
       }}
     >
-      <span style={{ minWidth: 0 }}>
-        <span style={{
-          display: 'block', fontSize: isIndex ? 12 : 11.5, fontWeight: 800,
-          color: p.textStrong, letterSpacing: '0.02em',
-        }}>
-          {m.symbol}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <ModuleMark symbol={m.symbol} size={22} />
+        <span style={{ minWidth: 0 }}>
+          <span style={{
+            display: 'block', fontSize: isIndex ? 12 : 11.5, fontWeight: 800,
+            color: p.textStrong, letterSpacing: '0.02em',
+          }}>
+            {m.symbol}
+          </span>
+          <span style={{
+            display: 'block', fontSize: 10, color: p.textDim, overflow: 'hidden',
+            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{isIndex ? m.dept : m.name}</span>
         </span>
-        <span style={{
-          display: 'block', fontSize: 10, color: p.textDim, overflow: 'hidden',
-          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{isIndex ? m.dept : m.name}</span>
       </span>
 
-      <Sparkline candles={quote.candles} up={up} p={p} />
+      <Sparkline candles={quote.candles} up={up} p={p} width={52} />
 
       <span style={{ textAlign: 'right' }}>
         <span
@@ -306,12 +312,14 @@ export default function MarketBoard(props: Props) {
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   const [symbol, setSymbol] = useState(INDEX_SYMBOL);
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const [side, setSide] = useState<'actions' | 'composition' | 'tape'>('actions');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [sim, setSim] = useState(simEnabled);
 
-  const { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites } = props;
+  const { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts } = props;
   const input = useMemo<FeedInput>(
-    () => ({ contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites }),
-    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites],
+    () => ({ contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts }),
+    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts],
   );
   const { book, seq: tickSeq, now } = useMarketBook(input, timeframe, sim);
 
@@ -405,7 +413,7 @@ export default function MarketBoard(props: Props) {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(0, 2.5fr) minmax(220px, 1fr)' }}>
 
         {/* Watchlist */}
-        <div style={{ borderRight: `1px solid ${p.border}`, backgroundColor: p.panel }}>
+        <div aria-label="Department watchlist" style={{ borderRight: `1px solid ${p.border}`, backgroundColor: p.panel }}>
           <SectionTitle p={p} right={<span style={{ fontSize: 9.5, color: p.textDim }}>{modules.length} modules</span>}>
             Departments
           </SectionTitle>
@@ -422,15 +430,37 @@ export default function MarketBoard(props: Props) {
         </div>
 
         {/* Chart */}
-        <div style={{ minWidth: 0, backgroundColor: p.ink }}>
+        <div style={{ minWidth: 0, backgroundColor: p.ink, position: 'relative' }}>
+          {pickerOpen && (
+            <MarketPicker
+              book={book}
+              selected={selected.module.symbol}
+              p={p}
+              onPick={setSymbol}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
             padding: '10px 14px', borderBottom: `1px solid ${p.border}`,
           }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: p.textStrong, letterSpacing: '0.02em' }}>
-                {selected.module.symbol}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setPickerOpen(v => !v)}
+                aria-expanded={pickerOpen}
+                title="Browse departments"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 9px 4px 4px',
+                  borderRadius: 999, border: `1px solid ${p.border}`, backgroundColor: p.panel,
+                  color: p.textStrong, cursor: 'pointer',
+                }}
+              >
+                <ModuleMark symbol={selected.module.symbol} size={22} />
+                <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: '0.02em' }}>
+                  {selected.module.symbol}
+                </span>
+                <ChevronDown size={12} />
+              </button>
               <span
                 key={`sel-${tickSeq}`}
                 className={selected.tickDir === 'up' ? 'tick-up' : selected.tickDir === 'down' ? 'tick-down' : undefined}
@@ -507,16 +537,34 @@ export default function MarketBoard(props: Props) {
           </div>
         </div>
 
-        {/* Composition + tape */}
+        {/* Actions / composition / tape */}
         <div style={{ borderLeft: `1px solid ${p.border}`, backgroundColor: p.panel, minWidth: 0 }}>
-          <SectionTitle p={p} right={<span style={{ fontSize: 9.5, color: p.textDim }}>vs average</span>}>
-            Index Composition
-          </SectionTitle>
-          <Composition rows={composition} p={p} onPick={setSymbol} />
-          <SectionTitle p={p} right={<span style={{ fontSize: 9.5, color: p.flat }}>{tape.length} prints</span>}>
-            Time &amp; Sales
-          </SectionTitle>
-          <Tape rows={tape} now={now} p={p} />
+          <div style={{ display: 'flex', borderBottom: `1px solid ${p.border}` }}>
+            {([
+              ['actions', 'Grow', `${book.actions.length}`],
+              ['composition', 'Index', ''],
+              ['tape', 'Tape', `${tape.length}`],
+            ] as const).map(([key, label, count]) => (
+              <button
+                key={key}
+                onClick={() => setSide(key)}
+                aria-pressed={side === key}
+                style={{
+                  flex: 1, padding: '9px 6px', border: 'none', cursor: 'pointer',
+                  backgroundColor: side === key ? p.ink : 'transparent',
+                  color: side === key ? p.textStrong : p.textMuted,
+                  borderBottom: `2px solid ${side === key ? p.accent : 'transparent'}`,
+                  fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase',
+                }}
+              >
+                {label}{count ? ` ${count}` : ''}
+              </button>
+            ))}
+          </div>
+
+          {side === 'actions' && <GrowthActions actions={book.actions} p={p} onFocus={setSymbol} />}
+          {side === 'composition' && <Composition rows={composition} p={p} onPick={setSymbol} />}
+          {side === 'tape' && <Tape rows={tape} now={now} p={p} />}
         </div>
       </div>
     </section>

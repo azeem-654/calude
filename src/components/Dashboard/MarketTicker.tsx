@@ -44,10 +44,10 @@ export default function MarketTicker(props: Props) {
   const p = palette(theme);
   const [sim] = useState(simEnabled);
 
-  const { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites } = props;
+  const { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts } = props;
   const input = useMemo<FeedInput>(
-    () => ({ contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites }),
-    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites],
+    () => ({ contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts }),
+    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts],
   );
   const { book, seq } = useMarketBook(input, '1D', sim);
   const fade = p.ink;
