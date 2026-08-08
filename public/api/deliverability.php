@@ -226,7 +226,18 @@ const DLV_DNSBL = [
 
 function dlv_reverse_ip($ip) { return implode('.', array_reverse(explode('.', $ip))); }
 
+/**
+ * Seconds this sweep is allowed to spend before it gives up and returns what it
+ * has. Shared hosting kills a PHP worker at max_execution_time (often 30s), and
+ * a killed worker never reaches the cache write — so every later request repeats
+ * the whole sweep and the account burns through its process limit. Finishing
+ * early with a partial answer is what keeps that from happening.
+ */
+const DLV_BL_BUDGET = 8;
+
 function dlv_blacklist($host) {
+    $deadline = microtime(true) + DLV_BL_BUDGET;
+
     // Domain in, IPs out: a domain's reputation is really its sending IPs'.
     $ips = [];
     if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
@@ -235,12 +246,16 @@ function dlv_blacklist($host) {
         $a = @dns_get_record($host, DNS_A);
         if (is_array($a)) foreach ($a as $r) if (!empty($r['ip'])) $ips[] = $r['ip'];
     }
-    $ips = array_slice(array_unique($ips), 0, 4);
+    // Two IPs is enough to characterise a sender; four doubled the DNS work for
+    // almost no extra signal.
+    $ips = array_slice(array_unique($ips), 0, 2);
 
     $results = [];
+    $skipped = 0;
     foreach ($ips as $ip) {
         $rev = dlv_reverse_ip($ip);
         foreach (DLV_DNSBL as $bl) {
+            if (microtime(true) >= $deadline) { $skipped++; continue; }
             $listed = dlv_can_dns() ? @checkdnsrr("{$rev}.{$bl['zone']}", 'A') : false;
             $results[] = [
                 'ip' => $ip, 'list' => $bl['name'], 'zone' => $bl['zone'],
@@ -249,17 +264,23 @@ function dlv_blacklist($host) {
         }
     }
     $listed = array_values(array_filter($results, fn($r) => $r['listed']));
+    $partial = $skipped > 0;
+
     return [
         'ips' => $ips,
         'checked' => count($results),
+        'skipped' => $skipped,
+        'partial' => $partial,
         'results' => $results,
         'listedCount' => count($listed),
-        'status' => !$ips ? 'unknown' : (count($listed) ? 'error' : 'pass'),
+        'status' => !$ips ? 'unknown' : (count($listed) ? 'error' : ($partial ? 'unknown' : 'pass')),
         'message' => !$ips
             ? 'Could not resolve any IP for this host, so blacklists could not be checked.'
             : (count($listed)
                 ? 'Listed on ' . count($listed) . ' blacklist(s). Delivery will suffer until you are delisted.'
-                : 'Not listed on any of the ' . count(DLV_DNSBL) . ' blacklists checked.'),
+                : ($partial
+                    ? 'Checked ' . count($results) . ' of ' . (count($ips) * count(DLV_DNSBL)) . ' blacklists before the time budget ran out; none of those listed you. DNS is slow from this server — try again shortly.'
+                    : 'Not listed on any of the ' . count(DLV_DNSBL) . ' blacklists checked.')),
     ];
 }
 
@@ -505,8 +526,12 @@ if ($action === 'blacklist') {
         out(['success' => false, 'error' => 'Enter a domain or IPv4 address.']);
     }
     $target = $host !== '' ? $host : $d['host'];
-    $cached = dlv_cache_get('bl:' . $target, 1800);
-    if ($cached !== null) out(['success' => true, 'cached' => true] + $cached);
+    // A partial sweep is still cached — just for long enough to stop a retry
+    // storm rather than the full half hour a complete answer earns.
+    $prev = dlv_cache_get('bl:' . $target, 1800);
+    if ($prev !== null && empty($prev['partial'])) out(['success' => true, 'cached' => true] + $prev);
+    $recentPartial = dlv_cache_get('bl:' . $target, 300);
+    if ($recentPartial !== null) out(['success' => true, 'cached' => true] + $recentPartial);
     $res = dlv_blacklist($target);
     dlv_cache_put('bl:' . $target, $res);
     out(['success' => true, 'cached' => false] + $res);

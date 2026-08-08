@@ -337,6 +337,14 @@ export async function checkBlacklistAlert(): Promise<Alert | null> {
   const already = firedToday();
   if (already.has('blacklisted')) return null;
 
+  // A DNSBL sweep is the most expensive thing the dashboard can ask the server
+  // for — up to ten DNS round trips against remote zones. Marking it done for
+  // the day *before* reading the result is the point: a clean domain used to
+  // record nothing, so the sweep ran again on every single dashboard load.
+  if (already.has('blacklist-checked')) return null;
+  already.add('blacklist-checked');
+  recordFired(already);
+
   const res = await checkBlacklists(settings.sendingDomain);
   if (!res.ok || !res.data || res.data.listedCount === 0) return null;
 
