@@ -432,8 +432,10 @@ export default function Funnels() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [statsFunnel, setStatsFunnel] = useState<FunnelType | null>(null);
 
-  const totalRevenue = funnels.reduce((s, f) => s + f.revenue, 0);
-  const totalVisitors = funnels.reduce((s, f) => s + f.visitors, 0);
+  // Records written by older versions (or a partial import) can be missing
+  // these counters; a NaN here used to blank the whole page.
+  const totalRevenue = funnels.reduce((s, f) => s + (f.revenue ?? 0), 0);
+  const totalVisitors = funnels.reduce((s, f) => s + (f.visitors ?? 0), 0);
   const totalConversions = funnels.reduce((s, f) => s + f.conversions, 0);
   const avgCvr = totalVisitors > 0 ? ((totalConversions / totalVisitors) * 100).toFixed(1) : '0';
 
@@ -608,9 +610,9 @@ export default function Funnels() {
 
                 <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                   {[
-                    { label: 'Visitors', value: funnel.visitors.toLocaleString(), color: '#17191c' },
-                    { label: 'Conversions', value: funnel.conversions.toLocaleString(), color: '#22c55e' },
-                    { label: 'Revenue', value: `$${funnel.revenue.toLocaleString()}`, color: '#f59e0b' },
+                    { label: 'Visitors', value: (funnel.visitors ?? 0).toLocaleString(), color: '#17191c' },
+                    { label: 'Conversions', value: (funnel.conversions ?? 0).toLocaleString(), color: '#22c55e' },
+                    { label: 'Revenue', value: `$${(funnel.revenue ?? 0).toLocaleString()}`, color: '#f59e0b' },
                   ].map(m => (
                     <div key={m.label} style={{ textAlign: 'center' }}>
                       <p style={{ fontSize: '20px', fontWeight: 700, color: m.color, margin: 0, letterSpacing: '-0.02em' }}>{m.value}</p>
@@ -666,8 +668,8 @@ export default function Funnels() {
             <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>Performance across {statsFunnel.pages?.length ?? 0} pages</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
               {[
-                { l: 'Visitors', v: statsFunnel.visitors.toLocaleString(), c: '#17191c' },
-                { l: 'Conversions', v: statsFunnel.conversions.toLocaleString(), c: '#22c55e' },
+                { l: 'Visitors', v: (statsFunnel.visitors ?? 0).toLocaleString(), c: '#17191c' },
+                { l: 'Conversions', v: (statsFunnel.conversions ?? 0).toLocaleString(), c: '#22c55e' },
                 { l: 'Conv. rate', v: statsFunnel.visitors > 0 ? `${((statsFunnel.conversions / statsFunnel.visitors) * 100).toFixed(1)}%` : '0%', c: '#6366f1' },
               ].map(m => (
                 <div key={m.l} style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>

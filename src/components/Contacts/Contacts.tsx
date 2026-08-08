@@ -396,7 +396,11 @@ export default function Contacts() {
 
   return (
     <div>
-      <Header title="Contacts" subtitle={`${contacts.length} total contacts · ${filtered.length} showing`} />
+      <Header
+        title="Contacts"
+        subtitle={`${contacts.length} total contacts · ${filtered.length} showing`}
+        actions={[{ icon: Plus, label: 'Add contact', onClick: () => setShowModal(true) }]}
+      />
       <div style={{ padding: '28px', minHeight: 'calc(100vh - 73px)', boxSizing: 'border-box' }}>
 
         {/* Toolbar */}

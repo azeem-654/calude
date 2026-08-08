@@ -32,11 +32,17 @@ export default function ClientBilling() {
   const [busy, setBusy] = useState<'' | 'portal' | 'checkout'>('');
   const [error, setError] = useState('');
 
+  // getSession() parses localStorage afresh on every render, so `session` is a
+  // new object each time. Depending on it re-ran this effect on every render,
+  // and the setState inside caused the next render — an endless loop that
+  // re-fetched billing forever. Depend on the token string instead.
+  const token = session?.token ?? '';
+
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!accountId || !session) { setLoading(false); return; }
-      const remote = await fetchBillingRecord(accountId, session.token);
+      if (!accountId || !token) { setLoading(false); return; }
+      const remote = await fetchBillingRecord(accountId, token);
       if (!alive) return;
       if (remote) {
         setHasCustomer(remote.hasCustomer);
@@ -46,7 +52,7 @@ export default function ClientBilling() {
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, [accountId, session]);
+  }, [accountId, token]);
 
   const meta = STATUS_META[record.status] ?? STATUS_META.none;
   const isActive = record.status === 'active';

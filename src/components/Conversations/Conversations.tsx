@@ -51,10 +51,17 @@ function relTime(iso: string): string {
 
 function initials(name: string) { return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
 
+/** Rail id for the chat/SMS threads, which are not an IMAP mailbox. */
+const CHAT_RAIL = '__chat__';
+
 export default function Conversations() {
   const { addNotification, conversations } = useApp();
   const [mailboxes, setMailboxes] = useState<Mailbox[]>(loadMailboxes);
-  const [activeMbId, setActiveMbId] = useState<string>('all');
+  // 'all' and a mailbox id select IMAP inboxes; CHAT_RAIL selects the chat/SMS
+  // threads, which have their own shape and so get their own pane.
+  const [activeMbId, setActiveMbId] = useState<string>(
+    () => (loadMailboxes().length === 0 && conversations.length > 0 ? CHAT_RAIL : 'all'));
+  const [chatId, setChatId] = useState<string>('');
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [selectedUid, setSelectedUid] = useState<string>('');   // `${mailboxId}:${uid}`
   const [search, setSearch] = useState('');
@@ -225,8 +232,20 @@ export default function Conversations() {
 
   const log = loadAutoReplyLog();
 
-  /* ── Empty state (no mailboxes) ── */
-  if (mailboxes.length === 0) {
+  /* Chat/SMS threads, newest first, filtered by the same search box. */
+  const chatNeedle = search.trim().toLowerCase();
+  const chatThreads = conversations
+    .filter(c => !chatNeedle
+      || `${c.contactName} ${c.lastMessage}`.toLowerCase().includes(chatNeedle)
+      || c.messages.some(m => m.content.toLowerCase().includes(chatNeedle)))
+    .slice()
+    .sort((a, b) => (b.lastMessageTime || '').localeCompare(a.lastMessageTime || ''));
+  const activeChat = conversations.find(c => c.id === chatId);
+
+  /* ── Empty state: no mailboxes AND no chat history. Threads on their own are
+        enough to show the inbox, otherwise a user's existing conversations sit
+        behind a wall they cannot get past. ── */
+  if (mailboxes.length === 0 && conversations.length === 0) {
     return (
       <div style={{ minHeight: '100vh' }}>
         <Header title="Conversations" subtitle="A live shared inbox for every mailbox" />
@@ -242,9 +261,6 @@ export default function Conversations() {
             <button onClick={() => { setEditMb(undefined); setSetupOpen(true); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               <Plus size={16} /> Connect a Mailbox
             </button>
-            {conversations.length > 0 && (
-              <p style={{ fontSize: 11.5, color: FAINT, marginTop: 18 }}>You also have {conversations.length} legacy chat/SMS threads.</p>
-            )}
           </div>
         </div>
         {setupOpen && <MailboxSetup initial={editMb} onSave={saveMailbox} onClose={() => setSetupOpen(false)} />}
@@ -301,6 +317,14 @@ export default function Conversations() {
             </div>
             {messages.filter(m => !m.seen).length > 0 && <span style={badge(activeMbId === 'all')}>{messages.filter(m => !m.seen).length}</span>}
           </button>
+          {conversations.length > 0 && (
+            <button onClick={() => setActiveMbId(CHAT_RAIL)} style={railItem(activeMbId === CHAT_RAIL)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <MessageSquare size={15} /> <span style={{ fontWeight: 600 }}>Chat &amp; SMS</span>
+              </div>
+              <span style={badge(activeMbId === CHAT_RAIL)}>{conversations.length}</span>
+            </button>
+          )}
           {mailboxes.map(mb => (
             <button key={mb.id} onClick={() => setActiveMbId(mb.id)} style={railItem(activeMbId === mb.id)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
@@ -326,6 +350,88 @@ export default function Conversations() {
           )}
         </div>
 
+        {/* ── Chat & SMS threads ──
+             These come from the CRM's own conversation records rather than
+             IMAP, so they get their own list and transcript instead of being
+             forced through the mail reader. ── */}
+        {activeMbId === CHAT_RAIL ? (
+          <>
+            <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: 12, borderBottom: '1px solid #f2f3f5' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: FAINT }} />
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search chat & SMS…" style={{ width: '100%', padding: '8px 10px 8px 32px', border: '1px solid #e6e9f0', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {chatThreads.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '40px 16px', color: FAINT }}>
+                    <MessageSquare size={26} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.4 }} />
+                    <p style={{ fontSize: 13, margin: 0 }}>No threads match</p>
+                  </div>
+                )}
+                {chatThreads.map(c => {
+                  const sel = c.id === chatId;
+                  return (
+                    <div key={c.id} onClick={() => setChatId(c.id)}
+                      style={{ padding: '12px 14px', cursor: 'pointer', borderBottom: '1px solid #f6f7f8', borderLeft: `3px solid ${sel ? INK : 'transparent'}`, background: sel ? '#f7f8f9' : '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 999, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials(c.contactName || '?')}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                            <span style={{ fontSize: 13, fontWeight: c.unread ? 800 : 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.contactName}</span>
+                            <span style={{ fontSize: 10.5, color: FAINT, flexShrink: 0 }}>{relTime(c.lastMessageTime)}</span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{c.lastMessage}</div>
+                          <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
+                            <span style={chip('#eceff9', '#3e63dd')}>{c.channel.toUpperCase()}</span>
+                            {c.unread > 0 && <span style={chip('#fdf5e7', '#c77414')}>{c.unread} unread</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+              {!activeChat ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: FAINT }}>
+                  <MessageSquare size={44} style={{ opacity: 0.3, marginBottom: 14 }} />
+                  <p style={{ fontSize: 14, margin: 0 }}>Select a thread to read it</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ padding: '16px 22px', borderBottom: '1px solid #f2f3f5', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 999, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>{initials(activeChat.contactName || '?')}</div>
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>{activeChat.contactName}</h3>
+                      <span style={{ fontSize: 12, color: MUTED }}>{activeChat.channel.toUpperCase()} · {activeChat.messages.length} message{activeChat.messages.length === 1 ? '' : 's'}</span>
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {activeChat.messages.map(m => {
+                      const mine = m.sender === 'agent';
+                      return (
+                        <div key={m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '72%' }}>
+                          <div style={{ padding: '10px 14px', borderRadius: 14, background: mine ? INK : '#f0f1f3', color: mine ? '#fff' : INK, fontSize: 13.5, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                            {m.content}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: FAINT, marginTop: 4, textAlign: mine ? 'right' : 'left' }}>{relTime(m.timestamp)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ padding: '12px 22px', borderTop: '1px solid #f2f3f5', fontSize: 12, color: MUTED }}>
+                    Replying to {activeChat.channel.toUpperCase()} threads needs a connected provider — this is the history we already hold.
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+        <>
         {/* ── Message list ── */}
         <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: 12, borderBottom: '1px solid #f2f3f5' }}>
@@ -455,6 +561,8 @@ export default function Conversations() {
             </>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {setupOpen && <MailboxSetup initial={editMb} onSave={saveMailbox} onClose={() => { setSetupOpen(false); setEditMb(undefined); }} />}

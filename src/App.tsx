@@ -7,6 +7,7 @@ import { getSession } from './services/auth';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { initCloudSync } from './services/serverData';
 import { Layers, Loader } from 'lucide-react';
+import ErrorBoundary from './components/shared/ErrorBoundary';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import Conversations from './components/Conversations/Conversations';
@@ -65,6 +66,9 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <TopNav />
       <IconRail />
       <main style={{ minHeight: 'calc(100vh - 68px)', paddingLeft: 62 }}>
+        {/* Keyed on the path so moving to another screen clears a crash rather
+            than trapping the user on the error page. */}
+        <ErrorBoundary resetKey={location.pathname}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
@@ -85,6 +89,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/billing" element={<ClientBilling />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -214,7 +214,7 @@ export default function Websites() {
         {[
           { label: 'Total Sites', value: websites.length, icon: '🌐', color: '#6366f1' },
           { label: 'Published', value: websites.filter(w => w.status === 'published').length, icon: '✅', color: '#22c55e' },
-          { label: 'Total Visitors', value: websites.reduce((a, w) => a + w.visitors, 0).toLocaleString(), icon: '👥', color: '#f59e0b' },
+          { label: 'Total Visitors', value: websites.reduce((a, w) => a + (w.visitors ?? 0), 0).toLocaleString(), icon: '👥', color: '#f59e0b' },
         ].map(s => (
           <div key={s.label} style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: `${s.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{s.icon}</div>
@@ -283,9 +283,9 @@ export default function Websites() {
                   {w.description && <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>{w.description}</p>}
 
                   <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-                    <StatChip icon="👥" value={w.visitors.toLocaleString()} label="visitors" />
+                    <StatChip icon="👥" value={(w.visitors ?? 0).toLocaleString()} label="visitors" />
                     <StatChip icon="📄" value={(w.pages?.length ?? 0)} label="pages" />
-                    <StatChip icon="📊" value={w.pageViews.toLocaleString()} label="views" />
+                    <StatChip icon="📊" value={(w.pageViews ?? 0).toLocaleString()} label="views" />
                   </div>
 
                   {/* Action buttons */}

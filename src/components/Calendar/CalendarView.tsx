@@ -7,6 +7,26 @@ import type { Appointment } from '../../types';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+/**
+ * Appointment times are stored as 24-hour "HH:MM"; some older records hold a
+ * 12-hour string instead. The month grid used to print the hour followed by 'p'
+ * unless the string contained "AM", so every 24-hour morning slot was labelled
+ * as the evening — a 10:00 stand-up showed as "10p".
+ */
+function shortTime(raw: string): string {
+  const t = (raw || '').trim();
+  const m = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return t;
+  let hour = parseInt(m[1], 10);
+  const mins = m[2];
+  const suffix = m[3]?.toUpperCase();
+  if (suffix === 'PM' && hour < 12) hour += 12;
+  if (suffix === 'AM' && hour === 12) hour = 0;
+  const period = hour >= 12 ? 'p' : 'a';
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+  return mins === '00' ? `${display}${period}` : `${display}:${mins}${period}`;
+}
+
 const statusColors: Record<string, string> = {
   scheduled: '#17191c', completed: '#22c55e', cancelled: '#ef4444', 'no-show': '#f59e0b',
 };
@@ -88,7 +108,9 @@ function BookModal({ onClose, onBook }: { onClose: () => void; onBook: (a: Omit<
 
 export default function CalendarView() {
   const { appointments, addAppointment, updateAppointment } = useApp();
-  const [currentDate, setCurrentDate] = useState(new Date(2024, 4, 1));
+  // Was hard-coded to May 2024, so the calendar opened two years in the past
+  // and every real appointment looked like it had vanished.
+  const [currentDate, setCurrentDate] = useState(() => new Date());
   const [showModal, setShowModal] = useState(false);
   const [view, setView] = useState<'month' | 'week' | 'list'>('month');
 
@@ -101,26 +123,47 @@ export default function CalendarView() {
     return day > 0 && day <= daysInMonth ? day : null;
   });
 
-  const getApptForDay = (day: number | null) => {
-    if (!day) return [];
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return appointments.filter(a => a.date === dateStr);
-  };
+  /** Local calendar date as YYYY-MM-DD — never toISOString(), which is UTC and
+   *  silently shifts the day for anyone west of Greenwich. */
+  const ymd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayStr = ymd(new Date());
+
+  const dayStr = (day: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const apptsOn = (dateStr: string) => appointments
+    .filter(a => a.date === dateStr)
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const getApptForDay = (day: number | null) => (day ? apptsOn(dayStr(day)) : []);
+
+  /** Sunday-anchored week containing currentDate, matching the DAYS header. */
+  const weekStart = new Date(year, month, currentDate.getDate() - currentDate.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, i) =>
+    new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i));
+  const weekLabel = `${MONTHS[weekDays[0].getMonth()].slice(0, 3)} ${weekDays[0].getDate()} – ${MONTHS[weekDays[6].getMonth()].slice(0, 3)} ${weekDays[6].getDate()}, ${weekDays[6].getFullYear()}`;
+
+  /** Stepping moves by the unit the user is actually looking at. */
+  const step = (dir: -1 | 1) => setCurrentDate(d => (view === 'week'
+    ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + dir * 7)
+    : new Date(d.getFullYear(), d.getMonth() + dir, 1)));
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Header title="Calendar" subtitle="Manage your appointments and schedule" />
+      <Header
+        title="Calendar"
+        subtitle="Manage your appointments and schedule"
+        actions={[{ icon: Plus, label: 'Book an appointment', onClick: () => setShowModal(true) }]}
+      />
       <div style={{ padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
+            <button onClick={() => step(-1)} aria-label="Previous"
               style={{ padding: 8, border: '1px solid #e2e8f0', borderRadius: 9, cursor: 'pointer', backgroundColor: 'white', display: 'flex', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}
               onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
               onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'white'; }}>
               <ChevronLeft size={16} color="#64748b" />
             </button>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', minWidth: 170, textAlign: 'center', margin: 0, letterSpacing: '-0.3px' }}>{MONTHS[month]} {year}</h2>
-            <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', minWidth: 210, textAlign: 'center', margin: 0, letterSpacing: '-0.3px' }}>{view === 'week' ? weekLabel : `${MONTHS[month]} ${year}`}</h2>
+            <button onClick={() => step(1)} aria-label="Next"
               style={{ padding: 8, border: '1px solid #e2e8f0', borderRadius: 9, cursor: 'pointer', backgroundColor: 'white', display: 'flex', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}
               onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
               onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'white'; }}>
@@ -193,6 +236,56 @@ export default function CalendarView() {
               </div>
             ))}
           </div>
+        ) : view === 'week' ? (
+          /* Week view — the button existed and highlighted, but rendered the
+             month grid, so it looked broken. This is the real thing: seven
+             columns for the selected week with every appointment in full. */
+          <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e6e9f0', backgroundColor: '#f8fafc' }}>
+              {weekDays.map(d => {
+                const isToday = ymd(d) === todayStr;
+                return (
+                  <div key={d.toISOString()} style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{DAYS[d.getDay()]}</div>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%', margin: '4px auto 0',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: isToday ? 700 : 600,
+                      color: isToday ? 'white' : '#475569',
+                      backgroundColor: isToday ? '#17191c' : 'transparent',
+                    }}>{d.getDate()}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+              {weekDays.map((d, i) => {
+                const appts = apptsOn(ymd(d));
+                const isToday = ymd(d) === todayStr;
+                return (
+                  <div key={d.toISOString()} style={{
+                    minHeight: 320, padding: 8, backgroundColor: isToday ? '#f5f6ff' : 'white',
+                    borderRight: i !== 6 ? '1px solid #f1f5f9' : 'none',
+                  }}>
+                    {appts.length === 0 && (
+                      <p style={{ fontSize: 11, color: '#b0b4ba', textAlign: 'center', marginTop: 16 }}>—</p>
+                    )}
+                    {appts.map(a => (
+                      <div key={a.id} style={{
+                        fontSize: 11, padding: '6px 8px', borderRadius: 7, marginBottom: 5,
+                        backgroundColor: `${statusColors[a.status]}14`,
+                        borderLeft: `3px solid ${statusColors[a.status]}`,
+                      }}>
+                        <div style={{ fontWeight: 700, color: statusColors[a.status] }}>{shortTime(a.time)}</div>
+                        <div style={{ color: '#17191c', fontWeight: 600, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.title}</div>
+                        {a.contactName && <div style={{ color: '#64748b', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.contactName}</div>}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ) : (
           <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e6e9f0', backgroundColor: '#f8fafc' }}>
@@ -203,7 +296,7 @@ export default function CalendarView() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
               {cells.map((day, i) => {
                 const appts = getApptForDay(day);
-                const isToday = day === 21 && month === 4;
+                const isToday = day !== null && dayStr(day) === todayStr;
                 return (
                   <div key={i}
                     style={{ minHeight: 104, padding: 8, borderRight: i % 7 !== 6 ? '1px solid #f1f5f9' : 'none', borderBottom: i < 35 ? '1px solid #f1f5f9' : 'none', backgroundColor: day ? (isToday ? '#f5f6ff' : 'white') : '#f8fafc', boxShadow: isToday ? 'inset 0 0 0 2px #17191c' : 'none', transition: 'background 0.12s', position: 'relative' }}
@@ -216,7 +309,7 @@ export default function CalendarView() {
                         </div>
                         {appts.slice(0, 2).map(a => (
                           <div key={a.id} style={{ fontSize: 11, padding: '3px 7px', borderRadius: 6, backgroundColor: `${statusColors[a.status]}14`, borderLeft: `3px solid ${statusColors[a.status]}`, color: statusColors[a.status], fontWeight: 600, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {a.time.split(':')[0]}{a.time.includes('AM') ? 'a' : 'p'} {a.title}
+                            {shortTime(a.time)} {a.title}
                           </div>
                         ))}
                         {appts.length > 2 && <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', paddingLeft: 2 }}>+{appts.length - 2} more</div>}

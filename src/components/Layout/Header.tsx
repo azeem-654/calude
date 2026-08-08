@@ -1,9 +1,23 @@
-import { CheckCircle2, AlertCircle, Info, Plus, Share2, Calendar } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, type LucideIcon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+
+export interface HeaderAction {
+  icon: LucideIcon;
+  /** Tooltip and accessible name — every action must say what it does. */
+  label: string;
+  onClick: () => void;
+}
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
+  /**
+   * Optional quick actions. Screens that have a real action pass one; screens
+   * that do not render nothing. Previously every screen showed a fixed
+   * Add/Share/Schedule trio with no handlers at all — three buttons on sixteen
+   * screens that looked interactive and did nothing when clicked.
+   */
+  actions?: HeaderAction[];
 }
 
 const miniBtn: React.CSSProperties = {
@@ -49,7 +63,7 @@ export function Toasts() {
   );
 }
 
-export default function Header({ title, subtitle }: HeaderProps) {
+export default function Header({ title, subtitle, actions }: HeaderProps) {
   return (
     <>
       <div style={{
@@ -60,11 +74,15 @@ export default function Header({ title, subtitle }: HeaderProps) {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: '#17191c', margin: 0, letterSpacing: '-0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
           {subtitle && <p style={{ fontSize: 13, color: '#8a8f98', margin: '3px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</p>}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button title="Add" style={miniBtn}><Plus size={15} strokeWidth={2.2} /></button>
-          <button title="Share" style={miniBtn}><Share2 size={14} strokeWidth={2.2} /></button>
-          <button title="Schedule" style={miniBtn}><Calendar size={14} strokeWidth={2.2} /></button>
-        </div>
+        {actions && actions.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {actions.map(a => (
+              <button key={a.label} title={a.label} aria-label={a.label} onClick={a.onClick} style={miniBtn}>
+                <a.icon size={15} strokeWidth={2.2} />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <Toasts />
     </>
