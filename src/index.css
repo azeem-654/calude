@@ -170,6 +170,30 @@ button:focus-visible, a:focus-visible {
   animation-play-state: paused;
 }
 
+/* ── Trading board ──
+   A price that moves gets a short tinted wash behind it, the way a terminal
+   marks an uptick. Colour is never the only cue — the figures beside it carry
+   a ▲/▼ glyph and a sign — so this stays decorative. */
+@keyframes tick-up {
+  0% { background-color: rgba(38, 217, 168, 0.32); }
+  100% { background-color: rgba(38, 217, 168, 0); }
+}
+
+@keyframes tick-down {
+  0% { background-color: rgba(242, 83, 109, 0.32); }
+  100% { background-color: rgba(242, 83, 109, 0); }
+}
+
+.tick-up { animation: tick-up 0.6s ease-out; }
+.tick-down { animation: tick-down 0.6s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tick-up,
+  .tick-down { animation: none; }
+
+  .ticker-track { animation: none; }
+}
+
 /* Insight carousel slide */
 @keyframes insight-in {
   0% { opacity: 0; transform: translateX(26px); }

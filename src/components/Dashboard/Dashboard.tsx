@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare, Mail, ShoppingBag, CornerUpLeft,
   Check, CheckCheck, Calendar as CalIcon, Plus, Share2,
-  MoreHorizontal, Star, TrendingUp, TrendingDown, Lightbulb,
-  AlertTriangle, ArrowRight, Zap, Rocket,
+  MoreHorizontal, Star, Lightbulb,
+  AlertTriangle, ArrowRight, Rocket,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,8 @@ import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilit
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
+import MarketBoard from './MarketBoard';
+import MarketTicker from './MarketTicker';
 import type { Deal } from '../../types';
 
 /* ── Animated count-up ── */
@@ -276,38 +278,6 @@ function StatusChip({ status }: { status: string }) {
     <span style={{ padding: '4px 12px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, backgroundColor: c.bg, color: c.color, textTransform: 'capitalize' }}>
       {status}
     </span>
-  );
-}
-
-/* ── Scrolling KPI ticker ── */
-interface TickerItem { label: string; value: string; delta?: number }
-
-function Ticker({ items }: { items: TickerItem[] }) {
-  const row = (keyPrefix: string) => items.map((it, i) => (
-    <div key={`${keyPrefix}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 26px', flexShrink: 0 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{it.label}</span>
-      <span style={{ fontSize: 13.5, fontWeight: 800, color: INK, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>{it.value}</span>
-      {it.delta !== undefined && (
-        <span style={{
-          display: 'flex', alignItems: 'center', gap: 2, fontSize: 10.5, fontWeight: 700,
-          color: it.delta >= 0 ? GREEN : RED, whiteSpace: 'nowrap',
-        }}>
-          {it.delta >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-          {Math.abs(it.delta)}%
-        </span>
-      )}
-      <span style={{ width: 4, height: 4, borderRadius: 999, backgroundColor: '#d5d8dd', marginLeft: 18 }} />
-    </div>
-  ));
-  return (
-    <div style={{ backgroundColor: '#fff', borderRadius: 999, overflow: 'hidden', boxShadow: '0 1px 2px rgba(23,25,28,0.05)', padding: '11px 0', position: 'relative' }}>
-      <div className="ticker-track">
-        {row('a')}{row('b')}
-      </div>
-      {/* Edge fades */}
-      <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 46, background: 'linear-gradient(90deg,#fff,transparent)', borderRadius: '999px 0 0 999px', pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', inset: '0 0 0 auto', width: 46, background: 'linear-gradient(270deg,#fff,transparent)', borderRadius: '0 999px 999px 0', pointerEvents: 'none' }} />
-    </div>
   );
 }
 
@@ -619,24 +589,10 @@ export default function Dashboard() {
   const activeCount = allDeals.filter(d => (d.status ?? 'active') === 'active').length || 7;
   const lostCount = allDeals.filter(d => d.status === 'lost').length;
   const winRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : 42;
-  const pipelineValue = allDeals.filter(d => (d.status ?? 'active') === 'active').reduce((s, d) => s + d.value, 0) || 284000;
-  const wonValue = allDeals.filter(d => d.status === 'won').reduce((s, d) => s + d.value, 0) || 47000;
 
   const feedNames = contacts.length >= 3 ? contacts.slice(0, 12).map(c => c.name) : FALLBACK_NAMES;
   const scheduledToday = appointments.filter(a => a.status === 'scheduled').length;
   const animWinRate = useCountUp(Math.round((wonCount / Math.max(wonCount + activeCount, 1)) * 100), 1200);
-
-  /* ── Ticker items ── */
-  const tickerItems: TickerItem[] = [
-    { label: 'Pipeline', value: `$${(pipelineValue / 1000).toFixed(0)}k`, delta: 23 },
-    { label: 'Won revenue', value: `$${(wonValue / 1000).toFixed(0)}k`, delta: 18 },
-    { label: 'Win rate', value: `${winRate}%`, delta: winRate >= 40 ? 6 : -4 },
-    { label: 'Contacts', value: String(contacts.length || 248), delta: 12 },
-    { label: 'Active deals', value: String(activeCount), delta: 8 },
-    { label: 'Appointments', value: String(scheduledToday || 9), delta: -5 },
-    { label: 'Emails sent', value: '12.4k', delta: 9 },
-    { label: 'Avg response', value: '2h 14m', delta: 11 },
-  ];
 
   /* ── Growth history (won revenue by month, demo fallback) ── */
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -732,9 +688,14 @@ export default function Dashboard() {
 
       <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ── KPI ticker ── */}
+        {/* ── Live KPI tape ── */}
         <div className="slide-up" style={{ animationDelay: '0.02s' }}>
-          <Ticker items={tickerItems} />
+          <MarketTicker contacts={contacts} pipelines={pipelines} appointments={appointments} />
+        </div>
+
+        {/* ── Trading board: the CRM's own numbers, replayed as an exchange ── */}
+        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+          <MarketBoard contacts={contacts} pipelines={pipelines} appointments={appointments} />
         </div>
 
         {/* ── 12-month content pipeline / AI setup ── */}
