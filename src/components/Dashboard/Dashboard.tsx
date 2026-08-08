@@ -432,7 +432,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -594,6 +594,9 @@ export default function Dashboard() {
   const scheduledToday = appointments.filter(a => a.status === 'scheduled').length;
   const animWinRate = useCountUp(Math.round((wonCount / Math.max(wonCount + activeCount, 1)) * 100), 1200);
 
+  /* Everything the department board replays, gathered in one place. */
+  const feedInput = { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites };
+
   /* ── Growth history (won revenue by month, demo fallback) ── */
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const nowMonth = new Date().getMonth();
@@ -688,14 +691,14 @@ export default function Dashboard() {
 
       <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ── Live KPI tape ── */}
+        {/* ── Live department tape ── */}
         <div className="slide-up" style={{ animationDelay: '0.02s' }}>
-          <MarketTicker contacts={contacts} pipelines={pipelines} appointments={appointments} />
+          <MarketTicker {...feedInput} />
         </div>
 
-        {/* ── Trading board: the CRM's own numbers, replayed as an exchange ── */}
+        {/* ── Department board: every module's progress, replayed as an exchange ── */}
         <div className="slide-up" style={{ animationDelay: '0.05s' }}>
-          <MarketBoard contacts={contacts} pipelines={pipelines} appointments={appointments} />
+          <MarketBoard {...feedInput} />
         </div>
 
         {/* ── 12-month content pipeline / AI setup ── */}

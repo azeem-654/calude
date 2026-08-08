@@ -1,69 +1,73 @@
 import { useMemo, useState } from 'react';
-import { formatValue, type Quote } from '../../services/marketFeed';
-import type { Appointment, Contact, Pipeline } from '../../types';
+import { formatValue, INDEX_SYMBOL, type FeedInput, type Quote } from '../../services/marketFeed';
 import { simEnabled, useMarketBook } from './useMarketBook';
-import { colorFor, dirOf, glyphFor, signed } from './marketTheme';
+import { useTheme } from './useTheme';
+import { colorFor, dirOf, glyphFor, palette, signed, type Palette } from './marketTheme';
 
-const INK = '#17191c';
-const MUTED = '#8a8f98';
+type Props = FeedInput;
 
-interface Props {
-  contacts: Contact[];
-  pipelines: Pipeline[];
-  appointments: Appointment[];
-}
-
-function Cell({ quote, seq, keyPrefix }: { quote: Quote; seq: number; keyPrefix: string }) {
+function Cell({ quote, seq, keyPrefix, p }: { quote: Quote; seq: number; keyPrefix: string; p: Palette }) {
   const dir = dirOf(Number(quote.changePct.toFixed(2)));
+  const isIndex = quote.module.symbol === INDEX_SYMBOL;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 22px', flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 20px', flexShrink: 0 }}>
       <span style={{
-        fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: '0.07em', whiteSpace: 'nowrap',
-      }}>{quote.instrument.symbol}</span>
+        fontSize: 10.5, fontWeight: isIndex ? 800 : 700, color: isIndex ? p.textStrong : p.textMuted,
+        letterSpacing: '0.07em', whiteSpace: 'nowrap',
+      }}>{quote.module.symbol}</span>
       <span
-        key={`${keyPrefix}-${quote.instrument.symbol}-${seq}`}
+        key={`${keyPrefix}-${quote.module.symbol}-${seq}`}
         className={quote.tickDir === 'up' ? 'tick-up' : quote.tickDir === 'down' ? 'tick-down' : undefined}
         style={{
-          fontSize: 13.5, fontWeight: 800, color: INK, letterSpacing: '-0.01em',
+          fontSize: 13.5, fontWeight: 800, color: p.textStrong, letterSpacing: '-0.01em',
           whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', borderRadius: 4, padding: '1px 3px',
         }}
-      >{formatValue(quote.last, quote.instrument.unit)}</span>
+      >{formatValue(quote.last)}</span>
       <span style={{
         display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700,
-        color: colorFor(dir), whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+        color: colorFor(dir, p), whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
       }}>
         <span style={{ fontSize: 8 }} aria-hidden="true">{glyphFor(dir)}</span>
         {signed(quote.changePct)}%
       </span>
-      <span style={{ width: 4, height: 4, borderRadius: 999, backgroundColor: '#d5d8dd', marginLeft: 14 }} />
+      <span style={{ width: 4, height: 4, borderRadius: 999, backgroundColor: p.border, marginLeft: 14 }} />
     </div>
   );
 }
 
 /**
- * The page-top tape. Same book as the trading board below it — one shared clock
- * means the two never show different prices for the same symbol.
+ * The page-top tape. Same book as the board below it — one shared clock means
+ * the two never show different scores for the same module.
  */
-export default function MarketTicker({ contacts, pipelines, appointments }: Props) {
+export default function MarketTicker(props: Props) {
+  const theme = useTheme();
+  const p = palette(theme);
   const [sim] = useState(simEnabled);
-  const input = useMemo(() => ({ contacts, pipelines, appointments }), [contacts, pipelines, appointments]);
+
+  const { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites } = props;
+  const input = useMemo<FeedInput>(
+    () => ({ contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites }),
+    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites],
+  );
   const { book, seq } = useMarketBook(input, '1D', sim);
+  const fade = p.ink;
 
   return (
     <div
       role="marquee"
-      aria-label="Live business metrics tape"
+      aria-label="Live department progress tape"
+      data-noinvert
       style={{
-        backgroundColor: '#fff', borderRadius: 999, overflow: 'hidden',
-        boxShadow: '0 1px 2px rgba(23,25,28,0.05)', padding: '11px 0', position: 'relative',
+        backgroundColor: p.ink, borderRadius: 999, overflow: 'hidden',
+        border: `1px solid ${p.border}`, padding: '11px 0', position: 'relative',
       }}
     >
       <div className="ticker-track">
-        {book.quotes.map(q => <Cell key={`a-${q.instrument.symbol}`} quote={q} seq={seq} keyPrefix="a" />)}
-        {book.quotes.map(q => <Cell key={`b-${q.instrument.symbol}`} quote={q} seq={seq} keyPrefix="b" />)}
+        {book.quotes.map(q => <Cell key={`a-${q.module.symbol}`} quote={q} seq={seq} keyPrefix="a" p={p} />)}
+        {book.quotes.map(q => <Cell key={`b-${q.module.symbol}`} quote={q} seq={seq} keyPrefix="b" p={p} />)}
       </div>
-      <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 46, background: 'linear-gradient(90deg,#fff,transparent)', borderRadius: '999px 0 0 999px', pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', inset: '0 0 0 auto', width: 46, background: 'linear-gradient(270deg,#fff,transparent)', borderRadius: '0 999px 999px 0', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 46, background: `linear-gradient(90deg,${fade},transparent)`, borderRadius: '999px 0 0 999px', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: '0 0 0 auto', width: 46, background: `linear-gradient(270deg,${fade},transparent)`, borderRadius: '0 999px 999px 0', pointerEvents: 'none' }} />
     </div>
   );
 }

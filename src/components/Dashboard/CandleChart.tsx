@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatAxis, formatBucket, formatValue, type Candle, type Timeframe, type Unit } from '../../services/marketFeed';
-import { DOWN, GRID, INK_DARK, TEXT_DIM, TEXT_MUTED, TEXT_STRONG, UP } from './marketTheme';
+import { formatAxis, formatBucket, formatValue, type Candle, type Timeframe } from '../../services/marketFeed';
+import type { Palette } from './marketTheme';
 
 /** Element size, so the SVG can lay out in real pixels instead of guessing. */
 function useMeasure<T extends HTMLElement>() {
@@ -22,20 +22,20 @@ function useMeasure<T extends HTMLElement>() {
 
 interface Props {
   candles: Candle[];
-  unit: Unit;
   timeframe: Timeframe;
   symbol: string;
   name: string;
-  /** Live displayed price — drawn as the marker line on the axis. */
+  /** Live displayed score — drawn as the marker line on the axis. */
   last: number;
+  p: Palette;
   height?: number;
 }
 
-const PAD = { top: 14, right: 62, bottom: 22, left: 10 };
+const PAD = { top: 14, right: 54, bottom: 22, left: 10 };
 const VOL_SHARE = 0.2;
 const PANEL_GAP = 14;
 
-export default function CandleChart({ candles, unit, timeframe, symbol, name, last, height = 300 }: Props) {
+export default function CandleChart({ candles, timeframe, symbol, name, last, p, height = 300 }: Props) {
   const { ref, w } = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
@@ -52,14 +52,11 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
     for (const k of candles) { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); }
     lo = Math.min(lo, last); hi = Math.max(hi, last);
     // A perfectly flat series would divide by zero; give it a nominal band.
-    if (!(hi > lo)) { const mid = hi || 1; hi = mid * 1.02 + 1; lo = mid * 0.98 - 1; }
-    const floorAtZero = lo >= 0;
+    if (!(hi > lo)) { const mid = hi || 1; hi = mid + 1; lo = Math.max(mid - 1, 0); }
     const headroom = (hi - lo) * 0.08;
-    lo -= headroom; hi += headroom;
-    // None of these instruments can go negative, so an axis that dips below
-    // zero is empty space that says nothing.
-    if (floorAtZero) lo = Math.max(lo, 0);
-    if (unit === 'pct') hi = Math.min(hi, 100);
+    // Scores are bounded 0–100, so the axis never needs to leave that range.
+    lo = Math.max(lo - headroom, 0);
+    hi = Math.min(hi + headroom, 100);
 
     const peakVol = Math.max(...candles.map(k => k.v), 1);
     const slot = plotW / candles.length;
@@ -71,8 +68,8 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
 
     // Four gridlines is enough structure to read against without competing.
     const ticks = Array.from({ length: 5 }, (_, i) => lo + ((hi - lo) * i) / 4);
-    return { lo, hi, slot, bodyW, x, y, vy, ticks, peakVol };
-  }, [candles, plotW, priceH, volTop, volH, last, unit]);
+    return { lo, hi, slot, bodyW, x, y, vy, ticks };
+  }, [candles, plotW, priceH, volTop, volH, last]);
 
   const active = hover !== null ? candles[hover] : null;
   const readout = active ?? candles[candles.length - 1];
@@ -87,6 +84,7 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
   }
 
   const lastUp = candles.length > 1 ? last >= candles[candles.length - 2].c : true;
+  const num: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' };
 
   return (
     <div ref={ref} style={{ width: '100%', position: 'relative' }}>
@@ -95,18 +93,18 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
         <div style={{
           position: 'absolute', top: 8, left: 12, zIndex: 2, pointerEvents: 'none',
           display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0 12px',
-          fontSize: 11, fontVariantNumeric: 'tabular-nums',
+          fontSize: 11, ...num,
         }}>
-          <span style={{ color: TEXT_STRONG, fontWeight: 800, letterSpacing: '0.02em' }}>{symbol}</span>
-          <span style={{ color: TEXT_MUTED }}>{name}</span>
-          <span style={{ color: TEXT_DIM }}>{formatBucket(readout.t, timeframe)}</span>
+          <span style={{ color: p.textStrong, fontWeight: 800, letterSpacing: '0.02em' }}>{symbol}</span>
+          <span style={{ color: p.textMuted }}>{name}</span>
+          <span style={{ color: p.textDim }}>{formatBucket(readout.t, timeframe)}</span>
           {([['O', readout.o], ['H', readout.h], ['L', readout.l], ['C', readout.c]] as const).map(([k, v]) => (
-            <span key={k} style={{ color: TEXT_DIM }}>
-              {k}<span style={{ color: readoutUp ? UP : DOWN, fontWeight: 700, marginLeft: 3 }}>{formatValue(v, unit)}</span>
+            <span key={k} style={{ color: p.textDim }}>
+              {k}<span style={{ color: readoutUp ? p.up : p.down, fontWeight: 700, marginLeft: 3 }}>{formatValue(v)}</span>
             </span>
           ))}
-          <span style={{ color: TEXT_DIM }}>
-            Vol<span style={{ color: TEXT_MUTED, fontWeight: 700, marginLeft: 3 }}>{readout.v}</span>
+          <span style={{ color: p.textDim }}>
+            Events<span style={{ color: p.textMuted, fontWeight: 700, marginLeft: 3 }}>{readout.v}</span>
           </span>
         </div>
       )}
@@ -116,25 +114,25 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
         onMouseMove={onMove} onMouseLeave={() => setHover(null)}
         style={{ display: 'block', cursor: 'crosshair' }}
         role="img"
-        aria-label={`${name} candlestick chart, ${candles.length} ${timeframe} bars, latest close ${formatValue(readout?.c ?? 0, unit)}`}
+        aria-label={`${name} progress chart, ${candles.length} ${timeframe} bars, latest score ${formatValue(readout?.c ?? 0)} out of 100`}
       >
         {geom && (
           <>
-            {/* Horizontal grid + right-hand price axis */}
+            {/* Horizontal grid + right-hand score axis */}
             {geom.ticks.map(t => (
               <g key={t}>
-                <line x1={PAD.left} x2={PAD.left + plotW} y1={geom.y(t)} y2={geom.y(t)} stroke={GRID} strokeWidth={1} />
-                <text x={PAD.left + plotW + 8} y={geom.y(t) + 3.5} fill={TEXT_DIM} fontSize={10} style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAxis(t, unit)}
+                <line x1={PAD.left} x2={PAD.left + plotW} y1={geom.y(t)} y2={geom.y(t)} stroke={p.grid} strokeWidth={1} />
+                <text x={PAD.left + plotW + 8} y={geom.y(t) + 3.5} fill={p.textDim} fontSize={10} style={num}>
+                  {formatAxis(t)}
                 </text>
               </g>
             ))}
 
             {/* Candles. Up bars are hollow, down bars filled — direction stays
-                readable without relying on the red/green pair alone. */}
+                readable without relying on the up/down pair alone. */}
             {candles.map((k, i) => {
               const up = k.c >= k.o;
-              const color = up ? UP : DOWN;
+              const color = up ? p.up : p.down;
               const cx = geom.x(i);
               const top = geom.y(Math.max(k.o, k.c));
               const bottom = geom.y(Math.min(k.o, k.c));
@@ -145,9 +143,9 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
                   <line x1={cx} x2={cx} y1={geom.y(k.h)} y2={geom.y(k.l)} stroke={color} strokeWidth={1} />
                   <rect
                     x={cx - geom.bodyW / 2} y={top} width={geom.bodyW} height={h} rx={1}
-                    fill={up ? INK_DARK : color} stroke={color} strokeWidth={up ? 1.2 : 0}
+                    fill={up ? p.ink : color} stroke={color} strokeWidth={up ? 1.2 : 0}
                   />
-                  {/* Volume sub-panel — its own scale, stacked, never a second y-axis. */}
+                  {/* Event volume — its own scale, stacked, never a second y-axis. */}
                   <rect
                     x={cx - geom.bodyW / 2} y={geom.vy(k.v)} width={geom.bodyW}
                     height={Math.max(volTop + volH - geom.vy(k.v), 0.5)} rx={1}
@@ -157,20 +155,20 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
               );
             })}
 
-            {/* Live price marker */}
+            {/* Live score marker */}
             <line
               x1={PAD.left} x2={PAD.left + plotW} y1={geom.y(last)} y2={geom.y(last)}
-              stroke={lastUp ? UP : DOWN} strokeWidth={1} strokeDasharray="3 3" opacity={0.75}
+              stroke={lastUp ? p.up : p.down} strokeWidth={1} strokeDasharray="3 3" opacity={0.75}
             />
             <rect
               x={PAD.left + plotW + 3} y={geom.y(last) - 8} width={PAD.right - 8} height={16} rx={3}
-              fill={lastUp ? UP : DOWN}
+              fill={lastUp ? p.up : p.down}
             />
             <text
               x={PAD.left + plotW + 3 + (PAD.right - 8) / 2} y={geom.y(last) + 4}
-              fill={INK_DARK} fontSize={10} fontWeight={800} textAnchor="middle" style={{ fontVariantNumeric: 'tabular-nums' }}
+              fill={p.ink} fontSize={10} fontWeight={800} textAnchor="middle" style={num}
             >
-              {formatAxis(last, unit)}
+              {formatAxis(last)}
             </text>
 
             {/* Crosshair */}
@@ -178,15 +176,15 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
               <>
                 <line
                   x1={geom.x(hover)} x2={geom.x(hover)} y1={PAD.top} y2={volTop + volH}
-                  stroke={TEXT_MUTED} strokeWidth={1} strokeDasharray="2 3" opacity={0.6}
+                  stroke={p.textMuted} strokeWidth={1} strokeDasharray="2 3" opacity={0.6}
                 />
                 <rect
                   x={Math.min(Math.max(geom.x(hover) - 34, 2), width - 70)}
-                  y={volTop + volH + 4} width={68} height={15} rx={3} fill="#1c2230"
+                  y={volTop + volH + 4} width={68} height={15} rx={3} fill={p.panelHi}
                 />
                 <text
                   x={Math.min(Math.max(geom.x(hover) - 34, 2), width - 70) + 34}
-                  y={volTop + volH + 15} fill={TEXT_STRONG} fontSize={9.5} textAnchor="middle"
+                  y={volTop + volH + 15} fill={p.textStrong} fontSize={9.5} textAnchor="middle"
                 >
                   {formatBucket(candles[hover].t, timeframe)}
                 </text>
@@ -198,7 +196,7 @@ export default function CandleChart({ candles, unit, timeframe, symbol, name, la
               const every = Math.max(1, Math.ceil(candles.length / 7));
               if (i % every !== 0) return null;
               return (
-                <text key={k.t} x={geom.x(i)} y={volTop + volH + 15} fill={TEXT_DIM} fontSize={9.5} textAnchor="middle">
+                <text key={k.t} x={geom.x(i)} y={volTop + volH + 15} fill={p.textDim} fontSize={9.5} textAnchor="middle">
                   {formatBucket(k.t, timeframe)}
                 </text>
               );

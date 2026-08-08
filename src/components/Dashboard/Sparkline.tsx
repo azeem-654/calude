@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import type { Candle } from '../../services/marketFeed';
-import { DOWN, UP } from './marketTheme';
+import type { Palette } from './marketTheme';
 
 interface Props {
   candles: Candle[];
@@ -8,13 +8,14 @@ interface Props {
   height?: number;
   /** Session direction — keeps the sparkline in step with the row's figures. */
   up: boolean;
+  p: Palette;
 }
 
 /**
- * A closing-price trace for the watchlist. Deliberately axis-free: it shows
+ * A closing-score trace for the watchlist. Deliberately axis-free: it shows
  * shape only, and the exact numbers sit beside it in the same row.
  */
-export default function Sparkline({ candles, width = 62, height = 22, up }: Props) {
+export default function Sparkline({ candles, width = 62, height = 22, up, p }: Props) {
   const gid = useId().replace(/[^a-zA-Z0-9]/g, '');
   if (candles.length < 2) return <svg width={width} height={height} aria-hidden="true" />;
 
@@ -28,7 +29,7 @@ export default function Sparkline({ candles, width = 62, height = 22, up }: Prop
 
   const line = closes.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const area = `${line} L${width},${height} L0,${height} Z`;
-  const color = up ? UP : DOWN;
+  const color = up ? p.up : p.down;
 
   return (
     <svg width={width} height={height} aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>

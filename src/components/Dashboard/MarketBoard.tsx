@@ -2,45 +2,40 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, LayoutGrid, Radio, Table2 } from 'lucide-react';
 import {
-  buildTape, formatBucket, formatClock, formatCountdown,
-  formatValue, pipelineDepth, TIMEFRAMES, untilNextBucket,
-  type Quote, type Timeframe,
+  buildTape, formatBucket, formatClock, formatCountdown, formatValue,
+  indexComposition, INDEX_SYMBOL, TIMEFRAMES, untilNextBucket,
+  type FeedInput, type Quote, type Timeframe,
 } from '../../services/marketFeed';
-import type { Appointment, Contact, Pipeline } from '../../types';
 import CandleChart from './CandleChart';
 import Sparkline from './Sparkline';
 import { setSimEnabled, simEnabled, useMarketBook } from './useMarketBook';
-import {
-  ACCENT, BORDER, colorFor, dirOf, DOWN, FLAT, glyphFor, INK_DARK, PANEL, PANEL_HI,
-  signed, TEXT_DIM, TEXT_MUTED, TEXT_STRONG, UP,
-} from './marketTheme';
+import { useTheme } from './useTheme';
+import { colorFor, dirOf, glyphFor, palette, signed, type Palette } from './marketTheme';
 
-interface Props {
-  contacts: Contact[];
-  pipelines: Pipeline[];
-  appointments: Appointment[];
-}
+type Props = FeedInput;
 
 /* ── Small shared chrome ── */
 
-function Badge({ children, color = TEXT_MUTED, title }: { children: React.ReactNode; color?: string; title?: string }) {
+function Badge({ children, color, p, title }: {
+  children: React.ReactNode; color?: string; p: Palette; title?: string;
+}) {
   return (
     <span title={title} style={{
       display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 5,
-      border: `1px solid ${BORDER}`, backgroundColor: PANEL_HI, color,
+      border: `1px solid ${p.border}`, backgroundColor: p.panelHi, color: color ?? p.textMuted,
       fontSize: 9.5, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase',
       whiteSpace: 'nowrap', cursor: title ? 'help' : 'default',
     }}>{children}</span>
   );
 }
 
-function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+function SectionTitle({ children, right, p }: { children: React.ReactNode; right?: React.ReactNode; p: Palette }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-      padding: '9px 12px', borderBottom: `1px solid ${BORDER}`,
+      padding: '9px 12px', borderBottom: `1px solid ${p.border}`,
     }}>
-      <span style={{ fontSize: 10, fontWeight: 800, color: TEXT_MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: p.textMuted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
         {children}
       </span>
       {right}
@@ -48,12 +43,12 @@ function SectionTitle({ children, right }: { children: React.ReactNode; right?: 
   );
 }
 
-/** Change figure: colour, glyph and sign together, so none of the three is load-bearing alone. */
-function Change({ pct, size = 11.5 }: { pct: number; size?: number }) {
+/** Change figure: colour, glyph and sign together, so none is load-bearing alone. */
+function Change({ pct, p, size = 11.5 }: { pct: number; p: Palette; size?: number }) {
   const dir = dirOf(Number(pct.toFixed(2)));
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 3, color: colorFor(dir),
+      display: 'inline-flex', alignItems: 'center', gap: 3, color: colorFor(dir, p),
       fontSize: size, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
     }}>
       <span style={{ fontSize: size * 0.72 }} aria-hidden="true">{glyphFor(dir)}</span>
@@ -64,95 +59,113 @@ function Change({ pct, size = 11.5 }: { pct: number; size?: number }) {
 
 /* ── Watchlist ── */
 
-function WatchRow({ quote, selected, tickSeq, onSelect }: {
-  quote: Quote; selected: boolean; tickSeq: number; onSelect: () => void;
+function WatchRow({ quote, selected, tickSeq, p, onSelect }: {
+  quote: Quote; selected: boolean; tickSeq: number; p: Palette; onSelect: () => void;
 }) {
-  const { instrument: ins } = quote;
+  const m = quote.module;
+  const isIndex = m.symbol === INDEX_SYMBOL;
   const up = quote.changePct >= 0;
   return (
     <button
       onClick={onSelect}
       aria-pressed={selected}
-      title={ins.basis}
+      title={m.basis}
       style={{
-        display: 'grid', gridTemplateColumns: '1fr 62px 74px', alignItems: 'center', gap: 8,
+        display: 'grid', gridTemplateColumns: '1fr 62px 66px', alignItems: 'center', gap: 8,
         width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', cursor: 'pointer',
-        borderLeft: `2px solid ${selected ? ACCENT : 'transparent'}`,
-        backgroundColor: selected ? PANEL_HI : 'transparent',
-        borderBottom: `1px solid ${BORDER}`,
+        borderLeft: `2px solid ${selected ? p.accent : 'transparent'}`,
+        backgroundColor: selected ? p.panelHi : 'transparent',
+        borderBottom: `1px solid ${p.border}`,
       }}
     >
       <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 11.5, fontWeight: 800, color: TEXT_STRONG, letterSpacing: '0.02em' }}>
-          {ins.symbol}
+        <span style={{
+          display: 'block', fontSize: isIndex ? 12 : 11.5, fontWeight: 800,
+          color: p.textStrong, letterSpacing: '0.02em',
+        }}>
+          {m.symbol}
         </span>
         <span style={{
-          display: 'block', fontSize: 10, color: TEXT_DIM, overflow: 'hidden',
+          display: 'block', fontSize: 10, color: p.textDim, overflow: 'hidden',
           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{ins.name}</span>
+        }}>{isIndex ? m.dept : m.name}</span>
       </span>
 
-      <Sparkline candles={quote.candles} up={up} />
+      <Sparkline candles={quote.candles} up={up} p={p} />
 
       <span style={{ textAlign: 'right' }}>
         <span
-          key={`${ins.symbol}-${tickSeq}`}
+          key={`${m.symbol}-${tickSeq}`}
           className={quote.tickDir === 'up' ? 'tick-up' : quote.tickDir === 'down' ? 'tick-down' : undefined}
           style={{
-            display: 'block', fontSize: 12, fontWeight: 800, color: TEXT_STRONG,
+            display: 'block', fontSize: 12, fontWeight: 800, color: p.textStrong,
             fontVariantNumeric: 'tabular-nums', borderRadius: 3, padding: '0 2px',
           }}
         >
-          {formatValue(quote.last, ins.unit)}
+          {formatValue(quote.last)}
         </span>
-        <span style={{ display: 'block', marginTop: 1 }}><Change pct={quote.changePct} size={10} /></span>
+        <span style={{ display: 'block', marginTop: 1 }}><Change pct={quote.changePct} p={p} size={10} /></span>
       </span>
     </button>
   );
 }
 
-/* ── Depth ladder ── */
+/* ── Index composition ladder ── */
 
-function DepthLadder({ pipelines }: { pipelines: Pipeline[] }) {
-  const levels = useMemo(() => pipelineDepth(pipelines), [pipelines]);
-  if (levels.length === 0) {
-    return <p style={{ padding: 14, fontSize: 11, color: TEXT_DIM, margin: 0 }}>No pipeline stages yet.</p>;
+function Composition({ rows, p, onPick }: {
+  rows: ReturnType<typeof indexComposition>; p: Palette; onPick: (symbol: string) => void;
+}) {
+  if (rows.length === 0) {
+    return <p style={{ padding: 14, fontSize: 11, color: p.textDim, margin: 0 }}>No modules to score yet.</p>;
   }
-  const total = levels.reduce((s, l) => s + l.value, 0);
+  const avg = rows.reduce((s, r) => s + r.score, 0) / rows.length;
   return (
     <div>
-      {levels.map((l, i) => (
-        <div key={l.stage} style={{
-          position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto auto',
-          alignItems: 'center', gap: 8, padding: '7px 12px',
-          borderBottom: i < levels.length - 1 ? `1px solid ${BORDER}` : 'none',
-        }}>
-          {/* Depth bar reads right-to-left the way book size does. */}
-          <div style={{
-            position: 'absolute', inset: '2px 0 2px auto', right: 0,
-            width: `${Math.max(l.share * 100, 1.5)}%`,
-            backgroundColor: UP, opacity: 0.14, borderRadius: '3px 0 0 3px', pointerEvents: 'none',
-          }} />
-          <span style={{
-            position: 'relative', fontSize: 11, fontWeight: 700, color: TEXT_STRONG,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{l.stage}</span>
-          <span style={{ position: 'relative', fontSize: 10, color: TEXT_DIM, fontVariantNumeric: 'tabular-nums' }}>
-            {l.deals}×
-          </span>
-          <span style={{
-            position: 'relative', fontSize: 11, fontWeight: 800, color: TEXT_STRONG,
-            fontVariantNumeric: 'tabular-nums', minWidth: 52, textAlign: 'right',
-          }}>{formatValue(l.value, 'usd')}</span>
-        </div>
-      ))}
+      {rows.map((r, i) => {
+        const dir = dirOf(Number(r.delta.toFixed(1)));
+        return (
+          <button
+            key={r.symbol}
+            onClick={() => onPick(r.symbol)}
+            title={`${r.name} — ${r.dept}. ${signed(r.delta, 1)} against the index average.`}
+            style={{
+              position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto auto',
+              alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', cursor: 'pointer',
+              padding: '7px 12px', border: 'none', backgroundColor: 'transparent',
+              borderBottom: i < rows.length - 1 ? `1px solid ${p.border}` : 'none',
+            }}
+          >
+            {/* Depth bar reads right-to-left the way book size does. */}
+            <div style={{
+              position: 'absolute', inset: '2px 0 2px auto', right: 0,
+              width: `${Math.max(r.share * 100, 1.5)}%`,
+              backgroundColor: colorFor(dir, p), opacity: 0.14,
+              borderRadius: '3px 0 0 3px', pointerEvents: 'none',
+            }} />
+            <span style={{
+              position: 'relative', fontSize: 11, fontWeight: 700, color: p.textStrong,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{r.symbol}</span>
+            <span style={{
+              position: 'relative', fontSize: 9.5, color: colorFor(dir, p), fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              <span aria-hidden="true">{glyphFor(dir)}</span> {signed(r.delta, 1)}
+            </span>
+            <span style={{
+              position: 'relative', fontSize: 11, fontWeight: 800, color: p.textStrong,
+              fontVariantNumeric: 'tabular-nums', minWidth: 38, textAlign: 'right',
+            }}>{formatValue(r.score)}</span>
+          </button>
+        );
+      })}
       <div style={{
         display: 'flex', justifyContent: 'space-between', padding: '8px 12px',
-        borderTop: `1px solid ${BORDER}`, backgroundColor: PANEL_HI,
+        borderTop: `1px solid ${p.border}`, backgroundColor: p.panelHi,
       }}>
-        <span style={{ fontSize: 10, color: TEXT_MUTED, fontWeight: 700, letterSpacing: '0.06em' }}>TOTAL DEPTH</span>
-        <span style={{ fontSize: 11, fontWeight: 800, color: ACCENT, fontVariantNumeric: 'tabular-nums' }}>
-          {formatValue(total, 'usd')}
+        <span style={{ fontSize: 10, color: p.textMuted, fontWeight: 700, letterSpacing: '0.06em' }}>INDEX AVERAGE</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: p.textStrong, fontVariantNumeric: 'tabular-nums' }}>
+          {formatValue(avg)} / 100
         </span>
       </div>
     </div>
@@ -170,9 +183,9 @@ function relTime(ts: number, now: number): string {
   return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
-function Tape({ rows, now }: { rows: ReturnType<typeof buildTape>; now: number }) {
+function Tape({ rows, now, p }: { rows: ReturnType<typeof buildTape>; now: number; p: Palette }) {
   if (rows.length === 0) {
-    return <p style={{ padding: 14, fontSize: 11, color: TEXT_DIM, margin: 0 }}>Nothing has printed yet.</p>;
+    return <p style={{ padding: 14, fontSize: 11, color: p.textDim, margin: 0 }}>Nothing has printed yet.</p>;
   }
   return (
     <div style={{ maxHeight: 232, overflowY: 'auto' }}>
@@ -180,28 +193,20 @@ function Tape({ rows, now }: { rows: ReturnType<typeof buildTape>; now: number }
         const buy = r.side === 'buy';
         return (
           <div key={r.id} style={{
-            display: 'grid', gridTemplateColumns: '30px 1fr auto', alignItems: 'center', gap: 8,
-            padding: '6px 12px', borderBottom: `1px solid ${BORDER}`,
+            display: 'grid', gridTemplateColumns: '30px 1fr', alignItems: 'center', gap: 8,
+            padding: '6px 12px', borderBottom: `1px solid ${p.border}`,
           }}>
-            <span style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: '0.05em',
-              color: buy ? UP : DOWN,
-            }}>
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.05em', color: buy ? p.up : p.down }}>
               <span aria-hidden="true">{buy ? '▲' : '▼'}</span> {buy ? 'B' : 'S'}
             </span>
             <span style={{ minWidth: 0 }}>
               <span style={{
-                display: 'block', fontSize: 10.5, color: TEXT_STRONG, overflow: 'hidden',
+                display: 'block', fontSize: 10.5, color: p.textStrong, overflow: 'hidden',
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{r.label}</span>
-              <span style={{ display: 'block', fontSize: 9, color: TEXT_DIM, letterSpacing: '0.04em' }}>
+              <span style={{ display: 'block', fontSize: 9, color: p.textDim, letterSpacing: '0.04em' }}>
                 {r.symbol} · {relTime(r.ts, now)} ago
               </span>
-            </span>
-            <span style={{
-              fontSize: 10.5, fontWeight: 800, color: buy ? UP : DOWN, fontVariantNumeric: 'tabular-nums',
-            }}>
-              {r.unit === 'usd' ? formatValue(Math.abs(r.size), 'usd') : `${Math.abs(r.size)}`}
             </span>
           </div>
         );
@@ -212,22 +217,22 @@ function Tape({ rows, now }: { rows: ReturnType<typeof buildTape>; now: number }
 
 /* ── OHLC table view (the non-visual route to the same numbers) ── */
 
-function OhlcTable({ quote, timeframe }: { quote: Quote; timeframe: Timeframe }) {
+function OhlcTable({ quote, timeframe, p }: { quote: Quote; timeframe: Timeframe; p: Palette }) {
   const rows = quote.candles.slice(-14).reverse();
   const cell: React.CSSProperties = {
-    padding: '6px 8px', fontSize: 10.5, color: TEXT_STRONG,
-    fontVariantNumeric: 'tabular-nums', borderBottom: `1px solid ${BORDER}`, textAlign: 'right',
+    padding: '6px 8px', fontSize: 10.5, color: p.textStrong,
+    fontVariantNumeric: 'tabular-nums', borderBottom: `1px solid ${p.border}`, textAlign: 'right',
   };
   return (
     <div style={{ maxHeight: 300, overflowY: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            {['Bar', 'Open', 'High', 'Low', 'Close', 'Chg', 'Vol'].map((h, i) => (
+            {['Bar', 'Open', 'High', 'Low', 'Close', 'Chg', 'Events'].map((h, i) => (
               <th key={h} style={{
-                ...cell, textAlign: i === 0 ? 'left' : 'right', color: TEXT_MUTED,
+                ...cell, textAlign: i === 0 ? 'left' : 'right', color: p.textMuted,
                 fontSize: 9.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
-                position: 'sticky', top: 0, backgroundColor: PANEL,
+                position: 'sticky', top: 0, backgroundColor: p.panel,
               }}>{h}</th>
             ))}
           </tr>
@@ -237,13 +242,13 @@ function OhlcTable({ quote, timeframe }: { quote: Quote; timeframe: Timeframe })
             const pct = k.o !== 0 ? ((k.c - k.o) / Math.abs(k.o)) * 100 : 0;
             return (
               <tr key={k.t}>
-                <td style={{ ...cell, textAlign: 'left', color: TEXT_MUTED }}>{formatBucket(k.t, timeframe)}</td>
-                <td style={cell}>{formatValue(k.o, quote.instrument.unit)}</td>
-                <td style={cell}>{formatValue(k.h, quote.instrument.unit)}</td>
-                <td style={cell}>{formatValue(k.l, quote.instrument.unit)}</td>
-                <td style={cell}>{formatValue(k.c, quote.instrument.unit)}</td>
-                <td style={cell}><Change pct={pct} size={10} /></td>
-                <td style={{ ...cell, color: TEXT_MUTED }}>{k.v}</td>
+                <td style={{ ...cell, textAlign: 'left', color: p.textMuted }}>{formatBucket(k.t, timeframe)}</td>
+                <td style={cell}>{formatValue(k.o)}</td>
+                <td style={cell}>{formatValue(k.h)}</td>
+                <td style={cell}>{formatValue(k.l)}</td>
+                <td style={cell}>{formatValue(k.c)}</td>
+                <td style={cell}><Change pct={pct} p={p} size={10} /></td>
+                <td style={{ ...cell, color: p.textMuted }}>{k.v}</td>
               </tr>
             );
           })}
@@ -253,24 +258,71 @@ function OhlcTable({ quote, timeframe }: { quote: Quote; timeframe: Timeframe })
   );
 }
 
+/* ── Component breakdown strip ── */
+
+function BreakdownStrip({ quote, p }: { quote: Quote; p: Palette }) {
+  if (quote.breakdown.length === 0) return null;
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 14px',
+      borderTop: `1px solid ${p.border}`,
+    }}>
+      {quote.breakdown.map(b => (
+        <div key={b.label} title={b.hint} style={{
+          flex: '1 1 96px', minWidth: 96, padding: '7px 9px', borderRadius: 7,
+          backgroundColor: p.panel, border: `1px solid ${p.border}`, cursor: 'help',
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6,
+          }}>
+            <span style={{
+              fontSize: 9.5, fontWeight: 800, color: p.textMuted, letterSpacing: '0.06em',
+              textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{b.label}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: p.textStrong, fontVariantNumeric: 'tabular-nums' }}>
+              {Math.round(b.score)}
+            </span>
+          </div>
+          {/* A meter, not a chart: the number above it is the value that counts. */}
+          <div style={{ marginTop: 5, height: 3, borderRadius: 999, backgroundColor: p.panelHi, overflow: 'hidden' }}>
+            <div style={{
+              width: `${Math.max(b.score, 1)}%`, height: '100%', borderRadius: 999,
+              backgroundColor: b.score >= 50 ? p.up : b.score >= 25 ? p.flat : p.down,
+            }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Board ── */
 
-export default function MarketBoard({ contacts, pipelines, appointments }: Props) {
+export default function MarketBoard(props: Props) {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const p = palette(theme);
+
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
-  const [symbol, setSymbol] = useState('PIPE/USD');
+  const [symbol, setSymbol] = useState(INDEX_SYMBOL);
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const [sim, setSim] = useState(simEnabled);
 
-  const input = useMemo(() => ({ contacts, pipelines, appointments }), [contacts, pipelines, appointments]);
+  const { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites } = props;
+  const input = useMemo<FeedInput>(
+    () => ({ contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites }),
+    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites],
+  );
   const { book, seq: tickSeq, now } = useMarketBook(input, timeframe, sim);
 
   const tape = useMemo(() => buildTape(input), [input]);
-  const selected = book.quotes.find(q => q.instrument.symbol === symbol) ?? book.quotes[0];
+  const composition = useMemo(() => indexComposition(book), [book]);
+  const selected = book.quotes.find(q => q.module.symbol === symbol) ?? book.quotes[0];
   const countdown = formatCountdown(untilNextBucket(timeframe, now));
 
-  const advancers = book.quotes.filter(q => q.changePct > 0).length;
-  const decliners = book.quotes.filter(q => q.changePct < 0).length;
+  const modules = book.quotes.filter(q => q.module.symbol !== INDEX_SYMBOL);
+  const advancers = modules.filter(q => q.changePct > 0).length;
+  const decliners = modules.filter(q => q.changePct < 0).length;
 
   function toggleSim() {
     setSim(v => {
@@ -284,45 +336,52 @@ export default function MarketBoard({ contacts, pipelines, appointments }: Props
   const selUp = selected.changePct >= 0;
 
   const tabBtn = (activeTab: boolean): React.CSSProperties => ({
-    padding: '4px 10px', borderRadius: 5, border: `1px solid ${activeTab ? ACCENT : BORDER}`,
-    backgroundColor: activeTab ? 'rgba(199,244,65,0.12)' : 'transparent',
-    color: activeTab ? ACCENT : TEXT_MUTED, fontSize: 10.5, fontWeight: 800,
+    padding: '4px 10px', borderRadius: 5, border: `1px solid ${activeTab ? p.accent : p.border}`,
+    backgroundColor: activeTab ? p.accentSoft : 'transparent',
+    color: activeTab ? p.textStrong : p.textMuted, fontSize: 10.5, fontWeight: 800,
     cursor: 'pointer', letterSpacing: '0.04em',
   });
 
   return (
     <section
       aria-label="Business market board"
+      /* The CRM goes dark by inverting all of #root with a CSS filter. This
+         panel picks its own theme-matched colours instead, so it opts out. */
+      data-noinvert
       style={{
-        backgroundColor: INK_DARK, borderRadius: 20, overflow: 'hidden',
-        border: `1px solid ${BORDER}`, boxShadow: '0 18px 44px -16px rgba(8,10,14,0.55)',
+        backgroundColor: p.ink, borderRadius: 20, overflow: 'hidden',
+        border: `1px solid ${p.border}`,
+        boxShadow: theme === 'dark'
+          ? '0 18px 44px -16px rgba(8,10,14,0.55)'
+          : '0 1px 2px rgba(23,25,28,0.06)',
       }}
     >
       {/* ── Header ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-        padding: '12px 16px', borderBottom: `1px solid ${BORDER}`, backgroundColor: PANEL,
+        padding: '12px 16px', borderBottom: `1px solid ${p.border}`, backgroundColor: p.panel,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: TEXT_STRONG, letterSpacing: '-0.01em' }}>
-            Business Exchange
+          <span style={{ fontSize: 15, fontWeight: 800, color: p.textStrong, letterSpacing: '-0.01em' }}>
+            Department Exchange
           </span>
-          <Badge color={UP}>
-            <span style={{ width: 5, height: 5, borderRadius: 999, backgroundColor: UP, animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
+          <Badge p={p} color={p.up}>
+            <span style={{ width: 5, height: 5, borderRadius: 999, backgroundColor: p.up, animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
             Open
           </Badge>
           {book.real
-            ? <Badge color={TEXT_MUTED} title={`Replayed from ${book.recordCount} dated records in your CRM`}>Live data</Badge>
-            : <Badge color={ACCENT} title="Not enough dated records yet — this book is a worked example. It switches to your own data automatically once you have a handful of deals or contacts.">Demo book</Badge>}
+            ? <Badge p={p} title={`Replayed from ${book.recordCount} dated records across your modules`}>Live data</Badge>
+            : <Badge p={p} color={p.textStrong} title="Not enough dated records yet — this book is a worked example. It switches to your own data automatically once you have a handful of contacts, deals or campaigns.">Demo book</Badge>}
           <button
             onClick={toggleSim}
             title={sim
-              ? 'Tick simulation is ON: prices wobble around your real values so the board reads like a live market. Candles still close on the true figure. Click to show only real movement.'
-              : 'Tick simulation is OFF: prices move only when your records move.'}
+              ? 'Tick simulation is ON: scores wobble around your real values so the board reads like a live market. Candles still close on the true figure. Click to show only real movement.'
+              : 'Tick simulation is OFF: scores move only when your records move.'}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 5,
-              border: `1px solid ${sim ? ACCENT : BORDER}`, backgroundColor: sim ? 'rgba(199,244,65,0.12)' : PANEL_HI,
-              color: sim ? ACCENT : TEXT_DIM, fontSize: 9.5, fontWeight: 800,
+              border: `1px solid ${sim ? p.accent : p.border}`,
+              backgroundColor: sim ? p.accentSoft : p.panelHi,
+              color: sim ? p.textStrong : p.textDim, fontSize: 9.5, fontWeight: 800,
               letterSpacing: '0.09em', textTransform: 'uppercase', cursor: 'pointer',
             }}
           >
@@ -331,59 +390,61 @@ export default function MarketBoard({ contacts, pipelines, appointments }: Props
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span style={{ fontSize: 10.5, color: TEXT_MUTED, fontVariantNumeric: 'tabular-nums' }}>
-            <span style={{ color: UP, fontWeight: 800 }}>▲ {advancers}</span>
-            <span style={{ color: TEXT_DIM }}> / </span>
-            <span style={{ color: DOWN, fontWeight: 800 }}>▼ {decliners}</span>
+          <span style={{ fontSize: 10.5, color: p.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ color: p.up, fontWeight: 800 }}>▲ {advancers}</span>
+            <span style={{ color: p.textDim }}> / </span>
+            <span style={{ color: p.down, fontWeight: 800 }}>▼ {decliners}</span>
           </span>
-          <span style={{ fontSize: 11.5, color: TEXT_STRONG, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 11.5, color: p.textStrong, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
             {formatClock(now)}
           </span>
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(230px, 1fr) minmax(0, 2.5fr) minmax(230px, 1fr)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(0, 2.5fr) minmax(220px, 1fr)' }}>
 
         {/* Watchlist */}
-        <div style={{ borderRight: `1px solid ${BORDER}`, backgroundColor: PANEL }}>
-          <SectionTitle right={<span style={{ fontSize: 9.5, color: TEXT_DIM }}>{book.quotes.length} symbols</span>}>
-            Watchlist
+        <div style={{ borderRight: `1px solid ${p.border}`, backgroundColor: p.panel }}>
+          <SectionTitle p={p} right={<span style={{ fontSize: 9.5, color: p.textDim }}>{modules.length} modules</span>}>
+            Departments
           </SectionTitle>
           {book.quotes.map(q => (
             <WatchRow
-              key={q.instrument.symbol}
+              key={q.module.symbol}
               quote={q}
-              selected={q.instrument.symbol === selected.instrument.symbol}
+              selected={q.module.symbol === selected.module.symbol}
               tickSeq={tickSeq}
-              onSelect={() => setSymbol(q.instrument.symbol)}
+              p={p}
+              onSelect={() => setSymbol(q.module.symbol)}
             />
           ))}
         </div>
 
         {/* Chart */}
-        <div style={{ minWidth: 0, backgroundColor: INK_DARK }}>
+        <div style={{ minWidth: 0, backgroundColor: p.ink }}>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-            padding: '10px 14px', borderBottom: `1px solid ${BORDER}`,
+            padding: '10px 14px', borderBottom: `1px solid ${p.border}`,
           }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: TEXT_STRONG, letterSpacing: '0.02em' }}>
-                {selected.instrument.symbol}
+              <span style={{ fontSize: 13, fontWeight: 800, color: p.textStrong, letterSpacing: '0.02em' }}>
+                {selected.module.symbol}
               </span>
               <span
                 key={`sel-${tickSeq}`}
                 className={selected.tickDir === 'up' ? 'tick-up' : selected.tickDir === 'down' ? 'tick-down' : undefined}
                 style={{
-                  fontSize: 20, fontWeight: 800, color: selUp ? UP : DOWN,
+                  fontSize: 20, fontWeight: 800, color: selUp ? p.up : p.down,
                   letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', borderRadius: 4, padding: '0 3px',
                 }}
               >
-                {formatValue(selected.last, selected.instrument.unit)}
+                {formatValue(selected.last)}
               </span>
-              <Change pct={selected.changePct} size={12.5} />
-              <span style={{ fontSize: 10.5, color: TEXT_DIM }}>
-                {signed(selected.change, selected.instrument.unit === 'count' ? 0 : 2)} vs prev {timeframe} close
+              <span style={{ fontSize: 11, color: p.textDim, fontWeight: 600 }}>/ 100</span>
+              <Change pct={selected.changePct} p={p} size={12.5} />
+              <span style={{ fontSize: 10.5, color: p.textDim }}>
+                {signed(selected.change)} vs prev {timeframe} close
               </span>
             </div>
 
@@ -393,7 +454,7 @@ export default function MarketBoard({ contacts, pipelines, appointments }: Props
                   {t.label}
                 </button>
               ))}
-              <span style={{ width: 1, height: 16, backgroundColor: BORDER, margin: '0 2px' }} />
+              <span style={{ width: 1, height: 16, backgroundColor: p.border, margin: '0 2px' }} />
               <button
                 onClick={() => setView(v => (v === 'chart' ? 'table' : 'chart'))}
                 title={view === 'chart' ? 'Show the same bars as a table' : 'Back to the chart'}
@@ -408,52 +469,54 @@ export default function MarketBoard({ contacts, pipelines, appointments }: Props
           {view === 'chart'
             ? <CandleChart
                 candles={selected.candles}
-                unit={selected.instrument.unit}
                 timeframe={timeframe}
-                symbol={selected.instrument.symbol}
-                name={selected.instrument.name}
+                symbol={selected.module.symbol}
+                name={selected.module.name}
                 last={selected.last}
-                height={300}
+                p={p}
+                height={286}
               />
-            : <OhlcTable quote={selected} timeframe={timeframe} />}
+            : <OhlcTable quote={selected} timeframe={timeframe} p={p} />}
+
+          <BreakdownStrip quote={selected} p={p} />
 
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-            padding: '9px 14px', borderTop: `1px solid ${BORDER}`, backgroundColor: PANEL,
+            padding: '9px 14px', borderTop: `1px solid ${p.border}`, backgroundColor: p.panel,
           }}>
-            <span style={{ fontSize: 10.5, color: TEXT_DIM }}>
-              {selected.instrument.basis} · <span style={{ color: TEXT_MUTED }}>
+            <span style={{ fontSize: 10.5, color: p.textDim }}>
+              {selected.module.basis} · <span style={{ color: p.textMuted }}>
                 {book.real ? `${selected.volume} records in window` : 'worked example — no records yet'}
               </span>
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 10.5, color: TEXT_MUTED, fontVariantNumeric: 'tabular-nums' }}>
-                Next bar in <span style={{ color: TEXT_STRONG, fontWeight: 800 }}>{countdown}</span>
+              <span style={{ fontSize: 10.5, color: p.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+                Next bar in <span style={{ color: p.textStrong, fontWeight: 800 }}>{countdown}</span>
               </span>
               <button
-                onClick={() => navigate(selected.instrument.route)}
+                onClick={() => navigate(selected.module.route)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 999,
-                  border: 'none', cursor: 'pointer', backgroundColor: ACCENT, color: INK_DARK,
+                  border: 'none', cursor: 'pointer', backgroundColor: p.accent, color: p.onAccent,
                   fontSize: 10.5, fontWeight: 800, letterSpacing: '0.03em',
                 }}
               >
-                Open {selected.instrument.dest} <ArrowUpRight size={11} />
+                Open {selected.module.dest} <ArrowUpRight size={11} />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Depth + tape */}
-        <div style={{ borderLeft: `1px solid ${BORDER}`, backgroundColor: PANEL, minWidth: 0 }}>
-          <SectionTitle right={<span style={{ fontSize: 9.5, color: TEXT_DIM }}>open value</span>}>
-            Pipeline Depth
+        {/* Composition + tape */}
+        <div style={{ borderLeft: `1px solid ${p.border}`, backgroundColor: p.panel, minWidth: 0 }}>
+          <SectionTitle p={p} right={<span style={{ fontSize: 9.5, color: p.textDim }}>vs average</span>}>
+            Index Composition
           </SectionTitle>
-          <DepthLadder pipelines={pipelines} />
-          <SectionTitle right={<span style={{ fontSize: 9.5, color: FLAT }}>{tape.length} prints</span>}>
+          <Composition rows={composition} p={p} onPick={setSymbol} />
+          <SectionTitle p={p} right={<span style={{ fontSize: 9.5, color: p.flat }}>{tape.length} prints</span>}>
             Time &amp; Sales
           </SectionTitle>
-          <Tape rows={tape} now={now} />
+          <Tape rows={tape} now={now} p={p} />
         </div>
       </div>
     </section>

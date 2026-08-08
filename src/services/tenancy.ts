@@ -63,6 +63,9 @@ export interface AgencyProfile {
 const GLOBAL_KEYS = new Set([
   'crm_subaccounts', 'crm_active_account', 'crm_agency', 'crm_sidebar_mode',
   'crm_anthropic_key', 'crm_openai_key', 'crm_gemini_key', 'crm_theme',
+  // How the dashboard board is displayed, not what it shows — a viewing
+  // preference that belongs with the theme, following the user across accounts.
+  'crm_market_sim',
   // Server-issued capability matrix: a local cache, never account data to sync.
   'crm_server_caps', 'crm_cloud_status',
 ]);
