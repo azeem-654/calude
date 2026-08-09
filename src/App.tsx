@@ -24,6 +24,7 @@ import Analytics from './components/Analytics/Analytics';
 import Reputation from './components/Reputation/Reputation';
 import Settings from './components/Settings/Settings';
 import VideoShorts from './components/VideoShorts/VideoShorts';
+import SocialAutomation from './components/SocialAutomation/SocialAutomation';
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
@@ -80,6 +81,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
           <Route path="/ai-shorts" element={<VideoShorts />} />
+          <Route path="/social-automation" element={<SocialAutomation />} />
           <Route path="/social-creator" element={<SocialCreator />} />
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />

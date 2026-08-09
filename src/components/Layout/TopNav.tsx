@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
-  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
+  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun, Rocket,
 } from 'lucide-react';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
@@ -24,6 +24,7 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { path: '/social-automation', label: 'Social Automation', icon: Rocket, desc: 'One video → clips, posts, email, blog' },
   { path: '/ai-shorts',      label: 'AI Shorts',      icon: Scissors,     desc: 'Turn videos into viral clips' },
   { path: '/social-creator', label: 'Social Creator', icon: Palette,      desc: 'AI social post designer' },
   { path: '/reputation',     label: 'Reputation',     icon: Star,         desc: 'Reviews & ratings' },
