@@ -5,6 +5,7 @@ import { useApp } from '../../context/AppContext';
 import CampaignWizard from './CampaignWizard';
 import GenerationPanel from './GenerationPanel';
 import ContentLibrary from './ContentLibrary';
+import CampaignDashboard from './CampaignDashboard';
 import { libraryCount, pushToModules } from '../../services/campaignHandoff';
 import {
   STATUS_META, deleteCampaign, describeTargets, goalLabel, loadCampaigns,
@@ -34,6 +35,7 @@ export default function SocialAutomation() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(loadCampaigns);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [tab, setTab] = useState<'campaigns' | 'library'>('campaigns');
+  const [openId, setOpenId] = useState('');
   const [libTotal, setLibTotal] = useState(libraryCount);
 
   const refresh = () => { setCampaigns(loadCampaigns()); setLibTotal(libraryCount()); };
@@ -56,6 +58,16 @@ export default function SocialAutomation() {
     deleteCampaign(c.id);
     refresh();
     addNotification(`Campaign "${c.name}" deleted`, 'info');
+  }
+
+  const opened = campaigns.find(c => c.id === openId);
+  if (opened) {
+    return (
+      <div style={{ minHeight: '100vh' }}>
+        <Header title={opened.name} subtitle="Campaign dashboard" />
+        <CampaignDashboard campaign={opened} onBack={() => setOpenId('')} onChange={refresh} />
+      </div>
+    );
   }
 
   if (wizardOpen) {
@@ -144,10 +156,16 @@ export default function SocialAutomation() {
                         : <Film size={17} color="#3e63dd" />}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 style={{
-                        fontSize: 14.5, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.01em',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{c.name}</h3>
+                      <button
+                        onClick={() => setOpenId(c.id)}
+                        title="Open the campaign dashboard"
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                          background: 'transparent', padding: 0, cursor: 'pointer',
+                          fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: '-0.01em',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}
+                      >{c.name}</button>
                       <p style={{ fontSize: 11.5, color: MUTED, margin: '2px 0 0' }}>
                         {goalLabel(c.goal)} · created {relDate(c.createdAt)}
                       </p>
@@ -194,6 +212,18 @@ export default function SocialAutomation() {
                   )}
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
+                    {c.status === 'ready' && (
+                      <button
+                        onClick={() => setOpenId(c.id)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px',
+                          borderRadius: 999, border: '1px solid #e4e7ec', backgroundColor: '#fff',
+                          color: INK, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                        }}
+                      >
+                        Open dashboard
+                      </button>
+                    )}
                     <button
                       onClick={() => remove(c)}
                       style={{
