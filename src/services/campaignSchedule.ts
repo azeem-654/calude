@@ -150,7 +150,9 @@ export function campaignReport(campaign: Campaign): CampaignReport {
     total: assets.length,
     scheduled: assets.filter(a => a.status === 'scheduled').length,
     published: assets.filter(a => a.status === 'published').length,
-    failed: assets.filter(a => a.status === 'failed').length,
+    // Counted from the jobs, not the assets: retry operates on jobs, so the
+    // button that offers it has to be looking at the same thing.
+    failed: jobs.filter(j => j.status === 'failed').length,
     firstAt: times[0],
     lastAt: times[times.length - 1],
     byPlatform: [...groups.entries()]

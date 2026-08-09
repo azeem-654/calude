@@ -212,7 +212,10 @@ export default function SocialAutomation() {
                   )}
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
-                    {c.status === 'ready' && (
+                    {/* Anything that has been generated has a dashboard worth
+                        opening — gating this on 'ready' alone locked the user
+                        out the moment publishing started. */}
+                    {['ready', 'publishing', 'partial', 'published', 'failed'].includes(c.status) && (
                       <button
                         onClick={() => setOpenId(c.id)}
                         style={{

@@ -16,6 +16,7 @@ An agency owns isolated client sub-accounts; every module below is tenant-scoped
 | Scheduling | Calendly-grade booking: event types, timezone slots, ics, reschedule/cancel, email + SMS reminders |
 | Social Creator | Canva-grade design editor: templates, snap guides, shortcuts, stock photos, effects |
 | AI Shorts | Long-video → shorts: captions, hooks, reframe, B-roll, dubbing, script-to-video, music, intro/outro |
+| Social Automation | **One video → a whole campaign**: clips, per-platform posts, a 4-email sequence, SMS, a blog article and a landing page, then an assisted publish run |
 | Reputation | Review inbox and reply workflows |
 | Agency | Sub-account management, plans, usage, white-label branding |
 
@@ -398,6 +399,76 @@ own. What is absent is the simulated conversation network, and the panel says so
 on screen rather than implying otherwise. **SMTP mailbox probes** need outbound port 25, which most
 shared hosts block; the endpoint probes for it once and the UI says plainly
 whether this host can do it.
+
+## Social Automation
+
+One video in, a multi-platform campaign out. Upload a file or paste a YouTube
+link, choose the destinations, and the module writes everything: short clips
+ranked by virality, a post for each placement fitted to that platform's own
+limits, a four-email sequence, SMS, a blog article and a landing page.
+
+### How it works
+
+1. **Wizard** — source, campaign goal, destinations, audience segments.
+2. **Analysis** — with a Gemini API key the video is watched; without one a
+   deterministic analyser reads the title, description and goal instead. The
+   card says which happened, and no campaign is blocked for want of a key.
+3. **Generation** — clips, then a post per placement, then the CRM's own
+   channels. Every caption is fitted to that placement's caption limit and
+   hashtag band, so nothing is written that the platform would reject.
+4. **Review** — edit any piece with the limit enforced as you type; deep links
+   open the richer editors (AI Shorts, Social Creator, Marketing, Websites).
+5. **Schedule** — each destination is spread across its own best hours in your
+   local time, one post per slot.
+6. **Publish** — an assisted run, one post at a time.
+
+### Publishing: how it really works
+
+**There is no browser automation here, and there cannot be.** A page served
+from this app cannot read or write anything inside an `instagram.com` tab —
+the same-origin policy is the boundary that stops any website driving your
+logged-in sessions. It also cannot read another site's cookies, so it cannot
+detect whether you are signed in. Puppeteer and Playwright are Node libraries;
+they drive a browser they launch themselves, which has none of your sessions.
+Anything advertising "auto-fill and click Post" from a web page is either a
+browser extension or a false claim. Automating these platforms also breaks
+their terms of service and gets real accounts suspended.
+
+What the module does instead — which covers most of the work — is pick the best
+available handoff per placement:
+
+| Route | Placements | What happens |
+|---|---|---|
+| **Prefill URL** | X, LinkedIn feed, Facebook feed, Pinterest | The platform's own documented share endpoint opens its composer with your text already in the box |
+| **Web Share** | Instagram, TikTok, Facebook Reels/Stories | `navigator.share` hands the caption and media to the native app (mobile, and some desktop browsers) |
+| **Manual** | YouTube, LinkedIn newsletter | Caption copied to your clipboard, media downloaded, composer opened |
+
+You press Post. The app records what you tell it — it never claims to have
+detected a live post, because it cannot.
+
+### No setup required
+
+There are no browser automation dependencies to install. The publish run needs
+only that you are signed in to each platform in the same browser, and that
+pop-ups are allowed for this site (each post opens one tab).
+
+Optional: a **Gemini API key** in Settings → AI turns text-only analysis into
+real video analysis. Everything works without it, less well.
+
+### If you want true unattended posting
+
+That needs the platforms' official APIs — Meta Graph, YouTube Data, TikTok
+Content Posting, LinkedIn Marketing. Each requires an app review by the
+platform before it will post on a user's behalf. That is a real path and the
+data model already supports it: `PublishJob` carries the status, attempts and
+permalink an API integration would fill in. It is not shipped because app
+review takes weeks per platform, not because of a technical gap.
+
+### Retries
+
+A post marked as failed can be retried from the campaign dashboard. Attempts
+are capped at three; past that the post keeps its caption and its place in the
+plan but needs a person to look at it, rather than being retried forever.
 
 ## Deployment and host-side state
 

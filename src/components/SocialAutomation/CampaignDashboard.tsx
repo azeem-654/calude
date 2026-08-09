@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowLeft, CalendarClock, CalendarX, Check, Film, Play, Send,
+  ArrowLeft, CalendarClock, CalendarX, Check, Film, Play, RotateCcw, Send,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -8,6 +8,8 @@ import {
 } from '../../services/socialAutomation';
 import { campaignReport, clearSchedule, formatSlot, scheduleCampaign } from '../../services/campaignSchedule';
 import ReviewEdit from './ReviewEdit';
+import PublishFlow from './PublishFlow';
+import { retryFailed } from '../../services/publishSession';
 import type { Campaign } from '../../types/socialAutomation';
 
 const INK = '#17191c';
@@ -38,6 +40,7 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
   const [tab, setTab] = useState<'overview' | 'review'>('overview');
   const [version, setVersion] = useState(0);
   const [startDate, setStartDate] = useState('');
+  const [publishing, setPublishing] = useState(false);
 
   const assets = useMemo(
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,6 +86,13 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
     const jobs = scheduleCampaign(campaign, start);
     bump();
     addNotification(`${jobs.length} posts scheduled, starting ${formatSlot(jobs[0]?.scheduledFor)}`, 'success');
+  }
+
+  function retry() {
+    const res = retryFailed(campaign.id);
+    bump();
+    addNotification(res.ok ? `${res.retried} failed posts are back in the queue.` : (res.error ?? 'Nothing to retry.'),
+      res.ok ? 'success' : 'error');
   }
 
   function unschedule() {
@@ -260,15 +270,34 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
             </div>
 
             <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 16, padding: '11px 13px',
-              backgroundColor: '#fdf5e7', borderRadius: 11,
+              display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, paddingTop: 16,
+              borderTop: '1px solid #f2f3f5', flexWrap: 'wrap',
             }}>
-              <Send size={13} color="#c77414" style={{ flexShrink: 0, marginTop: 1 }} />
-              <p style={{ fontSize: 11.5, color: '#8a6516', margin: 0, lineHeight: 1.6 }}>
-                <strong style={{ color: '#c77414' }}>Publishing arrives next.</strong> Scheduling records when each
-                piece should go out; the handoff that opens each platform's composer with your caption already
-                filled in is the last part of this module.
-              </p>
+              <button
+                onClick={() => setPublishing(true)}
+                disabled={report.scheduled === 0 && report.total === 0}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 20px',
+                  borderRadius: 999, border: 'none',
+                  cursor: report.total === 0 ? 'not-allowed' : 'pointer',
+                  backgroundColor: report.total === 0 ? '#d5d8dd' : '#3e63dd', color: '#fff',
+                  fontSize: 13, fontWeight: 700,
+                }}
+              >
+                <Send size={14} /> Publish everything
+              </button>
+              {report.failed > 0 && (
+                <button onClick={retry} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+                  borderRadius: 999, border: '1px solid #f4d4d4', backgroundColor: '#fff',
+                  color: '#e5484d', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                }}>
+                  <RotateCcw size={13} /> Retry {report.failed} failed
+                </button>
+              )}
+              <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                Opens each platform one at a time with your caption ready — you press Post.
+              </span>
             </div>
           </div>
 
@@ -303,6 +332,14 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
             </div>
           )}
         </>
+      )}
+
+      {publishing && (
+        <PublishFlow
+          campaign={campaign}
+          onClose={() => setPublishing(false)}
+          onChange={bump}
+        />
       )}
     </div>
   );
