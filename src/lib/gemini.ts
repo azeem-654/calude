@@ -58,7 +58,16 @@ function friendlyGeminiError(status: number, raw: string): string {
   if (status === 429) {
     return "Gemini quota/rate limit reached (429). This API key's free-tier quota is exhausted or not enabled for these models. Wait a minute and retry, enable billing on the key, or generate sample clips instead.";
   }
-  if (status === 403) return 'Gemini rejected the API key (403). Check the key is valid and the Generative Language API is enabled for its project.';
+  // A key that is wrong, revoked or mistyped comes back as 400 with
+  // API_KEY_INVALID, not 403 — verified against the live endpoint. Matching on
+  // status alone meant the most common failure fell through to the generic
+  // branch and lost the advice that actually fixes it.
+  if (status === 403 || /API[ _]KEY[ _]INVALID|API key not valid/i.test(raw)) {
+    return `Gemini rejected the API key (${status}). Check the key is correct, that it has not been revoked, and that the Generative Language API is enabled for its project at aistudio.google.com.`;
+  }
+  if (/API[ _]KEY[ _]SERVICE[ _]BLOCKED|SERVICE_DISABLED/i.test(raw)) {
+    return `Gemini is not enabled for this key's project (${status}). Enable the Generative Language API at console.cloud.google.com, then try again.`;
+  }
   if (status === 400 && /Unsupported MIME type/i.test(msg)) {
     return "The AI model couldn't read this video source. For YouTube links this can happen on some models — try downloading the video and uploading the file directly.";
   }

@@ -17,9 +17,17 @@ $fromEmail = $data['fromEmail']      ?? $user;
 $to        = trim($data['to']        ?? '');
 $subject   = $data['subject']        ?? 'CRMPro Test';
 $html      = $data['html']           ?? '<p>Test email from CRMPro.</p>';
+// Opt-in only, for an internal relay with a self-signed certificate.
+$insecure  = !empty($data['allowInsecure']);
 
 if (!$to) {
     echo json_encode(['success' => false, 'message' => 'Recipient address is required']);
+    exit;
+}
+// A malformed address used to be handed to RCPT TO and reported as sent, so a
+// campaign counted deliveries that never left the building.
+if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+    echo json_encode(['success' => false, 'message' => "\"{$to}\" is not a valid email address"]);
     exit;
 }
 
@@ -58,8 +66,23 @@ function build_mime($fromName, $fromEmail, $to, $subject, $html, $host) {
 /* ── attempt socket SMTP ── */
 $smtpError = '';
 if ($host && $user && $pass) {
+/**
+ * TLS policy.
+ *
+ * Certificates are verified by default. They were not, which meant an attacker
+ * presenting any self-signed certificate could sit in the middle of the
+ * connection and read the customer's mailbox password. `allowInsecure` exists
+ * for the genuine case of an internal relay with a self-signed certificate, and
+ * has to be chosen deliberately.
+ */
     $ctx = stream_context_create([
-        'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
+        'ssl' => [
+            'verify_peer'       => !$insecure,
+            'verify_peer_name'  => !$insecure,
+            'allow_self_signed' => $insecure,
+            'SNI_enabled'       => true,
+            'peer_name'         => $host,
+        ],
     ]);
     $wrapper = $enc === 'ssl' ? "ssl://{$host}" : $host;
     $conn = @stream_socket_client("{$wrapper}:{$port}", $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
@@ -70,12 +93,27 @@ if ($host && $user && $pass) {
         if (smtp_code($greeting) === 220) {
             smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
 
+            // Fail closed. If TLS was asked for and does not actually engage,
+            // stop here — continuing would put the account password on the
+            // wire in the clear while the UI still said the link was secure.
+            // Fail closed, and do not fall through to the mail() path either:
+            // if the user asked for an encrypted link and it did not happen,
+            // the honest outcome is to stop and say so, not to send anyway.
             if ($enc === 'tls') {
                 smtp_w($conn, "STARTTLS");
-                if (smtp_code(smtp_r($conn)) === 220) {
-                    @stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT);
-                    smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
+                if (smtp_code(smtp_r($conn)) !== 220) {
+                    fclose($conn);
+                    echo json_encode(['success' => false, 'message' =>
+                        'The server refused STARTTLS, so the connection would not have been encrypted and your password was not sent. Use SSL on port 465, or choose "None" only on a server you control.']);
+                    exit;
                 }
+                if (!@stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    fclose($conn);
+                    echo json_encode(['success' => false, 'message' =>
+                        'The TLS handshake failed — the certificate could not be verified, so nothing was sent. Try SSL on port 465, or check the host name matches the certificate.']);
+                    exit;
+                }
+                smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
             }
 
             smtp_w($conn, "AUTH LOGIN");

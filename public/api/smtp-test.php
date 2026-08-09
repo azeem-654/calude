@@ -12,6 +12,8 @@ $port  = intval($data['port']   ?? 587);
 $user  = trim($data['username'] ?? '');
 $pass  = $data['password']      ?? '';
 $enc   = $data['encryption']    ?? 'tls';
+// Opt-in only, for an internal relay with a self-signed certificate.
+$insecure = !empty($data['allowInsecure']);
 
 function t_read($conn) {
     $buf = '';
@@ -29,7 +31,15 @@ $phpMailAvail = function_exists('mail');
 /* ── try socket SMTP ── */
 if ($host && $user && $pass) {
     $ctx = stream_context_create([
-        'ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
+        // Verified by default — an unverified TLS link gives an active attacker
+        // the customer's mailbox password for the price of a self-signed cert.
+        'ssl' => [
+            'verify_peer'       => !$insecure,
+            'verify_peer_name'  => !$insecure,
+            'allow_self_signed' => $insecure,
+            'SNI_enabled'       => true,
+            'peer_name'         => $host,
+        ],
     ]);
     $wrapper = $enc === 'ssl' ? "ssl://{$host}" : $host;
     $conn = @stream_socket_client("{$wrapper}:{$port}", $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
@@ -42,13 +52,17 @@ if ($host && $user && $pass) {
 
             if ($enc === 'tls') {
                 fwrite($conn, "STARTTLS\r\n");
-                if (t_code(t_read($conn)) === 220) {
-                    if (!@stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-                        fclose($conn);
-                        $smtpError = 'TLS handshake failed — try SSL on port 465 instead';
-                    } else {
-                        fwrite($conn, "EHLO mail.test\r\n"); t_read($conn);
-                    }
+                if (t_code(t_read($conn)) !== 220) {
+                    // Previously this fell straight through to AUTH, so a server
+                    // that refuses STARTTLS was tested with the password in the
+                    // clear and still reported back as a working connection.
+                    fclose($conn);
+                    $smtpError = 'The server refused STARTTLS, so the connection would not be encrypted. Use SSL on port 465, or choose "None" only on a server you control.';
+                } elseif (!@stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    fclose($conn);
+                    $smtpError = 'TLS handshake failed — the certificate could not be verified. Try SSL on port 465 instead.';
+                } else {
+                    fwrite($conn, "EHLO mail.test\r\n"); t_read($conn);
                 }
             }
 
