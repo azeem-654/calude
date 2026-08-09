@@ -3,6 +3,7 @@ import { Film, Play, Plus, Rocket, Sparkles, Trash2 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import CampaignWizard from './CampaignWizard';
+import GenerationPanel from './GenerationPanel';
 import {
   STATUS_META, deleteCampaign, describeTargets, goalLabel, loadCampaigns,
 } from '../../services/socialAutomation';
@@ -136,14 +137,7 @@ export default function SocialAutomation() {
                       : c.audience.contactCount > 0 ? ` · ${c.audience.contactCount} contacts` : ''}
                   </p>
 
-                  {c.status === 'queued' && (
-                    <p style={{
-                      fontSize: 11.5, color: '#c77414', backgroundColor: '#fdf5e7', borderRadius: 9,
-                      padding: '8px 10px', margin: 0, lineHeight: 1.5,
-                    }}>
-                      Waiting on the content generator — that arrives in the next part of this module.
-                    </p>
-                  )}
+                  <GenerationPanel campaign={c} onChange={() => setCampaigns(loadCampaigns())} />
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
                     <button
