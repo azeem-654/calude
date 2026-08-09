@@ -94,6 +94,17 @@ export interface Campaign {
   assetCounts?: Partial<Record<CampaignAssetKind, number>>;
   /** Set when generation fails, so the dashboard can explain itself. */
   error?: string;
+  /**
+   * What a push into Marketing/Websites/Funnels created. Present means it has
+   * already happened, which is what stops a second push duplicating sequences.
+   */
+  handoff?: {
+    at: string;
+    sequenceId?: string;
+    smsCampaignId?: string;
+    blogTitle?: string;
+    funnelName?: string;
+  };
 }
 
 /* ── Generated content ── */

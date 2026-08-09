@@ -9,6 +9,7 @@
  */
 import { analyseSource, type CampaignAnalysis } from './campaignAnalysis';
 import { composeAll } from './campaignComposer';
+import { composeChannels } from './campaignWriters';
 import {
   assetCounts, getCampaign, loadAssets, saveAssets, updateCampaign,
 } from './socialAutomation';
@@ -145,7 +146,12 @@ export async function runGenerationPass(campaignId: string): Promise<GenerationJ
         });
       }
 
-      const assets = composeAll(campaign, source, analysis);
+      // Social placements and the CRM's own channels are written together, so
+      // one pass per source produces everything that source is responsible for.
+      const assets = [
+        ...composeAll(campaign, source, analysis),
+        ...composeChannels(campaign, source, analysis),
+      ];
       saveAssets([...loadAssets(), ...assets]);
       const cursor = job.cursor + 1;
       const finished = cursor >= campaign.sources.length;

@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Film, Play, Plus, Rocket, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Check, Film, Play, Plus, Rocket, Sparkles, Trash2 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import CampaignWizard from './CampaignWizard';
 import GenerationPanel from './GenerationPanel';
+import ContentLibrary from './ContentLibrary';
+import { libraryCount, pushToModules } from '../../services/campaignHandoff';
 import {
   STATUS_META, deleteCampaign, describeTargets, goalLabel, loadCampaigns,
 } from '../../services/socialAutomation';
@@ -28,9 +30,21 @@ function relDate(iso: string): string {
 }
 
 export default function SocialAutomation() {
-  const { addNotification } = useApp();
+  const { addNotification, addSequence, addCampaign, addWebsite, addFunnel } = useApp();
   const [campaigns, setCampaigns] = useState<Campaign[]>(loadCampaigns);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [tab, setTab] = useState<'campaigns' | 'library'>('campaigns');
+  const [libTotal, setLibTotal] = useState(libraryCount);
+
+  const refresh = () => { setCampaigns(loadCampaigns()); setLibTotal(libraryCount()); };
+
+  /** Hand the CRM-owned channels over to the modules that actually send them. */
+  function sendToModules(c: Campaign) {
+    const res = pushToModules(c, { addSequence, addCampaign, addWebsite, addFunnel });
+    if (!res.ok) { addNotification(res.error ?? 'Could not send this campaign.', 'error'); return; }
+    refresh();
+    addNotification(`Added to your modules: ${res.created.join(', ')}. They are drafts — review before sending.`, 'success');
+  }
 
   const totals = useMemo(() => ({
     all: campaigns.length,
@@ -40,7 +54,7 @@ export default function SocialAutomation() {
 
   function remove(c: Campaign) {
     deleteCampaign(c.id);
-    setCampaigns(loadCampaigns());
+    refresh();
     addNotification(`Campaign "${c.name}" deleted`, 'info');
   }
 
@@ -50,7 +64,7 @@ export default function SocialAutomation() {
         <Header title="New automation campaign" subtitle="One video in — clips, posts, emails, SMS and a blog out" />
         <CampaignWizard
           onCancel={() => setWizardOpen(false)}
-          onDone={() => { setCampaigns(loadCampaigns()); setWizardOpen(false); }}
+          onDone={() => { refresh(); setWizardOpen(false); }}
         />
       </div>
     );
@@ -67,7 +81,25 @@ export default function SocialAutomation() {
       />
 
       <div style={{ padding: '14px 28px 40px' }}>
-        {campaigns.length === 0 ? (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {([['campaigns', `Campaigns ${campaigns.length}`], ['library', `Content library ${libTotal}`]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              aria-pressed={tab === key}
+              style={{
+                padding: '8px 15px', borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${tab === key ? INK : '#e4e7ec'}`,
+                backgroundColor: tab === key ? INK : '#fff',
+                color: tab === key ? '#fff' : INK, fontSize: 12.5, fontWeight: 700,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'library' ? <ContentLibrary /> : campaigns.length === 0 ? (
           <div style={{ ...CARD, padding: '44px 32px', maxWidth: 620, margin: '20px auto', textAlign: 'center' }}>
             <span style={{
               width: 56, height: 56, borderRadius: 18, backgroundColor: INK, margin: '0 auto 18px',
@@ -137,7 +169,29 @@ export default function SocialAutomation() {
                       : c.audience.contactCount > 0 ? ` · ${c.audience.contactCount} contacts` : ''}
                   </p>
 
-                  <GenerationPanel campaign={c} onChange={() => setCampaigns(loadCampaigns())} />
+                  <GenerationPanel campaign={c} onChange={refresh} />
+
+                  {c.status === 'ready' && c.channels.length > 0 && (
+                    c.handoff ? (
+                      <p style={{
+                        display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#3f9142',
+                        margin: 0, fontWeight: 600,
+                      }}>
+                        <Check size={12} /> Added to your Marketing modules as drafts
+                      </p>
+                    ) : (
+                      <button
+                        onClick={() => sendToModules(c)}
+                        style={{
+                          alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                          backgroundColor: '#3e63dd', color: '#fff', fontSize: 11.5, fontWeight: 700,
+                        }}
+                      >
+                        Add to Marketing <ArrowUpRight size={12} />
+                      </button>
+                    )
+                  )}
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
                     <button
