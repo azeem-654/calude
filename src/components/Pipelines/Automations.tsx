@@ -316,6 +316,13 @@ interface AutomationsModalProps {
 }
 
 export function AutomationsModal({ pipelineId, stages, rules, onRulesChange, onClose }: AutomationsModalProps) {
+  // Escape closes it, as it does for every other overlay in this module.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const [tab, setTab] = useState<'rules' | 'log'>('rules');
   const [building, setBuilding] = useState(false);
   const [trigger, setTrigger] = useState<AutomationTrigger>({ type: 'deal_moved', stageId: stages[0]?.id });

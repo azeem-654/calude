@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { Fragment, useState, useRef, useCallback, useEffect } from 'react';
 import type { DragEvent } from 'react';
 import {
   Plus, Search, X, Check, Edit2, Trash2, User,
@@ -7,7 +7,7 @@ import {
   Settings, Clock, SlidersHorizontal, TrendingUp,
   FileText, CheckSquare, Timer, Link2, GitBranch, CalendarDays,
   Sparkles, ChevronUp, Calendar, Brain, Zap, Gauge, CheckCircle2, Paperclip,
-  Tag, Users, Circle, AlertCircle, Share2,
+  Tag, Users, Circle, AlertCircle, Share2, Table2,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -20,7 +20,22 @@ import type { AutomationRule, AutomationRunResult } from './Automations';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
 type ViewMode = 'board' | 'list' | 'calendar' | 'gantt' | 'table' | 'funnel';
-type SortKey = 'title' | 'value' | 'close' | 'priority' | 'days';
+type SortKey = 'manual' | 'title' | 'value' | 'close' | 'priority' | 'days';
+
+/**
+ * Escape closes an overlay.
+ *
+ * Every panel here could already be dismissed by clicking the backdrop, which
+ * is no help to anyone on a keyboard and is a guess for everyone else. One hook
+ * so no overlay is added later without it.
+ */
+function useEscape(onClose: () => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+}
 
 const SOURCES = ['Website', 'Referral', 'Cold Outreach', 'Social Media', 'Event', 'Paid Ads', 'Email Campaign', 'Phone', 'Walk-in', 'Other'];
 const DEFAULT_ROTTING_DAYS = 14;
@@ -252,6 +267,16 @@ function CardTexture({ skin }: { skin: CardSkin }) {
   return null;
 }
 
+/** Shows exactly where a dragged card will land. */
+function DropLine() {
+  return (
+    <div style={{
+      height: 3, borderRadius: 999, background: '#17191c',
+      margin: '0 2px 11px', boxShadow: '0 0 0 3px rgba(23,25,28,0.10)',
+    }} />
+  );
+}
+
 interface DealCardProps {
   deal: Deal;
   stageId: string;
@@ -260,12 +285,24 @@ interface DealCardProps {
   onEdit: (deal: Deal) => void;
   onDelete: (deal: Deal) => void;
   onOpen: (deal: Deal) => void;
+  /** True while this card is the one being dragged. */
+  dimmed: boolean;
   onDragStart: (e: DragEvent<HTMLDivElement>, deal: Deal, stageId: string) => void;
+  onDragEnd: () => void;
+  onDragOverCard: (e: DragEvent<HTMLDivElement>) => void;
   onMarkWon: (deal: Deal) => void;
   onMarkLost: (deal: Deal) => void;
+  onAddSubtask: (deal: Deal, title: string) => void;
+  onToggleSubtask: (deal: Deal, subtaskId: string) => void;
 }
 
-function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDelete, onOpen, onDragStart, onMarkWon, onMarkLost }: DealCardProps) {
+function DealCard({
+  deal, stageId, visibleFields: vf, rottingDays, dimmed,
+  onEdit, onDelete, onOpen, onDragStart, onDragEnd, onDragOverCard,
+  onMarkWon, onMarkLost, onAddSubtask, onToggleSubtask,
+}: DealCardProps) {
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [subtaskDraft, setSubtaskDraft] = useState('');
   const p = (deal.priority ?? 'normal') as Priority;
   const pc = PRIORITY[p];
   const checklist = deal.checklist ?? [];
@@ -292,15 +329,18 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
 
   return (
     <div
-      draggable={status === 'active'}
+      draggable={status === 'active' && !addingSubtask}
       onDragStart={e => status === 'active' && onDragStart(e, deal, stageId)}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOverCard}
       onClick={() => onOpen(deal)}
       className="hover-lift"
       style={{
         position: 'relative', background: '#ffffff', borderRadius: 18,
         border: '1px solid #edeef1', padding: '16px 16px 14px',
         boxShadow: '0 1px 2px rgba(16,24,40,0.05)', cursor: 'pointer',
-        marginBottom: 14, userSelect: 'none', opacity: isLost ? 0.7 : 1,
+        marginBottom: 14, userSelect: 'none',
+        opacity: dimmed ? 0.35 : isLost ? 0.7 : 1,
       }}
     >
       {/* Progress segments */}
@@ -352,28 +392,80 @@ function DealCard({ deal, stageId, visibleFields: vf, rottingDays, onEdit, onDel
         </div>
       )}
 
-      {/* Sub-tasks preview on the cover */}
-      {subtasks.length > 0 && (
-        <div style={{ margin: '11px 0 0 29px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8f98', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sub-tasks</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8f98' }}>{subDone}/{subtasks.length}</span>
+      {/* Sub-tasks on the cover: readable, tickable and addable without opening
+          the card. Every control here stops the click from reaching the card,
+          which would otherwise open the detail panel on top of it. */}
+      <div style={{ margin: '11px 0 0 29px' }} onClick={e => e.stopPropagation()}>
+        {subtasks.length > 0 && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8f98', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sub-tasks</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#8a8f98' }}>{subDone}/{subtasks.length}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {subtasks.slice(0, 3).map(st => (
+                <button
+                  key={st.id}
+                  onClick={() => onToggleSubtask(deal, st.id)}
+                  aria-pressed={st.done}
+                  // The visible label is the sub-task's own text, so the action
+                  // has to be spelled out for anyone not looking at the tick.
+                  aria-label={`${st.done ? 'Mark as not done' : 'Mark as done'}: ${st.title}`}
+                  title={st.done ? 'Mark as not done' : 'Mark as done'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    border: 'none', background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer',
+                  }}
+                >
+                  {st.done
+                    ? <CheckCircle2 size={15} color="#22c55e" strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                    : <Circle size={15} color="#c7ccd3" strokeWidth={2} style={{ flexShrink: 0 }} />}
+                  <span style={{ fontSize: 12.5, color: st.done ? '#a4abb5' : '#5c6270', textDecoration: st.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.title}</span>
+                </button>
+              ))}
+              {subtasks.length > 3 && (
+                <button onClick={() => onOpen(deal)} style={{ border: 'none', background: 'none', padding: 0, textAlign: 'left', fontSize: 11.5, color: '#8a8f98', fontWeight: 600, marginLeft: 23, cursor: 'pointer' }}>
+                  +{subtasks.length - 3} more
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {addingSubtask ? (
+          <div style={{ display: 'flex', gap: 6, marginTop: subtasks.length ? 8 : 0 }}>
+            <input
+              autoFocus
+              value={subtaskDraft}
+              onChange={e => setSubtaskDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { onAddSubtask(deal, subtaskDraft); setSubtaskDraft(''); }
+                if (e.key === 'Escape') { setAddingSubtask(false); setSubtaskDraft(''); }
+              }}
+              onBlur={() => { if (!subtaskDraft.trim()) setAddingSubtask(false); }}
+              placeholder="Sub-task, then Enter"
+              style={{ flex: 1, minWidth: 0, padding: '6px 9px', border: '1px solid #d5d8dd', borderRadius: 8, fontSize: 12.5, outline: 'none' }}
+            />
+            <button
+              onClick={() => { onAddSubtask(deal, subtaskDraft); setSubtaskDraft(''); }}
+              style={{ padding: '6px 11px', background: '#17191c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Add
+            </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {subtasks.slice(0, 3).map(st => (
-              <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {st.done
-                  ? <CheckCircle2 size={15} color="#22c55e" strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                  : <Circle size={15} color="#c7ccd3" strokeWidth={2} style={{ flexShrink: 0 }} />}
-                <span style={{ fontSize: 12.5, color: st.done ? '#a4abb5' : '#5c6270', textDecoration: st.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.title}</span>
-              </div>
-            ))}
-            {subtasks.length > 3 && (
-              <span style={{ fontSize: 11.5, color: '#8a8f98', fontWeight: 600, marginLeft: 23 }}>+{subtasks.length - 3} more</span>
-            )}
-          </div>
-        </div>
-      )}
+        ) : (
+          <button
+            onClick={() => setAddingSubtask(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginTop: subtasks.length ? 8 : 0,
+              border: 'none', background: 'none', padding: 0,
+              fontSize: 12, fontWeight: 600, color: '#8a8f98', cursor: 'pointer',
+            }}
+          >
+            <Plus size={13} /> Sub-task
+          </button>
+        )}
+      </div>
 
       {/* Divider */}
       <div style={{ height: 1, background: '#f0f1f4', margin: '14px 0 12px' }} />
@@ -417,6 +509,7 @@ interface ManageFieldsProps {
   onClose: () => void;
 }
 function ManageFieldsModal({ visible, rottingDays, onChange, onRottingChange, onClose }: ManageFieldsProps) {
+  useEscape(onClose);
   const [draft, setDraft] = useState(new Set(visible));
   const [rotting, setRotting] = useState(rottingDays);
   const toggle = (k: CardFieldKey) => setDraft(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
@@ -768,6 +861,7 @@ interface BrainPanelProps {
   onClose: () => void;
 }
 function BrainPanel({ stages, allDeals, onClose }: BrainPanelProps) {
+  useEscape(onClose);
   const [messages, setMessages] = useState<{ role: 'user' | 'brain'; text: string }[]>([
     { role: 'brain', text: "Hi! I'm Brain. Ask me anything about your pipeline, or pick a suggestion below." },
   ]);
@@ -1268,6 +1362,7 @@ interface PipelineManageProps {
 }
 
 function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDelete, onSelect, onClose }: PipelineManageProps) {
+  useEscape(onClose);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -1349,6 +1444,7 @@ interface DealFormProps {
 }
 
 function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: DealFormProps) {
+  useEscape(onClose);
   const initStageId = deal ? (stages.find(s => s.name === deal.stage)?.id ?? stages[0]?.id ?? '') : (defaultStageId || (stages[0]?.id ?? ''));
   const [title, setTitle] = useState(deal?.title ?? '');
   const [contactId, setContactId] = useState(deal?.contactId ?? '');
@@ -1577,6 +1673,7 @@ interface DealDetailPanelProps {
 }
 
 function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDealToStage }: DealDetailPanelProps) {
+  useEscape(onClose);
   const [section, setSection] = useState<'subtasks' | 'checklist' | null>(null);
   const [newActivity, setNewActivity] = useState('');
   const [newCheckItem, setNewCheckItem] = useState('');
@@ -1884,7 +1981,9 @@ export default function Pipelines() {
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'won' | 'lost'>('all');
-  const [sortBy, setSortBy] = useState<SortKey>('title');
+  // Manual by default: a board whose cards are always re-sorted cannot be
+  // arranged by hand, and arranging by hand is what a board is for.
+  const [sortBy, setSortBy] = useState<SortKey>('manual');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -1894,6 +1993,22 @@ export default function Pipelines() {
   const [detailDealId, setDetailDealId] = useState<string | null>(null);
 
   const [dragOverStage, setDragOverStage] = useState('');
+  /**
+   * Where the card would land in the column currently under the pointer.
+   *
+   * Kept in a ref as well as state: `drop` can arrive in the same tick as the
+   * `dragover` that set it, and a handler closed over the previous render would
+   * read a stale index and quietly append. The state drives the indicator; the
+   * ref is what the drop reads.
+   */
+  const [dropIndex, setDropIndexState] = useState<number | null>(null);
+  const dropIndexRef = useRef<number | null>(null);
+  const setDropIndex = useCallback((n: number | null) => {
+    dropIndexRef.current = n;
+    setDropIndexState(n);
+  }, []);
+  /** The card being dragged, so it can be dimmed while it is in flight. */
+  const [draggingId, setDraggingId] = useState('');
   const dragDealId = useRef('');
   const dragFromStage = useRef('');
 
@@ -1989,6 +2104,27 @@ export default function Pipelines() {
     updatePipeline(selected.id, { stages: newStages });
   };
 
+  /* Sub-tasks are edited from the card cover as well as the detail panel, so
+     both entry points go through these rather than each rebuilding the list. */
+
+  const addSubtaskToDeal = (deal: Deal, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    const item: SubTask = {
+      id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: clean.slice(0, 200),
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+    updateDeal(deal.id, { subtasks: [...(deal.subtasks ?? []), item] });
+  };
+
+  const toggleSubtaskOnDeal = (deal: Deal, subtaskId: string) => {
+    updateDeal(deal.id, {
+      subtasks: (deal.subtasks ?? []).map(s => (s.id === subtaskId ? { ...s, done: !s.done } : s)),
+    });
+  };
+
   /** After the engine runs: bump rule counters, append the activity log, surface notifications. */
   function finishAutomationRun(result: AutomationRunResult) {
     if (result.ran.length === 0) return;
@@ -2007,18 +2143,46 @@ export default function Pipelines() {
     addNotification(`⚡ Automation ran: "${names}"`, 'info');
   }
 
-  const moveDeal = (dealId: string, fromStageId: string, toStageId: string) => {
-    if (fromStageId === toStageId) return;
+  /**
+   * Move a deal between stages, or reorder it inside one.
+   *
+   * `atIndex` is where the pointer was released, counted against the stage's
+   * list with the dragged card already taken out. Leaving it undefined appends,
+   * which is what the non-drag callers (the detail panel's stage picker) want.
+   */
+  const moveDeal = (dealId: string, fromStageId: string, toStageId: string, atIndex?: number) => {
+    const sameStage = fromStageId === toStageId;
+    // Nothing to do only when the stage is unchanged *and* no position was asked for.
+    if (sameStage && atIndex === undefined) return;
     const toStage = selected.stages.find(s => s.id === toStageId);
     if (!toStage) return;
+
     let moving: Deal | undefined;
     const without = selected.stages.map(s => {
       if (s.id === fromStageId) { moving = s.deals.find(d => d.id === dealId); return { ...s, deals: s.deals.filter(d => d.id !== dealId) }; }
       return s;
     });
     if (!moving) return;
-    const updated = { ...moving, stage: toStage.name, lastStageChangedAt: new Date().toISOString() };
-    const movedStages = without.map(s => s.id === toStageId ? { ...s, deals: [...s.deals, updated] } : s);
+
+    const updated: Deal = sameStage
+      ? moving
+      : { ...moving, stage: toStage.name, lastStageChangedAt: new Date().toISOString() };
+
+    const movedStages = without.map(s => {
+      if (s.id !== toStageId) return s;
+      const at = atIndex === undefined ? s.deals.length : Math.max(0, Math.min(atIndex, s.deals.length));
+      const deals = [...s.deals];
+      deals.splice(at, 0, updated);
+      return { ...s, deals };
+    });
+
+    // A reorder inside a stage is not a stage change, so it must not fire the
+    // "deal moved" automations — that would re-run the same rules on every nudge.
+    if (sameStage) {
+      updatePipeline(selected.id, { stages: movedStages });
+      return;
+    }
+
     const result = runAutomations(movedStages, dealId, { type: 'deal_moved', stageId: toStageId }, autoRules, selected.id);
     updatePipeline(selected.id, { stages: result.stages });
     finishAutomationRun(result);
@@ -2187,18 +2351,89 @@ export default function Pipelines() {
     dragDealId.current = deal.id;
     dragFromStage.current = stageId;
     e.dataTransfer.effectAllowed = 'move';
+    // Firefox will not start a drag unless something is on the transfer.
+    try { e.dataTransfer.setData('text/plain', deal.id); } catch { /* older browsers */ }
+    setDraggingId(deal.id);
   };
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>, stageId: string) => {
+  /**
+   * Over the column but not over a card — the cards stop this event, so
+   * reaching here means the empty space below them. The card lands at the end.
+   */
+  const handleDragOver = (e: DragEvent<HTMLDivElement>, stageId: string, count: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverStage(stageId);
+    // The gaps between cards belong to the column, so crossing one would snap
+    // the indicator to the bottom and back. Only claim the end position when the
+    // pointer is actually past the last card.
+    const cards = e.currentTarget.querySelectorAll('[draggable="true"]');
+    const last = cards[cards.length - 1];
+    if (last && e.clientY < last.getBoundingClientRect().bottom) return;
+    setDropIndex(count);
+  };
+
+  /**
+   * Over a card. Which side of it the pointer is on decides whether the dragged
+   * card goes above or below — the same rule every board uses, and the reason a
+   * drop can land anywhere in the column rather than always at the bottom.
+   */
+  const handleCardDragOver = (e: DragEvent<HTMLDivElement>, stageId: string, index: number) => {
+    if (!dragDealId.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const box = e.currentTarget.getBoundingClientRect();
+    const below = e.clientY > box.top + box.height / 2;
+    setDragOverStage(stageId);
+    setDropIndex(below ? index + 1 : index);
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>, toStageId: string) => {
     e.preventDefault();
-    moveDeal(dragDealId.current, dragFromStage.current, toStageId);
+    e.stopPropagation();
+    const dealId = dragDealId.current;
+    const fromStage = dragFromStage.current;
+    const target = dropIndexRef.current;
+
     setDragOverStage('');
+    setDropIndex(null);
+    setDraggingId('');
+    dragDealId.current = '';
+    dragFromStage.current = '';
+    if (!dealId) return;
+
+    // `dropIndex` counts positions in the filtered, on-screen list — which still
+    // contains the dragged card when it came from this same column. So resolve
+    // it to the card it was dropped in front of, then find *that* card in the
+    // stage's own array with the dragged one taken out. Going through the
+    // anchor is what keeps a filtered or sorted board landing where the pointer
+    // was, and avoids the off-by-one when a card is dragged downwards.
+    const stage = selected.stages.find(s => s.id === toStageId);
+    let atIndex: number | undefined;
+    if (stage && target !== null) {
+      const shown = applyFilter(stage.deals);
+      const remaining = stage.deals.filter(d => d.id !== dealId);
+      const anchor = shown[target];
+      // Dropped onto its own top edge: the card is already there.
+      if (anchor?.id === dealId) return;
+      const at = anchor ? remaining.findIndex(d => d.id === anchor.id) : -1;
+      atIndex = at < 0 ? remaining.length : at;
+    }
+
+    // A position was pointed at, so a sort would immediately throw it away.
+    // Switch to manual order and say so rather than silently ignoring the drop.
+    if (atIndex !== undefined && sortBy !== 'manual') {
+      setSortBy('manual');
+      addNotification(`Switched to manual order so "${SORT_LABELS[sortBy]}" sorting does not undo your placement.`, 'info');
+    }
+    moveDeal(dealId, fromStage, toStageId, atIndex);
+  };
+
+  const handleDragEnd = () => {
+    setDragOverStage('');
+    setDropIndex(null);
+    setDraggingId('');
     dragDealId.current = '';
     dragFromStage.current = '';
   };
@@ -2209,10 +2444,14 @@ export default function Pipelines() {
     if (search) r = r.filter(d => d.title.toLowerCase().includes(search.toLowerCase()) || d.contactName.toLowerCase().includes(search.toLowerCase()));
     if (filterPriority !== 'all') r = r.filter(d => (d.priority ?? 'normal') === filterPriority);
     if (filterStatus !== 'all') r = r.filter(d => (d.status ?? 'active') === filterStatus);
+    // Manual keeps the order the cards were dragged into.
+    if (sortBy === 'manual') return r;
     return [...r].sort((a, b) => {
       if (sortBy === 'value') return b.value - a.value;
       if (sortBy === 'close') return (a.expectedClose || '9999').localeCompare(b.expectedClose || '9999');
       if (sortBy === 'priority') return (PRIORITY_ORDER[a.priority ?? 'normal'] ?? 2) - (PRIORITY_ORDER[b.priority ?? 'normal'] ?? 2);
+      // Longest in the stage first — the ones going stale are the ones to look at.
+      if (sortBy === 'days') return daysInStage(b) - daysInStage(a);
       return a.title.localeCompare(b.title);
     });
   };
@@ -2227,7 +2466,7 @@ export default function Pipelines() {
   const closedTotal = wonDeals.length + lostDeals.length;
   const winRate = closedTotal > 0 ? Math.round(wonDeals.length / closedTotal * 100) : 0;
 
-  const SORT_LABELS: Record<SortKey, string> = { title: 'Name', value: 'Value', close: 'Close Date', priority: 'Priority', days: 'Days in Stage' };
+  const SORT_LABELS: Record<SortKey, string> = { manual: 'Manual', title: 'Name', value: 'Value', close: 'Close Date', priority: 'Priority', days: 'Days in Stage' };
 
   const saveCardFields = (fields: Set<CardFieldKey>) => {
     setCardFields(fields);
@@ -2281,7 +2520,7 @@ export default function Pipelines() {
             {([
               ['board',    <LayoutGrid size={13} />,  'Board'],
               ['list',     <List size={13} />,         'List'],
-              ['table',    '≡',                        'Table'],
+              ['table',    <Table2 size={13} />,       'Table'],
               ['calendar', <Calendar size={13} />,    'Calendar'],
               ['funnel',   <TrendingUp size={13} />,  'Funnel'],
               ['gantt',    <CalendarDays size={13} />, 'Gantt'],
@@ -2377,9 +2616,16 @@ export default function Pipelines() {
               return (
                 <div key={stage.id}
                   style={{ minWidth: 280, maxWidth: 290, flex: '0 0 280px', backgroundColor: '#f4f6fa', borderRadius: 18, padding: '10px 10px 12px' }}
-                  onDragOver={e => handleDragOver(e, stage.id)}
+                  onDragOver={e => handleDragOver(e, stage.id, deals.length)}
                   onDrop={e => handleDrop(e, stage.id)}
-                  onDragLeave={() => setDragOverStage('')}>
+                  onDragLeave={e => {
+                    // Only when the pointer actually left the column, not when it
+                    // crossed onto a card inside it.
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                      setDragOverStage('');
+                      setDropIndex(null);
+                    }
+                  }}>
 
                   <StageHeader
                     stage={stage}
@@ -2395,21 +2641,29 @@ export default function Pipelines() {
 
                   {/* Drop zone */}
                   <div style={{ minHeight: 80, padding: '4px 0', borderRadius: 10, backgroundColor: isOver ? '#eceef1' : 'transparent', border: isOver ? '2px dashed #17191c' : '2px dashed transparent', transition: 'all 0.15s' }}>
-                    {deals.map(deal => (
-                      <DealCard
-                        key={deal.id}
-                        deal={deal}
-                        stageId={stage.id}
-                        visibleFields={cardFields}
-                        rottingDays={rottingDays}
-                        onEdit={openEditDeal}
-                        onDelete={deleteDeal}
-                        onOpen={d => setDetailDealId(d.id)}
-                        onDragStart={handleDragStart}
-                        onMarkWon={markDealWon}
-                        onMarkLost={markDealLost}
-                      />
+                    {deals.map((deal, dealIdx) => (
+                      <Fragment key={deal.id}>
+                        {isOver && dropIndex === dealIdx && <DropLine />}
+                        <DealCard
+                          deal={deal}
+                          stageId={stage.id}
+                          visibleFields={cardFields}
+                          rottingDays={rottingDays}
+                          dimmed={draggingId === deal.id}
+                          onEdit={openEditDeal}
+                          onDelete={deleteDeal}
+                          onOpen={d => setDetailDealId(d.id)}
+                          onDragStart={handleDragStart}
+                          onDragEnd={handleDragEnd}
+                          onDragOverCard={e => handleCardDragOver(e, stage.id, dealIdx)}
+                          onMarkWon={markDealWon}
+                          onMarkLost={markDealLost}
+                          onAddSubtask={addSubtaskToDeal}
+                          onToggleSubtask={toggleSubtaskOnDeal}
+                        />
+                      </Fragment>
                     ))}
+                    {isOver && dropIndex !== null && dropIndex >= deals.length && <DropLine />}
                     {deals.length === 0 && !isOver && (
                       <div style={{ padding: '20px 10px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
                         Drop deals here
