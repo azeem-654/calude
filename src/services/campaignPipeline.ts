@@ -11,7 +11,7 @@ import { analyseSource, type CampaignAnalysis } from './campaignAnalysis';
 import { composeAll } from './campaignComposer';
 import { composeChannels } from './campaignWriters';
 import {
-  assetCounts, getCampaign, loadAssets, saveAssets, updateCampaign,
+  assetCounts, getCampaign, loadAssets, saveAssets, takeSaveError, updateCampaign,
 } from './socialAutomation';
 import type { Campaign } from '../types/socialAutomation';
 
@@ -152,7 +152,12 @@ export async function runGenerationPass(campaignId: string): Promise<GenerationJ
         ...composeAll(campaign, source, analysis),
         ...composeChannels(campaign, source, analysis),
       ];
-      saveAssets([...loadAssets(), ...assets]);
+      if (!saveAssets([...loadAssets(), ...assets])) {
+        // Carrying on would report a finished campaign that is missing posts.
+        const why = takeSaveError() || 'The generated content could not be saved.';
+        updateCampaign(campaign.id, { status: 'failed', error: why });
+        return putJob({ ...job, status: 'failed', error: why, message: 'Generation stopped.' });
+      }
       const cursor = job.cursor + 1;
       const finished = cursor >= campaign.sources.length;
 

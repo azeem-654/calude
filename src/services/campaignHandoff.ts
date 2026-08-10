@@ -14,7 +14,7 @@
 import type { Campaign, CampaignAsset } from '../types/socialAutomation';
 import type { Campaign as MarketingCampaign, Funnel, Website } from '../types';
 import type { EmailSequence } from '../types/marketing';
-import { assetsFor, loadCampaigns as loadCampaignsAll, updateCampaign } from './socialAutomation';
+import { assetsFor, loadAssets as loadAssetsAll, updateCampaign } from './socialAutomation';
 
 /** The subset of the app context this needs, passed in so the service stays testable. */
 export interface HandoffApi {
@@ -177,14 +177,24 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
 
 /** How many assets exist across every campaign, for the library tab's badge. */
 export function libraryCount(): number {
-  return libraryAssets(loadCampaignsAll()).length;
+  // One read. Going through libraryAssets would parse the whole store again
+  // just to take a length.
+  return loadAssetsAll().length;
 }
 
-/** Everything in the library, newest first, for the content library view. */
+/**
+ * Everything in the library, newest first.
+ *
+ * Reads the asset store once and joins in memory. The obvious version — map
+ * over campaigns calling assetsFor — re-parses the entire store for every
+ * campaign, so ten campaigns meant ten full parses of the same JSON on every
+ * mount.
+ */
 export function libraryAssets(campaigns: Campaign[]): (CampaignAsset & { campaignName: string })[] {
   const names = new Map(campaigns.map(c => [c.id, c.name]));
-  return campaigns
-    .flatMap(c => assetsFor(c.id))
+  const known = new Set(campaigns.map(c => c.id));
+  return loadAssetsAll()
+    .filter(a => known.has(a.campaignId))
     .map(a => ({ ...a, campaignName: names.get(a.campaignId) ?? 'Unknown campaign' }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

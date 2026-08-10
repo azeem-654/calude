@@ -80,8 +80,7 @@ export default function PublishFlow({ campaign, onClose, onChange }: Props) {
     if (action === 'published') markPublished(job.id, permalink);
     if (action === 'failed') markFailed(job.id, 'Marked as failed by the user.');
     if (action === 'skipped') markSkipped(job.id);
-    const s = advance(session);
-    setSession(s.status === 'done' ? s : s);
+    setSession(advance(session));
     setNote('');
     setPermalink('');
     setVersion(v => v + 1);

@@ -26,14 +26,19 @@ import type { CampaignAsset, Placement } from '../types/socialAutomation';
 
 export type HandoffRoute = 'intent' | 'share' | 'manual';
 
-/** The caption exactly as it should arrive on the platform. */
+/**
+ * The caption exactly as it should arrive on the platform.
+ *
+ * The composer usually folds hashtags into the body already, so they are only
+ * appended when they are genuinely absent. The check is on whole tags: a plain
+ * substring test treats "#tips" as present inside "#tipsAndTricks" and silently
+ * drops the rest of the set.
+ */
 export function captionFor(asset: CampaignAsset): string {
-  const tags = asset.hashtags.length ? `\n\n${asset.hashtags.join(' ')}` : '';
-  // The body already carries its own hashtags when the composer fitted them in,
-  // so only append when they are not there yet.
-  return asset.hashtags.length && asset.body.includes(asset.hashtags[0])
-    ? asset.body
-    : `${asset.body}${tags}`;
+  if (asset.hashtags.length === 0) return asset.body;
+  const present = new Set((asset.body.match(/#[\w]+/g) ?? []).map(t => t.toLowerCase()));
+  const missing = asset.hashtags.filter(t => !present.has(t.toLowerCase()));
+  return missing.length ? `${asset.body}\n\n${missing.join(' ')}` : asset.body;
 }
 
 /** The first http(s) link in the asset, which is what most intents want. */

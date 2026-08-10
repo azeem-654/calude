@@ -5,7 +5,17 @@ import {
   assetsFor, loadAssets, placementRules, saveAssets, PLATFORM_LABEL,
 } from '../../services/socialAutomation';
 import { formatSlot } from '../../services/campaignSchedule';
+import { captionFor } from '../../services/publishHandoff';
 import type { Campaign, CampaignAsset, CampaignAssetKind } from '../../types/socialAutomation';
+
+/** "growth  #hiring" → ["#growth", "#hiring"] */
+function parseTags(raw: string): string[] {
+  return raw
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(Boolean)
+    .map(t => (t.startsWith('#') ? t : `#${t}`));
+}
 
 const INK = '#17191c';
 const MUTED = '#8a8f98';
@@ -49,7 +59,12 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
   const [version, setVersion] = useState(0);
 
   const assets = useMemo(
-    () => assetsFor(campaign.id),
+    // Only things that actually go somewhere. Clips are raw material for the
+    // video placements — they carry a transcript, not a caption, so offering an
+    // Edit button on one was inviting a change that publishes nowhere. It also
+    // made this list disagree with the count on its own tab, which counts
+    // publishable pieces.
+    () => assetsFor(campaign.id).filter(a => a.placement !== null || a.channel !== null),
     // `version` is the save counter — re-reading storage after a write is what
     // keeps this list honest without threading state through every child.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,11 +96,7 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
   }
 
   function save(a: CampaignAsset) {
-    const tags = draftTags
-      .split(/\s+/)
-      .map(t => t.trim())
-      .filter(Boolean)
-      .map(t => (t.startsWith('#') ? t : `#${t}`));
+    const tags = parseTags(draftTags);
     saveAssets(loadAssets().map(x => (
       x.id === a.id
         ? { ...x, body: draftBody, hashtags: tags, updatedAt: new Date().toISOString() }
@@ -143,7 +154,14 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
           const rules = a.placement ? placementRules(a.placement) : undefined;
           const limit = limitFor(a);
           const isEditing = editing === a.id;
-          const length = isEditing ? draftBody.length : a.body.length;
+          // Count what will actually be sent, not just the body. Publishing
+          // appends any hashtags the body does not already carry, so measuring
+          // the body alone let an edited caption pass here and then break the
+          // platform's limit on the way out.
+          const outgoing = isEditing
+            ? captionFor({ ...a, body: draftBody, hashtags: parseTags(draftTags) })
+            : captionFor(a);
+          const length = outgoing.length;
           const over = limit != null && length > limit;
           const dest = EDITOR_ROUTE[a.kind];
 
@@ -166,7 +184,12 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
                   </p>
                 </div>
                 {limit != null && (
-                  <span style={{
+                  <span
+                    // "172/150" alone tells a screen reader nothing; this says
+                    // what the number means and which piece it belongs to.
+                    aria-label={`${a.title}: ${length} of ${limit} characters`}
+                    role="status"
+                    style={{
                     fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
                     color: over ? RED : length > limit * 0.9 ? '#c77414' : FAINT,
                     fontVariantNumeric: 'tabular-nums',

@@ -33,19 +33,13 @@ function putSession(session: PublishSession): PublishSession {
  * is one, so an unattended sitting follows the plan rather than the order the
  * assets happened to be written in.
  */
-export function startSession(campaign: Campaign, only?: { placement?: string; channel?: string }): PublishSession {
+export function startSession(campaign: Campaign): PublishSession {
   const existing = sessionFor(campaign.id);
   if (existing) return existing;
 
   const jobs = loadJobs()
     .filter(j => j.campaignId === campaign.id)
     .filter(j => j.status === 'queued' || j.status === 'failed')
-    .filter(j => {
-      if (!only) return true;
-      if (only.placement) return j.placement === only.placement;
-      if (only.channel) return j.channel === only.channel;
-      return true;
-    })
     .sort((a, b) => (a.scheduledFor ?? '').localeCompare(b.scheduledFor ?? ''));
 
   const session: PublishSession = {

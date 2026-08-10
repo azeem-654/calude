@@ -31,7 +31,6 @@ const STEPS = [
 
 function emptyDraft(): DraftCampaign {
   return {
-    name: '',
     goal: 'educate',
     sources: [],
     title: '',

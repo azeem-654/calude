@@ -31,8 +31,36 @@ function load<T>(key: string): T[] {
   } catch { return []; }
 }
 
-function save<T>(key: string, rows: T[]): void {
-  try { localStorage.setItem(key, JSON.stringify(rows)); } catch { /* quota */ }
+/**
+ * Writes report failure rather than swallowing it.
+ *
+ * Storage is finite and a campaign's assets are not small. Silently dropping a
+ * write meant a campaign could finish "successfully" with half its posts
+ * missing and nothing anywhere saying so — the worst kind of bug, because the
+ * user only discovers it when a post they expected never goes out.
+ */
+function save<T>(key: string, rows: T[]): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(rows));
+    return true;
+  } catch (err) {
+    const quota = err instanceof DOMException
+      && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    console.error(`Social Automation could not save ${key}:`, err);
+    lastSaveError = quota
+      ? 'Your browser storage is full. Delete an old campaign to free space — nothing new can be saved until you do.'
+      : 'The browser refused to save this. Check that storage is not blocked for this site.';
+    return false;
+  }
+}
+
+/** Set by the most recent failed write, read by the UI to explain itself. */
+let lastSaveError = '';
+
+export function takeSaveError(): string {
+  const err = lastSaveError;
+  lastSaveError = '';
+  return err;
 }
 
 export const loadCampaigns = () => load<Campaign>(CAMPAIGNS_KEY);
@@ -201,7 +229,6 @@ export function sourceFromYouTube(url: string): CampaignSource | null {
 /* ── Validation ── */
 
 export interface DraftCampaign {
-  name: string;
   goal: CampaignGoal;
   sources: CampaignSource[];
   title: string;
@@ -238,7 +265,9 @@ export function createCampaign(draft: DraftCampaign, createdBy: string): Campaig
   const now = new Date().toISOString();
   const campaign: Campaign = {
     id: newId('camp'),
-    name: sanitizeText(draft.name, 120) || sanitizeText(draft.title, 120) || 'Untitled campaign',
+    // The campaign is named after the video; a separate name field was one more
+    // box to fill in for no gain.
+    name: sanitizeText(draft.title, 120) || 'Untitled campaign',
     goal: draft.goal,
     sources: draft.sources,
     title: sanitizeText(draft.title, 200),
