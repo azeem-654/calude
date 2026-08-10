@@ -54,8 +54,10 @@ export default function GrowthActions({ actions, p, onFocus }: Props) {
                 {a.detail}
               </p>
 
-              {/* Lift, as a bar relative to the best available move. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 7 }}>
+              {/* Lift, as a bar relative to the best available move. Capped:
+                  a 3px bar run across a wide panel reads as a rule, not a
+                  quantity, and the comparison between cards is what matters. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 7, maxWidth: 260 }}>
                 <div style={{ flex: 1, height: 3, borderRadius: 999, backgroundColor: p.panelHi, overflow: 'hidden' }}>
                   <div style={{
                     width: `${Math.max((a.lift / best) * 100, 3)}%`, height: '100%',

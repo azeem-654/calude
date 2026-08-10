@@ -20,8 +20,7 @@ import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilit
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
-import MarketBoard from './MarketBoard';
-import MarketTicker from './MarketTicker';
+import ProgressBoard from './ProgressBoard';
 import type { Deal } from '../../types';
 
 /* ── Animated count-up ── */
@@ -691,14 +690,9 @@ export default function Dashboard() {
 
       <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ── Live department tape ── */}
-        <div className="slide-up" style={{ animationDelay: '0.02s' }}>
-          <MarketTicker {...feedInput} />
-        </div>
-
-        {/* ── Department board: every module's progress, replayed as an exchange ── */}
+        {/* ── Where the business stands, department by department ── */}
         <div className="slide-up" style={{ animationDelay: '0.05s' }}>
-          <MarketBoard {...feedInput} />
+          <ProgressBoard {...feedInput} />
         </div>
 
         {/* ── 12-month content pipeline / AI setup ── */}
