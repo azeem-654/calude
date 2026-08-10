@@ -621,7 +621,7 @@ export default function CampaignWizard({ onDone, onCancel }: Props) {
               ['Goal', GOALS.find(g => g.value === draft.goal)?.label ?? draft.goal],
               ['Destinations', describeTargets(draft)],
               ['Audience', draft.audience.skipped ? 'Skipped for now'
-                : draft.audience.listIds.length ? `${selectedCount} contacts across ${draft.audience.listIds.length} segment(s)`
+                : draft.audience.listIds.length ? `${selectedCount} contacts across ${draft.audience.listIds.length} ${draft.audience.listIds.length === 1 ? 'segment' : 'segments'}`
                   : 'None selected'],
             ] as const).map(([k, v]) => (
               <div key={k} style={{ display: 'flex', gap: 12, padding: '6px 0', fontSize: 12.5 }}>

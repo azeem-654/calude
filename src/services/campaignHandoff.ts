@@ -62,6 +62,10 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
   }
 
   const now = new Date().toISOString();
+  // Every module in the app stores createdAt as a plain YYYY-MM-DD and renders
+  // it raw, so handing over a full ISO timestamp puts "2026-08-10T03:23:42.620Z"
+  // on a campaign card. The record keeps the precise time; the modules get theirs.
+  const today = now.split('T')[0];
   const record: HandoffRecord = { at: now };
   const created: string[] = [];
 
@@ -71,7 +75,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
         name: `${campaign.name} — email sequence`,
         goal: campaign.title.slice(0, 140),
         status: 'draft',
-        createdAt: now,
+        createdAt: today,
         enrolledCount: 0,
         steps: emails.map((e, i) => ({
           id: `sa-${campaign.id}-email-${i}`,
@@ -98,7 +102,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
         goal: campaign.title.slice(0, 140),
         audience: campaign.audience.listIds.length ? 'Selected segments' : 'All contacts',
         sent: 0, opened: 0, clicked: 0, replied: 0,
-        createdAt: now,
+        createdAt: today,
         steps: sms.map((m, i) => ({
           id: `sa-${campaign.id}-sms-${i}`,
           day: [0, 3, 7][i] ?? i * 3,
@@ -127,7 +131,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
         seoKeywords: blog.hashtags.map(h => h.replace(/^#/, '')).join(', '),
         visitors: 0,
         pageViews: 0,
-        createdAt: now,
+        createdAt: today,
         pages: [{
           id: `sa-${campaign.id}-blog`,
           name: blog.title,
@@ -152,7 +156,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
         conversions: 0,
         revenue: 0,
         slug: slugify(page.title),
-        createdAt: now,
+        createdAt: today,
         pages: [{
           id: `sa-${campaign.id}-landing`,
           name: page.title,

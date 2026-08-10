@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowLeft, CalendarClock, CalendarX, Check, Film, Play, RotateCcw, Send,
+  AlertTriangle, ArrowLeft, CalendarClock, CalendarX, Check, Film, Play, RotateCcw, Send,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -56,7 +56,7 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
   /** Rows grouped by destination — the level decisions are actually made at. */
   const rows = useMemo(() => {
     const groups = new Map<string, {
-      label: string; surface: string; count: number; scheduled: number; published: number; nextAt?: string;
+      label: string; surface: string; count: number; scheduled: number; published: number; failed: number; nextAt?: string;
     }>();
     for (const a of assets) {
       // A clip is raw material for the video placements, not a destination.
@@ -67,10 +67,11 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
         email: 'Email campaign', sms: 'SMS campaign', blog: 'Blog post', landing: 'Landing page',
       };
       const label = rules?.label ?? CHANNEL_LABEL[a.channel ?? ''] ?? key;
-      const g = groups.get(key) ?? { label, surface: rules?.surface ?? 'Send', count: 0, scheduled: 0, published: 0 };
+      const g = groups.get(key) ?? { label, surface: rules?.surface ?? 'Send', count: 0, scheduled: 0, published: 0, failed: 0 };
       g.count += 1;
       if (a.status === 'scheduled') g.scheduled += 1;
       if (a.status === 'published') g.published += 1;
+      if (a.status === 'failed') g.failed += 1;
       if (a.scheduledFor && (!g.nextAt || a.scheduledFor < g.nextAt)) g.nextAt = a.scheduledFor;
       groups.set(key, g);
     }
@@ -78,6 +79,8 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
   }, [assets]);
 
   const clips = assets.filter(a => a.kind === 'clip' && !a.placement);
+  /** Did the user ask for anything that would be cut from the video? */
+  const wantsClips = campaign.placements.some(p => placementRules(p)?.media === 'video');
   const meta = STATUS_META[campaign.status];
 
   function schedule() {
@@ -208,17 +211,34 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
                   <tr key={r.label}>
                     <td style={{ ...cell, paddingLeft: 16, fontWeight: 700 }}>{r.label}</td>
                     <td style={{ ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.count}</td>
-                    <td style={cell}>
+                    {/* A part-published row has to say so: showing only what is
+                        still scheduled hides the one that failed. */}
+                    <td style={{ ...cell, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
                       {r.published === r.count ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#3f9142', fontWeight: 700, fontSize: 11.5 }}>
                           <Check size={12} /> Published
                         </span>
-                      ) : r.scheduled > 0 ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#3e63dd', fontWeight: 700, fontSize: 11.5 }}>
-                          <CalendarClock size={12} /> {r.scheduled} scheduled
-                        </span>
                       ) : (
-                        <span style={{ fontSize: 11.5, color: '#c77414', fontWeight: 700 }}>Ready</span>
+                        <>
+                          {r.published > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#3f9142', fontWeight: 700, fontSize: 11.5 }}>
+                              <Check size={12} /> {r.published} published
+                            </span>
+                          )}
+                          {r.failed > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#d13b3b', fontWeight: 700, fontSize: 11.5 }}>
+                              <AlertTriangle size={12} /> {r.failed} failed
+                            </span>
+                          )}
+                          {r.scheduled > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#3e63dd', fontWeight: 700, fontSize: 11.5 }}>
+                              <CalendarClock size={12} /> {r.scheduled} scheduled
+                            </span>
+                          )}
+                          {r.published === 0 && r.failed === 0 && r.scheduled === 0 && (
+                            <span style={{ fontSize: 11.5, color: '#c77414', fontWeight: 700 }}>Ready</span>
+                          )}
+                        </>
                       )}
                     </td>
                     <td style={{ ...cell, color: MUTED, fontSize: 11.5 }}>{formatSlot(r.nextAt)}</td>
@@ -300,6 +320,22 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
               </span>
             </div>
           </div>
+
+          {/* A zero here needs a reason. The captions were still written — only
+              the timings are missing — and the user should not have to guess. */}
+          {clips.length === 0 && wantsClips && (
+            <div style={{ ...CARD, marginTop: 14 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 800, color: INK, margin: '0 0 4px', letterSpacing: '-0.01em' }}>
+                No clips were cut
+              </h3>
+              <p style={{ fontSize: 12.5, color: MUTED, margin: 0, lineHeight: 1.6 }}>
+                Your Reels, Shorts, Stories and TikToks were written and are in the plan above — but nothing
+                could be timed out of the video, so they carry the whole video rather than a cut of it.
+                Cutting needs the video's length: upload the file instead of pasting a link, or add a Gemini
+                key in <strong>Settings → AI</strong> to have the video watched and the strongest moments picked.
+              </p>
+            </div>
+          )}
 
           {clips.length > 0 && (
             <div style={{ ...CARD, marginTop: 14 }}>

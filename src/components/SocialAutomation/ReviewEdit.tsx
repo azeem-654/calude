@@ -22,6 +22,18 @@ const MUTED = '#8a8f98';
 const FAINT = '#b0b4ba';
 const RED = '#e5484d';
 
+/** The four destinations that are not a social platform. */
+const CHANNEL_LABEL: Record<string, string> = {
+  email: 'Email', sms: 'SMS', blog: 'Blog', landing: 'Landing page',
+};
+
+/** Plain names for the kinds — "Sms" is not a word anyone writes. */
+const KIND_LABEL: Record<string, string> = {
+  clip: 'Clips', image: 'Images', carousel: 'Carousels', story: 'Stories',
+  text: 'Posts', thread: 'Threads', email: 'Emails', sms: 'SMS',
+  blog: 'Blog', landing: 'Landing page',
+};
+
 /** Where each kind is genuinely editable, once it has been handed over. */
 const EDITOR_ROUTE: Record<CampaignAssetKind, { route: string; label: string }> = {
   clip: { route: '/ai-shorts', label: 'AI Shorts' },
@@ -113,8 +125,13 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
     padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
     border: `1px solid ${on ? INK : '#e4e7ec'}`,
     backgroundColor: on ? INK : '#fff',
-    color: on ? '#fff' : INK, fontSize: 11.5, fontWeight: 700, textTransform: 'capitalize',
+    color: on ? '#fff' : INK, fontSize: 11.5, fontWeight: 700,
   });
+
+  const groupLabel: React.CSSProperties = {
+    fontSize: 10.5, fontWeight: 800, color: FAINT, textTransform: 'uppercase',
+    letterSpacing: '0.06em', minWidth: 42,
+  };
 
   if (assets.length === 0) {
     return <p style={{ fontSize: 13, color: MUTED }}>Nothing has been generated for this campaign yet.</p>;
@@ -122,25 +139,31 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
 
   return (
     <div>
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-        <button onClick={() => setPlatform('all')} aria-pressed={platform === 'all'} style={chip(platform === 'all')}>
-          All destinations
-        </button>
-        {platforms.map(p => (
-          <button key={p} onClick={() => setPlatform(p)} aria-pressed={platform === p} style={chip(platform === p)}>
-            {PLATFORM_LABEL[p as keyof typeof PLATFORM_LABEL] ?? p}
+      {/* Filters. Both rows contain chips called "Email" and "SMS", so each row
+          is labelled — an unlabelled pair reads as a duplicate, not a filter. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={groupLabel}>Where</span>
+          <button onClick={() => setPlatform('all')} aria-pressed={platform === 'all'} style={chip(platform === 'all')}>
+            Everywhere
           </button>
-        ))}
-        <span style={{ width: 1, backgroundColor: '#e4e7ec', margin: '0 4px' }} />
-        <button onClick={() => setKind('all')} aria-pressed={kind === 'all'} style={chip(kind === 'all')}>
-          All types
-        </button>
-        {kinds.map(k => (
-          <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k} style={chip(kind === k)}>
-            {k}
+          {platforms.map(p => (
+            <button key={p} onClick={() => setPlatform(p)} aria-pressed={platform === p} style={chip(platform === p)}>
+              {PLATFORM_LABEL[p as keyof typeof PLATFORM_LABEL] ?? CHANNEL_LABEL[p] ?? p}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={groupLabel}>What</span>
+          <button onClick={() => setKind('all')} aria-pressed={kind === 'all'} style={chip(kind === 'all')}>
+            Everything
           </button>
-        ))}
+          {kinds.map(k => (
+            <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k} style={chip(kind === k)}>
+              {KIND_LABEL[k] ?? k}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -270,10 +293,12 @@ export default function ReviewEdit({ campaign, onChange }: Props) {
                     }}>
                       Edit
                     </button>
+                    {/* Grey on white reads as disabled. This button works, so it
+                        is coloured like the link it is. */}
                     <button onClick={() => navigate(dest.route)} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px',
-                      borderRadius: 999, border: '1px solid #e4e7ec', backgroundColor: '#fff',
-                      color: MUTED, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                      borderRadius: 999, border: '1px solid #d7ddf5', backgroundColor: '#fff',
+                      color: '#3e63dd', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
                     }}>
                       Open in {dest.label} <ArrowUpRight size={11} />
                     </button>

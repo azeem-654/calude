@@ -22,6 +22,10 @@ import type {
 export function normaliseTag(raw: string): string {
   const body = raw.replace(/^#+/, '').trim();
   if (!body) return '';
+  // Already one alphanumeric token, so it has been through here before:
+  // re-deriving it would lowercase `#firstHire` into `#firsthire`, because the
+  // word boundary it was built from is gone.
+  if (/^[A-Za-z0-9]+$/.test(body)) return `#${body}`;
   return toHashtag(body);
 }
 
@@ -166,16 +170,42 @@ export function composeClips(
     }));
 }
 
-/** The sentence a caption opens with, chosen for the placement's appetite. */
+/**
+ * The sentence a caption opens with.
+ *
+ * The campaign title outranks a topic keyword: a topic is one word, and one word
+ * is not an opening line. A keyword is only reached for when there is no title
+ * at all.
+ */
 function hook(moment: Moment | null, analysis: CampaignAnalysis, campaign: Campaign): string {
   if (moment?.title) return moment.title;
-  if (analysis.topics[0]) return analysis.topics[0];
-  return campaign.title;
+  if (campaign.title.trim()) return campaign.title.trim();
+  return analysis.topics[0] ?? '';
 }
 
-function bodyFor(placement: Placement, moment: Moment | null, analysis: CampaignAnalysis, campaign: Campaign): string {
+/** The nth item, wrapping — so post 2 does not repeat post 1 word for word. */
+const pick = <T,>(items: T[], index: number): T | undefined =>
+  (items.length ? items[index % items.length] : undefined);
+
+/** The list rotated to start at n, keeping every item but changing the order. */
+function rotate<T>(items: T[], index: number): T[] {
+  if (items.length < 2) return items;
+  const at = index % items.length;
+  return [...items.slice(at), ...items.slice(0, at)];
+}
+
+function bodyFor(
+  placement: Placement,
+  moment: Moment | null,
+  analysis: CampaignAnalysis,
+  campaign: Campaign,
+  index: number,
+): string {
   const points = analysis.talkingPoints.length ? analysis.talkingPoints : [analysis.summary];
   const head = hook(moment, analysis, campaign);
+  // Each variant leads with a different point, so three Instagram posts are
+  // three posts rather than the same post with three sign-offs.
+  const point = moment?.transcript?.trim() || pick(points, index) || '';
 
   switch (placement) {
     case 'linkedin_feed':
@@ -184,35 +214,35 @@ function bodyFor(placement: Placement, moment: Moment | null, analysis: Campaign
       return [
         head,
         '',
-        ...points.slice(0, 3).map(p => `• ${p}`),
+        ...rotate(points, index).slice(0, 3).map(p => `• ${p}`),
         '',
         analysis.summary,
       ].join('\n');
 
     case 'x_post':
-      return head;
+      // 280 characters is room for a line and a point, not just a headline.
+      return [head, point].filter(Boolean).join('\n\n');
 
     case 'x_thread':
       return [head, ...points].join(' ');
 
     case 'pinterest_pin':
       // Pinterest is a search engine; the description carries the keywords.
-      return [head, points[0] ?? '', analysis.keywords.slice(0, 6).join(', ')].filter(Boolean).join(' — ');
+      return [head, point, analysis.keywords.slice(0, 6).join(', ')].filter(Boolean).join(' — ');
 
     case 'instagram_story':
     case 'facebook_story':
-      return trimToWord(head, 90);
-
     case 'tiktok_video':
-      return trimToWord(head, 90);
+      // Short surfaces: the title first, then a point per variant.
+      return trimToWord(index === 0 ? head : (point || head), 90);
 
     case 'youtube_shorts':
     case 'instagram_reel':
     case 'facebook_reel':
-      return [head, points[0] ?? ''].filter(Boolean).join('\n\n');
+      return [head, point].filter(Boolean).join('\n\n');
 
     default:
-      return [head, '', points.slice(0, 2).join('\n\n')].filter(Boolean).join('\n');
+      return [head, '', rotate(points, index).slice(0, 2).join('\n\n')].filter(Boolean).join('\n');
   }
 }
 
@@ -250,14 +280,23 @@ export function composePlacement(
   const kind = KIND_FOR[placement] ?? 'text';
   const wanted = COUNT_FOR[placement] ?? 1;
   const usesMoments = kind === 'clip' || kind === 'story';
-  const slots = usesMoments
-    ? analysis.moments.slice(0, wanted)
-    : Array.from({ length: Math.min(wanted, Math.max(1, analysis.talkingPoints.length || 1)) }, () => null);
+
+  // Video and story placements prefer real moments. When the analyser could not
+  // find any — a YouTube link whose length is unknown, no Gemini key — they
+  // still get posts written from the talking points. A placement the user
+  // deliberately ticked must never come back empty and unexplained.
+  const moments = usesMoments ? analysis.moments.slice(0, wanted) : [];
+  const fallbackCount = usesMoments
+    ? Math.min(wanted, Math.max(1, analysis.talkingPoints.length || 1), 3)
+    : Math.min(wanted, Math.max(1, analysis.talkingPoints.length || 1));
+  const slots: (Moment | null)[] = moments.length
+    ? moments
+    : Array.from({ length: fallbackCount }, () => null);
 
   const out: CampaignAsset[] = [];
   slots.forEach((moment, i) => {
     const cta = analysis.ctas[i % analysis.ctas.length] ?? '';
-    const body = bodyFor(placement, moment, analysis, campaign);
+    const body = bodyFor(placement, moment, analysis, campaign, i);
     const tags = pickHashtags(moment?.hashtags ?? [], analysis.hashtags, rules);
 
     if (placement === 'x_thread') {
@@ -298,7 +337,7 @@ export function composePlacement(
       endSec: moment?.end,
       // A carousel is a set of slides, each carrying one point.
       parts: kind === 'carousel'
-        ? analysis.talkingPoints.slice(0, 6).map((p, n) => ({ title: `Slide ${n + 1}`, body: trimToWord(p, 180) }))
+        ? rotate(analysis.talkingPoints, i).slice(0, 6).map((p, n) => ({ title: `Slide ${n + 1}`, body: trimToWord(p, 180) }))
         : undefined,
     });
   });

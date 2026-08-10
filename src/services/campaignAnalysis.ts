@@ -81,20 +81,92 @@ const STOPWORDS = new Set([
   'here', 'very', 'much', 'many', 'make', 'made', 'take', 'went', 'come', 'came', 'know', 'want',
   'need', 'work', 'time', 'people', 'thing', 'things', 'really', 'going', 'says', 'said', 'get',
   'got', 'its', 'was', 'are', 'not', 'but', 'all', 'can', 'has', 'had', 'out', 'one', 'two',
+  // Number words read as content otherwise, and "#five" is nobody's hashtag.
+  'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  // Determiners and filler that survived the length test.
+  'any', 'each', 'every', 'both', 'such', 'same', 'own', 'few', 'who', 'why', 'how',
+  'off', 'yet', 'per', 'via',
+  // Verbs and adverbs that carry no topic — a hashtag made of one is noise.
+  'beats', 'covers', 'gives', 'gave', 'goes', 'keep', 'kept', 'look', 'looks', 'find', 'finds',
+  'found', 'show', 'shows', 'shown', 'tell', 'told', 'turn', 'turns', 'used', 'uses', 'using',
+  'write', 'wrote', 'writes', 'read', 'reads', 'help', 'helps', 'lets', 'give', 'even', 'still',
+  'back', 'down', 'only', 'ever', 'never', 'always', 'often', 'sure', 'away', 'good', 'great',
+  'best', 'well', 'next', 'last', 'says', 'seem', 'seems', 'must', 'may', 'might',
 ]);
 
-/** Words worth building hashtags and SEO from, most frequent first. */
+/** `actually`, `usually`, `simply` — adverbs are never the topic. */
+const isAdverb = (w: string) => w.length >= 6 && w.endsWith('ly');
+
+/** Words worth building SEO from, most frequent first. */
 export function extractKeywords(text: string, limit = 12): string[] {
   const counts = new Map<string, number>();
   for (const raw of text.toLowerCase().split(/[^a-z0-9'-]+/)) {
     const w = raw.replace(/^['-]+|['-]+$/g, '');
-    if (w.length < 4 || STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+    if (w.length < 4 || STOPWORDS.has(w) || isAdverb(w) || /^\d+$/.test(w)) continue;
     counts.set(w, (counts.get(w) ?? 0) + 1);
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([w]) => w);
+}
+
+/** Split into clauses, so a phrase never runs across a comma or a full stop. */
+function clauses(text: string): string[][] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9'\- ]+/)
+    .map(c => c.split(/\s+/).map(w => w.replace(/^['-]+|['-]+$/g, '')).filter(Boolean));
+}
+
+/**
+ * The phrases a person would actually tag: one or two words, taken from
+ * unbroken runs of content words.
+ *
+ * Single words on their own are a poor hashtag — `#first` and `#hire` say
+ * nothing that `#firstHire` does not — so pairs are scored above singles, and a
+ * single already contained in a chosen pair is dropped. Anything appearing in
+ * `emphasis` (the title, in practice) is lifted, because the title is the one
+ * sentence the author definitely chose deliberately.
+ */
+export function extractPhrases(text: string, emphasis = '', limit = 12): string[] {
+  const scores = new Map<string, number>();
+  const lifted = new Set<string>();
+
+  const walk = (src: string, into: (phrase: string, isPair: boolean) => void) => {
+    for (const clause of clauses(src)) {
+      let run: string[] = [];
+      const flush = () => {
+        for (let i = 0; i < run.length; i++) {
+          into(run[i], false);
+          if (i + 1 < run.length) into(`${run[i]} ${run[i + 1]}`, true);
+        }
+        run = [];
+      };
+      for (const w of clause) {
+        if (w.length < 3 || STOPWORDS.has(w) || isAdverb(w) || /^\d+$/.test(w)) flush();
+        else run.push(w);
+      }
+      flush();
+    }
+  };
+
+  walk(emphasis, p => lifted.add(p));
+  walk(text, (p, isPair) => {
+    if (p.replace(/\s/g, '').length < 5) return;
+    scores.set(p, (scores.get(p) ?? 0) + (isPair ? 2 : 1));
+  });
+  for (const p of lifted) {
+    if (scores.has(p)) scores.set(p, (scores.get(p) ?? 0) + 3);
+  }
+
+  const out: string[] = [];
+  for (const [phrase] of [...scores.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)) {
+    if (!phrase.includes(' ') && out.some(p => p.includes(' ') && p.split(' ').includes(phrase))) continue;
+    out.push(phrase);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /** Sentences long enough to stand on their own, which is what a talking point is. */
@@ -135,7 +207,8 @@ export function analyseFromText(
   durationSec = 0,
 ): CampaignAnalysis {
   const text = `${campaign.title}. ${campaign.description}`.trim();
-  const keywords = extractKeywords(text);
+  const phrases = extractPhrases(text, campaign.title);
+  const keywords = phrases.length ? phrases : extractKeywords(text);
   const talkingPoints = extractSentences(campaign.description);
   const tags = [...new Set([
     ...keywords.slice(0, 8).map(toHashtag).filter(Boolean),
@@ -216,7 +289,9 @@ export async function analyseSource(
 
     const fromClips = clean.clips.flatMap(c => c.hashtags ?? []);
     const summaryText = `${clean.videoSummary} ${clean.clips.map(c => c.title).join('. ')}`;
-    const keywords = extractKeywords(`${campaign.title}. ${campaign.description}. ${summaryText}`);
+    const corpus = `${campaign.title}. ${campaign.description}. ${summaryText}`;
+    const phrases = extractPhrases(corpus, campaign.title);
+    const keywords = phrases.length ? phrases : extractKeywords(corpus);
     const hashtags = [...new Set([
       ...fromClips.map(h => (h.startsWith('#') ? h : `#${h}`)),
       ...keywords.slice(0, 6).map(toHashtag),
