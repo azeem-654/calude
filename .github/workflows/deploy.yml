@@ -146,41 +146,14 @@ jobs:
       # ── 7. Reachability probe ────────────────────────────────────────────────
       # An FTP upload only proves port 21 answered. This checks the site the way
       # a visitor would, from a network that is neither the developer's nor the
-      # host's — so "the site is down" can be told apart from "the site is down
-      # for me". Never fails the job: a red deploy on a probe failure would hide
-      # the fact that the upload itself succeeded.
+      # host's, and separates the causes of a failure — a filtered port, a dead
+      # TLS listener, an expired certificate — because they have different fixes.
+      # Never fails the job: a red deploy on a probe failure would hide the fact
+      # that the upload itself succeeded.
       - name: Probe the live site
         if: always()
         continue-on-error: true
-        run: |
-          probe() {
-            local url="$1"
-            local out
-            out=$(curl -sS -o /dev/null -m 25 \
-                    -w '%{http_code}|%{time_total}|%{remote_ip}' \
-                    "$url" 2>/tmp/curl.err) || true
-            if [ -z "$out" ]; then
-              echo "| \`$url\` | — | — | — | $(tr -d '\n' </tmp/curl.err | cut -c1-90) |" >> "$GITHUB_STEP_SUMMARY"
-              echo "PROBE $url -> FAILED: $(cat /tmp/curl.err)"
-            else
-              IFS='|' read -r code secs ip <<< "$out"
-              echo "| \`$url\` | $code | ${secs}s | $ip | |" >> "$GITHUB_STEP_SUMMARY"
-              echo "PROBE $url -> HTTP $code in ${secs}s via $ip"
-            fi
-          }
-
-          echo "### 🔎 Reachability from GitHub's network" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "DNS: \`$(getent hosts protectedcentral.com | awk '{print $1}' | tr '\n' ' ')\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| URL | Status | Time | Server IP | Error |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-----|--------|------|-----------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          probe "http://protectedcentral.com/"
-          probe "https://protectedcentral.com/"
-          probe "https://www.protectedcentral.com/"
-          probe "https://protectedcentral.com/api/auth.php?action=status"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "A timeout here means the host is unreachable for everyone. A status code here while your browser times out means the block is between you and the host — most often the host firewall banning your IP." >> "$GITHUB_STEP_SUMMARY"
+        run: bash scripts/site-check.sh protectedcentral.com
 
       # ── 8. Summary ───────────────────────────────────────────────────────────
       - name: Deployment summary
