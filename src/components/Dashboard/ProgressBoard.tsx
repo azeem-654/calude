@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Check, CircleDot, LayoutList, Table2 } from 'lucide-react';
+import {
+  AlertTriangle, ArrowRight, ArrowUpRight, Check, CircleDot,
+  Gauge as GaugeIcon, LayoutList, ListChecks, Sparkles, Table2,
+} from 'lucide-react';
 import {
   INDEX_SYMBOL, buildBook, type FeedInput, type Quote,
 } from '../../services/marketFeed';
@@ -9,6 +12,8 @@ import { ModuleMark } from './moduleIcons';
 import { palette, glyphFor, dirOf, colorFor } from './marketTheme';
 import { useTheme } from './useTheme';
 import GrowthActions from './GrowthActions';
+import Gauge from './Gauge';
+import HistoryComb from './HistoryComb';
 
 /**
  * Where the business actually stands, department by department.
@@ -99,9 +104,25 @@ export default function ProgressBoard(props: Props) {
   const overallDelta = index ? index.truth - past(index) : 0;
 
   const CARD: React.CSSProperties = {
-    backgroundColor: p.ink, borderRadius: 18, border: `1px solid ${p.border}`,
+    backgroundColor: p.ink, borderRadius: 22, border: `1px solid ${p.border}`,
     overflow: 'hidden',
   };
+
+  /**
+   * An inner tile — the unit the whole panel is built out of. The top highlight
+   * is chrome: a few percent of white along the upper edge so tiles read as
+   * raised against a near-black panel. It sits behind the marks and encodes
+   * nothing.
+   */
+  const TILE: React.CSSProperties = {
+    backgroundColor: p.panel, borderRadius: 18, border: `1px solid ${p.border}`,
+    padding: '14px 15px 15px',
+    backgroundImage: dark
+      ? 'linear-gradient(180deg, rgba(255,255,255,0.038), rgba(255,255,255,0) 42%)'
+      : undefined,
+  };
+
+  const overallBand = bandFor(overall);
 
   return (
     // The app inverts #root for dark mode; this panel opts out and picks its own
@@ -145,50 +166,105 @@ export default function ProgressBoard(props: Props) {
 
       {/* ── Hero + band summary ── */}
       <div style={{
-        display: 'flex', gap: 20, padding: '18px 16px', flexWrap: 'wrap',
-        borderBottom: `1px solid ${p.border}`, alignItems: 'center',
+        display: 'flex', gap: 12, padding: '14px', flexWrap: 'wrap',
+        borderBottom: `1px solid ${p.border}`, alignItems: 'stretch',
       }}>
-        <div style={{ minWidth: 190 }}>
-          <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: p.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Overall progress
-          </p>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-            {/* Hero figure: proportional figures, not tabular — this is not a column. */}
-            <span style={{ fontSize: 52, fontWeight: 800, color: p.textStrong, letterSpacing: '-0.03em', lineHeight: 1 }}>
-              {overall.toFixed(0)}
-            </span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: p.textDim }}>/ 100</span>
+        {/* The headline: one ratio against a fixed limit, so an arc. */}
+        <div style={{ ...TILE, flex: '1 1 300px', minWidth: 280, display: 'flex', gap: 18, alignItems: 'center', padding: '16px 18px' }}>
+          {/* The arc's leading dot sits proud of the stroke, so the box gets a
+              little room rather than clipping it against the tile edge. */}
+          <div style={{ position: 'relative', flexShrink: 0, padding: 4 }}>
+            {/* The arc wears the brand accent, not a band colour. It is the
+                composite index — a different entity from the ten departments
+                below — so it is not competing with their encoding, and its band
+                is stated in words and an icon immediately beside it. */}
+            <Gauge
+              value={overall}
+              fill={accentOf(p, dark)}
+              track={dark ? 'rgba(255,255,255,0.10)' : '#e9ebee'}
+              surface={p.panel}
+              label={overallBand.label}
+              size={132}
+              thickness={10}
+            />
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+            }}>
+              {/* Proportional figures — a hero number, not a column. */}
+              <span style={{ fontSize: 38, fontWeight: 800, color: p.textStrong, letterSpacing: '-0.03em', lineHeight: 1 }}>
+                {overall.toFixed(0)}
+              </span>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: p.textDim, marginTop: 3 }}>of 100</span>
+            </div>
           </div>
-          <Delta value={overallDelta} p={p} suffix={`vs ${LOOKBACK_DAYS} days ago`} />
+
+          <div style={{ minWidth: 0 }}>
+            <TileHeader icon={GaugeIcon} label="Overall progress" p={p} accent={accentOf(p, dark)} />
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 9 }}>
+              <BandIcon band={overallBand} dark={dark} />
+              <span style={{ fontSize: 12, fontWeight: 800, color: dark ? overallBand.inkDark : overallBand.ink }}>
+                {overallBand.label}
+              </span>
+            </div>
+            <Delta value={overallDelta} p={p} suffix={`vs ${LOOKBACK_DAYS} days ago`} />
+            {index && (
+              <div style={{ marginTop: 12 }}>
+                <HistoryComb
+                  candles={index.candles}
+                  color={p.textDim}
+                  accent={accentOf(p, dark)}
+                  height={30}
+                  label="Overall progress"
+                />
+                <p style={{ margin: '5px 0 0', fontSize: 10, color: p.textDim }}>Last 44 days</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* One tile per band — the triage summary. */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
+        <div style={{
+          flex: '1 1 340px', minWidth: 300,
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12,
+        }}>
           {BANDS.map(b => (
-            <div key={b.key} style={{
-              flex: '1 1 130px', minWidth: 130, padding: '11px 13px', borderRadius: 12,
-              backgroundColor: p.panel, border: `1px solid ${p.border}`,
-            }}>
+            <div key={b.key} style={TILE}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <BandIcon band={b} dark={dark} />
                 <span style={{ fontSize: 11, fontWeight: 700, color: dark ? b.inkDark : b.ink }}>{b.label}</span>
               </div>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: p.textStrong, lineHeight: 1 }}>
+              <p style={{ margin: '10px 0 0', fontSize: 30, fontWeight: 800, color: p.textStrong, lineHeight: 1, letterSpacing: '-0.02em' }}>
                 {counts[b.key]}
               </p>
-              <p style={{ margin: '3px 0 0', fontSize: 10.5, color: p.textDim }}>
-                {counts[b.key] === 1 ? 'department' : 'departments'}
+              <p style={{ margin: '4px 0 8px', fontSize: 10.5, color: p.textDim }}>
+                of {rows.length} {rows.length === 1 ? 'department' : 'departments'}
               </p>
+              {/* This band's share of the ten, so the tile carries a shape as
+                  well as a count and the four can be compared at a glance. */}
+              <Meter
+                score={rows.length ? (counts[b.key] / rows.length) * 100 : 0}
+                band={b}
+                dark={dark}
+                thin
+              />
             </div>
           ))}
         </div>
       </div>
 
       {/* ── The departments ── */}
+      <div style={{ padding: '4px 16px 0', display: 'flex', alignItems: 'center', gap: 7 }}>
+        <ListChecks size={13} strokeWidth={2.2} color={accentOf(p, dark)} aria-hidden="true" />
+        <span style={{ fontSize: 11, fontWeight: 700, color: p.textMuted }}>
+          Every department, {sort === 'attention' ? 'weakest first' : 'A to Z'}
+        </span>
+      </div>
+
       {view === 'table' ? (
         <ScoreTable rows={rows} p={p} dark={dark} />
       ) : (
-        <div>
+        <div style={{ paddingTop: 4 }}>
           {rows.slice(0, initialRows).map(({ q, score, delta, band }) => {
             const open = openRow === q.module.symbol;
             return (
@@ -201,10 +277,11 @@ export default function ProgressBoard(props: Props) {
                   aria-expanded={open}
                   style={{
                     display: 'grid',
-                    // The meter is capped rather than elastic: a 9px bar stretched
-                    // across a wide screen stops reading as a quantity and starts
-                    // reading as a rule. The name column absorbs the slack.
-                    gridTemplateColumns: 'minmax(170px, 250px) minmax(110px, 220px) 46px 134px 1fr',
+                    // Every column is capped and a trailing spacer takes the
+                    // slack, so the figures stay grouped instead of drifting to
+                    // opposite edges of a wide panel — and the meter never
+                    // stretches into something that reads as a rule.
+                    gridTemplateColumns: 'minmax(170px, 250px) minmax(110px, 230px) 46px 134px 128px 1fr',
                     alignItems: 'center', gap: 14, padding: '11px 16px', cursor: 'pointer',
                     backgroundColor: open ? p.panel : 'transparent',
                   }}
@@ -237,14 +314,34 @@ export default function ProgressBoard(props: Props) {
                   </span>
 
                   <Delta value={delta} p={p} compact />
+
+                  <ArrowUpRight
+                    size={14}
+                    strokeWidth={2.4}
+                    color={open ? accentOf(p, dark) : p.textDim}
+                    style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}
+                    aria-hidden="true"
+                  />
                 </div>
 
                 {/* What the score is made of, and where to go. */}
                 {open && (
                   <div style={{ padding: '2px 16px 14px 51px', backgroundColor: p.panel }}>
-                    <p style={{ margin: '0 0 9px', fontSize: 11, color: p.textMuted, lineHeight: 1.55 }}>
+                    <p style={{ margin: '0 0 11px', fontSize: 11, color: p.textMuted, lineHeight: 1.55 }}>
                       {q.module.basis}
                     </p>
+                    <div style={{ maxWidth: 300, marginBottom: 14 }}>
+                      <HistoryComb
+                        candles={q.candles}
+                        color={p.textDim}
+                        accent={band.fill}
+                        height={32}
+                        label={q.module.name}
+                      />
+                      <p style={{ margin: '5px 0 0', fontSize: 10, color: p.textDim }}>
+                        Last 44 days, out of 100
+                      </p>
+                    </div>
                     {/* Capped so the component meters line up with the row
                         meters above rather than spanning the whole panel. */}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 11, maxWidth: 760 }}>
@@ -283,9 +380,9 @@ export default function ProgressBoard(props: Props) {
 
       {/* ── What to do next ── */}
       <div style={{ borderTop: `1px solid ${p.border}` }}>
-        <div style={{ padding: '12px 16px 2px' }}>
-          <h4 style={{ margin: 0, fontSize: 12.5, fontWeight: 800, color: p.textStrong }}>What to do next</h4>
-          <p style={{ margin: '2px 0 0', fontSize: 11, color: p.textDim }}>
+        <div style={{ padding: '13px 16px 4px' }}>
+          <TileHeader icon={Sparkles} label="What to do next" p={p} accent={accentOf(p, dark)} />
+          <p style={{ margin: '4px 0 0 20px', fontSize: 11, color: p.textDim }}>
             Ranked by how much each one would actually move the overall score.
           </p>
         </div>
@@ -297,14 +394,39 @@ export default function ProgressBoard(props: Props) {
 
 /* ── Pieces ── */
 
+/**
+ * The brand accent — lime on dark, ink on light.
+ *
+ * It marks chrome only: the selected chip, a tile's own icon, the latest bar in
+ * a history comb. It never carries a value. The health bands do that, and a
+ * second colour meaning "important" beside colours meaning "how healthy" would
+ * make the reader guess which one to believe. Lime sits ΔE 26 from the band
+ * green under CVD, so the two cannot be mistaken for each other.
+ */
+function accentOf(p: ReturnType<typeof palette>, dark: boolean): string {
+  return dark ? p.accent : p.textStrong;
+}
+
 function chip(on: boolean, p: ReturnType<typeof palette>): React.CSSProperties {
   return {
-    padding: '5px 11px', borderRadius: 999, cursor: 'pointer',
-    border: `1px solid ${on ? p.textStrong : p.border}`,
-    backgroundColor: on ? p.textStrong : p.ink,
-    color: on ? p.ink : p.textMuted,
+    padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+    border: `1px solid ${on ? 'transparent' : p.border}`,
+    backgroundColor: on ? p.accent : p.panel,
+    color: on ? p.onAccent : p.textMuted,
     fontSize: 10.5, fontWeight: 800, whiteSpace: 'nowrap',
   };
+}
+
+/** A tile's own caption: outline mark, then the name of what the tile shows. */
+function TileHeader({ icon: Icon, label, p, accent }: {
+  icon: typeof GaugeIcon; label: string; p: ReturnType<typeof palette>; accent: string;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <Icon size={13} strokeWidth={2.2} color={accent} aria-hidden="true" />
+      <span style={{ fontSize: 11, fontWeight: 700, color: p.textMuted, letterSpacing: '0.01em' }}>{label}</span>
+    </div>
+  );
 }
 
 /**

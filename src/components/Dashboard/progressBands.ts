@@ -49,25 +49,25 @@ export const BANDS: Band[] = [
   {
     key: 'idle', label: 'Not started', min: 0,
     fill: '#9aa3ad', edge: '#78828e',
-    track: '#e9ebee', trackDark: '#262c34',
+    track: '#e9ebee', trackDark: '#2c333c',
     ink: '#6b7480', inkDark: '#9aa3ad',
   },
   {
     key: 'attention', label: 'Needs attention', min: 1,
     fill: '#d03b3b', edge: '#a92e2e',
-    track: '#f6dcdc', trackDark: '#3a1f1f',
+    track: '#f6dcdc', trackDark: '#4d2828',
     ink: '#b3302f', inkDark: '#f08b8b',
   },
   {
     key: 'building', label: 'Building', min: 40,
     fill: '#fab219', edge: '#b8790a',
-    track: '#fdeecd', trackDark: '#3a2f16',
+    track: '#fdeecd', trackDark: '#4a3c1c',
     ink: '#8a5c05', inkDark: '#f5c451',
   },
   {
     key: 'strong', label: 'Strong', min: 75,
     fill: '#0ca30c', edge: '#087d08',
-    track: '#d7f0d7', trackDark: '#173318',
+    track: '#d7f0d7', trackDark: '#1f4520',
     ink: '#0a7a0a', inkDark: '#5ec95e',
   },
 ];
