@@ -1,0 +1,152 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Site check — is protectedcentral.com actually reachable, and if not, why?
+#
+# Run this from the Actions tab whenever the site looks down. It answers from
+# GitHub's network, which is neither your machine nor the host's, so it can tell
+# "the site is down" apart from "the site is down for me".
+#
+# It does not deploy anything and never touches the server's files.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Site check
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Domain to check'
+        required: false
+        default: 'protectedcentral.com'
+  schedule:
+    # Twice a day, so an outage is caught before a customer reports it.
+    - cron: '0 6,18 * * *'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check
+        run: |
+          DOMAIN="${{ github.event.inputs.domain || 'protectedcentral.com' }}"
+          S="$GITHUB_STEP_SUMMARY"
+          say() { echo "$1" >> "$S"; echo "$1"; }
+
+          say "## 🔎 \`$DOMAIN\` from GitHub's network"
+          say ""
+
+          # ── DNS ────────────────────────────────────────────────────────────
+          APEX_IP=$(getent hosts "$DOMAIN"      | awk '{print $1}' | tr '\n' ' ')
+          WWW_IP=$( getent hosts "www.$DOMAIN"  | awk '{print $1}' | tr '\n' ' ')
+          say "### DNS"
+          say ""
+          say "| Name | Resolves to |"
+          say "|------|-------------|"
+          say "| \`$DOMAIN\` | \`${APEX_IP:-— NOT RESOLVING —}\` |"
+          say "| \`www.$DOMAIN\` | \`${WWW_IP:-— NOT RESOLVING —}\` |"
+          say ""
+
+          if [ -z "$APEX_IP" ]; then
+            say "**DNS is not resolving.** Nothing else can work until it does — check the"
+            say "nameservers on the domain registrar and the DNS zone in the Freehostia panel."
+            exit 0
+          fi
+
+          IP=$(echo "$APEX_IP" | awk '{print $1}')
+
+          # ── Ports ──────────────────────────────────────────────────────────
+          # Refused and filtered are different faults with different fixes:
+          # refused means the machine is up and nothing is listening; filtered
+          # means a firewall is swallowing the packets.
+          say "### Ports on \`$IP\`"
+          say ""
+          say "| Port | Service | Result | Meaning |"
+          say "|------|---------|--------|---------|"
+          port() {
+            local p="$1" name="$2" out rc
+            out=$(timeout 12 bash -c "echo > /dev/tcp/$IP/$p" 2>&1); rc=$?
+            if [ $rc -eq 0 ]; then
+              say "| $p | $name | ✅ open | accepting connections |"
+            elif [ $rc -eq 124 ]; then
+              say "| $p | $name | ⛔ filtered | packets dropped — firewall, or nothing bound |"
+            else
+              say "| $p | $name | ❌ refused | machine is up, nothing listening on this port |"
+            fi
+          }
+          port 80  HTTP
+          port 443 HTTPS
+          port 21  FTP
+          say ""
+
+          # ── TLS ────────────────────────────────────────────────────────────
+          say "### TLS certificate"
+          say ""
+          if timeout 20 openssl s_client -connect "$IP:443" -servername "$DOMAIN" \
+               </dev/null >/tmp/tls.txt 2>/tmp/tls.err; then
+            SUBJ=$(openssl x509 -noout -subject  -in /tmp/tls.txt 2>/dev/null | sed 's/^subject=//')
+            ISSU=$(openssl x509 -noout -issuer   -in /tmp/tls.txt 2>/dev/null | sed 's/^issuer=//')
+            ENDS=$(openssl x509 -noout -enddate  -in /tmp/tls.txt 2>/dev/null | sed 's/^notAfter=//')
+            say "| Field | Value |"
+            say "|-------|-------|"
+            say "| Subject | \`${SUBJ:-—}\` |"
+            say "| Issuer | \`${ISSU:-—}\` |"
+            say "| Expires | \`${ENDS:-—}\` |"
+            if ! openssl x509 -noout -checkend 0 -in /tmp/tls.txt >/dev/null 2>&1; then
+              say ""
+              say "⚠️ **The certificate has expired.** Renew it in the Freehostia panel."
+            elif ! openssl x509 -noout -checkend 604800 -in /tmp/tls.txt >/dev/null 2>&1; then
+              say ""
+              say "⚠️ **The certificate expires within 7 days.**"
+            fi
+          else
+            say "❌ **No TLS handshake.** $(tr -d '\n' </tmp/tls.err | cut -c1-160)"
+            say ""
+            say "There is no certificate being served on 443 at all — this is not an expiry"
+            say "problem, the HTTPS listener is not answering."
+          fi
+          say ""
+
+          # ── HTTP / HTTPS ───────────────────────────────────────────────────
+          say "### Requests"
+          say ""
+          say "| URL | Status | Time | Redirect | Error |"
+          say "|-----|--------|------|----------|-------|"
+          probe() {
+            local url="$1" out code secs redir
+            out=$(curl -sS -o /tmp/body.html -m 25 \
+                    -w '%{http_code}|%{time_total}|%{redirect_url}' \
+                    "$url" 2>/tmp/curl.err) || true
+            if [ -z "$out" ]; then
+              say "| \`$url\` | — | — | — | $(tr -d '\n' </tmp/curl.err | cut -c1-70) |"
+            else
+              IFS='|' read -r code secs redir <<< "$out"
+              say "| \`$url\` | $code | ${secs}s | ${redir:-—} | |"
+            fi
+          }
+          probe "http://$DOMAIN/"
+          probe "https://$DOMAIN/"
+          probe "http://www.$DOMAIN/"
+          probe "http://$DOMAIN/api/auth.php?action=status"
+          say ""
+
+          # ── HSTS ───────────────────────────────────────────────────────────
+          # If the host ever sent HSTS while 443 worked, browsers have pinned it
+          # and will refuse plain HTTP — which makes a dead 443 look like a total
+          # outage even though port 80 is serving fine.
+          HSTS=$(curl -sSI -m 20 "http://$DOMAIN/" 2>/dev/null | grep -i '^strict-transport-security' || true)
+          say "### HSTS"
+          say ""
+          if [ -n "$HSTS" ]; then
+            say "\`$HSTS\`"
+            say ""
+            say "⚠️ HSTS is being sent, so browsers will **refuse** to fall back to HTTP."
+          else
+            say "Not sent over HTTP. If your browser still refuses plain HTTP, it pinned HSTS"
+            say "from an earlier HTTPS visit — clear it at \`chrome://net-internals/#hsts\`."
+          fi
+          say ""
+
+          # ── What is actually deployed ──────────────────────────────────────
+          ASSET=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' /tmp/body.html 2>/dev/null | head -1)
+          say "### Deployed build"
+          say ""
+          say "Bundle served over HTTP: \`${ASSET:-— could not read index.html —}\`"
