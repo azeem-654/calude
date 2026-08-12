@@ -56,7 +56,9 @@ export default function HistoryComb({ candles, bars = 44, height = 34, color, ac
             }}
           >
             <div
+              className="comb-bar"
               style={{
+                ['--i' as string]: i,
                 width: '100%',
                 // A 3% floor so a genuine zero is still a mark rather than a
                 // gap — an empty slot would read as missing data.

@@ -41,14 +41,44 @@ const LABEL: React.CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6,
 };
 
-function BookModal({ onClose, onBook }: { onClose: () => void; onBook: (a: Omit<Appointment, 'id'>) => void }) {
+/**
+ * The booking form's `type`, mapped to the token the rest of the app matches on.
+ * The dashboard picks a meeting's icon from this, and it lowercases nothing for
+ * you — "Phone Call" would fall through to the video icon.
+ */
+const TYPE_TOKEN: Record<string, string> = {
+  'Video Call': 'video',
+  'Phone Call': 'call',
+  'In Person': 'meeting',
+  'Screen Share': 'video',
+};
+
+function BookModal({ onClose, onBook, defaultDate }: {
+  onClose: () => void;
+  onBook: (a: Omit<Appointment, 'id'>) => void;
+  /** The day the calendar is showing, so booking lands where the user is looking. */
+  defaultDate: string;
+}) {
   const { contacts } = useApp();
-  const [form, setForm] = useState({ title: '', contactId: contacts[0]?.id || '', date: '2024-05-22', time: '10:00 AM', duration: 30, type: 'Video Call', notes: '' });
+  // Was hardcoded to 2024-05-22, so every appointment booked without touching
+  // the date field landed eighteen months in the past — invisible on the
+  // calendar and on the dashboard, which is exactly what it looked like.
+  const [form, setForm] = useState({
+    title: '', contactId: contacts[0]?.id || '',
+    date: defaultDate, time: '10:00', duration: 30, type: 'Video Call', notes: '',
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const contact = contacts.find(c => c.id === form.contactId);
-    onBook({ ...form, contactName: contact?.name || '', status: 'scheduled', duration: Number(form.duration) });
+    onBook({
+      ...form,
+      type: TYPE_TOKEN[form.type] ?? form.type.toLowerCase(),
+      contactName: contact?.name || '',
+      status: 'scheduled',
+      duration: Number(form.duration),
+      createdAt: new Date().toISOString(),
+    });
     onClose();
   };
 
@@ -77,7 +107,9 @@ function BookModal({ onClose, onBook }: { onClose: () => void; onBook: (a: Omit<
             </div>
             <div>
               <label style={LABEL}>Time</label>
-              <input value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} placeholder="10:00 AM" style={INPUT} />
+              {/* A real time input: it produces the 24h HH:MM the records are
+                  meant to hold, instead of free text that accepted "morning". */}
+              <input required type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} style={INPUT} />
             </div>
             <div>
               <label style={LABEL}>Duration (min)</label>
@@ -322,7 +354,17 @@ export default function CalendarView() {
           </div>
         )}
       </div>
-      {showModal && <BookModal onClose={() => setShowModal(false)} onBook={addAppointment} />}
+      {showModal && (
+        <BookModal
+          onClose={() => setShowModal(false)}
+          onBook={addAppointment}
+          // Today when today is in view, otherwise the first of the month being
+          // looked at — booking should land where the user's attention is.
+          defaultDate={ymd(new Date()).startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)
+            ? todayStr
+            : `${year}-${String(month + 1).padStart(2, '0')}-01`}
+        />
+      )}
     </div>
   );
 }

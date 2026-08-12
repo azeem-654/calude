@@ -694,18 +694,18 @@ export default function Dashboard() {
 
       <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+        {/* ── Where the business stands, department by department ── */}
+        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+          <ProgressBoard book={book} />
+        </div>
+
         {/* ── Today, and the goals behind it ── */}
-        <div className="slide-up" style={{ animationDelay: '0.02s' }}>
+        <div className="slide-up" style={{ animationDelay: '0.08s' }}>
           <DayBoard
             appointments={appointments}
             actions={book.actions.slice(0, 8)}
             onStatusChange={(id, status) => updateAppointment(id, { status })}
           />
-        </div>
-
-        {/* ── Where the business stands, department by department ── */}
-        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
-          <ProgressBoard book={book} />
         </div>
 
         {/* ── 12-month content pipeline / AI setup ── */}

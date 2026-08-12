@@ -9,6 +9,7 @@ import { BANDS, bandFor, type Band } from './progressBands';
 import { ModuleMark } from './moduleIcons';
 import { palette, glyphFor, dirOf, colorFor } from './marketTheme';
 import { useTheme } from './useTheme';
+import { useTilt } from './useTilt';
 import Gauge from './Gauge';
 import HistoryComb from './HistoryComb';
 
@@ -123,6 +124,9 @@ export default function ProgressBoard({ book }: { book: Book }) {
   const SHEET_INK = '#17191c';
   const SHEET_MUTED = '#6b7480';
 
+  const { tiltProps: bandTilt } = useTilt(3);
+  const { tiltProps: gaugeTilt } = useTilt(5);
+
   const TILE: React.CSSProperties = {
     backgroundColor: TILE_BG, borderRadius: 22, border: `1px solid ${TILE_LINE}`, padding: '16px 18px',
   };
@@ -148,7 +152,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
               : 'Sample figures until you have enough records — they become yours as you use the app'}
           </p>
         </div>
-        <button onClick={() => navigate('/analytics')} style={ctaStyle()}>
+        <button onClick={() => navigate('/analytics')} className="press" style={ctaStyle()}>
           Full analytics <ArrowUpRight size={13} />
         </button>
       </div>
@@ -156,7 +160,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
       {/* ── Summary band ── */}
       <div style={{ display: 'flex', gap: 12, padding: '14px 18px', flexWrap: 'wrap', alignItems: 'stretch' }}>
 
-        <div style={{ ...TILE, flex: '2 1 470px', minWidth: 320 }}>
+        <div className="tilt-card" {...bandTilt} style={{ ...TILE, flex: '2 1 470px', minWidth: 320 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(122px, 1fr))', gap: 18 }}>
             {BANDS.map(b => {
               const members = all.filter(r => r.band.key === b.key);
@@ -200,7 +204,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
           </div>
         </div>
 
-        <div style={{ ...TILE, flex: '1 1 265px', minWidth: 250, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className="tilt-card" {...gaugeTilt} style={{ ...TILE, flex: '1 1 265px', minWidth: 250, display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ position: 'relative', flexShrink: 0, padding: 3 }}>
             <Gauge
               value={overall}
@@ -327,14 +331,16 @@ export default function ProgressBoard({ book }: { book: Book }) {
                   </p>
                 )}
                 <div style={{ padding: '0 8px 12px', maxHeight: 388, overflowY: 'auto' }}>
-                  {rows.map(r => {
+                  {rows.map((r, i) => {
                     const on = current?.q.module.symbol === r.q.module.symbol;
                     return (
                       <button
                         key={r.q.module.symbol}
                         onClick={() => setPicked(r.q.module.symbol)}
                         aria-pressed={on}
+                        className="row-in press"
                         style={{
+                          ['--i' as string]: i,
                           display: 'grid', gridTemplateColumns: '32px 1fr 104px 40px',
                           alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
                           padding: '10px 12px', border: 'none', borderRadius: 16,
@@ -390,7 +396,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(134px, 1fr))', gap: 9 }}>
                       {current.q.breakdown.map(b => (
-                        <div key={b.label} title={b.hint} style={{
+                        <div key={b.label} title={b.hint} className="hover-lift" style={{
                           position: 'relative', padding: '11px 12px', borderRadius: 15,
                           backgroundColor: SHEET_SUNK,
                         }}>
@@ -436,7 +442,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
                       muted={SHEET_MUTED}
                     />
                     <div style={{ flex: 1 }} />
-                    <button onClick={() => navigate(current.q.module.route)} style={ctaStyle(true)}>
+                    <button onClick={() => navigate(current.q.module.route)} className="press" style={ctaStyle(true)}>
                       Open {current.q.module.dest} <ArrowRight size={13} />
                     </button>
                   </div>
@@ -472,6 +478,7 @@ function Pill({ label, onClick, icon: Icon, on, bg, line, ink }: {
     <button
       onClick={onClick}
       aria-pressed={on}
+      className="press"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 15px',
         borderRadius: 999,
@@ -494,6 +501,7 @@ function Segment({ label, count, on, onClick }: {
     <button
       onClick={onClick}
       aria-pressed={on}
+      className="press"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px',
         borderRadius: 999, border: 'none',
@@ -530,7 +538,7 @@ function Bar({ score, fill, track, label, thin }: {
       aria-label={`${label}: ${pct.toFixed(0)} out of 100`}
       style={{ height: thin ? 6 : 9, borderRadius: 999, width: '100%', backgroundColor: track, overflow: 'hidden' }}
     >
-      <div style={{
+      <div className="bar-grow" style={{
         width: `${Math.max(pct, 1.5)}%`, height: '100%',
         backgroundColor: fill, borderRadius: '0 999px 999px 0',
       }} />

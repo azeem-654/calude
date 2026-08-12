@@ -12,6 +12,7 @@ import {
 } from '../../services/dayPlan';
 import { ModuleMark } from './moduleIcons';
 import { useTheme } from './useTheme';
+import { useTilt } from './useTilt';
 
 /**
  * The day, and the goals behind it.
@@ -145,6 +146,7 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
         {shown.map((slot, i) => (
           <MeetingCard
             key={slot.appt.id}
+            index={i}
             slot={slot}
             nowMin={nowMin}
             highlight={progress.current
@@ -174,6 +176,7 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
         {actions.map((a, i) => (
           <GoalCard
             key={a.id}
+            index={i}
             action={a}
             best={actions[0]?.lift ?? 1}
             highlight={i === 0}
@@ -223,6 +226,7 @@ function HourBar({ slots, win, nowMin, onPick }: {
           return (
             <button
               key={s.appt.id}
+              className={live ? 'live-pin press' : 'press'}
               onClick={() => onPick(s.appt)}
               title={`${s.appt.title} · ${clockLabel(s.startMin)}`}
               aria-label={`${s.appt.title} at ${clockLabel(s.startMin)}`}
@@ -252,6 +256,7 @@ function HourBar({ slots, win, nowMin, onPick }: {
         {/* Now. */}
         <div
           aria-hidden="true"
+          className="now-marker"
           style={{
             position: 'absolute', top: -7, bottom: -7, left: `${nowPct}%`,
             width: 2, backgroundColor: '#ffffff', borderRadius: 999, transform: 'translateX(-1px)',
@@ -377,9 +382,10 @@ function Rail({ title, count, children, ink, muted, chrome, filters, empty, isEm
       ) : (
         <div
           ref={scroller}
+          className="rail-scroll"
           style={{
             display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6,
-            scrollSnapType: 'x proximity', scrollbarWidth: 'thin',
+            scrollSnapType: 'x proximity',
           }}
         >
           {children}
@@ -402,14 +408,16 @@ const STATUS_LABEL: Record<Appointment['status'], string> = {
   'no-show': 'No show',
 };
 
-function MeetingCard({ slot, nowMin, highlight, card, line, ink, muted, chrome, onStatusChange, onOpen }: {
+function MeetingCard({ slot, nowMin, highlight, index, card, line, ink, muted, chrome, onStatusChange, onOpen }: {
   slot: DaySlot;
   nowMin: number;
   highlight: boolean;
+  index: number;
   card: string; line: string; ink: string; muted: string; chrome: string;
   onStatusChange: (id: string, status: Appointment['status']) => void;
   onOpen: () => void;
 }) {
+  const { tiltProps } = useTilt();
   const a = slot.appt;
   const Icon = MEETING_ICON[(a.type ?? '').toLowerCase()] ?? Video;
   const past = slot.endMin <= nowMin;
@@ -420,7 +428,11 @@ function MeetingCard({ slot, nowMin, highlight, card, line, ink, muted, chrome, 
   const sub = highlight ? 'rgba(14,17,23,0.66)' : muted;
 
   return (
-    <article style={{
+    <article
+      className="tilt-card rail-in"
+      {...tiltProps}
+      style={{
+      ['--i' as string]: index,
       flex: '0 0 288px', scrollSnapAlign: 'start',
       backgroundColor: bg, borderRadius: 22,
       border: `1px solid ${highlight ? LIME : line}`,
@@ -506,22 +518,28 @@ function MeetingCard({ slot, nowMin, highlight, card, line, ink, muted, chrome, 
   );
 }
 
-function GoalCard({ action, best, highlight, barFill, card, line, ink, muted, chrome, onOpen }: {
+function GoalCard({ action, best, highlight, index, barFill, card, line, ink, muted, chrome, onOpen }: {
   action: GrowthAction;
   best: number;
   highlight: boolean;
+  index: number;
   /** Stepped for the card's surface, not the app theme. */
   barFill: string;
   card: string; line: string; ink: string; muted: string; chrome: string;
   onOpen: () => void;
 }) {
+  const { tiltProps } = useTilt();
   const bg = highlight ? LIME : card;
   const fg = highlight ? ON_LIME : ink;
   const sub = highlight ? 'rgba(14,17,23,0.66)' : muted;
   const share = Math.max((action.lift / Math.max(best, 0.01)) * 100, 4);
 
   return (
-    <article style={{
+    <article
+      className="tilt-card rail-in"
+      {...tiltProps}
+      style={{
+      ['--i' as string]: index,
       flex: '0 0 300px', scrollSnapAlign: 'start',
       backgroundColor: bg, borderRadius: 22,
       border: `1px solid ${highlight ? LIME : line}`,
@@ -558,7 +576,7 @@ function GoalCard({ action, best, highlight, barFill, card, line, ink, muted, ch
           backgroundColor: highlight ? 'rgba(14,17,23,0.16)' : `${muted}29`, overflow: 'hidden',
         }}
       >
-        <div style={{
+        <div className="bar-grow" style={{
           width: `${share}%`, height: '100%', borderRadius: 999,
           backgroundColor: highlight ? ON_LIME : barFill,
         }} />
@@ -566,6 +584,7 @@ function GoalCard({ action, best, highlight, barFill, card, line, ink, muted, ch
 
       <button
         onClick={onOpen}
+        className="press"
         style={{
           marginTop: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           gap: 6, padding: '10px 16px', borderRadius: 999, cursor: 'pointer', border: 'none',
