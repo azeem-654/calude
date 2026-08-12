@@ -21,6 +21,8 @@ import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
+import DayBoard from './DayBoard';
+import { useProgressBook } from './useProgressBook';
 import type { Deal } from '../../types';
 
 /* ── Animated count-up ── */
@@ -595,6 +597,8 @@ export default function Dashboard() {
 
   /* Everything the department board replays, gathered in one place. */
   const feedInput = { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts };
+  /* Replayed once and shared: both boards read it, and the walk is the costly part. */
+  const book = useProgressBook(feedInput);
 
   /* ── Growth history (won revenue by month, demo fallback) ── */
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -690,9 +694,18 @@ export default function Dashboard() {
 
       <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+        {/* ── Today, and the goals behind it ── */}
+        <div className="slide-up" style={{ animationDelay: '0.02s' }}>
+          <DayBoard
+            appointments={appointments}
+            actions={book.actions.slice(0, 8)}
+            onStatusChange={(id, status) => updateAppointment(id, { status })}
+          />
+        </div>
+
         {/* ── Where the business stands, department by department ── */}
         <div className="slide-up" style={{ animationDelay: '0.05s' }}>
-          <ProgressBoard {...feedInput} />
+          <ProgressBoard book={book} />
         </div>
 
         {/* ── 12-month content pipeline / AI setup ── */}

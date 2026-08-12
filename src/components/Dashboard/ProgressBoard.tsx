@@ -4,14 +4,11 @@ import {
   AlertTriangle, ArrowRight, ArrowUpRight, Check, ChevronDown, Circle, CircleDot,
   Search, SlidersHorizontal, Table2,
 } from 'lucide-react';
-import {
-  INDEX_SYMBOL, buildBook, type FeedInput, type Quote,
-} from '../../services/marketFeed';
+import { INDEX_SYMBOL, type Book, type Quote } from '../../services/marketFeed';
 import { BANDS, bandFor, type Band } from './progressBands';
 import { ModuleMark } from './moduleIcons';
 import { palette, glyphFor, dirOf, colorFor } from './marketTheme';
 import { useTheme } from './useTheme';
-import GrowthActions from './GrowthActions';
 import Gauge from './Gauge';
 import HistoryComb from './HistoryComb';
 
@@ -60,12 +57,7 @@ const ON_LIME = '#0e1117';
 /** The CTA is pale against white, so its edge is drawn rather than assumed. */
 const LIME_CTA_EDGE = '#a8d327';
 
-export default function ProgressBoard(props: FeedInput) {
-  const {
-    contacts, pipelines, appointments, conversations, campaigns,
-    reviews, funnels, websites, videoProjects, socialPosts,
-  } = props;
-
+export default function ProgressBoard({ book }: { book: Book }) {
   const navigate = useNavigate();
   const theme = useTheme();
   const p = palette(theme);
@@ -76,14 +68,6 @@ export default function ProgressBoard(props: FeedInput) {
   const [picked, setPicked] = useState<string>('');
   const [query, setQuery] = useState('');
   const [bandFilter, setBandFilter] = useState<string>('all');
-
-  const book = useMemo(
-    () => buildBook(
-      { contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts },
-      '1D',
-    ),
-    [contacts, pipelines, appointments, conversations, campaigns, reviews, funnels, websites, videoProjects, socialPosts],
-  );
 
   const index = book.quotes.find(q => q.module.symbol === INDEX_SYMBOL);
 
@@ -463,16 +447,6 @@ export default function ProgressBoard(props: FeedInput) {
         </div>
       </div>
 
-      {/* ── What to do next ── */}
-      <div style={{ borderTop: `1px solid ${TILE_LINE}` }}>
-        <div style={{ padding: '14px 18px 4px' }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: p.textStrong }}>What to do next</p>
-          <p style={{ margin: '3px 0 0', fontSize: 11, color: p.textDim }}>
-            Ranked by how much each one would actually move the overall score.
-          </p>
-        </div>
-        <GrowthActions actions={book.actions.slice(0, 5)} p={p} onFocus={sym => { setBandFilter('all'); setPicked(sym); }} />
-      </div>
     </div>
   );
 }
