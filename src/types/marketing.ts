@@ -1,3 +1,5 @@
+import type { ContentSource } from './provenance';
+
 export type StepType = 'auto_email' | 'manual_email' | 'phone_call' | 'li_connect' | 'li_message' | 'li_view' | 'li_interact';
 
 export interface StepVariant {
@@ -41,6 +43,8 @@ export interface SequenceActivity {
 export interface EmailSequence {
   id: string;
   name: string;
+  /** Set when a setup created this, never inferred from the name. */
+  source?: ContentSource;
   goal: string;
   steps: EmailStep[];
   status: 'draft' | 'active' | 'paused';

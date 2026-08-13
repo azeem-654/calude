@@ -11,6 +11,7 @@ import CampaignDetailPanel from './CampaignDetailPanel';
 import EmailApps from './EmailApps';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
+import SourceTag from '../shared/SourceTag';
 
 /* ─── Campaign tab ─── */
 
@@ -149,6 +150,9 @@ function CampaignsTab() {
                       {campaign.goal ? ` · ${campaign.goal}` : ''}
                       {campaign.audience ? ` · ${campaign.audience}` : ''}
                     </p>
+                    {campaign.source && (
+                      <div style={{ marginTop: 5 }}><SourceTag source={campaign.source} /></div>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 12 }}>

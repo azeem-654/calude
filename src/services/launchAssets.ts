@@ -1,3 +1,4 @@
+import { makeSource } from '../types/provenance';
 /**
  * launchAssets.ts — Part 3 of the onboarding engine.
  *
@@ -448,6 +449,10 @@ export interface LaunchAssetsResult {
  */
 export function applyLaunchAssets(state: OnboardingState, api: LaunchApi, actor: string): LaunchAssetsResult {
   const audit: PlanAuditEntry[] = [];
+  // Every asset the wizard builds is traceable to the run that built it.
+  const source = makeSource('business-wizard', state.profile.companyName || 'Your business', {
+    route: '/', detail: 'Setup wizard',
+  });
   let funnelId: string | undefined;
   let websiteId: string | undefined;
   let blogCount = 0;
@@ -455,14 +460,14 @@ export function applyLaunchAssets(state: OnboardingState, api: LaunchApi, actor:
 
   if (state.channels.includes('funnels')) {
     const funnel = buildFunnel(state);
-    api.addFunnel(funnel);
+    api.addFunnel({ ...funnel, source });
     funnelId = funnel.id;
     audit.push(auditEntry(`Lead-magnet funnel "${funnel.name}" created (landing + thank-you)`, actor));
   }
 
   if (state.channels.includes('blog')) {
     const site = buildWebsite(state);
-    api.addWebsite(site);
+    api.addWebsite({ ...site, source });
     websiteId = site.id;
     blogCount = (site.pages ?? []).filter(pg => pg.name.startsWith('Blog:')).length;
     audit.push(auditEntry(`Website "${site.name}" generated with ${blogCount} SEO blog posts`, actor));

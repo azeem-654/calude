@@ -539,3 +539,48 @@ run zero-config via a JSON file store, or MySQL/SQLite through `api/config.php`.
 Pushing to `main` triggers `.github/workflows` → build → FTP upload to protectedcentral.com.
 The workflow retries the FTP step up to 3 times; a failed upload can be re-triggered with an
 empty commit.
+
+## Signing in
+
+| Login | When it works | Purpose |
+|---|---|---|
+| Your own account | always | the real owner |
+| `demo` | always | a standing sandbox account, for showing the app without handing over the owner's login |
+| `test` | only while no real account exists | first-run smoke test on a fresh install |
+
+The `demo` password is **not in this repository** — only its bcrypt hash, in
+`public/api/auth.php`. That is deliberate: this repo is public, and a guessable
+shared password on a live site (`test`/`test123` being the classic) is found by
+bots within days.
+
+Rotate it with:
+
+```bash
+php -r 'echo password_hash("your-new-password", PASSWORD_BCRYPT), "\n";'
+```
+
+and paste the result into `DEMO_PASS_HASH`. Set that constant to an empty string
+to switch the account off, or delete the user in **Settings → Team & Permissions**
+to remove it.
+
+The demo account is flagged so it does not count as "this workspace is set up" —
+signing up properly stays available while it exists — and it gets its own tenant
+scope, so nothing it does touches real data.
+
+## Where generated content came from
+
+Several setups create content in bulk: the business wizard plans a year of
+campaigns, and a single video fans out into clips, posts, an email sequence, SMS
+and a blog. After a few runs a marketing list is a pile of similarly-named
+records, so everything a setup creates carries a source stamp — the origin, the
+original's title, and a link back to it — rendered as a tag on the row.
+
+| Origin | Set by | Reads as |
+|---|---|---|
+| `business-wizard` | the setup wizard's welcome campaigns, funnel and site | Business setup · *Company* |
+| `content-plan` | each approved month of the 12-month plan | Content plan · *Theme* · Month 3 of 12 |
+| `video-campaign` | Social Automation's push into the modules | Video campaign · *Video title* |
+
+The stamp is written once at creation and never inferred from the name, because
+names get edited. Records made by hand carry no tag, which is the useful
+default: an untagged row means you made it.

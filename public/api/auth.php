@@ -77,7 +77,30 @@ $db     = db_load($FILE);
 const TEST_USERNAME = 'test';
 const TEST_PASSWORD = 'test123';
 
+/**
+ * The standing test account.
+ *
+ * Separate from the pre-launch demo above, which closes itself once a real
+ * owner exists. This one is meant to keep working alongside real accounts so
+ * the app can be shown to someone without handing over the owner's login.
+ *
+ * Only the bcrypt hash lives in the repo — the password itself is never
+ * committed, never sent to a client, and never derivable from this file. It is
+ * twenty characters from a 56-character alphabet, because a guessable password
+ * on a public site is found by bots within days, and "test/test123" on a live
+ * business is a back door with a sign on it.
+ *
+ * To rotate it:  php -r 'echo password_hash("your-new-password", PASSWORD_BCRYPT);'
+ * and paste the result below. To switch the account off entirely, set the hash
+ * to an empty string; to delete it, remove the user in Settings → Team.
+ */
+const DEMO_USERNAME  = 'demo';
+const DEMO_PASS_HASH = '$2y$12$AvGZ0Mk66eCZKsbwYPExTel/XoDePMrdqb1ZA/NVvzyoJxTjTaWa.';
+
 function is_test_user($u) { return !empty($u['isTest']); }
+
+/** The standing test account, which stays valid when real owners exist. */
+function is_demo_user($u) { return !empty($u['isDemo']); }
 
 /**
  * The demo login is only live while nobody has actually signed up. Once the
@@ -99,6 +122,9 @@ if ($action === 'status') {
         // Whether a demo login is on offer — never the password itself. This
         // response is unauthenticated, so anything in it is public.
         'testLogin'   => test_login_open($db) ? ['username' => TEST_USERNAME] : null,
+        // Whether a standing test account is offered. The username only — this
+        // response is unauthenticated, so anything in it is public.
+        'demoLogin'   => DEMO_PASS_HASH !== '' ? ['username' => DEMO_USERNAME] : null,
     ]);
 }
 
@@ -164,6 +190,24 @@ if ($action === 'login') {
 
     // The demo login is provisioned on first use rather than shipped in the
     // repo, so a fresh install has no account until someone asks for one.
+    // The standing test account is provisioned on first use, like the demo
+    // above, so a fresh install ships with no credentials on disk.
+    if ($ident === DEMO_USERNAME && DEMO_PASS_HASH !== '' && password_verify($pass, DEMO_PASS_HASH)) {
+        $has = false;
+        foreach ($db['users'] as $u) if (is_demo_user($u)) { $has = true; break; }
+        if (!$has && crm_store_writable()) {
+            $db['users'][] = [
+                'email' => 'demo@example.test', 'username' => DEMO_USERNAME,
+                'name' => 'Demo Account', 'role' => 'agency', 'accountId' => null,
+                // isTest as well as isDemo: a sandbox must not make the install
+                // look "set up", or the real owner's sign-up flow disappears.
+                'isTest' => true, 'isDemo' => true, 'hash' => DEMO_PASS_HASH,
+                'createdAt' => gmdate('c'),
+            ];
+            db_save($FILE, $db);
+        }
+    }
+
     if ($ident === TEST_USERNAME && $pass === TEST_PASSWORD && test_login_open($db)) {
         $has = false;
         foreach ($db['users'] as $u) if (is_test_user($u)) { $has = true; break; }
@@ -181,7 +225,7 @@ if ($action === 'login') {
     foreach ($db['users'] as $u) {
         // A previously provisioned demo account stays on file but stops being
         // a valid login the moment the install has a real owner.
-        if (is_test_user($u) && !test_login_open($db)) continue;
+        if (is_test_user($u) && !is_demo_user($u) && !test_login_open($db)) continue;
         $matches = $u['email'] === $ident || (isset($u['username']) && strtolower($u['username']) === $ident);
         if ($matches && password_verify($pass, $u['hash'])) {
             $t = tok();

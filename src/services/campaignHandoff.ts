@@ -15,6 +15,7 @@ import type { Campaign, CampaignAsset } from '../types/socialAutomation';
 import type { Campaign as MarketingCampaign, Funnel, Website } from '../types';
 import type { EmailSequence } from '../types/marketing';
 import { assetsFor, loadAssets as loadAssetsAll, updateCampaign } from './socialAutomation';
+import { makeSource } from '../types/provenance';
 
 /** The subset of the app context this needs, passed in so the service stays testable. */
 export interface HandoffApi {
@@ -62,6 +63,13 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
   }
 
   const now = new Date().toISOString();
+  // Everything this push creates gets stamped with the video it came from, so a
+  // marketing list full of generated records can still be traced back.
+  const source = makeSource('video-campaign', campaign.title || campaign.name, {
+    refId: campaign.id,
+    route: '/social-automation',
+    detail: campaign.sources[0]?.name,
+  });
   // Every module in the app stores createdAt as a plain YYYY-MM-DD and renders
   // it raw, so handing over a full ISO timestamp puts "2026-08-10T03:23:42.620Z"
   // on a campaign card. The record keeps the precise time; the modules get theirs.
@@ -73,6 +81,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
     if (emails.length) {
       const seq = api.addSequence({
         name: `${campaign.name} — email sequence`,
+        source,
         goal: campaign.title.slice(0, 140),
         status: 'draft',
         createdAt: today,
@@ -96,6 +105,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
     if (sms.length) {
       const camp = api.addCampaign({
         name: `${campaign.name} — SMS`,
+        source,
         description: `Generated from "${campaign.title}".`,
         type: 'sms',
         status: 'draft',
@@ -123,6 +133,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
       // what the Websites module already understands.
       api.addWebsite({
         name: blog.title,
+        source,
         description: blog.parts?.[0]?.body ?? '',
         status: 'draft',
         subdomain: slugify(blog.title),
@@ -150,6 +161,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
       const page = landings[0];
       api.addFunnel({
         name: `${campaign.name} — landing page`,
+        source,
         status: 'draft',
         steps: 1,
         visitors: 0,

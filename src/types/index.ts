@@ -1,3 +1,5 @@
+import type { ContentSource } from './provenance';
+
 export interface Contact {
   id: string;
   name: string;
@@ -335,6 +337,8 @@ export interface CampaignStep {
 export interface Campaign {
   id: string;
   name: string;
+  /** Set when a setup created this, never inferred from the name. */
+  source?: ContentSource;
   description?: string;
   type: 'email' | 'sms' | 'sequence';
   status: 'draft' | 'active' | 'paused' | 'completed';
@@ -368,6 +372,8 @@ export interface Campaign {
 export interface Funnel {
   id: string;
   name: string;
+  /** Set when a setup created this, never inferred from the name. */
+  source?: ContentSource;
   goal?: string;
   steps: number;
   visitors: number;
@@ -382,6 +388,8 @@ export interface Funnel {
 export interface Website {
   id: string;
   name: string;
+  /** Set when a setup created this, never inferred from the name. */
+  source?: ContentSource;
   description?: string;
   domain?: string;
   subdomain?: string;

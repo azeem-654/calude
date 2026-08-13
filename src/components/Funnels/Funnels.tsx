@@ -9,6 +9,7 @@ import { buildFunnelPage, type BrandContext, type TemplateMeta } from '../shared
 import TemplateGallery from '../shared/TemplateGallery';
 import { PagesStrip, ScaledPage } from '../shared/BlockRender';
 import { activeAccount } from '../../services/tenancy';
+import SourceTag from '../shared/SourceTag';
 
 /* ─── Funnel type definitions (ClickFunnels-style) ─── */
 
@@ -573,6 +574,7 @@ export default function Funnels() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{funnel.name}</h3>
+                      {funnel.source && <div style={{ margin: '0 0 5px' }}><SourceTag source={funnel.source} size="compact" /></div>}
                       <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{funnel.pages?.length ?? funnel.steps} pages · {funnel.goal ?? 'Lead Generation'}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>

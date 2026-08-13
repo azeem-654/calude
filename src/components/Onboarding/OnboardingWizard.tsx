@@ -15,6 +15,7 @@ import {
   Check, Loader, Plus, Trash2, Wand2, PencilLine, Users, UploadCloud, FileText, Rocket,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { makeSource } from '../../types/provenance';
 import { activeAccount, getActiveAccountId, updateSubAccount } from '../../services/tenancy';
 import { getSession } from '../../services/auth';
 import {
@@ -251,10 +252,15 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
       };
       extraAudit.push(auditEntry(`Imported ${importResult.contacts.length} contacts into ${importResult.segments.length} AI segments (${importResult.duplicates} duplicates, ${importResult.invalid} invalid skipped)`, actorEmail()));
 
+      // Stamped with the business the wizard was run for, so these are
+      // distinguishable from the year of campaigns the plan then schedules.
+      const wizardSource = makeSource('business-wizard', cleanName, { route: '/', detail: 'Setup wizard' });
+
       const emailSeg = importResult.segments.find(s => s.tag === 'Email-Ready');
       if (emailSeg) {
         addCampaign({
           name: `Welcome: new ${cleanName} contacts`,
+          source: wizardSource,
           description: 'Auto-created by onboarding for freshly imported contacts.',
           type: 'email', status: 'draft', goal: 'Warm up imported contacts', audience: 'Email-Ready',
           subject: `Welcome to ${cleanName}, {{firstName}}!`,
@@ -267,6 +273,7 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
       if (smsSeg && ob.channels.includes('sms')) {
         addCampaign({
           name: `SMS welcome: ${cleanName}`,
+          source: wizardSource,
           description: 'Auto-created by onboarding for SMS-Ready imported contacts.',
           type: 'sms', status: 'draft', goal: 'Confirm SMS opt-in', audience: 'SMS-Ready',
           smsBody: `${cleanName}: Hi {{firstName}}! You're on our VIP text list for tips & offers. Reply STOP anytime to opt out.`,

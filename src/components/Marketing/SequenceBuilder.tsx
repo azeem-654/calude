@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { EmailSequence, EmailStep, StepType, SequenceStats, SequenceActivity } from '../../types/marketing';
 import type { Contact } from '../../types';
+import SourceTag from '../shared/SourceTag';
 
 // ── Step type config ──────────────────────────────────────────────────────────
 const STEP_TYPES: { id: StepType; label: string; icon: React.ReactElement; color: string; bg: string }[] = [
@@ -645,6 +646,7 @@ export default function SequenceBuilder({ sequences, contacts = [], onAddSequenc
                 onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.backgroundColor = 'white'; }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{seq.name}</span>
+                  {seq.source && <SourceTag source={seq.source} size="compact" />}
                   <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 10, backgroundColor: `${sc}18`, color: sc, flexShrink: 0, textTransform: 'capitalize' }}>{seq.status}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#94a3b8' }}>

@@ -8,6 +8,7 @@ import { buildWebsiteTemplatePages } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
 import { ScaledPage } from '../shared/BlockRender';
 import { activeAccount } from '../../services/tenancy';
+import SourceTag from '../shared/SourceTag';
 
 const STARTER_TEMPLATES = [
   { id: 'blank',       name: 'Blank Site',          emoji: '📄', desc: 'Start from scratch with an empty canvas.',           color: '#f1f5f9' },
@@ -275,6 +276,7 @@ export default function Websites() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                     <div>
                       <h3 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{w.name}</h3>
+                      {w.source && <div style={{ margin: '4px 0 2px' }}><SourceTag source={w.source} size="compact" /></div>}
                       {w.domain && <div style={{ fontSize: 12, color: '#6366f1', fontWeight: 600 }}>{w.domain}</div>}
                       {!w.domain && <div style={{ fontSize: 12, color: '#94a3b8' }}>{tpl.name}</div>}
                     </div>

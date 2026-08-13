@@ -13,6 +13,7 @@ import type { ContentMonth, MonthContent, OnboardingState, GeneratedSocialPost, 
 import type { Campaign } from '../types';
 import type { EmailSequence } from '../types/marketing';
 import type { DesignPost, CanvasElement } from '../components/SocialCreator/types';
+import { makeSource } from '../types/provenance';
 import { loadOnboarding, saveOnboarding, auditEntry, sanitizeText } from './onboarding';
 import { generateMonthCampaigns, generateSocialCalendar, hasGeminiKey } from '../lib/gemini';
 
@@ -427,8 +428,18 @@ export function publishMonth(index: number, api: PublishApi, actor: string): Con
   if (!month || month.status !== 'AWAITING_APPROVAL' || !month.generated) return null;
   const now = new Date().toISOString();
 
+  // The plan is twelve months of similarly-shaped campaigns, so each one says
+  // which month of which plan it is — otherwise they are indistinguishable in
+  // the Marketing list a year later.
+  const source = makeSource('content-plan', month.theme || month.label, {
+    refId: `plan-month-${index}`,
+    route: '/',
+    detail: `${month.label} · month ${index + 1} of ${ob.plan.length}`,
+  });
+
   const seq = api.addSequence({
     name: `${month.label}: ${month.theme}`,
+    source,
     goal: month.focus.slice(0, 140),
     status: 'active',
     createdAt: now,
@@ -451,6 +462,7 @@ export function publishMonth(index: number, api: PublishApi, actor: string): Con
   if (month.generated.sms.length) {
     const camp = api.addCampaign({
       name: `${month.label} SMS flow`,
+      source,
       description: `Auto-generated SMS flow for the "${month.theme}" campaign.`,
       type: 'sms', status: 'active', goal: month.theme, audience: 'SMS-Ready',
       sent: 0, opened: 0, clicked: 0, replied: 0, createdAt: now,
