@@ -619,6 +619,32 @@ every number it returns is still re-derived locally — a fabricated difficulty
 presented as data is worse than an honest heuristic. Without one, the same shape
 comes from reading the text.
 
-Parts 2 to 5 — the month planner, the writing, the images and publishing to a
-connected domain — are not built yet, and the module says so on screen rather
-than implying otherwise.
+**Part 2 (shipped)** — the month planner.
+
+Pick a month, a cadence and the days to publish on, and it lays out one post per
+keyword on real dates: only the chosen weekdays, never in the past, never two in
+one slot. If the month has more slots than the strategy has keywords, it says so
+rather than padding.
+
+Three rules decide whether a plan is worth having, and they are enforced when it
+is built *and* re-checked against the plan as it stands, because every part of it
+is editable and an edit can break them:
+
+| Rule | Why |
+|---|---|
+| One keyword per post | Two posts on the same phrase compete in the index. Google picks one and the other's work is wasted. |
+| A cluster's pillar publishes first | Supporting posts link up to their pillar. If it is not out yet, those links point at nothing. |
+| Every post links to a page that earns | A post with no internal link ranks for itself and moves no revenue. |
+
+Selection is depth-first: a cluster's pillar, then its easiest supporting
+long-tail, before moving on. Breadth-first — one post per cluster — produces a
+month of pillar posts on the hardest terms in the strategy, which is the worst
+possible opening for a site with no authority. On the test project that change
+took the month's average estimated difficulty from 50 to 23.
+
+Nothing is written until the plan is approved, and approval is refused while any
+rule is broken.
+
+Parts 3 to 5 — the writing, the images and publishing to a connected domain —
+are not built yet, and the module says so on screen rather than implying
+otherwise.

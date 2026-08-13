@@ -11,6 +11,7 @@ import {
 import type { BlogProject } from '../../types/blogAutomation';
 import PortfolioIntake from './PortfolioIntake';
 import ProfileReview from './ProfileReview';
+import MonthPlanner from './MonthPlanner';
 
 /**
  * Blog Automation — the shell.
@@ -19,9 +20,9 @@ import ProfileReview from './ProfileReview';
  * with that rather than with a content count: what the project is for, how
  * ready it is to start ranking for anything, and the one thing still missing.
  *
- * Part 1 covers the front half of that: take a portfolio in, read a ranking
- * strategy out of it, and let a human correct it. The month planner, the
- * writing, the images and the publishing are Parts 2 to 5, and the empty states
+ * Parts 1 and 2 cover the front half: take a portfolio in, read a ranking
+ * strategy out of it, let a human correct it, and plan a month around it. The
+ * writing, the images and the publishing are Parts 3 to 5, and the empty states
  * say so rather than pretending they are coming today.
  */
 
@@ -33,7 +34,7 @@ const LIME = '#c7f441';
 const ON_LIME = '#0e1117';
 const LIME_EDGE = '#a8d327';
 
-type View = 'list' | 'intake' | 'profile';
+type View = 'list' | 'intake' | 'profile' | 'plan';
 
 export default function BlogAutomation() {
   const { addNotification } = useApp();
@@ -92,7 +93,7 @@ export default function BlogAutomation() {
             </button>
             <span style={{ fontSize: 18, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>{current.name}</span>
             <span style={{ flex: 1 }} />
-            {(['intake', 'profile'] as const).map(v => (
+            {([['intake', 'Portfolio'], ['profile', 'Ranking strategy'], ['plan', 'Month plan']] as const).map(([v, label]) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -100,7 +101,7 @@ export default function BlogAutomation() {
                 className="press"
                 style={view === v ? primary() : ghost()}
               >
-                {v === 'intake' ? 'Portfolio' : 'Ranking strategy'}
+                {label}
               </button>
             ))}
           </div>
@@ -115,6 +116,7 @@ export default function BlogAutomation() {
           {view === 'profile' && (
             <ProfileReview project={current} onChange={next => persist({ ...next, edited: true })} />
           )}
+          {view === 'plan' && <MonthPlanner project={current} />}
         </div>
       </div>
     );
@@ -248,9 +250,14 @@ export default function BlogAutomation() {
                       {p.portfolio.length ? 'Portfolio' : 'Add portfolio'} <ArrowRight size={13} />
                     </button>
                     {p.clusters.length > 0 && (
-                      <button onClick={() => { setOpenId(p.id); setView('profile'); }} className="press" style={ghost()}>
-                        Strategy <ArrowUpRight size={12} />
-                      </button>
+                      <>
+                        <button onClick={() => { setOpenId(p.id); setView('profile'); }} className="press" style={ghost()}>
+                          Strategy <ArrowUpRight size={12} />
+                        </button>
+                        <button onClick={() => { setOpenId(p.id); setView('plan'); }} className="press" style={ghost()}>
+                          Plan <ArrowUpRight size={12} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </article>
@@ -268,9 +275,10 @@ export default function BlogAutomation() {
             <Sparkles size={13} /> What works today
           </p>
           <p style={{ margin: '5px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.65 }}>
-            Portfolio intake and the ranking strategy — clusters, keywords, intent, difficulty and the
-            pages to rank. The month planner, the writing, the images and publishing to your domain are
-            the next four parts, and nothing here pretends otherwise.
+            Portfolio intake, the ranking strategy, and a month planned around it — one post per
+            keyword, pillars before the posts that link to them, every post pointed at a page that
+            earns. The writing, the images and publishing to your domain are the next three parts,
+            and nothing here pretends otherwise.
           </p>
         </div>
       </div>

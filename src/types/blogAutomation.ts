@@ -142,3 +142,81 @@ export interface Readiness {
   /** The single next thing worth doing. */
   next: string;
 }
+
+/* ── The month plan ── */
+
+export type PostStatus = 'planned' | 'written' | 'published' | 'skipped';
+
+/** Pillars anchor a cluster; supporting posts link up to the pillar. */
+export type PostRole = 'pillar' | 'supporting';
+
+export interface PlannedPost {
+  id: string;
+  clusterId: string;
+  /**
+   * The one term this post is trying to own.
+   *
+   * Never shared with another post in the plan. Two posts chasing the same
+   * phrase compete with each other in the index — Google picks one and the
+   * other's links are wasted — which is the single most common way a content
+   * plan quietly fails.
+   */
+  primaryKeyword: string;
+  secondaryKeywords: string[];
+  title: string;
+  /** The line the post argues, so the writer in Part 3 has a point of view. */
+  angle: string;
+  outline: string[];
+  role: PostRole;
+  targetWords: number;
+  /** The page this post should send its link equity to. */
+  moneyPageId?: string;
+  /** Owner-timezone calendar date, YYYY-MM-DD. */
+  date: string;
+  /** Owner-timezone wall-clock time, 24h HH:MM. */
+  time: string;
+  status: PostStatus;
+  /** Set when a human changed it, so a regenerate cannot silently overwrite. */
+  edited?: boolean;
+}
+
+export interface PlanOptions {
+  /** YYYY-MM. */
+  month: string;
+  /** Posts per week. */
+  cadence: number;
+  /** Days of the week to publish on, 0 = Sunday. */
+  weekdays: number[];
+  /** 24h HH:MM. */
+  time: string;
+}
+
+export interface MonthPlan {
+  id: string;
+  projectId: string;
+  options: PlanOptions;
+  posts: PlannedPost[];
+  status: 'draft' | 'approved';
+  approvedAt?: string;
+  approvedBy?: string;
+  /** Set when the AI was tried and failed, so the UI can explain the downgrade. */
+  note?: string;
+  planSource: ProfileSource;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What a plan is worth, checked rather than asserted. */
+export interface PlanAudit {
+  posts: number;
+  /** Distinct primary keywords — must equal `posts`, or something is cannibalising. */
+  distinctKeywords: number;
+  cannibalised: string[];
+  /** Clusters whose pillar is scheduled after one of its supporting posts. */
+  pillarsOutOfOrder: string[];
+  /** Posts with nowhere to send a link. */
+  withoutMoneyPage: number;
+  /** How winnable the plan is overall — the mean estimated difficulty. */
+  averageDifficulty: number;
+  clustersCovered: number;
+}
