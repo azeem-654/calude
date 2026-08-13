@@ -142,6 +142,38 @@ button:focus-visible, a:focus-visible {
   to { transform: rotate(360deg); }
 }
 
+/* The class the loading spinners actually ask for. */
+.spin { animation: spin 0.9s linear infinite; }
+
+/*
+ * A written article, rendered.
+ *
+ * The body HTML is an allowlist of about twenty tags, so this is the whole
+ * stylesheet it needs. It is deliberately close to how the post will read on
+ * the customer's own site — long measure, generous line height, headings that
+ * separate — because a review screen that flatters the draft is not a review.
+ */
+.blog-article > :first-child { margin-top: 0; }
+.blog-article p { margin: 0 0 1em; }
+.blog-article h2 { margin: 1.5em 0 0.45em; font-size: 1.22em; font-weight: 800; letter-spacing: -0.02em; }
+.blog-article h3 { margin: 1.2em 0 0.4em; font-size: 1.06em; font-weight: 800; }
+.blog-article h4 { margin: 1.1em 0 0.35em; font-size: 1em; font-weight: 700; }
+.blog-article ul,
+.blog-article ol { margin: 0 0 1em; padding-left: 1.35em; }
+.blog-article li { margin-bottom: 0.35em; }
+.blog-article a { color: #1d4ed8; text-decoration: underline; }
+.blog-article blockquote {
+  margin: 0 0 1em; padding: 0.15em 0 0.15em 1em;
+  border-left: 3px solid #c7f441; color: #4a525c;
+}
+.blog-article img { max-width: 100%; height: auto; border-radius: 12px; }
+.blog-article figure { margin: 0 0 1em; }
+.blog-article figcaption { font-size: 0.84em; color: #6b7480; margin-top: 0.4em; }
+.blog-article table { width: 100%; border-collapse: collapse; margin: 0 0 1em; font-size: 0.94em; }
+.blog-article th,
+.blog-article td { border: 1px solid #e3e6eb; padding: 7px 10px; text-align: left; }
+.blog-article th { background-color: #f4f6f9; font-weight: 700; }
+
 /* Live activity feed */
 @keyframes feed-in {
   0% { opacity: 0; transform: translateY(-14px) scale(0.97); }

@@ -22,6 +22,7 @@
  */
 import { getGeminiKey } from '../lib/gemini';
 import { newId } from './blogAutomation';
+import { inlinePhrase } from './blogWriter';
 import type {
   BlogProject, Keyword, MonthPlan, PlanAudit, PlanOptions, PlannedPost, TopicCluster,
 } from '../types/blogAutomation';
@@ -198,20 +199,36 @@ const capitalise = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 /** A headline from the keyword, without inventing claims we cannot support. */
 export function draftTitle(keyword: string, role: 'pillar' | 'supporting', location = ''): string {
   const k = keyword.trim().toLowerCase();
-  if (/^how much do(es)? /.test(k)) return capitalise(k.replace(/\?$/, '')) + '?';
-  if (/^(how to|what is|why|when|which)\b/.test(k)) return capitalise(k);
-  if (/^best /.test(k)) return `${capitalise(k)}: what to look for`;
-  if (/ checklist$/.test(k)) return `${capitalise(k)}: the one we use`;
-  if (/^common .* mistakes$/.test(k)) return `${capitalise(k)} — and how to avoid them`;
-  if (/ near me$/.test(k)) return capitalise(k.replace(/ near me$/, '')) + (location ? ` in ${location}` : '') + ': how to choose';
-  if (role === 'pillar') return `${capitalise(k)}: a complete guide`;
-  return capitalise(k);
+  /* Long-tail keywords are lower-cased throughout, so a place name inside one
+     comes out as "combi boiler in bristol". Capitalise it back — a title that
+     miscases the customer's own town is the first thing they notice. */
+  const fixCase = (title: string) => {
+    const place = location.trim();
+    if (!place) return title;
+    return title.replace(new RegExp(`\\b${place.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig'), place);
+  };
+  if (/^how much do(es)? /.test(k)) return fixCase(capitalise(k.replace(/\?$/, '')) + '?');
+  if (/^(how to|what is|why|when|which)\b/.test(k)) return fixCase(capitalise(k));
+  if (/^best /.test(k)) return fixCase(`${capitalise(k)}: what to look for`);
+  if (/ checklist$/.test(k)) return fixCase(`${capitalise(k)}: the one we use`);
+  if (/^common .* mistakes$/.test(k)) return fixCase(`${capitalise(k)} — and how to avoid them`);
+  if (/ near me$/.test(k)) return fixCase(capitalise(k.replace(/ near me$/, '')) + (location ? ` in ${location}` : '') + ': how to choose');
+  if (role === 'pillar') return fixCase(`${capitalise(k)}: a complete guide`);
+  return fixCase(capitalise(k));
 }
 
-/** The line the post argues, so Part 3 has a point of view rather than filler. */
+/**
+ * The line the post argues, so Part 3 has a point of view rather than filler.
+ *
+ * The profile fields are distilled from prose and can come back as whole
+ * sentences rather than the short phrases these slots expect. Splicing one in
+ * produces an angle like "…for Our pricing is published on the site: one price,
+ * no callout fee., written by…", which then opens every article written from
+ * it. Anything not phrase-shaped is dropped instead.
+ */
 export function draftAngle(keyword: string, project: BlogProject, role: 'pillar' | 'supporting'): string {
-  const who = project.seo.audience.trim() || 'the reader';
-  const what = project.seo.offering.trim();
+  const who = inlinePhrase(project.seo.audience) || 'the reader';
+  const what = inlinePhrase(project.seo.offering, 12);
   return role === 'pillar'
     ? `The definitive answer on "${keyword}" for ${who}${what ? `, written by someone who does this: ${what}` : ''}.`
     : `A short, direct answer to "${keyword}" that sends the reader on to the service page when they are ready.`;

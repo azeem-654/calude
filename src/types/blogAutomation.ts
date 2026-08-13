@@ -178,6 +178,8 @@ export interface PlannedPost {
   status: PostStatus;
   /** Set when a human changed it, so a regenerate cannot silently overwrite. */
   edited?: boolean;
+  /** Written in Part 3. Absent until then. */
+  article?: Article;
 }
 
 export interface PlanOptions {
@@ -219,4 +221,69 @@ export interface PlanAudit {
   /** How winnable the plan is overall — the mean estimated difficulty. */
   averageDifficulty: number;
   clustersCovered: number;
+}
+
+/* ── The written article ── */
+
+export interface SeoCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  /** What was actually found — the number, the string, the count. */
+  detail: string;
+  /** Why it matters, so a failing check teaches rather than nags. */
+  why: string;
+}
+
+export interface ArticleSeo {
+  /** ≤ 60 characters or Google truncates it in the result. */
+  metaTitle: string;
+  /** ≤ 155 characters, same reason. */
+  metaDescription: string;
+  slug: string;
+  words: number;
+  readingMinutes: number;
+  /** Percent of body words that are the primary keyword. */
+  density: number;
+  internalLinks: number;
+  headings: number;
+  checks: SeoCheck[];
+}
+
+export interface Article {
+  /** Sanitised body HTML. Never contains script, style, iframe or event handlers. */
+  html: string;
+  seo: ArticleSeo;
+  writtenAt: string;
+  source: ProfileSource;
+  /** Set when the AI was tried and failed, so the UI can explain the downgrade. */
+  note?: string;
+  /** Set when a human edited the article, so a rewrite cannot silently discard it. */
+  edited?: boolean;
+}
+
+/* ── The writing job ── */
+
+export interface WriteFailure {
+  postId: string;
+  title: string;
+  error: string;
+}
+
+/**
+ * Writing a month is long. The job is a record on disk rather than a promise in
+ * memory, so closing the tab halfway through loses nothing and reopening picks
+ * up at the next unwritten post.
+ */
+export interface WriteJob {
+  id: string;
+  projectId: string;
+  planId: string;
+  /** Post ids still to write, in publishing order. */
+  queue: string[];
+  done: string[];
+  failed: WriteFailure[];
+  status: 'running' | 'done' | 'cancelled';
+  startedAt: string;
+  finishedAt?: string;
 }

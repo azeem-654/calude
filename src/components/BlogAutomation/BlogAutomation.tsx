@@ -12,6 +12,7 @@ import type { BlogProject } from '../../types/blogAutomation';
 import PortfolioIntake from './PortfolioIntake';
 import ProfileReview from './ProfileReview';
 import MonthPlanner from './MonthPlanner';
+import WriteDesk from './WriteDesk';
 
 /**
  * Blog Automation — the shell.
@@ -34,7 +35,7 @@ const LIME = '#c7f441';
 const ON_LIME = '#0e1117';
 const LIME_EDGE = '#a8d327';
 
-type View = 'list' | 'intake' | 'profile' | 'plan';
+type View = 'list' | 'intake' | 'profile' | 'plan' | 'write';
 
 export default function BlogAutomation() {
   const { addNotification } = useApp();
@@ -93,7 +94,7 @@ export default function BlogAutomation() {
             </button>
             <span style={{ fontSize: 18, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>{current.name}</span>
             <span style={{ flex: 1 }} />
-            {([['intake', 'Portfolio'], ['profile', 'Ranking strategy'], ['plan', 'Month plan']] as const).map(([v, label]) => (
+            {([['intake', 'Portfolio'], ['profile', 'Ranking strategy'], ['plan', 'Month plan'], ['write', 'Write']] as const).map(([v, label]) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -117,6 +118,7 @@ export default function BlogAutomation() {
             <ProfileReview project={current} onChange={next => persist({ ...next, edited: true })} />
           )}
           {view === 'plan' && <MonthPlanner project={current} />}
+          {view === 'write' && <WriteDesk project={current} />}
         </div>
       </div>
     );
@@ -141,6 +143,7 @@ export default function BlogAutomation() {
             Give it the writing you already have. It reads out what you sell, who you sell to, and the
             search terms worth chasing — grouped into clusters, each pointed at a page that has to earn.
             Then it plans a month of posts around them, writes them, and publishes them to your domain.
+            Every draft is yours to edit before anything is published.
           </p>
 
           <div style={{ display: 'flex', gap: 9, marginTop: 16, flexWrap: 'wrap' }}>
@@ -257,6 +260,9 @@ export default function BlogAutomation() {
                         <button onClick={() => { setOpenId(p.id); setView('plan'); }} className="press" style={ghost()}>
                           Plan <ArrowUpRight size={12} />
                         </button>
+                        <button onClick={() => { setOpenId(p.id); setView('write'); }} className="press" style={ghost()}>
+                          Write <ArrowUpRight size={12} />
+                        </button>
                       </>
                     )}
                   </div>
@@ -275,10 +281,11 @@ export default function BlogAutomation() {
             <Sparkles size={13} /> What works today
           </p>
           <p style={{ margin: '5px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.65 }}>
-            Portfolio intake, the ranking strategy, and a month planned around it — one post per
-            keyword, pillars before the posts that link to them, every post pointed at a page that
-            earns. The writing, the images and publishing to your domain are the next three parts,
-            and nothing here pretends otherwise.
+            Portfolio intake, the ranking strategy, a month planned around it — one post per keyword,
+            pillars before the posts that link to them, every post pointed at a page that earns — and
+            now the writing: every post drafted, measured against nine on-page SEO checks, and fully
+            editable before it goes anywhere. Images and publishing to your domain are the last two
+            parts, and nothing here pretends otherwise.
           </p>
         </div>
       </div>
