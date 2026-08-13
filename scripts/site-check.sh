@@ -92,6 +92,14 @@ elif timeout 20 openssl s_client -connect "$IP:443" -servername "$DOMAIN" \
   say "| Subject | \`${SUBJ:-—}\` |"
   say "| Issuer | \`${ISSU:-—}\` |"
   say "| Expires | \`${ENDS:-—}\` |"
+  # A sandbox or corporate network that terminates TLS hands back its own
+  # certificate. Everything below then describes the proxy rather than the
+  # host, so the run cannot answer the question it was written to answer and
+  # must say so instead of reporting a verdict about the wrong machine.
+  case "$ISSU" in
+    *"Egress Gateway"*|*"Anthropic"*|*"mitmproxy"*|*"Zscaler"*|*"Charles Proxy"*)
+      INTERCEPTED=1 ;;
+  esac
   if ! openssl x509 -noout -checkend 0 -in /tmp/tls.pem >/dev/null 2>&1; then
     say ""
     say "⚠️ **The certificate has expired.**"
@@ -117,10 +125,19 @@ probe() {
           "$url" 2>/tmp/curl.err) || true
   if [ -z "$out" ]; then
     say "| \`$url\` | — | — | — | $(tr -d '\n' </tmp/curl.err | cut -c1-70) |"
-  else
-    IFS='|' read -r code secs redir <<< "$out"
-    say "| \`$url\` | $code | ${secs}s | ${redir:-—} | |"
+    FAULTS+=("$url did not answer at all")
+    return 0
   fi
+  IFS='|' read -r code secs redir <<< "$out"
+  say "| \`$url\` | $code | ${secs}s | ${redir:-—} | |"
+  # A status is only good news if it is actually a success or a redirect. Without
+  # this the script printed a table full of 403s and then declared no fault
+  # found, which is worse than not running it.
+  case "$code" in
+    2*|3*) ;;
+    000)   FAULTS+=("$url could not be reached (no HTTP response)") ;;
+    *)     FAULTS+=("$url returned HTTP $code") ;;
+  esac
   return 0
 }
 probe "http://$DOMAIN/" /tmp/body.html
@@ -157,7 +174,17 @@ say ""
 # ── Verdict ──────────────────────────────────────────────────────────────────
 say "### Verdict"
 say ""
-if [ ${#FAULTS[@]} -eq 0 ]; then
+if [ "${INTERCEPTED:-0}" = "1" ]; then
+  say "**Inconclusive — this network is intercepting TLS.**"
+  say ""
+  say "The certificate above was issued by a proxy, not by the host's own CA, so"
+  say "every status code in this report describes the proxy's opinion of the"
+  say "request rather than the site. Statuses like 403 here usually mean the"
+  say "proxy blocked the call, not that the site is down."
+  say ""
+  say "Run this from an ordinary network — or open the site in a browser — before"
+  say "concluding anything about the host."
+elif [ ${#FAULTS[@]} -eq 0 ]; then
   say "No fault found — the site answers on both ports with a valid certificate."
 else
   for f in "${FAULTS[@]}"; do say "- $f"; done
