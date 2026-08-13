@@ -584,3 +584,41 @@ original's title, and a link back to it — rendered as a tag on the row.
 The stamp is written once at creation and never inferred from the name, because
 names get edited. Records made by hand carry no tag, which is the useful
 default: an untagged row means you made it.
+
+## Blog Automation
+
+Its purpose is one measurable thing: getting the customer's own pages to rank.
+Everything in it is arranged around that, which is why the profile a portfolio
+produces is not just "how do they write" but "what do they sell, to whom, which
+pages have to rank, and what would someone type into Google to find them".
+
+**Part 1 (shipped)** — portfolio intake and the ranking strategy.
+
+Four ways in: paste, upload, a URL, or import pages from a site already in the
+app. The last is the best of them: the page's URL comes along, and that is what
+lets a later post link to it in context, which is the mechanism by which a blog
+lifts a service page.
+
+Out of it comes a voice profile and an SEO strategy: what the business sells,
+who to, where, and topic clusters — a pillar plus the long-tail terms around it,
+each with a search intent and a difficulty. All of it editable, and the project
+records that a human has been through it so a rebuild cannot quietly undo their
+corrections.
+
+Two honesty rules the module holds to:
+
+- **Difficulty is an estimate from the shape of the phrase** — how long, how
+  specific, how commercial. Nothing queries Google, and the UI says so wherever
+  a number appears.
+- **Observed terms and suggested ones are visually distinct.** A dot means the
+  portfolio actually used that phrase. No dot means it is a derived long-tail
+  variant. Suggestions carry a weight of zero, which is what the UI reads.
+
+Works with or without a Gemini key. With one, the model reads the portfolio and
+every number it returns is still re-derived locally — a fabricated difficulty
+presented as data is worse than an honest heuristic. Without one, the same shape
+comes from reading the text.
+
+Parts 2 to 5 — the month planner, the writing, the images and publishing to a
+connected domain — are not built yet, and the module says so on screen rather
+than implying otherwise.

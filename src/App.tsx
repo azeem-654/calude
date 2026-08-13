@@ -17,6 +17,7 @@ import Marketing from './components/Marketing/Marketing';
 import Funnels from './components/Funnels/Funnels';
 import Websites from './components/Websites/Websites';
 import SitePreview from './components/Websites/SitePreview';
+import BlogAutomation from './components/BlogAutomation/BlogAutomation';
 import FunnelPreview from './components/Funnels/FunnelPreview';
 import Scheduling from './components/Scheduling/Scheduling';
 import BookingPage from './components/Scheduling/BookingPage';
@@ -78,6 +79,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/marketing" element={<Marketing />} />
           <Route path="/funnels" element={<Funnels />} />
+          <Route path="/blog-automation" element={<BlogAutomation />} />
           <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
           <Route path="/ai-shorts" element={<VideoShorts />} />

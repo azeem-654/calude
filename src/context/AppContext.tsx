@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity, VideoProject, VideoClip } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
@@ -153,8 +153,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [schedule, setSchedule] = useState<ScheduleAvailability>(() => loadLS('crm_schedule', defaultSchedule));
   const [bookings, setBookings] = useState<Booking[]>(() => loadLS('crm_bookings', []));
 
+  /**
+   * A toast.
+   *
+   * The id was Date.now(), which two notifications raised in the same
+   * millisecond share — and they routinely are, because one action often
+   * reports twice ("built", then "no AI key"). Two list items with the same
+   * React key reconcile wrongly, and the four-second cleanup then filtered by
+   * that id and removed both at once. A counter cannot collide.
+   */
+  const notifySeq = useRef(0);
+
   const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = Date.now().toString();
+    const id = `n-${Date.now().toString(36)}-${(notifySeq.current += 1)}`;
     setNotifications(prev => [...prev, { id, message, type }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 4000);
   };

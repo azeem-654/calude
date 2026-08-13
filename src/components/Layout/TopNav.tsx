@@ -25,6 +25,7 @@ const PRIMARY_NAV = [
 
 const MORE_NAV = [
   { path: '/social-automation', label: 'Social Automation', icon: Rocket, desc: 'One video → clips, posts, email, blog' },
+  { path: '/blog-automation', label: 'Blog Automation', icon: Search, desc: 'Rank your pages with a planned blog' },
   { path: '/ai-shorts',      label: 'AI Shorts',      icon: Scissors,     desc: 'Turn videos into viral clips' },
   { path: '/social-creator', label: 'Social Creator', icon: Palette,      desc: 'AI social post designer' },
   { path: '/reputation',     label: 'Reputation',     icon: Star,         desc: 'Reviews & ratings' },
