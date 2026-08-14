@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Scissors, Upload, Link, Play, Heart, Edit2, Trash2,
-  Download, Share2, Plus, ArrowLeft, X, Check, TrendingUp,
+  Download, Share2, ArrowLeft, X, Check,
   Zap, Music, Mic, RefreshCw, Copy,
   Film, AlignLeft, SkipBack, SkipForward, Pause,
   Volume2, VolumeX, MoreHorizontal, Search, Layers,
   MonitorPlay, Smartphone, Square as SquareIcon, Send, Image as ImageIcon,
-  Sparkles, Crop, Maximize2, Globe, FileText,
+  Sparkles, Crop, Maximize2, Globe, FileText, Type,
 } from 'lucide-react';
 import type { VideoProject, VideoClip, Caption, BRollClip, BrandPosition } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -18,6 +18,7 @@ import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo, n
 import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExport';
 import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
 import type { ThumbPreset } from '../../lib/thumbnail';
+import ShortsFeed from './ShortsFeed';
 
 /* A real, public long-form video used for the one-click demo so anyone can try
    the module end-to-end without an API key or their own upload. */
@@ -1585,7 +1586,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#0f172a', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - var(--app-nav-h, 72px))', backgroundColor: '#0f172a', overflow: 'hidden' }}>
       {/* Editor topbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: '#1e293b', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -2589,7 +2590,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { proj
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - var(--app-nav-h, 72px))', overflow: 'hidden' }}>
       <Header title={project.name} subtitle={`${fmtLongDuration(project.duration)} · ${project.clips.length} clips generated${project.language ? ` · 🌐 ${project.language}` : ''}`} />
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
         {/* Project header bar */}
@@ -3154,13 +3155,8 @@ export default function VideoShorts() {
     startProcessing(projectId, 0);
   }, [startProcessing]);
 
-  /* Stats */
-  const totalClips = videoProjects.reduce((s, p) => s + p.clips.length, 0);
-  const avgScore = totalClips > 0
-    ? Math.round(videoProjects.reduce((s, p) => s + p.clips.reduce((ss, c) => ss + c.viralityScore, 0), 0) / totalClips)
-    : 0;
-  const totalViews = videoProjects.reduce((s, p) => s + p.totalViews, 0);
-  const publishedCount = videoProjects.reduce((s, p) => s + p.clips.filter(c => c.publishedTo.some(pub => pub.status === 'published')).length, 0);
+  /* The dashboard's summary figures now live inside ShortsFeed, computed from
+     the same projects — one place rather than two that could disagree. */
 
   /* ── Render: Editor ── */
   if (view === 'editor' && selectedProject && selectedClip) {
@@ -3193,200 +3189,32 @@ export default function VideoShorts() {
 
   /* ── Render: Dashboard ── */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - var(--app-nav-h, 72px))', overflow: 'hidden' }}>
       <Header title="AI Shorts Engine" subtitle="Turn long-form videos into viral short clips automatically" />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-
-        {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
-          {[
-            { label: 'Total Projects', value: videoProjects.length, icon: Film, color: '#6366f1' },
-            { label: 'Clips Generated', value: totalClips, icon: Scissors, color: '#8b5cf6' },
-            { label: 'Avg Virality Score', value: avgScore ? `${avgScore}/100` : '—', icon: Zap, color: viralityColor(avgScore || 0) },
-            { label: 'Published Clips', value: publishedCount, icon: Share2, color: '#22c55e' },
-          ].map(stat => (
-            <div key={stat.label} style={{ background: 'white', borderRadius: '12px', padding: '18px 20px', border: '1px solid #e2e8f0', display: 'flex', gap: '14px', alignItems: 'center' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: `${stat.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <stat.icon size={22} color={stat.color} />
-              </div>
-              <div>
-                <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 4px', fontWeight: 500 }}>{stat.label}</p>
-                <p style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{stat.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Tools row — OpusClip-style quick access to every AI tool */}
-        <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '18px 20px 14px', marginBottom: '24px' }}>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-            {([
-              { label: 'Long to shorts', icon: Scissors, action: () => setShowUpload(true) },
-              { label: 'AI Captions', icon: AlignLeft, action: () => openTool('captions') },
-              { label: 'Video editor', icon: Edit2, action: () => openTool('details') },
-              { label: 'Enhance speech', icon: Mic, isNew: true, action: () => openTool('audio') },
-              { label: 'AI Sound Effect', icon: Music, isNew: true, action: () => openTool('audio') },
-              { label: 'AI Reframe', icon: Crop, isNew: true, action: () => openTool('display') },
-              { label: 'Resize / Display', icon: MonitorPlay, isNew: true, action: () => openTool('display') },
-              { label: 'AI Hook', icon: Sparkles, isNew: true, action: () => openTool('details') },
-              { label: 'AI Thumbnail', icon: ImageIcon, action: () => openTool('thumb') },
-              { label: 'AI Image B-Roll', icon: Film, isNew: true, action: () => openTool('broll') },
-              { label: 'Upscale', icon: Maximize2, isNew: true, action: () => openTool('publish') },
-              { label: 'Video dubbing', icon: Globe, isNew: true, action: () => openTool('captions') },
-              { label: 'Script to video', icon: FileText, isNew: true, action: () => setShowScript(true) },
-            ] as { label: string; icon: typeof Scissors; isNew?: boolean; action: () => void }[]).map(tool => (
-              <button key={tool.label} onClick={tool.action}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', position: 'relative', minWidth: '86px' }}
-                onMouseEnter={e => { const c = e.currentTarget.querySelector('span') as HTMLElement; if (c) c.style.transform = 'scale(1.07)'; }}
-                onMouseLeave={e => { const c = e.currentTarget.querySelector('span') as HTMLElement; if (c) c.style.transform = 'scale(1)'; }}>
-                {tool.isNew && <span style={{ position: 'absolute', top: '-2px', right: '6px', background: INK, color: 'white', fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '99px', zIndex: 1, transform: 'none' }}>New</span>}
-                <span style={{ width: '52px', height: '52px', borderRadius: '99px', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.15s' }}>
-                  <tool.icon size={20} color="#fff" strokeWidth={1.8} />
-                </span>
-                <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{tool.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Toolbar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '12px', flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Your Projects</h2>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button onClick={handleTryExample}
-              style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 16px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-              <Play size={14} fill={INK} /> Try example video
-            </button>
-            <button onClick={() => setShowUpload(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: INK, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(23,25,28,0.25)' }}>
-              <Plus size={16} /> New Project
-            </button>
-          </div>
-        </div>
-
-        {/* Project grid */}
-        {videoProjects.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 40px', border: '2px dashed #e2e8f0', borderRadius: '16px', color: '#94a3b8' }}>
-            <div style={{ fontSize: '56px', marginBottom: '16px' }}>✂️</div>
-            <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#374151', margin: '0 0 8px' }}>No projects yet</h3>
-            <p style={{ fontSize: '14px', margin: '0 0 24px', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
-              Upload a webinar, podcast, Zoom recording, or YouTube video and let AI generate viral short clips automatically.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '24px' }}>
-              {['Webinars', 'Podcasts', 'YouTube Videos', 'Zoom Calls', 'Interviews', 'Tutorials'].map(t => (
-                <span key={t} style={{ padding: '6px 12px', background: '#f1f2f4', color: INK, borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>{t}</span>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button onClick={handleTryExample}
-                style={{ padding: '12px 24px', background: INK, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <Play size={16} fill="white" /> Try with an example video
-              </button>
-              <button onClick={() => setShowUpload(true)}
-                style={{ padding: '12px 24px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <Upload size={16} /> Upload your own
-              </button>
-            </div>
-            <p style={{ fontSize: '12px', color: MUTED, margin: '16px 0 0' }}>
-              No API key needed — the example generates sample shorts you can preview, edit, and download.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
-            {videoProjects.map(project => {
-              const likedCount = project.clips.filter(c => c.status === 'liked').length;
-              const pubCount = project.clips.filter(c => c.publishedTo.some(p => p.status === 'published')).length;
-              const avgV = project.clips.length
-                ? Math.round(project.clips.reduce((s, c) => s + c.viralityScore, 0) / project.clips.length)
-                : 0;
-
-              return (
-                <div key={project.id} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s' }}
-                  onClick={() => { setSelectedProjectId(project.id); setView('project'); }}
-                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 24px rgba(0,0,0,0.1)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'}>
-                  {/* Thumbnail */}
-                  <div style={{ height: '140px', background: project.thumbnailGradient, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {project.status === 'ready' ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {project.clips.slice(0, 3).map((c, i) => (
-                          <div key={c.id} style={{ width: 48, height: 80, borderRadius: '6px', background: c.thumbnailUrl ? `url(${c.thumbnailUrl}) center/cover` : c.thumbnailGradient, border: '2px solid rgba(255,255,255,0.4)', transform: `rotate(${(i - 1) * 4}deg)`, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', flexShrink: 0 }} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ width: '44px', height: '44px', borderRadius: '50%', border: '3px solid rgba(255,255,255,0.4)', borderTopColor: 'white', margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
-                        <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '12px', margin: 0, fontWeight: 600 }}>{project.processingStep}</p>
-      </div>
-                    )}
-                    {/* Status badge */}
-                    <div style={{ position: 'absolute', top: '10px', right: '10px', padding: '3px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, backdropFilter: 'blur(4px)', background: project.status === 'ready' ? 'rgba(34,197,94,0.8)' : 'rgba(249,115,22,0.8)', color: 'white' }}>
-                      {project.status === 'ready' ? '● Ready' : `${project.progress}%`}
-                    </div>
-                    {/* Duration */}
-                    <div style={{ position: 'absolute', bottom: '10px', left: '10px', padding: '2px 7px', borderRadius: '4px', fontSize: '10px', color: 'rgba(255,255,255,0.9)', fontWeight: 600, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
-                      {fmtLongDuration(project.duration)}
-                    </div>
-                    {/* Source type */}
-                    <div style={{ position: 'absolute', bottom: '10px', right: '10px', padding: '2px 7px', borderRadius: '4px', fontSize: '10px', color: 'rgba(255,255,255,0.9)', fontWeight: 600, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                      {project.sourceType === 'youtube' ? '▶' : project.sourceType === 'url' ? <Link size={9} /> : <Upload size={9} />}
-                      {project.sourceType}
-                    </div>
-                  </div>
-
-                  {/* Card content */}
-                  <div style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>{project.name}</h3>
-                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(project.id); }}
-                        style={{ padding: '4px', border: 'none', background: 'none', cursor: 'pointer', color: '#cbd5e1', flexShrink: 0 }}
-                        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = '#ef4444'}
-                        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = '#cbd5e1'}>
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                      {[
-                        { label: 'Clips', value: project.clips.length, icon: '✂️' },
-                        { label: 'Liked', value: likedCount, icon: '❤️' },
-                        { label: 'Published', value: pubCount, icon: '📤' },
-                      ].map(s => (
-                        <div key={s.label} style={{ textAlign: 'center', padding: '6px', background: '#f8fafc', borderRadius: '6px' }}>
-                          <div style={{ fontSize: '14px', marginBottom: '1px' }}>{s.icon}</div>
-                          <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{s.value}</div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>{s.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {project.clips.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <Zap size={12} color={viralityColor(avgV)} />
-                          <span style={{ fontSize: '12px', fontWeight: 700, color: viralityColor(avgV) }}>Avg score: {avgV}</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '-4px' }}>
-                          {project.clips.slice(0, 4).map((c, i) => (
-                            <div key={c.id} style={{ width: '20px', height: '20px', borderRadius: '50%', background: c.thumbnailGradient, border: '2px solid white', marginLeft: i > 0 ? '-6px' : 0, position: 'relative', zIndex: 4 - i }} />
-                          ))}
-                          {project.clips.length > 4 && <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#f1f5f9', border: '2px solid white', marginLeft: '-6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px', fontWeight: 700, color: '#64748b' }}>+{project.clips.length - 4}</div>}
-                        </div>
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: '10px', fontSize: '11px', color: '#94a3b8' }}>
-                      {new Date(project.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Spinning animation style */}
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <ShortsFeed
+          projects={videoProjects}
+          tools={[
+            { label: 'AI Captions', icon: Type, action: () => openTool('captions') },
+            { label: 'AI Thumbnail', icon: ImageIcon, action: () => openTool('thumb') },
+            { label: 'AI Image B-Roll', icon: Film, isNew: true, action: () => openTool('broll') },
+            { label: 'Branding', icon: Sparkles, action: () => openTool('brand') },
+            { label: 'Audio', icon: Music, action: () => openTool('audio') },
+            { label: 'Upscale', icon: Maximize2, isNew: true, action: () => openTool('publish') },
+            { label: 'Video dubbing', icon: Globe, isNew: true, action: () => openTool('captions') },
+            { label: 'Script to video', icon: FileText, isNew: true, action: () => setShowScript(true) },
+          ]}
+          onOpenProject={p => { setSelectedProjectId(p.id); setView('project'); }}
+          onEditClip={(p, clip) => {
+            setSelectedProjectId(p.id);
+            setSelectedClipId(clip.id);
+            setEditorPanel('details');
+            setView('editor');
+          }}
+          onNewProject={() => setShowUpload(true)}
+          onTryExample={handleTryExample}
+          onExportAll={p => { setSelectedProjectId(p.id); setView('project'); }}
+        />
       </div>
 
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} onSubmit={handleNewProject} />}

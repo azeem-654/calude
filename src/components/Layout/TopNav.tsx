@@ -56,6 +56,25 @@ export default function TopNav() {
   const userRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState(getTheme());
 
+  /**
+   * Publish the bar's height as --app-nav-h.
+   *
+   * A full-height panel underneath this needs to know how much room is left,
+   * and the answer is not a constant: the bar wraps to two rows below 900px.
+   * Anything using `calc(100dvh - var(--app-nav-h))` then fills the viewport
+   * exactly instead of overflowing by however tall this happens to be.
+   */
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const publish = () => document.documentElement.style.setProperty('--app-nav-h', `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
@@ -67,7 +86,7 @@ export default function TopNav() {
   }, []);
 
   return (
-    <header className="app-header" style={{
+    <header ref={navRef} className="app-header" style={{
       position: 'sticky', top: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', gap: 20,
       padding: '14px 28px',
