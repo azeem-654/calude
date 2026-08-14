@@ -250,6 +250,35 @@ export interface ArticleSeo {
   checks: SeoCheck[];
 }
 
+/* ── Images ── */
+
+export type ImageRole = 'cover' | 'inline';
+export type ImageSource = 'generated' | 'uploaded';
+
+export interface ArticleImage {
+  id: string;
+  role: ImageRole;
+  /** A JPEG data URL. Sized for storage — these sit in localStorage. */
+  dataUrl: string;
+  /**
+   * Never optional and never empty.
+   *
+   * An image with no alt text is invisible to a screen reader and worth nothing
+   * to a search engine, and this module exists to make pages rank. It is
+   * generated with the image and editable afterwards, but it always exists.
+   */
+  alt: string;
+  width: number;
+  height: number;
+  bytes: number;
+  /** Which card design produced it. Absent for an upload. */
+  template?: string;
+  source: ImageSource;
+  /** For an inline image: the heading it was placed under. */
+  anchor?: string;
+  createdAt: string;
+}
+
 export interface Article {
   /** Sanitised body HTML. Never contains script, style, iframe or event handlers. */
   html: string;
@@ -260,6 +289,8 @@ export interface Article {
   note?: string;
   /** Set when a human edited the article, so a rewrite cannot silently discard it. */
   edited?: boolean;
+  /** The cover and any images placed in the body. Added in Part 4. */
+  images?: ArticleImage[];
 }
 
 /* ── The writing job ── */

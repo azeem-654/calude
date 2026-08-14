@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Check, Code2, Eye, FileText, Loader2, Pencil, RefreshCw,
-  Search, Sparkles, Square, X,
+  AlertTriangle, Check, Code2, Eye, FileText, Image as ImageIcon, Loader2, Pencil,
+  RefreshCw, Search, Sparkles, Square, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { monthKey, monthLabel, planFor, takePlanSaveError, upsertPlan } from '../../services/blogPlanner';
@@ -9,6 +9,8 @@ import {
   cancelJob, jobForPlan, jobProgress, startJob, takeJobSaveError, upsertJob, writeNextPost,
 } from '../../services/blogWriteJob';
 import { remeasure, sanitizeHtml, writeWithAI } from '../../services/blogWriter';
+import { coverOf, makeCover, planImageStats, readableBytes } from '../../services/blogImages';
+import ImagePanel from './ImagePanel';
 import type { BlogProject, MonthPlan, PlannedPost, WriteJob } from '../../types/blogAutomation';
 
 /**
@@ -187,6 +189,48 @@ export default function WriteDesk({ project }: Props) {
     }
   }
 
+  /** Persist one post's article — used by the image panel for every change. */
+  function saveArticle(postId: string, article: Parameters<typeof remeasure>[0], message?: string) {
+    if (!plan) return;
+    persistPlan(
+      { ...plan, posts: plan.posts.map(p => (p.id === postId ? { ...p, article } : p)) },
+      message,
+    );
+  }
+
+  /**
+   * A cover for every written post that has none.
+   *
+   * Covers are cheap to draw and the alternative is doing it twenty times by
+   * hand, but posts that already have one — including uploaded photographs —
+   * are left completely alone.
+   */
+  function coverTheMonth() {
+    if (!plan) return;
+    const targets = plan.posts.filter(p => p.article && !coverOf(p.article));
+    if (!targets.length) {
+      addNotification('Every written post already has a cover.', 'info');
+      return;
+    }
+    try {
+      const made = new Map(targets.map(p => [p.id, makeCover(p, project, 'editorial')]));
+      persistPlan(
+        {
+          ...plan,
+          posts: plan.posts.map(p => {
+            const img = made.get(p.id);
+            return img && p.article
+              ? { ...p, article: { ...p.article, images: [img, ...(p.article.images ?? [])] } }
+              : p;
+          }),
+        },
+        `${targets.length} cover${targets.length === 1 ? '' : 's'} drawn`,
+      );
+    } catch (err) {
+      addNotification(err instanceof Error ? err.message : 'The covers could not be drawn.', 'error');
+    }
+  }
+
   function openPost(post: PlannedPost, next: Mode) {
     setOpenId(post.id);
     setMode(next);
@@ -196,6 +240,7 @@ export default function WriteDesk({ project }: Props) {
   /* ── Render ── */
 
   const isRunning = !!planId && runningPlanId === planId;
+  const imageStats = plan ? planImageStats(plan) : null;
   const progress = job ? jobProgress(job) : null;
   /* A job still marked running that this session is not driving was interrupted
      — a closed tab, a refresh — and can be picked up where it stopped. */
@@ -222,6 +267,11 @@ export default function WriteDesk({ project }: Props) {
             }}
           />
           <span style={{ flex: 1 }} />
+          {!isRunning && written > 0 && (
+            <button onClick={coverTheMonth} className="press" style={ghost()}>
+              <ImageIcon size={12} /> Cover every post
+            </button>
+          )}
           {isRunning ? (
             <button onClick={stop} className="press" style={{ ...ghost(), color: BAD }}>
               <Square size={12} /> Stop
@@ -245,6 +295,13 @@ export default function WriteDesk({ project }: Props) {
               <span><strong style={{ color: INK }}>{posts.length}</strong> posts planned</span>
               <span><strong style={{ color: INK }}>{written}</strong> written</span>
               <span><strong style={{ color: INK }}>{posts.length - written}</strong> still to write</span>
+              <span><strong style={{ color: INK }}>{imageStats?.withCover ?? 0}</strong> with a cover</span>
+              {!!imageStats?.totalBytes && (
+                <span><strong style={{ color: INK }}>{readableBytes(imageStats.totalBytes)}</strong> of pictures</span>
+              )}
+              {!!imageStats?.missingAlt && (
+                <span style={{ color: BAD, fontWeight: 700 }}>{imageStats.missingAlt} image without alt text</span>
+              )}
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 color: plan.status === 'approved' ? GOOD : WARN, fontWeight: 700,
@@ -383,6 +440,12 @@ export default function WriteDesk({ project }: Props) {
 
                 {isOpen && a && (
                   <div style={{ borderTop: `1px solid ${LINE}`, backgroundColor: '#fbfcfd', padding: 16 }}>
+
+                    <ImagePanel
+                      post={post}
+                      project={project}
+                      onSave={next => saveArticle(post.id, next)}
+                    />
 
                     {/* The checks, always visible with the article rather than behind a tab. */}
                     <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>

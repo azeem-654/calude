@@ -67,7 +67,7 @@ export default function TopNav() {
   }, []);
 
   return (
-    <header style={{
+    <header className="app-header" style={{
       position: 'sticky', top: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', gap: 20,
       padding: '14px 28px',
@@ -122,8 +122,19 @@ export default function TopNav() {
         </div>
       )}
 
-      {/* Nav pills — white capsule segmented control */}
-      <nav style={{
+      {/*
+        Nav pills — white capsule segmented control.
+
+        Nine no-wrap pills come to roughly 700px, wider than any phone. The
+        narrow-screen behaviour lives in index.css rather than here, because it
+        needs a media query and an inline style cannot hold one — which is the
+        same reason the rest of this app does not adapt to a phone at all.
+
+        They wrap rather than scroll: the "More" dropdown is absolutely
+        positioned inside this element, and an overflow-x container would clip
+        it. There is no way to scroll one axis and not clip the other.
+      */}
+      <nav className="nav-pills" style={{
         display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
         margin: '0 auto', padding: 4, borderRadius: 999,
         backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',

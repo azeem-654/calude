@@ -31,3 +31,7 @@ dist-ssr
 *.sln
 *.sw?
 dist-root
+
+# Server-side secrets: DB credentials, Stripe keys, webhook signing secret.
+# Written by the setup wizard at runtime and never belongs in the repository.
+public/api/config.php

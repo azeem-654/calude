@@ -127,13 +127,27 @@ if ($host && $user && $pass) {
                 $ar = smtp_r($conn);
             }
 
+            /**
+             * Each stage names itself.
+             *
+             * These labels were previously shifted by one nesting level, so a
+             * rejected recipient was reported as "MAIL FROM rejected" and a
+             * rejected sender as "Auth failed: 235 Authentication succeeded" —
+             * an auth failure quoting the successful auth response as its own
+             * evidence. Someone whose recipient bounced would go and rotate a
+             * working mailbox password. The server's own reply is quoted in
+             * every case, because that sentence is the actual diagnosis.
+             */
             if (smtp_code($ar) === 235) {
                 smtp_w($conn, "MAIL FROM: <{$fromEmail}>");
-                if (smtp_code(smtp_r($conn)) === 250) {
+                $mf = smtp_r($conn);
+                if (smtp_code($mf) === 250) {
                     smtp_w($conn, "RCPT TO: <{$to}>");
-                    if (smtp_code(smtp_r($conn)) === 250) {
+                    $rc = smtp_r($conn);
+                    if (smtp_code($rc) === 250) {
                         smtp_w($conn, "DATA");
-                        if (smtp_code(smtp_r($conn)) === 354) {
+                        $dt = smtp_r($conn);
+                        if (smtp_code($dt) === 354) {
                             $body = build_mime($fromName, $fromEmail, $to, $subject, $html, $host);
                             fwrite($conn, $body . "\r\n.\r\n");
                             $sent = smtp_r($conn);
@@ -143,10 +157,20 @@ if ($host && $user && $pass) {
                                 echo json_encode(['success' => true, 'message' => "Email sent via {$host}:{$port}"]);
                                 exit;
                             }
-                            $smtpError = 'DATA rejected: ' . trim($sent);
-                        } else { $smtpError = 'RCPT rejected'; fclose($conn); }
-                    } else { $smtpError = 'MAIL FROM rejected'; fclose($conn); }
-                } else { $smtpError = 'Auth failed: ' . trim($ar); fclose($conn); }
+                            $smtpError = 'The server rejected the message body: ' . trim($sent);
+                        } else {
+                            $smtpError = 'The server refused to accept message data (DATA): ' . trim($dt);
+                            fclose($conn);
+                        }
+                    } else {
+                        $smtpError = "The server rejected the recipient \"{$to}\" (RCPT TO): " . trim($rc);
+                        fclose($conn);
+                    }
+                } else {
+                    $smtpError = "The server rejected the from address \"{$fromEmail}\" (MAIL FROM): " . trim($mf)
+                        . '. Most hosts require this to be an address on the authenticated account.';
+                    fclose($conn);
+                }
             } else { $smtpError = 'Auth failed: ' . trim($ar); fclose($conn); }
         } else { $smtpError = 'Bad greeting: ' . trim($greeting); fclose($conn); }
     } else {

@@ -40,6 +40,17 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
 /** Schemes a link or image may use. `javascript:` is the whole point of this list. */
 const SAFE_SCHEME = /^(https?:|mailto:|tel:|\/|#)/i;
 
+/**
+ * The one exception: a base64 raster image, on an `img` element only.
+ *
+ * Generated cover art is a `data:` URL, so blocking the scheme outright would
+ * strip every picture this module makes. The allowance is drawn as narrowly as
+ * it can be — an explicit list of raster media types, base64 only, and never on
+ * an `href`. `data:text/html` remains blocked, which is the case that matters:
+ * it is a whole document, and a link to one runs script in the site's origin.
+ */
+const SAFE_IMAGE_DATA = /^data:image\/(png|jpe?g|gif|webp|avif);base64,[A-Za-z0-9+/=\s]+$/i;
+
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -93,8 +104,11 @@ export function sanitizeHtml(html: string): string {
           child.removeAttribute(attr.name);
           continue;
         }
-        if ((name === 'href' || name === 'src') && !SAFE_SCHEME.test(attr.value.trim())) {
-          child.removeAttribute(attr.name);
+        if (name === 'href' || name === 'src') {
+          const value = attr.value.trim();
+          const allowedHere = SAFE_SCHEME.test(value)
+            || (name === 'src' && tag === 'img' && SAFE_IMAGE_DATA.test(value));
+          if (!allowedHere) child.removeAttribute(attr.name);
         }
       }
 

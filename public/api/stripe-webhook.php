@@ -19,14 +19,32 @@ if (!$pdo) { http_response_code(200); echo 'db-not-configured'; exit; }
 
 $payload = file_get_contents('php://input');
 
-/* ── Optional signature verification (recommended) ── */
-$cfgFile = __DIR__ . '/config.php';
-$cfg = file_exists($cfgFile) ? require $cfgFile : [];
+/**
+ * ── Signature verification. Required, not optional. ──
+ *
+ * This endpoint's whole job is to write "this account has paid" into the
+ * database, and it is a public URL. Verification used to be skipped whenever no
+ * signing secret was configured — which is the state every install is in until
+ * someone pastes one in — so a single unauthenticated POST naming any account
+ * id granted that account an active subscription. It is checked and it does:
+ *
+ *   curl -d '{"type":"checkout.session.completed",
+ *             "data":{"object":{"client_reference_id":"acct_x"}}}' .../stripe-webhook.php
+ *   → crm_billing_status_acct_x = {"status":"active"}
+ *
+ * So an unconfigured endpoint now refuses everything rather than trusting
+ * everything. Stripe surfaces the failure and this message in the webhook's
+ * delivery log, which is where whoever set it up will be looking.
+ */
+$cfg = crm_config();
 $secret = $cfg['stripe_webhook_secret'] ?? '';
-if ($secret) {
-    $sig = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
-    if (!verify_stripe_sig($payload, $sig, $secret)) { http_response_code(400); echo 'bad-signature'; exit; }
+if (!$secret) {
+    http_response_code(503);
+    echo 'webhook-not-configured: set stripe_webhook_secret in api/config.php before enabling this endpoint';
+    exit;
 }
+$sig = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
+if (!verify_stripe_sig($payload, $sig, $secret)) { http_response_code(400); echo 'bad-signature'; exit; }
 
 $event = json_decode($payload, true);
 if (!$event || !isset($event['type'])) { http_response_code(400); echo 'bad-payload'; exit; }
@@ -58,9 +76,13 @@ if ($accountId && $status) {
     $prev = crm_billing_record($pdo, $accountId);
     if (!$customer && !empty($prev['customer'])) $customer = $prev['customer'];
     $val = json_encode(['accountId' => $accountId, 'status' => $status, 'customer' => $customer, 'at' => date('c'), 'source' => 'stripe']);
-    $stmt = $pdo->prepare('INSERT INTO crm_data (account_id, k, v, updated_at) VALUES (?,?,?,NOW())
-                           ON DUPLICATE KEY UPDATE v = VALUES(v), updated_at = NOW()');
-    $stmt->execute(['__agency__', "crm_billing_status_{$accountId}", $val]);
+    // Use the shared upsert rather than inline MySQL. The hand-written version
+    // here used ON DUPLICATE KEY UPDATE and NOW(), neither of which SQLite
+    // accepts, so this endpoint alone could not run on the SQLite driver the
+    // rest of the code supports — which is also the reason it had never been
+    // exercised by a test.
+    $stmt = $pdo->prepare(crm_upsert_sql($pdo));
+    $stmt->execute(['__agency__', "crm_billing_status_{$accountId}", $val, crm_now()]);
 }
 
 http_response_code(200);

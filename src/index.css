@@ -486,3 +486,47 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
 /* Scroll rails: hide the scrollbar but keep the scrolling. */
 .rail-scroll { scrollbar-width: none; }
 .rail-scroll::-webkit-scrollbar { height: 0; width: 0; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Narrow screens
+ *
+ * The app is built almost entirely from inline styles, and an inline style
+ * cannot carry a media query — so anything that has to change with viewport
+ * width has to be expressed here, against a class.
+ *
+ * This block covers the app chrome, which is on every page. Individual module
+ * layouts (wide tables, the pipeline board, the dashboard grids) still assume
+ * a desktop and are not fixed by this.
+ * ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  /* The header is one no-wrap row of logo + 9 nav pills + 5 icon buttons.
+     Letting it wrap is what stops it dragging the whole document sideways. */
+  .app-header {
+    flex-wrap: wrap;
+    gap: 10px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* A capsule only reads as a capsule on one line. Once the pills wrap it
+     becomes a rounded panel, and it takes the full width so the rows align. */
+  .nav-pills {
+    flex-wrap: wrap;
+    justify-content: center;
+    order: 3;
+    width: 100%;
+    border-radius: 20px !important;
+    margin: 0 !important;
+  }
+
+  /* Tap targets: 13px text in 8px padding is a 30px-high control. */
+  .pill-link {
+    padding: 9px 13px !important;
+    font-size: 13.5px !important;
+  }
+}
+
+/* Below this the logo wordmark and the pill row compete for the same line. */
+@media (max-width: 420px) {
+  .app-header { padding: 10px !important; }
+  .pill-link { padding: 9px 11px !important; font-size: 13px !important; }
+}
