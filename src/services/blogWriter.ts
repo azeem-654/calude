@@ -37,8 +37,42 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   img: new Set(['src', 'alt', 'width', 'height', 'loading']),
 };
 
-/** Schemes a link or image may use. `javascript:` is the whole point of this list. */
-const SAFE_SCHEME = /^(https?:|mailto:|tel:|\/|#)/i;
+/** The schemes an absolute URL may use. `javascript:` is the point of this list. */
+const ALLOWED_SCHEMES = /^(https?|mailto|tel):/i;
+
+/** Anything that looks like `scheme:` at the start, once whitespace is gone. */
+const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * Is this URL safe to keep?
+ *
+ * Three things this gets right that a single regex did not:
+ *
+ * Control characters are stripped first. Browsers ignore tabs, newlines and
+ * NULs inside a scheme, so `java&#9;script:alert(1)` executes — a pattern that
+ * tests the raw string sees an unrecognised scheme and, if it defaulted to
+ * allowing relative URLs, would let it through.
+ *
+ * Protocol-relative URLs are refused. `//evil.test/x` was previously allowed by
+ * a leading-slash rule, and it is not a path: it is an absolute URL that
+ * borrows the page's scheme.
+ *
+ * Ordinary relative paths are allowed. `../images/cover.jpg` cannot carry a
+ * scheme and is exactly what the export produces when it lifts images out into
+ * files; refusing it stripped the src from every picture on every exported page
+ * and left an empty `<img>` behind.
+ */
+function isSafeUrl(raw: string, allowImageData: boolean): boolean {
+  // Control characters are exactly what is being defended against here, so the
+  // rule that forbids them in a pattern does not apply.
+  // eslint-disable-next-line no-control-regex
+  const v = raw.replace(/[\u0000-\u0020]/g, '');
+  if (!v) return false;
+  if (v.startsWith('//')) return false;
+  if (allowImageData && SAFE_IMAGE_DATA.test(raw.trim())) return true;
+  if (!HAS_SCHEME.test(v)) return true;
+  return ALLOWED_SCHEMES.test(v);
+}
 
 /**
  * The one exception: a base64 raster image, on an `img` element only.
@@ -105,10 +139,9 @@ export function sanitizeHtml(html: string): string {
           continue;
         }
         if (name === 'href' || name === 'src') {
-          const value = attr.value.trim();
-          const allowedHere = SAFE_SCHEME.test(value)
-            || (name === 'src' && tag === 'img' && SAFE_IMAGE_DATA.test(value));
-          if (!allowedHere) child.removeAttribute(attr.name);
+          if (!isSafeUrl(attr.value, name === 'src' && tag === 'img')) {
+            child.removeAttribute(attr.name);
+          }
         }
       }
 

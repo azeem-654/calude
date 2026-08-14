@@ -180,6 +180,8 @@ export interface PlannedPost {
   edited?: boolean;
   /** Written in Part 3. Absent until then. */
   article?: Article;
+  /** Keyed by target id. Written in Part 5. */
+  published?: PublishRecordMap;
 }
 
 export interface PlanOptions {
@@ -293,6 +295,9 @@ export interface Article {
   images?: ArticleImage[];
 }
 
+/** Where a post stands on each target it has been sent to. */
+export type PublishRecordMap = Record<string, PublishRecord>;
+
 /* ── The writing job ── */
 
 export interface WriteFailure {
@@ -315,6 +320,91 @@ export interface WriteJob {
   done: string[];
   failed: WriteFailure[];
   status: 'running' | 'done' | 'cancelled';
+  startedAt: string;
+  finishedAt?: string;
+}
+
+/* ── Publishing ── */
+
+/**
+ * Where a project's posts go.
+ *
+ * `wordpress` writes to a real site over its REST API; `export` produces a
+ * bundle to upload anywhere. There is deliberately no "publish to nowhere"
+ * option — a target either reaches a real destination or produces files a
+ * person can carry to one.
+ */
+export type PublishKind = 'wordpress' | 'export';
+
+export interface PublishTarget {
+  id: string;
+  projectId: string;
+  kind: PublishKind;
+  /** What to call it in the UI. */
+  name: string;
+  /** The site root, e.g. https://example.com — no trailing slash. */
+  siteUrl: string;
+  /** Where posts live under it, e.g. /blog. */
+  basePath: string;
+  /** WordPress only: the login the application password belongs to. */
+  username?: string;
+  /**
+   * Whether a credential is stored *on the server*.
+   *
+   * The password itself never reaches the browser and is never in this object.
+   * WordPress application passwords can create and delete content on a live
+   * site, so they live in the server-side store like the Stripe secret does.
+   */
+  hasCredential?: boolean;
+  /** What the last connection check found. */
+  verifiedAt?: string;
+  verifyNote?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PublishState = 'draft' | 'scheduled' | 'live' | 'failed' | 'withdrawn';
+
+/** What happened to one post on one target. Kept even after withdrawal. */
+export interface PublishRecord {
+  postId: string;
+  targetId: string;
+  state: PublishState;
+  /** The id the remote system gave it, so we can update or withdraw it later. */
+  remoteId?: string;
+  /** The public address, once there is one. */
+  url?: string;
+  /** ISO instant it went live, or is due to. */
+  at?: string;
+  /** The last error, verbatim, so a failure can actually be diagnosed. */
+  error?: string;
+  updatedAt: string;
+}
+
+export interface PublishFailure {
+  postId: string;
+  title: string;
+  error: string;
+}
+
+/**
+ * Publishing a month, one post per pass.
+ *
+ * Same shape as the writing job and for the same reason: each post is a network
+ * call to somebody else's server, and a run interrupted halfway must not leave
+ * the plan disagreeing with the live site about what exists.
+ */
+export interface PublishJob {
+  id: string;
+  projectId: string;
+  planId: string;
+  targetId: string;
+  queue: string[];
+  done: string[];
+  failed: PublishFailure[];
+  status: 'running' | 'done' | 'cancelled';
+  /** Whether future-dated posts were scheduled or pushed live immediately. */
+  mode: 'schedule' | 'now';
   startedAt: string;
   finishedAt?: string;
 }
