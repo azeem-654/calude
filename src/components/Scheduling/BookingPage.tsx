@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Check, Calendar, Globe, Download, X, CalendarPlus } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { busyBlocks, freeSlots, hhmm } from '../../services/availability';
 import type { Booking, EventType, ScheduleAvailability } from '../../types';
 import {
   fetchPublicConfig, fetchBookedSlots, createRemoteBooking,
@@ -14,19 +15,6 @@ const DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'] as const;
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 
-function generateTimeSlots(from: string, to: string, duration: number, bufferAfter: number): string[] {
-  const slots: string[] = [];
-  const [fh, fm] = from.split(':').map(Number);
-  const [th, tm] = to.split(':').map(Number);
-  let cur = fh * 60 + fm;
-  const end = th * 60 + tm;
-  const step = duration + bufferAfter;
-  while (cur + duration <= end) {
-    slots.push(`${pad(Math.floor(cur / 60))}:${pad(cur % 60)}`);
-    cur += step;
-  }
-  return slots;
-}
 
 /** Interpret `date time` as wall-clock in ownerTz and return the real instant. */
 function ownerInstant(dateStr: string, time: string, ownerTz: string): Date {
@@ -51,7 +39,23 @@ function fmt12(time: string): string {
 type Step = 'event' | 'calendar' | 'form' | 'confirmed' | 'manage' | 'cancelled';
 
 export default function BookingPage() {
-  const { schedule, bookings, addBooking, addAppointment, contacts, addContact, addContactActivity } = useApp();
+  const {
+    schedule, bookings, addBooking, addAppointment, contacts, addContact, addContactActivity,
+    appointments, calendarEvents,
+  } = useApp();
+
+  /**
+   * Everything already occupying the owner's day.
+   *
+   * This used to be bookings only, which meant a visitor could book straight
+   * over a meeting the owner had put in the CRM, or over time the owner had
+   * blocked out in their own calendar. All three sources are the same question
+   * — "is that hour gone?" — so they are answered in one place now.
+   */
+  const ownerBusy = useMemo(
+    () => busyBlocks({ appointments, bookings, events: calendarEvents }),
+    [appointments, bookings, calendarEvents],
+  );
 
   const [today] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [remoteCfg, setRemoteCfg] = useState<(Partial<ScheduleAvailability>) | null | 'loading'>('loading');
@@ -124,10 +128,11 @@ export default function BookingPage() {
 
   const dateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
-  /* Booked slots for a date: server (real) + local fallback. */
+  /* What is taken on a date: the server's view plus everything local. */
   const bookedFor = (dateStr: string): { time: string; duration: number }[] => {
-    const local = bookings.filter(b => b.slotDate === dateStr && b.status !== 'cancelled')
-      .map(b => ({ time: b.slotTime, duration: b.duration ?? cfg.duration }));
+    const local = ownerBusy
+      .filter(b => b.date === dateStr && b.blocking)
+      .map(b => ({ time: hhmm(b.startMin), duration: b.endMin - b.startMin }));
     return [...(bookedRemote[dateStr] ?? []), ...local];
   };
 
@@ -140,15 +145,39 @@ export default function BookingPage() {
     return bookedFor(dateKey(date)).length < cfg.dailyLimit;
   };
 
+  /**
+   * The slots a visitor may actually pick.
+   *
+   * Overlap, not equality. The old check asked whether a slot's start time was
+   * in the booked list, so a 60-minute meeting at 09:00 left 09:30 on offer and
+   * the owner ended up double-booked. Every busy interval is now compared as an
+   * interval, with the configured buffers held clear either side.
+   */
   const getAvailableSlots = (date: Date): string[] => {
     const avail = cfg.weekly[DAY_KEYS[date.getDay()]];
     if (!avail.enabled) return [];
     const dateStr = dateKey(date);
-    const all = generateTimeSlots(avail.from, avail.to, activeDuration, cfg.bufferAfter);
-    const booked = bookedFor(dateStr).map(b => b.time);
+
+    /* The server's own booked list, folded in as intervals so a slot taken on
+       another device is treated exactly like one taken here. */
+    const remote = (bookedRemote[dateStr] ?? []).map((b, i) => ({
+      id: `remote-${i}`, kind: 'booking' as const, title: 'Booked', date: dateStr,
+      startMin: Number(b.time.slice(0, 2)) * 60 + Number(b.time.slice(3, 5)),
+      endMin: Number(b.time.slice(0, 2)) * 60 + Number(b.time.slice(3, 5)) + (b.duration || activeDuration),
+      blocking: true, sourceId: `remote-${i}`,
+    }));
+
+    const free = freeSlots(dateStr, [...ownerBusy, ...remote], {
+      from: avail.from,
+      to: avail.to,
+      durationMin: activeDuration,
+      bufferBefore: cfg.bufferBefore,
+      bufferAfter: cfg.bufferAfter,
+      stepMin: activeDuration + (cfg.bufferAfter || 0),
+    });
+
     const now = Date.now();
-    return all.filter(t => {
-      if (booked.includes(t)) return false;
+    return free.filter(t => {
       // Minimum notice, computed against the real instant in the owner's timezone
       const instant = ownerInstant(dateStr, t, cfg.timezone);
       return instant.getTime() - now >= minNoticeMin * 60000;

@@ -89,6 +89,43 @@ export interface Appointment {
   followUpDone?: boolean;
 }
 
+/**
+ * Something the owner put in their own calendar.
+ *
+ * Distinct from an Appointment on purpose. An appointment is a meeting with
+ * somebody — online or in person — and is what the public booking page creates.
+ * An event is the owner's own working time: a follow-up to make, a block to
+ * prepare, a reminder. Both appear on the calendar; only one of them is a
+ * meeting, and conflating them would mean every personal reminder showed up as
+ * a bookable meeting with a contact who does not exist.
+ */
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  /** Owner-timezone calendar date, YYYY-MM-DD. */
+  date: string;
+  /** Owner-timezone wall-clock time, 24h HH:MM. */
+  time: string;
+  duration: number;
+  /** What kind of work this is, shown as the card's second line. */
+  type: string;
+  /**
+   * Whether it takes the slot out of circulation.
+   *
+   * "Call the surveyor" does; "remember to send the quote" does not, and
+   * treating every reminder as unavailable would empty the booking page.
+   */
+  busy: boolean;
+  status: 'pending' | 'confirmed' | 'done' | 'cancelled';
+  /** Optional link to whoever it concerns, so the card can show their face. */
+  contactId?: string;
+  contactName?: string;
+  notes?: string;
+  location?: string;
+  colour?: string;
+  createdAt: string;
+}
+
 export interface ContactActivity {
   id: string;
   type: 'email_sent' | 'email_opened' | 'note' | 'task_completed' | 'meeting' | 'tag_added' | 'stage_change' | 'form_submitted' | 'link_clicked' | 'call';

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { ReactNode } from 'react';
-import type { Contact, Conversation, Appointment, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity, VideoProject, VideoClip } from '../types';
+import type { Contact, Conversation, Appointment, CalendarEvent, Pipeline, Campaign, Funnel, Website, Review, ScheduleAvailability, Booking, ContactNote, ContactTask, ContactActivity, VideoProject, VideoClip } from '../types';
 import type { EmailSequence, Automation } from '../types/marketing';
 import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
@@ -37,6 +37,10 @@ interface AppContextType {
   sendMessage: (conversationId: string, content: string) => void;
   updateConversationStatus: (id: string, status: Conversation['status']) => void;
   addAppointment: (appt: Omit<Appointment, 'id'>) => Appointment;
+  calendarEvents: CalendarEvent[];
+  addCalendarEvent: (e: Omit<CalendarEvent, 'id' | 'createdAt'>) => CalendarEvent;
+  updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => void;
+  deleteCalendarEvent: (id: string) => void;
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   deleteAppointment: (id: string) => void;
   addCampaign: (campaign: Omit<Campaign, 'id'>) => Campaign;
@@ -109,6 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [contacts, setContacts]         = useState<Contact[]>(()      => loadLS('crm_contacts',      []));
   const [conversations, setConversations] = useState<Conversation[]>(() => loadLS('crm_conversations', []));
   const [appointments, setAppointments] = useState<Appointment[]>(()  => loadLS('crm_appointments',  []));
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => loadLS('crm_calendar_events', []));
   const [pipelines, setPipelines]       = useState<Pipeline[]>(()     => loadLS('crm_pipelines',     mockPipelines));
   const [campaigns, setCampaigns]       = useState<Campaign[]>(()     => loadLS('crm_campaigns',     []));
   const [funnels, setFunnels]           = useState<Funnel[]>(()       => loadLS('crm_funnels',       []));
@@ -226,6 +231,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify(`Appointment "${appt.title}" scheduled!`);
     return a;
   };
+  const addCalendarEvent = (e: Omit<CalendarEvent, 'id' | 'createdAt'>): CalendarEvent => {
+    const ev: CalendarEvent = {
+      ...e,
+      id: `evt-${Date.now()}-${Math.floor(performance.now() * 1000) % 100000}`,
+      createdAt: new Date().toISOString(),
+    };
+    setCalendarEvents(prev => { const next = [...prev, ev]; saveLS('crm_calendar_events', next); return next; });
+    return ev;
+  };
+  const updateCalendarEvent = (id: string, updates: Partial<CalendarEvent>) => {
+    setCalendarEvents(prev => { const next = prev.map(e => e.id === id ? { ...e, ...updates } : e); saveLS('crm_calendar_events', next); return next; });
+  };
+  const deleteCalendarEvent = (id: string) => {
+    setCalendarEvents(prev => { const next = prev.filter(e => e.id !== id); saveLS('crm_calendar_events', next); return next; });
+    notify('Event deleted', 'info');
+  };
+
   const updateAppointment = (id: string, updates: Partial<Appointment>) => {
     setAppointments(prev => { const next = prev.map(a => a.id === id ? { ...a, ...updates } : a); saveLS('crm_appointments', next); return next; });
     notify('Appointment updated');
@@ -425,7 +447,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      contacts, conversations, appointments, pipelines, campaigns, funnels, websites, reviews, sequences, automations,
+      contacts, conversations, appointments, calendarEvents, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
+      pipelines, campaigns, funnels, websites, reviews, sequences, automations,
       addContact, updateContact, deleteContact, bulkImportContacts,
       addConversation, sendMessage, updateConversationStatus,
       addAppointment, updateAppointment, deleteAppointment,
