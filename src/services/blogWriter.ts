@@ -423,6 +423,23 @@ export function inlinePhrase(value: string, maxWords = 9): string {
 const sentence = (s: string) => `${s.trim().replace(/[.\s]+$/, '')}.`;
 
 /**
+ * Lower-case a field being spliced mid-sentence.
+ *
+ * The profile fields are stored the way a person typed them into a form, which
+ * is usually capitalised. Dropped into the middle of a sentence that produces
+ * "written for Homeowners and small landlords" — small, but exactly the kind of
+ * seam that tells a reader no human wrote this. Anything that looks like a
+ * proper noun is left alone.
+ */
+const midSentence = (s: string) => {
+  const t = s.trim();
+  if (!t) return t;
+  // A second capitalised word suggests a name (Bristol Heating), not a sentence.
+  if (/^[A-Z][a-z]*\s+[A-Z]/.test(t)) return t;
+  return t[0].toLowerCase() + t.slice(1);
+};
+
+/**
  * Connective paragraphs for sections the portfolio says nothing about.
  *
  * Several variants rather than one, chosen by position, because the same
@@ -492,15 +509,34 @@ export function composeArticleWithStats(post: PlannedPost, project: BlogProject)
     return true;
   };
 
-  /* Opening — the phrase in the first sentence, stated once. */
-  const angle = post.angle.trim();
-  p(sentence(`${sentenceCase(kw)} is what this page is about${who ? `, written for ${who}` : ''}`)
-    + ` ${angle ? sentence(angle) : 'Here is the short version first, then the detail behind it.'}`);
+  /*
+   * Opening — the phrase in the first sentence, stated once.
+   *
+   * `post.angle` is deliberately not printed. It is a brief for whoever writes
+   * the post ("a short, direct answer that sends the reader on to the service
+   * page when they are ready"), and it used to be emitted verbatim as the
+   * article's second sentence — publishing the instructions along with the
+   * work. It belongs in the model's prompt, and nowhere a reader can see it.
+   */
+  p(sentence(`${sentenceCase(kw)} is what this page is about${who ? `, written for ${midSentence(who)}` : ''}`)
+    + (post.role === 'pillar'
+      ? ' This is the long version: what it means, what changes the answer, and what to do about it.'
+      : ' Here is the short version first, then the detail behind it.'));
 
   const opener = take(`${kw} ${offering}`, 2);
   if (opener.length) p(opener.join(' '));
   else if (offering) {
-    p(sentence(`${we} ${offering.replace(/^(we|i)\s+/i, '')}${where ? `, working across ${where}` : ''}`)
+    /*
+     * "What we do:" rather than "We …".
+     *
+     * The offering field holds whatever the customer typed, and that is a noun
+     * phrase about as often as a verb phrase — "Boiler installation, servicing
+     * and repair" as readily as "install and service combi boilers". Splicing
+     * it after a pronoun produced "We boiler installation, servicing and
+     * repair", which is not English. A colon takes both without guessing at
+     * the grammar.
+     */
+    p(sentence(`What ${we.toLowerCase()} do: ${midSentence(offering.replace(/^(we|i)\s+/i, ''))}${where ? `, across ${where}` : ''}`)
       + ' Everything below is written from that, so it should read as practical rather than general.');
   }
 
@@ -526,7 +562,15 @@ export function composeArticleWithStats(post: PlannedPost, project: BlogProject)
      missing about half the time — but if the outline already covered it, adding
      a near-duplicate section is worse than adding nothing. */
   const kwInHeading = [...headingsUsed].some(h => h.includes(kw.toLowerCase()));
-  if (!kwInHeading && h2(`What ${kw} really comes down to`)) {
+  /*
+   * A long-tail keyword is often already a question, and wrapping one in
+   * "What … really comes down to" gives "What how to choose a combi boiler
+   * really comes down to". Question-shaped phrases take a different frame.
+   */
+  const kwHeading = /^(how|what|why|when|which|is|are|do|does|can|should)\b/i.test(kw)
+    ? `${sentenceCase(kw)} — the short version`
+    : `What ${kw} really comes down to`;
+  if (!kwInHeading && h2(kwHeading)) {
     const core = take(kw, 3);
     if (core.length) p(core.join(' '));
     else p('Strip away the detail and it is a small number of decisions, made in order. Get the first one right and the rest follow; get it wrong and no amount of care later recovers it. That is the whole reason this page exists rather than a one-line answer.');
