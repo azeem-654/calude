@@ -35,3 +35,8 @@ dist-root
 # Server-side secrets: DB credentials, Stripe keys, webhook signing secret.
 # Written by the setup wizard at runtime and never belongs in the repository.
 public/api/config.php
+
+# Runtime stores: accounts, sessions, bookings, and the SMTP password the
+# booking page sends through. Written at runtime; the .htaccess guard stays.
+public/api/data/*
+!public/api/data/.htaccess

@@ -305,15 +305,16 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
 /** Push one stored email through the provider and update its status. */
 async function deliver(email: ContactEmail, contact: Contact): Promise<SendOutcome> {
   const cfg = loadEmailConfig();
-  const personalized = personalizeHtml(bodyToHtml(email.body), {
+  const merge = {
     name: contact.name, email: contact.email, company: contact.company,
     phone: contact.phone, jobTitle: contact.jobTitle, website: contact.website,
     customFields: contact.customFields,
-  });
-  const html = instrumentHtml(personalized, email.id);
-  const subject = personalizeHtml(email.subject, { name: contact.name, email: contact.email, company: contact.company });
+  };
+  /* Body is merged before instrumenting so tracking rewrites see final URLs;
+     the subject is merged by sendEmail from the same data. */
+  const html = instrumentHtml(personalizeHtml(bodyToHtml(email.body), merge), email.id);
 
-  const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject, html });
+  const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject: email.subject, html, merge });
 
   const rows = loadEmails();
   const row = rows.find(r => r.id === email.id);

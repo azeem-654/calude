@@ -140,8 +140,10 @@ export default function BookingPage() {
     if (date < today) return false;
     const daysAhead = Math.round((date.getTime() - today.getTime()) / 86400000);
     if (daysAhead > windowDays) return false;
-    const avail = cfg.weekly[DAY_KEYS[date.getDay()]];
-    if (!avail.enabled) return false;
+    /* A schedule published without every day key is a closed day, not a crash —
+       this page is public, so a partial config must never white-screen a visitor. */
+    const avail = cfg.weekly?.[DAY_KEYS[date.getDay()]];
+    if (!avail?.enabled) return false;
     return bookedFor(dateKey(date)).length < cfg.dailyLimit;
   };
 
@@ -154,8 +156,8 @@ export default function BookingPage() {
    * interval, with the configured buffers held clear either side.
    */
   const getAvailableSlots = (date: Date): string[] => {
-    const avail = cfg.weekly[DAY_KEYS[date.getDay()]];
-    if (!avail.enabled) return [];
+    const avail = cfg.weekly?.[DAY_KEYS[date.getDay()]];
+    if (!avail?.enabled) return [];
     const dateStr = dateKey(date);
 
     /* The server's own booked list, folded in as intervals so a slot taken on

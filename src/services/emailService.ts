@@ -13,6 +13,13 @@ export interface EmailPayload {
   toName?: string;
   subject: string;
   html: string;
+  /**
+   * Merge data for this recipient. When present, both the subject and the body
+   * are personalised here, at the transport — subject lines were the one place
+   * callers kept forgetting, and a raw {{firstName}} in an inbox is the most
+   * visible mistake an email tool can make.
+   */
+  merge?: Personalizable;
 }
 
 export interface SendResult {
@@ -61,10 +68,14 @@ export function isEmailConfigured(): boolean {
 }
 
 /* ─── Send ─── */
-export async function sendEmail(config: EmailProviderConfig, payload: EmailPayload): Promise<SendResult> {
+export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload): Promise<SendResult> {
   if (config.provider === 'none' || (!config.apiKey && config.provider !== 'smtp')) {
     return { success: false, error: 'No email provider configured. Go to Settings → Email & SMS.' };
   }
+
+  const payload: EmailPayload = raw.merge
+    ? { ...raw, subject: personalizeHtml(raw.subject, raw.merge), html: personalizeHtml(raw.html, raw.merge) }
+    : raw;
 
   try {
     if (config.provider === 'smtp') {
@@ -166,29 +177,72 @@ export async function sendEmail(config: EmailProviderConfig, payload: EmailPaylo
   }
 }
 
-export function personalizeHtml(html: string, contact: {
+export interface Personalizable {
   name?: string; email?: string; company?: string; phone?: string;
   jobTitle?: string; website?: string; customFields?: Record<string, string>;
-}): string {
-  const firstName = contact.name?.split(' ')[0] || 'there';
-  const lastName = contact.name?.split(' ').slice(1).join(' ') || '';
-  let result = html
-    .replace(/\{\{firstName\}\}/g, firstName)
-    .replace(/\{\{lastName\}\}/g, lastName)
-    .replace(/\{\{fullName\}\}/g, contact.name || '')
-    .replace(/\{\{email\}\}/g, contact.email || '')
-    .replace(/\{\{company\}\}/g, contact.company || '')
-    .replace(/\{\{phone\}\}/g, contact.phone || '')
-    .replace(/\{\{jobTitle\}\}/g, contact.jobTitle || '')
-    .replace(/\{\{website\}\}/g, contact.website || '')
-    .replace(/\{\{unsubscribe\}\}/g, '#unsubscribe');
+}
 
-  // Custom field variables
-  if (contact.customFields) {
-    for (const [key, val] of Object.entries(contact.customFields)) {
-      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || '');
-    }
+/**
+ * The merge fields, and the names people actually type for them.
+ *
+ * `{{name}}` was not one of them, so anybody who wrote the most obvious token
+ * in the language had "Hello {{name}}," delivered to a real customer. The
+ * aliases exist because a merge field a user has to spell exactly right is a
+ * trap, and the cost of guessing wrong is paid in front of the recipient.
+ * Matching is case-insensitive and tolerates spaces and underscores for the
+ * same reason.
+ */
+function mergeValues(contact: Personalizable): Record<string, string> {
+  const firstName = contact.name?.trim().split(/\s+/)[0] || 'there';
+  const lastName = contact.name?.trim().split(/\s+/).slice(1).join(' ') || '';
+  return {
+    firstname: firstName,
+    lastname: lastName,
+    fullname: contact.name || '',
+    name: contact.name || '',
+    email: contact.email || '',
+    company: contact.company || '',
+    phone: contact.phone || '',
+    jobtitle: contact.jobTitle || '',
+    title: contact.jobTitle || '',
+    website: contact.website || '',
+    unsubscribe: '#unsubscribe',
+  };
+}
+
+/** Tokens still unresolved after a merge — what a recipient would have seen. */
+export function unresolvedTokens(html: string, contact: Personalizable): string[] {
+  const known = mergeValues(contact);
+  const custom = Object.keys(contact.customFields ?? {}).map(k => normaliseToken(k));
+  const out = new Set<string>();
+  for (const m of html.matchAll(/\{\{\s*([\w .-]+?)\s*\}\}/g)) {
+    const key = normaliseToken(m[1]);
+    if (!(key in known) && !custom.includes(key)) out.add(m[1].trim());
   }
+  return [...out];
+}
 
-  return result;
+const normaliseToken = (raw: string) => raw.trim().toLowerCase().replace(/[\s_-]/g, '');
+
+/**
+ * Fill in the merge fields.
+ *
+ * Anything left over is removed rather than sent. A token the system does not
+ * know is a mistake in the draft, and the two options are showing the mistake
+ * to the customer or not showing it — dropping it is the only one that does not
+ * embarrass the sender. `unresolvedTokens` exists so the UI can say what was
+ * dropped before the send rather than after.
+ */
+export function personalizeHtml(html: string, contact: Personalizable): string {
+  const values = mergeValues(contact);
+  const custom = Object.fromEntries(
+    Object.entries(contact.customFields ?? {}).map(([k, v]) => [normaliseToken(k), v || '']),
+  );
+
+  return html.replace(/\{\{\s*([\w .-]+?)\s*\}\}/g, (_whole, raw: string) => {
+    const key = normaliseToken(raw);
+    if (key in values) return values[key];
+    if (key in custom) return custom[key];
+    return '';
+  });
 }

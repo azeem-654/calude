@@ -509,39 +509,42 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
   const [loading, setLoading] = useState(() => state.steps.length === 0);
   const [msgIdx, setMsgIdx] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const generated = useRef(false);
+  /* Timers live in a ref so a remount cancels them cleanly and a fresh run can
+     always be started. Anything that survives a cancel — a "we already ran this"
+     flag, say — wedges the step on its loading screen with no way forward. */
+  const timers = useRef<{ msg?: ReturnType<typeof setInterval>; gen?: ReturnType<typeof setTimeout> }>({});
+  const latest = useRef({ state, onChange });
+  useEffect(() => { latest.current = { state, onChange }; });
 
-  useEffect(() => {
-    if (state.steps.length === 0 && !generated.current) {
-      generated.current = true;
-      const msgTimer = setInterval(() => setMsgIdx(i => (i + 1) % LOADING_MSGS.length), 420);
-      const genTimer = setTimeout(() => {
-        clearInterval(msgTimer);
-        const flow = generateWorkflow(state.type, state.goal, state.concept, state.cta, state.tone);
-        onChange({ steps: flow });
-        setLoading(false);
-        setExpandedId(null);
-      }, 1800);
-      return () => { clearInterval(msgTimer); clearTimeout(genTimer); };
-    } else if (state.steps.length > 0) {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const cancelTimers = () => {
+    if (timers.current.msg !== undefined) clearInterval(timers.current.msg);
+    if (timers.current.gen !== undefined) clearTimeout(timers.current.gen);
+    timers.current = {};
+  };
 
-  const regenerate = () => {
+  const build = useCallback((delay: number) => {
+    cancelTimers();
     setLoading(true);
     setMsgIdx(0);
-    onChange({ steps: [] });
-    generated.current = false;
-    const msgTimer = setInterval(() => setMsgIdx(i => (i + 1) % LOADING_MSGS.length), 400);
-    const genTimer = setTimeout(() => {
-      clearInterval(msgTimer);
-      const flow = generateWorkflow(state.type, state.goal, state.concept, state.cta, state.tone);
-      onChange({ steps: flow });
+    timers.current.msg = setInterval(() => setMsgIdx(i => (i + 1) % LOADING_MSGS.length), 420);
+    timers.current.gen = setTimeout(() => {
+      cancelTimers();
+      const { state: s, onChange: change } = latest.current;
+      change({ steps: generateWorkflow(s.type, s.goal, s.concept, s.cta, s.tone) });
       setLoading(false);
-    }, 1600);
-    return () => { clearInterval(msgTimer); clearTimeout(genTimer); };
+      setExpandedId(null);
+    }, delay);
+  }, []);
+
+  useEffect(() => {
+    if (latest.current.state.steps.length === 0) build(1800);
+    else setLoading(false);
+    return cancelTimers;
+  }, [build]);
+
+  const regenerate = () => {
+    onChange({ steps: [] });
+    build(1600);
   };
 
   const updateStep = (id: string, updates: Partial<WizardStep>) =>
@@ -1217,7 +1220,10 @@ function StepReview({ state, counts, contacts, onLaunch }: {
     const cfg = loadEmailConfig();
     const subject = state.steps[0]?.subject || state.subject || `Test: ${state.name}`;
     const html = state.steps[0]?.body || state.emailBody || '<p>Test email from your CRM.</p>';
-    const result = await sendEmail(cfg, { to: testAddr.trim(), toName: 'Test', subject, html: personalizeHtml(html, { name: 'Test User', email: testAddr.trim(), company: 'Acme Corp', jobTitle: 'Manager' }) });
+    const result = await sendEmail(cfg, {
+      to: testAddr.trim(), toName: 'Test', subject, html,
+      merge: { name: 'Test User', email: testAddr.trim(), company: 'Acme Corp', jobTitle: 'Manager' },
+    });
     setTestStatus(result.success ? 'ok' : 'fail');
     setTestMsg(result.success ? `Delivered! ${result.id ? `ID: ${result.id}` : ''}` : result.error || 'Send failed');
   };
@@ -1254,7 +1260,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
           setSendProgress(Math.round(((i + 1) / audience.length) * 100));
           continue;
         }
-        const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject, html: personalizeHtml(body, contact) });
+        const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject, html: body, merge: contact });
         if (!result.success && /(550|551|553|does not exist|no such user|unknown recipient|user unknown)/i.test(result.error || '')) {
           suppress(contact.email, 'hard_bounce', `Rejected during campaign "${state.name}"`);
         }

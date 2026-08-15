@@ -14,7 +14,7 @@ import EmailTab from './EmailTab';
 import DealsTab from './DealsTab';
 import SchedulingTab from './SchedulingTab';
 import type { Contact, ContactActivity } from '../../types';
-import { sendEmail, loadEmailConfig, personalizeHtml } from '../../services/emailService';
+import { sendEmail, loadEmailConfig } from '../../services/emailService';
 
 const ACTIVITY_ICONS: Record<ContactActivity['type'], string> = {
   email_sent: '📧', email_opened: '👁', note: '📝', task_completed: '✅',
@@ -135,8 +135,15 @@ export default function ContactProfile({ contact, onClose }: Props) {
     if (!emailSubject.trim() || !emailBody.trim()) return;
     setSendingEmail(true);
     const cfg = loadEmailConfig();
-    const html = personalizeHtml(`<div style="font-family:sans-serif;line-height:1.6">${emailBody.replace(/\n/g, '<br>')}</div>`, { name: contact.name, email: contact.email });
-    const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject: emailSubject, html });
+    const html = `<div style="font-family:sans-serif;line-height:1.6">${emailBody.replace(/\n/g, '<br>')}</div>`;
+    const result = await sendEmail(cfg, {
+      to: contact.email, toName: contact.name, subject: emailSubject, html,
+      merge: {
+        name: contact.name, email: contact.email, company: contact.company,
+        phone: contact.phone, jobTitle: contact.jobTitle, website: contact.website,
+        customFields: contact.customFields,
+      },
+    });
     setSendingEmail(false);
     if (result.success) {
       addContactActivity(contact.id, { type: 'email_sent', description: `Email sent: "${emailSubject}"`, timestamp: new Date().toISOString(), metadata: { subject: emailSubject, emailId: result.id || '' } });
