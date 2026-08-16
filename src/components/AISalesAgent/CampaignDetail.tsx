@@ -1,44 +1,56 @@
 /**
- * One AI campaign.
+ * One AI campaign, in tabs.
  *
- * The full set of tabs from the brief arrives with the parts that produce
- * something to put in them. What is here is what the agent genuinely knows
- * today: the objective it was given, where it is in its life, the records it is
- * responsible for, and the account it has kept of itself.
+ * The tabs are the ones from the brief, and each shows what is genuinely known
+ * rather than a placeholder for a number that does not exist yet. A campaign
+ * that has sent nothing shows dashes, not noughts — "0 replies" says the emails
+ * went out and nobody answered, which is a different morning entirely.
  *
- * Nothing on this page is a placeholder for a number that does not exist yet.
- * A campaign that has sent nothing shows no send figures at all, rather than a
- * row of zeroes that reads exactly like a campaign whose sends have failed.
+ * The chosen tab lives in the URL so a campaign's Email tab can be linked to,
+ * and so going back does what going back should.
  */
-import { useCallback, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import {
-  ArrowLeft, ArrowUpRight, Ban, Bot, Pause, Play, Trash2,
-} from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Ban, Bot, Pause, Play, Trash2 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
-import {
-  deleteCampaign, getCampaign, setStatus, takeSaveError,
-} from '../../services/aiCampaigns';
+import { deleteCampaign, getCampaign, setStatus, takeSaveError } from '../../services/aiCampaigns';
 import { decisionsFor, logDecision, purgeCampaign } from '../../services/aiDecisionLog';
 import { purgeLeads } from '../../services/aiDiscovery';
 import { propagatePause } from '../../services/aiRollup';
-import {
-  CAMPAIGN_STATUS_LABEL, DECISION_LABEL, LINK_LABEL,
-  type AICampaign, type AIDecision,
-} from '../../types/aiSalesAgent';
-import { STATUS_TONE, ago, card, ghostBtn, primaryBtn, statusPill } from './ui';
+import { CAMPAIGN_STATUS_LABEL, type AICampaign, type AIDecision } from '../../types/aiSalesAgent';
+import { STATUS_TONE, card, ghostBtn, primaryBtn, statusPill } from './ui';
 import StrategyPanel from './StrategyPanel';
 import LeadsPanel from './LeadsPanel';
 import BuildPanel from './BuildPanel';
 import PerformancePanel from './PerformancePanel';
+import ActivityTab from './ActivityTab';
+import {
+  AppointmentsTab, ContactsTab, EmailTab, Panel, SettingsTab, SmsTab, WorkflowsTab,
+} from './tabs';
+
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'strategy', label: 'Strategy' },
+  { id: 'leads', label: 'Leads' },
+  { id: 'workflows', label: 'Workflows' },
+  { id: 'email', label: 'Email' },
+  { id: 'sms', label: 'SMS' },
+  { id: 'appointments', label: 'Appointments' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'settings', label: 'Settings' },
+] as const;
 
 export default function CampaignDetail() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const { addNotification, sequences, updateSequence } = useApp();
   const [campaign, setCampaign] = useState<AICampaign | null>(() => getCampaign(id));
   const [log, setLog] = useState<AIDecision[]>(() => decisionsFor(id));
+
+  const tab = TABS.some(t => t.id === params.get('tab')) ? params.get('tab')! : 'overview';
+  const goTab = (next: string) => setParams(next === 'overview' ? {} : { tab: next }, { replace: true });
 
   const reload = useCallback(() => {
     setCampaign(getCampaign(id));
@@ -49,22 +61,20 @@ export default function CampaignDetail() {
     if (!setStatus(id, to)) { addNotification(takeSaveError() || 'That could not be saved.', 'error'); return; }
 
     /* Reach into what the campaign created. "Paused" that leaves the sequence
-       sending is a label, not a pause — and stopping a campaign has to stop the
-       sending too, or it keeps emailing people after the customer ended it. */
+       sending is a label, not a pause. */
     let touched: string[] = [];
     if (campaign && (to === 'paused' || to === 'stopped' || to === 'running')) {
-      const r = propagatePause(campaign, { sequences, updateSequence },
-        to === 'running' ? 'active' : 'paused');
+      const r = propagatePause(campaign, { sequences, updateSequence }, to === 'running' ? 'active' : 'paused');
       touched = r.changed;
-      if (r.missing.length) {
-        addNotification(`${r.missing.join(', ')} no longer exists in Marketing`, 'error');
-      }
+      if (r.missing.length) addNotification(`${r.missing.join(', ')} no longer exists in Marketing`, 'error');
     }
 
     logDecision(id, {
       kind: to === 'paused' ? 'pause' : 'plan',
       summary,
-      because: touched.length ? `${because} ${touched.join(', ')} ${touched.length === 1 ? 'was' : 'were'} ${to === 'running' ? 'resumed' : 'paused'} in Marketing too.` : because,
+      because: touched.length
+        ? `${because} ${touched.join(', ')} ${touched.length === 1 ? 'was' : 'were'} ${to === 'running' ? 'resumed' : 'paused'} in Marketing too.`
+        : because,
     });
     reload();
     addNotification(summary);
@@ -121,153 +131,57 @@ export default function CampaignDetail() {
           </button>
         </div>
 
-        <Section title="Objective" note="Kept word for word, so what was asked for can always be checked.">
-          <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65, color: '#1e293b' }}>
-            {campaign.objective || 'No objective was written.'}
-          </p>
-        </Section>
+        {/* Tabs wrap rather than scroll: nine of them will not fit a phone on
+            one line, and a hidden tab is a tab nobody uses. */}
+        <div role="tablist" aria-label="Campaign sections"
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 4, borderBottom: '1px solid #e6e9f0', paddingBottom: 2 }}>
+          {TABS.map(t => {
+            const on = tab === t.id;
+            return (
+              <button key={t.id} role="tab" aria-selected={on} onClick={() => goTab(t.id)} className="press"
+                style={{
+                  padding: '8px 14px', border: 'none', cursor: 'pointer',
+                  borderRadius: '9px 9px 0 0', fontSize: 13,
+                  fontWeight: on ? 700 : 500,
+                  color: on ? '#0f172a' : '#64748b',
+                  backgroundColor: on ? 'white' : 'transparent',
+                  boxShadow: on ? '0 -1px 0 #e6e9f0 inset, 1px 0 0 #e6e9f0 inset, -1px 0 0 #e6e9f0 inset' : 'none',
+                }}>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
 
-        <StrategyPanel campaign={campaign} onChanged={reload} />
+        {tab === 'overview' && (
+          <>
+            <Panel title="Objective" note="Kept word for word, so what was asked for can always be checked.">
+              <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65, color: '#1e293b' }}>
+                {campaign.objective || 'No objective was written.'}
+              </p>
+            </Panel>
+            <PerformancePanel campaign={campaign} />
+            <BuildPanel campaign={campaign} onChanged={reload} />
+          </>
+        )}
 
-        <LeadsPanel campaign={campaign} onChanged={reload} />
+        {tab === 'strategy' && <StrategyPanel campaign={campaign} onChanged={reload} />}
 
-        <BuildPanel campaign={campaign} onChanged={reload} />
+        {tab === 'leads' && (
+          <>
+            <LeadsPanel campaign={campaign} onChanged={reload} />
+            <ContactsTab campaign={campaign} />
+          </>
+        )}
 
-        <PerformancePanel campaign={campaign} />
-
-        <Links campaign={campaign} />
-
-        <Activity log={log} />
+        {tab === 'workflows' && <WorkflowsTab campaign={campaign} />}
+        {tab === 'email' && <EmailTab campaign={campaign} />}
+        {tab === 'sms' && <SmsTab campaign={campaign} />}
+        {tab === 'appointments' && <AppointmentsTab campaign={campaign} />}
+        {tab === 'activity' && <ActivityTab log={log} />}
+        {tab === 'settings' && <SettingsTab campaign={campaign} onChanged={reload} />}
       </div>
     </div>
-  );
-}
-
-/* ── Pieces ────────────────────────────────────────────────────────────── */
-
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
-  return (
-    <section style={{ ...card, padding: 'clamp(16px, 3vw, 22px)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{title}</h2>
-        {note && <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>{note}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Links({ campaign }: { campaign: AICampaign }) {
-  const navigate = useNavigate();
-  const { sequences, contacts } = useApp();
-  const links = campaign.links;
-
-  /* The stored label is a fallback, not the truth. A sequence renamed in
-     Marketing must not keep showing its old name here — that is the same stale
-     copy this whole module is built to avoid, just smaller. */
-  const liveName = useCallback((kind: string, id: string, fallback: string) => {
-    if (kind === 'sequence') return sequences.find(x => x.id === id)?.name ?? fallback;
-    if (kind === 'contact') return contacts.find(x => x.id === id)?.name ?? fallback;
-    return fallback;
-  }, [sequences, contacts]);
-
-  const isGone = useCallback((kind: string, id: string) => {
-    if (kind === 'sequence') return !sequences.some(x => x.id === id);
-    if (kind === 'contact') return !contacts.some(x => x.id === id);
-    return false;
-  }, [sequences, contacts]);
-
-  const grouped = useMemo(() => {
-    const by = new Map<string, AICampaign['links']>();
-    for (const l of links) by.set(l.kind, [...(by.get(l.kind) ?? []), l]);
-    return [...by.entries()];
-  }, [links]);
-
-  return (
-    <Section
-      title="What this campaign created"
-      note="Each of these lives in the module that owns it — open one to edit it there.">
-      {grouped.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>
-          Nothing yet. Records appear here as the agent creates them, each linked to the real
-          sequence, campaign or appointment rather than a copy of it.
-        </p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {grouped.map(([kind, links]) => (
-            <div key={kind} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94a3b8' }}>
-                {LINK_LABEL[kind as keyof typeof LINK_LABEL] ?? kind}
-              </p>
-              {links.map(l => (
-                <button key={`${l.kind}-${l.id}`} className="press"
-                  onClick={() => l.route && navigate(l.route)}
-                  disabled={!l.route}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                    padding: '9px 12px', borderRadius: 9, border: '1px solid #eef1f5',
-                    backgroundColor: '#f8fafc', textAlign: 'left', width: '100%',
-                    cursor: l.route ? 'pointer' : 'default', font: 'inherit',
-                  }}>
-                  <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: isGone(l.kind, l.id) ? '#94a3b8' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {liveName(l.kind, l.id, l.label)}
-                      {isGone(l.kind, l.id) && <span style={{ fontWeight: 500, color: '#b91c1c' }}> · deleted</span>}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{l.id}</span>
-                  </span>
-                  {l.route && <ArrowUpRight size={14} color="#64748b" style={{ flexShrink: 0 }} />}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </Section>
-  );
-}
-
-function Activity({ log }: { log: AIDecision[] }) {
-  /* Newest first on screen. The store keeps them in order, which is what makes
-     "what happened just before this went wrong" answerable. */
-  const rows = useMemo(() => [...log].reverse(), [log]);
-  return (
-    <Section title="What the agent has done" note="Every action, with the reason it acted.">
-      {rows.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13.5, color: '#64748b' }}>Nothing recorded yet.</p>
-      ) : (
-        <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {rows.map(d => (
-            <li key={d.id} style={{ display: 'flex', gap: 11 }}>
-              <span style={{
-                flexShrink: 0, marginTop: 5, width: 7, height: 7, borderRadius: 999,
-                backgroundColor: d.kind === 'error' ? '#dc2626' : '#cbd5e1',
-              }} />
-              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{d.summary}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                    {DECISION_LABEL[d.kind]} · {ago(d.at)}
-                  </span>
-                </div>
-                {d.because && (
-                  <p style={{ margin: 0, fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>{d.because}</p>
-                )}
-                {d.counts && Object.keys(d.counts).length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 2 }}>
-                    {Object.entries(d.counts).map(([k, v]) => (
-                      <span key={k} style={{ fontSize: 11.5, color: '#475569' }}>
-                        <strong style={{ color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{v.toLocaleString()}</strong> {k}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </Section>
   );
 }
 

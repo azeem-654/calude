@@ -98,20 +98,45 @@ export function sequenceView(campaign: AICampaign, api: RollupApi): SequenceView
   });
 }
 
+/**
+ * The people this campaign put into the CRM.
+ *
+ * Matched two ways because both are true and neither is complete on its own: a
+ * contact linked at creation time, and one carrying the campaign id in its
+ * custom fields. A contact deleted from the CRM simply stops appearing.
+ */
+export function campaignContacts(campaign: AICampaign, api: Pick<RollupApi, 'contacts'>): Contact[] {
+  const linked = new Set(campaign.links.filter(l => l.kind === 'contact').map(l => l.id));
+  return api.contacts.filter(c => linked.has(c.id) || c.customFields?.aiCampaignId === campaign.id);
+}
+
+/**
+ * Meetings that came out of this campaign.
+ *
+ * The calendar has no idea a campaign exists, so these are found by matching
+ * the people it created — an appointment by contact id, a booking by the email
+ * address the guest used. Anything booked with someone this campaign never
+ * touched is somebody else's meeting and is left out.
+ */
+export function campaignMeetings(campaign: AICampaign, api: RollupApi): {
+  appointments: Appointment[]; bookings: Booking[];
+} {
+  const mine = campaignContacts(campaign, api);
+  const ids = new Set(mine.map(c => c.id));
+  const emails = new Set(mine.map(c => (c.email || '').toLowerCase()).filter(Boolean));
+  return {
+    appointments: api.appointments.filter(a => a.contactId && ids.has(a.contactId)),
+    bookings: api.bookings.filter(b => emails.has((b.guestEmail || '').toLowerCase())),
+  };
+}
+
 export function rollup(campaign: AICampaign, api: RollupApi): Rollup {
   const seqs = sequenceView(campaign, api);
   const leads = leadStats(leadsFor(campaign.id));
   const caveats: string[] = [];
 
-  const contactIds = new Set(campaign.links.filter(l => l.kind === 'contact').map(l => l.id));
-  const mineContacts = api.contacts.filter(c => contactIds.has(c.id) || c.customFields?.aiCampaignId === campaign.id);
-  const contactIdSet = new Set(mineContacts.map(c => c.id));
-
-  /* Appointments and bookings are counted by matching the people this campaign
-     put into the CRM, because the calendar has no idea a campaign exists. */
-  const appts = api.appointments.filter(a => a.contactId && contactIdSet.has(a.contactId));
-  const emails = new Set(mineContacts.map(c => (c.email || '').toLowerCase()).filter(Boolean));
-  const books = api.bookings.filter(b => emails.has((b.guestEmail || '').toLowerCase()));
+  const mineContacts = campaignContacts(campaign, api);
+  const { appointments: appts, bookings: books } = campaignMeetings(campaign, api);
 
   const sent = seqs.reduce((n, s) => n + s.sent, 0);
   const opened = seqs.reduce((n, s) => n + s.opened, 0);
