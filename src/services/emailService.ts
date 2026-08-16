@@ -1,3 +1,5 @@
+import { sessionToken } from './auth';
+
 export interface EmailProviderConfig {
   provider: 'smtp' | 'mailtrap' | 'resend' | 'activecampaign' | 'none';
   apiKey: string;
@@ -88,6 +90,7 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          token: sessionToken(),
           host: smtpCfg.host, port: smtpCfg.port, username: smtpCfg.user,
           password: smtpCfg.pass, encryption: smtpCfg.encryption,
           fromName: config.fromName || smtpCfg.fromName,

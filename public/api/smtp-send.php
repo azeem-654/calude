@@ -6,7 +6,10 @@ header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
+require_once __DIR__ . '/_db.php';
+
 $data      = json_decode(file_get_contents('php://input'), true) ?? [];
+crm_require_session_for_socket($data['token'] ?? '');
 $host      = trim($data['host']      ?? '');
 $port      = intval($data['port']    ?? 587);
 $user      = trim($data['username']  ?? '');

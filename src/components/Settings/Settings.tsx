@@ -12,6 +12,7 @@ import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
 import SMTPWizard from './SMTPWizard';
+import DiagnosticsCard from './DiagnosticsCard';
 import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
 /* ─── helpers ─── */
@@ -499,6 +500,9 @@ function EmailSMSTab() {
 
       {/* Mailbox Warmup */}
       <MailboxWarmupCard />
+
+      {/* What this server can actually do */}
+      <DiagnosticsCard />
 
       {card(
         <>

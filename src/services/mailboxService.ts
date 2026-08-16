@@ -7,6 +7,8 @@
  * a realistic demo inbox is returned so the UI is always usable.
  */
 
+import { sessionToken } from './auth';
+
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /* ─── Types ─── */
@@ -182,6 +184,7 @@ export async function fetchInbox(mb: Mailbox, limit = 20): Promise<{ ok: boolean
     const resp = await fetch(`${API_BASE}/api/imap-fetch.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        token: sessionToken(),
         host: mb.imapHost, port: mb.imapPort, encryption: mb.imapEncryption,
         username: mb.imapUser, password: mb.imapPassword, folder: 'INBOX', limit,
       }),

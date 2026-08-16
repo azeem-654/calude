@@ -34,6 +34,15 @@ interface LocalUser extends AuthUser { password: string; }
 export function getSession(): Session | null {
   try { return JSON.parse(window.localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
 }
+/**
+ * The token to send with any request the server authenticates — notably the
+ * endpoints that open an outbound socket (SMTP send/test, IMAP fetch,
+ * diagnostics), which refuse anonymous callers once an owner account exists.
+ */
+export function sessionToken(): string {
+  return getSession()?.token ?? '';
+}
+
 function setSession(s: Session | null) {
   if (s) window.localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   else window.localStorage.removeItem(SESSION_KEY);

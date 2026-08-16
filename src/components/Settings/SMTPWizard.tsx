@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle, XCircle, Loader, Eye, EyeOff, Send, RefreshCw, ChevronRight, ChevronLeft, Mail, Inbox, Wifi, WifiOff, AlertCircle, Info, Pencil } from 'lucide-react';
 
+import { sessionToken } from '../../services/auth';
+
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /* ── types ── */
@@ -180,7 +182,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
     try {
       const r = await fetch(`${API_BASE}/api/smtp-test.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
+        body: JSON.stringify({ token: sessionToken(), host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
       });
       const d = await r.json() as { success: boolean; message: string; note?: string; suggestions?: string[] };
       setSmtpState(d.success ? 'ok' : 'fail');
@@ -193,13 +195,34 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
     }
   };
 
+  /* This used to wait 1.2 seconds and report "credentials look valid" whenever
+     the three boxes were non-empty — it never opened a connection, so a wrong
+     password passed. It now actually signs in to the mailbox. */
   const testIMAP = async () => {
-    if (!imap.host) { setImapState('fail'); setImapMsg('No IMAP host configured'); return; }
+    if (!imap.host || !imap.user || !imap.pass) {
+      setImapState('fail'); setImapMsg('Fill in IMAP host, username, and password'); return;
+    }
     setImapState('running'); setImapMsg('');
-    await new Promise(r => setTimeout(r, 1200));
-    const filled = imap.host && imap.user && imap.pass;
-    setImapState(filled ? 'ok' : 'fail');
-    setImapMsg(filled ? `IMAP ${imap.host}:${imap.port} credentials look valid` : 'Fill in IMAP host, username, and password');
+    try {
+      const r = await fetch(`${API_BASE}/api/imap-fetch.php`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: sessionToken(),
+          host: imap.host, port: parseInt(imap.port) || 993,
+          /* 993 is implicit TLS; 143 upgrades with STARTTLS. */
+          encryption: (parseInt(imap.port) || 993) === 143 ? 'tls' : 'ssl',
+          username: imap.user, password: imap.pass, folder: imap.folder || 'INBOX', limit: 1,
+        }),
+      });
+      const d = await r.json() as { success: boolean; error?: string; messages?: unknown[] };
+      setImapState(d.success ? 'ok' : 'fail');
+      setImapMsg(d.success
+        ? `Signed in to ${imap.host}:${imap.port} — ${imap.folder || 'INBOX'} is readable`
+        : d.error || 'Could not sign in to the mailbox');
+    } catch {
+      setImapState('fail');
+      setImapMsg('Cannot reach the IMAP endpoint. Check that the PHP backend is deployed.');
+    }
   };
 
   const sendTestEmail = async () => {
@@ -209,6 +232,7 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
       const r = await fetch(`${API_BASE}/api/smtp-send.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          token: sessionToken(),
           host: smtp.host, port: smtp.port, username: smtp.user, password: smtp.pass,
           secure: smtp.encryption === 'ssl', encryption: smtp.encryption,
           fromName: smtp.fromName || 'CRMPro',
@@ -391,7 +415,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
     try {
       const r = await fetch(`${API_BASE}/api/smtp-test.php`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
+        body: JSON.stringify({ token: sessionToken(), host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
       });
       const d = await r.json() as { success: boolean; message: string; note?: string; suggestions?: string[] };
       setTestState(d.success ? 'ok' : 'fail');

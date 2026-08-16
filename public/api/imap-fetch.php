@@ -16,12 +16,16 @@ header('Access-Control-Allow-Headers: Content-Type');
 header('Vary: Origin');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
+require_once __DIR__ . '/_db.php';
+
+$d = json_decode(file_get_contents('php://input'), true) ?? [];
+crm_require_session_for_socket($d['token'] ?? '');
+
 if (!function_exists('imap_open')) {
     echo json_encode(['success' => false, 'error' => 'The PHP IMAP extension is not enabled on this server.']);
     exit;
 }
 
-$d        = json_decode(file_get_contents('php://input'), true) ?? [];
 $host     = trim($d['host']       ?? '');
 $port     = intval($d['port']     ?? 993);
 $enc      = $d['encryption']      ?? 'ssl';
@@ -39,12 +43,23 @@ $flags = '/imap';
 if ($enc === 'ssl') $flags .= '/ssl';
 elseif ($enc === 'tls') $flags .= '/tls';
 else $flags .= '/notls';
-$flags .= '/novalidate-cert';
+/* Certificates are verified. This used to send /novalidate-cert always, which
+   accepts any certificate at all — anyone able to answer for the mail host gets
+   the mailbox password and every message in the account. Opt out only for a
+   self-signed server you run yourself, exactly as smtp-test.php does. */
+$flags .= !empty($d['allowInsecure']) ? '/novalidate-cert' : '/validate-cert';
 $mailboxStr = '{' . $host . ':' . $port . $flags . '}' . $folder;
 
 $imap = @imap_open($mailboxStr, $user, $pass, 0, 1);
 if (!$imap) {
-    echo json_encode(['success' => false, 'error' => 'Could not connect: ' . imap_last_error()]);
+    $why = imap_last_error();
+    /* Name the cause, because "certificate failure" against a real provider
+       usually means the host name does not match the certificate, not that the
+       mailbox is misconfigured. */
+    $hint = stripos((string)$why, 'certificate') !== false
+        ? ' — the server\'s TLS certificate could not be verified. Check the host name matches the certificate (often mail.yourdomain.com vs the provider\'s own host).'
+        : '';
+    echo json_encode(['success' => false, 'error' => 'Could not connect: ' . $why . $hint]);
     exit;
 }
 

@@ -168,6 +168,43 @@ function crm_user_from_token($token) {
     return null;
 }
 
+/** True once this install has at least one real account. */
+function crm_has_accounts() {
+    $db = crm_store_load('users', null);
+    return is_array($db) && !empty($db['users']);
+}
+
+/**
+ * Gate for the endpoints that open an outbound socket to a host the caller
+ * names — smtp-send, smtp-test, imap-fetch, diagnostics.
+ *
+ * Unauthenticated, those are a probe for whatever the hosting network can
+ * reach, a way to test stolen mail credentials from someone else's IP, and a
+ * relay that sends mail with this server's address on it. None of that needs
+ * an account here, only the URL.
+ *
+ * A server with no accounts yet is a fresh install with nothing to protect and
+ * nobody to authenticate against, so the setup wizard still works. The moment
+ * an owner exists, a valid session is required.
+ *
+ * Exits with 401 on failure; returns the user (or null on an empty install).
+ */
+function crm_require_session_for_socket($token) {
+    if (!crm_has_accounts()) return null;
+    $user = crm_user_from_token($token);
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Sign in again — this action needs a current session.',
+            'message' => 'Sign in again — this action needs a current session.',
+            'code'    => 'unauthorised',
+        ]);
+        exit;
+    }
+    return $user;
+}
+
 /** Agency can touch any account; clients only their own. */
 function crm_can_access($user, $accountId) {
     if (!$user) return false;
