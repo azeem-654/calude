@@ -92,6 +92,15 @@ jobs:
             **/.git*/**
             **/node_modules/**
             **/*.map
+            # Runtime state that lives on the server, not in a build. Both sit
+            # inside public/, so Vite copies whatever a local run left behind
+            # into dist/ — without these, a deploy from a machine that has ever
+            # run the app locally overwrites the live Stripe/DB credentials and
+            # every real account, session and booking. The .htaccess guard in
+            # api/data/ is not excluded, so a fresh host still gets it.
+            api/config.php
+            api/data/*.php
+            api/data/*.json
 
       - name: Wait before retry
         if: steps.ftp1.outcome == 'failure'
@@ -118,6 +127,15 @@ jobs:
             **/.git*/**
             **/node_modules/**
             **/*.map
+            # Runtime state that lives on the server, not in a build. Both sit
+            # inside public/, so Vite copies whatever a local run left behind
+            # into dist/ — without these, a deploy from a machine that has ever
+            # run the app locally overwrites the live Stripe/DB credentials and
+            # every real account, session and booking. The .htaccess guard in
+            # api/data/ is not excluded, so a fresh host still gets it.
+            api/config.php
+            api/data/*.php
+            api/data/*.json
 
       - name: Wait before final retry
         if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
@@ -142,6 +160,15 @@ jobs:
             **/.git*/**
             **/node_modules/**
             **/*.map
+            # Runtime state that lives on the server, not in a build. Both sit
+            # inside public/, so Vite copies whatever a local run left behind
+            # into dist/ — without these, a deploy from a machine that has ever
+            # run the app locally overwrites the live Stripe/DB credentials and
+            # every real account, session and booking. The .htaccess guard in
+            # api/data/ is not excluded, so a fresh host still gets it.
+            api/config.php
+            api/data/*.php
+            api/data/*.json
 
       # ── 7. Reachability probe ────────────────────────────────────────────────
       # An FTP upload only proves port 21 answered. This checks the site the way
