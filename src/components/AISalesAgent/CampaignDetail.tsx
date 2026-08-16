@@ -26,6 +26,7 @@ import {
   type AICampaign, type AIDecision,
 } from '../../types/aiSalesAgent';
 import { STATUS_TONE, ago, card, ghostBtn, primaryBtn, statusPill } from './ui';
+import StrategyPanel from './StrategyPanel';
 
 export default function CampaignDetail() {
   const { id = '' } = useParams();
@@ -102,7 +103,7 @@ export default function CampaignDetail() {
           </p>
         </Section>
 
-        <Strategy campaign={campaign} />
+        <StrategyPanel campaign={campaign} onChanged={reload} />
 
         <Links campaign={campaign} />
 
@@ -123,52 +124,6 @@ function Section({ title, note, children }: { title: string; note?: string; chil
       </div>
       {children}
     </section>
-  );
-}
-
-function Strategy({ campaign }: { campaign: AICampaign }) {
-  const s = campaign.strategy;
-  if (!s) {
-    return (
-      <Section title="Strategy">
-        <p style={{ margin: 0, fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>
-          Nothing planned yet. The agent has the objective and has not worked out an approach for it.
-        </p>
-      </Section>
-    );
-  }
-  return (
-    <Section
-      title="Strategy"
-      note={s.generatedBy === 'fallback'
-        ? 'Worked out from the objective without an AI model — check it against what you meant.'
-        : undefined}>
-      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.65, color: '#1e293b' }}>{s.summary}</p>
-      <dl style={{ margin: 0, display: 'grid', gap: '8px 18px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))' }}>
-        <Fact label="Who" value={s.icp.description} />
-        <Fact label="Offer" value={[s.offer.what, s.offer.priceHint].filter(Boolean).join(' · ')} />
-        <Fact label="Channels" value={s.channels.join(', ')} />
-        <Fact label="Follow-ups" value={`${s.cadence.followUps}, every ${s.cadence.intervalDays} days`} />
-        <Fact label="Target" value={s.targetCount.toLocaleString()} />
-      </dl>
-      {s.rationale.length > 0 && (
-        <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {s.rationale.map((r, i) => (
-            <li key={i} style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>{r}</li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  if (!value) return null;
-  return (
-    <div>
-      <dt style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94a3b8' }}>{label}</dt>
-      <dd style={{ margin: '2px 0 0', fontSize: 13, color: '#1e293b', lineHeight: 1.5 }}>{value}</dd>
-    </div>
   );
 }
 

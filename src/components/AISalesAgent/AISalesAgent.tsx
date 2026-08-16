@@ -26,6 +26,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'running', label: 'Running' },
   { id: 'awaiting-approval', label: 'Waiting for approval' },
+  { id: 'ready', label: 'Ready to run' },
   { id: 'draft', label: 'Drafts' },
   { id: 'paused', label: 'Paused' },
   { id: 'completed', label: 'Completed' },

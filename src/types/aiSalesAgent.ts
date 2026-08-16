@@ -15,6 +15,12 @@ export type AICampaignStatus =
   | 'draft'
   /** A strategy has been proposed and is waiting to be read. */
   | 'awaiting-approval'
+  /**
+   * The plan is agreed but nothing has been built from it yet. A separate state
+   * from 'running' because saying a campaign is running while no message has
+   * been created is the kind of small lie that makes the rest untrustworthy.
+   */
+  | 'ready'
   /** Approved and executing through the other modules. */
   | 'running'
   /** Held. Everything it created is held too. */
@@ -27,6 +33,7 @@ export type AICampaignStatus =
 export const CAMPAIGN_STATUS_LABEL: Record<AICampaignStatus, string> = {
   draft: 'Draft',
   'awaiting-approval': 'Waiting for approval',
+  ready: 'Ready to run',
   running: 'Running',
   paused: 'Paused',
   completed: 'Completed',

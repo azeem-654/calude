@@ -39,6 +39,7 @@ export interface Tone { fg: string; bg: string }
 export const STATUS_TONE: Record<AICampaignStatus, Tone> = {
   draft:               { fg: '#64748b', bg: '#f1f5f9' },
   'awaiting-approval': { fg: '#b45309', bg: '#fef3c7' },
+  ready:               { fg: '#0369a1', bg: '#e0f2fe' },
   running:             { fg: '#15803d', bg: '#dcfce7' },
   paused:              { fg: '#a16207', bg: '#fef9c3' },
   completed:           { fg: '#1d4ed8', bg: '#dbeafe' },
