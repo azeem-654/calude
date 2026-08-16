@@ -220,3 +220,67 @@ export interface AIDecision {
   /** Figures worth showing alongside, e.g. { found: 87, qualified: 52 }. */
   counts?: Record<string, number>;
 }
+
+/* ── Leads ─────────────────────────────────────────────────────────────── */
+
+/** Where a prospect came from. Never inferred — recorded by whatever found it. */
+export type LeadSource = 'google-places' | 'crm' | 'csv';
+
+export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
+  'google-places': 'Google Places',
+  crm: 'Your contacts',
+  csv: 'Imported list',
+};
+
+/**
+ * One ICP signal, checked against what is actually known about a business.
+ *
+ * `unknown` is a first-class answer and the most important one. A directory
+ * listing says nothing about whether a clinic can afford three thousand a
+ * month, and scoring that as a pass — or quietly leaving it out — turns a guess
+ * into a qualification. It is reported as unanswerable instead.
+ */
+export interface SignalCheck {
+  signal: string;
+  verdict: 'met' | 'not-met' | 'unknown';
+  /** What the answer rests on, in words a person can check. */
+  evidence: string;
+}
+
+export interface LeadQualification {
+  /** 0–100 over the signals that could actually be checked. Derived, not measured. */
+  score: number;
+  checks: SignalCheck[];
+  /** The channels this lead could genuinely be reached on, given what is known. */
+  contactable: AIChannel[];
+  at: string;
+}
+
+export type LeadStatus = 'new' | 'qualified' | 'rejected' | 'promoted';
+
+export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
+  new: 'Not yet checked',
+  qualified: 'Qualified',
+  rejected: 'Does not match',
+  promoted: 'Added to contacts',
+};
+
+export interface AILead {
+  id: string;
+  campaignId: string;
+  name: string;
+  source: LeadSource;
+  /** The id in the source system, so the same business is never added twice. */
+  sourceRef?: string;
+  address?: string;
+  phone?: string;
+  website?: string;
+  email?: string;
+  rating?: number;
+  ratingCount?: number;
+  /** Google's word for whether the place is still trading. */
+  businessStatus?: string;
+  status: LeadStatus;
+  qualification?: LeadQualification;
+  createdAt: string;
+}

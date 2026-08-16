@@ -21,12 +21,14 @@ import {
   deleteCampaign, getCampaign, setStatus, takeSaveError,
 } from '../../services/aiCampaigns';
 import { decisionsFor, logDecision, purgeCampaign } from '../../services/aiDecisionLog';
+import { purgeLeads } from '../../services/aiDiscovery';
 import {
   CAMPAIGN_STATUS_LABEL, DECISION_LABEL, LINK_LABEL,
   type AICampaign, type AIDecision,
 } from '../../types/aiSalesAgent';
 import { STATUS_TONE, ago, card, ghostBtn, primaryBtn, statusPill } from './ui';
 import StrategyPanel from './StrategyPanel';
+import LeadsPanel from './LeadsPanel';
 
 export default function CampaignDetail() {
   const { id = '' } = useParams();
@@ -51,6 +53,7 @@ export default function CampaignDetail() {
     if (!window.confirm(`Delete ${id}?\n\nThe campaign record goes. Anything it created — sequences, contacts, appointments — stays in the module that owns it.`)) return;
     deleteCampaign(id);
     purgeCampaign(id);
+    purgeLeads(id);
     addNotification(`${id} deleted`);
     navigate('/ai-sales-agent');
   };
@@ -104,6 +107,8 @@ export default function CampaignDetail() {
         </Section>
 
         <StrategyPanel campaign={campaign} onChanged={reload} />
+
+        <LeadsPanel campaign={campaign} onChanged={reload} />
 
         <Links campaign={campaign} />
 

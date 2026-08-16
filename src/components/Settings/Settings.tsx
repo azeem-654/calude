@@ -13,6 +13,7 @@ import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
 import SMTPWizard from './SMTPWizard';
 import DiagnosticsCard from './DiagnosticsCard';
+import ProspectSearchCard from './ProspectSearchCard';
 import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
 /* ─── helpers ─── */
@@ -500,6 +501,9 @@ function EmailSMSTab() {
 
       {/* Mailbox Warmup */}
       <MailboxWarmupCard />
+
+      {/* Prospect search for the AI Sales Agent */}
+      <ProspectSearchCard />
 
       {/* What this server can actually do */}
       <DiagnosticsCard />
