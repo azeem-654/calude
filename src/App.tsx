@@ -8,6 +8,7 @@ import { getActiveAccountId, setActiveAccountId, activeBranding } from './servic
 import { initCloudSync } from './services/serverData';
 import { Layers, Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
+import DueWorkRunner from './components/shared/DueWorkRunner';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import Conversations from './components/Conversations/Conversations';
@@ -69,6 +70,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
     <div style={{ minHeight: '100vh', backgroundColor: '#e9ebee' }}>
       <TopNav />
       <IconRail />
+      <DueWorkRunner />
       <main style={{ minHeight: 'calc(100vh - 68px)', paddingLeft: 62 }}>
         {/* Keyed on the path so moving to another screen clears a crash rather
             than trapping the user on the error page. */}

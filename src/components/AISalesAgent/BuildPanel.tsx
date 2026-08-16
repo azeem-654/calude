@@ -14,6 +14,7 @@ import { setStatus } from '../../services/aiCampaigns';
 import { buildCampaign, previewBuild } from '../../services/aiOrchestrator';
 import type { AICampaign } from '../../types/aiSalesAgent';
 import { activeBranding } from '../../services/tenancy';
+import { describeReach } from '../../services/dueWork';
 import { card, ghostBtn, primaryBtn } from './ui';
 
 export default function BuildPanel({ campaign, onChanged }: { campaign: AICampaign; onChanged: () => void }) {
@@ -85,6 +86,9 @@ export default function BuildPanel({ campaign, onChanged }: { campaign: AICampai
               ))}
             </div>
           )}
+          {/* Anyone planning "three follow-ups, three days apart" is owed the
+              truth about when those actually leave. */}
+          <p style={{ margin: 0, fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6 }}>{describeReach()}</p>
         </>
       )}
 

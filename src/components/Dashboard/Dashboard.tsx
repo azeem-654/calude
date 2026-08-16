@@ -12,7 +12,7 @@ import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { loadOnboarding } from '../../services/onboarding';
 import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
-import { processScheduled, processSequences, syncTracking, sendToContact } from '../../services/contactEmail';
+import { sendToContact } from '../../services/contactEmail';
 import { runBehaviourTriggers, moveDealToStage, findDeal } from '../../services/contactDeals';
 import { dueReminders, planFollowUps } from '../../services/contactScheduling';
 import { runQueuePass, loadJob } from '../../services/verifyQueue';
@@ -433,7 +433,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
 
 /* ── Main dashboard ── */
 export default function Dashboard() {
-  const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, videoProjects, socialPosts, addNotification, addSequence, addCampaign, addSocialPost, sequences, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
+  const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, videoProjects, socialPosts, addNotification, addSequence, addCampaign, addSocialPost, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -448,15 +448,10 @@ export default function Dashboard() {
     registerPublishApi({ addSequence, addCampaign, addSocialPost });
     resumePendingGeneration(addNotification);
 
-    // Email background work: send anything due, advance sequences, and pull in
-    // opens/clicks recorded by the tracking endpoint.
-    void (async () => {
-      const sent = await processScheduled(contacts);
-      const seq = await processSequences(contacts, sequences);
-      await syncTracking();
-      if (sent) addNotification(`${sent} scheduled email${sent > 1 ? 's' : ''} sent`, 'info');
-      if (seq) addNotification(`${seq} sequence email${seq > 1 ? 's' : ''} sent`, 'info');
-    })();
+    // Email background work now runs on a tick from the app shell (see
+    // DueWorkRunner), so it advances on every screen rather than only when
+    // somebody happens to open this one. Running it here as well would mean two
+    // passes racing for the same due message.
 
     // Behaviour triggers: let what contacts actually did move their deals.
     const beh = runBehaviourTriggers(pipelines, contacts);
