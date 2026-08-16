@@ -14,6 +14,8 @@ import Conversations from './components/Conversations/Conversations';
 import CalendarView from './components/Calendar/CalendarView';
 import Pipelines from './components/Pipelines/Pipelines';
 import Marketing from './components/Marketing/Marketing';
+import AISalesAgent from './components/AISalesAgent/AISalesAgent';
+import CampaignDetail from './components/AISalesAgent/CampaignDetail';
 import Funnels from './components/Funnels/Funnels';
 import Websites from './components/Websites/Websites';
 import SitePreview from './components/Websites/SitePreview';
@@ -78,6 +80,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/calendar" element={<CalendarView />} />
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/marketing" element={<Marketing />} />
+          <Route path="/ai-sales-agent" element={<AISalesAgent />} />
+          <Route path="/ai-sales-agent/:id" element={<CampaignDetail />} />
           <Route path="/funnels" element={<Funnels />} />
           <Route path="/blog-automation" element={<BlogAutomation />} />
           <Route path="/websites" element={<Websites />} />

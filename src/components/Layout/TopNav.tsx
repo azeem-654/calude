@@ -19,6 +19,7 @@ const PRIMARY_NAV = [
   { path: '/scheduling',    label: 'Scheduling' },
   { path: '/pipelines',     label: 'Pipelines' },
   { path: '/marketing',     label: 'Marketing' },
+  { path: '/ai-sales-agent', label: 'AI Sales Agent' },
   { path: '/funnels',       label: 'Funnels' },
   { path: '/analytics',     label: 'Reports' },
 ];
@@ -144,20 +145,30 @@ export default function TopNav() {
       {/*
         Nav pills — white capsule segmented control.
 
-        Nine no-wrap pills come to roughly 700px, wider than any phone. The
-        narrow-screen behaviour lives in index.css rather than here, because it
-        needs a media query and an inline style cannot hold one — which is the
-        same reason the rest of this app does not adapt to a phone at all.
+        The links scroll sideways inside their own strip; "More" sits outside
+        it. That split matters: the dropdown is absolutely positioned, so while
+        it lived in the same box as the links there was no way to scroll one
+        axis without clipping the panel on the other — and the links simply
+        overflowed instead. Ten pills come to about 970px, which is wider than
+        the space the header can give them on anything but a large monitor, so
+        without this the last two sat underneath the icon buttons and could not
+        be clicked at all.
 
-        They wrap rather than scroll: the "More" dropdown is absolutely
-        positioned inside this element, and an overflow-x container would clip
-        it. There is no way to scroll one axis and not clip the other.
+        The narrow-screen behaviour lives in index.css rather than here, because
+        it needs a media query and an inline style cannot hold one.
       */}
       <nav className="nav-pills" style={{
         display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
         margin: '0 auto', padding: 4, borderRadius: 999,
         backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
       }}>
+        {/* Vertical padding, cancelled by the margin, so the active pill's drop
+            shadow is not sheared off by the scroll container. */}
+        <div className="nav-scroll" style={{
+          display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
+          overflowX: 'auto', overflowY: 'hidden',
+          padding: '6px 0', margin: '-6px 0',
+        }}>
         {PRIMARY_NAV.map(item => (
           <NavLink
             key={item.path}
@@ -177,9 +188,10 @@ export default function TopNav() {
             {item.label}
           </NavLink>
         ))}
+        </div>
 
-        {/* More dropdown */}
-        <div ref={moreRef} style={{ position: 'relative' }}>
+        {/* More dropdown — outside the scroller, so its panel is not clipped. */}
+        <div ref={moreRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button
             onClick={() => setMoreOpen(v => !v)}
             className={`pill-link${moreActive ? ' pill-active' : ''}`}
