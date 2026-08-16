@@ -105,7 +105,10 @@ $suggestions = [];
 if (strpos($smtpError, 'Cannot connect') !== false || strpos($smtpError, 'blocked') !== false) {
     $suggestions[] = 'Outbound SMTP ports may be blocked — emails will still send via server mail relay automatically';
     $suggestions[] = "Try port 465 with SSL encryption instead of port {$port}";
-    $suggestions[] = 'For Freehostia/cPanel: use mail.' . preg_replace('/^mail\./', '', $host) . ' port 465 SSL';
+    // Freehostia puts every mailbox on one fixed host — mail.<yourdomain> is
+    // not it, and pointing people there is why this used to fail for them.
+    $suggestions[] = 'On Freehostia: host mbox.freehostia.com, port 465 with SSL (or 587), username = the full email address';
+    $suggestions[] = 'On other cPanel hosts: usually mail.' . preg_replace('/^mail\./', '', $host) . ' port 465 SSL';
 }
 if (strpos($smtpError, 'Auth failed') !== false || strpos($smtpError, 'check username') !== false) {
     $suggestions[] = 'Verify the email account password (not the cPanel hosting password)';
