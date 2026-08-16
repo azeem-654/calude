@@ -22,6 +22,7 @@ import {
 } from '../../services/aiCampaigns';
 import { decisionsFor, logDecision, purgeCampaign } from '../../services/aiDecisionLog';
 import { purgeLeads } from '../../services/aiDiscovery';
+import { propagatePause } from '../../services/aiRollup';
 import {
   CAMPAIGN_STATUS_LABEL, DECISION_LABEL, LINK_LABEL,
   type AICampaign, type AIDecision,
@@ -30,11 +31,12 @@ import { STATUS_TONE, ago, card, ghostBtn, primaryBtn, statusPill } from './ui';
 import StrategyPanel from './StrategyPanel';
 import LeadsPanel from './LeadsPanel';
 import BuildPanel from './BuildPanel';
+import PerformancePanel from './PerformancePanel';
 
 export default function CampaignDetail() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { addNotification } = useApp();
+  const { addNotification, sequences, updateSequence } = useApp();
   const [campaign, setCampaign] = useState<AICampaign | null>(() => getCampaign(id));
   const [log, setLog] = useState<AIDecision[]>(() => decisionsFor(id));
 
@@ -45,7 +47,25 @@ export default function CampaignDetail() {
 
   const move = (to: AICampaign['status'], summary: string, because: string) => {
     if (!setStatus(id, to)) { addNotification(takeSaveError() || 'That could not be saved.', 'error'); return; }
-    logDecision(id, { kind: to === 'paused' ? 'pause' : 'plan', summary, because });
+
+    /* Reach into what the campaign created. "Paused" that leaves the sequence
+       sending is a label, not a pause — and stopping a campaign has to stop the
+       sending too, or it keeps emailing people after the customer ended it. */
+    let touched: string[] = [];
+    if (campaign && (to === 'paused' || to === 'stopped' || to === 'running')) {
+      const r = propagatePause(campaign, { sequences, updateSequence },
+        to === 'running' ? 'active' : 'paused');
+      touched = r.changed;
+      if (r.missing.length) {
+        addNotification(`${r.missing.join(', ')} no longer exists in Marketing`, 'error');
+      }
+    }
+
+    logDecision(id, {
+      kind: to === 'paused' ? 'pause' : 'plan',
+      summary,
+      because: touched.length ? `${because} ${touched.join(', ')} ${touched.length === 1 ? 'was' : 'were'} ${to === 'running' ? 'resumed' : 'paused'} in Marketing too.` : because,
+    });
     reload();
     addNotification(summary);
   };
@@ -113,6 +133,8 @@ export default function CampaignDetail() {
 
         <BuildPanel campaign={campaign} onChanged={reload} />
 
+        <PerformancePanel campaign={campaign} />
+
         <Links campaign={campaign} />
 
         <Activity log={log} />
@@ -137,7 +159,24 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 
 function Links({ campaign }: { campaign: AICampaign }) {
   const navigate = useNavigate();
+  const { sequences, contacts } = useApp();
   const links = campaign.links;
+
+  /* The stored label is a fallback, not the truth. A sequence renamed in
+     Marketing must not keep showing its old name here — that is the same stale
+     copy this whole module is built to avoid, just smaller. */
+  const liveName = useCallback((kind: string, id: string, fallback: string) => {
+    if (kind === 'sequence') return sequences.find(x => x.id === id)?.name ?? fallback;
+    if (kind === 'contact') return contacts.find(x => x.id === id)?.name ?? fallback;
+    return fallback;
+  }, [sequences, contacts]);
+
+  const isGone = useCallback((kind: string, id: string) => {
+    if (kind === 'sequence') return !sequences.some(x => x.id === id);
+    if (kind === 'contact') return !contacts.some(x => x.id === id);
+    return false;
+  }, [sequences, contacts]);
+
   const grouped = useMemo(() => {
     const by = new Map<string, AICampaign['links']>();
     for (const l of links) by.set(l.kind, [...(by.get(l.kind) ?? []), l]);
@@ -171,7 +210,10 @@ function Links({ campaign }: { campaign: AICampaign }) {
                     cursor: l.route ? 'pointer' : 'default', font: 'inherit',
                   }}>
                   <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: isGone(l.kind, l.id) ? '#94a3b8' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {liveName(l.kind, l.id, l.label)}
+                      {isGone(l.kind, l.id) && <span style={{ fontWeight: 500, color: '#b91c1c' }}> · deleted</span>}
+                    </span>
                     <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{l.id}</span>
                   </span>
                   {l.route && <ArrowUpRight size={14} color="#64748b" style={{ flexShrink: 0 }} />}
