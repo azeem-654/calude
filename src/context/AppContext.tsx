@@ -29,10 +29,10 @@ interface AppContextType {
   reviews: Review[];
   sequences: EmailSequence[];
   automations: Automation[];
-  addContact: (contact: Omit<Contact, 'id'>) => void;
+  addContact: (contact: Omit<Contact, 'id'>) => Contact;
   updateContact: (id: string, updates: Partial<Contact>) => void;
   deleteContact: (id: string) => void;
-  bulkImportContacts: (contacts: Omit<Contact, 'id'>[]) => void;
+  bulkImportContacts: (contacts: Omit<Contact, 'id'>[]) => Contact[];
   addConversation: (conv: Omit<Conversation, 'id'>) => void;
   sendMessage: (conversationId: string, content: string) => void;
   updateConversationStatus: (id: string, status: Conversation['status']) => void;
@@ -176,10 +176,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   /* ── Contacts ── */
-  const addContact = (contact: Omit<Contact, 'id'>) => {
-    const c = { ...contact, id: `c-${Date.now()}` };
+  const addContact = (contact: Omit<Contact, 'id'>): Contact => {
+    /* The suffix is not decoration: an id built from the clock alone is the
+       same id for every contact created inside one millisecond, and anything
+       adding several at once ends up with one contact wearing many names. */
+    const c = { ...contact, id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
     setContacts(prev => { const next = [c, ...prev]; saveLS('crm_contacts', next); return next; });
     notify(`Contact "${contact.name}" added`);
+    return c;
   };
   const updateContact = (id: string, updates: Partial<Contact>) => {
     setContacts(prev => { const next = prev.map(c => c.id === id ? { ...c, ...updates } : c); saveLS('crm_contacts', next); return next; });
@@ -189,9 +193,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setContacts(prev => { const next = prev.filter(c => c.id !== id); saveLS('crm_contacts', next); return next; });
     notify('Contact deleted', 'info');
   };
-  const bulkImportContacts = (newContacts: Omit<Contact, 'id'>[]) => {
-    const withIds = newContacts.map((c, i) => ({ ...c, id: `imp-${Date.now()}-${i}` }));
+  const bulkImportContacts = (newContacts: Omit<Contact, 'id'>[]): Contact[] => {
+    const stamp = Date.now();
+    const withIds = newContacts.map((c, i) => ({ ...c, id: `imp-${stamp}-${i}` }));
     setContacts(prev => { const next = [...withIds, ...prev]; saveLS('crm_contacts', next); return next; });
+    /* Returned so a caller can act on what it just created — enrolling a
+       contact needs its id, and re-reading state here would come back stale. */
+    return withIds;
   };
   const addCustomFieldDefs = (defs: CustomFieldDef[]) => {
     if (!defs.length) return;

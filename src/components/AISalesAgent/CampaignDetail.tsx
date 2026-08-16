@@ -29,6 +29,7 @@ import {
 import { STATUS_TONE, ago, card, ghostBtn, primaryBtn, statusPill } from './ui';
 import StrategyPanel from './StrategyPanel';
 import LeadsPanel from './LeadsPanel';
+import BuildPanel from './BuildPanel';
 
 export default function CampaignDetail() {
   const { id = '' } = useParams();
@@ -109,6 +110,8 @@ export default function CampaignDetail() {
         <StrategyPanel campaign={campaign} onChanged={reload} />
 
         <LeadsPanel campaign={campaign} onChanged={reload} />
+
+        <BuildPanel campaign={campaign} onChanged={reload} />
 
         <Links campaign={campaign} />
 
