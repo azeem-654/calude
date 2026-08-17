@@ -62,22 +62,29 @@ function Wire({ box, unit, delay = 0, faint }: { box: Box; unit: number; delay?:
   );
 }
 
-/** A small labelled marker, the way the reference pins names to a diagram. */
+/**
+ * A small labelled marker, the way the reference pins names to a diagram.
+ *
+ * Coloured from CSS rather than here, so one marker works on a white card and
+ * on a dark band without a second copy of the component.
+ */
 function Pill({ at, label, delay = 0 }: { at: [number, number]; label: string; delay?: number }) {
   const width = label.length * 5.6 + 26;
   return (
     <g className="fade" style={{ animationDelay: `${delay}ms` }} transform={`translate(${at[0]},${at[1]})`}>
-      <rect x={-width / 2} y={-10} width={width} height={20} rx={10}
-        fill="#141416" stroke="#3a3a3e" strokeWidth={1} />
-      <circle cx={-width / 2 + 13} cy={0} r={3.4} fill="none" stroke="#8b8f96" strokeWidth={1} />
-      <text x={-width / 2 + 22} y={3.6} fill="#c9cbd0" fontSize={9}
+      <rect className="iso-pill" x={-width / 2} y={-10} width={width} height={20} rx={10} />
+      <circle className="iso-pill-dot" cx={-width / 2 + 13} cy={0} r={3.4} />
+      <text className="iso-pill-text" x={-width / 2 + 22} y={3.6} fontSize={9}
         fontFamily="Inter, system-ui, sans-serif">{label}</text>
     </g>
   );
 }
 
 const svgProps = {
-  viewBox: '-160 -140 320 260',
+  /* Wide enough for the labels. They orbit at 132 and are up to ~55 wide, so a
+     half-width of 160 put them outside the box — invisible the moment the card
+     around them started clipping its overflow. */
+  viewBox: '-200 -150 400 285',
   width: '100%',
   height: '100%',
   role: 'presentation' as const,
@@ -108,11 +115,11 @@ export function IsoAgent() {
 
   return (
     <svg {...svgProps}>
-      <ellipse className="draw" cx={0} cy={cy} rx={rx} ry={ry} fill="none" stroke="#2b2b2f" strokeWidth={1} />
-      <ellipse className="draw" style={{ animationDelay: '90ms' }} cx={0} cy={cy} rx={ry * 0.62} ry={rx * 0.78}
-        fill="none" stroke="#232326" strokeWidth={1} transform={`rotate(28 0 ${cy})`} />
-      <ellipse className="draw" style={{ animationDelay: '180ms' }} cx={0} cy={cy} rx={ry * 0.62} ry={rx * 0.78}
-        fill="none" stroke="#232326" strokeWidth={1} transform={`rotate(-28 0 ${cy})`} />
+      <ellipse className="draw iso-wire" cx={0} cy={cy} rx={rx} ry={ry} />
+      <ellipse className="draw iso-wire-faint" style={{ animationDelay: '90ms' }} cx={0} cy={cy}
+        rx={ry * 0.62} ry={rx * 0.78} transform={`rotate(28 0 ${cy})`} />
+      <ellipse className="draw iso-wire-faint" style={{ animationDelay: '180ms' }} cx={0} cy={cy}
+        rx={ry * 0.62} ry={rx * 0.78} transform={`rotate(-28 0 ${cy})`} />
 
       <g className="float" transform={`translate(0,${cy + 16})`}>
         <Solid box={{ x: -0.5, y: -0.5, z: 0, w: 1, d: 1, h: 1 }} unit={34} delay={140} />
@@ -227,9 +234,8 @@ export function IsoHero() {
   return (
     <svg viewBox="-170 -130 340 240" width="100%" height="100%" role="presentation"
       style={{ maxHeight: 320, overflow: 'visible' }}>
-      <ellipse className="draw" cx={0} cy={26} rx={140} ry={72} fill="none" stroke="#1e1e21" strokeWidth={1} />
-      <ellipse className="draw" style={{ animationDelay: '120ms' }} cx={0} cy={26} rx={96} ry={50}
-        fill="none" stroke="#232326" strokeWidth={1} />
+      <ellipse className="draw iso-wire-faint" cx={0} cy={26} rx={140} ry={72} />
+      <ellipse className="draw iso-wire" style={{ animationDelay: '120ms' }} cx={0} cy={26} rx={96} ry={50} />
       <g className="float">
         <Solid box={{ x: -0.5, y: -0.5, z: 0, w: 1, d: 1, h: 1 }} unit={58} delay={120} />
       </g>

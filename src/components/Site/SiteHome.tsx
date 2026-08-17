@@ -19,7 +19,10 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, Check, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
+import {
+  ArrowRight, ArrowUpRight, BarChart3, Building2, Check, ChevronLeft, ChevronRight,
+  Info, Layers, MousePointerClick, Send, Sparkles, Users,
+} from 'lucide-react';
 import { activeBranding } from '../../services/tenancy';
 import {
   IsoAgent, IsoFunnel, IsoHero, IsoPipeline, IsoSequence, IsoStudio,
@@ -34,13 +37,18 @@ interface Panel {
   /** The chapter this belongs to, shown bottom-left while it is on screen. */
   chapter: string;
   eyebrow: string;
+  /** Dark panels are the bands cut into an otherwise light page. */
+  tone?: 'dark';
   render: (ctx: { onSignIn: () => void; name: string }) => React.ReactNode;
 }
 
 interface ProductCopy {
   id: string;
   eyebrow: string;
-  title: string;
+  /** The run-up, set in muted grey. */
+  lead: string;
+  /** The half the eye should land on, in full colour. */
+  emph: string;
   body: string;
   art: () => React.ReactElement;
   points: string[];
@@ -50,7 +58,8 @@ const PRODUCTS: ProductCopy[] = [
   {
     id: 'agent',
     eyebrow: 'AI Sales Agent',
-    title: 'Describe the outcome. It builds the campaign.',
+    lead: 'Describe the outcome.',
+    emph: 'It builds the campaign.',
     body: 'Write what you want in a sentence. The agent works out who to reach and how, '
       + 'shows you the plan before anything exists, and then creates the real contacts, the real '
       + 'email sequence and the real enrolments in the modules that own them.',
@@ -64,7 +73,8 @@ const PRODUCTS: ProductCopy[] = [
   {
     id: 'crm',
     eyebrow: 'Contacts & Pipelines',
-    title: 'The record of everyone you have ever spoken to.',
+    lead: 'The record of',
+    emph: 'everyone you have spoken to.',
     body: 'Contacts with custom fields, notes, tasks and a full activity history. Drag-and-drop '
       + 'pipelines with the stages your business actually uses, and a command centre that shows '
       + 'what each person has opened, clicked and replied to.',
@@ -78,7 +88,8 @@ const PRODUCTS: ProductCopy[] = [
   {
     id: 'email',
     eyebrow: 'Email & Sequences',
-    title: 'Cadences that stop the moment somebody answers.',
+    lead: 'Cadences that stop',
+    emph: 'the moment somebody answers.',
     body: 'Multi-step sequences on your own SMTP, with merge fields, open and click tracking, '
       + 'bounce suppression and a warm-up ramp that will refuse to send past the day’s allowance. '
       + 'Reply, and the follow-ups stop.',
@@ -92,7 +103,8 @@ const PRODUCTS: ProductCopy[] = [
   {
     id: 'funnels',
     eyebrow: 'Sites, Funnels & Booking',
-    title: 'Somewhere for the traffic to land, and a diary to fill.',
+    lead: 'Somewhere to land,',
+    emph: 'and a diary to fill.',
     body: 'Build landing pages, multi-step funnels and full websites from blocks, then publish '
       + 'them. Booking pages with your real availability, so an interested reply turns into a '
       + 'meeting without a round of emails about Tuesday.',
@@ -106,7 +118,8 @@ const PRODUCTS: ProductCopy[] = [
   {
     id: 'studio',
     eyebrow: 'Content Studio',
-    title: 'One recording, a month of posts.',
+    lead: 'One recording,',
+    emph: 'a month of posts.',
     body: 'Turn a long video into short vertical clips with captions and your own branding, '
       + 'draft blog posts, and plan social campaigns across channels — each piece kept in a '
       + 'library where you can edit it before anything is published.',
@@ -153,23 +166,49 @@ const LIMITS: { title: string; body: string }[] = [
   },
 ];
 
+/** One mark per capability group, so the grid reads at a glance. */
+const GROUP_ICON: Record<string, typeof Check> = {
+  Reach: Send,
+  Convert: MousePointerClick,
+  Manage: Users,
+  Create: Sparkles,
+  Understand: BarChart3,
+  'Run it as an agency': Building2,
+};
+
 /* ── Shared pieces of a panel ─────────────────────────────────────────── */
 
-function PanelHead({ eyebrow, title, note }: { eyebrow: string; title: string; note?: string }) {
+const headingStyle: React.CSSProperties = {
+  margin: 0, maxWidth: 620,
+  fontSize: 'clamp(22px, 3vw, 36px)', fontWeight: 600,
+  letterSpacing: '-0.03em', lineHeight: 1.16,
+};
+
+/**
+ * A heading in two tones — the run-up muted, the point in full colour.
+ *
+ * Not decoration: the eye lands on the half that carries the claim, which is
+ * the trick the reference uses on every section it has.
+ */
+function Heading({ lead, emph, as = 'h2' }: { lead: string; emph: string; as?: 'h1' | 'h2' }) {
+  const Tag = as;
+  return (
+    <Tag style={{ ...headingStyle, fontSize: as === 'h1' ? 'clamp(30px, 4.4vw, 54px)' : headingStyle.fontSize }}>
+      <span className="lead">{lead} </span>
+      <span className="emph">{emph}</span>
+    </Tag>
+  );
+}
+
+function PanelHead({ eyebrow, lead, emph, note }: { eyebrow: string; lead: string; emph: string; note?: string }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'clamp(12px, 3vw, 40px)', alignItems: 'flex-end', justifyContent: 'space-between' }}>
       <div style={{ minWidth: 0, flex: '1 1 320px' }}>
-        <p className="mono" style={{ margin: 0 }}>{eyebrow}</p>
-        <h2 style={{
-          margin: '12px 0 0', maxWidth: 620,
-          fontSize: 'clamp(21px, 2.9vw, 34px)', fontWeight: 500,
-          letterSpacing: '-0.025em', lineHeight: 1.18, color: 'var(--text)',
-        }}>
-          {title}
-        </h2>
+        <p className="mono" style={{ margin: '0 0 12px' }}>{eyebrow}</p>
+        <Heading lead={lead} emph={emph} />
       </div>
       {note && (
-        <p style={{ margin: 0, maxWidth: 300, fontSize: 12.5, lineHeight: 1.7, color: 'var(--text-body)' }}>{note}</p>
+        <p style={{ margin: 0, maxWidth: 300, fontSize: 12.5, lineHeight: 1.7, color: 'var(--text-mute)' }}>{note}</p>
       )}
     </div>
   );
@@ -189,24 +228,20 @@ const productPanel = (p: ProductCopy): Panel => ({
         gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
         alignItems: 'center',
       }}>
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 15 }}>
           <div>
-            <p className="mono" style={{ margin: 0 }}>{p.eyebrow}</p>
-            <h2 style={{
-              margin: '12px 0 0',
-              fontSize: 'clamp(21px, 2.9vw, 34px)', fontWeight: 500,
-              letterSpacing: '-0.025em', lineHeight: 1.18, color: 'var(--text)',
-            }}>
-              {p.title}
-            </h2>
+            <p className="mono" style={{ margin: '0 0 12px' }}>{p.eyebrow}</p>
+            <Heading lead={p.lead} emph={p.emph} />
           </div>
-          <p style={{ margin: 0, maxWidth: 480, fontSize: 13.5, lineHeight: 1.75, color: 'var(--text-body)' }}>
+          <p style={{ margin: 0, maxWidth: 480, fontSize: 13.5, lineHeight: 1.75, color: 'var(--text-mute)' }}>
             {p.body}
           </p>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 9 }}>
             {p.points.map(pt => (
-              <li key={pt} style={{ display: 'flex', gap: 9, fontSize: 12.5, color: '#a4a8af', lineHeight: 1.55 }}>
-                <Check size={13} color="var(--blue-lit)" style={{ flexShrink: 0, marginTop: 3 }} />
+              <li key={pt} style={{ display: 'flex', gap: 10, fontSize: 12.5, color: 'var(--text-mute)', lineHeight: 1.55, alignItems: 'flex-start' }}>
+                <span className="glyph soft" style={{ width: 19, height: 19, borderRadius: 6, marginTop: 1 }}>
+                  <Check size={11} strokeWidth={3} />
+                </span>
                 {pt}
               </li>
             ))}
@@ -223,35 +258,38 @@ const PANELS: Panel[] = [
     id: 'hero',
     chapter: 'Intro',
     eyebrow: 'One system of record',
+    tone: 'dark',
     render: ({ onSignIn }) => (
-      <div style={{
-        flex: 1, minHeight: 0, display: 'grid', gap: 'clamp(16px, 2.6vw, 40px)',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
-        alignItems: 'center',
-      }}>
-        <div style={{ minWidth: 0 }}>
-          <p className="mono" style={{ margin: 0 }}>One system of record</p>
-          <h1 style={{
-            margin: '16px 0 0', maxWidth: 560,
-            fontSize: 'clamp(30px, 4.6vw, 56px)', lineHeight: 1.06,
-            letterSpacing: '-0.035em', fontWeight: 500, color: 'var(--text)',
-          }}>
-            Everything it takes to win the next customer.
-          </h1>
-          <p style={{ margin: '18px 0 0', maxWidth: 470, fontSize: 'clamp(13px, 1.2vw, 15px)', lineHeight: 1.7, color: 'var(--text-body)' }}>
-            Find the people worth contacting, write to them, book the meeting and see what actually
-            worked — in one place, on your own mailbox, with every step visible and editable before
-            it happens.
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 26 }}>
-            <button className="btn btn-primary" onClick={onSignIn}>
-              Open the app <ArrowRight size={13} />
-            </button>
-            <span className="mono hint" style={{ alignSelf: 'center' }}>Scroll to explore</span>
+      <>
+        <div className="beam" />
+        <div style={{
+          position: 'relative', flex: 1, minHeight: 0, display: 'grid',
+          gap: 'clamp(16px, 2.6vw, 40px)',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+          alignItems: 'center',
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <span className="chip">For agencies &amp; growing teams</span>
+            <div style={{ marginTop: 18 }}>
+              <Heading as="h1" lead="Everything it takes to" emph="win the next customer." />
+            </div>
+            <p style={{ margin: '18px 0 0', maxWidth: 460, fontSize: 'clamp(13px, 1.2vw, 15px)', lineHeight: 1.7, color: 'var(--on-dark-mute)' }}>
+              Find the people worth contacting, write to them, book the meeting and see what
+              actually worked — in one place, on your own mailbox, with every step visible and
+              editable before it happens.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 26 }}>
+              <button className="btn btn-primary" onClick={onSignIn}>
+                Get started <ArrowRight size={13} />
+              </button>
+              <button className="btn btn-quiet" onClick={onSignIn}>
+                Sign in <ChevronRight size={13} />
+              </button>
+            </div>
           </div>
+          <div className="stage" style={{ minWidth: 0 }}><IsoHero /></div>
         </div>
-        <div className="stage" style={{ minWidth: 0 }}><IsoHero /></div>
-      </div>
+      </>
     ),
   },
 
@@ -265,23 +303,19 @@ const PANELS: Panel[] = [
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(16px, 2.4vw, 30px)' }}>
         <PanelHead
           eyebrow="How a campaign runs"
-          title="Seven steps, and you can stop it at any of them."
+          lead="Seven steps, and"
+          emph="you can stop it at any of them."
           note="The agent decides what should happen. The modules you already use do it, and keep owning whether it worked."
         />
-        <ol style={{
-          margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 1,
+        <ol className="mesh" style={{
+          margin: 0, padding: 0, listStyle: 'none',
           gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))',
         }}>
           {LIFECYCLE.map(s => (
-            <li key={s.n} className="row-link"
-              style={{
-                backgroundColor: 'var(--panel)',
-                boxShadow: '0 0 0 1px var(--line-soft)',
-                padding: 'clamp(13px, 1.5vw, 20px)',
-              }}>
-              <span className="mono" style={{ color: 'var(--blue-lit)' }}>{s.n}</span>
-              <h3 style={{ margin: '9px 0 6px', fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>{s.title}</h3>
-              <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.65, color: 'var(--text-body)' }}>{s.body}</p>
+            <li key={s.n} className="row-link">
+              <span className="mono" style={{ color: 'var(--lime-deep)' }}>{s.n}</span>
+              <h3 style={{ margin: '9px 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{s.title}</h3>
+              <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.65, color: 'var(--text-mute)' }}>{s.body}</p>
             </li>
           ))}
         </ol>
@@ -297,24 +331,29 @@ const PANELS: Panel[] = [
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(16px, 2.4vw, 32px)' }}>
         <PanelHead
           eyebrow="Everything included"
-          title="No add-ons, no per-feature tiers, no second tool to keep in sync."
+          lead="No add-ons, no per-feature tiers,"
+          emph="no second tool to keep in sync."
         />
         <div style={{
-          display: 'grid', gap: 'clamp(16px, 2.4vw, 34px)',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
+          display: 'grid', gap: 'clamp(10px, 1.4vw, 16px)',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))',
         }}>
-          {CAPABILITIES.map(c => (
-            <div key={c.group}>
-              <p className="mono" style={{ margin: '0 0 11px', paddingBottom: 9, borderBottom: '1px solid var(--line-soft)' }}>
-                {c.group}
-              </p>
-              <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {c.items.map(i => (
-                  <li key={i} style={{ fontSize: 12.5, color: '#a4a8af', lineHeight: 1.5 }}>{i}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {CAPABILITIES.map(c => {
+            const Glyph = GROUP_ICON[c.group] ?? Check;
+            return (
+              <div key={c.group} className="tile">
+                <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <span className="glyph soft"><Glyph size={14} strokeWidth={2.2} /></span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{c.group}</span>
+                </span>
+                <ul style={{ margin: '11px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {c.items.map(i => (
+                    <li key={i} style={{ fontSize: 12, color: 'var(--text-mute)', lineHeight: 1.5 }}>{i}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       </div>
     ),
@@ -328,7 +367,8 @@ const PANELS: Panel[] = [
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(16px, 2.4vw, 32px)' }}>
         <PanelHead
           eyebrow="Straight answers"
-          title="The three things everybody finds out in week one."
+          lead="The three things everybody"
+          emph="finds out in week one."
           note="Better here than in an email to support."
         />
         <div style={{
@@ -336,12 +376,10 @@ const PANELS: Panel[] = [
           gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
         }}>
           {LIMITS.map(l => (
-            <div key={l.title} style={{
-              border: '1px solid var(--line-soft)', borderRadius: 2,
-              padding: 'clamp(16px, 2.2vw, 26px)', backgroundColor: 'var(--panel-dim)',
-            }}>
-              <h3 style={{ margin: '0 0 9px', fontSize: 14.5, fontWeight: 500, color: 'var(--text)' }}>{l.title}</h3>
-              <p style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: 'var(--text-body)' }}>{l.body}</p>
+            <div key={l.title} className="tile" style={{ padding: 'clamp(16px, 2.2vw, 24px)' }}>
+              <span className="glyph soft" style={{ marginBottom: 11 }}><Info size={14} strokeWidth={2.2} /></span>
+              <h3 style={{ margin: '0 0 8px', fontSize: 14.5, fontWeight: 600, color: 'var(--text)' }}>{l.title}</h3>
+              <p style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: 'var(--text-mute)' }}>{l.body}</p>
             </div>
           ))}
         </div>
@@ -353,33 +391,33 @@ const PANELS: Panel[] = [
     id: 'start',
     chapter: 'Start',
     eyebrow: 'Start',
+    tone: 'dark',
     render: ({ onSignIn, name }) => (
-      <div style={{
-        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 4,
-      }}>
-        <p className="mono" style={{ margin: 0 }}>Start</p>
-        <h2 style={{
-          margin: '16px 0 0', maxWidth: 640,
-          fontSize: 'clamp(25px, 3.8vw, 46px)', fontWeight: 500,
-          letterSpacing: '-0.03em', lineHeight: 1.1, color: 'var(--text)',
+      <>
+        <div className="stripes" />
+        <div style={{
+          position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', textAlign: 'center',
         }}>
-          Point it at your list and watch it show its working.
-        </h2>
-        <p style={{ margin: '16px 0 0', maxWidth: 430, fontSize: 13.5, lineHeight: 1.7, color: 'var(--text-body)' }}>
-          Connect your own mailbox, write one sentence about what you want, and approve the plan
-          before anything is created.
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 26 }}>
-          <button className="btn btn-primary" onClick={onSignIn}>
-            Open the app <ArrowRight size={13} />
-          </button>
-          {/* Routed, not an href: the app is served under a base path in
-              development and a raw link would leave it. */}
-          <button className="btn" onClick={onSignIn}>Sign in <ArrowUpRight size={12} /></button>
+          <span className="chip">Free to try</span>
+          <div style={{ marginTop: 18 }}>
+            <Heading lead="Point it at your list and" emph="watch it show its working." />
+          </div>
+          <p style={{ margin: '16px 0 0', maxWidth: 430, fontSize: 13.5, lineHeight: 1.7, color: 'var(--on-dark-mute)' }}>
+            Connect your own mailbox, write one sentence about what you want, and approve the plan
+            before anything is created.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 26 }}>
+            <button className="btn btn-primary" onClick={onSignIn}>
+              Get started <ArrowRight size={13} />
+            </button>
+            {/* Routed, not an href: the app is served under a base path in
+                development and a raw link would leave it. */}
+            <button className="btn btn-quiet" onClick={onSignIn}>Sign in <ArrowUpRight size={12} /></button>
+          </div>
+          <p className="mono" style={{ margin: '34px 0 0' }}>© {new Date().getFullYear()} {name}</p>
         </div>
-        <p className="mono" style={{ margin: '34px 0 0' }}>© {new Date().getFullYear()} {name}</p>
-      </div>
+      </>
     ),
   },
 ];
@@ -447,9 +485,15 @@ export default function SiteHome() {
       <div className="rules" />
 
       <header className="deck-chrome deck-top">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <Layers size={15} color="#f4f4f5" />
-          <span className="mono" style={{ color: 'var(--text)', fontSize: 11.5, letterSpacing: '0.2em' }}>{name}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+          {/* A lime mark rather than a bare icon: white-on-white was invisible
+              the moment the page stopped being dark. */}
+          <span className="glyph" style={{ width: 24, height: 24, borderRadius: 7 }}>
+            <Layers size={13} strokeWidth={2.4} />
+          </span>
+          <span className="mono" style={{ color: 'var(--text)', fontSize: 11.5, letterSpacing: '0.2em', fontWeight: 600 }}>
+            {name}
+          </span>
         </span>
         <span className="strapline" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span className="mono" style={{ color: '#b8bbc1' }}>Growth, evolved</span>
@@ -467,7 +511,7 @@ export default function SiteHome() {
               <section
                 key={p.id}
                 ref={el => { cards.current[i] = el; }}
-                className="card"
+                className={p.tone === 'dark' ? 'card dark' : 'card'}
                 data-active={on}
                 aria-hidden={!on}
                 inert={!on}

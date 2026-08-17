@@ -1,28 +1,40 @@
 /*
  * The public site.
  *
- * Scoped under .site so none of it can leak into the app, which is light,
- * dense and utilitarian while this is dark, quiet and mostly empty space.
+ * Scoped under .site so none of it can leak into the app, which is a dense
+ * working surface while this is a light, roomy, mostly-white marketing page
+ * with a few dark bands cut into it.
  *
- * Everything here is either a keyframe or a hover state — the kind of thing an
- * inline style cannot express — and the layout stays in the components, where
- * the rest of this codebase keeps it.
+ * Everything here is a keyframe, a hover state or a shared surface — the kinds
+ * of thing an inline style cannot express — and the layout stays in the
+ * components, where the rest of this codebase keeps it.
  */
 
 .site {
-  --ink: #0d0d0d;          /* the page itself */
-  --panel: #151515;        /* a lit panel */
-  --panel-dim: #0c0c0c;    /* one that is not the subject */
-  --line: #232325;         /* hairline */
-  --line-soft: #1a1a1c;
-  --text: #f4f4f5;
-  --text-body: #8b8f96;
-  --text-faint: #55575c;
-  --blue: #1a3fe8;         /* the single accent, used sparingly */
-  --blue-lit: #2b52ff;
-  --blue-deep: #0f2ac4;
+  --paper: #f2f3ef;        /* the page itself */
+  --card: #ffffff;
+  --card-sunk: #f7f8f5;    /* a tile inside a card */
+  --ink: #0f1210;          /* the dark bands */
+  --ink-2: #171b15;
+  --line: #e4e6e0;
+  --line-dark: #23271f;
 
-  background: var(--ink);
+  --text: #12151a;
+  --text-mute: #6c727c;
+  --text-faint: #9aa0a8;
+  --on-dark: #f4f6f1;
+  --on-dark-mute: #9ba39a;
+
+  /* One accent, and one supporting tint for the thing being singled out. */
+  --lime: #c8f24d;
+  --lime-lit: #d6f96f;
+  --lime-deep: #a8d431;
+  --mint: #8fd9c4;
+
+  --radius: 16px;
+  --radius-sm: 11px;
+
+  background: var(--paper);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -50,14 +62,13 @@
   display: flex;
   align-items: center;
   gap: clamp(10px, 3vw, 40px);
-  padding: clamp(12px, 2vw, 22px) clamp(14px, 4vw, 54px);
+  padding: clamp(12px, 2vw, 20px) clamp(14px, 4vw, 46px);
   min-width: 0;
 }
 .site .deck-chrome > * { min-width: 0; }
-.site .deck-top { align-items: flex-start; }
 .site .deck-bottom {
   justify-content: space-between;
-  border-top: 1px solid var(--line-soft);
+  border-top: 1px solid var(--line);
 }
 
 .site .deck-viewport {
@@ -72,9 +83,9 @@
 .site .deck-track {
   display: flex;
   align-items: stretch;
-  gap: clamp(10px, 1.6vw, 22px);
+  gap: clamp(10px, 1.6vw, 20px);
   height: 100%;
-  padding: clamp(8px, 1.4vw, 18px) 0;
+  padding: clamp(8px, 1.4vw, 16px) 0;
   box-sizing: border-box;
   will-change: transform;
   transition: transform 640ms cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -95,30 +106,69 @@
   /* Content sits in the middle of the panel. Top-aligned left a third of the
      card empty under every section that happened to be short. */
   justify-content: center;
-  padding: clamp(18px, 3vw, 40px);
-  background: var(--panel-dim);
-  border: 1px solid var(--line-soft);
-  border-radius: 2px;
-  opacity: 0.18;
+  padding: clamp(20px, 3.2vw, 44px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  opacity: 0.4;
   overflow-y: auto;
   overscroll-behavior: contain;
-  transition: opacity 640ms ease, background-color 640ms ease, border-color 640ms ease;
+  transition: opacity 640ms ease, box-shadow 640ms ease, transform 640ms ease;
+  transform: scale(0.985);
 }
 .site .card[data-active='true'] {
-  background: var(--panel);
-  border-color: var(--line);
   opacity: 1;
+  transform: none;
+  box-shadow: 0 18px 46px rgba(16, 24, 40, 0.10), 0 2px 6px rgba(16, 24, 40, 0.04);
 }
+
+/* A dark band, the way the reference cuts one into a light page. */
+.site .card.dark {
+  position: relative;
+  overflow: hidden;
+  background: var(--ink);
+  border-color: var(--line-dark);
+  color: var(--on-dark);
+}
+.site .card.dark::-webkit-scrollbar-thumb { background: #2c322a; }
+
 .site .card::-webkit-scrollbar { width: 6px; }
-.site .card::-webkit-scrollbar-thumb { background: #2a2a2e; border-radius: 3px; }
+.site .card::-webkit-scrollbar-thumb { background: #d8dad3; border-radius: 3px; }
+
+/* The light that falls through the dark panels. A single soft column of it,
+   the way the reference lights its hero. */
+.site .beam {
+  position: absolute;
+  left: 50%;
+  top: -34%;
+  width: min(560px, 70%);
+  height: 128%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 26% 34% at 50% 14%, rgba(226, 255, 138, 0.85), transparent 72%),
+    radial-gradient(ellipse 12% 58% at 50% 34%, rgba(200, 242, 77, 0.6), transparent 74%),
+    radial-gradient(ellipse 46% 40% at 50% 62%, rgba(168, 212, 49, 0.22), transparent 76%);
+  filter: blur(26px);
+}
+
+/* Faint diagonal ruling across the closing band. */
+.site .stripes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    115deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 46px);
+}
 
 /* The rail doubles as the position indicator and as a way through for anyone
    who cannot use a wheel. */
 .site .deck-rail { display: flex; gap: 6px; align-items: center; }
 .site .tick {
   width: 22px;
-  height: 12px;
-  padding: 5px 0;
+  height: 14px;
+  padding: 6px 0;
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -128,106 +178,209 @@
   content: '';
   display: block;
   height: 2px;
-  background: #2c2c30;
+  border-radius: 2px;
+  background: #d4d7cf;
   transition: background-color 300ms ease;
 }
-.site .tick:hover::after { background: #4a4a50; }
-.site .tick[aria-selected='true']::after { background: var(--blue-lit); }
+.site .tick:hover::after { background: #b3b8ac; }
+.site .tick[aria-selected='true']::after { background: var(--lime-deep); }
 
-.site .btn.nav { padding: 8px 11px; }
-.site .btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.site .btn:disabled:hover { border-color: var(--line); background: transparent; }
+/* ── Type ─────────────────────────────────────────────────────────────── */
 
-.site .hint { color: var(--text-faint); }
-.site .deck-chapter { white-space: nowrap; }
-
-/* The wide-tracked uppercase monospace that labels everything on this page. */
+/* The label style the reference uses above every section. */
 .site .mono {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   font-size: 10.5px;
   color: var(--text-faint);
 }
+.site .dark .mono { color: var(--on-dark-mute); }
 
-/* Faint construction lines. Drawn with a gradient rather than elements so they
-   cost nothing and cannot be tabbed to. */
-.site .rules {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
-  background-size: clamp(120px, 14vw, 220px) clamp(120px, 14vw, 220px);
-  mask-image: radial-gradient(ellipse 120% 90% at 50% 30%, #000 30%, transparent 78%);
-  -webkit-mask-image: radial-gradient(ellipse 120% 90% at 50% 30%, #000 30%, transparent 78%);
+/* A heading in two tones: the run-up muted, the point of the sentence in full
+   colour. Straight from the reference, and it does real work — the eye lands
+   on the half that matters. */
+.site .lead { color: var(--text-mute); }
+.site .emph { color: var(--text); }
+.site .dark .lead { color: var(--on-dark-mute); }
+.site .dark .emph { color: var(--on-dark); }
+
+/* The small rounded chip that opens the hero. */
+.site .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-size: 10.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-mute);
 }
+.site .dark .chip {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--on-dark-mute);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
 
 .site a { color: inherit; text-decoration: none; }
 
 .site .btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   padding: 10px 18px;
-  border-radius: 4px;
+  border-radius: 999px;
   border: 1px solid var(--line);
-  background: transparent;
+  background: var(--card);
   color: var(--text);
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
-.site .btn:hover { border-color: #3a3a3e; background: #1b1b1d; }
+.site .btn:hover { border-color: #cfd3c9; background: #fbfcfa; }
 .site .btn:active { transform: translateY(1px); }
 
-.site .btn-primary {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
-  font-weight: 600;
+.site .dark .btn, .site .card.dark .btn {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--on-dark);
 }
-.site .btn-primary:hover { background: var(--blue-lit); border-color: var(--blue-lit); }
+.site .dark .btn:hover { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.1); }
+
+/* The one loud thing on the page. */
+.site .btn-primary,
+.site .dark .btn-primary {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: #16200a;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+.site .btn-primary:hover,
+.site .dark .btn-primary:hover { background: var(--lime-lit); border-color: var(--lime-lit); }
+
+/* "Book a demo ›" — a link that is not competing with the primary. */
+.site .btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-mute);
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.site .btn-quiet:hover { border-color: transparent; background: rgba(0, 0, 0, 0.04); color: var(--text); }
+.site .dark .btn-quiet { background: transparent; border-color: transparent; color: var(--on-dark-mute); }
+.site .dark .btn-quiet:hover { background: rgba(255, 255, 255, 0.07); color: var(--on-dark); }
+
+.site .btn.nav { padding: 9px 12px; }
+.site .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.site .btn:disabled:hover { border-color: var(--line); background: var(--card); }
 
 .site .btn:focus-visible,
-.site .tab:focus-visible,
+.site .tick:focus-visible,
 .site a:focus-visible {
-  outline: 2px solid var(--blue-lit);
+  outline: 2px solid var(--lime-deep);
   outline-offset: 2px;
 }
 
-.site .stage {
-  position: relative;
-  min-height: clamp(150px, 22vw, 260px);
+/* ── Tiles ────────────────────────────────────────────────────────────── */
+
+/* The soft white boxes the reference lays its features out in. */
+.site .tile {
+  background: var(--card-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: clamp(13px, 1.5vw, 18px);
+  transition: border-color 200ms ease, background-color 200ms ease, transform 200ms ease;
+}
+.site .tile:hover { border-color: #d3d7cc; background: #fff; transform: translateY(-1px); }
+
+.site .dark .tile {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+.site .dark .tile:hover { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.16); }
+
+/* A small square holding an icon, the way each feature row is marked. */
+.site .glyph {
   display: grid;
   place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--lime);
+  color: #16200a;
+  flex-shrink: 0;
 }
+.site .glyph.soft { background: #eaf7c6; color: #4d6a12; }
+.site .dark .glyph.soft { background: rgba(200, 242, 77, 0.16); color: var(--lime); }
 
-/* The isometric field the artwork sits on. */
-.site .stage::before {
-  content: '';
-  position: absolute;
-  inset: -8%;
-  background-image:
-    repeating-linear-gradient(30deg, #26262a 0 1px, transparent 1px 58px),
-    repeating-linear-gradient(150deg, #26262a 0 1px, transparent 1px 58px);
-  mask-image: radial-gradient(ellipse at center, #000 28%, transparent 80%);
-  -webkit-mask-image: radial-gradient(ellipse at center, #000 28%, transparent 80%);
+/*
+ * A grid with hairlines between the cells.
+ *
+ * The lines are drawn on each cell rather than as a coloured gap: seven items
+ * in a four-across grid leave an empty cell, and a gap-coloured container
+ * paints that leftover as a solid grey block in the corner.
+ */
+.site .mesh {
+  display: grid;
+  gap: 1px;
+  background: var(--card);
+  border-radius: var(--radius-sm);
 }
+.site .mesh > * {
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+  padding: clamp(13px, 1.6vw, 20px);
+}
+.site .dark .mesh, .site .dark .mesh > * { background: var(--ink); }
+.site .dark .mesh > * { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
 
 /* ── The artwork ──────────────────────────────────────────────────────── */
 
+.site .stage {
+  position: relative;
+  min-height: clamp(150px, 22vw, 250px);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--card-sunk);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.site .dark .stage { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.08); }
+
+/* A soft wash behind the object rather than the wireframe grid the darker
+   design used — on white, a mesh reads as graph paper. */
+.site .stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 58% 62% at 50% 46%, rgba(200, 242, 77, 0.24), transparent 72%);
+}
+
 /* Faces of a solid: the lit top, and two sides that fall away from it. */
-.site .iso-top { fill: var(--blue-lit); }
-.site .iso-left { fill: var(--blue-deep); }
-.site .iso-right { fill: var(--blue); }
-.site .iso-wire { fill: none; stroke: #3c3c40; stroke-width: 1; }
-.site .iso-wire-faint { fill: none; stroke: #262629; stroke-width: 1; }
+.site .iso-top { fill: var(--lime); }
+.site .iso-right { fill: var(--lime-deep); }
+.site .iso-left { fill: #86ad24; }
+.site .iso-wire { fill: none; stroke: #c3c8ba; stroke-width: 1; }
+.site .iso-pill { fill: #ffffff; stroke: #dde0d7; stroke-width: 1; }
+.site .iso-pill-dot { fill: none; stroke: #a8ae9f; stroke-width: 1; }
+.site .iso-pill-text { fill: #4d525a; }
+.site .dark .iso-pill { fill: #1a1f17; stroke: #333a2c; }
+.site .dark .iso-pill-dot { stroke: #7e8a72; }
+.site .dark .iso-pill-text { fill: #c3cbba; }
+.site .iso-wire-faint { fill: none; stroke: #dfe2d8; stroke-width: 1; }
+.site .dark .iso-wire { stroke: #4a5142; }
+.site .dark .iso-wire-faint { stroke: #2b3026; }
 
 /* Each piece draws itself in when its panel becomes the active one, so the
    diagram reads as being assembled rather than simply appearing. */
@@ -265,10 +418,9 @@
   50%      { transform: translateY(-7px); }
 }
 
-.site .row-link {
-  transition: background-color 200ms ease, border-color 200ms ease;
-}
-.site .row-link:hover { background: #141416; border-color: #2e2e31; }
+.site .hint { color: var(--text-faint); }
+.site .deck-chapter { white-space: nowrap; }
+.site .row-link { transition: background-color 200ms ease, border-color 200ms ease; }
 
 /* On a phone the strapline is three rows of text above the fold that nobody
    came for, and it pushes the headline off the screen. */
@@ -276,7 +428,7 @@
   .site .strapline { display: none !important; }
   /* Wider panels: at 86vw the peeking neighbours eat a quarter of a small
      screen and leave the content in a column too narrow to read. */
-  .site .card { width: 92vw; padding: 20px 18px; }
+  .site .card { width: 92vw; padding: 20px 17px; }
   .site .deck-chrome { padding: 12px 14px; }
   .site .tick { width: 16px; }
   .site .deck-bottom { gap: 10px; }
@@ -296,4 +448,5 @@
   }
   /* The deck still works, it just arrives rather than travels. */
   .site .deck-track { transition: none !important; }
+  .site .card { transform: none; }
 }
