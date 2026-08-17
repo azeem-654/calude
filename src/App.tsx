@@ -33,6 +33,7 @@ import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
 import ClientBilling from './components/Billing/ClientBilling';
+import SiteHome from './components/Site/SiteHome';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -138,6 +139,14 @@ export default function App() {
     }
   }, [session]);
 
+  /* Signing in at /login leaves that address in the bar, and it is not a route
+     the signed-in app has. Put the workspace root back before the tree swaps. */
+  const signedIn = () => {
+    const root = `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/`;
+    if (window.location.pathname !== root) window.history.replaceState(null, '', root);
+    setSession(getSession());
+  };
+
   // The public booking page must work for anonymous visitors — never gate it
   // behind the login screen.
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
@@ -155,8 +164,20 @@ export default function App() {
     );
   }
 
+  /*
+   * A visitor who has never heard of this arrives at the marketing site, not at
+   * a password box. The login form keeps its own address, so a bookmark to it
+   * still works and so does anything that links people straight to signing in.
+   */
   if (!session) {
-    return <LoginScreen onAuthed={() => setSession(getSession())} />;
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="/login" element={<LoginScreen onAuthed={signedIn} />} />
+          <Route path="*" element={<SiteHome />} />
+        </Routes>
+      </BrowserRouter>
+    );
   }
 
   return (

@@ -1,0 +1,231 @@
+/*
+ * The public site.
+ *
+ * Scoped under .site so none of it can leak into the app, which is light,
+ * dense and utilitarian while this is dark, quiet and mostly empty space.
+ *
+ * Everything here is either a keyframe or a hover state — the kind of thing an
+ * inline style cannot express — and the layout stays in the components, where
+ * the rest of this codebase keeps it.
+ */
+
+.site {
+  --ink: #0d0d0d;          /* the page itself */
+  --panel: #151515;        /* a lit panel */
+  --panel-dim: #0c0c0c;    /* one that is not the subject */
+  --line: #232325;         /* hairline */
+  --line-soft: #1a1a1c;
+  --text: #f4f4f5;
+  --text-body: #8b8f96;
+  --text-faint: #55575c;
+  --blue: #1a3fe8;         /* the single accent, used sparingly */
+  --blue-lit: #2b52ff;
+  --blue-deep: #0f2ac4;
+
+  background: var(--ink);
+  color: var(--text);
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* The wide-tracked uppercase monospace that labels everything on this page. */
+.site .mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* Faint construction lines. Drawn with a gradient rather than elements so they
+   cost nothing and cannot be tabbed to. */
+.site .rules {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
+  background-size: clamp(120px, 14vw, 220px) clamp(120px, 14vw, 220px);
+  mask-image: radial-gradient(ellipse 120% 90% at 50% 30%, #000 30%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 120% 90% at 50% 30%, #000 30%, transparent 78%);
+}
+
+.site a { color: inherit; text-decoration: none; }
+
+.site .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+.site .btn:hover { border-color: #3a3a3e; background: #1b1b1d; }
+.site .btn:active { transform: translateY(1px); }
+
+.site .btn-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  font-weight: 600;
+}
+.site .btn-primary:hover { background: var(--blue-lit); border-color: var(--blue-lit); }
+
+.site .btn:focus-visible,
+.site .tab:focus-visible,
+.site a:focus-visible {
+  outline: 2px solid var(--blue-lit);
+  outline-offset: 2px;
+}
+
+/* ── The product carousel ─────────────────────────────────────────────── */
+
+.site .track {
+  display: flex;
+  gap: clamp(12px, 2vw, 26px);
+  will-change: transform;
+  transition: transform 620ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.site .panel {
+  flex: 0 0 auto;
+  width: clamp(280px, 62vw, 660px);
+  background: var(--panel-dim);
+  border: 1px solid var(--line-soft);
+  border-radius: 2px;
+  padding: clamp(20px, 3.4vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  opacity: 0.2;
+  transition: opacity 620ms ease, background-color 620ms ease, border-color 620ms ease;
+}
+
+/* Only the panel being read is lit. The neighbours are context, not content. */
+.site .panel[data-active='true'] {
+  background: var(--panel);
+  border-color: var(--line);
+  opacity: 1;
+}
+
+.site .stage {
+  position: relative;
+  flex: 1;
+  min-height: clamp(200px, 30vw, 300px);
+  display: grid;
+  place-items: center;
+}
+
+/* The isometric field the artwork sits on. */
+.site .stage::before {
+  content: '';
+  position: absolute;
+  inset: -6%;
+  background-image:
+    repeating-linear-gradient(30deg, #26262a 0 1px, transparent 1px 58px),
+    repeating-linear-gradient(150deg, #26262a 0 1px, transparent 1px 58px);
+  mask-image: radial-gradient(ellipse at center, #000 28%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 28%, transparent 80%);
+}
+
+.site .tab {
+  border: 0;
+  background: transparent;
+  padding: 10px 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-faint);
+  border-top: 1px solid var(--line-soft);
+  transition: color 200ms ease, border-color 400ms ease;
+  text-align: left;
+}
+.site .tab[aria-selected='true'] { color: var(--text); border-top-color: var(--blue); }
+.site .tab:hover { color: #c9cbd0; }
+
+/* ── The artwork ──────────────────────────────────────────────────────── */
+
+/* Faces of a solid: the lit top, and two sides that fall away from it. */
+.site .iso-top { fill: var(--blue-lit); }
+.site .iso-left { fill: var(--blue-deep); }
+.site .iso-right { fill: var(--blue); }
+.site .iso-wire { fill: none; stroke: #3c3c40; stroke-width: 1; }
+.site .iso-wire-faint { fill: none; stroke: #262629; stroke-width: 1; }
+
+/* Each piece draws itself in when its panel becomes the active one, so the
+   diagram reads as being assembled rather than simply appearing. */
+.site .panel[data-active='true'] .draw {
+  animation: site-draw 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.site .panel[data-active='true'] .rise {
+  animation: site-rise 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.site .panel[data-active='true'] .fade {
+  animation: site-fade 700ms ease both;
+}
+.site .panel:not([data-active='true']) .draw,
+.site .panel:not([data-active='true']) .rise,
+.site .panel:not([data-active='true']) .fade { animation: none; }
+
+@keyframes site-draw {
+  from { stroke-dasharray: 1 700; stroke-dashoffset: 0; opacity: 0; }
+  20%  { opacity: 1; }
+  to   { stroke-dasharray: 700 700; stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes site-rise {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes site-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* A slow drift, so a page nobody is touching is not completely still. */
+.site .float { animation: site-float 7s ease-in-out infinite; }
+@keyframes site-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+
+/* ── Reveal on scroll ─────────────────────────────────────────────────── */
+
+.site .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 700ms ease, transform 700ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.site .reveal[data-shown='true'] { opacity: 1; transform: none; }
+
+.site .row-link {
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+.site .row-link:hover { background: #141416; border-color: #2e2e31; }
+
+/* On a phone the strapline is three rows of text above the fold that nobody
+   came for, and it pushes the headline off the screen. */
+@media (max-width: 760px) {
+  .site .strapline { display: none !important; }
+}
+
+/* Motion is decoration here; anyone who has asked for less gets the layout
+   without any of it. */
+@media (prefers-reduced-motion: reduce) {
+  .site *,
+  .site *::before,
+  .site *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .site .reveal { opacity: 1; transform: none; }
+}
