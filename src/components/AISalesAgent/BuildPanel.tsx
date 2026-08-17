@@ -13,13 +13,13 @@ import { useApp } from '../../context/AppContext';
 import { setStatus } from '../../services/aiCampaigns';
 import { buildCampaign, previewBuild } from '../../services/aiOrchestrator';
 import type { AICampaign } from '../../types/aiSalesAgent';
-import { activeBranding } from '../../services/tenancy';
+import { customerBusinessName } from '../../services/tenancy';
 import { describeReach } from '../../services/dueWork';
 import { card, ghostBtn, primaryBtn } from './ui';
 
 export default function BuildPanel({ campaign, onChanged }: { campaign: AICampaign; onChanged: () => void }) {
   const navigate = useNavigate();
-  const { contacts, bulkImportContacts, addSequence, updateSequence, addNotification } = useApp();
+  const { contacts, bulkImportContacts, updateContacts, addSequence, updateSequence, addNotification } = useApp();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ReturnType<typeof buildCampaign> | null>(null);
 
@@ -30,20 +30,21 @@ export default function BuildPanel({ campaign, onChanged }: { campaign: AICampai
 
   const build = () => {
     setBusy(true);
-    /* The workspace's own name signs the emails; without one they go unsigned
-       rather than ending on the word "us". */
+    /* The customer's own business name signs the emails; without one they go
+       unsigned rather than ending on the word "us" — or, worse, on the name of
+       the CRM they were written in. */
     const r = buildCampaign(
       campaign,
-      { contacts, bulkImportContacts, addSequence, updateSequence },
+      { contacts, bulkImportContacts, updateContacts, addSequence, updateSequence },
       new Date(),
-      activeBranding().appName,
+      customerBusinessName(),
     );
     setBusy(false);
     setResult(r);
     if (r.ok) {
       /* Only now is it running: something exists that can actually do work. */
       setStatus(campaign.id, 'running');
-      addNotification(`Built: ${r.created.join(', ')}`);
+      addNotification(sentence(r.created));
     } else {
       addNotification(r.error || 'Nothing could be built', 'error');
     }
@@ -98,7 +99,7 @@ export default function BuildPanel({ campaign, onChanged }: { campaign: AICampai
             <div style={{ display: 'flex', gap: 9, padding: '11px 13px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 9 }}>
               <Check size={14} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
               <p style={{ margin: 0, fontSize: 12.5, color: '#166534', lineHeight: 1.55 }}>
-                Created {result.created.join(', ')}.
+                {sentence(result.created)}
               </p>
             </div>
           )}
@@ -138,6 +139,17 @@ export default function BuildPanel({ campaign, onChanged }: { campaign: AICampai
       )}
     </section>
   );
+}
+
+/**
+ * "Created 60 existing contacts added to this campaign, 12 contacts" was the
+ * old line: one lead-in verb pinned in front of phrases that carry their own.
+ * Each phrase is now a clause, and they are joined as a sentence.
+ */
+function sentence(parts: string[]): string {
+  if (!parts.length) return '';
+  const capped = parts.map((p, i) => (i === 0 ? p[0].toUpperCase() + p.slice(1) : p));
+  return `${capped.join('; ')}.`;
 }
 
 function Figure({ label, value, tone }: { label: string; value: number; tone?: 'warn' }) {

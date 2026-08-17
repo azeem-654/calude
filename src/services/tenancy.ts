@@ -159,6 +159,33 @@ export function activeBranding(): Required<Branding> {
   };
 }
 
+/**
+ * The customer's own business name, for signing mail they send.
+ *
+ * Deliberately not activeBranding().appName. That is the white-label *product*
+ * name and it falls back to "crmpro", so a dental practice's cold outreach went
+ * out signed with the name of the CRM it was written in. Better unsigned than
+ * signed by somebody else: an empty string here leaves the sign-off off
+ * entirely, which every caller already handles.
+ */
+export function customerBusinessName(): string {
+  const account = activeAccount();
+  const fromAccount = (account?.businessName || '').trim();
+  /* "My Business" is the placeholder a new sub-account is created with. */
+  if (fromAccount && fromAccount.toLowerCase() !== 'my business') return fromAccount;
+
+  try {
+    const onboarding = JSON.parse(window.localStorage.getItem('crm_onboarding') || 'null');
+    const company = String(onboarding?.profile?.companyName || '').trim();
+    if (company) return company;
+  } catch { /* nothing stored, or not readable */ }
+
+  /* A branding name that was actually set is the customer's own; the default
+     is the product's, and signing with it would be the original mistake. */
+  const branded = (account?.branding?.appName || '').trim();
+  return branded && branded.toLowerCase() !== 'crmpro' ? branded : '';
+}
+
 export function loadAgency(): AgencyProfile {
   try { const a = JSON.parse(window.localStorage.getItem('crm_agency') || 'null'); if (a) return a; } catch { /* ignore */ }
   return { name: 'My Agency', ownerEmail: '' };

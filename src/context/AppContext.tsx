@@ -31,6 +31,7 @@ interface AppContextType {
   automations: Automation[];
   addContact: (contact: Omit<Contact, 'id'>) => Contact;
   updateContact: (id: string, updates: Partial<Contact>) => void;
+  updateContacts: (changes: { id: string; updates: Partial<Contact> }[]) => void;
   deleteContact: (id: string) => void;
   bulkImportContacts: (contacts: Omit<Contact, 'id'>[]) => Contact[];
   addConversation: (conv: Omit<Conversation, 'id'>) => void;
@@ -188,6 +189,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateContact = (id: string, updates: Partial<Contact>) => {
     setContacts(prev => { const next = prev.map(c => c.id === id ? { ...c, ...updates } : c); saveLS('crm_contacts', next); return next; });
     notify('Contact updated');
+  };
+  /**
+   * The same kind of change across many contacts, in one write and one message.
+   *
+   * Calling updateContact in a loop is not the same thing: sixty calls mean
+   * sixty saves, sixty renders and sixty toasts stacked down the screen, which
+   * is what building a campaign against an existing list used to do.
+   */
+  const updateContacts = (changes: { id: string; updates: Partial<Contact> }[]) => {
+    if (!changes.length) return;
+    const byId = new Map(changes.map(c => [c.id, c.updates]));
+    setContacts(prev => {
+      const next = prev.map(c => (byId.has(c.id) ? { ...c, ...byId.get(c.id)! } : c));
+      saveLS('crm_contacts', next);
+      return next;
+    });
+    notify(`${changes.length} contact${changes.length === 1 ? '' : 's'} updated`);
   };
   const deleteContact = (id: string) => {
     setContacts(prev => { const next = prev.filter(c => c.id !== id); saveLS('crm_contacts', next); return next; });
@@ -457,7 +475,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       contacts, conversations, appointments, calendarEvents, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
       pipelines, campaigns, funnels, websites, reviews, sequences, automations,
-      addContact, updateContact, deleteContact, bulkImportContacts,
+      addContact, updateContact, updateContacts, deleteContact, bulkImportContacts,
       addConversation, sendMessage, updateConversationStatus,
       addAppointment, updateAppointment, deleteAppointment,
       addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus,

@@ -11,7 +11,8 @@
  * AI decided to target multi-location clinics" and "the phrase multi-location
  * appeared in your sentence" deserve very different amounts of trust.
  */
-import { useState } from 'react';
+import { Children, cloneElement, isValidElement, useState } from 'react';
+import type { ReactElement } from 'react';
 import { AlertTriangle, Check, Loader, Pencil, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { setStatus, setStrategy, takeSaveError } from '../../services/aiCampaigns';
@@ -364,6 +365,12 @@ function Editor({ strategy, note, problems, onChange, onCancel, onApprove, onRep
  * that state, and the Email button disappeared from the accessibility tree
  * altogether, unreachable by name and unlabelled to a screen reader. Several
  * controls get a group with its own label instead.
+ *
+ * The aria-label is not belt and braces either. React renders a textarea's
+ * value as a DOM child, so a wrapping label's text content is the caption plus
+ * the entire value — and the accessible name of the summary box was the caption
+ * followed by the whole plan, read out before the value itself. An explicit
+ * name wins over the computed one.
  */
 function Field({ label, error, group, children }: {
   label: string;
@@ -371,10 +378,17 @@ function Field({ label, error, group, children }: {
   group?: boolean;
   children: React.ReactNode;
 }) {
+  const named = Children.map(children, child => (
+    isValidElement(child) && (child.type === 'textarea' || child.type === 'input')
+      && !(child.props as { 'aria-label'?: string })['aria-label']
+      ? cloneElement(child as ReactElement<{ 'aria-label'?: string }>, { 'aria-label': label })
+      : child
+  ));
+
   const inner = (
     <>
       <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{label}</span>
-      {children}
+      {named}
       {error && <span style={{ fontSize: 11.5, color: '#b91c1c' }}>{error}</span>}
     </>
   );

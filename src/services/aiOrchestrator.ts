@@ -37,6 +37,8 @@ import type { AICampaign, AILead, AIStrategy } from '../types/aiSalesAgent';
 export interface OrchestrateApi {
   contacts: Contact[];
   bulkImportContacts: (contacts: Omit<Contact, 'id'>[]) => Contact[];
+  /** Used to adopt prospects that are already contacts, rather than copy them. */
+  updateContacts: (changes: { id: string; updates: Partial<Contact> }[]) => void;
   addSequence: (seq: Omit<EmailSequence, 'id'>) => EmailSequence;
   updateSequence: (id: string, updates: Partial<EmailSequence>) => void;
 }
@@ -64,7 +66,8 @@ export interface BuildResult {
  * said.
  */
 export function composeSequence(strategy: AIStrategy, businessName?: string): EmailStep[] {
-  const who = strategy.icp.industry?.replace(/s$/, '') || 'business';
+  const who = singular(strategy.icp.industry) || 'business';
+  const whos = plural(who);
   const offer = withArticle(strategy.offer.what || 'what we do');
   const price = strategy.offer.priceHint ? ` It is ${strategy.offer.priceHint}.` : '';
   /* Signed with the actual business, or not at all. A cold email ending in the
@@ -85,13 +88,13 @@ export function composeSequence(strategy: AIStrategy, businessName?: string): Em
 
   steps.push(step(0,
     `Quick question about {{company}}`,
-    `Hi {{firstName}},\n\nI work with ${who}s on ${offer}.${price}\n\n`
+    `Hi {{firstName}},\n\nI work with ${whos} on ${offer}.${price}\n\n`
     + `Is that something {{company}} is looking at this quarter?\n\n`
     + `If not, no problem — just say so and I will leave you be.${signOff}`));
 
   const followUps = [
     ['Worth a look?', `Hi {{firstName}},\n\nFollowing up on my note about ${offer}. Happy to send over what it looks like in practice for a ${who} your size — no call needed.\n\nWorth a look?${signOff}`],
-    ['One more thing', `Hi {{firstName}},\n\nOne thing worth mentioning: most ${who}s we speak to are not short of enquiries, they are short of time to follow them up.\n\nIf that sounds familiar, reply and I will show you what we do about it.${signOff}`],
+    ['One more thing', `Hi {{firstName}},\n\nOne thing worth mentioning: most ${whos} we speak to are not short of enquiries, they are short of time to follow them up.\n\nIf that sounds familiar, reply and I will show you what we do about it.${signOff}`],
     ['Closing the loop', `Hi {{firstName}},\n\nI will stop here — I do not want to clutter your inbox.\n\nIf ${offer} becomes relevant later, just reply to this and I will pick it up.${signOff}`],
   ];
 
@@ -103,6 +106,23 @@ export function composeSequence(strategy: AIStrategy, businessName?: string): Em
   }
 
   return steps;
+}
+
+/** "dental clinics" → "dental clinic"; "business" stays "business". */
+export function singular(word: string | undefined): string {
+  const w = (word ?? '').trim();
+  if (!w) return '';
+  if (/(ss|us|is)$/i.test(w)) return w;
+  return w.replace(/ies$/i, 'y').replace(/(?<![su])s$/i, '');
+}
+
+/** "business" → "businesses", not "businesss". */
+export function plural(word: string): string {
+  const w = word.trim();
+  if (!w) return 'businesses';
+  if (/(s|x|z|ch|sh)$/i.test(w)) return `${w}es`;
+  if (/[^aeiou]y$/i.test(w)) return `${w.slice(0, -1)}ies`;
+  return `${w}s`;
 }
 
 /**
@@ -204,30 +224,78 @@ export function buildCampaign(
   const source = aiCampaignSource(campaign);
 
   /* ── Contacts ── */
-  const existingByName = new Set(api.contacts.map(c => `${c.name.toLowerCase()}|${(c.phone || '').replace(/\D/g, '')}`));
-  const fresh = qualified.filter(l => !existingByName.has(`${l.name.toLowerCase()}|${(l.phone || '').replace(/\D/g, '')}`));
-  const duplicates = qualified.length - fresh.length;
-  if (duplicates) blocked.push(`${duplicates} were already in your contacts and were left alone.`);
+  /* A prospect that is already a contact is adopted, not copied and not
+     skipped. Skipping was the old behaviour and it made the CRM source
+     useless: every lead it found was by definition already a contact, so
+     nothing was ever stamped with the campaign and nobody was ever enrolled.
+     A second copy of the same business would be worse still. */
+  const byKey = new Map<string, Contact>();
+  const byContactId = new Map<string, Contact>();
+  for (const c of api.contacts) {
+    byContactId.set(c.id, c);
+    byKey.set(`${c.name.toLowerCase()}|${(c.phone || '').replace(/\D/g, '')}`, c);
+    if (c.company?.trim()) byKey.set(`${c.company.trim().toLowerCase()}|${(c.phone || '').replace(/\D/g, '')}`, c);
+  }
+  const matchFor = (l: AILead): Contact | undefined =>
+    (l.sourceRef && byContactId.get(l.sourceRef))
+    || byKey.get(`${l.name.toLowerCase()}|${(l.phone || '').replace(/\D/g, '')}`);
+
+  const fresh: AILead[] = [];
+  const adopted: { lead: AILead; contact: Contact }[] = [];
+  for (const l of qualified) {
+    const hit = matchFor(l);
+    if (hit) adopted.push({ lead: l, contact: hit });
+    else fresh.push(l);
+  }
+
+  /* Stamped rather than rewritten: their name, notes and value are theirs. One
+     write for the lot — sixty separate updates is sixty saves and sixty toasts. */
+  api.updateContacts(adopted.map(({ contact }) => ({
+    id: contact.id,
+    updates: {
+      tags: contact.tags?.includes('ai-sales-agent') ? contact.tags : [...(contact.tags ?? []), 'ai-sales-agent'],
+      customFields: {
+        ...(contact.customFields ?? {}),
+        aiCampaignId: campaign.id,
+        aiCampaignName: campaign.name,
+      },
+    },
+  })));
+  for (const { lead, contact } of adopted) {
+    updateLead(lead.id, { status: 'promoted' });
+    linkRecord(campaign.id, { kind: 'contact', id: contact.id, label: contact.name, route: '/contacts' });
+  }
+  if (adopted.length) {
+    created.push(`${adopted.length} existing ${adopted.length === 1 ? 'contact was' : 'contacts were'} added to this campaign`);
+  }
 
   const madeContacts = fresh.length ? api.bulkImportContacts(fresh.map(l => leadToContact(l, source))) : [];
   madeContacts.forEach((c, i) => {
     updateLead(fresh[i].id, { status: 'promoted' });
     linkRecord(campaign.id, { kind: 'contact', id: c.id, label: c.name, route: '/contacts' });
   });
-  if (madeContacts.length) created.push(`${madeContacts.length} contacts`);
+  if (madeContacts.length) {
+    created.push(`${madeContacts.length} new ${madeContacts.length === 1 ? 'contact was' : 'contacts were'} created`);
+  }
 
   /* ── The email sequence ── */
   let sequenceId: string | undefined;
   let enrolled = 0;
 
   if (strategy.channels.includes('email')) {
-    /* Keyed by id, because bulkImportContacts pushes into the very array being
-       filtered here — so a plain concatenation lists everything it just created
-       twice, and enrols each of them twice. */
+    /* Keyed by id for two reasons. bulkImportContacts pushes into the very
+       array being filtered here, so a plain concatenation lists everything it
+       just created twice and enrols each of them twice. And the contacts
+       adopted a moment ago are named explicitly rather than found by their new
+       stamp: api.contacts is a React snapshot taken before the update, so
+       filtering on the stamp finds none of them and the whole campaign reports
+       "none of these prospects has an email address" while sixty of them do. */
     const byId = new Map<string, Contact>();
-    for (const c of [...madeContacts, ...api.contacts]) {
-      if (c.customFields?.aiCampaignId === campaign.id || madeContacts.includes(c)) byId.set(c.id, c);
+    for (const c of api.contacts) {
+      if (c.customFields?.aiCampaignId === campaign.id) byId.set(c.id, c);
     }
+    for (const { contact } of adopted) byId.set(contact.id, contact);
+    for (const c of madeContacts) byId.set(c.id, c);
     const contactable = [...byId.values()].filter(c => !!c.email?.trim());
 
     if (!contactable.length) {
@@ -255,7 +323,7 @@ export function buildCampaign(
           enrolledCount: 0,
         });
         sequenceId = seq.id;
-        created.push(`an email sequence with ${seq.steps.length} messages`);
+        created.push(`an email sequence of ${seq.steps.length} messages was created`);
         if (!active) {
           blocked.push('The sequence was created as a draft, because activating workflows needs your approval. Open it in Marketing to start it.');
         }
@@ -277,7 +345,7 @@ export function buildCampaign(
         };
         for (const c of contactable) { enrollInSequence(c, seq); enrolled++; }
         if (enrolled) {
-          created.push(`${enrolled} enrolled`);
+          created.push(`${enrolled} ${enrolled === 1 ? 'person was' : 'people were'} enrolled`);
           api.updateSequence(sequenceId, { enrolledCount: enrolled });
         }
       } else {
@@ -293,7 +361,7 @@ export function buildCampaign(
 
   logDecision(campaign.id, {
     kind: 'create',
-    summary: created.length ? `Built: ${created.join(', ')}` : 'Nothing could be built',
+    summary: created.length ? `Built — ${created.join('; ')}` : 'Nothing could be built',
     because: blocked.length ? blocked.join(' ') : `Created from the approved plan for ${qualified.length} qualified prospects.`,
     counts: { contacts: madeContacts.length, enrolled },
   });

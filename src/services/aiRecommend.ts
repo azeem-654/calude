@@ -152,7 +152,7 @@ export function recommend({ campaign, rollup, leads }: RecommendInput): Recommen
         detail: 'Few people are opening, which is a subject-line and sender-reputation problem rather than '
           + 'a message problem — they have not read the message yet.',
         evidence: `${opened} of ${sent} opened (${openRate}%).`,
-        action: { label: 'Open Email', tab: 'email' },
+        action: { label: 'Rewrite the funnel', tab: 'email' },
       });
     } else if (replyRate < 2) {
       out.push({
@@ -161,7 +161,7 @@ export function recommend({ campaign, rollup, leads }: RecommendInput): Recommen
         detail: 'People are opening and not replying, so the subject is working and the message is not. '
           + 'A shorter, more specific first line usually helps more than a longer pitch.',
         evidence: `${openRate}% opened but only ${replied} of ${sent} replied (${replyRate}%).`,
-        action: { label: 'Open Email', tab: 'email' },
+        action: { label: 'Rewrite the funnel', tab: 'email' },
       });
     } else if (replyRate >= 5) {
       /* The only case where scaling up is honest advice. */

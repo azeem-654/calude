@@ -188,8 +188,11 @@ export function bodyToHtml(body: string): string {
  * Returns how many emails changed so the caller can refresh.
  */
 export async function syncTracking(): Promise<number> {
-  const account = getActiveAccountId();
-  if (!account) return 0;
+  /* The same fallback instrumentHtml uses. They disagreed: every pixel was
+     stamped 'default' when no sub-account was selected, and this bailed out on
+     the null — so a single-workspace account recorded every open and was shown
+     none of them. */
+  const account = getActiveAccountId() || 'default';
   const since = localStorage.getItem(SYNC_KEY) || '';
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
   let events: { emailId: string; kind: string; url?: string; at: string }[] = [];
@@ -258,6 +261,14 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
   const id = `em-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
 
+  /* Merged here rather than on the way out, so the history holds the words this
+     person actually received. A record that reads "Hi {{firstName}}" is not a
+     record of anything — and it is the copy a user checks when they are asked
+     what was sent. */
+  const merge = mergeFor(contact);
+  const subject = personalizeHtml(opts.subject, merge);
+  const body = personalizeHtml(opts.body, merge);
+
   /* Deliverability gate. Sending to a suppressed or invalid address is how a
      sender's reputation gets destroyed, so it is refused here — at the single
      point every outbound email passes through — rather than relying on each
@@ -265,7 +276,7 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
   const gate = deliverabilityGate(contact.email, opts);
   if (!gate.ok) {
     const blockedRow: ContactEmail = {
-      id, contactId: contact.id, subject: opts.subject, body: opts.body,
+      id, contactId: contact.id, subject, body,
       status: 'failed', direction: 'outbound', createdAt: now,
       opens: 0, clicks: 0, clickedUrls: [], attachments: opts.attachments ?? [],
       templateId: opts.templateId, sequenceId: opts.sequenceId,
@@ -281,7 +292,7 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
 
   const email: ContactEmail = {
     id, contactId: contact.id,
-    subject: opts.subject, body: opts.body,
+    subject, body,
     status: opts.scheduledFor ? 'scheduled' : 'sending',
     direction: 'outbound',
     createdAt: now,
@@ -302,16 +313,22 @@ export async function sendToContact(contact: Contact, opts: SendOptions): Promis
   return deliver(email, contact);
 }
 
-/** Push one stored email through the provider and update its status. */
-async function deliver(email: ContactEmail, contact: Contact): Promise<SendOutcome> {
-  const cfg = loadEmailConfig();
-  const merge = {
+/** The fields a merge token can draw on, in one place. */
+function mergeFor(contact: Contact) {
+  return {
     name: contact.name, email: contact.email, company: contact.company,
     phone: contact.phone, jobTitle: contact.jobTitle, website: contact.website,
     customFields: contact.customFields,
   };
-  /* Body is merged before instrumenting so tracking rewrites see final URLs;
-     the subject is merged by sendEmail from the same data. */
+}
+
+/** Push one stored email through the provider and update its status. */
+async function deliver(email: ContactEmail, contact: Contact): Promise<SendOutcome> {
+  const cfg = loadEmailConfig();
+  /* Subject and body were merged before the row was written, so what goes out
+     and what is on file are the same text. The merge is passed on anyway for
+     anything a scheduled row picked up later. */
+  const merge = mergeFor(contact);
   const html = instrumentHtml(personalizeHtml(bodyToHtml(email.body), merge), email.id);
 
   const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject: email.subject, html, merge });
@@ -459,12 +476,65 @@ export const skipStep = (id: string, sequence?: EmailSequence) => patchEnrollmen
 });
 
 /**
+ * Bring live enrolments back in line with a sequence whose steps changed.
+ *
+ * `totalSteps` is snapshotted when someone is enrolled, while `currentStep`
+ * indexes the live array — so shortening a sequence leaves an enrolment
+ * pointing past the end. processSequences finds no step, skips it, and the
+ * person sits "active" with a send date in the past for ever. Anyone already
+ * past the new last step has had everything the shortened sequence contains,
+ * so they are finished, not stalled.
+ *
+ * Send times already set are left alone: rewriting the words does not move the
+ * appointment, and the new wording is read at send time anyway.
+ */
+export function resyncEnrollments(sequence: EmailSequence): { retimed: number; completed: number } {
+  const rows = loadEnrollments();
+  let retimed = 0;
+  let completed = 0;
+
+  for (const e of rows) {
+    if (e.sequenceId !== sequence.id) continue;
+    /* A finished or cancelled enrolment ran the sequence it was on. Reopening
+       it because the sequence grew would mail people who were already done. */
+    if (e.status !== 'active' && e.status !== 'paused') continue;
+
+    if (e.totalSteps !== sequence.steps.length) { e.totalSteps = sequence.steps.length; retimed++; }
+    if (e.currentStep >= sequence.steps.length) {
+      e.status = 'completed';
+      e.nextSendAt = undefined;
+      completed++;
+    }
+  }
+
+  if (retimed || completed) saveEnrollments(rows);
+  return { retimed, completed };
+}
+
+/**
  * Send any sequence steps that are due. Kept deliberately simple: one step per
  * run per enrolment, so a long backlog drains gradually rather than spamming.
  */
-export async function processSequences(contacts: Contact[], sequences: EmailSequence[]): Promise<number> {
+/**
+ * A veto on an individual send, applied at the last moment before it goes.
+ *
+ * Daily caps live outside this module — they belong to whoever set them — so
+ * the rule is injected rather than imported. Returning false holds the send
+ * back without touching the enrolment, so it simply goes on the next run.
+ */
+export type SendGate = (contact: Contact, sequence: EmailSequence) => boolean;
+
+export async function processSequences(
+  contacts: Contact[],
+  sequences: EmailSequence[],
+  gate?: SendGate,
+): Promise<number> {
   const rows = loadEnrollments();
   let sent = 0;
+  /* Separate from `sent`. Persisting only on success meant a run where every
+     send failed left currentStep where it was, so the next tick sent the same
+     message again — and again, once a minute, writing a failed row each time. */
+  let touched = 0;
   for (const enr of rows) {
     if (enr.status !== 'active' || !enr.nextSendAt) continue;
     if (new Date(enr.nextSendAt).getTime() > Date.now()) continue;
@@ -472,9 +542,13 @@ export async function processSequences(contacts: Contact[], sequences: EmailSequ
     const contact = contacts.find(c => c.id === enr.contactId);
     const step = seq?.steps[enr.currentStep];
     if (!seq || !contact || !step) continue;
+    /* Held, not skipped: currentStep does not move, so nobody loses a message
+       to a cap — they get it tomorrow. */
+    if (gate && !gate(contact, seq)) continue;
 
     const out = await sendToContact(contact, { subject: step.subject, body: step.body, sequenceId: seq.id });
     if (out.ok) sent++;
+    touched++;
     enr.history.push({ step: enr.currentStep, at: new Date().toISOString(), action: 'sent' });
     enr.currentStep += 1;
     if (enr.currentStep >= enr.totalSteps) { enr.status = 'completed'; enr.nextSendAt = undefined; }
@@ -483,6 +557,6 @@ export async function processSequences(contacts: Contact[], sequences: EmailSequ
       enr.nextSendAt = nextSendFor(next?.day ?? 1, next?.waitUnit ?? 'days');
     }
   }
-  if (sent) saveEnrollments(rows);
+  if (touched) saveEnrollments(rows);
   return sent;
 }

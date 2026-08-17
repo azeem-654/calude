@@ -80,7 +80,13 @@ export function readObjective(text: string): ObjectiveReading {
      offers, and showing the first when the user wrote the second misstates what
      is being sold. */
   const PERIOD = '(?:\\s?(?:a|per|\\/)\\s?(?:month|year|week|mo|yr))';
-  const money = s.match(new RegExp(`([£$€]\\s?\\d[\\d,.]*(?:\\s?[km])?${PERIOD}?)|(\\d[\\d,.]*${PERIOD})`, 'i'));
+  /* The figure ends on a digit. Letting it end on punctuation swallowed the
+     comma in "at $49, follow up three times" — which was then printed as the
+     price, and left "at  follow" behind for the offer to trip over. */
+  const AMOUNT = '\\d(?:[\\d,]*\\d)?(?:\\.\\d{1,2})?';
+  const money = s.match(new RegExp(`([£$€]\\s?${AMOUNT}(?:\\s?[km])?${PERIOD}?)|(${AMOUNT}${PERIOD})`, 'i'));
+  /* Sentence punctuation is not part of the price. "at $49, follow up three
+     times" was reading as "$49," and printing the comma back on screen. */
   const priceHint = money ? money[0].trim() : null;
   const withoutMoney = money ? s.replace(money[0], ' ') : s;
 
@@ -122,20 +128,48 @@ export function readObjective(text: string): ObjectiveReading {
      service" as the offer and then printing "at $3,000/month" after it says the
      price twice in one sentence. */
   const offerMatch = withoutMoney.match(/\b(?:our|a|the)\s+([\w\s+-]{2,40}?)\s+(service|offer|package|programme|program|plan|retainer)\b/i);
-  const offer = offerMatch ? `${offerMatch[1].trim()} ${offerMatch[2].trim()}`.replace(/\s+/g, ' ') : null;
+  /* "email them about a free new patient check-up" names the offer just as
+     plainly as "our marketing service" does, and it is how most people write
+     it. Without this the plan fell back to the words "The offer named in the
+     objective", which then went out in the actual emails. */
+  const aboutMatch = withoutMoney.match(
+    /\b(?:about|offering|promoting|selling|to sell)\s+((?:a|an|our|the)\s+)?([a-z][\w'-]*(?:\s+[a-z][\w'-]*){0,6})/i);
+  const about = aboutMatch
+    ? `${aboutMatch[1] ?? ''}${aboutMatch[2]}`
+      .replace(/\s+(?:and|then|so|to|at|for|with|from|in|on)$/i, '')
+      .replace(/\s+/g, ' ').trim()
+    : null;
+  const offer = offerMatch
+    ? `${offerMatch[1].trim()} ${offerMatch[2].trim()}`.replace(/\s+/g, ' ')
+    : (about && about.length >= 4 ? about : null);
 
   /* The industry: the noun phrase carrying the count, e.g. "dental clinics". */
   let industry: string | null = null;
   if (countMatch) {
     const after = hunting.slice((countMatch.index ?? 0) + countMatch[0].length);
     const phrase = after.match(/^\s+((?:[a-z][\w-]*\s+){0,2}[a-z][\w-]*)/i);
-    if (phrase) industry = phrase[1].trim().replace(/\s+(in|that|with|who|which)$/i, '');
+    /* Trailing function words come off one at a time, not once. "60 enquiries
+       already in our CRM" was reading as "enquiries already", which then
+       described the audience as an industry on every screen. */
+    if (phrase) {
+      industry = phrase[1].trim();
+      let trimmed = industry;
+      do {
+        industry = trimmed;
+        trimmed = industry.replace(/\s+(in|that|with|who|which|already|still|sitting|from|for|on|at|and|or|to|our|the)$/i, '');
+      } while (trimmed !== industry);
+    }
   }
   if (!industry) {
     const m = s.match(/\b(?:find|target|reach|contact|prospect for)\s+((?:[a-z][\w-]*\s+){0,2}[a-z][\w-]*)/i);
     if (m) industry = m[1].trim();
   }
-  if (industry && /^(me|them|us|people|everyone|anyone|new|more)$/i.test(industry)) industry = null;
+  /* A word for records in a CRM is not an industry. "Work the 60 enquiries" is
+     a sentence about this database, not about a market, and treating it as one
+     puts "I work with enquiries on…" in a cold email. */
+  if (industry && /^(me|them|us|people|everyone|anyone|new|more|enquir(?:y|ies)|inquir(?:y|ies)|leads?|contacts?|customers?|clients?|prospects?|records?|entries|names)$/i.test(industry)) {
+    industry = null;
+  }
 
   const sizeHint = /\bmulti[- ]?locations?\b/i.test(s) ? 'multiple locations'
     : /\bmore than one location\b/i.test(s) ? 'more than one location'
@@ -172,8 +206,15 @@ export function fallbackStrategy(objective: string): AIStrategy {
     r.sizeHint ? `with ${r.sizeHint}` : null,
   ].filter(Boolean).join(' ').trim();
 
-  const icpDescription = who || 'Everyone the objective describes — it did not name an industry or a place, so this needs narrowing before it runs.';
-  if (!who) assumed.push('The objective did not name an industry or a location, so there is nothing to filter prospects on yet.');
+  /* "in Plano" is not a description of anybody. When the sentence named a place
+     but no industry, say so in words rather than leaving the preposition
+     dangling at the front of the field. */
+  const icpDescription = r.industry
+    ? who
+    : r.location
+      ? `Anyone in ${r.location} the objective covers — it named a place but not an industry.`
+      : 'Everyone the objective describes — it did not name an industry or a place, so this needs narrowing before it runs.';
+  if (!r.industry) assumed.push('The objective did not name an industry, so prospects are only filtered on what it did say.');
 
   const signals: string[] = [];
   if (r.sizeHint) signals.push(r.sizeHint);
@@ -191,9 +232,16 @@ export function fallbackStrategy(objective: string): AIStrategy {
   if (r.wantsMeetings) rationale.push('A booking link goes out only once someone replies with interest, so the calendar fills with conversations rather than clicks.');
   rationale.push(...assumed);
 
+  /* "about your a free new patient check-up" — an offer taken from someone's own
+     words often carries its own article, and pinning "your" in front of it
+     makes the one sentence they read first ungrammatical. */
+  const offerPhrase = r.offer
+    ? (/^(a|an|the|our|your|my|their)\s/i.test(r.offer) ? r.offer : `your ${r.offer}`)
+    : 'your offer';
+
   const summary = [
     `Contact ${targetCount.toLocaleString()} ${r.industry || 'prospects'}${r.location ? ` in ${r.location}` : ''}`,
-    r.priceHint ? ` about your ${r.offer || 'offer'} at ${r.priceHint}` : r.offer ? ` about your ${r.offer}` : '',
+    r.priceHint ? ` about ${offerPhrase} at ${r.priceHint}` : r.offer ? ` about ${offerPhrase}` : '',
     `. Open on ${r.channels.includes('email') ? 'email' : r.channels[0]}, then ${followUps} follow-up${followUps === 1 ? '' : 's'} ${intervalDays} days apart`,
     r.channels.includes('sms') ? ', with SMS kept for people who have already engaged' : '',
     r.wantsMeetings ? ', and a booking link for anyone who shows interest.' : '.',

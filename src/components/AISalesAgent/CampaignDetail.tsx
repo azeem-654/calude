@@ -25,6 +25,7 @@ import LeadsPanel from './LeadsPanel';
 import BuildPanel from './BuildPanel';
 import PerformancePanel from './PerformancePanel';
 import RecommendPanel from './RecommendPanel';
+import RevisePanel from './RevisePanel';
 import ActivityTab from './ActivityTab';
 import {
   AppointmentsTab, ContactsTab, EmailTab, Panel, SettingsTab, SmsTab, WorkflowsTab,
@@ -177,7 +178,12 @@ export default function CampaignDetail() {
         )}
 
         {tab === 'workflows' && <WorkflowsTab campaign={campaign} />}
-        {tab === 'email' && <EmailTab campaign={campaign} />}
+        {tab === 'email' && (
+          <>
+            <EmailTab campaign={campaign} />
+            <RevisePanel campaign={campaign} onChanged={reload} />
+          </>
+        )}
         {tab === 'sms' && <SmsTab campaign={campaign} />}
         {tab === 'appointments' && <AppointmentsTab campaign={campaign} />}
         {tab === 'activity' && <ActivityTab log={log} />}

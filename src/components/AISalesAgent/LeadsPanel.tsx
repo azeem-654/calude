@@ -13,10 +13,10 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import {
-  AlertTriangle, Check, ExternalLink, Loader, MapPin, Minus, Phone, Search, X,
+  AlertTriangle, Check, ExternalLink, Loader, MapPin, Minus, Phone, Search, Users, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { discover, leadStats, leadsFor, placesStatus } from '../../services/aiDiscovery';
+import { crmContacts, discover, googlePlaces, leadStats, leadsFor, placesStatus } from '../../services/aiDiscovery';
 import { logDecision } from '../../services/aiDecisionLog';
 import { linkRecord } from '../../services/aiCampaigns';
 import type { AICampaign, AILead, SignalCheck } from '../../types/aiSalesAgent';
@@ -30,12 +30,16 @@ const VERDICT: Record<SignalCheck['verdict'], { icon: typeof Check; colour: stri
 };
 
 export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampaign; onChanged: () => void }) {
-  const { addNotification } = useApp();
+  const { addNotification, contacts } = useApp();
   const [leads, setLeads] = useState<AILead[]>(() => leadsFor(campaign.id));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const [needsSetup, setNeedsSetup] = useState(false);
   const [open, setOpen] = useState<string>('');
+  /* Which pool to search. Places finds businesses nobody has spoken to and
+     publishes no email addresses; the CRM holds people who can actually be
+     emailed. Neither is a substitute for the other, so it is a choice. */
+  const [pool, setPool] = useState<'google-places' | 'crm'>('google-places');
 
   const reload = useCallback(() => setLeads(leadsFor(campaign.id)), [campaign.id]);
   const stats = useMemo(() => leadStats(leads), [leads]);
@@ -46,7 +50,13 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
   const find = async () => {
     if (!strategy) return;
     setBusy(true); setProblem(''); setNeedsSetup(false);
-    const run = await discover(campaign.id, strategy);
+    const source = pool === 'crm' ? crmContacts(contacts) : googlePlaces;
+    const run = await discover(campaign.id, strategy, {
+      source,
+      /* Places is clamped to 20 a search by its own endpoint; the CRM can hand
+         over as many as the campaign's daily cap allows. */
+      limit: pool === 'crm' ? Math.max(1, campaign.guardrails.dailyNewProspects) : 20,
+    });
     setBusy(false);
 
     if (!run.ok) {
@@ -70,7 +80,9 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
     logDecision(campaign.id, {
       kind: 'discover',
       summary: found ? `Found ${found} ${found === 1 ? 'business' : 'businesses'}` : 'Found nothing new',
-      because: `Searched Google Places for “${run.query}”.${run.duplicates ? ` ${run.duplicates} were already on the list.` : ''}`,
+      because: pool === 'crm'
+        ? `Read the contacts already in this workspace, matched against “${run.query}”.${run.duplicates ? ` ${run.duplicates} were already on the list.` : ''}`
+        : `Searched Google Places for “${run.query}”.${run.duplicates ? ` ${run.duplicates} were already on the list.` : ''}`,
       counts: { found, 'already known': run.duplicates },
     });
     if (found) {
@@ -85,7 +97,7 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
       linkRecord(campaign.id, {
         kind: 'lead-list',
         id: `${campaign.id}-leads`,
-        label: `Prospects from Google Places`,
+        label: pool === 'crm' ? 'Prospects from your contacts' : 'Prospects from Google Places',
       });
     }
 
@@ -128,6 +140,37 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
         </button>
       }>
 
+      {/* Where to look. Stated as a choice with its consequence attached,
+          because the two pools answer different questions. */}
+      <div role="group" aria-label="Where to look for prospects"
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {([
+          { id: 'google-places' as const, label: 'Google Places', icon: MapPin, note: 'New local businesses. Phone and website, no email addresses.' },
+          { id: 'crm' as const, label: 'Your contacts', icon: Users, note: `${contacts.filter(c => c.email?.trim() && c.status !== 'customer').length} people here can be emailed today.` },
+        ]).map(p => {
+          const on = pool === p.id;
+          const Icon = p.icon;
+          return (
+            <button key={p.id} onClick={() => setPool(p.id)} className="press" aria-pressed={on}
+              title={p.note}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                border: `1px solid ${on ? '#17191c' : '#e2e8f0'}`,
+                backgroundColor: on ? '#17191c' : 'white',
+                color: on ? 'white' : '#475569',
+              }}>
+              <Icon size={13} /> {p.label}
+            </button>
+          );
+        })}
+        <span style={{ alignSelf: 'center', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>
+          {pool === 'crm'
+            ? 'Reads the contacts you already have. Customers are left out of cold outreach.'
+            : 'Finds businesses nobody has spoken to. Places publishes no email addresses.'}
+        </span>
+      </div>
+
       {problem && (
         <div style={{ display: 'flex', gap: 9, padding: '11px 13px', backgroundColor: needsSetup ? '#fffbeb' : '#fef2f2', border: `1px solid ${needsSetup ? '#fde68a' : '#fecaca'}`, borderRadius: 9 }}>
           <AlertTriangle size={14} color={needsSetup ? '#b45309' : '#dc2626'} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -158,6 +201,7 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
             does not publish them. Your plan opens on email, so as things stand it has nobody to email.
             {stats.withPhone > 0 && ` ${stats.withPhone} have a phone number, so SMS or a call would reach them.`}
             {stats.withWebsite > 0 && ` ${stats.withWebsite} have a website with a contact page.`}
+            {' '}Switch the source above to <strong>Your contacts</strong> to work people who already have an address.
           </p>
         </div>
       )}

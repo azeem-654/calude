@@ -18,6 +18,7 @@
  * right up until someone contacts them.
  */
 import { sessionToken } from './auth';
+import type { Contact } from '../types';
 import type {
   AIChannel, AILead, AIStrategy, LeadQualification, LeadSource, SignalCheck,
 } from '../types/aiSalesAgent';
@@ -172,6 +173,68 @@ export const googlePlaces: DiscoverySource = {
     }
   },
 };
+
+/**
+ * The contacts already in the CRM, offered as a source of prospects.
+ *
+ * The reason this exists is blunt. Google Places does not publish email
+ * addresses, so a campaign built only from Places has phone numbers and nobody
+ * to email — which the build refuses to pretend otherwise about. The people a
+ * business can actually email are usually already in its CRM: enquiries that
+ * went cold, quotes that were never chased, customers who stopped coming. That
+ * is the cheapest campaign anyone can run and the agent could not reach it.
+ *
+ * It does not judge the ICP itself. qualify() does that, exactly as it does for
+ * a directory listing, so there is one qualification path and every rejection
+ * still has to show its evidence.
+ *
+ * Two exclusions, both deliberate. Someone with no email address is no use to
+ * an email campaign. And a current customer is not a cold prospect — mailing
+ * your own customers a "quick question about {{company}}" is the sort of thing
+ * that has to be chosen, not arrived at by default.
+ */
+export function crmContacts(contacts: Contact[]): DiscoverySource {
+  return {
+    id: 'crm',
+    label: 'Your contacts',
+    async search(_query, limit) {
+      const withEmail = contacts.filter(c => !!c.email?.trim());
+      const usable = withEmail.filter(c => c.status !== 'customer');
+
+      if (!contacts.length) {
+        return { ok: false, source: 'crm', businesses: [], error: 'There are no contacts in this workspace yet, so there is nobody to work.' };
+      }
+      if (!withEmail.length) {
+        return {
+          ok: false, source: 'crm', businesses: [],
+          error: `None of your ${contacts.length} contacts has an email address, so there is nobody here an email campaign could reach.`,
+        };
+      }
+      if (!usable.length) {
+        return {
+          ok: false, source: 'crm', businesses: [],
+          error: `All ${withEmail.length} contacts with an email address are marked as customers. They are left out of cold outreach on purpose — change a status if you meant to include one.`,
+        };
+      }
+
+      return {
+        ok: true,
+        source: 'crm',
+        businesses: usable.slice(0, limit).map(c => ({
+          id: c.id,
+          /* The company is what an ICP is written about; the person's name is
+             what the email says hello to, and leadToContact keeps both. */
+          name: c.company?.trim() || c.name,
+          address: c.address?.trim() || c.customFields?.leadAddress || undefined,
+          phone: c.phone || undefined,
+          website: c.website || undefined,
+          email: c.email.trim(),
+          category: c.tags?.length ? c.tags.join(', ') : undefined,
+        })),
+      };
+    },
+  };
+}
 
 export async function placesStatus(): Promise<{ configured: boolean; keyHint: string }> {
   try {
@@ -339,7 +402,9 @@ export async function discover(
   opts: { limit?: number; source?: DiscoverySource } = {},
 ): Promise<DiscoveryRun> {
   const source = opts.source ?? googlePlaces;
-  const limit = Math.max(1, Math.min(20, opts.limit ?? 20));
+  /* Each source caps itself — Places is clamped to 20 by its own endpoint —
+     so this only stops a caller asking for an unbounded number. */
+  const limit = Math.max(1, Math.min(200, opts.limit ?? 20));
   const query = searchQueryFor(strategy);
 
   if (!query) {
