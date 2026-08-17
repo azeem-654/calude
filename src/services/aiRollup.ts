@@ -15,6 +15,7 @@
  */
 import { emailStats, loadEmails, loadEnrollments } from './contactEmail';
 import { leadStats, leadsFor } from './aiDiscovery';
+import { MIN_SENDS } from './aiRecommend';
 import type { Appointment, Booking, Contact } from '../types';
 import type { EmailSequence } from '../types/marketing';
 import type { AICampaign } from '../types/aiSalesAgent';
@@ -91,9 +92,12 @@ export function sequenceView(campaign: AICampaign, api: RollupApi): SequenceView
       opened: stats.opened,
       replied: stats.replied,
       bounced: stats.bounced,
-      /* A rate over nothing is not zero, it is undefined. */
-      openRate: stats.sent ? stats.openRate : null,
-      replyRate: stats.sent ? stats.replyRate : null,
+      /* A rate over nothing is not zero, it is undefined — and a rate over
+         three sends is not a rate either. Two opens out of three is not "67%
+         open rate", it is three sends, and printing the percentage invites a
+         conclusion the sample cannot carry. The counts are still shown. */
+      openRate: stats.sent >= MIN_SENDS ? stats.openRate : null,
+      replyRate: stats.sent >= MIN_SENDS ? stats.replyRate : null,
     };
   });
 }
@@ -144,6 +148,8 @@ export function rollup(campaign: AICampaign, api: RollupApi): Rollup {
   const bounced = seqs.reduce((n, s) => n + s.bounced, 0);
   const enrolled = seqs.reduce((n, s) => n + s.enrolled, 0);
   const hasSends = sent > 0;
+  /* Percentages only once there are enough sends to mean something. */
+  const rateable = sent >= MIN_SENDS;
 
   if (!seqs.length) caveats.push('No email sequence has been built yet, so there is nothing sending.');
   if (seqs.some(s => s.status === 'missing')) {
@@ -151,6 +157,9 @@ export function rollup(campaign: AICampaign, api: RollupApi): Rollup {
   }
   if (seqs.length && !enrolled) caveats.push('The sequence exists but nobody is enrolled, so it will not send.');
   if (enrolled && !sent) caveats.push('People are enrolled and nothing has gone out yet — the first message is still due.');
+  if (hasSends && !rateable) {
+    caveats.push(`Open and reply rates are not shown yet: ${sent} ${sent === 1 ? 'send is' : 'sends are'} too few for a percentage to mean anything. They appear at about ${MIN_SENDS}.`);
+  }
   if (leads.total && !leads.withEmail) {
     caveats.push(`None of the ${leads.total} prospects has an email address, which is why the email figures stay empty.`);
   }
@@ -161,8 +170,8 @@ export function rollup(campaign: AICampaign, api: RollupApi): Rollup {
     { label: 'In your CRM', value: mineContacts.length || null, from: 'Contacts' },
     { label: 'Enrolled', value: enrolled || null, from: 'Email sequences' },
     { label: 'Sent', value: sent || null, from: 'Email' },
-    { label: 'Opened', value: hasSends ? opened : null, from: 'Email', note: hasSends ? `${Math.round((opened / sent) * 100)}% of sent` : undefined },
-    { label: 'Replied', value: hasSends ? replied : null, from: 'Email', note: hasSends ? `${Math.round((replied / sent) * 100)}% of sent` : undefined },
+    { label: 'Opened', value: hasSends ? opened : null, from: 'Email', note: rateable ? `${Math.round((opened / sent) * 100)}% of sent` : hasSends ? `of ${sent} sent` : undefined },
+    { label: 'Replied', value: hasSends ? replied : null, from: 'Email', note: rateable ? `${Math.round((replied / sent) * 100)}% of sent` : hasSends ? `of ${sent} sent` : undefined },
     { label: 'Bounced', value: hasSends ? bounced : null, from: 'Email' },
     { label: 'Appointments', value: (appts.length + books.length) || null, from: 'Calendar' },
   ];

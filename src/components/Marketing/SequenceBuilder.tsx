@@ -669,10 +669,14 @@ export default function SequenceBuilder({ sequences, contacts = [], onAddSequenc
                 <input value={selected.name} onChange={e => { onUpdateSequence(selected.id, { name: e.target.value }); setSelected(p => p ? { ...p, name: e.target.value } : p); }}
                   style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', border: 'none', outline: 'none', flex: 1, minWidth: 0, fontFamily: 'inherit', backgroundColor: 'transparent' }} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>{selected.steps.length} steps</span>
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>·</span>
                 <span style={{ fontSize: 11, color: statusColor[selected.status], fontWeight: 600, textTransform: 'capitalize' }}>{selected.status}</span>
+                {/* Opened, a sequence should say who made it and let the reader
+                    go there. The list tag is compact and shows the title only,
+                    which is ambiguous once several setups have run. */}
+                {selected.source && <SourceTag source={selected.source} />}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>

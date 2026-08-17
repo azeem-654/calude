@@ -387,7 +387,16 @@ export async function discover(
 }
 
 /** How the lead list stands, for the panel's summary line. */
-export function leadStats(leads: AILead[]) {
+export interface LeadStats {
+  total: number;
+  qualified: number;
+  rejected: number;
+  withEmail: number;
+  withPhone: number;
+  withWebsite: number;
+}
+
+export function leadStats(leads: AILead[]): LeadStats {
   const qualified = leads.filter(l => l.status === 'qualified' || l.status === 'promoted');
   return {
     total: leads.length,

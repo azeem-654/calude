@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import AICampaignBadge from '../shared/AICampaignBadge';
 import {
   Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
   Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2, ShieldCheck,
@@ -613,6 +614,10 @@ export default function Contacts() {
                             {contact.name}
                           </button>
                           <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{contact.source}{contact.company ? ` · ${contact.company}` : ''}</p>
+                          {/* Which campaign produced this contact, resolved live
+                              so a renamed one reads correctly and a deleted one
+                              says so. */}
+                          <AICampaignBadge campaignId={contact.customFields?.aiCampaignId} />
                         </div>
                       </div>
                     </td>

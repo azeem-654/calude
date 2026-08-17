@@ -24,6 +24,7 @@ import StrategyPanel from './StrategyPanel';
 import LeadsPanel from './LeadsPanel';
 import BuildPanel from './BuildPanel';
 import PerformancePanel from './PerformancePanel';
+import RecommendPanel from './RecommendPanel';
 import ActivityTab from './ActivityTab';
 import {
   AppointmentsTab, ContactsTab, EmailTab, Panel, SettingsTab, SmsTab, WorkflowsTab,
@@ -161,6 +162,7 @@ export default function CampaignDetail() {
               </p>
             </Panel>
             <PerformancePanel campaign={campaign} />
+            <RecommendPanel campaign={campaign} />
             <BuildPanel campaign={campaign} onChanged={reload} />
           </>
         )}
