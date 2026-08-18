@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  MessageSquare, Mail, ShoppingBag, CornerUpLeft,
-  Check, CheckCheck, Calendar as CalIcon, Plus, Share2,
-  MoreHorizontal, Star, Lightbulb,
+  MessageSquare, ShoppingBag, CornerUpLeft, UserPlus, Briefcase,
+  Check, CheckCheck, Calendar as CalIcon, MoreHorizontal,
+  Star, Lightbulb,
   AlertTriangle, ArrowRight, Rocket,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
+import { getSession } from '../../services/auth';
 import { loadOnboarding } from '../../services/onboarding';
 import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
 import { sendToContact } from '../../services/contactEmail';
@@ -21,7 +22,10 @@ import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
+import { recentActivity, relTime, type Activity } from './activity';
 import DayBoard from './DayBoard';
+import KpiTile from './KpiTile';
+import { buildKpis, shortMoney } from './kpis';
 import { useProgressBook } from './useProgressBook';
 import type { Deal } from '../../types';
 import './dashboard.css';
@@ -73,63 +77,69 @@ const CARD: React.CSSProperties = {
   WebkitBackdropFilter: 'blur(14px)',
 };
 
-const TEAM = [
-  { name: 'John Doe', img: 12, badge: 2, badgeColor: BLUE },
-  { name: 'Maria Kim', img: 47, badge: 3, badgeColor: BLUE },
-  { name: 'Alex Ray', img: 33, badge: 2, badgeColor: RED },
-  { name: 'Sara Lee', img: 26, badge: 1, badgeColor: RED },
-  { name: 'Tom Fox', img: 59, badge: 0, badgeColor: BLUE },
-  { name: 'Nina Park', img: 44, badge: 1, badgeColor: RED },
-  { name: 'Omar Diaz', img: 68, badge: 0, badgeColor: BLUE },
-  { name: 'Amy Wu', img: 24, badge: 0, badgeColor: BLUE },
-];
+/* ── Initials avatar ──
+   No stock photograph. This used to pull a face from a fake-avatar service and
+   hang it on a real customer's name, which is a stranger's photograph on your
+   client record. Initials over a colour derived from the name are honest,
+   stable, and need no network. */
+function avatarHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
 
-/* ── Photo avatar with initials fallback ── */
-function Avatar({ img, name, size = 40 }: { img: number; name: string; size?: number }) {
-  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2);
+function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+  const initials = name.trim().split(/\s+/).map(w => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase() || '?';
+  const hue = avatarHue(name);
   return (
-    <div style={{
-      width: size, height: size, borderRadius: 999, overflow: 'hidden', position: 'relative', flexShrink: 0,
-      background: 'linear-gradient(135deg,#c7cdd6,#9aa2ad)',
+    <div title={name} style={{
+      width: size, height: size, borderRadius: 999, flexShrink: 0,
+      background: `linear-gradient(135deg, hsl(${hue} 46% 62%), hsl(${(hue + 38) % 360} 44% 48%))`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontSize: size * 0.34, fontWeight: 700,
-      boxShadow: '0 1px 3px rgba(23,25,28,0.12)',
+      color: '#fff', fontSize: size * 0.36, fontWeight: 700, letterSpacing: '-0.02em',
+      boxShadow: '0 1px 3px rgba(23,25,28,0.14)',
     }}>
       <span>{initials}</span>
-      <img src={`https://i.pravatar.cc/${size * 2}?img=${img}`} alt=""
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
     </div>
   );
 }
 
-/* ── Team avatar row with count badges ── */
-function TeamRow() {
+/* ── Who is carrying the deals ──
+   Read off the pipeline rather than invented: one face per person deals are
+   assigned to, badged with how many are still open. An unassigned pipeline
+   shows nothing at all, which is the truth about it. */
+function TeamRow({ owners }: { owners: { name: string; open: number }[] }) {
+  if (owners.length === 0) return null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      {TEAM.map(m => (
-        <div key={m.name} style={{ position: 'relative' }} title={m.name}>
-          <Avatar img={m.img} name={m.name} size={42} />
-          <span style={{
-            position: 'absolute', bottom: -2, right: -2, minWidth: 17, height: 17, borderRadius: 999,
-            backgroundColor: m.badge > 0 ? m.badgeColor : '#fff',
-            color: m.badge > 0 ? '#fff' : INK,
-            fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: '2px solid #e9ebee', padding: '0 3px', boxSizing: 'border-box',
-          }}>
-            {m.badge > 0 ? m.badge : '+'}
+      {owners.slice(0, 6).map(m => (
+        <div key={m.name} style={{ position: 'relative' }}>
+          <Avatar name={m.name} size={40} />
+          <span
+            aria-label={`${m.name}: ${m.open} open deal${m.open === 1 ? '' : 's'}`}
+            style={{
+              position: 'absolute', bottom: -2, right: -2, minWidth: 17, height: 17, borderRadius: 999,
+              backgroundColor: m.open > 0 ? BLUE : '#fff',
+              color: m.open > 0 ? '#fff' : INK,
+              fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '2px solid #eef0f2', padding: '0 3px', boxSizing: 'border-box',
+            }}>
+            {m.open}
           </span>
         </div>
       ))}
+      {owners.length > 6 && (
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: MUTED }}>+{owners.length - 6}</span>
+      )}
     </div>
   );
 }
 
 /* ── Journey task row (avatar + label + checks + calendar chip) ── */
-function JourneyTask({ deal, avatarSeed, done }: { deal: { title: string; contactName?: string }; avatarSeed: number; done?: boolean }) {
+function JourneyTask({ deal, done }: { deal: { title: string; contactName?: string }; done?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px' }}>
-      <Avatar img={avatarSeed} name={deal.contactName || deal.title} size={34} />
+      <Avatar name={deal.contactName || deal.title} size={34} />
       <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: INK, lineHeight: 1.35, minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
         {deal.title}
       </span>
@@ -146,99 +156,62 @@ function JourneyTask({ deal, avatarSeed, done }: { deal: { title: string; contac
   );
 }
 
-/* ── Live Activity feed ── */
-interface FeedEvent {
-  id: number;
-  type: 'message' | 'order' | 'email' | 'reply';
-  actor: string;
-  text: string;
-  ts: number;
-  fresh: boolean;
-}
-
+/* ── What has actually happened lately ──
+   Real records, newest first. The clock ticks so "3m ago" stays true; the rows
+   themselves only change when the workspace does. */
 const FEED_META = {
-  message: { icon: MessageSquare, color: BLUE,  bg: '#eceff9', label: 'Message' },
-  order:   { icon: ShoppingBag,   color: GREEN, bg: '#e9f4e6', label: 'Order' },
-  email:   { icon: Mail,          color: '#8b5cf6', bg: '#f1edfb', label: 'Email' },
-  reply:   { icon: CornerUpLeft,  color: RED,   bg: '#fceaea', label: 'Team reply' },
+  contact: { icon: UserPlus,     color: BLUE,      bg: '#eceff9', label: 'Contact' },
+  deal:    { icon: Briefcase,    color: '#8b5cf6', bg: '#f1edfb', label: 'Deal' },
+  won:     { icon: ShoppingBag,  color: GREEN,     bg: '#e9f4e6', label: 'Won' },
+  lost:    { icon: CornerUpLeft, color: RED,       bg: '#fceaea', label: 'Lost' },
+  meeting: { icon: CalIcon,      color: '#0891b2', bg: '#e4f3f7', label: 'Meeting' },
+  message: { icon: MessageSquare, color: BLUE,     bg: '#eceff9', label: 'Message' },
 } as const;
 
-const FALLBACK_NAMES = ['Emily Chen', 'Robert Martinez', 'Sarah Johnson', 'Mike Davis', 'Lisa Wong', 'James Carter', 'Ana Silva', 'Tom Becker'];
-const TEAM_NAMES = ['John', 'Maria', 'Alex'];
-
-function makeEvent(id: number, names: string[]): FeedEvent {
-  const name = names[Math.floor(Math.random() * names.length)];
-  const type = (['message', 'order', 'email', 'reply'] as const)[Math.floor(Math.random() * 4)];
-  const text =
-    type === 'message' ? ['sent you a new message', 'asked about pricing', 'replied in the chat'][Math.floor(Math.random() * 3)] :
-    type === 'order'   ? `placed an order — $${(Math.floor(Math.random() * 46) + 3) * 100}` :
-    type === 'email'   ? ['opened your campaign email', 'clicked a campaign link', 'subscribed to the newsletter'][Math.floor(Math.random() * 3)] :
-    `got a reply from ${TEAM_NAMES[Math.floor(Math.random() * TEAM_NAMES.length)]} on the team`;
-  return { id, type, actor: name, text, ts: Date.now(), fresh: true };
-}
-
-function relTime(ts: number, now: number): string {
-  const s = Math.floor((now - ts) / 1000);
-  if (s < 8) return 'just now';
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
-}
-
-function LiveFeed({ names }: { names: string[] }) {
-  const idRef = useRef(4);
-  const hoverRef = useRef(false);
-  const [now, setNow] = useState(Date.now());
-  const [events, setEvents] = useState<FeedEvent[]>(() => [
-    { ...makeEvent(1, names), ts: Date.now() - 47000, fresh: false },
-    { ...makeEvent(2, names), ts: Date.now() - 112000, fresh: false },
-    { ...makeEvent(3, names), ts: Date.now() - 260000, fresh: false },
-  ].map((e, i) => ({ ...e, id: i + 1 })));
+function LiveFeed({ items }: { items: Activity[] }) {
+  const navigate = useNavigate();
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    let timer: number;
-    const tick = () => {
-      if (!hoverRef.current) {
-        idRef.current += 1;
-        const e = makeEvent(idRef.current, names);
-        setEvents(prev => [e, ...prev.map(p => ({ ...p, fresh: false }))].slice(0, 6));
-      }
-      setNow(Date.now());
-      timer = window.setTimeout(tick, 3200 + Math.random() * 2800);
-    };
-    timer = window.setTimeout(tick, 2200);
-    const clock = window.setInterval(() => setNow(Date.now()), 10000);
-    return () => { clearTimeout(timer); clearInterval(clock); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const clock = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(clock);
   }, []);
 
   return (
-    <div
-      style={{ ...FROST, display: 'flex', flexDirection: 'column', minHeight: 0 }}
-      onMouseEnter={() => { hoverRef.current = true; }}
-      onMouseLeave={() => { hoverRef.current = false; }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
-        <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Live Activity</h3>
-        <span style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 999,
-          backgroundColor: INK, fontSize: 10, fontWeight: 800, color: '#fff', letterSpacing: '0.1em',
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: '#6ee76e', animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
-          LIVE
-        </span>
+    <div style={{ ...FROST, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px', gap: 10 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Recent activity</h3>
+        {items.length > 0 && (
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 999,
+            backgroundColor: INK, fontSize: 10, fontWeight: 800, color: '#fff', letterSpacing: '0.1em',
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: '#6ee76e', animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
+            LIVE
+          </span>
+        )}
       </div>
 
-      <div style={{ ...CARD, padding: '6px 14px', flex: 1 }}>
-        {events.map((e, i) => {
-          const meta = FEED_META[e.type];
+      <div style={{ ...CARD, padding: items.length ? '6px 14px' : '18px 16px', flex: 1 }}>
+        {items.length === 0 ? (
+          <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.65 }}>
+            Nothing has happened yet. Add a contact, open a deal or book a meeting and it appears here
+            the moment it is saved.
+          </p>
+        ) : items.map((e, i) => {
+          const meta = FEED_META[e.kind];
           const Icon = meta.icon;
           return (
-            <div key={e.id} style={{
-              display: 'flex', alignItems: 'center', gap: 11, padding: '10px 0',
-              borderBottom: i < events.length - 1 ? '1px solid #f2f3f5' : 'none',
-              animation: e.fresh ? 'feed-in 0.45s cubic-bezier(0.16,1,0.3,1)' : undefined,
-            }}>
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => navigate(e.path)}
+              className="press"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 11, padding: '10px 0', width: '100%',
+                background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer',
+                borderBottom: i < items.length - 1 ? '1px solid #f2f3f5' : 'none',
+              }}>
               <div style={{
                 width: 34, height: 34, borderRadius: 999, backgroundColor: meta.bg,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -247,15 +220,14 @@ function LiveFeed({ names }: { names: string[] }) {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 12.5, color: INK, margin: 0, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontWeight: 700 }}>{e.actor}</span>{' '}
-                  <span style={{ color: '#5c6066' }}>{e.text}</span>
+                  <span style={{ fontWeight: 700 }}>{e.who}</span>{' '}
+                  <span style={{ color: '#5c6066' }}>{e.what}</span>
                 </p>
                 <p style={{ fontSize: 10.5, color: MUTED, margin: '2px 0 0', fontWeight: 500 }}>
-                  {meta.label} · {relTime(e.ts, now)}
+                  {meta.label} · {relTime(e.at, now)}
                 </p>
               </div>
-              {e.fresh && <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: meta.color, flexShrink: 0 }} />}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -390,6 +362,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
   const hoverRef = useRef(false);
   const navigate = useNavigate();
 
+
   useEffect(() => {
     const t = setInterval(() => {
       if (!hoverRef.current) setIdx(i => (i + 1) % insights.length);
@@ -452,9 +425,108 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
   );
 }
 
+/* ── Weight of the pipeline, stage by stage ──
+   The journey board shows which deals sit where; this shows how much money
+   does, which is the question a sales lead actually asks first. Open deals
+   only — counting won and lost in a "what is in play" bar would double the
+   pipeline the moment a quarter closed well. */
+function StageBar({ stages, total }: {
+  stages: { id: string; name: string; color: string; count: number; value: number }[];
+  total: number;
+}) {
+  const navigate = useNavigate();
+  const [hot, setHot] = useState<string | null>(null);
+  const live = stages.filter(s => s.count > 0);
+
+  return (
+    <div className="dash-tile" style={{ padding: '18px 20px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: INK, letterSpacing: '-0.015em' }}>Pipeline by stage</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 11.5, color: MUTED, fontWeight: 500 }}>Open deals only</p>
+        </div>
+        <span className="dash-chip"><span className="dash-live" aria-hidden="true" />Live</span>
+      </div>
+
+      {total <= 0 ? (
+        <p style={{ margin: '18px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+          No open deals carry a value yet — add one in Pipelines and the split appears here.
+        </p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 4, marginTop: 18, height: 14 }}>
+            {live.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                title={`${s.name} — ${s.count} deal${s.count === 1 ? '' : 's'}, ${shortMoney(s.value)}`}
+                aria-label={`${s.name}: ${s.count} open deals worth ${shortMoney(s.value)}`}
+                onMouseEnter={() => setHot(s.id)}
+                onMouseLeave={() => setHot(null)}
+                onFocus={() => setHot(s.id)}
+                onBlur={() => setHot(null)}
+                onClick={() => navigate('/pipelines')}
+                style={{
+                  flex: Math.max(s.value, total * 0.02),
+                  border: 'none', cursor: 'pointer', padding: 0,
+                  borderRadius: 999,
+                  backgroundColor: s.color || BLUE,
+                  opacity: hot && hot !== s.id ? 0.4 : 1,
+                  transform: hot === s.id ? 'scaleY(1.28)' : 'none',
+                  transition: 'opacity 200ms ease, transform 200ms cubic-bezier(0.22,0.61,0.36,1)',
+                }}
+              />
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 12, marginTop: 16 }}>
+            {live.map(s => (
+              <div key={s.id} style={{ opacity: hot && hot !== s.id ? 0.5 : 1, transition: 'opacity 200ms ease' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: s.color || BLUE, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: '#5c6066', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                </div>
+                <p style={{ margin: '5px 0 0', fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>{shortMoney(s.value)}</p>
+                <p style={{ margin: '1px 0 0', fontSize: 11, color: MUTED, fontWeight: 500 }}>
+                  {s.count} deal{s.count === 1 ? '' : 's'} · {Math.round((s.value / total) * 100)}%
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── Main dashboard ── */
 export default function Dashboard() {
   const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, videoProjects, socialPosts, addNotification, addSequence, addCampaign, addSocialPost, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
+  const navigate = useNavigate();
+
+  /*
+   * The ambient wash has to reach up behind the sticky header, or its rectangle
+   * stops dead at the header's lower edge and reads as a band across the top of
+   * the screen. The header is not a fixed height — it wraps to several rows on a
+   * phone — so measure it and hand the figure to the stylesheet. Written
+   * straight onto the node: this is a paint detail, and putting it in state
+   * would re-render the whole dashboard on every resize tick.
+   */
+  const ground = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ground.current;
+    if (!el) return;
+    const header = document.querySelector('.app-header') as HTMLElement | null;
+    const apply = () => el.style.setProperty('--dash-bleed', `${header?.offsetHeight || 68}px`);
+    apply();
+    if (header && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(apply);
+      ro.observe(header);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', apply);
+    return () => window.removeEventListener('resize', apply);
+  }, []);
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -607,8 +679,50 @@ export default function Dashboard() {
   const lostCount = allDeals.filter(d => d.status === 'lost').length;
   const winRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : 42;
 
-  const feedNames = contacts.length >= 3 ? contacts.slice(0, 12).map(c => c.name) : FALLBACK_NAMES;
-  const scheduledToday = appointments.filter(a => a.status === 'scheduled').length;
+  /* ── The four headline figures, counted from real records ── */
+  const kpis = useMemo(
+    () => buildKpis({ pipelines, contacts, appointments }),
+    [pipelines, contacts, appointments],
+  );
+
+  /* ── How much money is sitting in each stage, open deals only ── */
+  const stageWeights = pipelineStages.map(st => {
+    const open = st.deals.filter(d => (d.status ?? 'active') === 'active');
+    return {
+      id: st.id,
+      name: st.name,
+      color: st.color,
+      count: open.length,
+      value: open.reduce((a, d) => a + (d.value || 0), 0),
+    };
+  });
+  const stageTotal = stageWeights.reduce((a, st) => a + st.value, 0);
+
+  /* ── Who owns the open deals, badged with how many ── */
+  const ownerTally = new Map<string, number>();
+  for (const d of allDeals) {
+    const who = (d.assignedTo || '').trim();
+    if (!who) continue;
+    if ((d.status ?? 'active') === 'active') ownerTally.set(who, (ownerTally.get(who) ?? 0) + 1);
+    else if (!ownerTally.has(who)) ownerTally.set(who, 0);
+  }
+  const dealOwners = [...ownerTally.entries()]
+    .map(([name, open]) => ({ name, open }))
+    .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
+
+  /* ── The last few things that genuinely happened ── */
+  const feed = recentActivity({ contacts, pipelines, appointments, conversations });
+  /* Today in the owner's own timezone — appointment dates are local calendar
+     days, so an ISO/UTC slice would move the day either side of midnight. */
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const scheduledToday = appointments.filter(a => a.date === todayKey && a.status === 'scheduled').length;
+  const openDeals = allDeals.filter(d => (d.status ?? 'active') === 'active').length;
+  const firstName = (getSession()?.user.name || '').trim().split(/\s+/)[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const animWinRate = useCountUp(Math.round((wonCount / Math.max(wonCount + activeCount, 1)) * 100), 1200);
 
   /* Everything the department board replays, gathered in one place. */
@@ -702,21 +816,40 @@ export default function Dashboard() {
     },
   );
 
-  let avatarSeed = 5;
-
   return (
-    <div className="dash" style={{ minHeight: '100vh', paddingBottom: 32, overflow: 'hidden' }}>
+    <div ref={ground} className="dash" style={{ minHeight: '100vh', paddingBottom: 32, overflow: 'hidden' }}>
       <span className="dash-glow" aria-hidden="true" />
-      <Header title="Customer Journeys" subtitle={`Welcome back, John — ${scheduledToday || 9} appointments scheduled, ${activeCount} deals in motion.`} />
+      <span className="dash-glow-2" aria-hidden="true" />
+      <Header
+        title={firstName ? `${greeting}, ${firstName}` : greeting}
+        subtitle={[
+          scheduledToday === 0 ? 'Nothing in the diary today' : `${scheduledToday} meeting${scheduledToday === 1 ? '' : 's'} today`,
+          `${openDeals} deal${openDeals === 1 ? '' : 's'} in motion`,
+          `${contacts.length} contact${contacts.length === 1 ? '' : 's'} on the books`,
+        ].join(' · ')}
+      />
 
       {/* Roomier than it was: the wash behind the panels is most of the effect,
           and it only shows in the space they leave. */}
       <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        {/* ── Where the business stands, department by department ── */}
-        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
-          <ProgressBoard book={book} />
-        </div>
+        {/* ── The four numbers this week turned on ──
+            Ahead of everything else on purpose: a sales lead opening the CRM
+            wants the state of the business before they want a to-do list. */}
+        <section aria-label="This week" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '0 2px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>This week</h2>
+              <span className="dash-chip"><span className="dash-live" aria-hidden="true" />Counted from your records</span>
+            </div>
+            <button type="button" className="dash-chip press" onClick={() => navigate('/analytics')}>
+              Full analytics <ArrowRight size={11} strokeWidth={2.6} />
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(232px, 1fr))', gap: 14 }}>
+            {kpis.map(k => <KpiTile key={k.id} kpi={k} />)}
+          </div>
+        </section>
 
         {/* ── Today, and the goals behind it ── */}
         <div className="slide-up" style={{ animationDelay: '0.08s' }}>
@@ -727,28 +860,24 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ── 12-month content pipeline / AI setup ── */}
-        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
-          <ContentPipelineCard onSetup={() => setWizardOpen(true)} refreshKey={obRefresh} />
-        </div>
-
         {/* ── Journey board ── */}
         <div className="slide-up" style={{ ...FROST, animationDelay: '0.08s' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 16px' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>New Deal Management</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <TeamRow />
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[Plus, Share2, CalIcon].map((I, i) => (
-                  <button key={i} style={{ width: 36, height: 36, borderRadius: 999, border: 'none', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: INK, boxShadow: '0 1px 2px rgba(23,25,28,0.06)' }}>
-                    <I size={14} strokeWidth={2.2} />
-                  </button>
-                ))}
-              </div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Pipeline</h3>
+              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: MUTED, fontWeight: 500 }}>Where the open deals are sitting</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <TeamRow owners={dealOwners} />
+              <button type="button" className="dash-chip press" onClick={() => navigate('/pipelines')}>
+                Open pipelines <ArrowRight size={11} strokeWidth={2.6} />
+              </button>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1.15fr 1fr', gap: 14, alignItems: 'start' }}>
+          <StageBar stages={stageWeights} total={stageTotal} />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1.15fr 1fr', gap: 14, alignItems: 'start', marginTop: 16 }}>
             {journeyCols.map((col, ci) => (
               <div key={col.name}>
                 <div style={{ ...CARD, padding: '8px 12px' }}>
@@ -757,7 +886,7 @@ export default function Dashboard() {
                   )}
                   {col.deals.map((d, di) => (
                     <div key={di} style={{ borderBottom: di < col.deals.length - 1 ? '1px solid #f2f3f5' : 'none' }}>
-                      <JourneyTask deal={d} avatarSeed={(avatarSeed += 7) % 70} done={ci < 2} />
+                      <JourneyTask deal={d} done={ci < 2} />
                     </div>
                   ))}
                 </div>
@@ -789,22 +918,28 @@ export default function Dashboard() {
           <InsightsCarousel insights={insights} />
         </div>
 
+        {/* ── 12-month content pipeline / AI setup ── */}
+        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+          <ContentPipelineCard onSetup={() => setWizardOpen(true)} refreshKey={obRefresh} />
+        </div>
+
+        {/* ── Where the business stands, department by department ── */}
+        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+          <ProgressBoard book={book} />
+        </div>
+
         {/* ── Bottom row: Live Activity | Knowledge table | Donut journey ── */}
         <div className="slide-up" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.25fr 0.85fr', gap: 16, alignItems: 'stretch', animationDelay: '0.2s' }}>
 
-          <LiveFeed names={feedNames} />
+          <LiveFeed items={feed} />
 
           {/* Suggested Knowledge–style table */}
           <div style={FROST}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Suggested Actions</h3>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[Plus, Share2, CalIcon].map((I, i) => (
-                  <button key={i} style={{ width: 34, height: 34, borderRadius: 999, border: 'none', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: INK, boxShadow: '0 1px 2px rgba(23,25,28,0.06)' }}>
-                    <I size={13} strokeWidth={2.2} />
-                  </button>
-                ))}
-              </div>
+              <button type="button" className="dash-chip press" onClick={() => navigate('/pipelines')}>
+                Open pipelines <ArrowRight size={11} strokeWidth={2.6} />
+              </button>
             </div>
             <div style={{ ...CARD, padding: '6px 16px 10px', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -836,8 +971,8 @@ export default function Dashboard() {
           <div style={FROST}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Deal Journey</h3>
-              <button style={{ width: 34, height: 34, borderRadius: 999, border: 'none', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: INK, boxShadow: '0 1px 2px rgba(23,25,28,0.06)' }}>
-                <Share2 size={13} strokeWidth={2.2} />
+              <button type="button" className="dash-chip press" onClick={() => navigate('/pipelines')}>
+                Open pipelines <ArrowRight size={11} strokeWidth={2.6} />
               </button>
             </div>
             <div style={{ ...CARD, padding: '18px 10px', display: 'flex', gap: 4 }}>

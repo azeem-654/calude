@@ -7,6 +7,17 @@
  * becomes a deep one in dark mode and the screen stays consistent with every
  * other page.
  *
+ * Two things it took a rewrite to get right:
+ *
+ *  - The wash has to cover the *whole* app area, not the main column. When it
+ *    only painted inside <main>, its rectangle stopped dead at the sticky
+ *    header and at the icon rail's gutter, and the join read as a hard green
+ *    band across the top of the screen. The negative margins below bleed it out
+ *    under both, and the padding puts the content back exactly where it was.
+ *  - Every field fades to a fully transparent stop of its own colour at the
+ *    closest side of its box, so there is no edge anywhere for `overflow:
+ *    hidden` to slice. The blur softens; it is not what hides the seam.
+ *
  * Scoped under .dash. Everything here is ambience, a hover state or a keyframe
  * — the layout stays in the component with the rest of this codebase.
  */
@@ -14,60 +25,81 @@
 .dash {
   position: relative;
   isolation: isolate;
-  background:
-    linear-gradient(175deg, #e4efe9 0%, #eef4f2 30%, #f2f5f6 62%, #e9eef2 100%);
+  /* Out from under <main>'s left padding and up behind the sticky header.
+     The header's height is not a constant — it wraps to several rows on a
+     phone — so the component measures it and writes it here. The 68px is the
+     desktop height, used only until the measurement lands. */
+  --dash-bleed: 68px;
+  margin: calc(var(--dash-bleed) * -1) 0 0 -62px;
+  padding: var(--dash-bleed) 0 0 62px;
+  background: linear-gradient(180deg, #eaf0ee 0%, #e9ecef 42%, #e8ebef 100%);
 }
 
-/* Three slow fields of colour. Blurred to the point of being weather rather
-   than shapes, and behind everything. */
+/* Slow fields of colour. Blurred to the point of being weather rather than
+   shapes, sized against the viewport so a long page cannot stretch them, and
+   behind everything. */
 .dash::before,
 .dash::after {
   content: '';
   position: absolute;
   z-index: -1;
   pointer-events: none;
-  border-radius: 50%;
-  filter: blur(80px);
+  will-change: transform;
 }
 .dash::before {
-  top: -8%;
-  left: -8%;
-  width: min(820px, 68%);
-  height: 620px;
-  background: radial-gradient(circle at 40% 40%, rgba(126, 205, 178, 0.72), transparent 66%);
-  animation: dash-drift-a 26s ease-in-out infinite;
+  top: -20vh;
+  left: -8vw;
+  width: 80vw;
+  height: 88vh;
+  background: radial-gradient(closest-side, rgba(120, 199, 172, 0.38), rgba(120, 199, 172, 0) 100%);
+  filter: blur(46px);
+  animation: dash-drift-a 30s ease-in-out infinite;
 }
 .dash::after {
-  top: 18%;
-  right: -10%;
-  width: min(720px, 60%);
-  height: 640px;
-  background: radial-gradient(circle at 60% 40%, rgba(150, 186, 230, 0.6), transparent 64%);
-  animation: dash-drift-b 32s ease-in-out infinite;
+  top: 4vh;
+  right: -14vw;
+  width: 74vw;
+  height: 82vh;
+  background: radial-gradient(closest-side, rgba(142, 180, 228, 0.34), rgba(142, 180, 228, 0) 100%);
+  animation: dash-drift-b 36s ease-in-out infinite;
+  filter: blur(52px);
 }
 
 @keyframes dash-drift-a {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50%      { transform: translate3d(5%, 5%, 0) scale(1.12); }
+  50%      { transform: translate3d(4%, 3%, 0) scale(1.09); }
 }
 @keyframes dash-drift-b {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1.06); }
-  50%      { transform: translate3d(-6%, -4%, 0) scale(1); }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%      { transform: translate3d(-5%, -3%, 0) scale(1); }
 }
 
-/* A third field, lower down, so the long scroll does not run out of ambience. */
-.dash-glow {
+/* Two more fields further down, so the long scroll does not run out of
+   ambience halfway. Same rule as the others: they fade to a transparent stop of
+   their own colour, so nothing can slice them. */
+.dash-glow,
+.dash-glow-2 {
   position: absolute;
   z-index: -1;
-  left: 22%;
-  bottom: 4%;
-  width: min(560px, 48%);
-  height: 460px;
-  border-radius: 50%;
+  left: 14%;
+  bottom: 2%;
+  width: min(680px, 54vw);
+  height: 52vh;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 50%, rgba(199, 244, 65, 0.22), transparent 66%);
-  filter: blur(100px);
-  animation: dash-drift-a 38s ease-in-out infinite reverse;
+  background: radial-gradient(closest-side, rgba(190, 236, 84, 0.2), rgba(190, 236, 84, 0) 100%);
+  filter: blur(64px);
+  animation: dash-drift-a 42s ease-in-out infinite reverse;
+}
+.dash-glow-2 {
+  left: auto;
+  right: -6%;
+  bottom: auto;
+  top: 42%;
+  width: min(760px, 60vw);
+  height: 56vh;
+  background: radial-gradient(closest-side, rgba(126, 190, 214, 0.22), rgba(126, 190, 214, 0) 100%);
+  filter: blur(72px);
+  animation: dash-drift-b 46s ease-in-out infinite;
 }
 
 /* A board's own sheet, given the same glass as the cards around it. */
@@ -78,18 +110,83 @@
   -webkit-backdrop-filter: blur(16px);
 }
 
-/* ── The panels ───────────────────────────────────────────────────────── */
+/* ── The headline tiles ───────────────────────────────────────────────── */
 
-/* Each block of the dashboard lifts a little under the pointer, which is the
-   whole of the "it feels alive" trick — the rest is the content moving. */
-.dash-stack > * {
-  transition: transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1),
-              filter 320ms ease;
+/* Frosted, floating, and lit from behind by whatever field is passing under
+   it. The saturate() is what stops the blur turning the wash to putty. */
+.dash-tile {
+  padding: 16px 18px 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 1px 2px rgba(23, 25, 28, 0.04),
+    0 24px 46px -32px rgba(23, 25, 28, 0.5);
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              box-shadow 300ms ease,
+              background-color 300ms ease;
 }
-.dash-stack > *:hover {
-  transform: translateY(-2px);
-  filter: drop-shadow(0 18px 34px rgba(23, 25, 28, 0.07));
+.dash-tile:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 1px 2px rgba(23, 25, 28, 0.05),
+    0 30px 54px -30px rgba(23, 25, 28, 0.5);
 }
+
+/* The "…" affordance. Quiet until you go near it. */
+.dash-dots {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a8f98;
+  background: rgba(255, 255, 255, 0.5);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+.dash-dots:hover,
+.dash-dots[aria-expanded='true'] {
+  background: #ffffff;
+  color: #17191c;
+}
+
+/* What the number actually counts, in words. */
+.dash-note {
+  position: absolute;
+  top: 46px;
+  right: 14px;
+  z-index: 20;
+  width: min(268px, calc(100% - 28px));
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(23, 25, 28, 0.07);
+  box-shadow: 0 20px 46px -14px rgba(23, 25, 28, 0.28);
+  animation: dash-pop 200ms cubic-bezier(0.22, 1.2, 0.4, 1) both;
+}
+.dash-note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: #17191c;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ── The panels ───────────────────────────────────────────────────────── */
 
 /* Arriving. The stagger is by position so a new block inherits it without any
    component having to know its own index. */
@@ -131,12 +228,31 @@
   color: #3c4148;
   white-space: nowrap;
 }
+button.dash-chip { cursor: pointer; transition: background-color 160ms ease, color 160ms ease; }
+button.dash-chip:hover { background: #ffffff; color: #17191c; }
+button.dash-chip[aria-pressed='true'] { background: #17191c; color: #ffffff; border-color: #17191c; }
+
+/* A live dot, for anything that is genuinely updating. */
+.dash-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #3f9142;
+  box-shadow: 0 0 0 0 rgba(63, 145, 66, 0.45);
+  animation: dash-ping 2.2s ease-out infinite;
+}
+@keyframes dash-ping {
+  0%   { box-shadow: 0 0 0 0 rgba(63, 145, 66, 0.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(63, 145, 66, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(63, 145, 66, 0); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .dash::before, .dash::after, .dash-glow,
-  .dash-stack > *, .dash-pop {
+  .dash::before, .dash::after, .dash-glow, .dash-glow-2,
+  .dash-stack > *, .dash-pop, .dash-live, .dash-note {
     animation: none !important;
     transition: none !important;
   }
   .dash-stack > * { opacity: 1; transform: none; }
+  .dash-tile:hover { transform: none; }
 }
