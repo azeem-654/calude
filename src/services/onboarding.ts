@@ -110,12 +110,39 @@ export function emptyOnboarding(): OnboardingState {
   };
 }
 
+/**
+ * Read the stored state, filling in anything it is missing.
+ *
+ * The merge has to reach inside the nested objects. A shallow spread replaces
+ * `goals` wholesale, so a record saved by an older version — or written with
+ * only some of its keys — leaves `goals.salesStages` undefined, and the first
+ * `.length` on it takes down the whole dashboard behind the error boundary.
+ * Arrays are checked rather than trusted for the same reason.
+ */
 export function loadOnboarding(): OnboardingState {
+  const base = emptyOnboarding();
   try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) || 'null') as OnboardingState | null;
-    if (raw && raw.version === 1) return { ...emptyOnboarding(), ...raw };
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || 'null') as Partial<OnboardingState> | null;
+    if (!raw || raw.version !== 1) return base;
+
+    const list = <T,>(v: unknown, fallback: T[]): T[] => (Array.isArray(v) ? v as T[] : fallback);
+
+    return {
+      ...base,
+      ...raw,
+      profile: { ...base.profile, ...(raw.profile ?? {}) },
+      goals: {
+        ...base.goals,
+        ...(raw.goals ?? {}),
+        goals: list(raw.goals?.goals, base.goals.goals),
+        salesStages: list(raw.goals?.salesStages, base.goals.salesStages),
+      },
+      channels: list(raw.channels, base.channels),
+      plan: list(raw.plan, base.plan),
+      audit: list(raw.audit, base.audit),
+    };
   } catch { /* corrupted → start fresh */ }
-  return emptyOnboarding();
+  return base;
 }
 
 export function saveOnboarding(state: OnboardingState) {

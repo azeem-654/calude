@@ -40,139 +40,165 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── The deck: one screen, held still ─────────────────────────────────── */
+/* ── The stage: a fixed scene over a tall document ────────────────────── */
 
-.site.deck-root {
+.site.scene-root {
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Nothing but height. This is what there is to scroll. */
+.site .scene-spacer { width: 100%; pointer-events: none; }
+
+.site .scene-stage {
   position: fixed;
   inset: 0;
   overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* One scene, stacked on all the others. Only the one in view is opaque, and
+   the transforms are written frame by frame from useScrollScene. */
+.site .scene {
+  position: absolute;
+  inset: 0;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  /* dvh rather than vh: on a phone the address bar collapses mid-gesture and
-     100vh leaves the footer under it. */
-  height: 100vh;
-  height: 100dvh;
-  /* The wheel drives the deck, so nothing else should claim the gesture. */
-  overscroll-behavior: none;
-}
-
-.site .deck-chrome {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: clamp(10px, 3vw, 40px);
-  padding: clamp(12px, 2vw, 20px) clamp(14px, 4vw, 46px);
-  min-width: 0;
-}
-.site .deck-chrome > * { min-width: 0; }
-.site .deck-bottom {
-  justify-content: space-between;
-  border-top: 1px solid var(--line);
-}
-
-.site .deck-viewport {
-  position: relative;
-  z-index: 2;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  min-height: 0;
-}
-
-.site .deck-track {
-  display: flex;
-  align-items: stretch;
-  gap: clamp(10px, 1.6vw, 20px);
-  height: 100%;
-  padding: clamp(8px, 1.4vw, 16px) 0;
+  place-items: center;
+  padding: clamp(74px, 11vh, 120px) clamp(16px, 5vw, 72px) clamp(66px, 10vh, 100px);
   box-sizing: border-box;
-  will-change: transform;
-  transition: transform 640ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  opacity: 0;
+  visibility: hidden;
+  will-change: transform, opacity;
+  /* The controls inside a scene have to stay clickable even though the stage
+     itself lets scroll events through to the document underneath. */
+  pointer-events: none;
 }
+.site .scene button, .site .scene a { pointer-events: auto; }
 
-/* One panel. Narrower than the window on purpose: the neighbours showing at
-   the edges is what makes the movement legible as movement. */
-.site .card {
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  width: min(1120px, 86vw);
-  /* A flex item defaults to min-width:auto, so content that cannot shrink —
-     a 300px grid column, an SVG — pushes the panel wider than the width it was
-     given. On a phone that dragged the whole deck off the side of the screen. */
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  /* Content sits in the middle of the panel. Top-aligned left a third of the
-     card empty under every section that happened to be short. */
-  justify-content: center;
-  padding: clamp(20px, 3.2vw, 44px);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  opacity: 0.4;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  transition: opacity 640ms ease, box-shadow 640ms ease, transform 640ms ease;
-  transform: scale(0.985);
-}
-.site .card[data-active='true'] {
-  opacity: 1;
-  transform: none;
-  box-shadow: 0 18px 46px rgba(16, 24, 40, 0.10), 0 2px 6px rgba(16, 24, 40, 0.04);
-}
-
-/* A dark band, the way the reference cuts one into a light page. */
-.site .card.dark {
-  position: relative;
-  overflow: hidden;
+.site .scene.dark {
   background: var(--ink);
-  border-color: var(--line-dark);
   color: var(--on-dark);
 }
-.site .card.dark::-webkit-scrollbar-thumb { background: #2c322a; }
+.site .scene.dark::before {
+  /* The band does not fill the screen; it is a slab laid on the page. */
+  content: '';
+  position: absolute;
+  inset: clamp(60px, 9vh, 96px) clamp(12px, 4vw, 56px);
+  background: var(--ink);
+  border-radius: var(--radius);
+  z-index: -1;
+}
+.site .scene.dark { background: transparent; }
 
-.site .card::-webkit-scrollbar { width: 6px; }
-.site .card::-webkit-scrollbar-thumb { background: #d8dad3; border-radius: 3px; }
+.site .scene-inner {
+  width: min(1180px, 100%);
+  display: grid;
+  gap: clamp(20px, 3.4vw, 56px);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  align-items: center;
+}
+/* A scene with no screenshot gets the full width for its own layout. */
+.site .scene-inner[data-wide='true'] { grid-template-columns: 1fr; }
 
-/* The light that falls through the dark panels. A single soft column of it,
-   the way the reference lights its hero. */
+/* Once there is room for two columns, the picture takes the larger share —
+   the point of the scene is the screen, not the paragraph beside it. */
+@media (min-width: 980px) {
+  .site .scene-inner:not([data-wide='true']) {
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  }
+}
+
+.site .scene-copy { min-width: 0; will-change: transform, opacity; }
+
+/* The photograph of a real screen. */
+.site .shot {
+  margin: 0;
+  min-width: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: 0 30px 70px rgba(16, 24, 40, 0.18), 0 4px 12px rgba(16, 24, 40, 0.06);
+  will-change: transform, opacity;
+  transform-origin: 50% 60%;
+}
+.site .dark .shot { border-color: rgba(255, 255, 255, 0.12); box-shadow: 0 34px 90px rgba(0, 0, 0, 0.55); }
+.site .shot img { display: block; width: 100%; height: auto; }
+
+/* The light that falls through a dark scene. */
 .site .beam {
   position: absolute;
   left: 50%;
-  top: -34%;
-  width: min(560px, 70%);
-  height: 128%;
+  top: 0;
+  width: min(620px, 66%);
+  height: 76%;
   transform: translateX(-50%);
   pointer-events: none;
   background:
-    radial-gradient(ellipse 26% 34% at 50% 14%, rgba(226, 255, 138, 0.85), transparent 72%),
-    radial-gradient(ellipse 12% 58% at 50% 34%, rgba(200, 242, 77, 0.6), transparent 74%),
-    radial-gradient(ellipse 46% 40% at 50% 62%, rgba(168, 212, 49, 0.22), transparent 76%);
-  filter: blur(26px);
+    radial-gradient(ellipse 26% 34% at 50% 6%, rgba(226, 255, 138, 0.8), transparent 72%),
+    radial-gradient(ellipse 12% 56% at 50% 26%, rgba(200, 242, 77, 0.55), transparent 74%),
+    radial-gradient(ellipse 46% 40% at 50% 58%, rgba(168, 212, 49, 0.2), transparent 76%);
+  filter: blur(28px);
 }
 
-/* Faint diagonal ruling across the closing band. */
-.site .stripes {
+/* ── Chrome, pinned over the stage ────────────────────────────────────── */
+
+.site .scene-chrome {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 3vw, 40px);
+  padding: clamp(11px, 1.8vw, 18px) clamp(14px, 4vw, 46px);
+  min-width: 0;
+  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.site .scene-chrome > * { min-width: 0; }
+.site .scene-top { top: 0; border-bottom: 1px solid var(--line); }
+.site .scene-bottom { bottom: 0; border-top: 1px solid var(--line); justify-content: space-between; }
+
+.site .scroll-hint { color: var(--text-faint); white-space: nowrap; }
+.site .scene-chapter { white-space: nowrap; }
+
+/* The rail is the position indicator and a way to jump. */
+.site .scene-rail {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+/* A hairline under the ticks that fills as the page runs. */
+.site .scene-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 1px;
+  background: var(--line);
+  transform-origin: left;
+}
+.site .scene-progress::after {
+  content: '';
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  background-image: repeating-linear-gradient(
-    115deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 46px);
+  background: var(--lime-deep);
+  transform: scaleX(var(--at, 0));
+  transform-origin: left;
 }
-
-/* The rail doubles as the position indicator and as a way through for anyone
-   who cannot use a wheel. */
-.site .deck-rail { display: flex; gap: 6px; align-items: center; }
 .site .tick {
-  width: 22px;
+  width: 20px;
   height: 14px;
   padding: 6px 0;
   border: 0;
   background: transparent;
   cursor: pointer;
   position: relative;
+  z-index: 1;
 }
 .site .tick::after {
   content: '';
@@ -249,7 +275,7 @@
 .site .btn:hover { border-color: #cfd3c9; background: #fbfcfa; }
 .site .btn:active { transform: translateY(1px); }
 
-.site .dark .btn, .site .card.dark .btn {
+.site .dark .btn {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
   color: var(--on-dark);
@@ -333,7 +359,9 @@
 .site .mesh {
   display: grid;
   gap: 1px;
-  background: var(--card);
+  /* Transparent, not white: a container colour paints the leftover cells of a
+     ragged last row as a solid slab. Each cell carries its own background. */
+  background: transparent;
   border-radius: var(--radius-sm);
 }
 .site .mesh > * {
@@ -341,100 +369,27 @@
   box-shadow: 0 0 0 1px var(--line);
   padding: clamp(13px, 1.6vw, 20px);
 }
-.site .dark .mesh, .site .dark .mesh > * { background: var(--ink); }
+.site .dark .mesh { background: transparent; }
+.site .dark .mesh > * { background: var(--ink); }
 .site .dark .mesh > * { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
 
-/* ── The artwork ──────────────────────────────────────────────────────── */
-
-.site .stage {
-  position: relative;
-  min-height: clamp(150px, 22vw, 250px);
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--card-sunk);
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-.site .dark .stage { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.08); }
-
-/* A soft wash behind the object rather than the wireframe grid the darker
-   design used — on white, a mesh reads as graph paper. */
-.site .stage::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 58% 62% at 50% 46%, rgba(200, 242, 77, 0.24), transparent 72%);
-}
-
-/* Faces of a solid: the lit top, and two sides that fall away from it. */
-.site .iso-top { fill: var(--lime); }
-.site .iso-right { fill: var(--lime-deep); }
-.site .iso-left { fill: #86ad24; }
-.site .iso-wire { fill: none; stroke: #c3c8ba; stroke-width: 1; }
-.site .iso-pill { fill: #ffffff; stroke: #dde0d7; stroke-width: 1; }
-.site .iso-pill-dot { fill: none; stroke: #a8ae9f; stroke-width: 1; }
-.site .iso-pill-text { fill: #4d525a; }
-.site .dark .iso-pill { fill: #1a1f17; stroke: #333a2c; }
-.site .dark .iso-pill-dot { stroke: #7e8a72; }
-.site .dark .iso-pill-text { fill: #c3cbba; }
-.site .iso-wire-faint { fill: none; stroke: #dfe2d8; stroke-width: 1; }
-.site .dark .iso-wire { stroke: #4a5142; }
-.site .dark .iso-wire-faint { stroke: #2b3026; }
-
-/* Each piece draws itself in when its panel becomes the active one, so the
-   diagram reads as being assembled rather than simply appearing. */
-.site .card[data-active='true'] .draw {
-  animation: site-draw 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-.site .card[data-active='true'] .rise {
-  animation: site-rise 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-.site .card[data-active='true'] .fade {
-  animation: site-fade 700ms ease both;
-}
-.site .card:not([data-active='true']) .draw,
-.site .card:not([data-active='true']) .rise,
-.site .card:not([data-active='true']) .fade { animation: none; }
-
-@keyframes site-draw {
-  from { stroke-dasharray: 1 700; stroke-dashoffset: 0; opacity: 0; }
-  20%  { opacity: 1; }
-  to   { stroke-dasharray: 700 700; stroke-dashoffset: 0; opacity: 1; }
-}
-@keyframes site-rise {
-  from { transform: translateY(16px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
-@keyframes site-fade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-/* A slow drift, so a page nobody is touching is not completely still. */
-.site .float { animation: site-float 7s ease-in-out infinite; }
-@keyframes site-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-7px); }
-}
-
 .site .hint { color: var(--text-faint); }
-.site .deck-chapter { white-space: nowrap; }
+
 .site .row-link { transition: background-color 200ms ease, border-color 200ms ease; }
 
 /* On a phone the strapline is three rows of text above the fold that nobody
    came for, and it pushes the headline off the screen. */
 @media (max-width: 760px) {
   .site .strapline { display: none !important; }
-  /* Wider panels: at 86vw the peeking neighbours eat a quarter of a small
-     screen and leave the content in a column too narrow to read. */
-  .site .card { width: 92vw; padding: 20px 17px; }
-  .site .deck-chrome { padding: 12px 14px; }
-  .site .tick { width: 16px; }
-  .site .deck-bottom { gap: 10px; }
+  .site .scene-chrome { padding: 10px 14px; }
+  .site .tick { width: 13px; }
+  .site .scene-bottom { gap: 8px; }
   /* The rail already says where you are; the fraction next to the chapter
      name only had room to wrap down the side of the screen. */
-  .site .deck-count { display: none; }
+  .site .scene-count, .site .scroll-hint { display: none; }
+  /* Stacked, and the screen gets the room it needs to stay legible. */
+  .site .scene { padding: 66px 14px 58px; }
+  .site .scene-inner { gap: 16px; }
 }
 
 /* Motion is decoration here; anyone who has asked for less gets the layout
@@ -446,7 +401,6 @@
     animation: none !important;
     transition: none !important;
   }
-  /* The deck still works, it just arrives rather than travels. */
-  .site .deck-track { transition: none !important; }
-  .site .card { transform: none; }
+  /* The scenes still change; they simply do not travel to get there. */
+  .site .shot { transform: none !important; }
 }
