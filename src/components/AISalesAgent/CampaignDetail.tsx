@@ -17,6 +17,7 @@ import { useApp } from '../../context/AppContext';
 import { deleteCampaign, getCampaign, setStatus, takeSaveError } from '../../services/aiCampaigns';
 import { decisionsFor, logDecision, purgeCampaign } from '../../services/aiDecisionLog';
 import { purgeLeads } from '../../services/aiDiscovery';
+import { purgeGraph } from '../../services/aiFlow';
 import { propagatePause } from '../../services/aiRollup';
 import { CAMPAIGN_STATUS_LABEL, type AICampaign, type AIDecision } from '../../types/aiSalesAgent';
 import { STATUS_TONE, card, ghostBtn, primaryBtn, statusPill } from './ui';
@@ -26,6 +27,7 @@ import BuildPanel from './BuildPanel';
 import PerformancePanel from './PerformancePanel';
 import RecommendPanel from './RecommendPanel';
 import RevisePanel from './RevisePanel';
+import FlowCanvas from './Flow/FlowCanvas';
 import ActivityTab from './ActivityTab';
 import {
   AppointmentsTab, ContactsTab, EmailTab, Panel, SettingsTab, SmsTab, WorkflowsTab,
@@ -33,6 +35,7 @@ import {
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'flow', label: 'Flow' },
   { id: 'strategy', label: 'Strategy' },
   { id: 'leads', label: 'Leads' },
   { id: 'workflows', label: 'Workflows' },
@@ -87,6 +90,7 @@ export default function CampaignDetail() {
     deleteCampaign(id);
     purgeCampaign(id);
     purgeLeads(id);
+    purgeGraph(id);
     addNotification(`${id} deleted`);
     navigate('/ai-sales-agent');
   };
@@ -166,6 +170,14 @@ export default function CampaignDetail() {
             <RecommendPanel campaign={campaign} />
             <BuildPanel campaign={campaign} onChanged={reload} />
           </>
+        )}
+
+        {tab === 'flow' && (
+          <Panel
+            title="The campaign as a canvas"
+            note="Drag the nodes, join the ports, and press Run — each node hands off to the module that already owns that step.">
+            <FlowCanvas campaign={campaign} onChanged={reload} />
+          </Panel>
         )}
 
         {tab === 'strategy' && <StrategyPanel campaign={campaign} onChanged={reload} />}

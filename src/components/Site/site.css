@@ -111,6 +111,14 @@
 
 .site .scene-copy { min-width: 0; will-change: transform, opacity; }
 
+/* The pieces of a scene start hidden and are placed by useScrollScene as the
+   scene arrives. Starting at 0 stops the first paint flashing the whole block
+   before the first frame runs. */
+.site [data-rise] { opacity: 0; will-change: transform, opacity; }
+@media (prefers-reduced-motion: reduce) {
+  .site [data-rise] { opacity: 1 !important; transform: none !important; }
+}
+
 /* The photograph of a real screen. */
 .site .shot {
   margin: 0;

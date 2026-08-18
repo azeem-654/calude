@@ -106,6 +106,20 @@ const SCENES: Scene[] = [
     ],
   },
   {
+    id: 'flow', chapter: 'Products', eyebrow: 'The campaign canvas',
+    lead: 'Drag the nodes.', emph: 'Join the ports. Press Run.',
+    body: 'The same campaign as a graph you can rearrange — objective, plan, prospects, build, '
+      + 'send, measure, rewrite. Pull a wire from one port to another and the run follows it, '
+      + 'handing each step to the module that already owns it.',
+    shot: { src: SHOT('flow'), alt: 'The campaign canvas, with nodes joined by wires' },
+    points: [
+      'Wires only join ports that carry the same thing',
+      'Skip a node and everything downstream of it stands down',
+      'Each node shows what it knows, read live',
+    ],
+    tone: 'dark',
+  },
+  {
     id: 'email', chapter: 'Products', eyebrow: 'Email & Sequences',
     lead: 'Cadences that stop', emph: 'the moment somebody answers.',
     body: 'Multi-step sequences on your own SMTP, with merge fields, open and click tracking, bounce '
@@ -249,6 +263,9 @@ export default function SiteHome() {
   const stage = useRef<(HTMLElement | null)[]>([]);
   const copy = useRef<(HTMLElement | null)[]>([]);
   const shots = useRef<(HTMLElement | null)[]>([]);
+  /* The individual lines inside a scene, so they can arrive in order rather
+     than the whole block sliding in as one slab. */
+  const pieces = useRef<(HTMLElement[] | null)[]>([]);
   const rail = useRef<HTMLDivElement | null>(null);
   const [current, setCurrent] = useState(0);
   const shown = useRef(0);
@@ -281,6 +298,17 @@ export default function SiteHome() {
       if (c) {
         c.style.transform = `translate3d(0, ${mix(30, -30, clamp01((t + 0.55) / 1.4))}px, 0)`;
         c.style.opacity = String(smoothstep(-0.5, 0.0, t) * (1 - smoothstep(0.4, 0.85, t)));
+
+        /* Each line lags a little behind the one above it, so the scene reads
+           as being written rather than pasted. Cached on first sight: querying
+           the DOM sixty times a second for nine scenes is wasteful. */
+        const kids = pieces.current[i] ?? (pieces.current[i] = [...c.querySelectorAll<HTMLElement>('[data-rise]')]);
+        for (let k = 0; k < kids.length; k++) {
+          const lag = k * 0.07;
+          const a = smoothstep(-0.42 + lag, 0.06 + lag, t);
+          kids[k].style.opacity = String(a);
+          kids[k].style.transform = `translate3d(0, ${mix(22, 0, a)}px, 0)`;
+        }
       }
 
       const s = shots.current[i];
@@ -332,12 +360,12 @@ export default function SiteHome() {
             {s.tone === 'dark' && <span className="beam" />}
             <div className="scene-inner" data-wide={!s.shot}>
               <div className="scene-copy" ref={el => { copy.current[i] = el; }}>
-                <span className="chip">{s.eyebrow}</span>
-                <div style={{ marginTop: 16 }}>
+                <span className="chip" data-rise>{s.eyebrow}</span>
+                <div data-rise style={{ marginTop: 16 }}>
                   <Heading as={i === 0 ? 'h1' : 'h2'} lead={s.lead} emph={s.emph} />
                 </div>
                 {s.body && (
-                  <p style={{
+                  <p data-rise style={{
                     margin: '16px 0 0', maxWidth: 460,
                     fontSize: 'clamp(12.5px, 1.1vw, 14.5px)', lineHeight: 1.72,
                     color: s.tone === 'dark' ? 'var(--on-dark-mute)' : 'var(--text-mute)',
@@ -348,7 +376,7 @@ export default function SiteHome() {
                 {s.points && (
                   <ul style={{ margin: '16px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {s.points.map(p => (
-                      <li key={p} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-mute)' }}>
+                      <li key={p} data-rise style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-mute)' }}>
                         <span className="glyph soft" style={{ width: 18, height: 18, borderRadius: 6, marginTop: 1 }}>
                           <Check size={10} strokeWidth={3} />
                         </span>
@@ -358,7 +386,7 @@ export default function SiteHome() {
                   </ul>
                 )}
                 {(i === 0 || s.id === 'start') && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 24 }}>
+                  <div data-rise style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 24 }}>
                     <button className="btn btn-primary" onClick={onSignIn}>
                       Get started <ArrowRight size={13} />
                     </button>
@@ -367,7 +395,7 @@ export default function SiteHome() {
                     </button>
                   </div>
                 )}
-                {s.extra && <div style={{ marginTop: 20 }}>{s.extra}</div>}
+                {s.extra && <div data-rise style={{ marginTop: 20 }}>{s.extra}</div>}
               </div>
 
               {s.shot && (

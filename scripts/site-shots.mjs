@@ -161,11 +161,14 @@ const SHOTS = [
   { file: 'contacts', path: '/contacts' },
   { file: 'pipelines', path: '/pipelines' },
   { file: 'calendar', path: '/calendar' },
+  /* The canvas is dark and the rest are light, which is the point of showing
+     it: it is a different kind of surface. */
+  { file: 'flow', path: '/ai-sales-agent/AI-SA-2026-0001?tab=flow', settle: 3400 },
 ];
 
 for (const s of SHOTS) {
   await page.goto(`${BASE}${s.path}`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(2600);
+  await page.waitForTimeout(s.settle ?? 2600);
   // Notifications would date the picture and add nothing.
   await page.evaluate(() => document.querySelectorAll('[class*="notif"], [role="status"]').forEach(n => n.remove()));
   const broken = await page.evaluate(() => /ran into a problem/i.test(document.body.innerText));

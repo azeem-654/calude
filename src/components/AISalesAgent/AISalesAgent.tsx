@@ -8,11 +8,12 @@
  * not shown here until there is a real number to read, because a dashboard that
  * displays a plausible zero is indistinguishable from one displaying a real one.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Plus, Search, Sparkles, X } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
+import { pruneGraphs } from '../../services/aiFlow';
 import { getSession } from '../../services/auth';
 import { createCampaign, listCampaigns, takeSaveError } from '../../services/aiCampaigns';
 import { logDecision } from '../../services/aiDecisionLog';
@@ -41,6 +42,10 @@ export default function AISalesAgent() {
   const [composing, setComposing] = useState(false);
 
   const refresh = useCallback(() => setCampaigns(listCampaigns()), []);
+
+  /* A campaign deleted in another tab leaves its canvas behind. Cleared on the
+     way into the list, which is the one screen every campaign is reached from. */
+  useEffect(() => { pruneGraphs(); }, []);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
