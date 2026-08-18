@@ -1,0 +1,142 @@
+/*
+ * The dashboard's ground.
+ *
+ * A pale wash with a few soft colour fields drifting behind it, so the panels
+ * read as floating on something rather than sitting on flat grey. Painted light
+ * on purpose: the CRM turns dark by inverting the whole app, so a light wash
+ * becomes a deep one in dark mode and the screen stays consistent with every
+ * other page.
+ *
+ * Scoped under .dash. Everything here is ambience, a hover state or a keyframe
+ * — the layout stays in the component with the rest of this codebase.
+ */
+
+.dash {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(175deg, #e4efe9 0%, #eef4f2 30%, #f2f5f6 62%, #e9eef2 100%);
+}
+
+/* Three slow fields of colour. Blurred to the point of being weather rather
+   than shapes, and behind everything. */
+.dash::before,
+.dash::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(80px);
+}
+.dash::before {
+  top: -8%;
+  left: -8%;
+  width: min(820px, 68%);
+  height: 620px;
+  background: radial-gradient(circle at 40% 40%, rgba(126, 205, 178, 0.72), transparent 66%);
+  animation: dash-drift-a 26s ease-in-out infinite;
+}
+.dash::after {
+  top: 18%;
+  right: -10%;
+  width: min(720px, 60%);
+  height: 640px;
+  background: radial-gradient(circle at 60% 40%, rgba(150, 186, 230, 0.6), transparent 64%);
+  animation: dash-drift-b 32s ease-in-out infinite;
+}
+
+@keyframes dash-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(5%, 5%, 0) scale(1.12); }
+}
+@keyframes dash-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.06); }
+  50%      { transform: translate3d(-6%, -4%, 0) scale(1); }
+}
+
+/* A third field, lower down, so the long scroll does not run out of ambience. */
+.dash-glow {
+  position: absolute;
+  z-index: -1;
+  left: 22%;
+  bottom: 4%;
+  width: min(560px, 48%);
+  height: 460px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(199, 244, 65, 0.22), transparent 66%);
+  filter: blur(100px);
+  animation: dash-drift-a 38s ease-in-out infinite reverse;
+}
+
+/* A board's own sheet, given the same glass as the cards around it. */
+.dash-sheet {
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 2px rgba(23, 25, 28, 0.04), 0 16px 40px -26px rgba(23, 25, 28, 0.3);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ── The panels ───────────────────────────────────────────────────────── */
+
+/* Each block of the dashboard lifts a little under the pointer, which is the
+   whole of the "it feels alive" trick — the rest is the content moving. */
+.dash-stack > * {
+  transition: transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              filter 320ms ease;
+}
+.dash-stack > *:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 18px 34px rgba(23, 25, 28, 0.07));
+}
+
+/* Arriving. The stagger is by position so a new block inherits it without any
+   component having to know its own index. */
+.dash-stack > * { animation: dash-rise 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.dash-stack > *:nth-child(1) { animation-delay: 40ms; }
+.dash-stack > *:nth-child(2) { animation-delay: 100ms; }
+.dash-stack > *:nth-child(3) { animation-delay: 160ms; }
+.dash-stack > *:nth-child(4) { animation-delay: 220ms; }
+.dash-stack > *:nth-child(5) { animation-delay: 280ms; }
+.dash-stack > *:nth-child(6) { animation-delay: 340ms; }
+.dash-stack > *:nth-child(n+7) { animation-delay: 400ms; }
+
+@keyframes dash-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* A number worth watching arrives with a little life of its own. */
+.dash-pop { animation: dash-pop 520ms cubic-bezier(0.22, 1.4, 0.4, 1) both; }
+@keyframes dash-pop {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The soft pill the reference floats over its charts. */
+.dash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(23, 25, 28, 0.06);
+  box-shadow: 0 4px 14px rgba(23, 25, 28, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #3c4148;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash::before, .dash::after, .dash-glow,
+  .dash-stack > *, .dash-pop {
+    animation: none !important;
+    transition: none !important;
+  }
+  .dash-stack > * { opacity: 1; transform: none; }
+}

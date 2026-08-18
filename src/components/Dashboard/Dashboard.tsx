@@ -24,6 +24,7 @@ import ProgressBoard from './ProgressBoard';
 import DayBoard from './DayBoard';
 import { useProgressBook } from './useProgressBook';
 import type { Deal } from '../../types';
+import './dashboard.css';
 
 /* ── Animated count-up ── */
 function useCountUp(target: number, duration = 1000): number {
@@ -49,8 +50,28 @@ const MUTED = '#8a8f98';
 const RED = '#e5484d';
 const BLUE = '#3e63dd';
 const GREEN = '#3f9142';
-const FROST: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 24, padding: 20 };
-const CARD: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)' };
+const FROST: React.CSSProperties = {
+  backgroundColor: 'rgba(255,255,255,0.46)',
+  borderRadius: 24,
+  padding: 20,
+  border: '1px solid rgba(255,255,255,0.55)',
+  boxShadow: '0 1px 2px rgba(23,25,28,0.03), 0 18px 44px -28px rgba(23,25,28,0.3)',
+  backdropFilter: 'blur(18px)',
+  WebkitBackdropFilter: 'blur(18px)',
+};
+/*
+ * Cards are translucent now, not solid white. They sit over a drifting wash, so
+ * a little of it showing through is what stops the dashboard reading as boxes
+ * on grey — and the blur keeps the text on them perfectly legible.
+ */
+const CARD: React.CSSProperties = {
+  backgroundColor: 'rgba(255,255,255,0.72)',
+  borderRadius: 18,
+  border: '1px solid rgba(255,255,255,0.6)',
+  boxShadow: '0 1px 2px rgba(23,25,28,0.04), 0 10px 28px -18px rgba(23,25,28,0.28)',
+  backdropFilter: 'blur(14px)',
+  WebkitBackdropFilter: 'blur(14px)',
+};
 
 const TEAM = [
   { name: 'John Doe', img: 12, badge: 2, badgeColor: BLUE },
@@ -684,10 +705,13 @@ export default function Dashboard() {
   let avatarSeed = 5;
 
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: 32 }}>
+    <div className="dash" style={{ minHeight: '100vh', paddingBottom: 32, overflow: 'hidden' }}>
+      <span className="dash-glow" aria-hidden="true" />
       <Header title="Customer Journeys" subtitle={`Welcome back, John — ${scheduledToday || 9} appointments scheduled, ${activeCount} deals in motion.`} />
 
-      <div style={{ padding: '14px 28px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Roomier than it was: the wash behind the panels is most of the effect,
+          and it only shows in the space they leave. */}
+      <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* ── Where the business stands, department by department ── */}
         <div className="slide-up" style={{ animationDelay: '0.05s' }}>

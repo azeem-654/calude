@@ -118,7 +118,9 @@ export default function ProgressBoard({ book }: { book: Book }) {
   const TRACK_TILE = dark ? 'rgba(255,255,255,0.10)' : '#e6e9ee';
 
   /** The bright working card. White in both themes, as in the reference. */
-  const SHEET = '#ffffff';
+  /* Translucent, so the dashboard's wash shows through the board rather than
+     being covered by it. Legibility comes from the blur, not from opacity. */
+  const SHEET = 'rgba(255,255,255,0.74)';
   const SHEET_SUNK = '#f3f5f7';
   const SHEET_LINE = '#e8eaee';
   const SHEET_INK = '#17191c';
@@ -286,7 +288,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
 
       {/* ── The working card ── */}
       <div style={{ padding: '0 18px 18px' }}>
-        <div style={{ backgroundColor: SHEET, borderRadius: 22, overflow: 'hidden' }}>
+        <div className="dash-sheet" style={{ backgroundColor: SHEET, borderRadius: 22, overflow: 'hidden' }}>
 
           {/* Segmented control, as in the reference: a dark pill group riding
               the top of the bright card, active segment in lime. */}
