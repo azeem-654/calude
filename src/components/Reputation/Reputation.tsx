@@ -68,13 +68,35 @@ export default function Reputation() {
   /* one-time: merge any legacy reviews from AppContext into the store */
   useEffect(() => {
     if (legacy.length && reviews.every(r => !r.id.startsWith('legacy-'))) {
+      /* Legacy records come from an older shape and from imports, so nothing
+         about them is assumed: a missing author, a rating that arrived as a
+         string, a date that will not parse. `new Date('nonsense').toISOString()`
+         throws rather than returning undefined, which is why the optional call
+         that used to be here never caught it. */
+      const asDate = (v: unknown): string => {
+        const d = new Date(typeof v === 'string' || typeof v === 'number' ? v : NaN);
+        return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+      };
       const merged = [
-        ...legacy.map((l, i) => ({ id: `legacy-${i}`, platform: l.platform as Platform, rating: l.rating, author: l.author, content: l.content, date: new Date(l.date).toISOString?.() ?? new Date().toISOString(), replied: l.replied, sentiment: sentimentOf(l.rating, l.content) } as RepReview)),
+        ...legacy.map((l, i) => {
+          const content = typeof l?.content === 'string' ? l.content : '';
+          const rating = Number(l?.rating);
+          return {
+            id: `legacy-${i}`,
+            platform: (l?.platform || 'google') as Platform,
+            rating: Number.isFinite(rating) ? rating : 0,
+            author: typeof l?.author === 'string' && l.author.trim() ? l.author : 'Someone',
+            content,
+            date: asDate(l?.date),
+            replied: l?.replied === true,
+            sentiment: sentimentOf(rating, content),
+          } as RepReview;
+        }),
         ...reviews,
       ];
       // de-dupe by author+content
       const seen = new Set<string>();
-      const unique = merged.filter(r => { const k = r.author + r.content; if (seen.has(k)) return false; seen.add(k); return true; });
+      const unique = merged.filter(r => { const k = `${r.author}|${r.content}`; if (seen.has(k)) return false; seen.add(k); return true; });
       persist(unique);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

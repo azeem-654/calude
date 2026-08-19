@@ -495,7 +495,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
         {step === 'provider' && (
           <div>
             <p style={{ fontSize: '14px', color: '#475569', margin: '0 0 16px' }}>Choose your email provider to pre-fill the connection settings:</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '10px', marginBottom: '20px' }}>
               {PROVIDERS.map(p => (
                 <button key={p.id} onClick={() => applyProvider(p.id)}
                   style={{
@@ -565,11 +565,11 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
               <Mail size={16} color="#17191c" />
               <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Outgoing Mail (SMTP)</h4>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px', marginBottom: '14px' }}>
               <LabeledField label="SMTP Host" value={smtp.host} onChange={v => setSMTP(p => ({ ...p, host: v }))}
                 placeholder="smtp.gmail.com" required
                 hint={{ val: smtp.host, validator: validateHost }} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '10px' }}>
                 <LabeledField label="Port" value={smtp.port} onChange={v => setSMTP(p => ({ ...p, port: v }))}
                   placeholder="587" required hint={{ val: smtp.port, validator: validatePort }} />
                 <div>
@@ -636,11 +636,11 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
             <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 16px' }}>
               IMAP syncs replies from contacts into Conversations. You can skip this now and configure it later.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px', marginBottom: '16px' }}>
               <LabeledField label="IMAP Host" value={imap.host} onChange={v => setIMAP(p => ({ ...p, host: v }))}
                 placeholder="imap.gmail.com"
                 hint={imap.host ? { val: imap.host, validator: validateHost } : undefined} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '10px' }}>
                 <LabeledField label="Port" value={imap.port} onChange={v => setIMAP(p => ({ ...p, port: v }))}
                   placeholder="993"
                   hint={imap.port ? { val: imap.port, validator: validatePort } : undefined} />

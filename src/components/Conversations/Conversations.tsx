@@ -307,10 +307,13 @@ export default function Conversations() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 16, padding: '14px 28px 28px', height: 'calc(100vh - 150px)' }}>
+      {/* Three panes. They keep their widths while there is room and give
+          them up in order once there is not — fixed 210 + 340 columns were
+          pushing the reader, and the whole page, off the side of a phone. */}
+      <div style={{ display: 'flex', gap: 12, padding: '14px clamp(12px, 3vw, 28px) 28px', height: 'calc(100vh - 150px)', minWidth: 0 }}>
 
         {/* ── Mailbox rail ── */}
-        <div style={{ width: 210, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ flex: '0 1 210px', minWidth: 84, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button onClick={() => setActiveMbId('all')} style={railItem(activeMbId === 'all')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
               <Inbox size={15} /> <span style={{ fontWeight: 600 }}>All inboxes</span>
@@ -356,7 +359,7 @@ export default function Conversations() {
              forced through the mail reader. ── */}
         {activeMbId === CHAT_RAIL ? (
           <>
-            <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: '0 1 340px', minWidth: 140, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ padding: 12, borderBottom: '1px solid #f2f3f5' }}>
                 <div style={{ position: 'relative' }}>
                   <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: FAINT }} />
@@ -433,7 +436,7 @@ export default function Conversations() {
         ) : (
         <>
         {/* ── Message list ── */}
-        <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: '0 1 340px', minWidth: 140, background: '#fff', borderRadius: 18, boxShadow: '0 1px 2px rgba(23,25,28,0.05)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: 12, borderBottom: '1px solid #f2f3f5' }}>
             <div style={{ position: 'relative', marginBottom: 8 }}>
               <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: FAINT }} />

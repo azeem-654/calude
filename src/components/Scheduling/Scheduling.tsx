@@ -145,7 +145,7 @@ export default function Scheduling() {
       <div style={{ padding: 28 }}>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: 16, marginBottom: 24 }}>
           {[
             { label: 'Upcoming Meetings', value: upcomingCount, color: '#17191c' },
             { label: 'Total Bookings', value: merged.length, color: '#3b82f6' },
@@ -163,14 +163,16 @@ export default function Scheduling() {
         </div>
 
         {/* Booking link card */}
-        <div style={{ ...CARD, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(23,25,28,0.25)' }}>
+        <div style={{ ...CARD, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(23,25,28,0.25)' }}>
               <Link size={19} color="white" />
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 3 }}>Your Booking Page</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#17191c', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', backgroundColor: '#eceef1', padding: '3px 10px', borderRadius: 999, display: 'inline-block' }}>{publicUrl}</div>
+              {/* An address has no spaces in it, so it has to be told it may
+                  break — otherwise one long URL widens the whole page. */}
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#17191c', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', backgroundColor: '#eceef1', padding: '3px 10px', borderRadius: 999, display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere' }}>{publicUrl}</div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -195,7 +197,7 @@ export default function Scheduling() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, gap: 2, marginBottom: 20 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, gap: 2, marginBottom: 20 }}>
           {([['bookings', 'Bookings', <Calendar size={14} />], ['types', 'Event Types', <Layers size={14} />], ['availability', 'Availability', <Clock size={14} />], ['automations', 'Automations', <Zap size={14} />], ['settings', 'Settings', <Settings size={14} />]] as const).map(([id, label, icon]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderRadius: 8, backgroundColor: tab === id ? 'white' : 'transparent', color: tab === id ? '#17191c' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: tab === id ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
@@ -207,8 +209,8 @@ export default function Scheduling() {
         {/* ── Bookings Tab ── */}
         {tab === 'bookings' && (
           <div style={{ ...CARD, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['all', 'confirmed', 'completed', 'cancelled'] as const).map(f => (
                   <button key={f} onClick={() => setBookingFilter(f)}
                     style={{ padding: '5px 14px', borderRadius: 999, border: `1px solid ${bookingFilter === f ? '#17191c' : '#e2e8f0'}`, backgroundColor: bookingFilter === f ? '#17191c' : 'white', color: bookingFilter === f ? 'white' : '#64748b', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize', fontWeight: 600, transition: 'all 0.12s' }}>
@@ -297,7 +299,7 @@ export default function Scheduling() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {eventTypes.map(et => (
                 <div key={et.id} style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 18 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 12, alignItems: 'end', marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: 12, alignItems: 'end', marginBottom: 12 }}>
                     <div>
                       <label style={LABEL}>Name</label>
                       <input value={et.name} onChange={e => patchEventType(et.id, { name: e.target.value })} style={INPUT} />
@@ -406,7 +408,7 @@ export default function Scheduling() {
                   </div>
                 )}
                 {auto.reminderEmail && auto.reminderSms && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: 10, marginTop: 12 }}>
                     <div><label style={LABEL}>Twilio Account SID</label><input value={auto.twilioSid} onChange={e => setAuto({ twilioSid: e.target.value })} placeholder="AC…" style={INPUT} /></div>
                     <div><label style={LABEL}>Auth Token</label><input type="password" value={auto.twilioToken} onChange={e => setAuto({ twilioToken: e.target.value })} style={INPUT} /></div>
                     <div><label style={LABEL}>From number</label><input value={auto.twilioFrom} onChange={e => setAuto({ twilioFrom: e.target.value })} placeholder="+15551234567" style={INPUT} /></div>

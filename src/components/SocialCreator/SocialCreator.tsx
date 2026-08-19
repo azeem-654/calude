@@ -8,6 +8,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import type { DesignPost, Platform, CanvasElement, CanvasBackground } from './types';
 import { PLATFORM_PRESETS, RATIO_SIZES, TEMPLATES } from './templates';
+import { normalisePosts } from './normalise';
 import { generateSocialPostDesign, hasGeminiKey } from '../../lib/gemini';
 
 const PLATFORM_ICONS: Record<string, React.ReactNode> = {
@@ -20,7 +21,7 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
 };
 
 function ThumbnailPreview({ post }: { post: DesignPost }) {
-  const [w, h] = post.aspectRatio.split(':').map(Number);
+  const [w, h] = (post.aspectRatio || '1:1').split(':').map(Number);
   const thumbH = 170;
   const thumbW = Math.round((w / h) * thumbH);
   return (
@@ -197,7 +198,7 @@ function TemplateGallery({ onSelect, initialCategory, initialQuery }: { onSelect
         <div style={{ padding: '40px 0', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No templates match "{query}"</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(170px, 100%), 1fr))', gap: 16 }}>
         {filtered.map(t => (
           <div
             key={t.id}
@@ -328,7 +329,7 @@ function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onC
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
           {step === 'choose' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: 16 }}>
               {[
                 { key: 'blank', icon: <Plus size={32} />, title: 'Blank Canvas', desc: 'Start from scratch with full creative control', color: '#6366f1' },
                 { key: 'template', icon: <LayoutGrid size={32} />, title: 'Use Template', desc: '50+ professionally designed templates', color: '#0ea5e9' },
@@ -460,11 +461,14 @@ export default function SocialCreator() {
 
   const openTemplates = (init?: ModalInit) => { setModalInit({ step: 'template', ...init }); setShowNew(true); };
 
-  const posts: DesignPost[] = socialPosts ?? [];
+  /* One key, more than one writer: content setup and older versions of this
+     module store thinner records here. Everything is made into a complete
+     design on the way in, so no card has to guess. */
+  const posts: DesignPost[] = normalisePosts(socialPosts);
 
   const filtered = posts
     .filter(p => {
-      if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search && !(p.name || '').toLowerCase().includes(search.toLowerCase())) return false;
       if (filterPlatform !== 'all' && p.platform !== filterPlatform) return false;
       if (filterStatus !== 'all' && p.status !== filterStatus) return false;
       return true;
@@ -593,7 +597,7 @@ export default function SocialCreator() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: 16, marginBottom: 32 }}>
         {[
           { label: 'Total Designs', value: stats.total, icon: <Image size={20} />, color: '#6366f1' },
           { label: 'Published', value: stats.published, icon: <Share2 size={20} />, color: '#22c55e' },
@@ -614,7 +618,7 @@ export default function SocialCreator() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ flex: 1, minWidth: 220, position: 'relative' }}>
+        <div style={{ flex: '1 1 200px', minWidth: 0, position: 'relative' }}>
           <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
           <input
             value={search}
@@ -665,7 +669,7 @@ export default function SocialCreator() {
           </button>
         </div>
       ) : view === 'grid' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 20 }}>
           {filtered.map(p => (
             <PostCard
               key={p.id}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   Zap, Plus, Play, Pause, Trash2, X, Settings, Mail, Phone,
   ChevronDown, ChevronUp, Loader, BarChart2,
@@ -7,6 +7,7 @@ import {
   Eye, EyeOff, Inbox,
 } from 'lucide-react';
 import type { EmailSequence, EmailStep, StepType, SequenceStats, SequenceActivity } from '../../types/marketing';
+import { normaliseSequences } from '../../services/marketingShape';
 import type { Contact } from '../../types';
 import SourceTag from '../shared/SourceTag';
 
@@ -349,7 +350,7 @@ function StepEditorPanel({ step, seqId, contacts, onChange }: {
   const cfg = stepTypeCfg(step.type);
   const isEmail = step.type === 'auto_email' || step.type === 'manual_email';
   const isPhone = step.type === 'phone_call';
-  const isLinkedIn = step.type.startsWith('li_');
+  const isLinkedIn = (step.type ?? '').startsWith('li_');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -503,7 +504,11 @@ interface Props {
   onNotify: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export default function SequenceBuilder({ sequences, contacts = [], onAddSequence, onUpdateSequence, onDeleteSequence, onActivateSequence, onNotify }: Props) {
+export default function SequenceBuilder({ sequences: storedSequences, contacts = [], onAddSequence, onUpdateSequence, onDeleteSequence, onActivateSequence, onNotify }: Props) {
+  /* One key, more than one shape: an older record carries `channel`/`content`
+     where this builder expects `type`/`body`, and reading a missing type took
+     the whole Marketing screen down. Everything is made whole on the way in. */
+  const sequences = useMemo(() => normaliseSequences(storedSequences), [storedSequences]);
   const [selected, setSelected] = useState<EmailSequence | null>(null);
   const [activeStep, setActiveStep] = useState<string | null>(null);
   const [tab, setTab] = useState<'editor' | 'contacts' | 'activity' | 'report' | 'settings'>('editor');

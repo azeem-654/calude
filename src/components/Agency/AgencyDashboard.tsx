@@ -68,7 +68,7 @@ export default function AgencyDashboard() {
 
       <div style={{ padding: '14px 28px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* KPI row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 16 }}>
           {[
             { label: 'Monthly recurring revenue', value: `$${mrr.toLocaleString()}`, icon: DollarSign, dark: true },
             { label: 'Active clients', value: activeCount, icon: Building2 },
@@ -110,7 +110,7 @@ export default function AgencyDashboard() {
             <button onClick={() => { setCreating(true); setEditing(blankSubAccount()); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 22px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}><Plus size={16} /> Create your first client</button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: 16 }}>
             {filtered.map(a => {
               const u = accountUsage(a.id);
               const plan = planById(a.plan);
@@ -150,7 +150,7 @@ export default function AgencyDashboard() {
                     </div>
 
                     {/* usage */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, padding: '10px 0', borderTop: '1px solid #f2f3f5', borderBottom: '1px solid #f2f3f5', marginBottom: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 6, padding: '10px 0', borderTop: '1px solid #f2f3f5', borderBottom: '1px solid #f2f3f5', marginBottom: 12 }}>
                       {[
                         { icon: Users, v: u.contacts, l: 'Contacts' },
                         { icon: TrendingUp, v: u.deals, l: 'Deals' },
@@ -222,7 +222,7 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
           <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 9, padding: 7, cursor: 'pointer', display: 'flex' }}><X size={16} color="#64748b" /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'grid', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 14 }}>
             <div><label style={lbl}>Workspace name *</label><input style={inp} value={a.name} onChange={e => set({ name: e.target.value })} placeholder="Acme — Main Location" /></div>
             <div><label style={lbl}>Business name</label><input style={inp} value={a.businessName} onChange={e => set({ businessName: e.target.value })} placeholder="Acme Inc." /></div>
             <div><label style={lbl}>Contact name</label><input style={inp} value={a.contactName} onChange={e => set({ contactName: e.target.value })} placeholder="Jane Smith" /></div>
@@ -233,7 +233,7 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
 
           <div>
             <label style={lbl}>Subscription plan</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 10 }}>
               {PLANS.map(p => (
                 <button key={p.id} onClick={() => pickPlan(p.id)} style={{ textAlign: 'left', padding: 14, border: `2px solid ${a.plan === p.id ? INK : '#e6e9f0'}`, borderRadius: 14, background: a.plan === p.id ? '#f7f8f9' : '#fff', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -249,7 +249,7 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 14 }}>
             <div><label style={lbl}>Charged price ($/mo)</label><input style={inp} type="number" value={a.price} onChange={e => set({ price: Number(e.target.value) })} /></div>
             <div>
               <label style={lbl}>Status</label>

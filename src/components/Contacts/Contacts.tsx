@@ -76,7 +76,7 @@ function ContactModal({ onClose, onSave, initial }: { onClose: () => void; onSav
           <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 8, padding: 6, display: 'flex', cursor: 'pointer' }}><X size={16} color="#64748b" /></button>
         </div>
         <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px' }}>
             {[
               { label: 'Full Name *', key: 'name', placeholder: 'John Smith', required: true },
               { label: 'Email', key: 'email', placeholder: 'john@example.com', type: 'email' },
@@ -402,12 +402,12 @@ export default function Contacts() {
         subtitle={`${contacts.length} total contacts · ${filtered.length} showing`}
         actions={[{ icon: Plus, label: 'Add contact', onClick: () => setShowModal(true) }]}
       />
-      <div style={{ padding: '28px', minHeight: 'calc(100vh - 73px)', boxSizing: 'border-box' }}>
+      <div style={{ padding: 'clamp(14px, 3vw, 28px)', minHeight: 'calc(100vh - 73px)', boxSizing: 'border-box' }}>
 
         {/* Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: 0 }}>
-            <div style={{ position: 'relative', flex: 1, maxWidth: '300px' }}>
+          <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: '1 1 180px', maxWidth: '300px' }}>
               <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input placeholder="Search name, email, company..." value={search} onChange={e => setSearch(e.target.value)}
                 style={{ width: '100%', paddingLeft: '32px', paddingRight: '12px', paddingTop: '9px', paddingBottom: '9px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', color: '#374151', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', boxSizing: 'border-box' }} />
@@ -445,7 +445,7 @@ export default function Contacts() {
               <Filter size={14} /> Filter{filterRules.length > 0 ? ` (${filterRules.length})` : ''}
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button onClick={() => setShowFeed(true)} title="See what the team has been doing"
               style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Activity size={14} color="#64748b" /> Team feed
@@ -579,8 +579,11 @@ export default function Contacts() {
         )}
 
         {/* Table */}
+        {/* Eleven columns will not fit a phone. The table scrolls sideways
+            inside its own card rather than dragging the whole page with it. */}
         <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e6e9f0' }}>
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
@@ -742,6 +745,7 @@ export default function Contacts() {
               })}
             </tbody>
           </table>
+          </div>
           {filtered.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '64px 24px' }}>
               <div style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>

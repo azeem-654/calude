@@ -46,7 +46,7 @@ export default function Analytics() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <Header title="Reports" subtitle="How every module is performing" />
-      <div style={{ padding: '28px' }}>
+      <div style={{ padding: 'clamp(14px, 3vw, 28px)' }}>
         <div style={{ display: 'flex', gap: 7, marginBottom: 18 }}>
           {([['overview', 'Overview'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setSection(id)} title={label}
@@ -72,7 +72,7 @@ export default function Analytics() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: '16px', marginBottom: '24px' }}>
           {[
             { label: 'Total Revenue', value: '$895K', change: '+23%', icon: DollarSign, color: '#16a34a' },
             { label: 'New Contacts', value: '2,847', change: '+18%', icon: Users, color: '#17191c' },
@@ -97,7 +97,7 @@ export default function Analytics() {
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px', marginBottom: '16px' }}>
           <div style={cardStyle}>
             <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '16px' }}>Revenue &amp; Leads Trend</h3>
             <ResponsiveContainer width="100%" height={220}>
@@ -138,7 +138,7 @@ export default function Analytics() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px' }}>
           <div style={cardStyle}>
             <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '16px' }}>Conversion Funnel</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

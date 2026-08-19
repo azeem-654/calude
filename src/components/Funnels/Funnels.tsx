@@ -52,6 +52,15 @@ const CATEGORIES = ['All', ...Array.from(new Set(FUNNEL_TYPES.map(f => f.categor
  * Build the funnel's pages with REAL block content from the shared template
  * library, so a newly created funnel opens fully designed instead of blank.
  */
+/** How many pages a funnel has, whatever shape the record is in. */
+function pageCount(funnel: FunnelType): number {
+  if (Array.isArray(funnel.pages)) return funnel.pages.length;
+  const steps = funnel.steps as unknown;
+  if (Array.isArray(steps)) return steps.length;
+  const n = Number(steps);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 function defaultPages(steps: { name: string; type: FunnelStep['type'] }[], ctx: BrandContext): FunnelStep[] {
   return steps.map(s => buildFunnelPage(s.name, s.type, ctx));
 }
@@ -575,7 +584,12 @@ export default function Funnels() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{funnel.name}</h3>
                       {funnel.source && <div style={{ margin: '0 0 5px' }}><SourceTag source={funnel.source} size="compact" /></div>}
-                      <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{funnel.pages?.length ?? funnel.steps} pages · {funnel.goal ?? 'Lead Generation'}</p>
+                      {/* `steps` is a count, but a record written by an older
+                          version or an import can carry the list of pages under
+                          that name instead — and rendering an object as a React
+                          child takes the whole screen down. Count it either
+                          way. */}
+                      <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{pageCount(funnel)} pages · {funnel.goal ?? 'Lead Generation'}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
                       <button onClick={() => handleToggleStatus(funnel)}

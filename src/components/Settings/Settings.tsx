@@ -150,7 +150,7 @@ function EmailProviderCard() {
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Campaign Sending Provider</label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '8px', marginBottom: '10px' }}>
           {[
             { id: 'smtp',     label: '🔐 SMTP',     desc: 'Your server (recommended)' },
             { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test sandbox' },
@@ -184,7 +184,7 @@ function EmailProviderCard() {
 
       {cfg.provider !== 'none' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px', marginBottom: '12px' }}>
             {cfg.provider !== 'smtp' && (
               <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>API Key *</label>
@@ -335,7 +335,7 @@ function MailboxWarmupCard() {
           <Flame size={20} color="#f97316" />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Mailbox Warmup</h4>
             <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: cfg.enabled ? '#fef3c7' : '#f1f5f9', color: cfg.enabled ? '#d97706' : '#64748b', fontWeight: 600 }}>
               {cfg.enabled ? `Day ${currentDay ?? 1} · ${todayVolume ?? cfg.startVolume} emails/day` : 'Inactive'}
@@ -375,7 +375,7 @@ function MailboxWarmupCard() {
       )}
 
       {/* Settings grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '16px', marginBottom: '20px' }}>
         {numInput('Start Volume', 'startVolume', 1, 100, 'emails/day')}
         {numInput('Daily Increase', 'dailyIncrease', 1, 50, 'per day')}
         {numInput('Max Volume', 'maxVolume', 10, 500, 'emails/day')}
@@ -389,7 +389,7 @@ function MailboxWarmupCard() {
       </div>
 
       {/* Send window */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
         <Clock size={16} color="#17191c" style={{ flexShrink: 0 }} />
         <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569', flexShrink: 0 }}>Send Window</span>
         <select value={cfg.sendWindowStart} onChange={e => set('sendWindowStart', Number(e.target.value))}
@@ -512,7 +512,7 @@ function EmailSMSTab() {
       {card(
         <>
           {sectionHead(<MessageSquare size={20} color="#0d9488" />, 'SMS Provider', 'Send and receive SMS messages through your CRM')}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
             {(['twilio', 'vonage', 'plivo', 'bandwidth'] as const).map(p => (
               <button key={p} onClick={() => setSsf('provider', p)}
                 style={{ padding: '8px 16px', border: `2px solid ${sms.provider === p ? '#0d9488' : '#e2e8f0'}`, borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: sms.provider === p ? '#f0fdfa' : 'white', color: sms.provider === p ? '#0d9488' : '#64748b', textTransform: 'capitalize' }}>
@@ -536,7 +536,7 @@ function EmailSMSTab() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px', marginBottom: '16px' }}>
             <Field label={sms.provider === 'twilio' ? 'Account SID' : 'API Key'} value={sms.accountSid} onChange={v => setSsf('accountSid', v)} placeholder={sms.provider === 'twilio' ? 'ACxxxxxxxxxxxxxxxx' : 'api-key'} />
             <Field label={sms.provider === 'twilio' ? 'Auth Token' : 'API Secret'} value={sms.authToken} onChange={v => setSsf('authToken', v)} type="password" placeholder="••••••••" />
             <div>
@@ -585,7 +585,8 @@ function EmailSMSTab() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.subject}</p>
-                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>To: {row.to}</p>
+                    {/* An address has no break opportunity of its own. */}
+                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>To: {row.to}</p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                     <span style={{ fontSize: '11px', padding: '2px 10px', borderRadius: '10px', backgroundColor: s.bg, color: s.color, fontWeight: 600, textTransform: 'capitalize' }}>{row.status}</span>
@@ -719,7 +720,7 @@ function IntegrationsTab() {
       {/* Mailtrap */}
       {card(<>
         {cardHeader(<Inbox size={20} color="#0891b2" />, 'Mailtrap Sandbox API', 'Validate Mailtrap API key for email testing', 'CORS-safe')}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: '12px', marginBottom: '12px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Mailtrap API Key</label>
             <input type="password" value={mailtrapKey} onChange={e => setMailtrapKey(e.target.value)} placeholder="API key from mailtrap.io" style={inputStyle} />
@@ -816,7 +817,7 @@ function IntegrationsTab() {
             <strong>Requires backend:</strong> SMTP testing uses Nodemailer and needs the local server running (<code>cd server && npm install && npm start</code>). The backend connects on <code>localhost:3001</code>.
           </p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px', marginBottom: '12px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>SMTP Host</label>
             <input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" style={inputStyle} />
@@ -999,9 +1000,12 @@ export default function Settings() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <Header title="Settings" subtitle="Account · Email & SMS · Integrations" />
-      <div style={{ padding: '28px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      {/* The sidebar and the panel sit side by side when there is room and
+          stack when there is not — a 220px column that refuses to shrink was
+          dragging every settings panel off the side of a phone. */}
+      <div style={{ padding: 'clamp(14px, 3vw, 28px)', display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Sidebar */}
-        <div style={{ width: '220px', flexShrink: 0, position: 'sticky', top: '24px' }}>
+        <div style={{ width: 220, flex: '1 1 220px', maxWidth: '100%', position: 'sticky', top: '24px' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
             {tabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -1016,7 +1020,7 @@ export default function Settings() {
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: '999 1 320px', minWidth: 0 }}>
           {activeTab === 'email-sms' && <EmailSMSTab />}
           {activeTab === 'ai-engine' && <AIEngineTab />}
           {activeTab === 'api-validation' && <IntegrationsTab />}
@@ -1032,7 +1036,7 @@ export default function Settings() {
                   <button style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white', color: '#475569', fontWeight: 500 }}>Change Photo</button>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px', marginBottom: '16px' }}>
                 {[
                   { label: 'First Name', key: 'firstName' }, { label: 'Last Name', key: 'lastName' },
                   { label: 'Email', key: 'email' }, { label: 'Phone', key: 'phone' },
@@ -1079,7 +1083,7 @@ export default function Settings() {
           {activeTab === 'integrations' && (
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Third-Party Integrations</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px' }}>
                 {integrations.map((intg, idx) => (
                   <div key={intg.name} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', borderRadius: '10px', border: `1px solid ${intg.connected ? '#bbf7d0' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#f0fdf4' : 'white' }}>
                     <span style={{ fontSize: '28px' }}>{intg.logo}</span>

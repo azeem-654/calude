@@ -108,10 +108,20 @@ export function loadCompetitors(): Competitor[] {
 export function saveCompetitors(c: Competitor[]) { try { localStorage.setItem(COMP_KEY, JSON.stringify(c)); } catch { /* ignore */ } }
 
 /* ─── Sentiment ─── */
-export function sentimentOf(rating: number, text: string): RepReview['sentiment'] {
-  if (rating >= 4) return 'positive';
-  if (rating <= 2) return 'negative';
-  const neg = ['bad', 'poor', 'slow', 'rude', 'disappointed', 'never', 'worst', 'refund'].some(w => text.toLowerCase().includes(w));
+/**
+ * A review that carries no words is still a review.
+ *
+ * This took the whole screen down when a record arrived with no text — an older
+ * schema, a half-finished import, a star rating left on its own. A rating with
+ * nothing written against it is neutral by the same rule as anything else, not
+ * a reason to stop rendering the page.
+ */
+export function sentimentOf(rating: number, text: unknown): RepReview['sentiment'] {
+  const n = Number(rating);
+  if (Number.isFinite(n) && n >= 4) return 'positive';
+  if (Number.isFinite(n) && n <= 2 && n > 0) return 'negative';
+  const words = typeof text === 'string' ? text.toLowerCase() : '';
+  const neg = ['bad', 'poor', 'slow', 'rude', 'disappointed', 'never', 'worst', 'refund'].some(w => words.includes(w));
   return neg ? 'negative' : 'neutral';
 }
 
@@ -120,7 +130,9 @@ const STOP = new Set(['the', 'and', 'was', 'for', 'with', 'this', 'that', 'they'
 export function trendingThemes(reviews: RepReview[], sentiment: 'positive' | 'negative'): { word: string; count: number }[] {
   const counts = new Map<string, number>();
   reviews.filter(r => r.sentiment === sentiment).forEach(r => {
-    r.content.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).forEach(w => {
+    /* Same reason as sentimentOf: a review with no words contributes none. */
+    const content = typeof r.content === 'string' ? r.content : '';
+    content.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).forEach(w => {
       if (w.length < 4 || STOP.has(w)) return;
       counts.set(w, (counts.get(w) ?? 0) + 1);
     });

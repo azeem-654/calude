@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { DesignPost, CanvasElement, CanvasBackground, TextElement, ShapeElement, ImageElement, StickerElement, HistoryEntry } from './types';
+import { normalisePost } from './normalise';
 import { FONT_FAMILIES, EMOJI_STICKERS, RATIO_SIZES } from './templates';
 
 /* ── Helpers ── */
@@ -790,7 +791,10 @@ export default function PostEditor() {
   const navigate = useNavigate();
   const { socialPosts, updateSocialPost } = useApp() as any;
 
-  const post: DesignPost | undefined = socialPosts?.find((p: DesignPost) => p.id === id);
+  /* Put it through the same normaliser the gallery uses: a record saved by
+     content setup has no canvas on it, and the editor would open onto nothing. */
+  const post: DesignPost | undefined =
+    normalisePost(socialPosts?.find((p: { id?: string }) => p?.id === id)) ?? undefined;
 
   const [elements, setElements] = useState<CanvasElement[]>(post?.elements ?? []);
   const [background, setBackground] = useState<CanvasBackground>(post?.background ?? { type: 'color', color: '#ffffff', gradientStart: '#6366f1', gradientEnd: '#a855f7', gradientAngle: 135, imageFit: 'cover' });

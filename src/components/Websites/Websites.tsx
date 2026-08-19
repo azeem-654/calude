@@ -68,7 +68,7 @@ function NewWebsiteModal({ onClose, onCreate }: { onClose: () => void; onCreate:
 
         <div style={{ marginBottom: 24 }}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Choose a Template</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(180px, 100%), 1fr))', gap: 10 }}>
             {STARTER_TEMPLATES.map(t => (
               <div key={t.id} onClick={() => setSelected(t.id)}
                 style={{ borderRadius: 10, overflow: 'hidden', border: selected === t.id ? '2px solid #6366f1' : '2px solid #e2e8f0', cursor: 'pointer', transition: 'all 0.15s', boxShadow: selected === t.id ? '0 0 0 3px #e0e7ff' : 'none' }}>
@@ -186,7 +186,7 @@ export default function Websites() {
   return (
     <div style={{ padding: '32px', minHeight: '100vh', background: '#f8fafc', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <Globe size={26} color="#6366f1" />
@@ -211,7 +211,7 @@ export default function Websites() {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: 16, marginBottom: 28 }}>
         {[
           { label: 'Total Sites', value: websites.length, icon: '🌐', color: '#6366f1' },
           { label: 'Published', value: websites.filter(w => w.status === 'published').length, icon: '✅', color: '#22c55e' },
@@ -252,7 +252,7 @@ export default function Websites() {
           )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: 20 }}>
           {filtered.map(w => {
             const tpl = STARTER_TEMPLATES.find(t => t.id === w.template) ?? STARTER_TEMPLATES[0];
             return (
@@ -284,14 +284,14 @@ export default function Websites() {
 
                   {w.description && <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>{w.description}</p>}
 
-                  <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+                  <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
                     <StatChip icon="👥" value={(w.visitors ?? 0).toLocaleString()} label="visitors" />
                     <StatChip icon="📄" value={(w.pages?.length ?? 0)} label="pages" />
                     <StatChip icon="📊" value={(w.pageViews ?? 0).toLocaleString()} label="views" />
                   </div>
 
                   {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => setEditingId(w.id)}
                       style={{ flex: 1, padding: '8px 0', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                       <Edit3 size={14} /> Open Builder

@@ -207,20 +207,23 @@ export default function CalendarView() {
     <div style={{ minHeight: '100vh' }}>
       <Header title="Calendar" subtitle="Meetings, bookings and your own time, on one grid" />
 
-      <div style={{ padding: '18px 22px 30px', display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ padding: '18px clamp(12px, 3vw, 22px) 30px', display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
         {/* ── Schedule ── */}
         <section style={{
-          flex: '1 1 660px', minWidth: 320, backgroundColor: '#fff',
+          /* Once the two panes have stacked, each is alone on its line, so a
+             floor of 320px only ever pushes past the edge of a narrow screen.
+             The day grid inside scrolls sideways on its own. */
+          flex: '1 1 660px', minWidth: 0, backgroundColor: '#fff',
           borderRadius: 24, border: `1px solid ${LINE}`, overflow: 'hidden',
         }}>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-            padding: '16px 18px', borderBottom: `1px solid ${LINE}`,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0,
+            padding: '16px clamp(10px, 2vw, 18px)', borderBottom: `1px solid ${LINE}`,
           }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>Schedule</h2>
 
-            <span style={{ display: 'inline-flex', gap: 4, marginLeft: 6 }}>
+            <span style={{ display: 'inline-flex', gap: 4, marginLeft: 6, flexWrap: 'wrap' }}>
               <button onClick={() => step(-1)} aria-label="Previous" style={iconBtn()}><ChevronLeft size={14} /></button>
               <button onClick={() => setAnchor(new Date())} style={{ ...ghost(), padding: '7px 12px' }}>Today</button>
               <button onClick={() => step(1)} aria-label="Next" style={iconBtn()}><ChevronRight size={14} /></button>
@@ -230,7 +233,7 @@ export default function CalendarView() {
             <span style={{ flex: 1 }} />
 
             <div style={{
-              display: 'inline-flex', gap: 2, padding: 3, borderRadius: 999, backgroundColor: PLANE,
+              display: 'flex', flexWrap: 'wrap', gap: 2, padding: 3, borderRadius: 999, backgroundColor: PLANE,
             }}>
               {(['day', 'week', 'month', 'year'] as const).map(v => (
                 <button
@@ -272,7 +275,7 @@ export default function CalendarView() {
 
         {/* ── Quick Connects ── */}
         <aside style={{
-          flex: '0 1 330px', minWidth: 280, backgroundColor: '#fff',
+          flex: '0 1 330px', minWidth: 0, backgroundColor: '#fff',
           borderRadius: 24, border: `1px solid ${LINE}`, overflow: 'hidden',
           alignSelf: 'stretch',
         }}>

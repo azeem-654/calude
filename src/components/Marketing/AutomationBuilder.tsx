@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Plus, Trash2, Play, Pause, Zap, GitBranch, Mail, MessageSquare, Tag, Clock, User, Edit2, Check, X, ChevronDown, Loader, AlertTriangle, Calendar } from 'lucide-react';
 import type { Automation, AutomationNode, AutomationNodeType } from '../../types/marketing';
+import { normaliseAutomations } from '../../services/marketingShape';
 
 /* ─── Node config ─── */
 
@@ -346,7 +347,11 @@ interface Props {
   onNotify: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export default function AutomationBuilder({ automations, onAddAutomation, onUpdateAutomation, onDeleteAutomation, onNotify }: Props) {
+export default function AutomationBuilder({ automations: storedAutomations, onAddAutomation, onUpdateAutomation, onDeleteAutomation, onNotify }: Props) {
+  /* An automation written before it had nodes — a trigger and a list of
+     actions — was read here as `auto.nodes.length` and took the whole Marketing
+     screen down. Its steps are rebuilt on the way in rather than discarded. */
+  const automations = useMemo(() => normaliseAutomations(storedAutomations), [storedAutomations]);
   const [selected, setSelected] = useState<Automation | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
