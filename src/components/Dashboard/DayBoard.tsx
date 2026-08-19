@@ -11,6 +11,7 @@ import {
   type DaySlot,
 } from '../../services/dayPlan';
 import { ModuleMark } from './moduleIcons';
+import DayClocks from './WorldClocks';
 import { useTheme } from './useTheme';
 import { useTilt } from './useTilt';
 
@@ -94,7 +95,7 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
         backgroundColor: CHROME, borderRadius: 999, padding: '10px 14px',
         display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
       }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12.5, fontWeight: 800, color: '#ffffff' }}>Your day</span>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
@@ -104,6 +105,8 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
             <CalendarDays size={12} />
             {now.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
           </span>
+          {/* The live clock, where you are, and the places you work with. */}
+          <DayClocks />
         </span>
 
         <HourBar
@@ -206,7 +209,7 @@ function HourBar({ slots, win, nowMin, onPick }: {
   const nowPct = positionIn(win, nowMin);
 
   return (
-    <div style={{ flex: 1, minWidth: 260, position: 'relative', padding: '14px 0 16px' }}>
+    <div style={{ flex: 1, minWidth: 320, position: 'relative', padding: '14px 0 16px' }}>
       {/* Track, with the part of the day already gone filled in. */}
       <div style={{
         position: 'relative', height: 26, borderRadius: 999,
