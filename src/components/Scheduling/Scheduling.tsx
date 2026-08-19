@@ -141,7 +141,7 @@ export default function Scheduling() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Header title="Scheduling" subtitle="Calendly-style booking management" />
+      <Header title="Booking pages" subtitle="Let people book you without the email chain" />
       <div style={{ padding: 28 }}>
 
         {/* Stats */}

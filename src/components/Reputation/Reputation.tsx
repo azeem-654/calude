@@ -172,7 +172,7 @@ export default function Reputation() {
   if (!profile.name) {
     return (
       <div style={{ minHeight: '100vh' }}>
-        <Header title="Reputation" subtitle="Monitor & respond to reviews in real time" />
+        <Header title="Reviews" subtitle="Watch what people say and answer it" />
         <div style={{ padding: '60px 28px', display: 'flex', justifyContent: 'center' }}>
           <div style={{ maxWidth: 470, textAlign: 'center', ...FROST, borderRadius: 24, padding: '40px 32px' }}>
             <div style={{ width: 64, height: 64, borderRadius: 20, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}><Star size={28} color="#fff" fill="#fff" /></div>

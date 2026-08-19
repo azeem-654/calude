@@ -45,7 +45,7 @@ export default function Analytics() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Header title="Analytics" subtitle="Insights and performance metrics" />
+      <Header title="Reports" subtitle="How every module is performing" />
       <div style={{ padding: '28px' }}>
         <div style={{ display: 'flex', gap: 7, marginBottom: 18 }}>
           {([['overview', 'Overview'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (

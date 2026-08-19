@@ -3190,7 +3190,7 @@ export default function VideoShorts() {
   /* ── Render: Dashboard ── */
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - var(--app-nav-h, 72px))', overflow: 'hidden' }}>
-      <Header title="AI Shorts Engine" subtitle="Turn long-form videos into viral short clips automatically" />
+      <Header title="AI Shorts" subtitle="Cut a long video into short vertical clips" />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ShortsFeed
           projects={videoProjects}

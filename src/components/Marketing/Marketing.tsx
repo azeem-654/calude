@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox, Shield, Check, ToggleLeft, ToggleRight, Grid3x3, Settings } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -43,6 +44,7 @@ function MetricBar({ label, value, total, color }: { label: string; value: numbe
 }
 
 function CampaignsTab() {
+  const navigate = useNavigate();
   const { campaigns, addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus, contacts } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
@@ -69,7 +71,7 @@ function CampaignsTab() {
           <Settings size={16} color="#d97706" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13, color: '#92400e' }}>
             <strong>Email provider not set up yet.</strong> You can create and draft campaigns now — connect SMTP, Resend, or Mailtrap in{' '}
-            <button onClick={() => { window.location.hash = '#/settings'; }} style={{ border: 'none', background: 'none', color: '#17191c', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13 }}>Settings → Email & SMS</button> when ready to send.
+            <button onClick={() => navigate('/settings?tab=email-sms')} style={{ border: 'none', background: 'none', color: '#17191c', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 2, fontFamily: 'inherit' }}>Settings → Email &amp; SMS</button> when ready to send.
           </div>
           <button onClick={() => setDismissedProviderBanner(true)} style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}>✕</button>
         </div>
@@ -438,7 +440,7 @@ export default function Marketing() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <Header title="Marketing" subtitle="Campaigns · Imports · Sequences · Automations" />
+      <Header title="Email campaigns" subtitle="Campaigns · Sequences · Automations · Deliverability" />
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '4px', padding: '0 28px', borderBottom: '1px solid #e6e9f0', backgroundColor: 'white', flexShrink: 0 }}>

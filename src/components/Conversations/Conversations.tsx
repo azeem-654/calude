@@ -248,7 +248,7 @@ export default function Conversations() {
   if (mailboxes.length === 0 && conversations.length === 0) {
     return (
       <div style={{ minHeight: '100vh' }}>
-        <Header title="Conversations" subtitle="A live shared inbox for every mailbox" />
+        <Header title="Inbox" subtitle="A live shared inbox for every mailbox" />
         <div style={{ padding: '60px 28px', display: 'flex', justifyContent: 'center' }}>
           <div style={{ maxWidth: 460, textAlign: 'center', background: 'rgba(255,255,255,0.6)', borderRadius: 24, padding: '40px 32px' }}>
             <div style={{ width: 64, height: 64, borderRadius: 20, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>

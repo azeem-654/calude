@@ -2074,7 +2074,7 @@ export default function Pipelines() {
 
   if (!selected) return (
     <div>
-      <Header title="Pipelines" subtitle="Track your sales opportunities" />
+      <Header title="Deals" subtitle="Move opportunities through to won" />
       <div style={{ padding: 40, textAlign: 'center' }}>
         <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 16 }}>No pipelines yet.</p>
         <button onClick={() => setShowPipelineModal(true)}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Contact, Campaign, CampaignStep } from '../../types';
 import {
   Mail, MessageSquare, Zap, X, Bold, Italic, Underline, Strikethrough,
@@ -820,6 +821,7 @@ function getSenderProfiles(): SenderProfile[] {
 
 /* ─── Step 3: Sender & Settings ─── */
 function StepSenderSettings({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
+  const navigate = useNavigate();
   const [customProfiles, setCustomProfiles] = React.useState<SenderProfileRecord[]>(loadSenderProfileRecords);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [newProfile, setNewProfile] = React.useState({ name: '', email: '', replyTo: '', tag: '' });
@@ -902,7 +904,7 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
               <Plus size={11} /> Add profile
             </button>
             <button
-              onClick={() => { window.location.hash = '#/settings'; }}
+              onClick={() => { navigate('/settings?tab=email-sms'); }}
               style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#17191c', fontWeight: 600, background: 'none', border: '1px solid #e4e6ea', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
               <Settings size={11} /> Settings
             </button>
@@ -976,7 +978,7 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
                 <Plus size={14} /> Add Sender Profile
               </button>
               <button
-                onClick={() => { window.location.hash = '#/settings'; }}
+                onClick={() => { navigate('/settings?tab=email-sms'); }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', background: '#fff', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 Go to Settings
               </button>
@@ -1186,6 +1188,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   contacts: Contact[];
   onLaunch: (sendNow: boolean, scheduledAt: string, sentCount: number) => void;
 }) {
+  const navigate = useNavigate();
   const [sendTime, setSendTime] = useState<'now' | 'scheduled'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
   const [testAddr, setTestAddr] = useState('');
@@ -1421,7 +1424,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
                   Go to <strong>Settings → Email & SMS</strong> and set up SMTP, Resend, or Mailtrap to send real emails.
                   You can still <strong>save this campaign as a draft</strong> now and activate it after setup.
                 </p>
-                <button onClick={() => { window.location.hash = '#/settings'; }}
+                <button onClick={() => { navigate('/settings?tab=email-sms'); }}
                   style={{ padding: '5px 12px', background: '#d97706', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                   Set up email provider →
                 </button>

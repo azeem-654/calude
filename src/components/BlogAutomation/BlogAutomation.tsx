@@ -87,7 +87,7 @@ export default function BlogAutomation() {
   if (current && view !== 'list') {
     return (
       <div style={{ minHeight: '100vh' }}>
-        <Header title="Blog Automation" subtitle="Rank the customer's own pages" />
+        <Header title="Blog & SEO" subtitle="A planned blog that ranks your own pages" />
         <div style={{ padding: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             <button onClick={() => { setView('list'); setOpenId(''); }} className="press" style={ghost()}>

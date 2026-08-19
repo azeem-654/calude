@@ -1,37 +1,17 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
-  Scissors, Palette, Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun, Rocket,
+  Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
 } from 'lucide-react';
+import CommandPalette from './CommandPalette';
+import { NAV_GROUPS, activeGroupId, isItemActive } from './navModel';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
 import { getTheme, toggleTheme } from '../../services/theme';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
-
-const PRIMARY_NAV = [
-  { path: '/',              label: 'Dashboard' },
-  { path: '/contacts',      label: 'Contacts' },
-  { path: '/conversations', label: 'Conversations' },
-  { path: '/calendar',      label: 'Calendar' },
-  { path: '/scheduling',    label: 'Scheduling' },
-  { path: '/pipelines',     label: 'Pipelines' },
-  { path: '/marketing',     label: 'Marketing' },
-  { path: '/ai-sales-agent', label: 'AI Sales Agent' },
-  { path: '/funnels',       label: 'Funnels' },
-  { path: '/analytics',     label: 'Reports' },
-];
-
-const MORE_NAV = [
-  { path: '/social-automation', label: 'Social Automation', icon: Rocket, desc: 'One video → clips, posts, email, blog' },
-  { path: '/blog-automation', label: 'Blog Automation', icon: Search, desc: 'Rank your pages with a planned blog' },
-  { path: '/ai-shorts',      label: 'AI Shorts',      icon: Scissors,     desc: 'Turn videos into viral clips' },
-  { path: '/social-creator', label: 'Social Creator', icon: Palette,      desc: 'AI social post designer' },
-  { path: '/reputation',     label: 'Reputation',     icon: Star,         desc: 'Reviews & ratings' },
-  { path: '/settings',       label: 'Settings',       icon: SettingsIcon, desc: 'Email, SMS & workspace' },
-];
 
 const circleBtn: React.CSSProperties = {
   width: 40, height: 40, borderRadius: 999, border: 'none',
@@ -41,13 +21,20 @@ const circleBtn: React.CSSProperties = {
 };
 
 export default function TopNav() {
-  const [moreOpen, setMoreOpen] = useState(false);
+  /* The open panel remembers which address it was opened from. Going somewhere
+     — including with the browser's own back button — therefore closes it,
+     without an effect chasing the location after the fact. */
+  const [openGroup, setOpenGroup] = useState<{ id: string; where: string } | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
+  const navMenuRef = useRef<HTMLElement>(null);
   const acctRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const moreActive = MORE_NAV.some(n => location.pathname.startsWith(n.path));
+  const currentGroup = activeGroupId(location.pathname);
+  const here = `${location.pathname}${location.search}`;
+  const openId = openGroup?.where === here ? openGroup.id : null;
+  const openPanel = (id: string | null) => setOpenGroup(id ? { id, where: here } : null);
   const session = getSession();
   const isClient = session?.user.role === 'client';
   const accounts = loadSubAccounts();
@@ -78,13 +65,27 @@ export default function TopNav() {
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+      if (navMenuRef.current && !navMenuRef.current.contains(e.target as Node)) setOpenGroup(null);
       if (acctRef.current && !acctRef.current.contains(e.target as Node)) setAcctOpen(false);
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, []);
+
+  /* ⌘K / Ctrl-K anywhere in the app, which is where people reach for it. */
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
+
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   return (
     <header ref={navRef} className="app-header" style={{
@@ -143,111 +144,137 @@ export default function TopNav() {
       )}
 
       {/*
-        Nav pills — white capsule segmented control.
+        The module menu.
 
-        The links scroll sideways inside their own strip; "More" sits outside
-        it. That split matters: the dropdown is absolutely positioned, so while
-        it lived in the same box as the links there was no way to scroll one
-        axis without clipping the panel on the other — and the links simply
-        overflowed instead. Ten pills come to about 970px, which is wider than
-        the space the header can give them on anything but a large monitor, so
-        without this the last two sat underneath the icon buttons and could not
-        be clicked at all.
+        Seven groups, every module inside one of them, nothing behind a "More".
+        A group opens on hover so the whole product is a pointer-move away, and
+        on click too, because a hover is not available on a phone. Groups of one
+        (Dashboard, Reports) are plain links with no panel at all — a menu that
+        opens to reveal a single row is a menu that wastes a movement.
 
-        The narrow-screen behaviour lives in index.css rather than here, because
-        it needs a media query and an inline style cannot hold one.
+        The panels are positioned against their own group and the row is allowed
+        to wrap on a narrow screen (see index.css), so nothing is ever clipped
+        by a scroll container — which is what forced the old split between the
+        scrolling links and the "More" button.
       */}
-      <nav className="nav-pills" style={{
-        display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
-        margin: '0 auto', padding: 4, borderRadius: 999,
-        backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
-      }}>
-        {/* Vertical padding, cancelled by the margin, so the active pill's drop
-            shadow is not sheared off by the scroll container. */}
-        <div className="nav-scroll" style={{
+      <nav
+        ref={navMenuRef}
+        className="nav-pills"
+        aria-label="Modules"
+        onMouseLeave={() => openPanel(null)}
+        style={{
           display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
-          overflowX: 'auto', overflowY: 'hidden',
-          padding: '6px 0', margin: '-6px 0',
-        }}>
-        {PRIMARY_NAV.map(item => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/'}
-            className={({ isActive }) => `pill-link${isActive ? ' pill-active' : ''}`}
-            style={({ isActive }) => ({
-              padding: '8px 14px', borderRadius: 999, textDecoration: 'none',
-              fontSize: 13, fontWeight: isActive ? 700 : 500, whiteSpace: 'nowrap',
-              color: isActive ? '#fff' : '#3b3f45',
-              backgroundColor: isActive ? '#17191c' : 'transparent',
-              boxShadow: isActive ? '0 3px 10px rgba(23,25,28,0.28)' : 'none',
-              transition: 'background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
-              letterSpacing: '-0.01em',
-            })}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-        </div>
+          margin: '0 auto', padding: 4, borderRadius: 999,
+          backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
+        }}
+      >
+        {NAV_GROUPS.map((group, gi) => {
+          const items = group.items.filter(i => !(i.agencyOnly && isClient));
+          if (items.length === 0) return null;
+          const on = currentGroup === group.id;
+          const open = openId === group.id;
 
-        {/* More dropdown — outside the scroller, so its panel is not clipped. */}
-        <div ref={moreRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button
-            onClick={() => setMoreOpen(v => !v)}
-            className={`pill-link${moreActive ? ' pill-active' : ''}`}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-              fontSize: 13, fontWeight: moreActive ? 700 : 500, fontFamily: 'inherit',
-              color: moreActive ? '#fff' : '#3b3f45',
-              backgroundColor: moreActive ? '#17191c' : 'transparent',
-              boxShadow: moreActive ? '0 3px 10px rgba(23,25,28,0.28)' : 'none',
-              letterSpacing: '-0.01em',
-            }}
-          >
-            More <ChevronDown size={13} style={{ transform: moreOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-          </button>
-          {moreOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-              backgroundColor: '#fff', borderRadius: 20, padding: 8, minWidth: 250, zIndex: 300,
-              boxShadow: '0 16px 40px -8px rgba(23,25,28,0.18)',
-            }}>
-              {MORE_NAV.map(item => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setMoreOpen(false)}
-                    className="more-nav-item"
-                    style={({ isActive }) => ({
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 12px', borderRadius: 14, textDecoration: 'none',
-                      backgroundColor: isActive ? '#17191c' : 'transparent',
-                    })}
-                  >
-                    {({ isActive }) => (
-                      <>
+          const pill: React.CSSProperties = {
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: on ? 700 : 500, fontFamily: 'inherit',
+            whiteSpace: 'nowrap', textDecoration: 'none',
+            color: on ? '#fff' : '#3b3f45',
+            backgroundColor: on ? '#17191c' : 'transparent',
+            boxShadow: on ? '0 3px 10px rgba(23,25,28,0.28)' : 'none',
+            transition: 'background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+            letterSpacing: '-0.01em',
+          };
+
+          if (group.path) {
+            return (
+              <NavLink
+                key={group.id}
+                to={group.path}
+                end={group.path === '/'}
+                onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
+                className={`pill-link${on ? ' pill-active' : ''}`}
+                style={pill}
+              >
+                {group.label}
+              </NavLink>
+            );
+          }
+
+          return (
+            /* Opening on pointerenter only when the pointer is a mouse.
+               A tap fires pointerenter too, so without the check the tap opened
+               the panel and the click that followed it closed it again — the
+               menu was unusable on a phone. */
+            <div key={group.id} className="nav-group" style={{ position: 'relative', flexShrink: 0 }}
+              onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(group.id); }}>
+              <button
+                type="button"
+                aria-haspopup="true"
+                aria-expanded={open}
+                onClick={() => openPanel(open ? null : group.id)}
+                onKeyDown={e => { if (e.key === 'Escape') openPanel(null); }}
+                className={`pill-link${on ? ' pill-active' : ''}`}
+                style={pill}
+              >
+                {group.label}
+                <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+              </button>
+
+              {open && (
+                <div
+                  className="nav-panel"
+                  role="menu"
+                  aria-label={group.label}
+                  style={{
+                    position: 'absolute', top: 'calc(100% + 8px)', zIndex: 300,
+                    /* Anchored by where the group sits in the row: a 288px card
+                       centred under the first or last pill hangs off the side of
+                       the bar on anything but a very wide screen. */
+                    ...(gi <= 1
+                      ? { left: 0 }
+                      : gi >= NAV_GROUPS.length - 2
+                        ? { right: 0 }
+                        : { left: '50%', transform: 'translateX(-50%)' }),
+                    backgroundColor: '#fff', borderRadius: 20, padding: 8, width: 288,
+                    boxShadow: '0 16px 40px -8px rgba(23,25,28,0.18)',
+                  }}
+                >
+                  {items.map(item => {
+                    const Icon = item.icon;
+                    const here = isItemActive(location.pathname, item);
+                    return (
+                      <button
+                        key={item.path}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { openPanel(null); navigate(item.path); }}
+                        className="more-nav-item"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                          padding: '10px 12px', borderRadius: 14, border: 'none', cursor: 'pointer',
+                          textAlign: 'left', backgroundColor: here ? '#17191c' : 'transparent',
+                        }}
+                      >
                         <span style={{
                           width: 34, height: 34, borderRadius: 999, flexShrink: 0,
-                          backgroundColor: isActive ? 'rgba(255,255,255,0.14)' : '#f0f1f3',
+                          backgroundColor: here ? 'rgba(255,255,255,0.14)' : '#f0f1f3',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                          <Icon size={15} color={isActive ? '#fff' : '#17191c'} strokeWidth={2} />
+                          <Icon size={15} color={here ? '#fff' : '#17191c'} strokeWidth={2} />
                         </span>
                         <span style={{ minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: isActive ? '#fff' : '#17191c', letterSpacing: '-0.01em' }}>{item.label}</span>
-                          <span style={{ display: 'block', fontSize: 11, color: isActive ? 'rgba(255,255,255,0.6)' : '#8a8f98', marginTop: 1 }}>{item.desc}</span>
+                          <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: here ? '#fff' : '#17191c', letterSpacing: '-0.01em' }}>{item.label}</span>
+                          <span style={{ display: 'block', fontSize: 11, color: here ? 'rgba(255,255,255,0.6)' : '#8a8f98', marginTop: 1, lineHeight: 1.35 }}>{item.desc}</span>
                         </span>
-                      </>
-                    )}
-                  </NavLink>
-                );
-              })}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })}
       </nav>
 
       {/* Right: circular icon buttons + avatar */}
@@ -255,7 +282,14 @@ export default function TopNav() {
         <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} style={circleBtn}>
           {theme === 'dark' ? <Sun size={16} strokeWidth={2.2} /> : <Moon size={16} strokeWidth={2.2} />}
         </button>
-        <button title="Search" style={circleBtn}><Search size={16} strokeWidth={2.2} /></button>
+        <button
+          title="Go to a module (⌘K)"
+          aria-label="Go to a module"
+          onClick={() => setPaletteOpen(true)}
+          style={circleBtn}
+        >
+          <Search size={16} strokeWidth={2.2} />
+        </button>
         <button title="Inbox" style={circleBtn}><Mail size={16} strokeWidth={2.2} /></button>
         <button title="Notifications" style={{ ...circleBtn, position: 'relative' }}>
           <Bell size={16} strokeWidth={2.2} />
@@ -292,6 +326,7 @@ export default function TopNav() {
           )}
         </div>
       </div>
+      {paletteOpen && <CommandPalette onClose={closePalette} isClient={isClient} />}
     </header>
   );
 }
@@ -319,15 +354,15 @@ export function IconRail() {
     ],
     /* Create */
     [
-      { icon: Plus, tip: 'New contact', path: '/contacts', onClick: () => navigate('/contacts') },
-      { icon: Send, tip: 'New campaign', path: '/marketing', onClick: () => navigate('/marketing') },
-      { icon: CalIcon, tip: 'New appointment', path: '/calendar', onClick: () => navigate('/calendar') },
+      { icon: Plus, tip: 'Contacts', path: '/contacts', onClick: () => navigate('/contacts') },
+      { icon: Send, tip: 'Email campaigns', path: '/marketing', onClick: () => navigate('/marketing') },
+      { icon: CalIcon, tip: 'Calendar', path: '/calendar', onClick: () => navigate('/calendar') },
     ],
     /* Monitor */
     [
-      { icon: Phone, tip: 'Conversations', path: '/conversations', onClick: () => navigate('/conversations') },
-      { icon: TriangleAlert, tip: 'Analytics & reports', path: '/analytics', onClick: () => navigate('/analytics') },
-      { icon: Star, tip: 'Reputation & reviews', path: '/reputation', onClick: () => navigate('/reputation') },
+      { icon: Phone, tip: 'Inbox', path: '/conversations', onClick: () => navigate('/conversations') },
+      { icon: TriangleAlert, tip: 'Reports', path: '/analytics', onClick: () => navigate('/analytics') },
+      { icon: Star, tip: 'Reviews', path: '/reputation', onClick: () => navigate('/reputation') },
     ],
   ];
 

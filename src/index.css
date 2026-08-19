@@ -518,16 +518,6 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
     margin: 0 !important;
   }
 
-  /* On a phone the links wrap onto several rows rather than scrolling — a
-     sideways strip on a screen the user is already scrolling vertically is a
-     way to hide half the navigation. */
-  .nav-scroll {
-    flex-wrap: wrap;
-    justify-content: center;
-    overflow-x: visible !important;
-    overflow-y: visible !important;
-  }
-
   /* Tap targets: 13px text in 8px padding is a 30px-high control. */
   .pill-link {
     padding: 9px 13px !important;
@@ -541,8 +531,19 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
   .pill-link { padding: 9px 11px !important; font-size: 13px !important; }
 }
 
-/* The primary nav links scroll sideways when they do not fit. The scrollbar
-   itself is hidden: it would sit across the bottom of a 40px-tall white
-   capsule, and the pills are already the affordance. */
-.nav-scroll { scrollbar-width: none; }
-.nav-scroll::-webkit-scrollbar { display: none; }
+/* A group's panel never leaves the screen, whatever the bar has done with the
+   row it hangs from. */
+.nav-panel {
+  max-width: calc(100vw - 24px);
+}
+
+/* On a phone the panel is the width of the screen and drops below the wrapped
+   row, rather than a 288px card floating off one edge of it. */
+@media (max-width: 620px) {
+  .nav-panel {
+    left: 0 !important;
+    right: 0 !important;
+    transform: none !important;
+    width: auto !important;
+  }
+}

@@ -5,6 +5,7 @@ import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import Header from '../Layout/Header';
 import TeamPermissions from './TeamPermissions';
 import Deliverability from './Deliverability';
+import { useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
 import type { EmailProviderConfig } from '../../services/emailService';
@@ -969,7 +970,18 @@ const tabs = [
 
 export default function Settings() {
   const { addNotification } = useApp();
-  const [activeTab, setActiveTab] = useState('email-sms');
+  /*
+   * The chosen panel lives in the address.
+   *
+   * Anything that says "set this up in Settings → Email & SMS" has to be able
+   * to land somebody on that panel, and back has to come back out of it. Held
+   * in the URL rather than in state, so a link to one panel is a real link.
+   */
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('tab');
+  const activeTab = tabs.some(t => t.id === asked) ? asked! : 'email-sms';
+  const setActiveTab = (id: string) =>
+    setParams(id === 'email-sms' ? {} : { tab: id }, { replace: true });
   const [profile, setProfile] = useState({ firstName: 'John', lastName: 'Doe', email: 'john@crmpro.com', phone: '+1 (555) 123-4567', company: 'CRMPro Inc.', timezone: 'America/New_York' });
   const [notifications, setNotifications] = useState({ emailNew: true, emailReplied: true, smsNew: false, dealClosed: true, appointmentReminder: true, weeklyReport: true });
   const [billing] = useState({ plan: 'Pro', price: '$297/mo', nextBilling: '2024-06-21', seats: 5 });
