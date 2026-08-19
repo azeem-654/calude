@@ -17,6 +17,8 @@ import {
   runAutomations, runIdleSweep, appendAutomationLog, describeAction,
 } from './Automations';
 import type { AutomationRule, AutomationRunResult } from './Automations';
+import PipelineDesigner from './PipelineDesigner';
+import { playbookChecklist, seedExistingDeals } from '../../services/pipelineAI';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
 type ViewMode = 'board' | 'list' | 'calendar' | 'gantt' | 'table' | 'funnel';
@@ -1978,6 +1980,7 @@ export default function Pipelines() {
   const [selectedId, setSelectedId] = useState(pipelines[0]?.id ?? '');
   const [view, setView] = useState<ViewMode>('board');
   const [showBrain, setShowBrain] = useState(false);
+  const [showDesigner, setShowDesigner] = useState(false);
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'won' | 'lost'>('all');
@@ -2222,7 +2225,10 @@ export default function Pipelines() {
         priority: data.priority ?? 'normal',
         labels: data.labels ?? [],
         description: data.description ?? '',
-        checklist: data.checklist ?? [],
+        /* A stage with a playbook hands its tasks to every deal that lands in
+           it, which is the whole point of having designed one. Anything the
+           form already put on the list stays in front of them. */
+        checklist: [...(data.checklist ?? []), ...playbookChecklist(targetStage)],
         status: data.status ?? 'active',
         source: data.source ?? '',
         lastStageChangedAt: new Date().toISOString(),
@@ -2479,11 +2485,13 @@ export default function Pipelines() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Header title="Pipelines" subtitle="Manage your sales opportunities" />
-      <div style={{ padding: 28 }}>
+      <Header title="Deals" subtitle="Move opportunities through to won" />
+      <div style={{ padding: 'clamp(14px, 3vw, 28px)' }}>
 
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+        {/* Stats — four across when there is room, fewer when there is not. A
+            fixed four-column grid was dragging the whole page sideways on a
+            phone, which took the board and every panel on it with it. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 16, marginBottom: 24 }}>
           {[
             { label: 'Active Pipeline', value: fmt(totalValue), sub: `${activeDeals.length} active deals`, color: '#17191c' },
             { label: 'Weighted Value', value: fmt(weightedValue), sub: 'By probability', color: '#3b3f45' },
@@ -2516,7 +2524,7 @@ export default function Pipelines() {
           </div>
 
           {/* View toggle */}
-          <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', backgroundColor: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
             {([
               ['board',    <LayoutGrid size={13} />,  'Board'],
               ['list',     <List size={13} />,         'List'],
@@ -2597,6 +2605,13 @@ export default function Pipelines() {
           <button onClick={() => openAddDeal()}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <Plus size={15} /> Add Deal
+          </button>
+
+          {/* Design the pipeline from a brief */}
+          <button onClick={() => setShowDesigner(true)}
+            title="Describe the work and lay out the stages"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'white', color: '#17191c', border: '1px solid #d5d8dd', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <Sparkles size={14} /> Design stages
           </button>
 
           {/* Brain AI Button */}
@@ -2813,6 +2828,31 @@ export default function Pipelines() {
           <GanttView stages={selected.stages} allDeals={allDeals} />
         )}
       </div>
+
+      {showDesigner && (
+        <PipelineDesigner
+          pipeline={selected}
+          onClose={() => setShowDesigner(false)}
+          onApply={stages => {
+            /* Every stage that gained a playbook offers it to the deals already
+               sitting in it, so applying a design does something for the board
+               as it stands and not only for deals created after today. */
+            let touched = 0;
+            const seeded = stages.map(st => {
+              const r = seedExistingDeals(st);
+              touched += r.touched;
+              return r.stage;
+            });
+            updatePipeline(selected.id, { stages: seeded });
+            setShowDesigner(false);
+            addNotification(
+              touched > 0
+                ? `${selected.name} rebuilt — ${seeded.length} stages, and ${touched} deal${touched === 1 ? '' : 's'} picked up their stage's tasks.`
+                : `${selected.name} rebuilt — ${seeded.length} stages.`,
+            );
+          }}
+        />
+      )}
 
       {/* Brain AI Panel */}
       {showBrain && (

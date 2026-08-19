@@ -353,11 +353,26 @@ export interface Pipeline {
   stages: Stage[];
 }
 
+/** A task a deal should carry while it is sitting in a given stage. */
+export interface StageTask {
+  id: string;
+  text: string;
+}
+
 export interface Stage {
   id: string;
   name: string;
   color: string;
   deals: Deal[];
+  /**
+   * What to do while a deal is here.
+   *
+   * A real relationship rather than a note in the stage name: a deal created in
+   * this stage starts with these on its checklist, and the board can say how
+   * many steps a column expects. Optional, because every pipeline that existed
+   * before this was added has none.
+   */
+  playbook?: StageTask[];
 }
 
 export interface CampaignStep {
