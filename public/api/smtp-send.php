@@ -23,16 +23,53 @@ $html      = $data['html']           ?? '<p>Test email from CRMPro.</p>';
 // Opt-in only, for an internal relay with a self-signed certificate.
 $insecure  = !empty($data['allowInsecure']);
 
+/**
+ * Every address that reaches a protocol is checked first.
+ *
+ * The recipient already was. The sender was not, and it goes into `MAIL FROM:`
+ * and into the `From:` header — so a carriage return inside it wrote a second
+ * line straight into the SMTP conversation. Anything after that CRLF is read by
+ * the server as a command of its own, which is how a crafted sending address
+ * adds recipients to somebody else's mail. The reply address is the same story
+ * one header down.
+ */
+function crm_addr($value) {
+    $value = trim((string) $value);
+    if ($value === '' || strlen($value) > 254) return false;
+    // Refused rather than escaped: no real address contains any of these, and
+    // guessing at what somebody meant is how injections get through.
+    if (preg_match('/[\r\n\0<>,;]/', $value)) return false;
+    return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : false;
+}
+
 if (!$to) {
     echo json_encode(['success' => false, 'message' => 'Recipient address is required']);
     exit;
 }
 // A malformed address used to be handed to RCPT TO and reported as sent, so a
 // campaign counted deliveries that never left the building.
-if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+if (crm_addr($to) === false) {
     echo json_encode(['success' => false, 'message' => "\"{$to}\" is not a valid email address"]);
     exit;
 }
+if (crm_addr($fromEmail) === false) {
+    echo json_encode(['success' => false, 'message' =>
+        "\"{$fromEmail}\" is not a valid sending address. Set one in Settings → Email & SMS."]);
+    exit;
+}
+$replyTo = trim($data['replyTo'] ?? '');
+if ($replyTo !== '' && crm_addr($replyTo) === false) {
+    echo json_encode(['success' => false, 'message' => "\"{$replyTo}\" is not a valid reply-to address"]);
+    exit;
+}
+/* A List-Unsubscribe header carries a URL and nothing else. */
+$unsubUrl = trim($data['unsubscribeUrl'] ?? '');
+if ($unsubUrl !== '' && (!filter_var($unsubUrl, FILTER_VALIDATE_URL) || preg_match('/[\r\n\0<>]/', $unsubUrl))) {
+    $unsubUrl = '';
+}
+/* A display name is encoded into the header, but must not span two lines. */
+$fromName = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string) $fromName)), 0, 120);
+$subject  = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string) $subject)), 0, 300);
 
 /* ── helper functions ── */
 function smtp_r($conn) {
@@ -47,8 +84,8 @@ function smtp_code($s) { return (int)substr(trim($s), 0, 3); }
 function smtp_w($conn, $s) { fwrite($conn, $s . "\r\n"); }
 
 /* ── build MIME message ── */
-function build_mime($fromName, $fromEmail, $to, $subject, $html, $host) {
-    $msgId = md5(uniqid('', true)) . '@' . preg_replace('/[^a-z0-9\.\-]/i', '', $host);
+function build_mime($fromName, $fromEmail, $to, $subject, $html, $host, $replyTo = '', $unsubUrl = '') {
+    $msgId = md5(uniqid('', true)) . '@' . (preg_replace('/[^a-z0-9\.\-]/i', '', $host) ?: 'localhost');
     $date  = date('r');
     $enc_subject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
     $enc_from    = '=?UTF-8?B?' . base64_encode($fromName) . '?=';
@@ -56,8 +93,18 @@ function build_mime($fromName, $fromEmail, $to, $subject, $html, $host) {
           . "To: <{$to}>\r\n"
           . "Subject: {$enc_subject}\r\n"
           . "Date: {$date}\r\n"
-          . "Message-ID: <{$msgId}>\r\n"
-          . "MIME-Version: 1.0\r\n"
+          . "Message-ID: <{$msgId}>\r\n";
+    /* A reply that lands in a mailbox nobody reads is a lost customer, so where
+       replies should go is stated rather than left to the envelope. */
+    $body .= 'Reply-To: <' . ($replyTo !== '' ? $replyTo : $fromEmail) . ">\r\n";
+    if ($unsubUrl !== '') {
+        /* Gmail and Yahoo have both required a one-click unsubscribe on bulk
+           mail since 2024. Without these two headers a campaign is filtered
+           before anybody gets to decide whether they wanted it. */
+        $body .= "List-Unsubscribe: <{$unsubUrl}>\r\n";
+        $body .= "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n";
+    }
+    $body .= "MIME-Version: 1.0\r\n"
           . "Content-Type: text/html; charset=UTF-8\r\n"
           . "Content-Transfer-Encoding: base64\r\n"
           . "\r\n"
@@ -151,13 +198,17 @@ if ($host && $user && $pass) {
                         smtp_w($conn, "DATA");
                         $dt = smtp_r($conn);
                         if (smtp_code($dt) === 354) {
-                            $body = build_mime($fromName, $fromEmail, $to, $subject, $html, $host);
+                            $body = build_mime($fromName, $fromEmail, $to, $subject, $html, $host, $replyTo, $unsubUrl);
                             fwrite($conn, $body . "\r\n.\r\n");
                             $sent = smtp_r($conn);
                             smtp_w($conn, "QUIT");
                             fclose($conn);
                             if (smtp_code($sent) === 250) {
-                                echo json_encode(['success' => true, 'message' => "Email sent via {$host}:{$port}"]);
+                                echo json_encode([
+                                    'success'   => true,
+                                    'transport' => 'smtp',
+                                    'message'   => "Email accepted by {$host}:{$port}",
+                                ]);
                                 exit;
                             }
                             $smtpError = 'The server rejected the message body: ' . trim($sent);
@@ -181,10 +232,30 @@ if ($host && $user && $pass) {
     }
 }
 
-/* ── fallback: PHP mail() via server sendmail ── */
+/**
+ * The host's own relay — but only when no SMTP server was asked for.
+ *
+ * This used to catch a failed SMTP send as well and report success anyway, so a
+ * campaign counted deliveries that had gone out by a completely different route
+ * from a domain the customer's SPF record does not cover, or nowhere at all.
+ * If SMTP was configured and did not work, that is the answer.
+ */
+if ($host && $user && $pass) {
+    echo json_encode([
+        'success'   => false,
+        'transport' => 'smtp',
+        'message'   => $smtpError ?: 'The message could not be sent over SMTP',
+    ]);
+    exit;
+}
+
 if (function_exists('mail') && $fromEmail) {
     $headers  = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <{$fromEmail}>\r\n";
-    $headers .= "Reply-To: {$fromEmail}\r\n";
+    $headers .= 'Reply-To: <' . ($replyTo !== '' ? $replyTo : $fromEmail) . ">\r\n";
+    if ($unsubUrl !== '') {
+        $headers .= "List-Unsubscribe: <{$unsubUrl}>\r\n";
+        $headers .= "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n";
+    }
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
     $headers .= "Content-Transfer-Encoding: base64\r\n";
@@ -195,11 +266,17 @@ if (function_exists('mail') && $fromEmail) {
 
     $ok = @mail($to, $encodedSubject, $encodedBody, $headers, "-f{$fromEmail}");
     if ($ok) {
-        $note = $smtpError ? " (SMTP failed: {$smtpError}; used server mail)" : '';
-        echo json_encode(['success' => true, 'message' => "Email queued via server mail{$note}"]);
+        echo json_encode([
+            'success'   => true,
+            'transport' => 'server-mail',
+            'message'   => "Handed to this server's mail relay. Connect SMTP in Settings → Email & SMS for delivery you can see the result of.",
+        ]);
         exit;
     }
-    $smtpError .= ($smtpError ? '; ' : '') . 'PHP mail() also failed';
 }
 
-echo json_encode(['success' => false, 'message' => $smtpError ?: 'No sending method available — configure SMTP host/user/pass']);
+echo json_encode([
+    'success'   => false,
+    'transport' => 'none',
+    'message'   => 'No sending method available — add an SMTP host, username and password in Settings → Email & SMS',
+]);

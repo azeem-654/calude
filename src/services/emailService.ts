@@ -22,6 +22,20 @@ export interface EmailPayload {
    * visible mistake an email tool can make.
    */
   merge?: Personalizable;
+  /**
+   * Where a reply should land, when that is not the sending address.
+   *
+   * A campaign sent from a mailbox nobody watches loses the replies it was
+   * written to get.
+   */
+  replyTo?: string;
+  /**
+   * A one-click unsubscribe link, sent as List-Unsubscribe.
+   *
+   * Gmail and Yahoo have both required this on bulk mail since 2024. Without
+   * it a campaign is filtered before anybody decides whether they wanted it.
+   */
+  unsubscribeUrl?: string;
 }
 
 export interface SendResult {
@@ -96,6 +110,8 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
           fromName: config.fromName || smtpCfg.fromName,
           fromEmail: config.fromEmail || smtpCfg.fromEmail,
           to: payload.to, toName: payload.toName,
+          replyTo: payload.replyTo || '',
+          unsubscribeUrl: payload.unsubscribeUrl || '',
           subject: payload.subject, html: payload.html,
         }),
       });
@@ -209,7 +225,10 @@ function mergeValues(contact: Personalizable): Record<string, string> {
     jobtitle: contact.jobTitle || '',
     title: contact.jobTitle || '',
     website: contact.website || '',
-    unsubscribe: '#unsubscribe',
+    /* Left for applyUnsubscribe to fill with the server-signed link. This
+       used to merge to "#unsubscribe": an anchor that went nowhere, in the one
+       place a recipient is entitled to expect a working link. */
+    unsubscribe: '{{unsubscribe}}',
   };
 }
 

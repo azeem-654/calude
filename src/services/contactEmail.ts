@@ -13,6 +13,7 @@ import type { EmailSequence } from '../types/marketing';
 import { loadEmailConfig, sendEmail, personalizeHtml } from './emailService';
 import { getActiveAccountId } from './tenancy';
 import { findSuppression, localCheck, loadSettings, suppress } from './deliverability';
+import { applyUnsubscribe, unsubscribeUrl } from './unsubscribe';
 import { warmupGate, recordSend } from './warmup';
 
 /**
@@ -169,8 +170,17 @@ function trackBase(): string {
 export function instrumentHtml(html: string, emailId: string): string {
   const account = getActiveAccountId() || 'default';
   const base = trackBase();
-  const withLinks = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_m, url: string) =>
-    `href="${base}?c=${encodeURIComponent(emailId)}&a=${encodeURIComponent(account)}&u=${encodeURIComponent(url)}"`);
+  const withLinks = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_m, url: string) => {
+    /* The unsubscribe link is left alone.
+     *
+     * Wrapping it counted every opt-out as a campaign click, so the click rate
+     * on a badly received mailing went up rather than down. Worse, it put the
+     * one link a recipient is entitled to have work behind a redirector: if
+     * tracking is unavailable they cannot get off the list, and their next move
+     * is the spam button. Mailbox providers dislike it for the same reason. */
+    if (/\/api\/unsubscribe\.php/.test(url)) return `href="${url}"`;
+    return `href="${base}?c=${encodeURIComponent(emailId)}&a=${encodeURIComponent(account)}&u=${encodeURIComponent(url)}"`;
+  });
   const pixel = `<img src="${base}?o=${encodeURIComponent(emailId)}&a=${encodeURIComponent(account)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px" />`;
   return `${withLinks}${pixel}`;
 }
@@ -329,9 +339,19 @@ async function deliver(email: ContactEmail, contact: Contact): Promise<SendOutco
      and what is on file are the same text. The merge is passed on anyway for
      anything a scheduled row picked up later. */
   const merge = mergeFor(contact);
-  const html = instrumentHtml(personalizeHtml(bodyToHtml(email.body), merge), email.id);
 
-  const result = await sendEmail(cfg, { to: contact.email, toName: contact.name, subject: email.subject, html, merge });
+  /* The unsubscribe link is signed by the server, so it has to be fetched
+     rather than composed. A failure here is not a reason to hold the email:
+     applyUnsubscribe falls back to a plain anchor, and the header is simply
+     left off. */
+  const unsub = await unsubscribeUrl(contact.email, email.sequenceId || '').catch(() => null);
+  const merged = applyUnsubscribe(personalizeHtml(bodyToHtml(email.body), merge), unsub);
+  const html = instrumentHtml(merged, email.id);
+
+  const result = await sendEmail(cfg, {
+    to: contact.email, toName: contact.name, subject: email.subject, html, merge,
+    ...(unsub ? { unsubscribeUrl: unsub } : {}),
+  });
 
   const rows = loadEmails();
   const row = rows.find(r => r.id === email.id);
