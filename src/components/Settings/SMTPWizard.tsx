@@ -497,7 +497,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
             <p style={{ fontSize: '14px', color: '#475569', margin: '0 0 16px' }}>Choose your email provider to pre-fill the connection settings:</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '10px', marginBottom: '20px' }}>
               {PROVIDERS.map(p => (
-                <button key={p.id} onClick={() => applyProvider(p.id)}
+                <button key={p.id} onClick={() => applyProvider(p.id)} aria-pressed={selectedProvider === p.id}
                   style={{
                     padding: '14px 10px', border: `2px solid ${selectedProvider === p.id ? p.color : '#e2e8f0'}`,
                     borderRadius: '10px', backgroundColor: selectedProvider === p.id ? `${p.color}10` : 'white',

@@ -51,7 +51,7 @@ export default function ReputationSetup({
           </div>
           <div style={{ display: 'flex', gap: 20, borderBottom: '1px solid #e9edf3' }}>
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 2px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: tab === t.id ? INK : MUTED, borderBottom: tab === t.id ? `2px solid ${INK}` : '2px solid transparent', marginBottom: -1 }}>
+              <button key={t.id} onClick={() => setTab(t.id)} aria-pressed={tab === t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 2px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: tab === t.id ? INK : MUTED, borderBottom: tab === t.id ? `2px solid ${INK}` : '2px solid transparent', marginBottom: -1 }}>
                 <t.icon size={14} /> {t.label}
               </button>
             ))}

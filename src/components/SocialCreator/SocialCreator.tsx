@@ -370,6 +370,7 @@ function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onC
                     <button
                       key={key}
                       onClick={() => setPlatform(key as Platform)}
+                      aria-pressed={platform === key}
                       style={{
                         padding: '8px 16px', borderRadius: 8, border: '2px solid', fontSize: 13, cursor: 'pointer', fontWeight: 500,
                         borderColor: platform === key ? p.primaryColor : '#e2e8f0',
@@ -387,6 +388,7 @@ function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onC
                     <button
                       key={r.value}
                       onClick={() => setRatio(r.value)}
+                      aria-pressed={ratio === r.value}
                       style={{
                         flex: 1, padding: '10px 8px', borderRadius: 8, border: '2px solid', fontSize: 13, cursor: 'pointer', fontWeight: 500,
                         borderColor: ratio === r.value ? '#6366f1' : '#e2e8f0',

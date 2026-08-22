@@ -40,9 +40,20 @@ export default function FunnelPreview() {
    * Capture a real lead from any form on the page: creates a CRM contact and
    * counts the conversion against the funnel.
    */
-  const handleSubmit = (e: React.FormEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    void target;
+  /**
+   * A visitor pressing the button on the page.
+   *
+   * The blocks render inputs and a button but no <form> and no handler, so the
+   * call to action on a funnel page did nothing at all — the owner previewing
+   * their own funnel filled it in, pressed the button, and watched nothing
+   * happen. Any press inside the rendered page is treated as the submit it
+   * looks like.
+   */
+  const handlePageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = (e.target as HTMLElement)?.closest('button, [type="submit"]');
+    if (!el) return;
+    e.preventDefault();
+    captureLead();
   };
 
   const captureLead = () => {
@@ -117,7 +128,7 @@ export default function FunnelPreview() {
       )}
 
       {/* Rendered funnel page */}
-      <div id="funnel-preview-body" onSubmit={handleSubmit} style={{ padding: device === 'mobile' ? '20px 0' : 0 }}>
+      <div id="funnel-preview-body" onClick={handlePageClick} style={{ padding: device === 'mobile' ? '20px 0' : 0 }}>
         {page ? (
           <div style={{ width: frameW, maxWidth: '100%', margin: '0 auto', background: '#fff', boxShadow: '0 0 40px rgba(15,23,42,0.18)', borderRadius: device === 'mobile' ? 16 : 0, overflow: 'hidden' }}>
             <PageBlocks page={page} />

@@ -2533,7 +2533,7 @@ export default function Pipelines() {
               ['funnel',   <TrendingUp size={13} />,  'Funnel'],
               ['gantt',    <CalendarDays size={13} />, 'Gantt'],
             ] as const).map(([v, icon, label]) => (
-              <button key={v} onClick={() => setView(v as ViewMode)}
+              <button key={v} onClick={() => setView(v as ViewMode)} aria-pressed={view === v}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 6, border: 'none', backgroundColor: view === v ? 'white' : 'transparent', color: view === v ? '#17191c' : '#64748b', fontSize: 12, fontWeight: view === v ? 700 : 500, cursor: 'pointer', boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', whiteSpace: 'nowrap' }}>
                 {icon} {label}
               </button>

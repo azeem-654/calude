@@ -278,7 +278,21 @@ export default function Conversations() {
           {demoMode ? <WifiOff size={12} /> : <Wifi size={12} />}
           {demoMode ? 'Demo inbox' : 'Live'}
         </span>
-        <button onClick={() => refresh()} disabled={loading} style={btn(false)}>
+        {/* Says something either way. With no mailbox connected this returned
+            silently, so pressing Refresh looked like a button that did not
+            work — the one thing a Refresh button must never look like. */}
+        <button
+          onClick={() => {
+            if (mailboxes.length === 0) {
+              addNotification('No mailbox connected yet — add one to pull mail in.', 'info');
+              return;
+            }
+            void refresh();
+            addNotification(`Checking ${mailboxes.length} mailbox${mailboxes.length === 1 ? '' : 'es'}…`, 'info');
+          }}
+          disabled={loading}
+          style={btn(false)}
+        >
           <RefreshCw size={13} style={loading ? { animation: 'spin 0.8s linear infinite' } : undefined} /> Refresh
         </button>
         <button onClick={() => setShowLog(v => !v)} style={btn(showLog)}>

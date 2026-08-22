@@ -547,10 +547,13 @@ export default function Funnels() {
         {/* Tabs + New button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'inline-flex', gap: '2px', padding: '3px', borderRadius: '10px', border: '1px solid #e6e9f0', backgroundColor: '#f1f5f9' }}>
-            <button onClick={() => {}} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: 'white', color: '#0f172a', fontSize: '13px', fontWeight: 600, cursor: 'default', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
+            {/* The one you are on. Marked as current rather than left as a
+                button with an empty handler, so a screen reader says which of
+                the two is showing instead of offering two identical controls. */}
+            <button aria-pressed aria-current="page" style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: 'white', color: '#0f172a', fontSize: '13px', fontWeight: 600, cursor: 'default', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
               Funnels
             </button>
-            <button onClick={() => navigate('/websites')} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}>
+            <button onClick={() => navigate('/websites')} aria-pressed={false} style={{ padding: '6px 18px', border: 'none', borderRadius: '8px', backgroundColor: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}>
               Websites
             </button>
           </div>

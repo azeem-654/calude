@@ -49,7 +49,7 @@ export default function Analytics() {
       <div style={{ padding: 'clamp(14px, 3vw, 28px)' }}>
         <div style={{ display: 'flex', gap: 7, marginBottom: 18 }}>
           {([['overview', 'Overview'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setSection(id)} title={label}
+            <button key={id} onClick={() => setSection(id)} title={label} aria-pressed={section === id}
               style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                 border: `1px solid ${section === id ? '#17191c' : '#e2e8f0'}`,
                 background: section === id ? '#17191c' : '#fff', color: section === id ? '#fff' : '#475569' }}>

@@ -1008,7 +1008,7 @@ export default function Settings() {
         <div style={{ width: 220, flex: '1 1 220px', maxWidth: '100%', position: 'sticky', top: '24px' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
             {tabs.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', border: 'none', borderRadius: '9px', backgroundColor: activeTab === tab.id ? '#eceef1' : 'transparent', color: activeTab === tab.id ? '#17191c' : '#475569', fontSize: '13px', fontWeight: activeTab === tab.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '2px' }}>
                 <tab.icon size={16} />
                 {tab.label}

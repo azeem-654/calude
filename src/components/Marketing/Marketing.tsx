@@ -447,7 +447,7 @@ export default function Marketing() {
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
           return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id}
               style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 16px', border: 'none', borderBottom: `2px solid ${isActive ? '#17191c' : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#0f172a' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: '-1px' }}
               onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#0f172a'; }}
               onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; }}>

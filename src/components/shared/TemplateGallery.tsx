@@ -182,8 +182,20 @@ export default function TemplateGallery({ ctx, kind, onUse, onClose, title = 'Ch
                 {list.map(meta => {
                   const pages = pagesFor(meta);
                   return (
+                    /* Focusable and announced, but not a <button> element: the
+                       card contains a scaled render of the template, which has
+                       buttons of its own, and a button inside a button is
+                       invalid. These cards are the only way into building a
+                       website or a funnel, so as plain divs with an onClick
+                       neither module could be used without a mouse at all. */
                     <div key={meta.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setPreviewing(meta)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreviewing(meta); }
+                      }}
+                      aria-label={`Preview the ${meta.name} template — ${pages.length} page${pages.length > 1 ? 's' : ''}`}
                       style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s, transform 0.15s' }}
                       onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = '0 10px 26px rgba(15,23,42,0.14)'; el.style.transform = 'translateY(-2px)'; }}
                       onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = 'none'; el.style.transform = 'none'; }}>

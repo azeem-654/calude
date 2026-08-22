@@ -154,6 +154,11 @@ export default function Websites() {
   function handleDuplicate(w: Website) {
     addWebsite({
       ...w,
+      /* A copy is a new record. Spreading the original carried its id across,
+         so the two sites shared one — editing either edited both, and deleting
+         one deleted the pair. Funnels and designs already minted a fresh id
+         here; this was the one that did not. */
+      id: `site-${Date.now()}`,
       name: `${w.name} (Copy)`,
       status: 'draft',
       visitors: 0,

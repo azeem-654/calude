@@ -459,8 +459,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ── Websites ── */
   const addWebsite = (w: Website | Omit<Website, 'id'>) => {
-    const site: Website = 'id' in w ? (w as Website) : { ...w, id: `site-${Date.now()}` };
-    setWebsites(prev => { const next = [site, ...prev]; saveLS('crm_websites', next); return next; });
+    setWebsites(prev => {
+      /* An id that is already in the list is not an id. A caller duplicating a
+         record can easily carry the original's across, and two rows sharing one
+         means editing either edits both and deleting one deletes the pair —
+         so a clash is given a fresh id here rather than trusted. */
+      const wanted = 'id' in w ? (w as Website).id : '';
+      const id = wanted && !prev.some(s => s.id === wanted) ? wanted : `site-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const site: Website = { ...(w as Website), id };
+      const next = [site, ...prev];
+      saveLS('crm_websites', next);
+      return next;
+    });
     notify(`Website "${w.name}" created!`);
   };
   const updateWebsite = (id: string, updates: Partial<Website>) => {
