@@ -50,6 +50,21 @@ proportionally bigger, bolder type instead of empty space.
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/google_ads_horizontal_1200x628.png` — 1.91:1 horizontal image for Google Ads Performance Max / Display asset groups
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/whatsapp_reply_1080x1350.png` — "how to claim" image to send as a reply to incoming WhatsApp messages from the ads
 
+### Second number set (0302-1202000)
+
+A full second set of all three video formats, identical except for the
+WhatsApp number in the CTA — useful for running two campaigns side by side
+and attributing leads by which number they message:
+
+- `gohighlevel_summer_of_ai_vertical_03021202000.mp4` (9:16)
+- `gohighlevel_summer_of_ai_square_03021202000.mp4` (1:1)
+- `gohighlevel_summer_of_ai_horizontal_03021202000.mp4` (16:9)
+
+These are generated from the *same* `anim*.html` sources via
+`record_number_variant.js`, which substitutes the number at record time
+rather than keeping duplicate HTML files — so a copy change only has to be
+made once and both number sets stay in sync.
+
 ### WhatsApp reply image
 
 `whatsapp_reply.html` / `render_whatsapp_reply.js` produce a 1080x1350
@@ -163,3 +178,20 @@ node record_extra_formats.js     # records anim_square.html + anim_horizontal.ht
 - `render_horizontal.js` — renders `horizontal.html` via Playwright screenshot
 - `whatsapp_reply.html` / `render_whatsapp_reply.js` — the 1080x1350 "how to claim" reply image
 - `whatsapp-autoreply.md` — the text message to send alongside that image
+- `record_number_variant.js` / `convert_number_variant.sh` — record + convert all 3 video formats with a different WhatsApp number substituted in
+
+## Generating a video set for another number
+
+Both scripts take the same `SLUG`; `PHONE` is the number as it should
+appear on screen:
+
+```bash
+PHONE=0302-1202000 SLUG=03021202000 node record_number_variant.js
+SLUG=03021202000 ./convert_number_variant.sh
+```
+
+Outputs land in `../../public/ads/gohighlevel-summer-of-ai-bold-pk/` as
+`gohighlevel_summer_of_ai_{vertical,square,horizontal}_<SLUG>.mp4`. The
+number currently baked into the HTML sources is `0320-0045364` (see
+`SOURCE_PHONE` in `record_number_variant.js`) — if you ever change the
+number in the HTML itself, update that constant to match.
