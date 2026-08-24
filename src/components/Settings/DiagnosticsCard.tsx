@@ -95,6 +95,11 @@ export default function DiagnosticsCard() {
           <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
             Checks this server's PHP build and walks a real SMTP and IMAP conversation, reporting what the mail server said at each step.
           </p>
+          {/* Which build answered. Without this a stale cache and a deploy that
+              never happened look exactly the same from the browser. */}
+          <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+            build {__BUILD_SHA__} · {new Date(__BUILT_AT__).toLocaleString()}
+          </p>
         </div>
       </div>
 

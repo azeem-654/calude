@@ -1,9 +1,28 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { execSync } from 'node:child_process'
+
+/*
+ * Which build is this?
+ *
+ * "Is my fix actually live?" was unanswerable from the deployed site — the
+ * bundle carried no mark, so a stale cache and a missing deploy looked
+ * identical. The commit and the build time are stamped in and shown by the
+ * diagnostics panel.
+ */
+const BUILD_SHA = process.env.GITHUB_SHA?.slice(0, 7)
+  ?? (() => {
+    try { return execSync('git rev-parse --short HEAD').toString().trim(); }
+    catch { return 'local'; }
+  })();
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    __BUILD_SHA__: JSON.stringify(BUILD_SHA),
+    __BUILT_AT__: JSON.stringify(new Date().toISOString()),
+  },
   // VITE_BASE env var lets CI override: '/' for FTP hosts, '/calude/' for GitHub Pages
   base: process.env.VITE_BASE ?? '/calude/',
   /*

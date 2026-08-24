@@ -14,6 +14,7 @@ import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
 import SMTPWizard from './SMTPWizard';
 import DiagnosticsCard from './DiagnosticsCard';
+import DeliveryCheck from './DeliveryCheck';
 import ProspectSearchCard from './ProspectSearchCard';
 import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
@@ -507,6 +508,7 @@ function EmailSMSTab() {
       <ProspectSearchCard />
 
       {/* What this server can actually do */}
+      <DeliveryCheck />
       <DiagnosticsCard />
 
       {card(

@@ -103,7 +103,11 @@ if ($host && $user && $pass) {
 /* ── build helpful suggestions ── */
 $suggestions = [];
 if (strpos($smtpError, 'Cannot connect') !== false || strpos($smtpError, 'blocked') !== false) {
-    $suggestions[] = 'Outbound SMTP ports may be blocked — emails will still send via server mail relay automatically';
+    /* This used to promise that mail "will still send" through the host's own
+       relay. It no longer does: once an SMTP server is configured, a failure
+       here is a failure, because counting a campaign as delivered when it went
+       out by another route — or nowhere — is worse than an error. */
+    $suggestions[] = 'Outbound SMTP ports are often blocked by shared hosting — ask the host to open 465 or 587, or use a provider API instead';
     $suggestions[] = "Try port 465 with SSL encryption instead of port {$port}";
     // Freehostia puts every mailbox on one fixed host — mail.<yourdomain> is
     // not it, and pointing people there is why this used to fail for them.
@@ -117,8 +121,8 @@ if (strpos($smtpError, 'Auth failed') !== false || strpos($smtpError, 'check use
 }
 
 $note = $phpMailAvail
-    ? 'Note: Server mail() is available — actual email sending will still work even if SMTP socket test fails'
-    : '';
+    ? 'This server has a local mail relay. It is only used when no SMTP server is configured at all — with SMTP set up, a failure here means mail will not send.'
+    : 'This server has no local mail relay, so SMTP is the only way out.';
 
 echo json_encode([
     'success'     => false,

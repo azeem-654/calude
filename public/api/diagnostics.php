@@ -79,6 +79,42 @@ chk('data_writable', 'api/data/ writable', crm_store_writable() ? 'pass' : 'fail
 chk('accounts', 'Owner account exists', crm_has_accounts() ? 'pass' : 'warn',
     crm_has_accounts() ? 'yes' : 'no account yet — the socket endpoints are open until one is created');
 
+/* ── 2b. The endpoints a campaign depends on ─────────────────────────────
+   Sending is only half of it. If these two are missing or unwritable then
+   opens are never recorded and — worse — the unsubscribe link in every
+   message goes nowhere, which is how a sending domain gets reported. */
+foreach ([
+    'track'       => ['track.php',       'records opens and clicks'],
+    'unsubscribe' => ['unsubscribe.php', 'the opt-out link in every campaign'],
+] as $id => $meta) {
+    list($file, $why) = $meta;
+    $present = is_file(__DIR__ . '/' . $file);
+    chk("endpoint_{$id}", "api/{$file}", $present ? 'pass' : 'fail',
+        $present ? "present — {$why}" : "missing — {$why} will not work. Re-upload the api folder.");
+}
+
+/* The opt-out link is signed, which needs a key this server can make and keep. */
+$unsubKeyOk = false;
+$unsubWhy = 'the api/data folder is not writable, so the signing key cannot be stored';
+if (crm_store_writable()) {
+    try {
+        $existing = crm_store_load('unsub_key', []);
+        if (!empty($existing['key'])) {
+            $unsubKeyOk = true;
+            $unsubWhy = 'a signing key is in place';
+        } else {
+            $probe = bin2hex(random_bytes(8));
+            $unsubKeyOk = crm_store_save('unsub_key_probe', ['k' => $probe]) !== false;
+            $unsubWhy = $unsubKeyOk
+                ? 'no key yet — one will be made on the first campaign'
+                : 'the key could not be written';
+        }
+    } catch (Throwable $e) {
+        $unsubWhy = 'random_bytes() failed: ' . $e->getMessage();
+    }
+}
+chk('unsub_key', 'Unsubscribe links can be signed', $unsubKeyOk ? 'pass' : 'fail', $unsubWhy);
+
 /* ── 3. SMTP, one stage at a time ────────────────────────────────────────── */
 function dg_read($conn) {
     $buf = '';
