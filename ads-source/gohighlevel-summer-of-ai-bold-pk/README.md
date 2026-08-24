@@ -48,6 +48,18 @@ proportionally bigger, bolder type instead of empty space.
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/gohighlevel_summer_of_ai_square.mp4` — same ad, 1:1 (1080x1080), for Meta's "Square" placement variant
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/gohighlevel_summer_of_ai_horizontal.mp4` — same ad, 16:9 (1920x1080), for Meta's "Horizontal" placement variant
 - `public/ads/gohighlevel-summer-of-ai-bold-pk/images/google_ads_horizontal_1200x628.png` — 1.91:1 horizontal image for Google Ads Performance Max / Display asset groups
+- `public/ads/gohighlevel-summer-of-ai-bold-pk/images/whatsapp_reply_1080x1350.png` — "how to claim" image to send as a reply to incoming WhatsApp messages from the ads
+
+### WhatsApp reply image
+
+`whatsapp_reply.html` / `render_whatsapp_reply.js` produce a 1080x1350
+image meant to be sent *in reply* to people who message from the ads —
+not as an ad itself. Since the person has already responded, this one
+explains the process rather than selling: 3 numbered steps (sign up →
+send success screenshot → receive Rs 1000), the NayaPay virtual-card
+note for the card requirement, the Bonus training block with its
+schedule, and a "save this number" CTA. Pair it with the text message in
+`whatsapp-autoreply.md`.
 
 ### Animated versions (3 aspect ratios)
 
@@ -149,3 +161,5 @@ node record_extra_formats.js     # records anim_square.html + anim_horizontal.ht
 - `record_extra_formats.js` / `convert_extra_formats.sh` — records and converts both of those
 - `horizontal.html` — simplified 1200x628 static layout for the Google Ads horizontal image requirement
 - `render_horizontal.js` — renders `horizontal.html` via Playwright screenshot
+- `whatsapp_reply.html` / `render_whatsapp_reply.js` — the 1080x1350 "how to claim" reply image
+- `whatsapp-autoreply.md` — the text message to send alongside that image
