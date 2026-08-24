@@ -76,13 +76,13 @@ function buildHtml({ width, height, scale }) {
       <div class="kicker">Summer of AI &mdash; limited time</div>
       <div class="headline">
         <div class="l1">Sign Up Karein</div>
-        <div class="l2">Rs 1000 Paayein Instantly!</div>
+        <div class="l2">Rs 1000 Cash Instantly!</div>
         <div class="l3">Card nahi? NayaPay Free Virtual Card use karein</div>
       </div>
       <div class="punch">Abhi Hasil Karein!</div>
       <div class="courseinfo">
-        <div class="c1">Bonus <b>(Optional)</b>: Free AI Skills Training bhi milegi</div>
-        <div class="c2">Monday-Friday, raat 10-11 baje, Zoom par &mdash; join karna aapki marzi</div>
+        <div class="c1">Bonus: <b>Voice AI, Automation, CRM &amp; AI Employees</b> seekhein Free</div>
+        <div class="c2">Monday-Friday, shaam 6:30-7:30 baje, Zoom par</div>
       </div>
       <div class="spacer"></div>
       <div class="waCta">

@@ -4,25 +4,24 @@ Diagonal two-tone split (deep blue/purple over a fiery red-orange wedge)
 with big, bold, **left-aligned stacked headline text** — dynamic,
 sale-banner-style layout.
 
-**Latest iteration: money-first, card-friction removed, course made
-explicitly optional.** Previous versions led with "Free AI Skills
-Seekhein" as the headline; this version restructures the whole hierarchy
-around the Rs 1000 payout, per the reasoning that (a) the card requirement
-is the actual drop-off point for most people, not lack of interest, and
-(b) presenting the 30-day training as mandatory-sounding made the offer
-feel more like an obligation than a simple cash incentive:
+**Latest iteration: money-first, card-friction removed, course presented
+as a bolded bonus (not labeled "optional"), new training time.** Previous
+versions led with "Free AI Skills Seekhein" as the headline; this version
+restructures the hierarchy around the Rs 1000 payout, per the reasoning
+that the card requirement is the actual drop-off point for most people,
+not lack of interest:
 
-1. **"Sign Up Karein / Rs 1000 Paayein Instantly!"** — headline, money leads
+1. **"Sign Up Karein / Rs 1000 Cash Instantly!"** — headline, money leads
 2. **"Card nahi? NayaPay Free Virtual Card use karein"** — directly answers
    the #1 real objection (no debit/credit card) instead of leaving it
    implicit
 3. **"Abhi Hasil Karein!"** — red punch-tag urgency line (unchanged)
-4. **"Bonus (Optional): Free AI Skills Training bhi milegi" / "Monday-Friday,
-   raat 10-11 baje, Zoom par — join karna aapki marzi"** — the training,
-   explicitly marked optional both in wording and by being demoted from
-   the headline to a secondary line
-5. **WhatsApp Karein — 0320-0045364** — CTA number (reverted to your
-   original number)
+4. **"Bonus: *Voice AI, Automation, CRM & AI Employees* seekhein Free" /
+   "Monday-Friday, shaam 6:30-7:30 baje, Zoom par"** — the course content
+   itself is now bolded and named (not just "AI Skills Training"), framed
+   as a bonus rather than labeled "optional," and the time changed from
+   10-11 PM to 6:30-7:30 PM
+5. **WhatsApp Karein — 0320-0045364** — CTA number
 
 ## ⚠️ Read this before running it — the actual risk here
 

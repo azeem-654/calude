@@ -2,10 +2,10 @@
 
 Ready-to-paste message for incoming WhatsApp chats (set as the
 auto-reply/greeting message in WhatsApp Business, or send manually to each
-new inquiry from the ad campaigns). Rewritten to lead with the Rs 1000
-instant payout, explain the NayaPay virtual-card workaround for the
-"debit card required" signup step, and present the 30-day training as an
-optional bonus rather than a commitment.
+new inquiry from the ad campaigns). Leads with the Rs 1000 instant
+payout, explains the NayaPay virtual-card workaround for the "debit card
+required" signup step, and presents the 30-day training as a bonus
+(6:30–7:30 PM, Monday–Friday) with the course content bolded.
 
 ## ⚠️ Before you use this — this is the biggest one
 
@@ -23,31 +23,36 @@ scale spend behind it.
 
 ## Other things that changed in this version
 
-1. **Money leads, not the course.** Headline is now "Sign Up Karein, Rs
-   1000 Paayein Instantly!" — the AI training is reframed as an optional
-   bonus you can ignore, matching the same restructure applied to the
-   image/video ads.
-2. **NayaPay virtual/temporary card is now explained in the message
-   itself**, since "no debit card" is the single biggest reason someone
-   starts the signup and abandons it. Confirm the actual steps (NayaPay
-   app → apply for virtual card → use those card details on GoHighLevel's
-   signup) before sending this out — the message currently just points
-   people to NayaPay's app rather than walking through exact taps, since
-   that flow can change on NayaPay's end.
-3. **Training explicitly marked optional** — schedule (Mon-Fri, 10-11 PM,
-   Zoom, WhatsApp broadcast for the daily link, save-the-number reminder)
-   is still all there, just presented as something people can skip
-   entirely and still get the Rs 1000.
-4. **"Sign-up success screenshot"** (not an email screenshot) is still the
+1. **Money leads, not the course.** Opens with "Sign Up Karein, Rs 1000
+   Cash Instantly!" — matches the exact phrasing used on the image/video
+   ads.
+2. **"Bonus" language, not "optional."** The training is now presented as
+   a 🎁 Bonus with no "optional"/"join karna zaroori nahi" wording — the
+   framing that it's a free extra rather than a commitment comes from
+   calling it a bonus, not from explicitly saying it's skippable.
+3. **Course content is now bolded and broken into a clear list** (Voice
+   AI / AI Employees / Automation & Workflows / CRM Basics / real business
+   use-cases) instead of a single run-on sentence.
+4. **Training time changed to 6:30 PM – 7:30 PM, Monday to Friday**
+   (was 10:00–11:00 PM) — this now matches the image/video ads.
+5. **NayaPay virtual/temporary card is explained in the message itself**,
+   since "no debit card" is the single biggest reason someone starts the
+   signup and abandons it. Confirm the actual steps (NayaPay app → apply
+   for virtual card → use those card details on GoHighLevel's signup)
+   before sending this out — the message currently just points people to
+   NayaPay's app rather than walking through exact taps, since that flow
+   can change on NayaPay's end.
+6. **"Sign-up success screenshot"** (not an email screenshot) is still the
    proof-of-signup ask.
-5. Still references your real tracked link (`?fp_ref=gohighlevelinstitute`),
+7. Still references your real tracked link (`?fp_ref=gohighlevelinstitute`),
    left as-is per your earlier instruction.
 
 ## The message
 
 ```
 Assalam-o-Alaikum! 👋
-GoHighLevel AI ka FREE trial sign up karein aur paayein *Rs 1000 Instantly*! 💸
+*Sign Up Karein, Rs 1000 Cash Instantly!* 💸
+GoHighLevel AI ka FREE trial sign up karein aur turant Rs 1000 cash paayein!
 
 🔗 *Sign-up kaise karein:*
 Neeche diye link se free trial start karein:
@@ -59,14 +64,18 @@ Sign-up ke liye card chahiye hota hai — agar aapke paas nahi hai to *NayaPay A
 Sign up ke baad:
 1. *Sign-up success ka screenshot* yahan bhej dein
 2. Apna JazzCash / EasyPaisa / NayaPay / SadaPay number ya bank details share karein
-3. Verify hote hi Rs 1000 *instantly* transfer kar diya jayega ✅
+3. Verify hote hi Rs 1000 *Cash Instantly* transfer kar diya jayega ✅
 
-🎁 *Bonus (Bilkul Optional):* Chahein to FREE 30-Din Live Hands-On AI Training bhi le sakte hain — Monday se Friday, raat *10:00 se 11:00 PM*, *Zoom* par. Join karna zaroori nahi — sirf sign up karke Rs 1000 lena bhi bilkul theek hai!
+🎁 *Bonus:* FREE 30-Din Live Hands-On AI Training bhi milegi — *Monday se Friday, shaam 6:30 se 7:30 PM*, *Zoom* par.
 
-📚 *Training mein kya hoga (agar join karein):*
-✅ Voice AI, AI Employees/24x7 AI Team, Automation & Workflows, CRM Basics, real business use-cases
+📚 *Training mein kya hoga:*
+✅ *Voice AI*
+✅ *AI Employees / 24x7 AI Team*
+✅ *Automation & Workflows*
+✅ *CRM Basics*
+✅ *Real business use-cases* — freelancing, agency ya apne business mein AI use karna
 
-⚠️ *Agar training join karna chahein:* Ye number apne Contacts mein save kar lein — roz session se pehle isi number se WhatsApp Broadcast par Zoom link milega, warna miss ho sakta hai.
+⚠️ Ye number apne Contacts mein save kar lein — roz session se pehle isi number se WhatsApp Broadcast par Zoom link milega, warna miss ho sakta hai.
 
 Koi bhi sawal ho to bila jhijhak yahan message karein — main khud reply karunga. 🙌
 
