@@ -2,70 +2,71 @@
 
 Ready-to-paste message for incoming WhatsApp chats (set as the
 auto-reply/greeting message in WhatsApp Business, or send manually to each
-new inquiry from the ad campaigns). Matches the Rs 1000 + 30-day AI skills
-training offer used across the image/video ads.
+new inquiry from the ad campaigns). Rewritten to lead with the Rs 1000
+instant payout, explain the NayaPay virtual-card workaround for the
+"debit card required" signup step, and present the 30-day training as an
+optional bonus rather than a commitment.
 
-## ⚠️ Before you use this
+## ⚠️ Before you use this — this is the biggest one
 
-1. **Training start date is set to 28 July** (today) — note that's a
-   Tuesday, so the first week only runs Tue-Fri (4 sessions) before the
-   normal Mon-Fri rhythm kicks in the following week; worth deciding now
-   whether "30 din" means 30 calendar days or 30 actual sessions so you're
-   not stuck deciding that mid-way through.
-2. **"Monday-Friday, 10-11 PM" is now the schedule everywhere** — the ad
-   images, the bold-pk animated video, and the Google Ads horizontal image
-   were all updated to say Monday-Friday too, so this message and the ad
-   creative are consistent.
-3. **This references your real tracked link**
-   (`?fp_ref=gohighlevelinstitute`) — per your instruction, the landing
-   page and other ad CTAs were deliberately left pointing at the plain
-   `gohighlevel.com/ai` URL and were NOT changed to match.
-4. Everything else from the ad disclosures still applies here: the Rs 1000
-   and training are funded/delivered by you personally, not GoHighLevel —
-   make sure you can actually verify sign-ups and pay out at whatever
-   volume this drives.
-5. **Sessions are now specified as Zoom**, delivered as "live hands-on"
-   training, with the Zoom link sent daily via WhatsApp broadcast before
-   each session — the message tells people to save your number, since
-   WhatsApp only delivers broadcast messages to senders saved in the
-   recipient's contacts. Make sure you actually have a recurring Zoom
-   meeting set up before this goes out.
-6. **Ask changed from "sign-up email screenshot" to "sign-up success
-   screenshot"** — i.e. a screenshot of the trial-created/welcome screen,
-   not necessarily an email.
+**Check GoHighLevel's actual affiliate program terms before running this
+at any real volume.** Most SaaS affiliate programs explicitly prohibit
+"incentivized" or "cash-back" signups — paying someone specifically to
+sign up, independent of whether they use the product. Pairing that with
+"use a virtual/temporary card just to pass the card-required gate" reads,
+from GoHighLevel's fraud-detection side, like coordinated low-intent
+signups tied to one referral link. The real risk isn't a warning email —
+it's commission clawback and the affiliate account itself getting
+terminated, which would kill every future payout through this link
+retroactively. This is worth 10 minutes of reading their terms before you
+scale spend behind it.
+
+## Other things that changed in this version
+
+1. **Money leads, not the course.** Headline is now "Sign Up Karein, Rs
+   1000 Paayein Instantly!" — the AI training is reframed as an optional
+   bonus you can ignore, matching the same restructure applied to the
+   image/video ads.
+2. **NayaPay virtual/temporary card is now explained in the message
+   itself**, since "no debit card" is the single biggest reason someone
+   starts the signup and abandons it. Confirm the actual steps (NayaPay
+   app → apply for virtual card → use those card details on GoHighLevel's
+   signup) before sending this out — the message currently just points
+   people to NayaPay's app rather than walking through exact taps, since
+   that flow can change on NayaPay's end.
+3. **Training explicitly marked optional** — schedule (Mon-Fri, 10-11 PM,
+   Zoom, WhatsApp broadcast for the daily link, save-the-number reminder)
+   is still all there, just presented as something people can skip
+   entirely and still get the Rs 1000.
+4. **"Sign-up success screenshot"** (not an email screenshot) is still the
+   proof-of-signup ask.
+5. Still references your real tracked link (`?fp_ref=gohighlevelinstitute`),
+   left as-is per your earlier instruction.
 
 ## The message
 
 ```
 Assalam-o-Alaikum! 👋
-GoHighLevel AI ke Summer of AI offer mein khush aamdeed!
-
-⚠️ *Zaroori: Ye number apne Contacts mein save kar lein!*
-Roz session shuru hone se pehle isi number se WhatsApp Broadcast par Zoom link bheja jayega — agar number save nahi kiya to broadcast message miss ho sakta hai.
-
-Yahan se aapko 3 cheezein milengi:
-
-1️⃣ *Rs 1000 Instant* — JazzCash, EasyPaisa, NayaPay, SadaPay ya Bank Account mein, free trial sign-up verify hote hi
-2️⃣ *30-Din Live Hands-On Training (Zoom par)* — Monday se Friday, raat *10:00 se 11:00 PM* tak
-3️⃣ *WhatsApp Broadcast List* — har session se pehle isi list par Zoom link milega
-
-📚 *Course mein kya seekhenge (Live Hands-On, Zoom par):*
-✅ Voice AI — AI se calls aur customer support automate karna
-✅ AI Employees / 24x7 AI Team — apna khud ka AI assistant banana
-✅ Automation & Workflows — leads ka follow-up khud-ba-khud
-✅ CRM Basics — contacts, pipelines aur sales tracking
-✅ Real business use-cases — freelancing, agency ya apne business mein AI use karna
+GoHighLevel AI ka FREE trial sign up karein aur paayein *Rs 1000 Instantly*! 💸
 
 🔗 *Sign-up kaise karein:*
-Neeche diye link se GoHighLevel AI ka free trial start karein:
+Neeche diye link se free trial start karein:
 https://www.gohighlevel.com/ai?fp_ref=gohighlevelinstitute
+
+💳 *Card nahi hai? Koi masla nahi!*
+Sign-up ke liye card chahiye hota hai — agar aapke paas nahi hai to *NayaPay App* se FREE Temporary/Virtual Card bana lein (2 minute ka kaam hai) aur wahi card details GoHighLevel sign-up mein use karein.
 
 Sign up ke baad:
 1. *Sign-up success ka screenshot* yahan bhej dein
 2. Apna JazzCash / EasyPaisa / NayaPay / SadaPay number ya bank details share karein
-3. Verify hote hi Rs 1000 *instantly* transfer kar diya jayega
+3. Verify hote hi Rs 1000 *instantly* transfer kar diya jayega ✅
 
-📅 Training *28 July* se shuru ho rahi hai — Monday se Friday, raat 10-11 baje, *Zoom* par. Roz ka Zoom link isi WhatsApp broadcast list par milega — is liye number contacts mein zaroor save karein.
+🎁 *Bonus (Bilkul Optional):* Chahein to FREE 30-Din Live Hands-On AI Training bhi le sakte hain — Monday se Friday, raat *10:00 se 11:00 PM*, *Zoom* par. Join karna zaroori nahi — sirf sign up karke Rs 1000 lena bhi bilkul theek hai!
+
+📚 *Training mein kya hoga (agar join karein):*
+✅ Voice AI, AI Employees/24x7 AI Team, Automation & Workflows, CRM Basics, real business use-cases
+
+⚠️ *Agar training join karna chahein:* Ye number apne Contacts mein save kar lein — roz session se pehle isi number se WhatsApp Broadcast par Zoom link milega, warna miss ho sakta hai.
 
 Koi bhi sawal ho to bila jhijhak yahan message karein — main khud reply karunga. 🙌
 

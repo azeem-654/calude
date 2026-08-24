@@ -1,28 +1,44 @@
 # GoHighLevel "Summer of AI" — bold Pakistan-market version (diagonal split)
 
-Third iteration of this ad. Style changed again per feedback ("change the
-ad view") to a diagonal two-tone split (deep blue/purple over a fiery
-red-orange wedge) with big, bold, **left-aligned stacked headline text**
-instead of the earlier centered circular badge — a more dynamic,
-sale-banner-style layout, still hitting only the main points:
+Diagonal two-tone split (deep blue/purple over a fiery red-orange wedge)
+with big, bold, **left-aligned stacked headline text** — dynamic,
+sale-banner-style layout.
 
-1. **"FREE AI Skills Seekhein"** — headline
-2. **"+ Rs 1000 Gift"** — money hook, in yellow
-3. **"+ Course Joining Motivation bhi!"** — the specific phrase requested
-4. **"Abhi Hasil Karein!"** — red punch-tag urgency line
-5. **"Seekhein: Voice AI, Automation, CRM & AI Employees" / "Practical
-   training se apna AI career shuru karein"** — 2-line course-content blurb
-   (added per feedback), sitting between the punch tag and the CTA
-6. **WhatsApp Karein — 0302-1202000** — the CTA, with the number itself now
-   noticeably larger (46×scale vs the earlier 32×scale) so it's the most
-   readable line on the CTA bar
+**Latest iteration: money-first, card-friction removed, course made
+explicitly optional.** Previous versions led with "Free AI Skills
+Seekhein" as the headline; this version restructures the whole hierarchy
+around the Rs 1000 payout, per the reasoning that (a) the card requirement
+is the actual drop-off point for most people, not lack of interest, and
+(b) presenting the 30-day training as mandatory-sounding made the offer
+feel more like an obligation than a simple cash incentive:
 
-Text sizes were bumped further per "make text more big more bold" — each
-format uses a different `scale` multiplier (1.08 / 1.38 / 1.85 for
+1. **"Sign Up Karein / Rs 1000 Paayein Instantly!"** — headline, money leads
+2. **"Card nahi? NayaPay Free Virtual Card use karein"** — directly answers
+   the #1 real objection (no debit/credit card) instead of leaving it
+   implicit
+3. **"Abhi Hasil Karein!"** — red punch-tag urgency line (unchanged)
+4. **"Bonus (Optional): Free AI Skills Training bhi milegi" / "Monday-Friday,
+   raat 10-11 baje, Zoom par — join karna aapki marzi"** — the training,
+   explicitly marked optional both in wording and by being demoted from
+   the headline to a secondary line
+5. **WhatsApp Karein — 0320-0045364** — CTA number (reverted to your
+   original number)
+
+## ⚠️ Read this before running it — the actual risk here
+
+**Verify GoHighLevel's affiliate program terms allow this before spending
+real budget on it.** Most SaaS affiliate programs explicitly prohibit
+incentivized/cash-back signups, and "here's how to get a virtual card just
+to pass the card gate" makes the sign-up-then-abandon pattern look more
+deliberate, not less, from GoHighLevel's side. The downside is commission
+clawback and account termination — which would end this channel
+retroactively, including payouts already promised to people who signed up
+in good faith. This is a business-continuity risk, not just a compliance
+footnote — worth 10 minutes reading their actual terms.
+
+Text sizes use a `scale` multiplier per format (1.08 / 1.38 / 1.85 for
 Facebook / Instagram / WhatsApp Status) so the bigger canvases get
-proportionally bigger, bolder type instead of empty space. At the largest
-scale (WhatsApp Status) "FREE AI Skills" wraps to two lines, which is
-expected and still reads fine.
+proportionally bigger, bolder type instead of empty space.
 
 ## Output
 
@@ -54,20 +70,20 @@ render separately as the asset group's Headlines/Long headline/Descriptions
 fields, so the image only needs the brand, hook, and WhatsApp CTA to stay
 readable at a glance.
 
-## ⚠️ Before you post these
+## ⚠️ Other things to check before you post these
 
-1. **"Course Joining Motivation" is now an explicit promise on the
-   creative** — make sure whatever you deliver over WhatsApp (the 30-day
-   training, encouragement, etc.) actually matches what someone would
-   expect from that phrase.
-2. **"Voice AI, Automation, CRM & AI Employees" is now a specific curriculum
-   claim** — make sure the actual training covers these, since it's on the
-   creative now, not just implied.
-3. **Rs 1000 Gift + payout details are not spelled out on the image** —
-   same as the previous version, you explain JazzCash/EasyPaisa/etc. and
-   verify sign-ups yourself over WhatsApp.
-4. **Affiliate link still isn't on the image** — add your tracked link in
+1. **"NayaPay Free Virtual Card" is now a specific instruction, not a
+   vague mention** — confirm the actual steps in NayaPay's app still work
+   the way you expect before sending people down that path; if the flow
+   changes on NayaPay's end, this creative goes stale.
+2. **Rs 1000 payout details are not spelled out on the image** — you
+   explain JazzCash/EasyPaisa/etc. and verify sign-ups yourself over
+   WhatsApp.
+3. **Affiliate link still isn't on the image** — add your tracked link in
    the caption/bio wherever you post these.
+4. **The training is now optional in wording, but you still need it to be
+   real** — if someone does opt in, the Monday-Friday Zoom sessions still
+   need to actually happen.
 
 ## Regenerating the images
 

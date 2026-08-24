@@ -29,7 +29,7 @@ aspect ratio.
    traffic to this — a missed payout or a skipped training night on an
    *advertised, specific* promise is the kind of thing that generates refund
    disputes and platform complaints, not just an annoyed customer.
-3. **Phone number is baked into the images** (0302-1202000, WhatsApp). If
+3. **Phone number is baked into the images** (0320-0045364, WhatsApp). If
    that number ever changes, or if you want to run this on a shared/team
    account, you'll need to re-render (see below).
 4. **"$100,000 challenge" mention** in the disclosure refers to GoHighLevel's
