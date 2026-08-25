@@ -76,6 +76,23 @@ note for the card requirement, the Bonus training block with its
 schedule, and a "save this number" CTA. Pair it with the text message in
 `whatsapp-autoreply.md`.
 
+**Type is deliberately large and the copy deliberately short.** WhatsApp
+scales in-chat images down to roughly a third of the screen width, so an
+earlier, wordier version was unreadable on a phone. 1080x1350 (4:5) is
+already the ratio WhatsApp displays largest in chat — making the canvas
+taller would make it *smaller* on screen, not bigger, since WhatsApp
+caps bubble height. The only real lever is fewer words at bigger sizes,
+so every line is trimmed to fit on one row. Keep it that way when
+editing: adding a few words will silently push a line to wrap and shrink
+the perceived size again.
+
+Both number variants are rendered from this one file:
+
+```bash
+node render_whatsapp_reply.js                      # 0320-0045364
+PHONE=0302-1202000 node render_whatsapp_reply.js   # 0302-1202000
+```
+
 ### Animated versions (3 aspect ratios)
 
 Same content, ~8s each, all built by recording a CSS-keyframe-animated
