@@ -14,6 +14,7 @@ import { loadEmailConfig, sendEmail, personalizeHtml } from './emailService';
 import { getActiveAccountId } from './tenancy';
 import { findSuppression, localCheck, loadSettings, suppress } from './deliverability';
 import { applyUnsubscribe, unsubscribeUrl } from './unsubscribe';
+import { bodyToHtml } from './emailHtml';
 import { warmupGate, recordSend } from './warmup';
 
 /**
@@ -186,12 +187,10 @@ export function instrumentHtml(html: string, emailId: string): string {
 }
 
 /** Turn an authored plain-text body into the HTML that actually gets sent. */
-export function bodyToHtml(body: string): string {
-  const esc = body
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const linked = esc.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
-  return `<div style="font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.65;color:#0f172a">${linked.replace(/\n/g, '<br>')}</div>`;
-}
+/* Moved to emailHtml.ts, and re-exported so the callers that already import it
+   from here do not have to care. It used to escape every body unconditionally,
+   which sent a designed campaign to the recipient as its own source code. */
+export { bodyToHtml };
 
 /**
  * Pull open/click events recorded by track.php and merge them into history.

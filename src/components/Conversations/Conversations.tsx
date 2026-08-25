@@ -8,6 +8,7 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import MailboxSetup from './MailboxSetup';
 import { sendEmail, loadEmailConfig } from '../../services/emailService';
+import { sanitizeEmailHtml } from '../../services/emailHtml';
 import { draftEmailReply } from '../../lib/gemini';
 import { hasGeminiKey } from '../../lib/gemini';
 import {
@@ -540,8 +541,14 @@ export default function Conversations() {
               {/* Message body */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
                 <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+                  {/* Sanitised before it is rendered.
+                      This was inserted raw, and the body is whatever a stranger
+                      chose to email the connected mailbox — so a message
+                      carrying a <script> ran it in this app's own origin, where
+                      the session token, the SMTP password and every contact
+                      live. Formatting survives; anything that can act does not. */}
                   {selected.bodyType === 'HTML'
-                    ? <div dangerouslySetInnerHTML={{ __html: selected.body }} />
+                    ? <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(selected.body) }} />
                     : selected.body}
                 </div>
                 {note && (
