@@ -1,13 +1,36 @@
 import { sessionToken } from './auth';
 
+/**
+ * The services that can carry mail out of this app.
+ *
+ * Everything except `smtp` reaches its provider over HTTPS on port 443 — the
+ * one port shared hosting never blocks — and every one of them is sent from
+ * the server rather than the browser. See `provider-send.php` for why that
+ * distinction is the whole point.
+ */
+export type EmailProvider =
+  | 'smtp'
+  | 'brevo' | 'resend' | 'mailjet' | 'smtp2go' | 'sendgrid' | 'postmark' | 'mailgun'
+  | 'mailtrap' | 'activecampaign'
+  | 'none';
+
+/** The providers that go over HTTPS, i.e. everything that is not raw SMTP. */
+export const API_PROVIDERS: EmailProvider[] = [
+  'brevo', 'resend', 'mailjet', 'smtp2go', 'sendgrid', 'postmark', 'mailgun', 'mailtrap', 'activecampaign',
+];
+
 export interface EmailProviderConfig {
-  provider: 'smtp' | 'mailtrap' | 'resend' | 'activecampaign' | 'none';
+  provider: EmailProvider;
   apiKey: string;
   inboxId: string;
   fromName: string;
   fromEmail: string;
   /** ActiveCampaign account URL, e.g. https://account.api-us1.com */
   apiUrl?: string;
+  /** Mailjet issues a key and a secret; both are needed to authenticate. */
+  apiSecret?: string;
+  /** Mailgun sends through a named domain rather than a bare key. */
+  domain?: string;
 }
 
 export interface EmailPayload {
@@ -79,7 +102,11 @@ export function isEmailConfigured(): boolean {
       return !!(smtp?.host && smtp?.user && smtp?.pass);
     } catch { return false; }
   }
+  /* Two providers need more than a key, and saying so up front beats a
+     rejected send that blames the key. */
   if (cfg.provider === 'activecampaign') return !!(cfg.apiKey && cfg.apiUrl);
+  if (cfg.provider === 'mailjet') return !!(cfg.apiKey && cfg.apiSecret);
+  if (cfg.provider === 'mailgun') return !!(cfg.apiKey && cfg.domain);
   return cfg.provider !== 'none' && !!cfg.apiKey;
 }
 
@@ -119,71 +146,46 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
       return data.success ? { success: true, id: 'smtp-sent' } : { success: false, error: data.message };
     }
 
-    if (config.provider === 'mailtrap') {
-      if (!config.inboxId) return { success: false, error: 'Mailtrap Inbox ID is required.' };
-      const resp = await fetch(`https://sandbox.api.mailtrap.io/api/send/${config.inboxId}`, {
+    /**
+     * Everything else goes over HTTPS, through this host.
+     *
+     * It used to go straight from the browser to the provider, which fails for
+     * two reasons at once. None of these APIs send an Access-Control-Allow-Origin
+     * header, so the browser refuses the request before it leaves — the send
+     * reports "network error" however correct the key is. And the key had to be
+     * in the page to be sent from the page, which put a licence to send as the
+     * customer into local storage, readable by any script or extension loaded
+     * alongside it.
+     *
+     * Sending server-side removes both: no origin is involved, and the key only
+     * ever travels between this host and the provider.
+     */
+    if (API_PROVIDERS.includes(config.provider)) {
+      const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      const resp = await fetch(`${API_BASE}/api/provider-send.php`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: { email: config.fromEmail || 'crm@example.com', name: config.fromName || 'CRM' },
-          to: [{ email: payload.to, name: payload.toName || payload.to }],
+          token: sessionToken(),
+          provider: config.provider,
+          apiKey: config.apiKey,
+          apiSecret: config.apiSecret || '',
+          apiUrl: config.apiUrl || '',
+          domain: config.domain || '',
+          fromName: config.fromName,
+          fromEmail: config.fromEmail,
+          to: payload.to,
           subject: payload.subject,
           html: payload.html,
+          replyTo: payload.replyTo || '',
+          unsubscribeUrl: payload.unsubscribeUrl || '',
         }),
       });
-      if (resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        return { success: true, id: (data as { message_ids?: string[] }).message_ids?.[0] || 'sent' };
-      }
-      let msg = `HTTP ${resp.status}`;
-      try { const e = await resp.json() as { errors?: string[]; message?: string }; msg = e.errors?.join(', ') || e.message || msg; } catch { /* ignore */ }
-      return { success: false, error: msg };
-    }
-
-    if (config.provider === 'resend') {
-      const from = config.fromEmail
-        ? `${config.fromName || 'CRM'} <${config.fromEmail}>`
-        : 'CRM <onboarding@resend.dev>';
-      const resp = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to: [payload.to], subject: payload.subject, html: payload.html }),
-      });
-      if (resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        return { success: true, id: (data as { id?: string }).id || 'sent' };
-      }
-      let msg = `HTTP ${resp.status}`;
-      try { const e = await resp.json() as { message?: string }; msg = e.message || msg; } catch { /* ignore */ }
-      return { success: false, error: msg };
-    }
-
-    if (config.provider === 'activecampaign') {
-      if (!config.apiUrl) return { success: false, error: 'ActiveCampaign account URL is required.' };
-      const base = config.apiUrl.replace(/\/$/, '');
-      try {
-        // Create a transactional email via ActiveCampaign API
-        const resp = await fetch(`${base}/api/3/sendEmail`, {
-          method: 'POST',
-          headers: { 'Api-Token': config.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: {
-              subject: payload.subject,
-              html: payload.html,
-              from: config.fromEmail || 'noreply@yourcrm.com',
-              fromname: config.fromName || 'CRM',
-              reply_to: config.fromEmail || '',
-              to: payload.to,
-              sender: { name: config.fromName || 'CRM', email: config.fromEmail || 'noreply@yourcrm.com' },
-            },
-          }),
-        });
-        if (resp.ok) return { success: true, id: 'ac-sent' };
-        const txt = await resp.text().catch(() => `HTTP ${resp.status}`);
-        return { success: false, error: `ActiveCampaign error: ${txt}` };
-      } catch (err) {
-        return { success: false, error: `ActiveCampaign: ${err instanceof Error ? err.message : String(err)}` };
-      }
+      const data = await resp.json().catch(() => ({ success: false, message: `HTTP ${resp.status}` })) as
+        { success: boolean; message?: string; id?: string };
+      return data.success
+        ? { success: true, id: data.id || 'sent' }
+        : { success: false, error: data.message || `HTTP ${resp.status}` };
     }
 
     return { success: false, error: 'Unknown provider' };

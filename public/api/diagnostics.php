@@ -86,6 +86,10 @@ chk('accounts', 'Owner account exists', crm_has_accounts() ? 'pass' : 'warn',
 foreach ([
     'track'       => ['track.php',       'records opens and clicks'],
     'unsubscribe' => ['unsubscribe.php', 'the opt-out link in every campaign'],
+    /* The two routes out of a host that blocks SMTP. Without them a locked-down
+       server has no way to send and no way to find that out. */
+    'provider'    => ['provider-send.php', 'sending over HTTPS, which works where SMTP ports are blocked'],
+    'probe'       => ['mail-probe.php',    'the route check that finds what this host allows'],
 ] as $id => $meta) {
     list($file, $why) = $meta;
     $present = is_file(__DIR__ . '/' . $file);

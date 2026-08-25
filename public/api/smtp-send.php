@@ -113,18 +113,26 @@ function build_mime($fromName, $fromEmail, $to, $subject, $html, $host, $replyTo
     return preg_replace('/^\.$/m', '..', $body);
 }
 
-/* ── attempt socket SMTP ── */
-$smtpError = '';
-if ($host && $user && $pass) {
 /**
- * TLS policy.
+ * One attempt against one host and port.
  *
- * Certificates are verified by default. They were not, which meant an attacker
- * presenting any self-signed certificate could sit in the middle of the
- * connection and read the customer's mailbox password. `allowInsecure` exists
- * for the genuine case of an internal relay with a self-signed certificate, and
- * has to be chosen deliberately.
+ * Pulled out of the inline block it used to be so that a blocked port can be
+ * retried on another one. The distinction the caller needs is in `retry`: a
+ * connection that never opened says nothing about the password, so it is worth
+ * trying elsewhere. A rejected login or a rejected recipient is a real answer —
+ * the port worked — and retrying it on another port would only produce the same
+ * refusal twice while looking like a network problem.
  */
+function smtp_attempt($host, $port, $enc, $user, $pass, $fromName, $fromEmail, $to, $subject, $html, $replyTo, $unsubUrl, $insecure) {
+    /**
+     * TLS policy.
+     *
+     * Certificates are verified by default. They were not, which meant an
+     * attacker presenting any self-signed certificate could sit in the middle
+     * of the connection and read the customer's mailbox password.
+     * `allowInsecure` exists for the genuine case of an internal relay with a
+     * self-signed certificate, and has to be chosen deliberately.
+     */
     $ctx = stream_context_create([
         'ssl' => [
             'verify_peer'       => !$insecure,
@@ -135,100 +143,181 @@ if ($host && $user && $pass) {
         ],
     ]);
     $wrapper = $enc === 'ssl' ? "ssl://{$host}" : $host;
+    $errno = 0; $errstr = '';
     $conn = @stream_socket_client("{$wrapper}:{$port}", $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
 
-    if ($conn) {
-        stream_set_timeout($conn, 15);
-        $greeting = smtp_r($conn);
-        if (smtp_code($greeting) === 220) {
-            smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
+    if (!$conn) {
+        return ['ok' => false, 'retry' => true, 'error' =>
+            "Cannot connect to {$host}:{$port} (" . ($errstr !== '' ? trim($errstr) : 'no response') . ')'];
+    }
 
-            // Fail closed. If TLS was asked for and does not actually engage,
-            // stop here — continuing would put the account password on the
-            // wire in the clear while the UI still said the link was secure.
-            // Fail closed, and do not fall through to the mail() path either:
-            // if the user asked for an encrypted link and it did not happen,
-            // the honest outcome is to stop and say so, not to send anyway.
-            if ($enc === 'tls') {
-                smtp_w($conn, "STARTTLS");
-                if (smtp_code(smtp_r($conn)) !== 220) {
-                    fclose($conn);
-                    echo json_encode(['success' => false, 'message' =>
-                        'The server refused STARTTLS, so the connection would not have been encrypted and your password was not sent. Use SSL on port 465, or choose "None" only on a server you control.']);
-                    exit;
-                }
-                if (!@stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-                    fclose($conn);
-                    echo json_encode(['success' => false, 'message' =>
-                        'The TLS handshake failed — the certificate could not be verified, so nothing was sent. Try SSL on port 465, or check the host name matches the certificate.']);
-                    exit;
-                }
-                smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
-            }
+    stream_set_timeout($conn, 15);
+    $greeting = smtp_r($conn);
+    if (smtp_code($greeting) !== 220) {
+        fclose($conn);
+        /* Something accepted the socket without being a mail server — a
+           filtering proxy, usually. Another port may not have one in the way. */
+        return ['ok' => false, 'retry' => true, 'error' => "Bad greeting from {$host}:{$port}: " . trim($greeting)];
+    }
 
-            smtp_w($conn, "AUTH LOGIN");
-            $ap = smtp_r($conn);
-            if (smtp_code($ap) === 334) {
-                smtp_w($conn, base64_encode($user)); smtp_r($conn);
-                smtp_w($conn, base64_encode($pass));
-                $ar = smtp_r($conn);
-            } else {
-                smtp_w($conn, 'AUTH PLAIN ' . base64_encode("\0{$user}\0{$pass}"));
-                $ar = smtp_r($conn);
-            }
+    smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
 
-            /**
-             * Each stage names itself.
-             *
-             * These labels were previously shifted by one nesting level, so a
-             * rejected recipient was reported as "MAIL FROM rejected" and a
-             * rejected sender as "Auth failed: 235 Authentication succeeded" —
-             * an auth failure quoting the successful auth response as its own
-             * evidence. Someone whose recipient bounced would go and rotate a
-             * working mailbox password. The server's own reply is quoted in
-             * every case, because that sentence is the actual diagnosis.
-             */
-            if (smtp_code($ar) === 235) {
-                smtp_w($conn, "MAIL FROM: <{$fromEmail}>");
-                $mf = smtp_r($conn);
-                if (smtp_code($mf) === 250) {
-                    smtp_w($conn, "RCPT TO: <{$to}>");
-                    $rc = smtp_r($conn);
-                    if (smtp_code($rc) === 250) {
-                        smtp_w($conn, "DATA");
-                        $dt = smtp_r($conn);
-                        if (smtp_code($dt) === 354) {
-                            $body = build_mime($fromName, $fromEmail, $to, $subject, $html, $host, $replyTo, $unsubUrl);
-                            fwrite($conn, $body . "\r\n.\r\n");
-                            $sent = smtp_r($conn);
-                            smtp_w($conn, "QUIT");
-                            fclose($conn);
-                            if (smtp_code($sent) === 250) {
-                                echo json_encode([
-                                    'success'   => true,
-                                    'transport' => 'smtp',
-                                    'message'   => "Email accepted by {$host}:{$port}",
-                                ]);
-                                exit;
-                            }
-                            $smtpError = 'The server rejected the message body: ' . trim($sent);
-                        } else {
-                            $smtpError = 'The server refused to accept message data (DATA): ' . trim($dt);
-                            fclose($conn);
-                        }
-                    } else {
-                        $smtpError = "The server rejected the recipient \"{$to}\" (RCPT TO): " . trim($rc);
-                        fclose($conn);
-                    }
-                } else {
-                    $smtpError = "The server rejected the from address \"{$fromEmail}\" (MAIL FROM): " . trim($mf)
-                        . '. Most hosts require this to be an address on the authenticated account.';
-                    fclose($conn);
-                }
-            } else { $smtpError = 'Auth failed: ' . trim($ar); fclose($conn); }
-        } else { $smtpError = 'Bad greeting: ' . trim($greeting); fclose($conn); }
+    // Fail closed. If TLS was asked for and does not actually engage, stop
+    // here — continuing would put the account password on the wire in the
+    // clear while the UI still said the link was secure. Do not fall through
+    // to the mail() path either: if the user asked for an encrypted link and
+    // it did not happen, the honest outcome is to stop and say so.
+    if ($enc === 'tls') {
+        smtp_w($conn, "STARTTLS");
+        /* Retryable, not fatal — but only because every remaining rung of the
+           ladder is encrypted too when encryption was asked for (see
+           smtp_port_ladder). Moving on sends nothing in the clear; it just
+           tries a port whose submission service is configured properly. */
+        if (smtp_code(smtp_r($conn)) !== 220) {
+            fclose($conn);
+            return ['ok' => false, 'retry' => true, 'error' =>
+                "The server refused STARTTLS on port {$port}, so the connection would not have been encrypted and your password was not sent. Use SSL on port 465, or choose \"None\" only on a server you control."];
+        }
+        if (!@stream_socket_enable_crypto($conn, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            fclose($conn);
+            return ['ok' => false, 'retry' => true, 'error' =>
+                "The TLS handshake failed on port {$port} — the certificate could not be verified, so nothing was sent. Try SSL on port 465, or check the host name matches the certificate."];
+        }
+        smtp_w($conn, "EHLO mail.test"); smtp_r($conn);
+    }
+
+    smtp_w($conn, "AUTH LOGIN");
+    $ap = smtp_r($conn);
+    if (smtp_code($ap) === 334) {
+        smtp_w($conn, base64_encode($user)); smtp_r($conn);
+        smtp_w($conn, base64_encode($pass));
+        $ar = smtp_r($conn);
     } else {
-        $smtpError = "Cannot connect to {$host}:{$port} ({$errstr})";
+        smtp_w($conn, 'AUTH PLAIN ' . base64_encode("\0{$user}\0{$pass}"));
+        $ar = smtp_r($conn);
+    }
+
+    /**
+     * Each stage names itself.
+     *
+     * These labels were previously shifted by one nesting level, so a rejected
+     * recipient was reported as "MAIL FROM rejected" and a rejected sender as
+     * "Auth failed: 235 Authentication succeeded" — an auth failure quoting the
+     * successful auth response as its own evidence. Someone whose recipient
+     * bounced would go and rotate a working mailbox password. The server's own
+     * reply is quoted in every case, because that sentence is the diagnosis.
+     */
+    if (smtp_code($ar) !== 235) {
+        fclose($conn);
+        return ['ok' => false, 'retry' => false, 'error' => 'Auth failed: ' . trim($ar)];
+    }
+
+    smtp_w($conn, "MAIL FROM: <{$fromEmail}>");
+    $mf = smtp_r($conn);
+    if (smtp_code($mf) !== 250) {
+        fclose($conn);
+        return ['ok' => false, 'retry' => false, 'error' =>
+            "The server rejected the from address \"{$fromEmail}\" (MAIL FROM): " . trim($mf)
+            . '. Most hosts require this to be an address on the authenticated account.'];
+    }
+
+    smtp_w($conn, "RCPT TO: <{$to}>");
+    $rc = smtp_r($conn);
+    if (smtp_code($rc) !== 250) {
+        fclose($conn);
+        return ['ok' => false, 'retry' => false, 'error' =>
+            "The server rejected the recipient \"{$to}\" (RCPT TO): " . trim($rc)];
+    }
+
+    smtp_w($conn, "DATA");
+    $dt = smtp_r($conn);
+    if (smtp_code($dt) !== 354) {
+        fclose($conn);
+        return ['ok' => false, 'retry' => false, 'error' =>
+            'The server refused to accept message data (DATA): ' . trim($dt)];
+    }
+
+    $body = build_mime($fromName, $fromEmail, $to, $subject, $html, $host, $replyTo, $unsubUrl);
+    fwrite($conn, $body . "\r\n.\r\n");
+    $sent = smtp_r($conn);
+    smtp_w($conn, "QUIT");
+    fclose($conn);
+
+    if (smtp_code($sent) === 250) {
+        return ['ok' => true, 'retry' => false, 'error' => '', 'port' => $port];
+    }
+    return ['ok' => false, 'retry' => false, 'error' => 'The server rejected the message body: ' . trim($sent)];
+}
+
+/**
+ * The ports to try, in order.
+ *
+ * The one the user chose always goes first — if it works, nothing else is
+ * touched and the behaviour is exactly what it always was. The rest exist
+ * because shared hosting blocks outbound mail ports, and which ones it blocks
+ * varies by host and by plan:
+ *
+ *   587   the modern submission port, and the first thing a host blocks
+ *   2525  no standard behind it, which is precisely why it is usually open —
+ *         Brevo, Mailjet, SMTP2GO and SendGrid all listen on it for this reason
+ *   465   implicit TLS, often open where 587 is not
+ *   25    server-to-server, blocked essentially everywhere; tried last so the
+ *         report can say it was tried
+ *
+ * Only a connection failure moves down the list. A refused password stops the
+ * whole thing, because trying it three more times would lock the account.
+ */
+function smtp_port_ladder($chosen, $enc) {
+    /* The rungs below the chosen one must never be less protected than what was
+       asked for. Someone who selected TLS and hit a blocked port has not agreed
+       to send their password in the clear on port 25 instead — so when
+       encryption was requested, every fallback is encrypted, and port 25, which
+       cannot be, is left off the list entirely.
+
+       The reverse case is a server the user controls and has deliberately set
+       to no encryption; there, adding a TLS rung would just fail four times. */
+    $fallbacks = $enc === 'none'
+        ? [[587, 'none'], [2525, 'none'], [25, 'none']]
+        : [[587, 'tls'], [2525, 'tls'], [465, 'ssl']];
+
+    $ladder = [[$chosen, $enc]];
+    foreach ($fallbacks as $step) {
+        if ($step[0] !== $chosen) $ladder[] = $step;
+    }
+    return $ladder;
+}
+
+/* ── attempt socket SMTP, walking down the ports until one gets through ── */
+$smtpError = '';
+$attempts  = [];
+if ($host && $user && $pass) {
+    foreach (smtp_port_ladder($port, $enc) as [$tryPort, $tryEnc]) {
+        $r = smtp_attempt($host, $tryPort, $tryEnc, $user, $pass, $fromName, $fromEmail, $to, $subject, $html, $replyTo, $unsubUrl, $insecure);
+        /* `retry` is kept because it is the difference between "nothing
+           answered" and "something answered and said no", and the summary
+           below is only allowed to blame the host for the first kind. */
+        $attempts[] = ['port' => $tryPort, 'encryption' => $tryEnc, 'ok' => $r['ok'],
+                       'reachable' => !$r['retry'], 'detail' => $r['error']];
+
+        if ($r['ok']) {
+            $moved = $tryPort !== $port;
+            echo json_encode([
+                'success'   => true,
+                'transport' => 'smtp',
+                'port'      => $tryPort,
+                'attempts'  => $attempts,
+                'message'   => $moved
+                    /* Worth saying plainly: the send worked, but not the way it
+                       was configured, and the setting should be corrected so
+                       every later send does not pay for the blocked attempt. */
+                    ? "Email accepted by {$host}:{$tryPort}. Port {$port} was blocked from this server, so port {$tryPort} was used instead — change the port in Settings to {$tryPort} to skip that delay next time."
+                    : "Email accepted by {$host}:{$tryPort}",
+            ]);
+            exit;
+        }
+
+        $smtpError = $r['error'];
+        if (!$r['retry']) break;   // a real answer; another port would repeat it
     }
 }
 
@@ -241,10 +330,26 @@ if ($host && $user && $pass) {
  * If SMTP was configured and did not work, that is the answer.
  */
 if ($host && $user && $pass) {
+    /* Only when every single attempt failed to get an answer at all. A run
+       that ended in "authentication credentials invalid" reached a mail server
+       and was told no — saying "this host blocks SMTP" in the same breath as
+       quoting that reply tells the customer to go and argue with their host
+       about a wrong password. */
+    $blockedEverywhere = count($attempts) > 1
+        && !array_filter($attempts, fn($a) => $a['ok'] || $a['reachable']);
     echo json_encode([
         'success'   => false,
         'transport' => 'smtp',
-        'message'   => $smtpError ?: 'The message could not be sent over SMTP',
+        'attempts'  => $attempts,
+        'message'   => ($smtpError ?: 'The message could not be sent over SMTP')
+            . ($blockedEverywhere
+                /* Four blocked ports is not a settings mistake, and telling
+                   somebody to re-check their password would waste their
+                   afternoon. This host does not allow outbound SMTP at all. */
+                ? ' Ports ' . implode(', ', array_column($attempts, 'port')) . ' were all tried and none got through,'
+                  . ' which means this server blocks outbound SMTP rather than anything being wrong with your details.'
+                  . ' Run the route check in Settings → Email & SMS — sending over HTTPS still works from here.'
+                : ''),
     ]);
     exit;
 }

@@ -15,6 +15,7 @@ import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopu
 import SMTPWizard from './SMTPWizard';
 import DiagnosticsCard from './DiagnosticsCard';
 import DeliveryCheck from './DeliveryCheck';
+import RouteCheck from './RouteCheck';
 import ProspectSearchCard from './ProspectSearchCard';
 import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
@@ -126,10 +127,20 @@ function EmailProviderCard() {
   };
 
   const statusColors: Record<string, string> = { idle: '#64748b', sending: '#2563eb', ok: '#16a34a', fail: '#dc2626' };
+  /* Every one of these sends over HTTPS from this host, so none of them care
+     whether your hosting blocks SMTP ports. The free allowances are the
+     published ones and none of them ask for a card. */
   const providerDocs: Record<string, { label: string; url: string; hint: string }> = {
-    smtp:     { label: 'SMTP',     url: '',                    hint: 'Uses your SMTP server configured in the wizard above — works with Gmail, Outlook, any provider' },
-    mailtrap: { label: 'Mailtrap', url: 'https://mailtrap.io', hint: 'Test sandbox — captures emails without delivery. Free tier available.' },
-    resend:   { label: 'Resend',   url: 'https://resend.com',  hint: 'Real email delivery · Free tier: 3,000/mo · Requires verified domain for production' },
+    smtp:     { label: 'SMTP',     url: '',                       hint: 'Uses the SMTP server configured in the wizard above — Gmail, Outlook, your host, anything. Blocked ports are retried automatically.' },
+    brevo:    { label: 'Brevo',    url: 'https://www.brevo.com',  hint: 'Free: 300 emails a day, no card. Sends over HTTPS, so it works even when your host blocks every SMTP port — the safest choice on shared hosting.' },
+    resend:   { label: 'Resend',   url: 'https://resend.com',     hint: 'Free: 3,000 a month. Its onboarding@resend.dev sender works before you verify a domain, so it is the fastest route to a first real send.' },
+    mailjet:  { label: 'Mailjet',  url: 'https://www.mailjet.com',hint: 'Free: 200 a day. Needs both an API key and an API secret — they sit on the same page of your account.' },
+    smtp2go:  { label: 'SMTP2GO',  url: 'https://www.smtp2go.com',hint: 'Free: 1,000 a month. Built for hosts with awkward firewalls.' },
+    sendgrid: { label: 'SendGrid', url: 'https://sendgrid.com',   hint: 'Free: 100 a day. Requires sender verification before the first send.' },
+    postmark: { label: 'Postmark', url: 'https://postmarkapp.com',hint: 'Free: 100 a month. The strictest about verified senders, and the best deliverability of the group.' },
+    mailgun:  { label: 'Mailgun',  url: 'https://www.mailgun.com',hint: 'Needs your Mailgun sending domain as well as the key. Free trial only — the others have standing free tiers.' },
+    mailtrap: { label: 'Mailtrap', url: 'https://mailtrap.io',    hint: 'A capture inbox for testing. Mail lands in the Mailtrap UI and reaches nobody — use it to check a campaign is well-formed without mailing customers.' },
+    activecampaign: { label: 'ActiveCampaign', url: 'https://www.activecampaign.com', hint: 'Sends through your existing ActiveCampaign account. Needs the account URL from Settings → Developer.' },
   };
 
   return (
@@ -153,9 +164,15 @@ function EmailProviderCard() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '8px', marginBottom: '10px' }}>
           {[
-            { id: 'smtp',     label: '🔐 SMTP',     desc: 'Your server (recommended)' },
-            { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test sandbox' },
-            { id: 'resend',   label: '⚡ Resend',   desc: 'High-volume' },
+            { id: 'smtp',     label: '🔐 SMTP',     desc: 'Your own server' },
+            { id: 'brevo',    label: '📮 Brevo',    desc: '300/day free · HTTPS' },
+            { id: 'resend',   label: '⚡ Resend',   desc: '3,000/mo free · HTTPS' },
+            { id: 'mailjet',  label: '✈️ Mailjet',  desc: '200/day free · HTTPS' },
+            { id: 'smtp2go',  label: '🚀 SMTP2GO',  desc: '1,000/mo free · HTTPS' },
+            { id: 'sendgrid', label: '📨 SendGrid', desc: '100/day free · HTTPS' },
+            { id: 'postmark', label: '📯 Postmark', desc: '100/mo free · HTTPS' },
+            { id: 'mailgun',  label: '🔫 Mailgun',  desc: 'Needs a domain · HTTPS' },
+            { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test capture only' },
             { id: 'none',     label: '🚫 None',     desc: 'Disabled' },
           ].map(p => (
             <button key={p.id} onClick={() => setCfg(prev => ({ ...prev, provider: p.id as EmailProviderConfig['provider'] }))}
@@ -197,6 +214,30 @@ function EmailProviderCard() {
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Inbox ID *</label>
                 <input value={cfg.inboxId} onChange={e => setCfg(prev => ({ ...prev, inboxId: e.target.value }))} placeholder="e.g. 1234567"
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            )}
+            {/* Mailjet authenticates with a pair, and a missing secret otherwise
+                comes back as a rejected key, which sends people to regenerate a
+                key that was never the problem. */}
+            {cfg.provider === 'mailjet' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>API Secret *</label>
+                <input type="password" value={cfg.apiSecret || ''} onChange={e => setCfg(prev => ({ ...prev, apiSecret: e.target.value }))} placeholder="Secret from the same Mailjet page"
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            )}
+            {cfg.provider === 'mailgun' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Sending domain *</label>
+                <input value={cfg.domain || ''} onChange={e => setCfg(prev => ({ ...prev, domain: e.target.value }))} placeholder="mg.yourdomain.com"
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            )}
+            {cfg.provider === 'activecampaign' && (
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Account URL *</label>
+                <input value={cfg.apiUrl || ''} onChange={e => setCfg(prev => ({ ...prev, apiUrl: e.target.value }))} placeholder="https://youraccount.api-us1.com"
                   style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             )}
@@ -508,6 +549,7 @@ function EmailSMSTab() {
       <ProspectSearchCard />
 
       {/* What this server can actually do */}
+      <RouteCheck />
       <DeliveryCheck />
       <DiagnosticsCard />
 
