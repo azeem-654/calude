@@ -68,6 +68,18 @@ const GLOBAL_KEYS = new Set([
   'crm_market_sim',
   // Server-issued capability matrix: a local cache, never account data to sync.
   'crm_server_caps', 'crm_cloud_status',
+  // The signed-in session itself. auth.ts documents this as global, but it was
+  // missing here — so switching into a sub-account, or any client logging in
+  // whose browser's active account didn't already match their own, silently
+  // rewrote the session to a per-account key nothing had ever populated, and
+  // the app reloaded to the logged-out marketing page. A session belongs to
+  // the person, not to whichever workspace they happen to be looking at.
+  'crm_session',
+  // Same story for the agency's Stripe setup and its clients' billing status —
+  // both explicitly commented "agency-global" in billing.ts, both left off
+  // this list. Scoped, a key an agency owner set once while looking at one
+  // workspace would appear to "vanish" the moment they opened another.
+  'crm_stripe_config', 'crm_billing_records',
 ]);
 export const ACCT_PREFIX = 'crm_acct_';
 const PREFIX = ACCT_PREFIX;
@@ -247,7 +259,7 @@ function ensureDefaultAccount(_get: (k: string) => string | null, _set: (k: stri
   }
   const id = `acct-${Date.now()}`;
   const def: SubAccount = {
-    id, name: 'Main Workspace', businessName: 'My Business', contactName: 'John Doe', contactEmail: 'aiautomationapp@gmail.com',
+    id, name: 'Main Workspace', businessName: 'My Business', contactName: '', contactEmail: '',
     phone: '', industry: '', color: '#3e63dd', plan: 'agency', price: 0, status: 'active', createdAt: new Date().toISOString(),
   };
   _set('crm_subaccounts', JSON.stringify([def]));
