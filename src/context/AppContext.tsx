@@ -12,6 +12,24 @@ interface Notification {
   type: 'success' | 'error' | 'info';
 }
 
+/**
+ * A notification that outlives its toast.
+ *
+ * Toasts vanish after four seconds, so anything raised while the user was on
+ * another screen — a sequence sending, a deliverability alert, a campaign
+ * finishing — was gone before they could read it. The bell in the header had
+ * a permanent red dot and no panel behind it, which promised a history that
+ * did not exist. This is that history.
+ */
+export interface LoggedNotification extends Notification {
+  at: string;
+  read: boolean;
+}
+
+const NOTIF_LOG_KEY = 'crm_notification_log';
+/** Enough to scroll through, not enough to bloat storage. */
+const NOTIF_LOG_MAX = 60;
+
 export interface CustomFieldDef {
   key: string;
   label: string;
@@ -80,6 +98,11 @@ interface AppContextType {
   notifications: Notification[];
   addNotification: (msg: string, type?: 'success' | 'error' | 'info') => void;
   dismissNotification: (id: string) => void;
+  /** Everything raised recently, newest first — what the bell opens. */
+  notificationLog: LoggedNotification[];
+  unreadNotifications: number;
+  markNotificationsRead: () => void;
+  clearNotificationLog: () => void;
   sidebarMode: 'full' | 'icons' | 'hidden';
   setSidebarMode: (mode: 'full' | 'icons' | 'hidden') => void;
   videoProjects: VideoProject[];
@@ -123,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sequences, setSequences]       = useState<EmailSequence[]>(() => loadLS('crm_sequences',   []));
   const [automations, setAutomations]   = useState<Automation[]>(()   => loadLS('crm_automations',  []));
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationLog, setNotificationLog] = useState<LoggedNotification[]>(() => loadLS(NOTIF_LOG_KEY, []));
 
   /* The server enforces the permission rules on every write (api/_perm.php).
      When it refuses one, it also hands back its own copy, which serverData has
@@ -174,6 +198,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const id = `n-${Date.now().toString(36)}-${(notifySeq.current += 1)}`;
     setNotifications(prev => [...prev, { id, message, type }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 4000);
+    /* The toast is the announcement; this is the record of it. Everything that
+       already calls notify() lands in the bell's panel for free. */
+    setNotificationLog(prev => {
+      const next = [{ id, message, type, at: new Date().toISOString(), read: false }, ...prev].slice(0, NOTIF_LOG_MAX);
+      saveLS(NOTIF_LOG_KEY, next);
+      return next;
+    });
+  };
+
+  const markNotificationsRead = () => {
+    setNotificationLog(prev => {
+      if (!prev.some(n => !n.read)) return prev;
+      const next = prev.map(n => n.read ? n : { ...n, read: true });
+      saveLS(NOTIF_LOG_KEY, next);
+      return next;
+    });
+  };
+
+  const clearNotificationLog = () => {
+    setNotificationLog([]);
+    saveLS(NOTIF_LOG_KEY, []);
   };
 
   /* ── Contacts ── */
@@ -498,6 +543,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addSequence, updateSequence, deleteSequence,
       addAutomation, updateAutomation, deleteAutomation,
       notifications, addNotification: notify, dismissNotification: id => setNotifications(prev => prev.filter(n => n.id !== id)),
+      notificationLog, unreadNotifications: notificationLog.filter(n => !n.read).length,
+      markNotificationsRead, clearNotificationLog,
       sidebarMode, setSidebarMode,
       videoProjects, addVideoProject, updateVideoProject, deleteVideoProject,
       updateVideoClip, trashVideoClip, restoreVideoClip, deleteVideoClip,

@@ -118,6 +118,9 @@ export default function Websites() {
   const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /* The Analytics button on each card had no handler at all, unlike every
+     other button beside it and unlike the equivalent one on a funnel card. */
+  const [statsSite, setStatsSite] = useState<Website | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   // Name of a site just created from a template — opened once it exists in state.
@@ -313,7 +316,8 @@ export default function Websites() {
                       style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
                       <Copy size={15} />
                     </button>
-                    <button title="Analytics" style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
+                    <button title="Analytics" onClick={() => setStatsSite(w)}
+                      style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
                       <BarChart3 size={15} />
                     </button>
                     <button title="Delete" onClick={() => setDeletingId(w.id)}
@@ -355,6 +359,36 @@ export default function Websites() {
           }}
         />
       )}
+      {statsSite && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setStatsSite(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 26, width: 'min(520px,100%)', boxShadow: '0 24px 60px rgba(15,23,42,0.3)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{statsSite.name}</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>
+              {statsSite.status === 'published' ? 'Published' : 'Draft'} · {statsSite.pages?.length ?? 0} page{(statsSite.pages?.length ?? 0) === 1 ? '' : 's'}
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
+              {[
+                { l: 'Visitors', v: (statsSite.visitors ?? 0).toLocaleString(), c: '#17191c' },
+                { l: 'Page views', v: (statsSite.pageViews ?? 0).toLocaleString(), c: '#6366f1' },
+                { l: 'Views / visitor', v: statsSite.visitors > 0 ? (statsSite.pageViews / statsSite.visitors).toFixed(1) : '—', c: '#22c55e' },
+              ].map(m => (
+                <div key={m.l} style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: m.c }}>{m.v}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{m.l}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
+              {statsSite.status === 'published'
+                ? 'Counted from real visits to this site.'
+                : 'This site is still a draft, so there is nothing to count yet — publish it to start recording visits.'}
+            </p>
+            <button onClick={() => setStatsSite(null)} style={{ width: '100%', padding: '10px 0', borderRadius: 9, border: 'none', background: '#17191c', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Close</button>
+          </div>
+        </div>
+      )}
+
       {deletingId && (
         <DeleteConfirm
           name={websites.find(w => w.id === deletingId)?.name ?? ''}

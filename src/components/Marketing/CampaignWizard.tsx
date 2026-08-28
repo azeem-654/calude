@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 import { enrollInSequence, campaignAsSequence } from '../../services/contactEmail';
+import { sanitizeEmailHtml } from '../../services/emailHtml';
 import PreSendCheck from './PreSendCheck';
 import { findSuppression, localCheck, loadSettings as loadDeliverability } from '../../services/deliverability';
 import { suppress } from '../../services/deliverability';
@@ -374,7 +375,7 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
         <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 12px', backgroundColor: '#f1f5f9', minHeight: compact ? 180 : 260 }}>
           <div style={{ width: preview === 'mobile' ? 340 : 560, backgroundColor: 'white', borderRadius: preview === 'mobile' ? 16 : 8, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', overflow: 'hidden', border: preview === 'mobile' ? '6px solid #1e293b' : '1px solid #e2e8f0' }}>
             <div style={{ padding: preview === 'mobile' ? '14px 12px' : '24px 32px', fontSize: preview === 'mobile' ? 13 : 14, lineHeight: 1.7, color: '#374151', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
-              dangerouslySetInnerHTML={{ __html: html }} />
+              dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(html) }} />
           </div>
         </div>
       )}

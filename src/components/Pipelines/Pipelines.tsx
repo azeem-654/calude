@@ -383,8 +383,49 @@ function DealCard({
         <p style={{ margin: '0 0 4px 29px', fontSize: 14, color: '#5c6270', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{deal.description}</p>
       )}
 
+      {/*
+        The fields Manage Card Fields offers.
+
+        Every one of these was in that dialog's list and none of them was ever
+        drawn, so toggling any of them changed nothing — including the ROTTING
+        badge the dialog explicitly promises ("Cards stale longer than N days
+        get an orange ROTTING badge"), which was computed on every render and
+        then never used. They are rendered here, each gated on its own toggle,
+        so the dialog now describes what the card actually does.
+      */}
+      {(() => {
+        const chips: React.ReactNode[] = [];
+        const chip = (key: string, node: React.ReactNode) => chips.push(<span key={key}>{node}</span>);
+        const base: React.CSSProperties = {
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+        };
+        if (isRotting && vf.has('daysInStage')) {
+          chip('rotting', <span style={{ ...base, background: '#fff3e6', color: '#b45309' }}>
+            <AlertCircle size={11} strokeWidth={2.4} />ROTTING · {days}d
+          </span>);
+        } else if (vf.has('daysInStage') && days > 0) {
+          chip('days', <span style={{ ...base, background: '#f2f3f5', color: '#6b7280' }}>{days}d in stage</span>);
+        }
+        if (vf.has('value') && deal.value > 0) {
+          chip('value', <span style={{ ...base, background: '#f2f3f5', color: '#17191c' }}>{fmt(deal.value)}</span>);
+        }
+        if (vf.has('probability') && typeof deal.probability === 'number') {
+          chip('prob', <span style={{ ...base, background: '#f2f3f5', color: '#6b7280' }}>{deal.probability}%</span>);
+        }
+        if (vf.has('priority') && p !== 'normal') {
+          chip('prio', <span style={{ ...base, background: `${pc.color}14`, color: pc.color }}>{pc.label}</span>);
+        }
+        if (vf.has('source') && deal.source) {
+          chip('source', <span style={{ ...base, background: '#f2f3f5', color: '#6b7280' }}>{deal.source}</span>);
+        }
+        return chips.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, margin: '8px 0 0 29px' }}>{chips}</div>
+        ) : null;
+      })()}
+
       {/* Labels (compact) */}
-      {labels.length > 0 && (
+      {vf.has('labels') && labels.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, margin: '8px 0 0 29px' }}>
           {labels.slice(0, 3).map((l, i) => (
             <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: `${l.color}14`, color: l.color }}>
@@ -925,7 +966,7 @@ function BrainPanel({ stages, allDeals, onClose }: BrainPanelProps) {
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Brain size={18} color="white" />
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>ClickUp Brain</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>Pipeline Brain</span>
           </div>
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.8)', display: 'flex' }}><X size={18} /></button>
         </div>
@@ -1488,8 +1529,13 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
       title: title.trim(),
       contactId: contactId || '',
       contactName: selContact?.name || (deal?.contactName ?? 'Unknown'),
-      value: parseFloat(value) || 0,
-      probability: parseInt(probability) || 50,
+      /* Clamped, not just parsed. The `min`/`max` on the inputs are advisory —
+         a typed or pasted value sails straight past them — and a single
+         negative or absurd figure poisons every total on the board: one
+         -50,000 deal flipped a stage header to -$21,000, and a 500%
+         probability made "weighted value" exceed the pipeline it weighs. */
+      value: Math.min(Math.max(parseFloat(value) || 0, 0), 1e12),
+      probability: Math.min(Math.max(parseInt(probability) || 50, 0), 100),
       expectedClose,
       assignedTo,
       priority,
@@ -2616,7 +2662,7 @@ export default function Pipelines() {
 
           {/* Brain AI Button */}
           <button onClick={() => setShowBrain(prev => !prev)}
-            title="ClickUp Brain — AI pipeline insights"
+            title="Pipeline Brain — AI pipeline insights"
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: showBrain ? '#17191c' : 'white', color: showBrain ? 'white' : '#17191c', border: showBrain ? 'none' : '1px solid #d5d8dd', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: showBrain ? '0 2px 8px rgba(23,25,28,0.35)' : 'none' }}>
             <Sparkles size={14} /> Brain
           </button>

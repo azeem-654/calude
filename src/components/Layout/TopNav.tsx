@@ -4,7 +4,9 @@ import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
+  CheckCircle, XCircle, Info, BellOff,
 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
 import { NAV_GROUPS, activeGroupId, isItemActive } from './navModel';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
@@ -19,6 +21,17 @@ const circleBtn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   color: '#17191c', boxShadow: '0 1px 2px rgba(23,25,28,0.06)',
 };
+
+/** "4m ago" — a timestamp is only useful here as a distance from now. */
+function relativeTime(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (!Number.isFinite(s) || s < 0) return 'just now';
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24); if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 export default function TopNav() {
   /* The open panel remembers which address it was opened from. Going somewhere
@@ -43,6 +56,9 @@ export default function TopNav() {
   const [userOpen, setUserOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState(getTheme());
+  const { notificationLog, unreadNotifications, markNotificationsRead, clearNotificationLog } = useApp();
+  const [bellOpen, setBellOpen] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
 
   /**
    * Publish the bar's height as --app-nav-h.
@@ -68,6 +84,7 @@ export default function TopNav() {
       if (navMenuRef.current && !navMenuRef.current.contains(e.target as Node)) setOpenGroup(null);
       if (acctRef.current && !acctRef.current.contains(e.target as Node)) setAcctOpen(false);
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false);
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -290,11 +307,72 @@ export default function TopNav() {
         >
           <Search size={16} strokeWidth={2.2} />
         </button>
-        <button title="Inbox" style={circleBtn}><Mail size={16} strokeWidth={2.2} /></button>
-        <button title="Notifications" style={{ ...circleBtn, position: 'relative' }}>
-          <Bell size={16} strokeWidth={2.2} />
-          <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 999, backgroundColor: '#e5484d', border: '2px solid #fff', boxSizing: 'content-box' }} />
+        <button title="Inbox" aria-label="Inbox" onClick={() => navigate('/conversations')} style={circleBtn}>
+          <Mail size={16} strokeWidth={2.2} />
         </button>
+
+        {/* The bell used to carry a hardcoded red dot and open nothing at all —
+            a permanent claim of unread news with no way to read it. The dot is
+            now the real unread count, and pressing it shows what they were. */}
+        <div ref={bellRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            title="Notifications"
+            aria-label={unreadNotifications ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+            aria-haspopup="true"
+            aria-expanded={bellOpen}
+            onClick={() => { setBellOpen(v => { if (!v) markNotificationsRead(); return !v; }); }}
+            style={{ ...circleBtn, position: 'relative' }}
+          >
+            <Bell size={16} strokeWidth={2.2} />
+            {unreadNotifications > 0 && (
+              <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 999, backgroundColor: '#e5484d', border: '2px solid #fff', boxSizing: 'content-box' }} />
+            )}
+          </button>
+
+          {bellOpen && (
+            <div role="menu" aria-label="Notifications" style={{
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 300,
+              width: 320, maxWidth: 'calc(100vw - 24px)',
+              backgroundColor: '#fff', borderRadius: 18, padding: 8,
+              boxShadow: '0 16px 40px -8px rgba(23,25,28,0.22)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px 8px' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: '#17191c' }}>Notifications</span>
+                {notificationLog.length > 0 && (
+                  <button onClick={clearNotificationLog}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, color: '#8a8f98', padding: 0, fontFamily: 'inherit' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {notificationLog.length === 0 ? (
+                <div style={{ padding: '26px 16px', textAlign: 'center' }}>
+                  <BellOff size={20} color="#c7cbd1" strokeWidth={2} />
+                  <p style={{ fontSize: 12.5, color: '#8a8f98', margin: '8px 0 0', lineHeight: 1.5 }}>
+                    Nothing yet. Sends, alerts and finished jobs show up here.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+                  {notificationLog.map(n => {
+                    const Icon = n.type === 'error' ? XCircle : n.type === 'info' ? Info : CheckCircle;
+                    const tint = n.type === 'error' ? '#e5484d' : n.type === 'info' ? '#3b82f6' : '#16a34a';
+                    return (
+                      <div key={n.id} style={{ display: 'flex', gap: 9, padding: '9px 10px', borderRadius: 12, alignItems: 'flex-start' }}>
+                        <Icon size={14} color={tint} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: 12.5, color: '#17191c', lineHeight: 1.45, wordBreak: 'break-word' }}>{n.message}</span>
+                          <span style={{ display: 'block', fontSize: 10.5, color: '#b0b4ba', marginTop: 2 }}>{relativeTime(n.at)}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div ref={userRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button onClick={() => setUserOpen(v => !v)} style={{
             width: 40, height: 40, borderRadius: 999, overflow: 'hidden', cursor: 'pointer', border: 'none', padding: 0,
@@ -367,7 +445,7 @@ export function IconRail() {
   ];
 
   return (
-    <div style={{
+    <div className="icon-rail" style={{
       position: 'fixed', left: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 90,
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
     }}>

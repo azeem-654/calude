@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import type { Campaign, Contact } from '../../types';
+import { sanitizeEmailHtml } from '../../services/emailHtml';
+import { loadEnrollments, type SequenceEnrollment } from '../../services/contactEmail';
 import {
   X, Mail, MessageSquare, Zap, Play, Pause, Edit2, Trash2,
   BarChart2, Users, MousePointerClick, Reply, AlertCircle,
@@ -71,18 +73,41 @@ export default function CampaignDetailPanel({
   const unsubscribed = campaign.unsubscribed || 0;
   const deliverabilityRate = campaign.sent > 0 ? Math.round(((campaign.sent - bounced) / campaign.sent) * 100) : 100;
 
-  /* Simulated per-contact enrollment status for contacts tab */
-  const audienceContacts = contacts.slice(0, Math.min(contacts.length, 12)).map((c, i) => ({
+  /*
+   * The real audience, not the first 12 contacts regardless of who the
+   * campaign was actually sent to. Mirrors the segment resolution the wizard
+   * itself uses when building this list, so the count here matches what was
+   * actually addressed.
+   */
+  const STATUS_MAP: Record<string, string> = { leads: 'lead', customers: 'customer', prospects: 'prospect' };
+  const targetStatus = STATUS_MAP[campaign.audience || 'all'];
+  const inAudience = targetStatus ? contacts.filter(c => c.status === targetStatus) : contacts;
+
+  /* A campaign with a linked sequence is genuinely being tracked per contact
+     by the enrollment engine — real status, not a guess. One that sent
+     immediately in a single step has no such record (it went straight out
+     through the wizard's own send loop), so the list can show who it went
+     to, honestly, without inventing what happened to each of them. */
+  const enrollmentByContact: Record<string, SequenceEnrollment> = {};
+  if (campaign.sequenceId) {
+    for (const e of loadEnrollments()) {
+      if (e.sequenceId === campaign.sequenceId) enrollmentByContact[e.contactId] = e;
+    }
+  }
+  const audienceContacts = inAudience.map(c => ({
     ...c,
-    campaignStatus: (['active', 'completed', 'active', 'bounced', 'completed', 'replied', 'active', 'unsubscribed', 'completed', 'active', 'replied', 'completed'] as const)[i % 12],
+    campaignStatus: enrollmentByContact[c.id]?.status
+      ?? (campaign.sequenceId ? 'not yet enrolled' : (campaign.sent > 0 ? 'sent' : 'not sent yet')),
   }));
 
   const contactStatusColors: Record<string, { bg: string; color: string }> = {
-    active:       { bg: '#eff6ff', color: '#2563eb' },
-    completed:    { bg: '#ecfdf5', color: '#16a34a' },
-    replied:      { bg: '#f5f3ff', color: '#6366f1' },
-    bounced:      { bg: '#fee2e2', color: '#dc2626' },
-    unsubscribed: { bg: '#f8fafc', color: '#64748b' },
+    active:    { bg: '#eff6ff', color: '#2563eb' },
+    completed: { bg: '#ecfdf5', color: '#16a34a' },
+    sent:      { bg: '#ecfdf5', color: '#16a34a' },
+    paused:    { bg: '#fffbeb', color: '#b45309' },
+    cancelled: { bg: '#f8fafc', color: '#64748b' },
+    'not sent yet':     { bg: '#f8fafc', color: '#64748b' },
+    'not yet enrolled': { bg: '#f8fafc', color: '#64748b' },
   };
 
   return (
@@ -211,8 +236,17 @@ export default function CampaignDetailPanel({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {campaign.steps.map((step, idx) => {
                     const isExpanded = expandedStep === step.id;
-                    const sent = campaign.sent > 0 ? Math.max(0, campaign.sent - idx * Math.floor(campaign.sent * 0.15)) : 0;
-                    const opened = Math.round(sent * (0.22 + Math.random() * 0.1));
+                    /* A single-step campaign has no enrollment record — it went
+                       out directly through the send-now loop — so its one step
+                       just reports the campaign's own real totals. A step
+                       beyond the first only exists because a sequence is
+                       carrying it, so its count comes from that sequence's
+                       actual send history: how many enrollments logged this
+                       step as sent, not a guess shrinking by 15% a step. */
+                    const sent = campaign.steps!.length <= 1
+                      ? campaign.sent
+                      : Object.values(enrollmentByContact).filter(e =>
+                          e.history.some(h => h.step === idx && h.action === 'sent')).length;
                     return (
                       <div key={step.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 28, flexShrink: 0, paddingTop: 4 }}>
@@ -234,7 +268,6 @@ export default function CampaignDetailPanel({
                               {sent > 0 && (
                                 <div style={{ display: 'flex', gap: 10, marginTop: 5 }}>
                                   <span style={{ fontSize: 10, color: '#6366f1' }}>{sent.toLocaleString()} sent</span>
-                                  <span style={{ fontSize: 10, color: '#3b82f6' }}>{Math.round((opened / sent) * 100)}% opened</span>
                                 </div>
                               )}
                             </div>
@@ -249,7 +282,7 @@ export default function CampaignDetailPanel({
                                 </div>
                               )}
                               <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.7, maxHeight: 200, overflow: 'auto', padding: '10px', backgroundColor: 'white', borderRadius: 7, border: '1px solid #e2e8f0' }}
-                                dangerouslySetInnerHTML={{ __html: step.body }} />
+                                dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(step.body) }} />
                             </div>
                           )}
                         </div>
@@ -266,7 +299,7 @@ export default function CampaignDetailPanel({
                   </div>
                   {campaign.emailBody ? (
                     <div style={{ padding: '18px 24px', fontSize: 13, lineHeight: 1.7, color: '#374151' }}
-                      dangerouslySetInnerHTML={{ __html: campaign.emailBody }} />
+                      dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(campaign.emailBody) }} />
                   ) : (
                     <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No email body. Click Edit to add content.</div>
                   )}

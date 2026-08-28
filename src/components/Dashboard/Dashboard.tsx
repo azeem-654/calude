@@ -136,7 +136,13 @@ function TeamRow({ owners }: { owners: { name: string; open: number }[] }) {
 }
 
 /* ── Journey task row (avatar + label + checks + calendar chip) ── */
-function JourneyTask({ deal, done }: { deal: { title: string; contactName?: string }; done?: boolean }) {
+function JourneyTask({ deal, done, onSchedule }: {
+  deal: { title: string; contactName?: string };
+  done?: boolean;
+  /** The calendar chip had no handler — it looked like "book time on this
+   *  deal" and did nothing at all. */
+  onSchedule: () => void;
+}) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px' }}>
       <Avatar name={deal.contactName || deal.title} size={34} />
@@ -146,10 +152,14 @@ function JourneyTask({ deal, done }: { deal: { title: string; contactName?: stri
       {done
         ? <CheckCheck size={15} color={INK} strokeWidth={2.2} style={{ flexShrink: 0 }} />
         : <MoreHorizontal size={15} color={MUTED} style={{ flexShrink: 0 }} />}
-      <button style={{
-        width: 30, height: 30, borderRadius: 999, border: '1px solid #ecedf0', backgroundColor: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: INK,
-      }}>
+      <button
+        onClick={onSchedule}
+        title={`Book time for ${deal.contactName || deal.title}`}
+        aria-label={`Book time for ${deal.contactName || deal.title}`}
+        style={{
+          width: 30, height: 30, borderRadius: 999, border: '1px solid #ecedf0', backgroundColor: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: INK,
+        }}>
         <CalIcon size={13} strokeWidth={2} />
       </button>
     </div>
@@ -886,7 +896,8 @@ export default function Dashboard() {
                   )}
                   {col.deals.map((d, di) => (
                     <div key={di} style={{ borderBottom: di < col.deals.length - 1 ? '1px solid #f2f3f5' : 'none' }}>
-                      <JourneyTask deal={d} done={ci < 2} />
+                      <JourneyTask deal={d} done={ci < 2}
+                        onSchedule={() => navigate(`/calendar?for=${encodeURIComponent(d.contactName || d.title)}`)} />
                     </div>
                   ))}
                 </div>

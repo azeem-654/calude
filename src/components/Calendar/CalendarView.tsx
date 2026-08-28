@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Clock, Mail, Phone,
-  Plus, Search, SlidersHorizontal, Maximize2,
+  Plus, Search, SlidersHorizontal, Maximize2, Check,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -93,6 +93,10 @@ export default function CalendarView() {
   const [modal, setModal] = useState<{ editing: BusyBlock | null; date: string; time: string } | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [query, setQuery] = useState('');
+  /* The filter button next to the search box used to do nothing at all. These
+     are the three kinds a block can actually be, so they are what it filters. */
+  const [kinds, setKinds] = useState<BusyBlock['kind'][]>(['appointment', 'booking', 'event']);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   /* The now-line has to move, or it is a decoration that lies within the hour. */
   useEffect(() => {
@@ -298,11 +302,51 @@ export default function CalendarView() {
                 }}
               />
             </span>
-            <button aria-label="Filters" style={iconBtn()}><SlidersHorizontal size={13} /></button>
+            <span style={{ position: 'relative' }}>
+              <button
+                aria-label="Filters"
+                aria-haspopup="true"
+                aria-expanded={filtersOpen}
+                title="Filter by type"
+                onClick={() => setFiltersOpen(v => !v)}
+                style={iconBtn(kinds.length < 3)}
+              >
+                <SlidersHorizontal size={13} />
+              </button>
+              {filtersOpen && (
+                <div role="menu" aria-label="Filter by type" style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 60,
+                  background: '#fff', border: `1px solid ${LINE}`, borderRadius: 12, padding: 6,
+                  boxShadow: '0 12px 30px -8px rgba(23,25,28,0.22)', minWidth: 150,
+                }}>
+                  {(Object.keys(KIND) as BusyBlock['kind'][]).map(k => {
+                    const on = kinds.includes(k);
+                    return (
+                      <button key={k} role="menuitemcheckbox" aria-checked={on}
+                        onClick={() => setKinds(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 9px',
+                          border: 'none', background: 'none', borderRadius: 8, cursor: 'pointer',
+                          textAlign: 'left', fontFamily: 'inherit', fontSize: 12, color: INK,
+                        }}>
+                        <span style={{
+                          width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+                          border: `1px solid ${on ? INK : LINE}`, background: on ? INK : '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {on && <Check size={10} color="#fff" strokeWidth={3} />}
+                        </span>
+                        {KIND[k].label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </span>
           </div>
 
           <QuickConnects
-            blocks={blocks}
+            blocks={blocks.filter(b => kinds.includes(b.kind))}
             query={query}
             contacts={contacts}
             onOpen={b => setModal({ editing: b, date: b.date, time: '' })}
@@ -706,8 +750,12 @@ const ghost = (): React.CSSProperties => ({
   fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
 });
 
-const iconBtn = (): React.CSSProperties => ({
-  width: 27, height: 27, borderRadius: 999, border: `1px solid ${LINE}`,
-  backgroundColor: '#fff', color: MUTED, cursor: 'pointer',
+/* `active` marks a filter that is actually narrowing something, so a button
+   that is quietly hiding rows does not look identical to one that is not. */
+const iconBtn = (active = false): React.CSSProperties => ({
+  width: 27, height: 27, borderRadius: 999,
+  border: `1px solid ${active ? INK : LINE}`,
+  backgroundColor: active ? INK : '#fff',
+  color: active ? '#fff' : MUTED, cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
 });

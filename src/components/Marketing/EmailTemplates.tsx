@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Search, Eye } from 'lucide-react';
+import { sanitizeEmailHtml } from '../../services/emailHtml';
 
 /* ─── Template definitions ─── */
 export interface EmailTemplate {
@@ -347,7 +348,7 @@ export default function EmailTemplateGallery({
               </div>
               <div style={{ flex: 1, overflowY: 'auto', background: '#f1f5f9', padding: '20px 16px' }}>
                 <div style={{ maxWidth: 620, margin: '0 auto', background: '#fff', borderRadius: 10, boxShadow: '0 2px 16px rgba(0,0,0,0.08)', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: preview.html.replace(/{{firstName}}/g, 'John').replace(/{{email}}/g, 'john@example.com') }} />
+                  dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(preview.html.replace(/{{firstName}}/g, 'John').replace(/{{email}}/g, 'john@example.com')) }} />
               </div>
             </div>
           )}

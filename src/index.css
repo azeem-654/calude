@@ -281,17 +281,32 @@ button:focus-visible, a:focus-visible {
    Media (images, video, avatars) and anything marked [data-noinvert]
    are inverted back so they render normally.
    ───────────────────────────────────────────────────────────── */
+/*
+ * The filter goes on <html>, not on #root, and that placement is the whole
+ * point rather than an incidental choice.
+ *
+ * A `filter` on an element makes it the containing block for every
+ * `position: fixed` descendant — so with the filter on #root, "fixed" quietly
+ * became "absolute, relative to the entire scrollable page". The left icon
+ * rail (top: 50%) resolved that 50% against the full document height instead
+ * of the viewport and landed ~1350px down a 900px window: gone. Every fixed
+ * overlay in the app had the same problem, only less visibly.
+ *
+ * The root element is exempt from that rule, so moving the filter one level up
+ * keeps the one-shot inversion and gives fixed positioning back.
+ */
 html[data-theme="dark"] {
-  background: #0d0e10;
+  /* Deliberately light: this element is itself inverted below, so what gets
+     painted is the opposite of what is written here. #f2f1f0 inverts to
+     roughly #0d0e0f — the dark ground the app used to set directly. */
+  background: #f2f1f0;
   color-scheme: dark;
-}
-html[data-theme="dark"] #root {
   filter: invert(1) hue-rotate(180deg);
 }
-html[data-theme="dark"] #root img,
-html[data-theme="dark"] #root video,
-html[data-theme="dark"] #root iframe,
-html[data-theme="dark"] #root [data-noinvert] {
+html[data-theme="dark"] img,
+html[data-theme="dark"] video,
+html[data-theme="dark"] iframe,
+html[data-theme="dark"] [data-noinvert] {
   filter: invert(1) hue-rotate(180deg);
 }
 /* Keep the page scrollbar dark to match. */
@@ -498,7 +513,22 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
  * layouts (wide tables, the pipeline board, the dashboard grids) still assume
  * a desktop and are not fixed by this.
  * ────────────────────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
+/*
+ * The header's one row needs about 1280px: logo, workspace switcher, seven nav
+ * pills and five icon buttons, none of which shrink. Below that the pill
+ * capsule has nowhere left to go and simply paints over the icon cluster on
+ * its right — "Workspace" sitting on top of the inbox and bell. It used to
+ * wrap only under 900px, so every width between there and 1280 overlapped.
+ *
+ * A little of that gap is bought back by tightening the pills first, and the
+ * rest by wrapping the row a good deal earlier than it used to.
+ */
+@media (max-width: 1400px) {
+  .app-header { gap: 12px !important; padding: 14px 18px !important; }
+  .pill-link { padding: 8px 10px !important; }
+}
+
+@media (max-width: 1280px) {
   /* The header is one no-wrap row of logo + 9 nav pills + 5 icon buttons.
      Letting it wrap is what stops it dragging the whole document sideways. */
   .app-header {
@@ -506,6 +536,30 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
     gap: 10px !important;
     padding: 10px 14px !important;
   }
+
+  /* A capsule only reads as a capsule on one line. Once the pills wrap it
+     becomes a rounded panel, and it takes the full width so the rows align. */
+  .nav-pills {
+    flex-wrap: wrap;
+    justify-content: center;
+    order: 3;
+    width: 100%;
+    border-radius: 20px !important;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 10px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* The floating rail costs 64px of width and every destination on it is
+     already in the wrapped nav above. On a phone that trade stops being
+     worth it, so the content gets the width back. */
+  .icon-rail { display: none !important; }
 
   /* A capsule only reads as a capsule on one line. Once the pills wrap it
      becomes a rounded panel, and it takes the full width so the rows align. */
