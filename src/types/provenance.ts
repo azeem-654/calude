@@ -23,7 +23,11 @@ export type ContentOrigin =
   /** Clips cut out of a video by AI Shorts. */
   | 'ai-shorts'
   /** Created by an AI Sales Agent campaign to carry out its strategy. */
-  | 'ai-sales-agent';
+  | 'ai-sales-agent'
+  /** A scheduled send or a multi-step follow-up flow, materialized into the
+   *  sequence engine so the same tested heartbeat that runs Sequences carries
+   *  it forward — rather than a second, parallel scheduler. */
+  | 'marketing-campaign';
 
 export interface ContentSource {
   origin: ContentOrigin;
@@ -49,6 +53,7 @@ export const ORIGIN_LABEL: Record<ContentOrigin, string> = {
   'video-campaign': 'Video campaign',
   'ai-shorts': 'AI Shorts',
   'ai-sales-agent': 'AI Sales Agent',
+  'marketing-campaign': 'Marketing campaign',
 };
 
 /** "Video campaign · Five mistakes that kill your first hire" */

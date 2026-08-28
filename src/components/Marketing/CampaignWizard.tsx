@@ -10,6 +10,7 @@ import {
   Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target,
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
+import { enrollInSequence, campaignAsSequence } from '../../services/contactEmail';
 import PreSendCheck from './PreSendCheck';
 import { findSuppression, localCheck, loadSettings as loadDeliverability } from '../../services/deliverability';
 import { suppress } from '../../services/deliverability';
@@ -1186,11 +1187,14 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   state: WizardState;
   counts: Record<AudienceSegment, number>;
   contacts: Contact[];
-  onLaunch: (sendNow: boolean, scheduledAt: string, sentCount: number) => void;
+  onLaunch: (sendNow: boolean, scheduledAt: string, sentCount: number, audience: Contact[]) => void;
 }) {
   const navigate = useNavigate();
   const [sendTime, setSendTime] = useState<'now' | 'scheduled'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
+  /* Computed once, at mount — a review screen open for an hour does not need
+     "now" to creep forward, it just needs "not the past" for the picker. */
+  const [minSchedule] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
   const [testAddr, setTestAddr] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
   const [testMsg, setTestMsg] = useState('');
@@ -1279,7 +1283,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
 
     setLaunching(false);
     setLaunched(true);
-    setTimeout(() => onLaunch(sendTime === 'now', scheduledAt, sentCount), 1400);
+    setTimeout(() => onLaunch(sendTime === 'now', scheduledAt, sentCount, audience), 1400);
   };
 
   if (checking) {
@@ -1451,14 +1455,17 @@ function StepReview({ state, counts, contacts, onLaunch }: {
       {sendTime === 'scheduled' && (
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b', marginBottom: 5 }}><Calendar size={12} /> Schedule date & time</label>
-          <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
+          <input type="datetime-local" value={scheduledAt} min={minSchedule}
+            onChange={e => setScheduledAt(e.target.value)}
             style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', color: '#374151', backgroundColor: 'white', width: '100%', boxSizing: 'border-box' }} />
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 8 }}>
-        {!isSMS && !hasProvider && (
-          <button onClick={() => onLaunch(false, '', 0)}
+        {/* Available regardless of whether a provider is set up — a draft is
+            saved, not sent, so there is nothing here for a provider to do. */}
+        {!isSMS && (
+          <button onClick={() => onLaunch(false, '', 0, [])}
             style={{ flex: 1, padding: 13, backgroundColor: '#f1f5f9', color: '#374151', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             💾 Save as Draft
           </button>
@@ -1477,9 +1484,10 @@ function StepReview({ state, counts, contacts, onLaunch }: {
 export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign }: {
   contacts: Contact[];
   onClose: () => void;
-  onAdd: (c: Omit<Campaign, 'id'>) => void;
+  onAdd: (c: Omit<Campaign, 'id'>) => Campaign;
   editCampaign?: Campaign;
 }) {
+  const { addSequence, updateCampaign } = useApp();
   const [step, setStep] = useState(1);
   const [state, setState] = useState<WizardState>(() => {
     if (editCampaign) {
@@ -1529,8 +1537,14 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
 
   const isLastStep = step === TOTAL_STEPS;
 
+  /* Editing an existing campaign has no saved "concept" to show back — it was
+     never part of Campaign, only the wizard's own working state for driving
+     fresh AI generation. Requiring one anyway locked every edit out of Step 1
+     from the moment it opened, on a campaign that already has real content. */
+  const hasExistingContent = !!editCampaign && state.steps.length > 0;
+
   const canNext = (): boolean => {
-    if (step === 1) return !!state.name && !!state.concept && !!state.goal;
+    if (step === 1) return !!state.name && !!state.goal && (!!state.concept || hasExistingContent);
     if (step === 2) return state.steps.length > 0;
     return true;
   };
@@ -1539,7 +1553,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     if (step === 1) {
       if (!state.name) return 'Enter a campaign name';
       if (!state.goal) return 'Select a campaign goal';
-      if (!state.concept) return 'Describe what this campaign is about';
+      if (!state.concept && !hasExistingContent) return 'Describe what this campaign is about';
     }
     if (step === 2 && state.steps.length === 0) return 'Waiting for flow generation…';
     return '';
@@ -1553,10 +1567,12 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     return <StepReview state={state} counts={counts} contacts={contacts} onLaunch={handleLaunch} />;
   };
 
-  const handleLaunch = (sendNow: boolean, scheduledAt: string, sentCount: number) => {
-    onAdd({
+  const handleLaunch = (sendNow: boolean, scheduledAt: string, sentCount: number, audience: Contact[]) => {
+    const created = onAdd({
       name: state.name, description: state.description, type: state.type,
-      status: sendNow ? 'active' : 'draft',
+      // A scheduled send used to be saved as 'draft' — indistinguishable from
+      // one nobody ever finished, and nothing was watching it either way.
+      status: sendNow ? 'active' : (scheduledAt ? 'scheduled' : 'draft'),
       goal: state.goal, audience: state.audience,
       fromName: state.fromName, fromEmail: state.fromEmail, replyTo: state.replyTo,
       openTracking: state.openTracking, clickTracking: state.clickTracking,
@@ -1572,6 +1588,28 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       createdAt: new Date().toISOString().split('T')[0],
       scheduledAt: scheduledAt || undefined,
     });
+
+    /**
+     * A single email sent right now needs nothing further — the send loop
+     * above already put it in the outbox. Anything beyond that (a schedule
+     * that hasn't fired yet, or steps after the first in a multi-step flow)
+     * needs something to keep watching for it, which nothing here does on its
+     * own. That something already exists and is already running: the same
+     * sequence engine behind the Sequences tab, driven by DueWorkRunner's
+     * heartbeat. So the campaign's own steps become a real sequence, and the
+     * audience is enrolled into it — starting past the message that already
+     * went out, or at the top if nothing has gone out yet.
+     */
+    const needsEngine = state.type !== 'sms' && state.steps.length > 0 && (!sendNow || state.steps.length > 1);
+    if (needsEngine && created) {
+      const startAtStep = sendNow ? 1 : 0;
+      const firstSendAt = sendNow ? undefined : (scheduledAt || undefined);
+      const enrolled = audience.filter(c => !campaignGate(c.email));
+      const seq = addSequence(campaignAsSequence(created, state.steps, enrolled.length));
+      for (const c of enrolled) enrollInSequence(c, seq, { startAtStep, firstSendAt });
+      updateCampaign(created.id, { sequenceId: seq.id });
+    }
+
     setTimeout(onClose, 1900);
   };
 

@@ -393,7 +393,7 @@ export interface Campaign {
   source?: ContentSource;
   description?: string;
   type: 'email' | 'sms' | 'sequence';
-  status: 'draft' | 'active' | 'paused' | 'completed';
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'scheduled';
   goal?: string;
   audience?: string;
   fromName?: string;
@@ -419,6 +419,10 @@ export interface Campaign {
   unsubscribed?: number;
   createdAt: string;
   scheduledAt?: string;
+  /** The real sequence-engine record actually carrying out a scheduled send
+   *  or a multi-step flow's follow-ups — a proper reference, not a name match,
+   *  so the detail view can show what really happened rather than a guess. */
+  sequenceId?: string;
 }
 
 export interface Funnel {

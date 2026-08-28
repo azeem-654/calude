@@ -8,8 +8,9 @@
  * Everything is tenant-scoped through the patched localStorage layer.
  */
 
-import type { Contact } from '../types';
+import type { Contact, CampaignStep } from '../types';
 import type { EmailSequence } from '../types/marketing';
+import { makeSource } from '../types/provenance';
 import { loadEmailConfig, sendEmail, personalizeHtml } from './emailService';
 import { getActiveAccountId } from './tenancy';
 import { findSuppression, localCheck, loadSettings, suppress } from './deliverability';
@@ -436,23 +437,62 @@ export function databaseAverages(): { openRate: number; clickRate: number; reply
 
 /* ── Sequence enrolment ── */
 
-export function enrollInSequence(contact: Contact, sequence: EmailSequence): SequenceEnrollment {
+export function enrollInSequence(
+  contact: Contact,
+  sequence: EmailSequence,
+  /**
+   * Lets a caller resume a sequence partway through rather than always
+   * starting at step 0 — a campaign that already sent its first message
+   * through its own send-now path needs the engine to pick up at the
+   * follow-up, not repeat the message it just watched go out.
+   */
+  opts?: { startAtStep?: number; firstSendAt?: string },
+): SequenceEnrollment {
   const rows = loadEnrollments();
   const existing = rows.find(r => r.contactId === contact.id && r.sequenceId === sequence.id && (r.status === 'active' || r.status === 'paused'));
   if (existing) return existing;
 
-  const first = sequence.steps[0];
+  const startStep = opts?.startAtStep ?? 0;
+  const first = sequence.steps[startStep];
   const enrollment: SequenceEnrollment = {
     id: `enr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     contactId: contact.id, sequenceId: sequence.id, sequenceName: sequence.name,
-    status: 'active', currentStep: 0, totalSteps: sequence.steps.length,
+    status: 'active', currentStep: startStep, totalSteps: sequence.steps.length,
     enrolledAt: new Date().toISOString(),
-    nextSendAt: nextSendFor(first?.day ?? 0, first?.waitUnit ?? 'days'),
+    nextSendAt: opts?.firstSendAt ?? nextSendFor(first?.day ?? 0, first?.waitUnit ?? 'days'),
     history: [],
   };
   rows.push(enrollment);
   saveEnrollments(rows);
   return enrollment;
+}
+
+/**
+ * Turn a campaign's steps into a real sequence, so a scheduled send and a
+ * multi-step flow's follow-ups are carried out by the same tested, already-
+ * running engine that drives the Sequences tab — rather than a second
+ * scheduler nothing was ever built to run.
+ *
+ * Tagged back to the campaign with a real id (`source.refId`), not a name
+ * match, so the campaign's own detail view can look up what actually sent.
+ */
+export function campaignAsSequence(
+  campaign: { id: string; name: string },
+  steps: CampaignStep[],
+  enrolledCount: number,
+): Omit<EmailSequence, 'id'> {
+  return {
+    name: campaign.name,
+    source: makeSource('marketing-campaign', campaign.name, { refId: campaign.id, route: '/marketing' }),
+    goal: '',
+    steps: steps.map(s => ({
+      id: s.id, day: s.day, waitUnit: s.waitUnit, type: 'auto_email',
+      subject: s.subject, body: s.body, followUpRule: s.condition || 'always',
+    })),
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    enrolledCount,
+  };
 }
 
 function nextSendFor(amount: number, unit: 'hours' | 'days'): string {
