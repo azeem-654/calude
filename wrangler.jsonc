@@ -38,11 +38,21 @@
     }
   ],
 
-  // The staging subdomain. The root domain stays on Freehostia until this one
-  // has been lived with — nothing here touches protectedcentral.com itself.
-  "routes": [
-    { "pattern": "app.protectedcentral.com", "custom_domain": true }
-  ],
+  // app.protectedcentral.com is attached as a Worker custom domain, managed at
+  // the account level (accounts/…/workers/domains) rather than declared here.
+  // Declaring it makes wrangler call the *zone* route API on every deploy,
+  // which is a separate permission and failed the deploy even though the code
+  // itself uploaded fine. The domain persists on its own; the root domain
+  // stays on Freehostia until this one has been lived with.
+
+  // Scheduled sending. Every five minutes is frequent enough that a campaign
+  // set for 09:00 goes out at 09:00-ish, and infrequent enough to stay well
+  // inside the free tier. The work itself is idempotent per enrolment: a step
+  // advances as soon as it is attempted, so a tick that overlaps the previous
+  // one cannot send the same message twice.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
 
   "observability": { "enabled": true }
 }

@@ -29,6 +29,7 @@ import {
   handleImapFetch, handleMailProbe, handleSmsSend, handleDeliverability,
   handleBlogPublish, handleDiagnostics, handleInstall,
 } from './routes/misc';
+import { runScheduledSends } from './scheduled';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -96,5 +97,25 @@ export default {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
+  },
+  /**
+   * The cron tick.
+   *
+   * Cloudflare calls this on the schedule in wrangler.jsonc whether or not
+   * anybody is using the app, which is the entire point: scheduled campaigns
+   * and sequence follow-ups now go out on their own.
+   */
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil((async () => {
+      const started = Date.now();
+      const report = await runScheduledSends(env);
+      /* Logged rather than swallowed: with no user watching, this log is the
+         only account of what the schedule actually did. */
+      console.log(JSON.stringify({
+        cron: event.cron, ms: Date.now() - started,
+        accounts: report.accounts, sent: report.sent, failed: report.failed,
+        notes: report.notes.slice(0, 20),
+      }));
+    })());
   },
 } satisfies ExportedHandler<Env>;

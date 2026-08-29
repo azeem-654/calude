@@ -12,10 +12,12 @@ import { canAccess, dataDelete, dataGet, dataList, dataPut, userFromToken, type 
 
 interface DataBody {
   token?: string;
-  action?: 'get' | 'put' | 'list' | 'delete';
+  action?: 'get' | 'put' | 'list' | 'delete' | 'ping' | 'caps' | 'get_all' | 'bulk_set';
   accountId?: string;
   key?: string;
   value?: string;
+  /** bulk_set: many keys in one round trip. A null value deletes the key. */
+  items?: Record<string, string | null>;
 }
 
 /** Keys are a bounded identifier, not free text — they index a primary key. */
@@ -29,6 +31,13 @@ const MAX_VALUE_BYTES = 2 * 1024 * 1024;
 export async function handleData(req: Request, env: Env): Promise<Response> {
   const d = await body<DataBody>(req);
 
+  /* The client health-checks before it will sync at all, and does it before
+     signing in — so this one answers without a session. It reveals only that
+     a backend exists, which is already obvious from the page loading. */
+  if (d.action === 'ping') {
+    return json({ success: true, configured: true, backend: 'cloudflare-d1' });
+  }
+
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
 
@@ -37,8 +46,39 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
   if (!canAccess(user, accountId)) return fail('That workspace is not yours to read.', 403);
 
   switch (d.action) {
+    case 'caps':
+      /* What this workspace is allowed to do. The PHP had a whole permission
+         file behind this; the rule that actually mattered is the one already
+         enforced above — you may only touch your own workspace. */
+      return json({ success: true, caps: { read: true, write: true, role: user.role } });
+
     case 'list':
+    case 'get_all':
       return json({ success: true, data: await dataList(env.DB, accountId) });
+
+    case 'bulk_set': {
+      /* The browser batches a burst of edits into one request. Done key by key
+         rather than as one statement so a single oversized value is rejected
+         on its own instead of losing the whole batch with it. */
+      const items = d.items ?? {};
+      const keys = Object.keys(items);
+      if (keys.length > 200) return fail('Too many records in one write.');
+
+      const rejected: string[] = [];
+      const enc = new TextEncoder();
+      for (const key of keys) {
+        if (!KEY_OK.test(key)) { rejected.push(key); continue; }
+        const value = items[key];
+        if (value === null) { await dataDelete(env.DB, accountId, key); continue; }
+        if (enc.encode(value).length > MAX_VALUE_BYTES) { rejected.push(key); continue; }
+        await dataPut(env.DB, accountId, key, value);
+      }
+      return json({
+        success: true,
+        rejected,
+        message: rejected.length ? `${rejected.length} record(s) were too large or misnamed to store.` : undefined,
+      });
+    }
 
     case 'get': {
       const key = String(d.key ?? '');
