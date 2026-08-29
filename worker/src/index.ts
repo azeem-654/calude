@@ -19,6 +19,15 @@ import { handleAuth } from './routes/auth';
 import { handleData } from './routes/data';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
+import { handleTrack } from './routes/track';
+import { handleUnsubscribe } from './routes/unsubscribe';
+import { handleBooking } from './routes/booking';
+import { handleYtThumb, handleImgProxy, handlePlacesSearch, handleReviewsFetch } from './routes/proxies';
+import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
+import {
+  handleImapFetch, handleMailProbe, handleSmsSend, handleDeliverability,
+  handleBlogPublish, handleDiagnostics, handleInstall,
+} from './routes/misc';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -31,6 +40,28 @@ const ROUTES: Record<string, Handler> = {
      implementation that can drift from the first. */
   '/api/smtp-test.php': (req, env) => handleSmtpSend(req, env, { forceVerify: true }),
   '/api/provider-send.php': handleProviderSend,
+  '/api/mail-probe.php': handleMailProbe,
+  '/api/imap-fetch.php': handleImapFetch,
+  '/api/sms-send.php': handleSmsSend,
+
+  '/api/track.php': handleTrack,
+  '/api/unsubscribe.php': handleUnsubscribe,
+  '/api/booking.php': handleBooking,
+  '/api/deliverability.php': handleDeliverability,
+  '/api/blog-publish.php': handleBlogPublish,
+
+  '/api/stripe-config.php': handleStripeConfig,
+  '/api/stripe-checkout.php': handleStripeCheckout,
+  '/api/stripe-portal.php': handleStripePortal,
+  '/api/stripe-webhook.php': handleStripeWebhook,
+
+  '/api/places-search.php': handlePlacesSearch,
+  '/api/reviews-fetch.php': handleReviewsFetch,
+  '/api/yt-thumb.php': (req) => handleYtThumb(req),
+  '/api/img-proxy.php': (req) => handleImgProxy(req),
+
+  '/api/diagnostics.php': handleDiagnostics,
+  '/api/install.php': async () => handleInstall(),
 };
 
 export default {

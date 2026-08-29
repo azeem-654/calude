@@ -50,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_sessions_exp   ON crm_sessions (expires_at);
 -- instead of only totalled.
 CREATE TABLE IF NOT EXISTS crm_track (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id TEXT NOT NULL,
   kind       TEXT NOT NULL,          -- 'open' | 'click'
   email_id   TEXT NOT NULL,
   url        TEXT,                   -- clicks only
@@ -57,13 +58,18 @@ CREATE TABLE IF NOT EXISTS crm_track (
   user_agent TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_crm_track_email ON crm_track (email_id);
+-- The sync poll asks "everything for this account since <time>", so that pair
+-- is the index that matters, not the email id alone.
+CREATE INDEX IF NOT EXISTS idx_crm_track_sync  ON crm_track (account_id, at);
 
 -- Opt-outs, fed by the one-click unsubscribe endpoint. `campaign_id` is kept
 -- so a customer can see which message somebody left from.
 CREATE TABLE IF NOT EXISTS crm_unsubscribes (
-  email       TEXT PRIMARY KEY,
+  account_id  TEXT NOT NULL,
+  email       TEXT NOT NULL,
   campaign_id TEXT,
-  at          TEXT NOT NULL
+  at          TEXT NOT NULL,
+  PRIMARY KEY (account_id, email)
 );
 
 -- Public booking pages and their guest bookings.
