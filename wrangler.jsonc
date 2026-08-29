@@ -38,5 +38,11 @@
     }
   ],
 
+  // The staging subdomain. The root domain stays on Freehostia until this one
+  // has been lived with — nothing here touches protectedcentral.com itself.
+  "routes": [
+    { "pattern": "app.protectedcentral.com", "custom_domain": true }
+  ],
+
   "observability": { "enabled": true }
 }
