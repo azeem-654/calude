@@ -13,9 +13,14 @@ import { addr, body, fail, headerSafe, json } from '../lib/http';
 import { requireSessionForSocket, type Env } from '../lib/db';
 import { smtpSend, smtpVerify, type Encryption } from '../lib/smtp';
 import { buildMime } from '../lib/mime';
+import { loadMailbox } from './mailbox';
 
 interface SendBody {
   token?: string;
+  /** When given, credentials are taken from this workspace's stored mailbox
+   *  instead of the request — which is how a browser sends without ever
+   *  holding the password. */
+  accountId?: string;
   host?: string; port?: number; username?: string; password?: string; encryption?: string;
   fromName?: string; fromEmail?: string;
   to?: string; subject?: string; html?: string;
@@ -38,11 +43,33 @@ export async function handleSmtpSend(
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
 
-  const host = String(d.host ?? '').trim();
-  const username = String(d.username ?? '').trim();
-  const password = String(d.password ?? '');
-  const port = Number(d.port) || 587;
-  const encryption = encryptionOf(d.encryption);
+  /**
+   * Where the credentials come from.
+   *
+   * Explicit ones in the request still work — the setup wizard tests details
+   * before they are saved, and has nothing stored yet. Everything else passes
+   * only an accountId and the server resolves that workspace's own mailbox,
+   * so the password never leaves the database.
+   */
+  let host = String(d.host ?? '').trim();
+  let username = String(d.username ?? '').trim();
+  let password = String(d.password ?? '');
+  let port = Number(d.port) || 587;
+  let encryption = encryptionOf(d.encryption);
+  let storedFrom: { name: string; email: string; replyTo: string } | null = null;
+
+  if (!host && d.accountId) {
+    const mb = await loadMailbox(env, String(d.accountId));
+    if (!mb || !mb.smtp.host) {
+      return fail('This workspace has no mail server set up yet. Add one in Settings → Email & SMS.');
+    }
+    if (mb.smtp.username && !mb.smtp.password) {
+      return fail('The saved mailbox password could not be read back. Enter it again in Settings → Email & SMS.');
+    }
+    host = mb.smtp.host; username = mb.smtp.username; password = mb.smtp.password;
+    port = mb.smtp.port; encryption = mb.smtp.encryption;
+    storedFrom = mb.from;
+  }
 
   if (!host) return fail('Add an SMTP host in Settings → Email & SMS.');
   /* A hostname is all this should ever be. Anything else is an attempt to
@@ -66,12 +93,12 @@ export async function handleSmtpSend(
   if (!String(d.to ?? '').trim()) return fail('Recipient address is required');
   if (!to) return fail(`"${d.to}" is not a valid email address`);
 
-  const fromEmail = addr(d.fromEmail) ?? addr(username);
+  const fromEmail = addr(d.fromEmail) ?? addr(storedFrom?.email) ?? addr(username);
   if (!fromEmail) {
     return fail(`"${d.fromEmail ?? username}" is not a valid sending address. Set one in Settings → Email & SMS.`);
   }
 
-  const replyToRaw = String(d.replyTo ?? '').trim();
+  const replyToRaw = String(d.replyTo ?? storedFrom?.replyTo ?? '').trim();
   if (replyToRaw && !addr(replyToRaw)) return fail(`"${replyToRaw}" is not a valid reply-to address`);
 
   /* A List-Unsubscribe header carries a URL and nothing else. */
@@ -84,7 +111,7 @@ export async function handleSmtpSend(
   }
 
   const mime = buildMime({
-    fromName: headerSafe(d.fromName ?? 'CRM', 120),
+    fromName: headerSafe(d.fromName ?? storedFrom?.name ?? 'CRM', 120),
     fromEmail,
     to,
     subject: headerSafe(d.subject ?? '', 300),

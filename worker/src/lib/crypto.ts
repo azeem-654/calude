@@ -107,3 +107,54 @@ export async function signAddress(secret: string, email: string, campaignId = ''
   const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${email.toLowerCase()}|${campaignId}`));
   return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
+
+/* ── Secrets held on the customer's behalf ───────────────────────────────── */
+
+/**
+ * A customer's mailbox password is not ours to read.
+ *
+ * It has to be *reversible* — SMTP needs the actual password to authenticate,
+ * so this cannot be a hash the way an account password is. What it can be is
+ * encrypted at rest, so the database alone is not enough to send mail as
+ * somebody else. AES-GCM also authenticates, so a tampered row fails to
+ * decrypt rather than quietly returning something wrong.
+ *
+ * The key lives in one row of crm_meta, generated once per install. That means
+ * a stolen database dump is useless without it, and equally that losing it
+ * loses every stored mailbox — which is the right trade when the alternative
+ * is storing passwords in the clear.
+ */
+export async function encryptSecret(keyHex: string, plaintext: string): Promise<string> {
+  if (!plaintext) return '';
+  const key = await aesKey(keyHex);
+  /* A fresh 12-byte nonce every time: reusing one under the same key is the
+     single way to break GCM. It is stored alongside, which is normal — a nonce
+     is not a secret, it only has to be unique. */
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
+  return `v1.${b64(iv)}.${b64(ct)}`;
+}
+
+export async function decryptSecret(keyHex: string, stored: string): Promise<string> {
+  if (!stored) return '';
+  const parts = stored.split('.');
+  if (parts.length !== 3 || parts[0] !== 'v1') return '';
+  try {
+    const key = await aesKey(keyHex);
+    const iv = unb64(parts[1]);
+    const ct = unb64(parts[2]);
+    const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, ct as BufferSource);
+    return new TextDecoder().decode(out);
+  } catch {
+    /* Wrong key, or the row was tampered with. Returning '' makes the send
+       fail with the mail server's own "authentication failed", which is a
+       confusing symptom — so callers should treat '' as "re-enter it". */
+    return '';
+  }
+}
+
+async function aesKey(keyHex: string): Promise<CryptoKey> {
+  const bytes = new Uint8Array(keyHex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(keyHex.slice(i * 2, i * 2 + 2), 16);
+  return crypto.subtle.importKey('raw', bytes as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}

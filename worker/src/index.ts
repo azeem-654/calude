@@ -17,6 +17,7 @@ import { corsHeaders, json, preflight } from './lib/http';
 import type { Env } from './lib/db';
 import { handleAuth } from './routes/auth';
 import { handleData } from './routes/data';
+import { handleMailbox } from './routes/mailbox';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleTrack } from './routes/track';
@@ -34,6 +35,7 @@ type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Respon
 const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
   '/api/data.php': handleData,
+  '/api/mailbox.php': handleMailbox,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second
