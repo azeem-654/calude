@@ -5,8 +5,11 @@ import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import Header from '../Layout/Header';
 import TeamPermissions from './TeamPermissions';
 import Deliverability from './Deliverability';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { getSession } from '../../services/auth';
+import { activeAccount, planById } from '../../services/tenancy';
+import { loadStripeConfig } from '../../services/billing';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
 import type { EmailProviderConfig } from '../../services/emailService';
 import { validate } from '../../services/validationService';
@@ -16,6 +19,8 @@ import SMTPWizard from './SMTPWizard';
 import DiagnosticsCard from './DiagnosticsCard';
 import DeliveryCheck from './DeliveryCheck';
 import RouteCheck from './RouteCheck';
+import SecurityPanel from './SecurityPanel';
+import BrandingPanel from './BrandingPanel';
 import ProspectSearchCard from './ProspectSearchCard';
 import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
@@ -1015,6 +1020,7 @@ const tabs = [
 
 export default function Settings() {
   const { addNotification } = useApp();
+  const navigate = useNavigate();
   /*
    * The chosen panel lives in the address.
    *
@@ -1027,19 +1033,60 @@ export default function Settings() {
   const activeTab = tabs.some(t => t.id === asked) ? asked! : 'email-sms';
   const setActiveTab = (id: string) =>
     setParams(id === 'email-sms' ? {} : { tab: id }, { replace: true });
-  const [profile, setProfile] = useState({ firstName: 'John', lastName: 'Doe', email: 'john@crmpro.com', phone: '+1 (555) 123-4567', company: 'CRMPro Inc.', timezone: 'America/New_York' });
-  const [notifications, setNotifications] = useState({ emailNew: true, emailReplied: true, smsNew: false, dealClosed: true, appointmentReminder: true, weeklyReport: true });
-  const [billing] = useState({ plan: 'Pro', price: '$297/mo', nextBilling: '2024-06-21', seats: 5 });
-  const [integrations, setIntegrations] = useState([
-    { name: 'Stripe', description: 'Payment processing', connected: true, logo: '💳' },
-    { name: 'Google Calendar', description: 'Sync appointments', connected: true, logo: '📅' },
-    { name: 'Twilio', description: 'SMS & voice calls', connected: true, logo: '📱' },
-    { name: 'SendGrid', description: 'Email delivery', connected: false, logo: '📧' },
-    { name: 'Zapier', description: 'Automation workflows', connected: false, logo: '⚡' },
-    { name: 'Facebook Ads', description: 'Lead generation', connected: false, logo: '📘' },
-  ]);
+  /*
+   * These three used to be hardcoded fixtures — "John Doe", "CRMPro Inc.",
+   * Stripe and Twilio shown as already connected on a brand-new account — and
+   * `handleSave` only raised a toast. Every edit reverted on reload while the
+   * app said "Settings saved successfully!", which is the worst of both: the
+   * user believes it stuck and it never did.
+   *
+   * Now they load from the real session and real storage, and saving saves.
+   */
+  const [profile, setProfile] = useState(() => {
+    const s = getSession();
+    const acct = activeAccount();
+    const saved = (() => { try { return JSON.parse(localStorage.getItem('crm_profile') || 'null'); } catch { return null; } })();
+    const fullName = (s?.user.name ?? '').trim();
+    const space = fullName.indexOf(' ');
+    return {
+      firstName: saved?.firstName ?? (space > 0 ? fullName.slice(0, space) : fullName),
+      lastName: saved?.lastName ?? (space > 0 ? fullName.slice(space + 1) : ''),
+      email: saved?.email ?? (s?.user.email ?? ''),
+      phone: saved?.phone ?? (acct?.phone ?? ''),
+      company: saved?.company ?? (acct?.businessName ?? ''),
+      timezone: saved?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+  });
+  const [notifications, setNotifications] = useState(() => {
+    const fallback = { emailNew: true, emailReplied: true, smsNew: false, dealClosed: true, appointmentReminder: true, weeklyReport: true };
+    try { return { ...fallback, ...(JSON.parse(localStorage.getItem('crm_notification_prefs') || 'null') ?? {}) }; } catch { return fallback; }
+  });
 
-  const handleSave = () => addNotification('Settings saved successfully!');
+  /* Connected-ness is read from whatever actually configures each one, so the
+     badge cannot claim a connection that does not exist. The two with no
+     integration behind them say so rather than offering a button that lies. */
+  const integrations = (() => {
+    const email = loadEmailConfig();
+    const sms = loadSMS();
+    const stripe = loadStripeConfig();
+    const smtp = (() => { try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null'); } catch { return null; } })();
+    return [
+      { name: 'Stripe', description: 'Take subscription payments', logo: '💳', connected: !!stripe.secretKey, where: 'Agency → Billing', tab: null as string | null },
+      { name: 'Email sending', description: email.provider === 'none' ? 'No provider chosen yet' : `Sending through ${email.provider}`, logo: '📧', connected: email.provider !== 'none' && (email.provider === 'smtp' ? !!smtp?.host : !!email.apiKey), where: 'Email & SMS', tab: 'email-sms' },
+      { name: 'Twilio', description: 'Send and receive SMS', logo: '📱', connected: !!(sms.accountSid && sms.authToken), where: 'Email & SMS', tab: 'email-sms' },
+      { name: 'Incoming mailbox', description: 'Read replies over IMAP', logo: '📥', connected: !!smtp?.imapHost, where: 'Email & SMS', tab: 'email-sms' },
+    ];
+  })();
+
+  const handleSave = () => {
+    try {
+      localStorage.setItem('crm_profile', JSON.stringify(profile));
+      localStorage.setItem('crm_notification_prefs', JSON.stringify(notifications));
+      addNotification('Settings saved');
+    } catch {
+      addNotification('Could not save — this browser refused to store the settings.', 'error');
+    }
+  };
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -1128,19 +1175,21 @@ export default function Settings() {
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Third-Party Integrations</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px' }}>
-                {integrations.map((intg, idx) => (
+                {integrations.map(intg => (
                   <div key={intg.name} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', borderRadius: '10px', border: `1px solid ${intg.connected ? '#bbf7d0' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#f0fdf4' : 'white' }}>
                     <span style={{ fontSize: '28px' }}>{intg.logo}</span>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{intg.name}</p>
                       <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{intg.description}</p>
                     </div>
-                    <button onClick={() => {
-                      setIntegrations(prev => prev.map((it, i) => i === idx ? { ...it, connected: !it.connected } : it));
-                      addNotification(intg.connected ? `${intg.name} disconnected` : `${intg.name} connected!`, intg.connected ? 'info' : 'success');
-                    }}
-                      style={{ padding: '6px 14px', borderRadius: '9px', border: `1px solid ${intg.connected ? '#d1fae5' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#ecfdf5' : 'white', color: intg.connected ? '#16a34a' : '#475569', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                      {intg.connected ? '✓ Connected' : 'Connect'}
+                    {/* No toggle here: a switch that flips a badge without
+                        touching any credential is theatre. This reports the
+                        real state and takes you to where it is actually set. */}
+                    <button
+                      onClick={() => { if (intg.tab) setActiveTab(intg.tab); else navigate('/agency'); }}
+                      title={`Set up in ${intg.where}`}
+                      style={{ padding: '6px 14px', borderRadius: '9px', border: `1px solid ${intg.connected ? '#d1fae5' : '#e2e8f0'}`, backgroundColor: intg.connected ? '#ecfdf5' : 'white', color: intg.connected ? '#16a34a' : '#475569', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}>
+                      {intg.connected ? '✓ Connected' : 'Set up'}
                     </button>
                   </div>
                 ))}
@@ -1148,40 +1197,47 @@ export default function Settings() {
             </div>
           )}
 
-          {activeTab === 'billing' && (
-            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing & Subscription</h3>
-              <div style={{ padding: '22px 24px', borderRadius: '12px', background: '#17191c', color: 'white', marginBottom: '20px', boxShadow: '0 8px 20px rgba(23,25,28,0.25)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <p style={{ fontSize: '12px', opacity: 0.8, margin: '0 0 4px' }}>Current Plan</p>
-                    <p style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>{billing.plan} <span style={{ fontSize: '14px', fontWeight: 400 }}>{billing.price}</span></p>
-                    <p style={{ fontSize: '12px', opacity: 0.8, margin: '8px 0 0' }}>Next billing: {billing.nextBilling} · {billing.seats} seats</p>
-                  </div>
-                  <button style={{ padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>Upgrade</button>
+          {/*
+            This tab used to be a second, fake billing screen: a hardcoded
+            "Pro $297/mo", a "next billing" date already two years in the past,
+            and an Upgrade button with no click handler — sitting alongside the
+            real Stripe-backed billing at /billing that works properly. Rather
+            than maintain two, this one shows the real plan and sends you to
+            the real screen.
+          */}
+          {activeTab === 'billing' && (() => {
+            const acct = activeAccount();
+            const plan = acct ? planById(acct.plan) : null;
+            return (
+              <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing &amp; Subscription</h3>
+                <div style={{ padding: '22px 24px', borderRadius: '12px', background: '#17191c', color: 'white', marginBottom: '18px', boxShadow: '0 8px 20px rgba(23,25,28,0.25)' }}>
+                  <p style={{ fontSize: '12px', opacity: 0.8, margin: '0 0 4px' }}>Current plan</p>
+                  <p style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>
+                    {plan?.name ?? '—'}{' '}
+                    <span style={{ fontSize: '14px', fontWeight: 400 }}>{acct ? `$${acct.price}/mo` : ''}</span>
+                  </p>
+                  <p style={{ fontSize: '12px', opacity: 0.8, margin: '8px 0 0' }}>
+                    {acct ? `${acct.name} · ${acct.status}` : 'No workspace active'}
+                  </p>
                 </div>
+                <button onClick={() => navigate('/billing')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <CreditCard size={14} /> Manage plan &amp; payment
+                </button>
+                <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '12px 0 0', lineHeight: 1.55 }}>
+                  Changing plan, payment method and invoices all live on the billing screen, which talks to Stripe directly.
+                </p>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {activeTab === 'team' && <TeamPermissions />}
 
           {activeTab === 'deliverability' && <Deliverability />}
 
-          {(activeTab === 'security' || activeTab === 'branding') && (
-            <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
-                {activeTab === 'security' ? 'Security Settings' : 'Branding'}
-              </h3>
-              <div style={{ padding: '48px 24px', textAlign: 'center', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: '12px', marginTop: '16px' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '16px', backgroundColor: '#eceef1', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  {activeTab === 'security' ? <Shield size={28} color="#17191c" /> : <Palette size={28} color="#17191c" />}
-                </div>
-                <p style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a', letterSpacing: '-0.01em', margin: '0 0 6px' }}>Coming Soon</p>
-                <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>This section is under development</p>
-              </div>
-            </div>
-          )}
+          {activeTab === 'security' && <SecurityPanel />}
+          {activeTab === 'branding' && <BrandingPanel />}
         </div>
       </div>
     </div>
