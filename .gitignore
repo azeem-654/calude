@@ -40,3 +40,6 @@ public/api/config.php
 # booking page sends through. Written at runtime; the .htaccess guard stays.
 public/api/data/*
 !public/api/data/.htaccess
+
+# Wrangler's local state — a local D1 database and cached build output.
+.wrangler/

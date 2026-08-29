@@ -1,0 +1,21 @@
+{
+  // The Worker is a separate compilation unit from the React app: it targets
+  // the Workers runtime, not a browser, so it must not see the DOM lib (there
+  // is no `document` at the edge) and the app must not see Workers globals.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}

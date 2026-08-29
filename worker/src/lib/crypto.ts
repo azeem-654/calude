@@ -1,0 +1,99 @@
+/**
+ * Password hashing, session tokens and the unsubscribe signature.
+ *
+ * PHP used bcrypt. Workers have no bcrypt and WebCrypto has no bcrypt either,
+ * so this uses PBKDF2-HMAC-SHA256 — the strongest password KDF the platform
+ * ships natively. Pulling in a WASM bcrypt to preserve a hash format would be
+ * a dependency, a cold-start cost and a supply-chain risk for no security gain.
+ *
+ * The stored string records its own parameters:
+ *
+ *     pbkdf2$sha256$210000$<salt-b64>$<hash-b64>
+ *
+ * so the iteration count can be raised later and old rows still verify against
+ * the count they were written with, rather than silently failing.
+ */
+
+const ITERATIONS = 210_000;   // OWASP's floor for PBKDF2-HMAC-SHA256
+const KEY_BITS = 256;
+
+const enc = new TextEncoder();
+
+function b64(bytes: ArrayBuffer | Uint8Array): string {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let s = '';
+  for (const b of arr) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+function unb64(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function derive(password: string, salt: Uint8Array, iterations: number): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
+    key,
+    KEY_BITS,
+  );
+  return b64(bits);
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derive(password, salt, ITERATIONS);
+  return `pbkdf2$sha256$${ITERATIONS}$${b64(salt)}$${hash}`;
+}
+
+/**
+ * Verify, in constant time with respect to the hash contents.
+ *
+ * A bcrypt hash left over from the PHP install returns false rather than
+ * throwing — the account simply needs its password set again, which the agency
+ * password reset already does. Silently accepting it would be worse.
+ */
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const parts = (stored || '').split('$');
+  if (parts.length !== 5 || parts[0] !== 'pbkdf2' || parts[1] !== 'sha256') return false;
+  const iterations = Number(parts[2]);
+  if (!Number.isFinite(iterations) || iterations < 1000) return false;
+  let salt: Uint8Array;
+  try { salt = unb64(parts[3]); } catch { return false; }
+  const expect = parts[4];
+  const got = await derive(password, salt, iterations);
+  return timingSafeEqual(got, expect);
+}
+
+/** Compare without leaking, through timing, how much of the string matched. */
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** A session token: 24 random bytes, hex, same length the PHP issued. */
+export function newToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The unsubscribe link's signature.
+ *
+ * A one-click opt-out URL is handed to mail providers, which fetch it without
+ * a session. Signing the address means the endpoint can trust the address in
+ * the query string without anyone being able to forge an opt-out for somebody
+ * they do not like.
+ */
+export async function signAddress(secret: string, email: string, campaignId = ''): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${email.toLowerCase()}|${campaignId}`));
+  return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}

@@ -1,0 +1,42 @@
+{
+  // ───────────────────────────────────────────────────────────────────────────
+  // Cloudflare Worker — serves the built React app AND the whole API.
+  //
+  // Freehostia ran the front end as static files and the back end as PHP.
+  // Cloudflare runs no PHP, so the 27 endpoints under public/api/ are ported to
+  // TypeScript in worker/src/routes and served by this one Worker. Static
+  // assets are handled by the platform; anything under /api/ falls through to
+  // the Worker's fetch handler.
+  //
+  // Deploy:  npx wrangler deploy
+  // Local:   npx wrangler dev            (real workerd, with a local D1)
+  // ───────────────────────────────────────────────────────────────────────────
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "crmpro",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./dist",
+    // The app is a single-page router: any path that is not a real file must
+    // return index.html so deep links like /settings or /book/foo work.
+    "not_found_handling": "single-page-application",
+    // Assets are served first; only unmatched paths reach the Worker. The API
+    // lives under /api/, which never collides with a built asset.
+    "run_worker_first": ["/api/*"],
+    "binding": "ASSETS"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "crmpro",
+      // Filled in by `wrangler d1 create crmpro`.
+      "database_id": "PLACEHOLDER_RUN_D1_CREATE",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+
+  "observability": { "enabled": true }
+}
