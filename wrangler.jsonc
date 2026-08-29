@@ -33,7 +33,7 @@
       "binding": "DB",
       "database_name": "crmpro",
       // Filled in by `wrangler d1 create crmpro`.
-      "database_id": "PLACEHOLDER_RUN_D1_CREATE",
+      "database_id": "32695c14-c775-4f8e-93ce-78831e05abd8",
       "migrations_dir": "worker/migrations"
     }
   ],

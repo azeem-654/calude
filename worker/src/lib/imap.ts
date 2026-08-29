@@ -51,6 +51,12 @@ class ImapWire {
 
   async raw(text: string): Promise<void> { await this.writer.write(enc.encode(text)); }
 
+  /** Hand the streams back before startTls() takes the socket over. */
+  release(): void {
+    try { this.reader.releaseLock(); } catch { /* already released */ }
+    try { this.writer.releaseLock(); } catch { /* already released */ }
+  }
+
   /** Send a tagged command and read until its own tagged reply comes back. */
   async command(cmd: string, timeoutMs = 20_000): Promise<{ ok: boolean; lines: string[]; status: string }> {
     const tag = this.nextTag();
@@ -143,6 +149,7 @@ export async function imapFetch(creds: ImapCreds, limit: number): Promise<{ ok: 
     if (creds.encryption === 'tls') {
       const st = await wire.command('STARTTLS');
       if (!st.ok) return { ok: false, error: 'The mailbox refused STARTTLS, so nothing was sent.', messages: [] };
+      wire.release();
       active = active.startTls() as unknown as typeof active;
       wire = new ImapWire(active.readable.getReader(), active.writable.getWriter());
     }

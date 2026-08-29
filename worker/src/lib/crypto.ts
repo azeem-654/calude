@@ -8,13 +8,23 @@
  *
  * The stored string records its own parameters:
  *
- *     pbkdf2$sha256$210000$<salt-b64>$<hash-b64>
+ *     pbkdf2$sha256$100000$<salt-b64>$<hash-b64>
  *
  * so the iteration count can be raised later and old rows still verify against
  * the count they were written with, rather than silently failing.
  */
 
-const ITERATIONS = 210_000;   // OWASP's floor for PBKDF2-HMAC-SHA256
+/**
+ * 100,000 is the ceiling, not a preference.
+ *
+ * OWASP's current floor for PBKDF2-HMAC-SHA256 is 210,000, which is what this
+ * used at first — and the Workers runtime refuses it outright:
+ * "Pbkdf2 failed: iteration counts above 100000 are not supported". So this is
+ * the strongest the platform will actually run. It remains a respectable work
+ * factor, and because the stored string records the count it was written with,
+ * raising it later if Cloudflare lifts the cap will not strand existing rows.
+ */
+const ITERATIONS = 100_000;
 const KEY_BITS = 256;
 
 const enc = new TextEncoder();

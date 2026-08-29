@@ -69,6 +69,20 @@ class Wire {
   }
 
   /**
+   * Hand the streams back.
+   *
+   * `startTls()` takes over the socket's readable and writable, and refuses
+   * while a reader or writer still holds them — "This WritableStream is
+   * currently locked to a writer". So every STARTTLS connection died before it
+   * began, which looked exactly like the network blocking port 587 and was
+   * nothing of the sort.
+   */
+  release(): void {
+    try { this.reader.releaseLock(); } catch { /* already released */ }
+    try { this.writer.releaseLock(); } catch { /* already released */ }
+  }
+
+  /**
    * Read one reply.
    *
    * A multi-line reply is "250-first" repeated then "250 last" — the space in
@@ -179,6 +193,8 @@ async function attempt(
            when encryption was asked for — moving on sends nothing in clear. */
         return { ok: false, retry: true, error: `The server refused STARTTLS on port ${port}, so nothing was sent.` };
       }
+      /* Locks first, upgrade second — see Wire.release(). */
+      wire.release();
       const secure = active.startTls();
       active = secure as unknown as typeof active;
       wire = new Wire(active.readable.getReader(), active.writable.getWriter());
