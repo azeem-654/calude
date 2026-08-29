@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ReactNode, ReactElement } from 'react';
 import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users, ShieldCheck } from 'lucide-react';
 import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
@@ -10,6 +10,7 @@ import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import { activeAccount, planById } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
+import { saveMailbox, hydrateLocalCache } from '../../services/mailboxStore';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
 import type { EmailProviderConfig } from '../../services/emailService';
 import { validate } from '../../services/validationService';
@@ -507,10 +508,34 @@ function EmailSMSTab() {
   };
 
   const handleSMTPSave = (smtp: SMTPConfig, imap: IMAPConfig) => {
+    /* The local copy stays: it fills this form in instantly and every existing
+       reader still expects it. What changed is that it is no longer the only
+       copy — the server now holds these too, which is what lets a scheduled
+       campaign send with nobody logged in. */
     localStorage.setItem('crm_smtp', JSON.stringify({ host: smtp.host, port: smtp.port, user: smtp.user, pass: smtp.pass, fromName: smtp.fromName, fromEmail: smtp.fromEmail, encryption: smtp.encryption }));
     localStorage.setItem('crm_imap', JSON.stringify({ host: imap.host, port: imap.port, user: imap.user, pass: imap.pass, folder: imap.folder }));
-    addNotification('SMTP & IMAP settings saved!');
+
+    void saveMailbox({
+      smtp: { host: smtp.host, port: smtp.port, user: smtp.user, pass: smtp.pass, encryption: smtp.encryption },
+      from: { name: smtp.fromName, email: smtp.fromEmail },
+      imap: imap.host ? { host: imap.host, port: imap.port, user: imap.user, pass: imap.pass, folder: imap.folder } : undefined,
+    }).then(res => {
+      addNotification(
+        res.success
+          ? 'Mail server saved. Scheduled campaigns will send even when nobody is signed in.'
+          /* Said plainly rather than swallowed: the browser copy worked, so
+             sending from an open tab still will — but the scheduler will not
+             see it, and that is worth knowing now rather than on Tuesday. */
+          : `Saved on this device, but not on the server — scheduled sending will not work until it is. ${res.error ?? ''}`,
+        res.success ? 'success' : 'error',
+      );
+    });
   };
+
+  /* A workspace configured on another machine should not look unconfigured
+     here. Fills the blanks from the server; never overwrites a local copy,
+     which may hold a password the server will not hand back. */
+  useEffect(() => { void hydrateLocalCache(); }, []);
 
   const savedSMTP = loadSMTP();
   const savedIMAP = loadIMAP();

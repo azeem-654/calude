@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { Campaign, Contact } from '../../types';
 import { sanitizeEmailHtml } from '../../services/emailHtml';
 import { loadEnrollments, type SequenceEnrollment } from '../../services/contactEmail';
@@ -62,6 +63,7 @@ export default function CampaignDetailPanel({
   onToggleStatus: () => void;
   onDelete: () => void;
 }) {
+  useEscapeKey(true, onClose);
   const [activeTab, setActiveTab] = useState<'overview' | 'steps' | 'contacts' | 'settings'>('overview');
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);

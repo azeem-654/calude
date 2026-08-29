@@ -154,8 +154,27 @@ export async function validateWebhook(url: string): Promise<ValidationResult> {
   if (!url?.trim()) {
     return { success: false, message: 'Webhook URL is required', suggestions: ['Paste the full webhook URL including https://'] };
   }
-  try { new URL(url); } catch {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch {
     return { success: false, message: 'Invalid URL format', suggestions: ['Webhook URLs must start with https:// and be a valid URL'] };
+  }
+  /* `new URL()` accepts any well-formed URI, so `javascript:alert(1)` passed as
+     "valid" — next to a suggestion about returning a 2xx status, which only an
+     HTTP endpoint can do. The scheme is the whole point of the check. */
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return {
+      success: false,
+      message: `"${parsed.protocol}" is not a web address a webhook can be sent to`,
+      suggestions: ['A webhook URL must start with https:// (or http:// while testing locally)'],
+    };
+  }
+  if (parsed.protocol === 'http:') {
+    return {
+      success: true,
+      message: 'Valid, but not encrypted',
+      details: 'This webhook is http:// — whatever it carries travels in the clear. Use https:// for anything real.',
+      suggestions: ['Switch to https:// before sending customer data through this webhook'],
+    };
   }
   return {
     success: true,

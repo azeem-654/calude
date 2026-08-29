@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { AlertTriangle, Check, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { clock12, conflictsFor, describeConflicts, type BusyBlock } from '../../services/availability';
@@ -55,6 +56,7 @@ const TYPES = [
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
 export default function EventModal({ editing, defaultDate, defaultTime, blocks, onClose, onSave, onDelete }: Props) {
+  useEscapeKey(true, onClose);
   const { contacts, appointments, calendarEvents } = useApp();
 
   const existing = useMemo(() => {

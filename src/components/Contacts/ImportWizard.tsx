@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import {
   Upload, X, ChevronRight, ChevronLeft, CheckCircle, AlertCircle,
   Tag, Plus, Trash2, FileText, Zap, Eye, Users,
@@ -144,6 +145,7 @@ function StepBar({ current }: { current: StepId }) {
 
 /* ─── Main component ─── */
 export default function ImportWizard({ onClose, onImport, existingFields }: Props) {
+  useEscapeKey(true, onClose);
   const [step, setStep] = useState<StepId>('upload');
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState('');

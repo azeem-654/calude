@@ -55,6 +55,8 @@ interface AppContextType {
   addConversation: (conv: Omit<Conversation, 'id'>) => void;
   sendMessage: (conversationId: string, content: string) => void;
   updateConversationStatus: (id: string, status: Conversation['status']) => void;
+  /** Opening a thread has read it. */
+  markConversationRead: (id: string) => void;
   addAppointment: (appt: Omit<Appointment, 'id'>) => Appointment;
   calendarEvents: CalendarEvent[];
   addCalendarEvent: (e: Omit<CalendarEvent, 'id' | 'createdAt'>) => CalendarEvent;
@@ -294,6 +296,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateConversationStatus = (id: string, status: Conversation['status']) => {
     setConversations(prev => { const next = prev.map(c => c.id === id ? { ...c, status } : c); saveLS('crm_conversations', next); return next; });
   };
+  /**
+   * The only thing that ever cleared `unread` was sending a reply — and the
+   * chat composer is disabled without a connected provider, so the count could
+   * never be cleared at all. A badge that is permanently wrong is worse than
+   * no badge: it trains people to ignore it.
+   */
+  const markConversationRead = (id: string) => {
+    setConversations(prev => {
+      const target = prev.find(c => c.id === id);
+      if (!target || !target.unread) return prev;   // nothing to do, no write
+      const next = prev.map(c => c.id === id ? { ...c, unread: 0 } : c);
+      saveLS('crm_conversations', next); return next;
+    });
+  };
 
   /* ── Appointments ── */
   const addAppointment = (appt: Omit<Appointment, 'id'>): Appointment => {
@@ -531,7 +547,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       contacts, conversations, appointments, calendarEvents, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
       pipelines, campaigns, funnels, websites, reviews, sequences, automations,
       addContact, updateContact, updateContacts, deleteContact, bulkImportContacts,
-      addConversation, sendMessage, updateConversationStatus,
+      addConversation, sendMessage, updateConversationStatus, markConversationRead,
       addAppointment, updateAppointment, deleteAppointment,
       addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus,
       updatePipeline, createPipeline, deletePipeline,

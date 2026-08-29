@@ -4,6 +4,7 @@
  * summary afterwards says exactly what moved.
  */
 import { useMemo, useState } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { createPortal } from 'react-dom';
 import { X, Merge, AlertTriangle, Check, Users, ChevronRight } from 'lucide-react';
 import type { Appointment, Contact, Pipeline } from '../../types';
@@ -28,6 +29,7 @@ interface Props {
 }
 
 export default function MergeWizard({ contacts, pipelines, appointments, onClose, onMerge, onNotify }: Props) {
+  useEscapeKey(true, onClose);
   const groups = useMemo(() => findDuplicates(contacts), [contacts]);
   const [openGroup, setOpenGroup] = useState<string | null>(groups[0]?.id ?? null);
   const [done, setDone] = useState<string[]>([]);

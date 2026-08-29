@@ -520,7 +520,15 @@ export default function Scheduling() {
 
               <div>
                 <label style={LABEL}>Daily Booking Limit</label>
-                <input type="number" min="1" max="20" value={schedule.dailyLimit} onChange={e => updateSchedule({ dailyLimit: Number(e.target.value) })}
+                {/* Clamped, not merely advised. min/max on the element are a hint the
+                    browser can ignore; a negative value here made isDayAvailable
+                    compare `0 < -5` for every date, so the public booking page
+                    silently showed no availability at all. */}
+                <input type="number" min="1" max="50" value={schedule.dailyLimit}
+                  onChange={e => {
+                    const n = Math.floor(Number(e.target.value));
+                    updateSchedule({ dailyLimit: Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : 1 });
+                  }}
                   style={INPUT} />
               </div>
 

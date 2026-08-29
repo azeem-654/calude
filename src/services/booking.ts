@@ -49,11 +49,26 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
   return !!(res && res.success);
 }
 
-/** Visitor: fetch the published schedule (null when backend/config missing). */
-export async function fetchPublicConfig(): Promise<(Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }) | null> {
-  const res = await call({ action: 'config' });
-  if (!res || !res.success || !res.config) return null;
-  return res.config as Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] };
+/**
+ * Visitor: fetch the published schedule.
+ *
+ * The slug matters. `/book/:slug` used to be routed but never read, so every
+ * link — a real one, a typo, another workspace's — rendered the same booking
+ * page. On a multi-tenant install that means a visitor could book the wrong
+ * business entirely. Returns `notFound` so the page can say so rather than
+ * showing somebody else's availability.
+ */
+export async function fetchPublicConfig(slug?: string): Promise<
+  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string } | { notFound: true } | null
+> {
+  const res = await call(slug ? { action: 'config', slug } : { action: 'config' });
+  if (!res) return null;
+  if (res.notFound) return { notFound: true };
+  if (!res.success || !res.config) return null;
+  return {
+    config: res.config as Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] },
+    accountId: res.accountId as string | undefined,
+  };
 }
 
 /** Visitor: booked slots for a given date. */

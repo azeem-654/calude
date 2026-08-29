@@ -12,6 +12,7 @@ import { sendEmail, loadEmailConfig } from '../../services/emailService';
 import {
   loadReviews, saveReviews, loadProfile, saveProfile, loadRules, saveRules,
   loadRequests, saveRequests, loadCompetitors, makeIncomingReview, matchRule,
+  loadGoogle, saveGoogle,
   trendingThemes, sentimentOf,
 } from '../../services/reputationService';
 import type { RepReview, BusinessProfile, AutoResponseRule, Platform, ReviewRequest } from '../../services/reputationService';
@@ -52,7 +53,7 @@ export default function Reputation() {
   const [profile, setProfile] = useState<BusinessProfile>(loadProfile);
   const [rules, setRules] = useState<AutoResponseRule[]>(loadRules);
   const [requests, setRequests] = useState<ReviewRequest[]>(loadRequests);
-  const [google, setGoogle] = useState({ apiKey: '', placeId: '' });
+  const [google, setGoogle] = useState(loadGoogle);
   const competitors = loadCompetitors();
 
   const [filter, setFilter] = useState<'all' | 'unreplied' | 'negative' | Platform>('all');
@@ -185,7 +186,7 @@ export default function Reputation() {
   };
 
   const saveSettings = (p: BusinessProfile, r: AutoResponseRule[], g: { apiKey: string; placeId: string }) => {
-    setProfile(p); saveProfile(p); setRules(r); saveRules(r); setGoogle(g);
+    setProfile(p); saveProfile(p); setRules(r); saveRules(r); setGoogle(g); saveGoogle(g);
     setSetupOpen(false);
     addNotification('Reputation settings saved', 'success');
   };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import {
   X, Building2, Mail, Zap, Plus, Trash2, ToggleLeft, ToggleRight,
   ChevronRight, Server, Sparkles,
@@ -19,6 +20,7 @@ export default function MailboxSetup({ initial, onSave, onClose }: {
   onSave: (mb: Mailbox) => void;
   onClose: () => void;
 }) {
+  useEscapeKey(true, onClose);
   const [mb, setMb] = useState<Mailbox>(initial ?? blankMailbox());
   const [tab, setTab] = useState<Tab>('company');
 

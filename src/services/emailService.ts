@@ -1,4 +1,5 @@
 import { sessionToken } from './auth';
+import { getActiveAccountId } from './tenancy';
 
 /**
  * The services that can carry mail out of this app.
@@ -132,6 +133,11 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: sessionToken(),
+          /* Named so the server can fall back to this workspace's stored
+             mailbox when the browser has no password — a second device, or a
+             cache that was cleared. The explicit credentials below still win
+             when they are present, which is what the setup wizard relies on. */
+          accountId: getActiveAccountId(),
           host: smtpCfg.host, port: smtpCfg.port, username: smtpCfg.user,
           password: smtpCfg.pass, encryption: smtpCfg.encryption,
           fromName: config.fromName || smtpCfg.fromName,

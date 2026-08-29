@@ -56,7 +56,7 @@ function initials(name: string) { return name.split(' ').map(w => w[0]).join('')
 const CHAT_RAIL = '__chat__';
 
 export default function Conversations() {
-  const { addNotification, conversations } = useApp();
+  const { addNotification, conversations, markConversationRead } = useApp();
   const [mailboxes, setMailboxes] = useState<Mailbox[]>(loadMailboxes);
   // 'all' and a mailbox id select IMAP inboxes; CHAT_RAIL selects the chat/SMS
   // threads, which have their own shape and so get their own pane.
@@ -391,7 +391,7 @@ export default function Conversations() {
                 {chatThreads.map(c => {
                   const sel = c.id === chatId;
                   return (
-                    <div key={c.id} onClick={() => setChatId(c.id)}
+                    <div key={c.id} onClick={() => { setChatId(c.id); markConversationRead(c.id); }}
                       style={{ padding: '12px 14px', cursor: 'pointer', borderBottom: '1px solid #f6f7f8', borderLeft: `3px solid ${sel ? INK : 'transparent'}`, background: sel ? '#f7f8f9' : '#fff' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                         <div style={{ width: 36, height: 36, borderRadius: 999, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials(c.contactName || '?')}</div>

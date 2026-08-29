@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useNavigate } from 'react-router-dom';
 import type { Contact, Campaign, CampaignStep } from '../../types';
 import {
@@ -1488,6 +1489,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
   onAdd: (c: Omit<Campaign, 'id'>) => Campaign;
   editCampaign?: Campaign;
 }) {
+  useEscapeKey(true, onClose);
   const { addSequence, updateCampaign } = useApp();
   const [step, setStep] = useState(1);
   const [state, setState] = useState<WizardState>(() => {

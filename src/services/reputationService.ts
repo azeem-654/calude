@@ -65,6 +65,28 @@ const PROFILE_KEY = 'crm_reputation_profile';
 const RULES_KEY = 'crm_reputation_rules';
 const REQ_KEY = 'crm_reputation_requests';
 const COMP_KEY = 'crm_reputation_competitors';
+const GOOGLE_KEY = 'crm_reputation_google';
+
+/**
+ * The Google Business Profile connection.
+ *
+ * This was the one setting on the Reputation screen that was never saved: the
+ * key and Place ID lived in component state, so they were gone on the next
+ * page load and the "live review sync" they enable never had anything to work
+ * with. Stored like the profile and the rules beside them.
+ */
+export interface GoogleConnection { apiKey: string; placeId: string }
+
+export function loadGoogle(): GoogleConnection {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GOOGLE_KEY) || 'null');
+    if (saved && typeof saved.apiKey === 'string') return saved as GoogleConnection;
+  } catch { /* ignore */ }
+  return { apiKey: '', placeId: '' };
+}
+export function saveGoogle(g: GoogleConnection) {
+  try { localStorage.setItem(GOOGLE_KEY, JSON.stringify(g)); } catch { /* ignore */ }
+}
 
 export function loadReviews(): RepReview[] {
   try {

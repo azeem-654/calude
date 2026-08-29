@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Check, Calendar, Globe, Download, X, CalendarPlus } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { busyBlocks, freeSlots, hhmm } from '../../services/availability';
@@ -73,13 +74,20 @@ export default function BookingPage() {
   // Guest manage mode (?manage=<id>.<key>)
   const [manage, setManage] = useState<{ id: string; key: string; booking: Booking | null } | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
+  /* The link the visitor actually followed. Routed all along, never read. */
+  const { slug } = useParams<{ slug?: string }>();
+  const [unknownLink, setUnknownLink] = useState(false);
 
   const visitorTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   /* Load the published config; fall back to this browser's local schedule. */
   useEffect(() => {
     let alive = true;
-    fetchPublicConfig().then(cfg => { if (alive) setRemoteCfg(cfg); });
+    fetchPublicConfig(slug).then(res => {
+      if (!alive) return;
+      if (res && 'notFound' in res) { setUnknownLink(true); return; }
+      setRemoteCfg(res?.config ?? null);
+    });
     const params = new URLSearchParams(window.location.search);
     const m = params.get('manage');
     if (m && m.includes('.')) {
@@ -91,7 +99,25 @@ export default function BookingPage() {
       });
     }
     return () => { alive = false; };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  /* A link that matches no published page. Rendering the default one instead
+     would let a visitor book the wrong business entirely on a multi-tenant
+     install — the failure has to be visible. */
+  if (unknownLink) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f2f4f6', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ maxWidth: 420, background: '#fff', borderRadius: 16, padding: 32, boxShadow: '0 6px 24px rgba(16,24,40,.08)', textAlign: 'center' }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: '#17191c', margin: '0 auto 16px' }} />
+          <h1 style={{ fontSize: 19, margin: '0 0 8px', color: '#0f172a' }}>This booking link does not exist</h1>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#475569', margin: 0 }}>
+            Check the address, or ask whoever sent it for an up-to-date link.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Effective schedule = published config when available, else local (dev/preview).
   const cfg: ScheduleAvailability = useMemo(() => {
