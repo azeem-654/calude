@@ -7,7 +7,7 @@ import {
   Film, AlignLeft, SkipBack, SkipForward, Pause,
   Volume2, VolumeX, MoreHorizontal, Search, Layers,
   MonitorPlay, Smartphone, Square as SquareIcon, Send, Image as ImageIcon,
-  Sparkles, Crop, Maximize2, Globe, FileText, Type,
+  Sparkles, Crop, Maximize2, Globe, FileText, Type, AlertCircle,
 } from 'lucide-react';
 import type { VideoProject, VideoClip, Caption, BRollClip, BrandPosition } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -618,6 +618,7 @@ function ScoreBadge({ score, size = 'md' }: { score: number; size?: 'sm' | 'md' 
 function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number; settings?: VideoProject['settings'] }) => void }) {
   const [tab, setTab] = useState<'upload' | 'youtube' | 'url'>('upload');
   const [dragging, setDragging] = useState(false);
+  const [fileError, setFileError] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
@@ -626,7 +627,23 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
   const [ratio, setRatio] = useState<'9:16' | '1:1' | '16:9'>('9:16');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * One gate for both ways in.
+   *
+   * Dragging a file in was checked; picking one through the browse dialog was
+   * not — so a .txt file selected that way was accepted, named the project
+   * after itself, and enabled "Generate AI Shorts". With a real Gemini key
+   * configured it would have gone straight into the analysis pipeline.
+   */
+  const looksLikeVideo = (f: File) =>
+    f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(f.name);
+
   const handleFile = (f: File) => {
+    if (!looksLikeVideo(f)) {
+      setFileError(`"${f.name}" is not a video. Choose an MP4, MOV, WebM, M4V, AVI or MKV file.`);
+      return;
+    }
+    setFileError('');
     setFile(f);
     if (!name) setName(f.name.replace(/\.[^.]+$/, ''));
   };
@@ -635,7 +652,7 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
     e.preventDefault();
     setDragging(false);
     const f = e.dataTransfer.files[0];
-    if (f && (f.type.startsWith('video/') || f.name.endsWith('.mp4') || f.name.endsWith('.mov'))) handleFile(f);
+    if (f) handleFile(f);
   };
 
   const canSubmit = (tab === 'upload' && file) || ((tab === 'youtube' || tab === 'url') && url.trim());
@@ -717,6 +734,12 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
                   <span style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600 }}>or click to browse</span>
                 </>
               )}
+            </div>
+          )}
+          {tab === 'upload' && fileError && (
+            <div style={{ display: 'flex', gap: 8, padding: '10px 12px', marginBottom: '16px', borderRadius: 9, backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+              <AlertCircle size={14} color="#dc2626" style={{ marginTop: 2, flexShrink: 0 }} />
+              <p style={{ fontSize: 12.5, color: '#991b1b', margin: 0, lineHeight: 1.5 }}>{fileError}</p>
             </div>
           )}
 

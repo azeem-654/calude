@@ -34,7 +34,7 @@ interface FunnelOverviewProps {
   funnel: Funnel;
   pages: FunnelStep[];
   onEditPage: (pageId: string) => void;
-  onAddPage: () => void;
+  onAddPage: (name: string, type: FunnelStep['type']) => void;
   onDeletePage: (id: string) => void;
   onRenamePage: (id: string, name: string) => void;
   onReorderPage: (from: number, to: number) => void;
@@ -70,7 +70,10 @@ function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, on
 
   function handleAddStep() {
     if (!newStepName.trim()) return;
-    onAddPage();
+    /* The dialog asks for a name and a page type, and both used to be dropped
+       on the floor — every step came out as "Page N" / Blank Page no matter
+       what was typed or chosen. */
+    onAddPage(newStepName.trim(), newStepType);
     setShowAddModal(false);
     setNewStepName('');
     setNewStepType('landing');
@@ -1329,8 +1332,8 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
   }
 
   // ── Page management ────────────────────────────────────────────────────────
-  function addPage() {
-    const p = mkPage(`Page ${pages.length + 1}`, 'custom');
+  function addPage(name?: string, type: FunnelStep['type'] = 'custom') {
+    const p = mkPage(name?.trim() || `Page ${pages.length + 1}`, type);
     setPages(prev => [...prev, p]);
     setActivePageId(p.id);
   }
@@ -1363,7 +1366,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
         funnel={funnel}
         pages={pages}
         onEditPage={(pageId) => { setActivePageId(pageId); setEditorMode('page-editor'); }}
-        onAddPage={addPage}
+        onAddPage={(name, type) => addPage(name, type)}
         onDeletePage={deletePage}
         onRenamePage={(id, name) => setPages(prev => prev.map(p => p.id === id ? { ...p, name } : p))}
         onReorderPage={(from, to) => {
@@ -1597,7 +1600,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
                       )}
                     </div>
                   ))}
-                  <button onClick={addPage}
+                  <button onClick={() => addPage()}
                     style={{ width: '100%', marginTop: 8, padding: '8px 0', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ Add Page</button>
                 </div>
               )}

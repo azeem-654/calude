@@ -1162,7 +1162,7 @@ export default function Settings() {
                     <p style={{ fontSize: '14px', fontWeight: 500, color: '#475569', margin: 0 }}>{label}</p>
                     <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{desc}</p>
                   </div>
-                  <Toggle value={(notifications as Record<string, boolean>)[key]} onChange={v => setNotifications(p => ({ ...p, [key]: v }))} />
+                  <Toggle value={(notifications as Record<string, boolean>)[key]} onChange={v => setNotifications((p: Record<string, boolean>) => ({ ...p, [key]: v }))} />
                 </div>
               ))}
               <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '16px' }}>

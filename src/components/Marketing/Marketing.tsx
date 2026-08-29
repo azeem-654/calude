@@ -198,6 +198,9 @@ function CampaignsTab() {
           onAdd={data => {
             updateCampaign(editingCampaign.id, data);
             setEditingCampaign(null);
+            /* Returned, not discarded: the wizard needs the saved record back
+               to enrol a rescheduled campaign into the sequence engine. */
+            return { ...editingCampaign, ...data };
           }}
         />
       )}
