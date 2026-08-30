@@ -3,13 +3,13 @@
  *
  * Each mailbox is bound to ONE company profile: its own identity, knowledge
  * base, signature, tone and auto-reply rules. Incoming email is fetched live
- * over IMAP (via public/api/imap-fetch.php); when the endpoint is unreachable
+ * over IMAP (via api/imap-fetch.php); when the endpoint is unreachable
  * a realistic demo inbox is returned so the UI is always usable.
  */
 
 import { sessionToken } from './auth';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /* ─── Types ─── */
 export interface CompanyProfile {

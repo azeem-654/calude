@@ -11,11 +11,11 @@ import { useApp } from '../../context/AppContext';
 import type { DesignPost, CanvasElement, CanvasBackground, TextElement, ShapeElement, ImageElement, StickerElement, HistoryEntry } from './types';
 import { normalisePost } from './normalise';
 import { FONT_FAMILIES, EMOJI_STICKERS, RATIO_SIZES } from './templates';
+import { API_BASE } from '../../services/apiBase';
 
 /* ── Helpers ── */
 const uid = () => `el-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /** Canva-style text effect presets → CSS text-shadow. */
 const TEXT_EFFECT_CSS: Record<string, (color: string) => string> = {

@@ -1,0 +1,48 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Attach protectedcentral.com to the Worker
+#
+# The Cloudflare token lives in this repository's secrets and nowhere a person
+# has to paste it again, so the one-off that attaches a hostname is run here
+# rather than from a laptop.
+#
+# Manual only. A domain is attached once and then stays attached; running it on
+# every push would mean the deploy token needed permissions over the zone that
+# deploying a Worker never otherwise needs.
+#
+# Run it: Actions → "Attach domains to the Worker" → Run workflow.
+#
+# CLOUDFLARE_API_TOKEN needs two permissions beyond what the deploy uses:
+#   Zone → Zone: Read
+#   Zone → Workers Routes: Edit
+# Add them to the existing token at
+# https://dash.cloudflare.com/profile/api-tokens — there is no new secret to
+# store. Without them the run fails and says which of the two is missing.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Attach domains to the Worker
+
+on:
+  workflow_dispatch:
+
+# Attaching twice at once would race for the same hostname.
+concurrency:
+  group: attach-domains
+  cancel-in-progress: false
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The script is dependency-free — it talks to the Cloudflare REST API with
+      # fetch — so there is nothing to install and no lockfile to restore.
+      - name: Attach protectedcentral.com and www to crmpro
+        run: node scripts/attach-domains.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

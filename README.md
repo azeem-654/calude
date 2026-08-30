@@ -1,8 +1,17 @@
 # CRM Pro — multi-tenant marketing CRM
 
-A GoHighLevel-style CRM SaaS built with **React + TypeScript + Vite**, deployed to
-[protectedcentral.com](https://protectedcentral.com) via GitHub Actions (FTP).
-An agency owns isolated client sub-accounts; every module below is tenant-scoped.
+A GoHighLevel-style CRM SaaS built with **React + TypeScript + Vite**, running on
+one Cloudflare Worker deployed by GitHub Actions. An agency owns isolated client
+sub-accounts; every module below is tenant-scoped.
+
+Two hostnames, one Worker and one bundle:
+
+| | |
+|---|---|
+| [protectedcentral.com](https://protectedcentral.com) | the public marketing site — what it is, and two ways in |
+| [app.protectedcentral.com](https://app.protectedcentral.com) | the product: the login, and everything behind it |
+
+See [The two sites](#the-two-sites).
 
 ## Modules
 
@@ -58,7 +67,7 @@ rule-based, so it works offline with no API key and every number can be explaine
 
 ### Email from the contact profile
 
-`src/services/contactEmail.ts` plus `public/api/track.php` make the Email tab a
+`src/services/contactEmail.ts` plus the Worker's `api/track.php` route make the Email tab a
 working outbound channel rather than a log viewer.
 
 - **Compose and send** through whichever provider is configured in Settings →
@@ -69,7 +78,7 @@ working outbound channel rather than a log viewer.
   A background job on the dashboard sends anything whose time has come.
 - **Real open and click tracking.** Outbound HTML is instrumented with a 1×1
   tracking pixel and rewritten links before it leaves. `api/track.php` records
-  each hit (MySQL via `crm_pdo()`, JSON file fallback), then `syncTracking()`
+  each hit as a row in D1's `crm_track`, then `syncTracking()`
   folds the events back into history — status advances sent → opened → clicked,
   with open counts, click counts and the exact URLs clicked. The click
   redirector only accepts `http(s)` targets, so it can't be used as an open
@@ -189,7 +198,7 @@ The same rules live in two places that have to agree:
 | | |
 |---|---|
 | `src/services/contactPermissions.ts` | what the interface offers |
-| `public/api/_perm.php` | what the database accepts |
+| `worker/src/routes/data.ts` | what the database accepts |
 
 Every write reaches the server through `api/data.php`, which is the only path
 to the account store, so the guard sits at the choke point. Before anything is
@@ -250,18 +259,18 @@ widths, and gradient presets.
 
 ### Not included (needs infrastructure this deployment doesn't have)
 
-This app is a static SPA on shared hosting with `localStorage` persistence and a
-few PHP endpoints — there is no application server, database or object store. So
-the following are deliberately **not** implemented rather than faked:
-custom-domain DNS verification and serving, S3/Cloudinary uploads (images are
-stored as data URLs), Stripe/PayPal checkout, and server-side screenshot
-generation. Wire up a backend before expecting those.
+The Worker and D1 cover the server side, but there is still no object store
+and no image pipeline. So these are deliberately **not** implemented rather
+than faked: S3/Cloudinary uploads (images are stored as data URLs), serving a
+customer's own custom domain for a published site, and server-side screenshot
+generation.
 
-Two things that *are* server-backed on this deployment, because the PHP
-endpoints carry them: **email open/click tracking** (`api/track.php`) and
-**permission enforcement** (`api/_perm.php`, guarding `api/data.php`). Both
-need `api/config.php` to exist — run the installer from Agency → Cloud
-Database once.
+Everything else here is server-backed: **email open/click tracking**
+(`api/track.php`), **permission enforcement** (in `api/data.php`, the only path
+to the account store), **scheduled sending** (a cron trigger, so a campaign no
+longer needs an open tab), and **Stripe checkout**. None of it needs an
+installer — `wrangler d1 migrations apply` is the whole of setup, and the
+deploy runs it.
 
 ## Email Deliverability engine
 
@@ -271,7 +280,7 @@ the work:
 | | |
 |---|---|
 | `src/services/deliverability.ts` | everything decidable from data we already hold — syntax, suppression, content scanning, reputation, volume and timing advice. Instant, offline. |
-| `public/api/deliverability.php` | the checks a browser physically cannot make — DNS for SPF/DKIM/DMARC/MX, DNSBL blacklist queries, SMTP mailbox probes, and any paid verification API. |
+| `api/deliverability.php` (the Worker) | the checks a browser physically cannot make — DNS for SPF/DKIM/DMARC/MX, DNSBL blacklist queries, SMTP mailbox probes, and any paid verification API. |
 
 ### Authentication
 
@@ -308,9 +317,9 @@ follows a warmup ramp for new senders.
 
 ### Verification provider (optional)
 
-ZeroBounce or Kickbox can be connected in Settings. The key is written to
-`api/config.php` **on the server** and never returned to the browser — the UI can
-only report whether one is present. Without a key everything above still works;
+ZeroBounce or Kickbox can be connected in Settings. The key is held **on the
+server**, encrypted, and never returned to the browser — the UI can only report
+whether one is present. Without a key everything above still works;
 the provider adds mailbox-level certainty that DNS alone cannot give.
 
 ### Warmup and per-provider throttling
@@ -345,7 +354,7 @@ provider for our own caution. All three are fixed and covered by tests.
 
 ### Bulk verification and inbox placement
 
-`src/services/verifyQueue.ts` plus `public/api/placement.php` handle the two
+`src/services/verifyQueue.ts` plus the Worker's `api/placement.php` route handle the two
 slow jobs.
 
 - **Bulk verification** runs as a durable queue, not an in-memory loop: the job
@@ -360,11 +369,13 @@ slow jobs.
   and reports inbox, spam or not delivered per provider. Spam folders are found
   by reading the folder list and matching, because Gmail uses `[Gmail]/Spam`,
   Outlook uses `Junk Email` and cPanel uses `INBOX.spam`.
-- **Seed mailbox credentials are stored server-side** in the guarded store and
-  never returned to the browser — the UI can only see whether a password is
-  present. Use app passwords, and prefer mailboxes that exist only for this.
-  When the host has no PHP IMAP extension the screen says so and falls back to
-  recording placement by hand.
+- **Seed mailbox credentials are stored server-side**, encrypted with AES-GCM
+  in `crm_placement_seeds`, and never returned to the browser — the UI can only
+  see whether a password is present. Each seed belongs to the account that
+  created it. Use app passwords, and prefer mailboxes that exist only for this.
+- A mailbox that cannot be opened is reported as such, rather than as a message
+  that did not arrive: "could not look" and "not there" are different answers,
+  and conflating them would report a perfectly delivered campaign as missing.
 
 ### Alerts and the help centre
 
@@ -470,35 +481,117 @@ A post marked as failed can be retried from the campaign dashboard. Attempts
 are capped at three; past that the post keeps its caption and its place in the
 plan but needs a person to look at it, rather than being retried forever.
 
-## Deployment and host-side state
+## The two sites
 
-Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml`:
-`npm ci` → `npm run build` with `VITE_BASE=/` → FTP-upload `./dist/` to `/` on
-protectedcentral.com (three attempts, since the host's FTP is flaky). Pushing to
-`testing` deploys to `testing.protectedcentral.com` instead. `dangerous-clean-slate`
-is off, so files the deploy never uploaded — including everything below — are
-left alone.
+`protectedcentral.com` is a marketing page and nothing else. `app.protectedcentral.com`
+is the product. They are the same Worker and the same JavaScript bundle, and the
+split is made at runtime from the hostname — `src/services/hosts.ts` is the only
+place that knows the two names.
 
-Two kinds of file live only on the host and are never in the repo:
-
-| Path | What it holds | Created by |
+| On | A visitor gets | Sign in / Sign up goes to |
 |---|---|---|
-| `api/config.php` | MySQL credentials | `install.php`, once |
-| `api/data/*.php` | Sessions, password hashes, bookings, tracking events | The endpoints, at runtime |
+| `protectedcentral.com`, `www.` | the marketing site, at every path | `https://app.protectedcentral.com/login` |
+| `app.protectedcentral.com` | the login form, then the app | the router, no origin hop |
+| localhost, previews, `*.workers.dev` | the marketing site at `/`, the login at `/login` | the router, no origin hop |
 
-**Those files are protected two ways, because one is not enough on shared
-hosting.** Each store under `api/data/` is written as a `.php` file that begins
-with `<?php http_response_code(404); exit; ?>` — fetched directly it executes,
-returns 404 and prints nothing, whatever the server config says. An install that
-predates this is migrated on first read: the plain `.json` file is rewritten in
-guarded form and deleted, so old tokens cannot keep leaking. On top of that,
-`api/.htaccess` denies `config.php` and the `_*.php` includes, and
-`api/data/.htaccess` denies the directory outright.
+The third row is what keeps the thing developable: nothing about the split is
+baked in at build time, so one artefact serves all three cases and a local
+`npm run dev` never bounces anyone to production.
 
-`install.php` requires an agency session once any account exists, so a public
-endpoint cannot be used to repoint a running install at another database.
-First-run setup stays open, because at that point there is nothing to protect
-and nobody to authenticate as.
+Sessions belong to the app's origin, so there is no session to find on the apex
+and nothing to sign out of there. The marketing page therefore renders for
+everyone, always, with no auth check in front of it.
+
+### Making a hostname live
+
+Both names are attached to the `crmpro` Worker as *custom domains* at the
+account level. Attaching is a one-off — it is not part of a deploy, and the
+deploy token deliberately has no permissions over the zone:
+
+```bash
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run domains
+```
+
+`scripts/attach-domains.mjs` looks the zone up by name and attaches
+`protectedcentral.com` and `www.protectedcentral.com`, and it is safe to re-run.
+The token for it needs **Zone → Zone: Read** and **Zone → Workers Routes: Edit**
+on top of what the deploy uses. Cloudflare manages the DNS for a custom domain
+itself, so there is no A record to add; if a hostname is refused, something else
+is usually already serving that name — a Pages project, or an A record left over
+from the old host — and has to be removed first.
+
+There are two other ways to run it, neither of which needs a token in a
+terminal:
+
+**From GitHub Actions** — the token is already a repository secret, so
+**Actions → "Attach domains to the Worker" → Run workflow** does the same thing
+with nothing to paste. It is manual-only, for the same reason the deploy does
+not do it.
+
+**By hand in the dashboard** — **Workers & Pages → crmpro → Settings → Domains
+& Routes → Add custom domain**.
+
+Whichever way it is run, the token needs **Zone → Zone: Read** added to it
+first, to look the zone up by name; attaching is otherwise an account-level
+call and does not need anything on the zone. Adding a name that still has an A
+or CNAME record on it *also* needs **Zone → DNS: Edit**, because a Worker
+cannot take a hostname another record already answers for — delete the record
+and Cloudflare manages that name itself.
+
+Two things the script had to learn the hard way. Its liveness check is the
+account rather than `/user/tokens/verify`: a token created as *account-owned*,
+which is what the dashboard hands you now, is not a user credential and that
+endpoint calls it invalid while every account call it is scoped for succeeds.
+And `fetch` in Node ignores `HTTPS_PROXY` unless you set `NODE_USE_ENV_PROXY=1`
+— irrelevant on a CI runner, but the difference between working and a bare 403
+behind a corporate proxy.
+
+## Deployment and server-side state
+
+Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml` on
+**Node 22**: `npm ci` → both typechecks → `npm run build` with `VITE_BASE=/` →
+apply any new D1 migrations → `npx wrangler deploy`. The Node version is not a
+preference — wrangler 4.127 refuses to start below 22, and while the workflow
+pinned 20 every run built the app and then fell over on the first wrangler
+command, so nothing shipped at all. Migrations run before the deploy on
+purpose: a Worker expecting a column its database does not have yet is a broken
+deploy, and this ordering makes that impossible.
+
+Nothing is uploaded anywhere. One Cloudflare Worker (`crmpro`) serves the
+marketing site, the built app and every `/api/*` route, and it answers on both
+**https://protectedcentral.com** and **https://app.protectedcentral.com**. See
+[The two sites](#the-two-sites) for which is which.
+
+Two GitHub secrets drive it: `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, D1:
+Edit, Account Settings: Read) and `CLOUDFLARE_ACCOUNT_ID`.
+
+The custom domains are attached at the account level rather than declared in
+`wrangler.jsonc`. Declaring them makes every deploy call the *zone* route API,
+which is a separate permission, and fails the run even when the code published
+fine. `npm run domains` attaches one that is missing.
+
+### Where the state lives
+
+All of it is in one D1 database, `crmpro`, created by `worker/migrations/`:
+
+| Table | What it holds |
+|---|---|
+| `crm_data` | the per-account key/value store the app syncs into |
+| `crm_users`, `crm_sessions` | accounts and their live sessions |
+| `crm_mailboxes` | each customer's own SMTP/IMAP settings, password encrypted with AES-GCM |
+| `crm_track`, `crm_unsubscribes` | open/click events and opt-outs |
+| `crm_booking_config`, `crm_bookings` | public booking pages and guest bookings |
+| `crm_meta` | signing keys and other singletons |
+
+Passwords are PBKDF2-HMAC-SHA256 at 100,000 iterations — the ceiling the
+Workers runtime will accept; it refuses higher counts outright. The format
+records its own parameters, so the cost can be raised later without stranding
+existing rows.
+
+There are no files on a host, no `config.php`, no `.htaccess`, and no installer
+to run: `wrangler d1 migrations apply` is the whole of setup, and the deploy
+does it.
+
 
 ## 12-Month Content Pipeline
 
@@ -526,46 +619,42 @@ Key files: `src/services/onboarding.ts` (storage + plan engine), `contentGen.ts`
 
 ```bash
 npm install
-npm run dev        # Vite dev server
-npm run build      # type-check + production build to dist/
+npm run dev        # Vite dev server on :5173
+npx wrangler dev   # the API, on :8787 — the same Worker code that runs live
+npm run typecheck  # tsc -b; a bare `tsc --noEmit` compiles nothing here
+npm run build      # production build to dist/
 ```
 
-Optional AI: add a Gemini API key in Settings — every AI feature has an offline fallback.
-PHP endpoints in `public/api/` (booking, mail, image proxy) deploy alongside the SPA and
-run zero-config via a JSON file store, or MySQL/SQLite through `api/config.php`.
+`npm run dev` serves only the page. In development the app calls the API on
+`localhost:8787`, so run `npx wrangler dev` alongside it for anything that talks
+to the server — sign-in, sync, sending mail, bookings. `wrangler dev` runs the
+real Workers runtime against a local D1, so what passes there is what deploys.
 
-## Deployment
+The API base is defined once, in `src/services/apiBase.ts`. In production it is
+empty, because the Worker serving the page also serves `/api/*`.
 
-Pushing to `main` triggers `.github/workflows` → build → FTP upload to protectedcentral.com.
-The workflow retries the FTP step up to 3 times; a failed upload can be re-triggered with an
-empty commit.
+Note on typechecking: the root `tsconfig.json` is a solution file (`"files": []`
+plus references), so `tsc --noEmit` type-checks *nothing* and exits 0. Use
+`npm run typecheck`, which runs `tsc -b`.
+
+Optional AI: add a Gemini API key in Settings — every AI feature has an offline
+fallback.
 
 ## Signing in
 
-| Login | When it works | Purpose |
-|---|---|---|
-| Your own account | always | the real owner |
-| `demo` | always | a standing sandbox account, for showing the app without handing over the owner's login |
-| `test` | only while no real account exists | first-run smoke test on a fresh install |
+Signing in happens on **app.protectedcentral.com**. Every way in from the
+marketing site — the header, the hero, the closing panel — is a link to
+`/login` there.
 
-The `demo` password is **not in this repository** — only its bcrypt hash, in
-`public/api/auth.php`. That is deliberate: this repo is public, and a guessable
-shared password on a live site (`test`/`test123` being the classic) is found by
-bots within days.
+The first person to open a fresh install creates the owner account, and from
+that moment every endpoint that opens an outbound connection requires a live
+session. There is no demo login and no standing test account: a shared password
+on a public site is found by bots within days, and one that also has to be
+documented in a public repository cannot be kept secret at all.
 
-Rotate it with:
+Additional logins are created in **Settings → Team & Permissions**. Clients are
+bound to a single workspace; the agency role sees all of them.
 
-```bash
-php -r 'echo password_hash("your-new-password", PASSWORD_BCRYPT), "\n";'
-```
-
-and paste the result into `DEMO_PASS_HASH`. Set that constant to an empty string
-to switch the account off, or delete the user in **Settings → Team & Permissions**
-to remove it.
-
-The demo account is flagged so it does not count as "this workspace is set up" —
-signing up properly stays available while it exists — and it gets its own tenant
-scope, so nothing it does touches real data.
 
 ## Where generated content came from
 

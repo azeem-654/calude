@@ -5,6 +5,11 @@
  * who has never heard of the product exactly nothing. This is the page that
  * answers "what is it" before asking anyone to sign in.
  *
+ * It is the whole of protectedcentral.com. The product is a separate hostname,
+ * app.protectedcentral.com, and every way in from here — sign in, sign up, the
+ * hero buttons — is a link across to it. services/hosts.ts owns that decision
+ * so the same bundle still runs as one site on localhost.
+ *
  * The page holds still and the scroll moves the scene. A tall document sits
  * under a fixed stage, and every pixel of scroll advances the scene by a
  * proportional amount — a nudge of the wheel starts the next screen arriving,
@@ -29,6 +34,7 @@ import {
   Info, Layers, MousePointerClick, Send, Sparkles, Users,
 } from 'lucide-react';
 import { activeBranding } from '../../services/tenancy';
+import { appHref, isCrossOrigin } from '../../services/hosts';
 import { clamp01, mix, smoothstep, useScrollScene } from './useScrollScene';
 import './site.css';
 
@@ -240,6 +246,27 @@ const SCENES: Scene[] = [
 
 /* ── Pieces ───────────────────────────────────────────────────────────── */
 
+/**
+ * A way in.
+ *
+ * On protectedcentral.com the product is another origin, so this has to be a
+ * real link the browser follows; anywhere the two live together it is a router
+ * navigation, and either way it is an anchor rather than a button — a way into
+ * a site belongs in the address bar, in the right-click menu and in whatever
+ * a crawler makes of the page.
+ */
+function AppLink({ to, className, children }: { to: string; className?: string; children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const href = appHref(to);
+  const onClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    /* Off-origin, or the visitor asked for a new tab: leave it to the browser. */
+    if (isCrossOrigin(href) || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(to);
+  }, [href, navigate, to]);
+  return <a className={className} href={href} onClick={onClick}>{children}</a>;
+}
+
 function Heading({ lead, emph, as = 'h2' }: { lead: string; emph: string; as?: 'h1' | 'h2' }) {
   const Tag = as;
   return (
@@ -256,9 +283,7 @@ function Heading({ lead, emph, as = 'h2' }: { lead: string; emph: string; as?: '
 /* ── The page ─────────────────────────────────────────────────────────── */
 
 export default function SiteHome() {
-  const navigate = useNavigate();
   const name = activeBranding().appName;
-  const onSignIn = useCallback(() => navigate('/login'), [navigate]);
 
   const stage = useRef<(HTMLElement | null)[]>([]);
   const copy = useRef<(HTMLElement | null)[]>([]);
@@ -313,18 +338,28 @@ export default function SiteHome() {
 
       const s = shots.current[i];
       if (s) {
-        /* The screen lands: it arrives tilted away and squares up as it comes
-           into place, then eases past. */
-        const settle = smoothstep(-0.55, 0.12, t);
+        /* The screen lands: it arrives small and tilted away, grows and squares
+           up as it comes into place, then leans off again.
+
+           Every term here is written to be exactly zero at t = 0. The frame is
+           now wide enough to reach the edge of the band it sits on, so the
+           resting offset and the resting scale of 1.03 the earlier numbers left
+           behind are the difference between a picture that fits the screen and
+           one whose right-hand edge is past it. */
+        const settle = smoothstep(-0.62, -0.02, t);
         const past = smoothstep(0.3, 1.0, t);
+        const drift = t < -1.1 ? -1.1 : t > 1.1 ? 1.1 : t;
         s.style.transform = [
-          `perspective(1500px)`,
-          `translate3d(${mix(38, -34, clamp01((t + 0.55) / 1.5))}px, ${mix(52, -60, clamp01((t + 0.55) / 1.5))}px, 0)`,
-          `rotateY(${mix(-13, 0, settle) + past * 9}deg)`,
-          `rotateX(${mix(9, 0, settle) + past * 4}deg)`,
-          `scale(${mix(0.9, 1, settle) - past * 0.06})`,
+          `perspective(1700px)`,
+          `translate3d(${-drift * 64}px, ${-drift * 88}px, 0)`,
+          `rotateY(${mix(-16, 0, settle) + past * 10}deg)`,
+          `rotateX(${mix(11, 0, settle) + past * 4.5}deg)`,
+          `scale(${mix(0.82, 1, settle) - past * 0.08})`,
         ].join(' ');
         s.style.opacity = String(smoothstep(-0.55, -0.05, t) * (1 - smoothstep(0.42, 0.95, t)));
+        /* How far in this scene is, for the sheen that crosses the glass as it
+           settles and for the glow that comes up behind it. */
+        s.style.setProperty('--in', String(settle));
       }
     }
 
@@ -344,10 +379,15 @@ export default function SiteHome() {
 
   return (
     <div className="site scene-root">
-      {/* The document's height is what there is to scroll. The tail lets the
-          last scene finish rather than stopping half-played. */}
+      {/*
+        The document's height is what there is to scroll, and it stops on the
+        last scene rather than past it. One scene occupies SCENE_VH of scroll,
+        so the last one is centred at (n - 1) strides; a document any taller
+        than that scrolls on into a screen where every scene has already faded
+        out, which is the blank page you used to land on at the bottom.
+      */}
       <div className="scene-spacer"
-        style={{ height: `calc(${SCENES.length * SCENE_VH}vh + 100vh)` }} />
+        style={{ height: `calc(${(SCENES.length - 1) * SCENE_VH}vh + 100vh)` }} />
 
       <div className="scene-stage" aria-hidden="false">
         {SCENES.map((s, i) => (
@@ -387,20 +427,35 @@ export default function SiteHome() {
                 )}
                 {(i === 0 || s.id === 'start') && (
                   <div data-rise style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 24 }}>
-                    <button className="btn btn-primary" onClick={onSignIn}>
-                      Get started <ArrowRight size={13} />
-                    </button>
-                    <button className="btn btn-quiet" onClick={onSignIn}>
+                    <AppLink to="/login" className="btn btn-primary">
+                      Sign up free <ArrowRight size={13} />
+                    </AppLink>
+                    <AppLink to="/login" className="btn btn-quiet">
                       Sign in <ArrowUpRight size={12} />
-                    </button>
+                    </AppLink>
                   </div>
                 )}
                 {s.extra && <div data-rise style={{ marginTop: 20 }}>{s.extra}</div>}
               </div>
 
               {s.shot && (
+                /*
+                  The screen is the argument, so it is given the room: a wide
+                  frame that runs out past the text column, lit from behind,
+                  breathing on its own while the scroll flies it in.
+                */
                 <figure className="shot" ref={el => { shots.current[i] = el; }}>
-                  <img src={s.shot.src} alt={s.shot.alt} loading={i < 2 ? 'eager' : 'lazy'} width={1400} height={903} />
+                  <span className="shot-glow" aria-hidden="true" />
+                  <div className="shot-frame">
+                    <span className="shot-bar" aria-hidden="true">
+                      <i /><i /><i />
+                      <span className="shot-tab mono">{s.eyebrow}</span>
+                    </span>
+                    <span className="shot-screen">
+                      <img src={s.shot.src} alt={s.shot.alt} loading={i < 2 ? 'eager' : 'lazy'} width={1400} height={903} />
+                      <span className="shot-sheen" aria-hidden="true" />
+                    </span>
+                  </div>
                 </figure>
               )}
             </div>
@@ -419,7 +474,10 @@ export default function SiteHome() {
         </span>
         <span className="strapline mono">Sales · Marketing · Sites · Content</span>
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={onSignIn}>Sign in <ArrowRight size={13} /></button>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <AppLink to="/login" className="btn btn-quiet">Sign in</AppLink>
+          <AppLink to="/login" className="btn btn-primary">Sign up <ArrowRight size={13} /></AppLink>
+        </span>
       </header>
 
       <footer className="scene-chrome scene-bottom">
@@ -438,8 +496,11 @@ export default function SiteHome() {
           ))}
         </div>
 
+        {/* There is nothing under the last scene any more, so it stops asking. */}
         <span className="mono scroll-hint">
-          Scroll <ChevronDown size={12} style={{ verticalAlign: -2 }} />
+          {current === SCENES.length - 1
+            ? 'End'
+            : <>Scroll <ChevronDown size={12} style={{ verticalAlign: -2 }} /></>}
         </span>
       </footer>
     </div>

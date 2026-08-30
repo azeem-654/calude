@@ -36,9 +36,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Wrangler 4.127 refuses to start on anything below Node 22 — the deploy
+      # that pinned 20 built the app, then fell over on the first wrangler
+      # command, so nothing has shipped since. This is the floor wrangler
+      # states, not a preference.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies

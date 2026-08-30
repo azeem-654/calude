@@ -10,8 +10,8 @@
 import { useState } from 'react';
 import { Stethoscope, CheckCircle, XCircle, AlertTriangle, MinusCircle, Loader, Copy, Check } from 'lucide-react';
 import { sessionToken } from '../../services/auth';
+import { API_BASE } from '../../services/apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 type Status = 'pass' | 'fail' | 'warn' | 'skip';
 interface Check { id: string; label: string; status: Status; detail: string }

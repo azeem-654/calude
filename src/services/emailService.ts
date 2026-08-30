@@ -1,5 +1,6 @@
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
+import { API_BASE } from './apiBase';
 
 /**
  * The services that can carry mail out of this app.
@@ -127,7 +128,6 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
       if (!smtpCfg?.host || !smtpCfg?.user) {
         return { success: false, error: 'SMTP not configured. Go to Settings → Email & SMS → SMTP Setup.' };
       }
-      const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
       const resp = await fetch(`${API_BASE}/api/smtp-send.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,7 +167,6 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
      * ever travels between this host and the provider.
      */
     if (API_PROVIDERS.includes(config.provider)) {
-      const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
       const resp = await fetch(`${API_BASE}/api/provider-send.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

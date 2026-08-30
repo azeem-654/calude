@@ -6,12 +6,13 @@
  *               the account switcher, and can provision client logins.
  *   'client'  — a customer: locked to their own sub-account, no agency access.
  *
- * Backed by public/api/auth.php when reachable (real bcrypt server auth);
- * falls back to a local store so the app is usable in dev/demo. The local
- * fallback is a soft gate — production security comes from the PHP backend.
+ * Backed by the Worker's api/auth.php when reachable (PBKDF2-HMAC-SHA256, with
+ * sessions in D1); falls back to a local store so the app is usable offline.
+ * The local fallback is a soft gate — production security comes from the server.
  */
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 const SESSION_KEY = 'crm_session';        // global (not scoped): { token, user, backend }
 const LOCAL_USERS_KEY = 'crm_local_users'; // fallback user store (global)
 

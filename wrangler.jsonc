@@ -37,11 +37,21 @@
     }
   ],
 
-  // app.protectedcentral.com is attached as a Worker custom domain, managed at
-  // the account level (accounts/…/workers/domains) rather than declared here.
-  // Declaring it makes wrangler call the *zone* route API on every deploy,
-  // which is a separate permission and failed the deploy even though the code
-  // itself uploaded fine. The domain persists on its own.
+  // Two hostnames, one Worker:
+  //
+  //   protectedcentral.com       the public marketing site
+  //   app.protectedcentral.com   the product
+  //
+  // Both are the same script and the same bundle; src/services/hosts.ts reads
+  // the hostname and decides which of the two the visitor asked for. There is
+  // nothing to configure here for that.
+  //
+  // They are attached as Worker custom domains at the account level
+  // (accounts/…/workers/domains) rather than declared here. Declaring them
+  // makes wrangler call the *zone* route API on every deploy, which is a
+  // separate permission and failed the deploy even though the code itself
+  // uploaded fine. The domains persist on their own; `npm run domains`
+  // attaches one that is missing.
 
   // Scheduled sending. Every five minutes is frequent enough that a campaign
   // set for 09:00 goes out at 09:00-ish, and infrequent enough to stay well

@@ -3,7 +3,7 @@
  *
  * Aggregates reviews across platforms, streams new ones live, drafts AI
  * replies grounded in a business profile, runs auto-response rules, and
- * powers review-request campaigns. A fetch endpoint (public/api/reviews-fetch.php)
+ * powers review-request campaigns. A fetch endpoint (api/reviews-fetch.php)
  * can pull real reviews when configured; otherwise a realistic live simulation
  * keeps the module fully usable.
  */

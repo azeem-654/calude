@@ -23,8 +23,8 @@ import type {
   Article, BlogProject, MonthPlan, PlannedPost, PublishJob, PublishRecord,
   PublishState, PublishTarget,
 } from '../types/blogAutomation';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 const TARGETS_KEY = 'crm_blog_targets';
 const JOBS_KEY = 'crm_blog_publish_jobs';
 

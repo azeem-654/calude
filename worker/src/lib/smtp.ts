@@ -22,6 +22,7 @@
  *    in the clear on another one.
  */
 import { connect } from 'cloudflare:sockets';
+import { closeQuietly, readBefore } from './deadline';
 
 export type Encryption = 'tls' | 'ssl' | 'none';
 
@@ -95,8 +96,9 @@ class Wire {
     for (;;) {
       const complete = this.takeComplete();
       if (complete !== null) return complete;
-      if (Date.now() > deadline) throw new Error('timed out waiting for the mail server');
-      const { value, done } = await this.reader.read();
+      const { value, done } = await readBefore(
+        this.reader.read(), deadline, 'timed out waiting for the mail server',
+      );
       if (done) {
         const rest = this.buf; this.buf = '';
         if (rest) return rest;
@@ -268,7 +270,7 @@ async function attempt(
        the next port is worth trying. */
     return { ok: false, retry: true, error: `Cannot reach ${creds.host}:${port} (${msg})` };
   } finally {
-    try { await socket?.close(); } catch { /* already gone */ }
+    closeQuietly(socket);
   }
 }
 

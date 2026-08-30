@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { Radar, CheckCircle, XCircle, Loader, ArrowRight, ExternalLink } from 'lucide-react';
 import { sessionToken } from '../../services/auth';
+import { API_BASE } from '../../services/apiBase';
 
 interface PortResult {
   label: string; host: string; port: number; own: boolean;
@@ -57,8 +58,7 @@ export default function RouteCheck() {
     } catch { /* no SMTP configured yet, which is fine */ }
 
     try {
-      const base = import.meta.env.DEV ? 'http://localhost:3001' : '';
-      const resp = await fetch(`${base}/api/mail-probe.php`, {
+      const resp = await fetch(`${API_BASE}/api/mail-probe.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: sessionToken(), ...own }),

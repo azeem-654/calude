@@ -1,12 +1,12 @@
 /**
- * booking.ts — client for public/api/booking.php: server-side bookings so the
+ * booking.ts — client for api/booking.php: server-side bookings so the
  * public booking page works for real visitors (cross-device), plus the
  * publish/list endpoints the owner app uses. Every call degrades gracefully
  * when the backend isn't reachable (local/dev mode).
  */
 import type { Booking, ScheduleAvailability } from '../types';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   try {

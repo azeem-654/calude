@@ -2,15 +2,16 @@
  * billing.ts — Stripe subscription billing for sub-accounts.
  *
  * The agency stores its Stripe keys once (agency-global). For each sub-account
- * we can spin up a real Stripe Checkout Session (via public/api/stripe-checkout.php)
+ * we can spin up a real Stripe Checkout Session (via api/stripe-checkout.php)
  * and track the resulting subscription status. Payment Links are also supported
  * as a zero-backend option.
  *
  * Keys live only in this browser + are sent per-request to your own PHP proxy;
  * they are never stored server-side.
  */
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 
 export interface StripeConfig {
   secretKey: string;       // sk_… (agency)
