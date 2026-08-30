@@ -63,10 +63,34 @@ async function api(path, init = {}) {
   return body.result;
 }
 
-const zones = await api(`/zones?name=${encodeURIComponent(ZONE)}`);
+/*
+ * Three things can go wrong and they need three different answers, so they are
+ * told apart rather than reported as one "it failed". The token can be dead,
+ * the token can be alive but unable to read the zone, or the zone can genuinely
+ * not be on the account. Only the last of those is about DNS.
+ */
+try {
+  await api('/user/tokens/verify');
+} catch (e) {
+  console.error(`The token itself was refused: ${e.message}`);
+  console.error('It is expired, revoked, or not a Cloudflare API token.');
+  process.exit(1);
+}
+
+let zones;
+try {
+  zones = await api(`/zones?name=${encodeURIComponent(ZONE)}`);
+} catch (e) {
+  console.error(`The token is valid but could not read zones: ${e.message}`);
+  console.error('Add Zone → Zone: Read to it. The deploy token does not have this by');
+  console.error('default, because deploying a Worker never needs to look at a zone.');
+  process.exit(1);
+}
 if (!zones?.length) {
-  console.error(`No zone called ${ZONE} on this account.`);
-  console.error('Add the domain to Cloudflare first, and point the registrar at the nameservers it gives you.');
+  console.error(`The token can read zones, but there is no ${ZONE} among them.`);
+  console.error('Either the domain is not on this Cloudflare account yet — add it, and');
+  console.error('point the registrar at the nameservers Cloudflare gives you — or the');
+  console.error('token is scoped to specific zones and this is not one of them.');
   process.exit(1);
 }
 const zoneId = zones[0].id;

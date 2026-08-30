@@ -518,8 +518,23 @@ itself, so there is no A record to add; if a hostname is refused, something else
 is usually already serving that name — a Pages project, or an A record left over
 from the old host — and has to be removed first.
 
-The same can be done by hand in the dashboard: **Workers & Pages → crmpro →
-Settings → Domains & Routes → Add custom domain**.
+There are two other ways to run it, neither of which needs a token in a
+terminal:
+
+**From GitHub Actions** — the token is already a repository secret, so
+**Actions → "Attach domains to the Worker" → Run workflow** does the same thing
+with nothing to paste. It is manual-only, for the same reason the deploy does
+not do it.
+
+**By hand in the dashboard** — **Workers & Pages → crmpro → Settings → Domains
+& Routes → Add custom domain**.
+
+Whichever way it is run, the deploy token needs **Zone: Read** and **Workers
+Routes: Edit** added to it first; those are an edit to the existing token at
+`dash.cloudflare.com/profile/api-tokens`, not a new secret. The script tells
+the three failure modes apart — a dead token, a token that cannot read the
+zone, and a zone that is not on the account — because only the last of them is
+about DNS.
 
 ## Deployment and server-side state
 
