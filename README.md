@@ -531,12 +531,20 @@ not do it.
 **By hand in the dashboard** — **Workers & Pages → crmpro → Settings → Domains
 & Routes → Add custom domain**.
 
-Whichever way it is run, the deploy token needs **Zone: Read** and **Workers
-Routes: Edit** added to it first; those are an edit to the existing token at
-`dash.cloudflare.com/profile/api-tokens`, not a new secret. The script tells
-the three failure modes apart — a dead token, a token that cannot read the
-zone, and a zone that is not on the account — because only the last of them is
-about DNS.
+Whichever way it is run, the token needs **Zone → Zone: Read** added to it
+first, to look the zone up by name; attaching is otherwise an account-level
+call and does not need anything on the zone. Adding a name that still has an A
+or CNAME record on it *also* needs **Zone → DNS: Edit**, because a Worker
+cannot take a hostname another record already answers for — delete the record
+and Cloudflare manages that name itself.
+
+Two things the script had to learn the hard way. Its liveness check is the
+account rather than `/user/tokens/verify`: a token created as *account-owned*,
+which is what the dashboard hands you now, is not a user credential and that
+endpoint calls it invalid while every account call it is scoped for succeeds.
+And `fetch` in Node ignores `HTTPS_PROXY` unless you set `NODE_USE_ENV_PROXY=1`
+— irrelevant on a CI runner, but the difference between working and a bare 403
+behind a corporate proxy.
 
 ## Deployment and server-side state
 

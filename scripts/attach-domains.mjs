@@ -17,7 +17,11 @@
  *
  * The token needs, on top of what the deploy uses:
  *   Zone   → Zone: Read      (to look the zone up by name)
- *   Zone   → Workers Routes: Edit
+ * and, only to attach a name that still has an A or CNAME record on it:
+ *   Zone   → DNS: Edit       (to delete that record first — see below)
+ *
+ * Attaching itself is an account-level call, so Workers Routes: Edit on the
+ * zone is not required for it.
  *
  * It is safe to re-run: attaching a hostname that is already attached to this
  * same Worker is what the API call means, not an error to work around.
@@ -68,12 +72,19 @@ async function api(path, init = {}) {
  * told apart rather than reported as one "it failed". The token can be dead,
  * the token can be alive but unable to read the zone, or the zone can genuinely
  * not be on the account. Only the last of those is about DNS.
+ *
+ * The liveness check is the account, not `/user/tokens/verify`. A token created
+ * as *account-owned* — which is what the dashboard hands you now — is not a
+ * user credential and that endpoint answers "Invalid API Token" for it, while
+ * every account call it is actually scoped for succeeds. Checking the thing we
+ * need access to is both a truer test and a shorter path to the real error.
  */
 try {
-  await api('/user/tokens/verify');
+  await api(`/accounts/${account}`);
 } catch (e) {
-  console.error(`The token itself was refused: ${e.message}`);
-  console.error('It is expired, revoked, or not a Cloudflare API token.');
+  console.error(`The token could not read account ${account}: ${e.message}`);
+  console.error('Either the token is expired or revoked, or the account id is not the one');
+  console.error('it was issued for. Both are on the Cloudflare dashboard\'s API tokens page.');
   process.exit(1);
 }
 
@@ -111,10 +122,16 @@ for (const hostname of HOSTNAMES) {
 }
 
 if (failed) {
-  console.error('\nOne or more hostnames were not attached. The usual causes are a token');
-  console.error('without Workers Routes: Edit on the zone, or the hostname already being');
-  console.error('served by something else — a Pages project or an A record — which has to');
-  console.error('be removed before a Worker can take the name.');
+  console.error('\nOne or more hostnames were not attached.');
+  console.error('');
+  console.error('"already has externally managed DNS records" means exactly that: a Worker');
+  console.error('cannot take a name that an A or CNAME record already answers for. Delete');
+  console.error('the record in the DNS tab and run this again — Cloudflare then manages');
+  console.error('that name itself. Note this script cannot do it for you unless its token');
+  console.error('also carries Zone → DNS: Edit, which attaching alone does not need.');
+  console.error('');
+  console.error('An "Authentication error" instead means the token is missing a permission');
+  console.error('rather than the name being taken.');
   process.exit(1);
 }
 
