@@ -8,7 +8,7 @@
  * another workspace's records by naming it.
  */
 import { body, fail, json, ok } from '../lib/http';
-import { canAccess, dataDelete, dataGet, dataList, dataPut, userFromToken, type Env } from '../lib/db';
+import { canAccess, dataDelete, dataGet, dataList, dataPut, storageWorkspace, userFromToken, type Env } from '../lib/db';
 
 interface DataBody {
   token?: string;
@@ -43,7 +43,13 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
 
   const accountId = String(d.accountId ?? '').trim();
   if (!ACCOUNT_OK.test(accountId)) return fail('A valid account id is required.');
-  if (!canAccess(user, accountId)) return fail('That workspace is not yours to read.', 403);
+  if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to read.', 403);
+
+  /* From here on the rows are addressed by the *storage* id, which is the same
+     string for an ordinary workspace and a per-agency one for the reserved
+     `__agency__` bucket. Reading `accountId` below this line would put every
+     tenant's agency-level records back in the same pile. */
+  const ws = storageWorkspace(user, accountId);
 
   switch (d.action) {
     case 'caps':
@@ -54,7 +60,7 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
 
     case 'list':
     case 'get_all':
-      return json({ success: true, data: await dataList(env.DB, accountId) });
+      return json({ success: true, data: await dataList(env.DB, ws) });
 
     case 'bulk_set': {
       /* The browser batches a burst of edits into one request. Done key by key
@@ -69,9 +75,9 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
       for (const key of keys) {
         if (!KEY_OK.test(key)) { rejected.push(key); continue; }
         const value = items[key];
-        if (value === null) { await dataDelete(env.DB, accountId, key); continue; }
+        if (value === null) { await dataDelete(env.DB, ws, key); continue; }
         if (enc.encode(value).length > MAX_VALUE_BYTES) { rejected.push(key); continue; }
-        await dataPut(env.DB, accountId, key, value);
+        await dataPut(env.DB, ws, key, value);
       }
       return json({
         success: true,
@@ -83,7 +89,7 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
     case 'get': {
       const key = String(d.key ?? '');
       if (!KEY_OK.test(key)) return fail('A valid key is required.');
-      return json({ success: true, value: await dataGet(env.DB, accountId, key) });
+      return json({ success: true, value: await dataGet(env.DB, ws, key) });
     }
 
     case 'put': {
@@ -93,14 +99,14 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
       if (new TextEncoder().encode(value).length > MAX_VALUE_BYTES) {
         return fail('That record is too large to store — it exceeds 2MB.');
       }
-      await dataPut(env.DB, accountId, key, value);
+      await dataPut(env.DB, ws, key, value);
       return ok();
     }
 
     case 'delete': {
       const key = String(d.key ?? '');
       if (!KEY_OK.test(key)) return fail('A valid key is required.');
-      await dataDelete(env.DB, accountId, key);
+      await dataDelete(env.DB, ws, key);
       return ok();
     }
 

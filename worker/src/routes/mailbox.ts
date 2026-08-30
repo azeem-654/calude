@@ -122,7 +122,7 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
 
   const accountId = String(d.accountId ?? '').trim();
   if (!/^[A-Za-z0-9_.\-]{1,64}$/.test(accountId)) return fail('A valid workspace is required.');
-  if (!canAccess(user, accountId)) return fail('That workspace is not yours.', 403);
+  if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
 
   const key = await installSecret(env.DB, SECRET_KEY);
 

@@ -55,7 +55,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
 
     const accountId = String(d.accountId ?? '').trim();
     if (!accountId) return fail('A workspace is required to publish a booking page.');
-    if (!canAccess(user, accountId)) return fail('That workspace is not yours to publish.', 403);
+    if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to publish.', 403);
 
     const pub = (d.public ?? {}) as Record<string, unknown>;
     const slug = String(pub.slug ?? '').trim().toLowerCase();
@@ -204,7 +204,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
     const accountId = String(d.accountId ?? '').trim();
     if (!accountId) return fail('A workspace is required.');
-    if (!canAccess(user, accountId)) return fail('That workspace is not yours to read.', 403);
+    if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to read.', 403);
 
     if (action === 'list') {
       const { results } = await env.DB.prepare(

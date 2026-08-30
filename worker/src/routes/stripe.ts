@@ -10,7 +10,7 @@
  * something an endpoint will take somebody's word for.
  */
 import { addr, body, fail, json } from '../lib/http';
-import { canAccess, dataPut, nowIso, userFromToken, type Env } from '../lib/db';
+import { agencyBucketFor, canAccess, dataPut, nowIso, userFromToken, type Env } from '../lib/db';
 import { timingSafeEqual } from '../lib/crypto';
 
 const STRIPE = 'https://api.stripe.com/v1';
@@ -73,7 +73,7 @@ export async function handleStripeCheckout(req: Request, env: Env): Promise<Resp
   }
 
   const accountId = String(d.accountId ?? '').trim();
-  if (accountId && !canAccess(user, accountId)) return fail('That workspace is not yours to bill.', 403);
+  if (accountId && !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to bill.', 403);
 
   const origin = new URL(req.url).origin;
   /* Return URLs are forced back onto this deployment's own origin. Taking one
@@ -180,8 +180,10 @@ export async function handleStripeWebhook(req: Request, env: Env): Promise<Respo
             : String((obj as { status?: string }).status ?? 'active');
 
     /* Billing state is kept under the agency's own namespace, the same place
-       the dashboard reads it from, so a client cannot rewrite their own. */
-    await dataPut(env.DB, '__agency__', `crm_billing_status_${accountId}`, JSON.stringify({
+       the dashboard reads it from, so a client cannot rewrite their own. Which
+       agency that is cannot come from the caller here — Stripe is the caller —
+       so it comes from whoever owns the workspace being billed. */
+    await dataPut(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_status_${accountId}`, JSON.stringify({
       status,
       customerId: obj.customer ?? null,
       subscriptionId: obj.subscription ?? obj.id ?? null,

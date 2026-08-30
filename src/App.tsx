@@ -141,6 +141,22 @@ export default function App() {
     }
   }, [session]);
 
+  /*
+   * An agency that signed up gets its own workspace id, and nothing was
+   * pointing at it. The sync gives up when there is no active account
+   * (`if (!session || !accountId) return null`), so a new customer would use
+   * the product, see it working, and have none of it reach the server.
+   *
+   * Only when nothing is selected: an agency moves between its own
+   * sub-accounts, and forcing this on every render would drag them back to
+   * their own workspace every time they opened a client's.
+   */
+  useEffect(() => {
+    if (session?.user.role === 'agency' && session.user.accountId && !getActiveAccountId()) {
+      setActiveAccountId(session.user.accountId);
+    }
+  }, [session]);
+
   /* Signing in at /login leaves that address in the bar, and it is not a route
      the signed-in app has. Put the workspace root back before the tree swaps. */
   const signedIn = () => {

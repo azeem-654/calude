@@ -97,6 +97,79 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     return json({ success: true, token, user: { email: email.toLowerCase(), name, role: 'agency', accountId: null } });
   }
 
+  /*
+   * ── Public sign-up ──
+   *
+   * Distinct from `bootstrap`, which makes the *first* account on an install
+   * and refuses once one exists. This makes an ordinary one: its own agency,
+   * its own workspace, isolated from every other by crm_workspaces.
+   *
+   * The new account is an agency because that is what a customer of this
+   * product is — somebody who runs client sub-accounts of their own. It is not
+   * a privilege over anyone else's data; since 0004 an agency reaches only the
+   * workspaces it owns.
+   */
+  if (action === 'register') {
+    const email = addr(d.email);
+    if (!email) return fail('Enter a valid email address.');
+    const name = String(d.name ?? '').trim();
+    if (name.length < 2) return fail('Enter your name.');
+    if (name.length > 120) return fail('That name is too long.');
+    const password = String(d.password ?? '');
+    const problem = passwordProblem(password, name, email);
+    if (problem) return fail(problem);
+
+    /*
+     * A brake, because this is an open form on a public address. Not a defence
+     * against a determined attacker with many addresses — it is the difference
+     * between a script filling the table in a minute and it taking long enough
+     * to not be worth anyone's while.
+     *
+     * It counts accounts *created*, not attempts made. Counting attempts sounds
+     * stricter and is worse: a person who picks a password the rules reject,
+     * fixes it, and gets rejected again has spent three of their five before
+     * they have an account at all, and the form then locks them out for an hour
+     * for the crime of choosing badly. A request that fails validation is
+     * refused anyway and costs nothing to refuse.
+     */
+    const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const since = Math.floor(Date.now() / 1000) - 3600;
+    const recent = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM crm_signup_attempts WHERE ip = ? AND created_at > ?',
+    ).bind(ip, since).first<{ n: number }>();
+    if ((recent?.n ?? 0) >= 5) {
+      return fail('Too many accounts have been created from this connection. Try again in an hour.', 429);
+    }
+
+    const lower = email.toLowerCase();
+    const taken = await env.DB.prepare('SELECT 1 AS n FROM crm_users WHERE email = ?').bind(lower).first();
+    /* Sign-in deliberately will not say whether an address is registered; a
+       sign-up form has to, or the person cannot act on it. The address is one
+       they just typed as their own, so this tells them nothing about anyone. */
+    if (taken) return fail('That email already has an account. Sign in instead, or use another address.');
+
+    /* Their own workspace, from the start. `bootstrap` leaves account_id null
+       for the original owner and that is grandfathered, but null cannot be a
+       tenant boundary for more than one person. */
+    const accountId = crypto.randomUUID();
+
+    await env.DB.prepare(
+      'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).bind(lower, name, 'agency', accountId, await hashPassword(password), nowIso()).run();
+
+    await env.DB.prepare(
+      'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
+    ).bind(accountId, lower, nowIso()).run();
+
+    /* Recorded here, where an account actually came into existence. */
+    await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
+      .bind(ip, Math.floor(Date.now() / 1000)).run();
+
+    await sweepSessions(env.DB);
+    const token = await issueSession(env, lower);
+    return json({ success: true, token, user: { email: lower, name, role: 'agency', accountId } });
+  }
+
   /* ── Sign in ── */
   if (action === 'login') {
     const email = String(d.email ?? '').trim().toLowerCase();

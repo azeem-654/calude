@@ -654,6 +654,41 @@ plus references), so `tsc --noEmit` type-checks *nothing* and exits 0. Use
 Optional AI: add a Gemini API key in Settings — every AI feature has an offline
 fallback.
 
+## Signing up, and how tenants are kept apart
+
+Anyone can create an account at **app.protectedcentral.com/signup**. Each one is
+an agency in its own right — that is what a customer of this product is — with
+its own workspace from the moment it is created.
+
+That made the permission model's one line wrong. It used to read:
+
+```ts
+if (user.role === 'agency') return true;
+```
+
+which was correct for exactly as long as "agency" meant the single person who
+set the install up. With sign-up open, the first stranger through the door could
+read every other customer's contacts, campaigns and mailboxes by naming their
+workspace id. `crm_workspaces` (migration `0004`) records who owns what, and an
+agency now reaches only workspaces it owns, claiming an unowned one on first
+touch so an install that predates the table keeps working.
+
+Two subtler versions of the same hole went with it. `__agency__` — the bucket
+holding billing statuses and the suppression list — was one bucket for the whole
+install; it is now one per agency, suffixed server-side so the client still
+sends the plain name. And the workspace a browser synced into was
+`acct-<timestamp>`, generated locally: guessable, and identical for two people
+who registered in the same millisecond. Signing in now points the browser at the
+id the *server* issued.
+
+Sign-up is rate limited to five **created accounts** per IP per hour. Created,
+not attempted: counting attempts would spend a real person's allowance on
+passwords the rules rejected, and a request that fails validation is refused
+anyway.
+
+There is no email verification yet, because sending mail needs a mailbox the
+install does not have until someone configures one.
+
 ## Signing in
 
 Signing in happens on **app.protectedcentral.com**. Every way in from the

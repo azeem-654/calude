@@ -59,7 +59,7 @@ export async function handleTrack(req: Request, env: Env): Promise<Response> {
     const token = url.searchParams.get('token') ?? undefined;
     const user = await userFromToken(env.DB, token);
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
-    if (!canAccess(user, account)) return fail('That workspace is not yours to read.', 403);
+    if (!(await canAccess(env.DB, user, account))) return fail('That workspace is not yours to read.', 403);
 
     const since = url.searchParams.get('since') || '1970-01-01T00:00:00.000Z';
     const { results } = await env.DB.prepare(

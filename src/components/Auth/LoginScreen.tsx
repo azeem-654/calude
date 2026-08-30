@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader, UserPlus, AlertTriangle } from 'lucide-react';
-import { login, bootstrap, hasAnyUser, authStatus } from '../../services/auth';
+import { login, bootstrap, register, hasAnyUser, authStatus } from '../../services/auth';
 import { activeBranding } from '../../services/tenancy';
 import { passwordProblem, passwordStrength } from '../../services/password';
 import { LogoMark } from '../shared/Logo';
@@ -41,8 +41,13 @@ export type AuthIntent = 'signin' | 'signup';
 
 export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed: () => void; intent?: AuthIntent }) {
   const brand = activeBranding();
-  const [mode, setMode] = useState<'login' | 'setup'>(
-    hasAnyUser() ? 'login' : intent === 'signup' ? 'setup' : 'login',
+  /*
+   * setup    the very first account on an install; the server refuses it after
+   * register an ordinary account, which anybody may create
+   * login    the form for one that exists
+   */
+  const [mode, setMode] = useState<'login' | 'setup' | 'register'>(
+    hasAnyUser() ? (intent === 'signup' ? 'register' : 'login') : 'setup',
   );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,16 +68,16 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
     let alive = true;
     authStatus().then(st => {
       if (!alive) return;
-      /* An install with an owner can only be signed in to; one without can only
-         be set up. In neither case is there a choice to respect — the intent
-         matters only for what we say about it below. */
-      setMode(st.initialised ? 'login' : 'setup');
-      if (st.initialised && intent === 'signup') {
-        setNotice('This workspace already has an owner account, so there is nothing to create. '
-          + 'Sign in below, or ask whoever runs it to add you from Settings → Team & Permissions.');
-      } else if (!st.initialised && intent === 'signin') {
-        setNotice('No account exists on this workspace yet. Create the owner account below — '
-          + 'it is the first one, and it is yours.');
+      /* Whether this install has an owner decides only which *kind* of
+         creation is on offer — the first one or an ordinary one. What the
+         visitor asked for decides whether they are creating at all. */
+      if (!st.initialised) {
+        setMode('setup');
+        if (intent === 'signin') {
+          setNotice('Nobody has set this up yet. The account you create below is the first one, and it is yours.');
+        }
+      } else {
+        setMode(intent === 'signup' ? 'register' : 'login');
       }
       setTestLogin(st.testLogin ?? null);
       if (!st.writable) {
@@ -87,6 +92,15 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
     e.preventDefault();
     setError(''); setNotice(''); setBusy(true);
     try {
+      if (mode === 'register') {
+        const problem = signupProblem(name, email, password, confirm, agreed);
+        if (problem) { setError(problem); return; }
+        const res = await register(email.trim(), password, name.trim());
+        if (res.ok) { onAuthed(); return; }
+        setError(res.error || 'Could not create the account.');
+        return;
+      }
+
       if (mode === 'setup') {
         // Check here as well as on the server so the answer is instant and the
         // server stays the thing that actually decides.
@@ -125,14 +139,18 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
 
         <div style={{ background: '#fff', borderRadius: 22, padding: '32px 30px', boxShadow: '0 12px 40px -12px rgba(16,24,40,0.18)' }}>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: INK, margin: '0 0 4px', letterSpacing: '-0.02em', textAlign: 'center' }}>
-            {mode === 'setup' ? 'Create your owner account' : brand.loginHeadline}
+            {mode === 'setup' ? 'Create your owner account'
+              : mode === 'register' ? `Create your ${brand.appName} account`
+                : brand.loginHeadline}
           </h1>
           <p style={{ fontSize: 13, color: MUTED, margin: '0 0 24px', textAlign: 'center' }}>
-            {mode === 'setup' ? 'Set up the agency owner login to get started.' : 'Enter your credentials to continue.'}
+            {mode === 'setup' ? 'Set up the agency owner login to get started.'
+              : mode === 'register' ? 'Your own workspace, free to start. No card needed.'
+                : 'Enter your credentials to continue.'}
           </p>
 
           <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
-            {mode === 'setup' && (
+            {mode !== 'login' && (
               <div style={{ position: 'relative' }}>
                 <UserPlus size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
                 <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
@@ -140,17 +158,17 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             )}
             <div style={{ position: 'relative' }}>
               <Mail size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
-              <input style={inp} type={mode === 'setup' ? 'email' : 'text'} required autoComplete={mode === 'setup' ? 'email' : 'username'}
+              <input style={inp} type={mode !== 'login' ? 'email' : 'text'} required autoComplete={mode !== 'login' ? 'email' : 'username'}
                 value={email} onChange={e => setEmail(e.target.value)}
-                placeholder={mode === 'setup' ? 'Email address' : 'Email or username'} />
+                placeholder={mode !== 'login' ? 'Email address' : 'Email or username'} />
             </div>
             <div style={{ position: 'relative' }}>
               <Lock size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
-              <input style={inp} type="password" required autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+              <input style={inp} type="password" required autoComplete={mode !== 'login' ? 'new-password' : 'current-password'}
                 value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
             </div>
 
-            {mode === 'setup' && password.length > 0 && (
+            {mode !== 'login' && password.length > 0 && (
               <div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {[0, 1, 2].map(i => (
@@ -164,7 +182,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               </div>
             )}
 
-            {mode === 'setup' && (
+            {mode !== 'login' && (
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
                 <input style={inp} type="password" required autoComplete="new-password" value={confirm}
@@ -175,13 +193,14 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               </div>
             )}
 
-            {mode === 'setup' && (
+            {mode !== 'login' && (
               <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer' }}>
                 <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
                   style={{ marginTop: 2, accentColor: INK, cursor: 'pointer' }} />
                 <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                  I am the owner of this workspace and accept responsibility for the customer
-                  data stored in it.
+                  {mode === 'register'
+                    ? 'I accept responsibility for the customer data I put in this workspace, and confirm I am allowed to contact the people I load into it.'
+                    : 'I am the owner of this workspace and accept responsibility for the customer data stored in it.'}
                 </span>
               </label>
             )}
@@ -195,15 +214,32 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             {error && <div style={{ fontSize: 12.5, color: '#e5484d', fontWeight: 600, textAlign: 'center', lineHeight: 1.5 }}>{error}</div>}
 
             <button type="submit" disabled={busy} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', marginTop: 4 }}>
-              {busy || checking ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>{mode === 'setup' ? 'Create account' : 'Sign in'} <ArrowRight size={15} /></>}
+              {busy || checking ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} /></>}
             </button>
           </form>
         </div>
 
-        <p style={{ fontSize: 11.5, color: MUTED, textAlign: 'center', marginTop: 18 }}>
+        {/* Whichever form is showing, the other one is a click away. Arriving
+            at the wrong door is the commonest thing that happens here. */}
+        {mode !== 'setup' && (
+          <p style={{ fontSize: 12.5, color: MUTED, textAlign: 'center', marginTop: 18 }}>
+            {mode === 'login' ? 'No account yet? ' : 'Already have an account? '}
+            <button
+              type="button"
+              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}
+              style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 700, color: INK, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {mode === 'login' ? 'Create one' : 'Sign in'}
+            </button>
+          </p>
+        )}
+
+        <p style={{ fontSize: 11.5, color: MUTED, textAlign: 'center', marginTop: 10 }}>
           {mode === 'login'
-            ? 'Locked out? The owner account can be reset from the Cloudflare dashboard, in the crmpro D1 database.'
-            : 'You can add client logins later from the Agency dashboard.'}
+            ? 'Locked out? The owner account can be reset from the crmpro D1 database in Cloudflare.'
+            : mode === 'register'
+              ? 'Your workspace is yours alone. Nobody else who signs up can see it.'
+              : 'You can add client logins later from the Agency dashboard.'}
         </p>
 
         {testLogin && mode === 'login' && (

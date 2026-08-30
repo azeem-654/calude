@@ -70,7 +70,7 @@ export async function handleUnsubscribe(req: Request, env: Env): Promise<Respons
   if (q.get('list')) {
     const user = await userFromToken(env.DB, q.get('token') ?? undefined);
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
-    if (!canAccess(user, account)) return fail('That workspace is not yours to read.', 403);
+    if (!(await canAccess(env.DB, user, account))) return fail('That workspace is not yours to read.', 403);
     const since = q.get('since') || '1970-01-01T00:00:00.000Z';
     const { results } = await env.DB.prepare(
       'SELECT email, campaign_id AS campaignId, at FROM crm_unsubscribes WHERE account_id = ? AND at > ? ORDER BY at LIMIT 5000',

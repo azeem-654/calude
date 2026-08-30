@@ -101,11 +101,86 @@ export async function userFromToken(db: D1Database, token: string | undefined): 
   return row ?? null;
 }
 
-/** Agency can touch any account; a client only their own. */
-export function canAccess(user: SessionUser | null, accountId: string): boolean {
+/**
+ * May this session touch this workspace?
+ *
+ * This used to be one line — `if (user.role === 'agency') return true` — and it
+ * was correct for exactly as long as "agency" meant the single person who set
+ * the install up. Public sign-up ends that: everyone who registers is an agency
+ * running their own client sub-accounts, so under the old rule the first
+ * stranger through the door could read every other customer's workspace by
+ * naming its id.
+ *
+ * An agency now reaches a workspace it owns, and claims an unowned one the
+ * first time it touches it. First-touch claiming is what lets an install that
+ * predates `crm_workspaces` keep working — its rows were backfilled to the
+ * original owner by the migration, and anything created after that is claimed
+ * by whoever creates it — without a flag day where existing customers are
+ * locked out of their own data.
+ *
+ * Reserved ids are already namespaced per agency by `storageWorkspace`, so by
+ * the time one arrives here it carries its owner in the id and needs no lookup.
+ */
+export async function canAccess(
+  db: D1Database,
+  user: SessionUser | null,
+  accountId: string,
+): Promise<boolean> {
   if (!user) return false;
-  if (user.role === 'agency') return true;
-  return user.accountId === accountId;
+  if (user.role !== 'agency') return user.accountId === accountId;
+
+  if (accountId.startsWith(RESERVED_PREFIX)) {
+    /* The caller may name the reserved bucket and nothing else; storageWorkspace
+       then binds that name to them, so what they get is their own. An id that
+       arrives already suffixed is someone naming another agency's bucket
+       directly, which is the one thing this has to refuse. */
+    return accountId === RESERVED_AGENCY;
+  }
+
+  const row = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
+    .bind(accountId).first<{ owner_email: string }>();
+  if (row) return row.owner_email === user.email;
+
+  /* Unowned: claim it. `INSERT OR IGNORE` rather than a plain insert because
+     two requests from the same agency can race here, and losing that race is
+     not a reason to refuse the second one. */
+  await db.prepare('INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)')
+    .bind(accountId, user.email, nowIso()).run();
+  const now = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
+    .bind(accountId).first<{ owner_email: string }>();
+  return now?.owner_email === user.email;
+}
+
+const RESERVED_PREFIX = '__';
+export const RESERVED_AGENCY = '__agency__';
+
+/**
+ * The id a workspace's rows are actually stored under.
+ *
+ * `__agency__` is the bucket the app keeps things that belong to an agency
+ * rather than to one of its clients — billing statuses, the suppression list.
+ * One install, one agency, one bucket. With sign-up open it has to be one
+ * bucket *each*, or every new tenant reads the last one's billing, so a
+ * reserved id is suffixed with the agency that owns it. The client still sends
+ * the plain name and never has to know.
+ */
+export function storageWorkspace(user: SessionUser, accountId: string): string {
+  if (!accountId.startsWith(RESERVED_PREFIX)) return accountId;
+  const owner = user.role === 'agency' ? user.email : (user.accountId ?? user.email);
+  return `${accountId}:${owner}`;
+}
+
+/**
+ * The agency bucket for a workspace, for callers with no session of their own.
+ *
+ * A Stripe webhook arrives from Stripe, not from a browser, so there is no user
+ * to namespace against — but the workspace it names has an owner, and that is
+ * the same answer.
+ */
+export async function agencyBucketFor(db: D1Database, accountId: string): Promise<string> {
+  const row = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
+    .bind(accountId).first<{ owner_email: string }>();
+  return row ? `${RESERVED_AGENCY}:${row.owner_email}` : RESERVED_AGENCY;
 }
 
 /**
@@ -147,4 +222,9 @@ export async function requireSessionForSocket(
 export async function sweepSessions(db: D1Database): Promise<void> {
   await db.prepare('DELETE FROM crm_sessions WHERE expires_at <= ?')
     .bind(Math.floor(Date.now() / 1000)).run();
+  /* The sign-up brake only ever asks about the last hour, so rows older than
+     that are dead weight. Swept here rather than on its own schedule because
+     this already runs on every sign-in and every registration. */
+  await db.prepare('DELETE FROM crm_signup_attempts WHERE created_at <= ?')
+    .bind(Math.floor(Date.now() / 1000) - 7200).run();
 }

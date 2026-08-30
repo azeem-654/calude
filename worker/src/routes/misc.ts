@@ -11,7 +11,7 @@
  *   install         no longer a thing, and says so
  */
 import { body, fail, headerSafe, json, ok } from '../lib/http';
-import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, userFromToken, type Env } from '../lib/db';
+import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
 import { imapFetch } from '../lib/imap';
 import { loadMailbox } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
@@ -164,15 +164,15 @@ export async function handleDeliverability(req: Request, env: Env): Promise<Resp
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
 
   const accountId = String(d.accountId ?? '').trim();
-  if (accountId && !canAccess(user, accountId)) return fail('That workspace is not yours to read.', 403);
+  if (accountId && !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to read.', 403);
 
   if (d.action === 'get_suppressions') {
-    const raw = await dataGet(env.DB, accountId || '__agency__', 'crm_suppressions');
+    const raw = await dataGet(env.DB, storageWorkspace(user, accountId || RESERVED_AGENCY), 'crm_suppressions');
     return json({ success: true, suppressions: raw ? JSON.parse(raw) : [] });
   }
 
   if (d.action === 'save_suppressions') {
-    await dataPut(env.DB, accountId || '__agency__', 'crm_suppressions', JSON.stringify(d.list ?? []));
+    await dataPut(env.DB, storageWorkspace(user, accountId || RESERVED_AGENCY), 'crm_suppressions', JSON.stringify(d.list ?? []));
     return ok();
   }
 

@@ -112,6 +112,26 @@ async function php(action: string, body: Record<string, unknown>): Promise<{ ok:
 }
 
 /* ── Bootstrap: create the first (agency) owner ── */
+/**
+ * Create an ordinary account on an install that already has an owner.
+ *
+ * `bootstrap` is the first-run path and the server refuses it once anybody
+ * exists; this is the one the public sign-up form uses. There is no local
+ * fallback on purpose — an account that exists only in this browser's storage
+ * is not an account, and offering one would leave somebody believing they had
+ * signed up for a product they cannot sign in to from anywhere else.
+ */
+export async function register(email: string, password: string, name: string): Promise<{ ok: boolean; error?: string; code?: string }> {
+  const res = await php('register', { email, password, name });
+  if (!res) return { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
+  if (res.ok) return login(email, password);
+  return {
+    ok: false,
+    error: (res.data.error as string) || 'Could not create the account.',
+    code: (res.data.code as string) || undefined,
+  };
+}
+
 export async function bootstrap(email: string, password: string, name: string): Promise<{ ok: boolean; error?: string; code?: string }> {
   const res = await php('bootstrap', { email, password, name });
   if (res) {
@@ -137,10 +157,38 @@ export async function bootstrap(email: string, password: string, name: string): 
 
 function pub(u: LocalUser): AuthUser { return { email: u.email, name: u.name, role: u.role, accountId: u.accountId }; }
 
+/**
+ * Written directly rather than through services/tenancy, which imports this
+ * module — going the other way as well would be a cycle.
+ */
+function setActiveWorkspace(id: string) {
+  try { window.localStorage.setItem('crm_active_account', id); } catch { /* private mode */ }
+}
+
 export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
   const res = await php('login', { email, password });
   if (res) {
-    if (res.ok) { setSession({ token: res.data.token as string, user: res.data.user as AuthUser, backend: 'php' }); return { ok: true }; }
+    if (res.ok) {
+      const user = res.data.user as AuthUser;
+      setSession({ token: res.data.token as string, user, backend: 'php' });
+      /*
+       * Point this browser at the workspace the server says is theirs.
+       *
+       * The tenancy layer seeds a local sub-account named `acct-<timestamp>` the
+       * first time it is asked for one, and that had already been made active by
+       * the time a newly registered account arrived here — so a new customer
+       * synced into an id their browser invented rather than the one the server
+       * issued them. Two people registering in the same millisecond would have
+       * generated the same one, and the name is guessable besides, which is not
+       * something a tenant boundary should be.
+       *
+       * Set on sign-in rather than on every render: an agency moves between its
+       * own client sub-accounts while it works, and this must not drag them home
+       * every time the app re-renders.
+       */
+      if (user.accountId) setActiveWorkspace(user.accountId);
+      return { ok: true };
+    }
     return { ok: false, error: (res.data.error as string) || 'Login failed.' };
   }
   // local fallback
