@@ -538,9 +538,12 @@ about DNS.
 
 ## Deployment and server-side state
 
-Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml`:
-`npm ci` → both typechecks → `npm run build` with `VITE_BASE=/` → apply any new
-D1 migrations → `npx wrangler deploy`. Migrations run before the deploy on
+Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml` on
+**Node 22**: `npm ci` → both typechecks → `npm run build` with `VITE_BASE=/` →
+apply any new D1 migrations → `npx wrangler deploy`. The Node version is not a
+preference — wrangler 4.127 refuses to start below 22, and while the workflow
+pinned 20 every run built the app and then fell over on the first wrangler
+command, so nothing shipped at all. Migrations run before the deploy on
 purpose: a Worker expecting a column its database does not have yet is a broken
 deploy, and this ordering makes that impossible.
 

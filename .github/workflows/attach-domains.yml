@@ -37,7 +37,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # The script is dependency-free — it talks to the Cloudflare REST API with
       # fetch — so there is nothing to install and no lockfile to restore.
