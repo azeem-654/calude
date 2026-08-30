@@ -1,11 +1,11 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- The whole server-side store, on D1.
 --
--- Freehostia had two of these: a MySQL `crm_data` table when one was
--- configured, and otherwise a set of guarded PHP files under api/data/ holding
--- users, sessions, bookings and tracking. The file store existed because shared
--- hosting has nowhere safe to put a database and no guarantee .htaccess is
--- honoured. Neither problem exists here, so both collapse into one D1 database.
+-- There used to be two of these: a MySQL `crm_data` table when one was
+-- configured, and otherwise a set of guarded PHP files holding users, sessions,
+-- bookings and tracking. The file store existed because shared hosting has
+-- nowhere safe to put a database and no guarantee .htaccess is honoured.
+-- Neither problem exists here, so both collapse into one D1 database.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- The generic per-account key/value store the app syncs into. Same shape the
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS crm_unsubscribes (
 
 -- Public booking pages and their guest bookings.
 --
--- On Freehostia every one of these lived under the single literal account id
+-- Every one of these used to live under the single literal account id
 -- '__booking__', so in a multi-tenant install the last workspace to open
 -- Scheduling silently overwrote every other one's booking page, credentials
 -- and guest list. Here the account owns the row.

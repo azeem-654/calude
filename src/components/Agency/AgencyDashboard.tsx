@@ -448,7 +448,7 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
   );
 }
 
-/* ── Cloud database (Freehostia MySQL) installer + status ── */
+/* ── Cloud database status ── */
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 function CloudModal({ current, onDone, onClose }: { current: 'cloud' | 'local'; onDone: (s: 'cloud' | 'local') => void; onClose: () => void }) {
   const [form, setForm] = useState({ host: 'localhost', db: '', user: '', pass: '' });
@@ -500,7 +500,7 @@ function CloudModal({ current, onDone, onClose }: { current: 'cloud' | 'local'; 
           {!configured && (
             <>
               <div style={{ fontSize: 12.5, color: '#5c6066', lineHeight: 1.6, background: '#f7f8f9', borderRadius: 12, padding: '12px 14px' }}>
-                <strong style={{ color: INK }}>Freehostia setup:</strong> in your cPanel → <em>MySQL Databases</em>, create a database + user and add the user to the database (all privileges). Then paste those details here — we'll test the connection, create the table, and turn on cloud sync.
+                <strong style={{ color: INK }}>Nothing to set up:</strong> this deployment stores everything in Cloudflare D1, created and migrated with the app. Cloud sync is on for every workspace by default — there are no database details to enter.
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div><label style={lbl}>MySQL host</label><input style={inp} value={form.host} onChange={e => setForm({ ...form, host: e.target.value })} placeholder="localhost" /></div>

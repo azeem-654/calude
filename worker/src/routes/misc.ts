@@ -57,10 +57,10 @@ export async function handleImapFetch(req: Request, env: Env): Promise<Response>
 /* ── What can this deployment reach? ─────────────────────────────────────── */
 
 /**
- * On Freehostia this answered a question that mattered enormously: which mail
- * ports does this shared host let out? Cloudflare's answer is different and
- * mostly better — 443 always works, and outbound 25 never does — so this now
- * reports what is true here rather than pretending the old uncertainty.
+ * This once answered a question that mattered enormously on shared hosting:
+ * which mail ports does this host let out? Cloudflare's answer is different
+ * and mostly better — 443 always works, and outbound 25 never does — so it
+ * now reports what is true here rather than pretending the old uncertainty.
  */
 export async function handleMailProbe(req: Request, env: Env): Promise<Response> {
   const d = await body<{ token?: string; host?: string; port?: number; encryption?: string }>(req);
@@ -331,8 +331,8 @@ export async function handleDiagnostics(req: Request, env: Env): Promise<Respons
 /**
  * There is nothing to install any more.
  *
- * On Freehostia this created a MySQL table and wrote a config.php with the
- * database password in it. Here the database is a binding and the schema is a
+ * This used to create a MySQL table and write a config.php with the database
+ * password in it. Here the database is a binding and the schema is a
  * migration, so the honest answer is to say so rather than pretend a wizard
  * still does something.
  */

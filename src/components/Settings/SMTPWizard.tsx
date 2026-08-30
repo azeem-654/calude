@@ -25,13 +25,7 @@ interface FormErrors {
 
 /* ── providers ── */
 const PROVIDERS = [
-  /* Freehostia puts every account on one fixed host rather than a per-domain
-     name, so this can be filled in completely — only the mailbox address and
-     its password are left to type. */
-  { id: 'freehostia', label: 'Freehostia', emoji: '🏠', desc: 'mbox.freehostia.com · sign in with the full email address', color: '#17191c',
-    smtp: { host: 'mbox.freehostia.com', port: '465', encryption: 'ssl' as const, user: '', pass: '', fromName: '', fromEmail: '' },
-    imap: { host: 'mbox.freehostia.com', port: '993', user: '', pass: '', folder: 'INBOX' } },
-  { id: 'cpanel', label: 'Other cPanel host', emoji: '🗄️', desc: 'Hosting account email · usually mail.yourdomain.com', color: '#475569',
+  { id: 'cpanel', label: 'cPanel / shared host', emoji: '🗄️', desc: 'Hosting account email · usually mail.yourdomain.com', color: '#475569',
     smtp: { host: '', port: '465', encryption: 'ssl' as const, user: '', pass: '', fromName: '', fromEmail: '' },
     imap: { host: '', port: '993', user: '', pass: '', folder: 'INBOX' } },
   { id: 'gmail', label: 'Gmail', emoji: '📧', desc: 'smtp.gmail.com · App Password required', color: '#ea4335',
@@ -381,11 +375,12 @@ const DEFAULT_IMAP: IMAPConfig = { host: '', port: '993', user: '', pass: '', fo
 export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) {
   const [step, setStep] = useState<StepId>('provider');
   /* Highlight the tile that matches what is already saved, so the selection
-     describes the current settings instead of contradicting them. Freehostia
-     is the fallback for a fresh install. */
+     describes the current settings instead of contradicting them. Nothing is
+     preselected on a fresh install — every customer brings a different mail
+     server, and guessing one for them only has to be undone. */
   const [selectedProvider, setSelectedProvider] = useState(() => {
     const host = (initialSMTP?.host || '').toLowerCase();
-    if (!host) return 'freehostia';
+    if (!host) return '';
     const match = PROVIDERS.find(p => p.smtp.host && p.smtp.host.toLowerCase() === host);
     return match ? match.id : 'custom';
   });
@@ -514,18 +509,6 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 </button>
               ))}
             </div>
-            {selectedProvider === 'freehostia' && (
-              <div style={{ padding: '12px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px', border: '1px solid #d5d8dd', marginBottom: '16px', display: 'flex', gap: '8px' }}>
-                <Info size={14} color="#17191c" style={{ flexShrink: 0, marginTop: '1px' }} />
-                <div style={{ fontSize: '12px', color: '#4338ca', margin: 0, lineHeight: 1.6 }}>
-                  <strong>Freehostia setup — already filled in:</strong><br />
-                  Outgoing: <code>mbox.freehostia.com</code> · Port <code>465</code> SSL (<code>587</code> also works)<br />
-                  Incoming: <code>mbox.freehostia.com</code> · Port <code>993</code> SSL<br />
-                  Username: your <strong>full email address</strong>, not just the part before the @<br />
-                  Password: that mailbox's own password, not your hosting login
-                </div>
-              </div>
-            )}
             {selectedProvider === 'cpanel' && (
               <div style={{ padding: '12px 14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'flex', gap: '8px' }}>
                 <Info size={14} color="#475569" style={{ flexShrink: 0, marginTop: '1px' }} />

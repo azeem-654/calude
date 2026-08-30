@@ -1,9 +1,9 @@
 /**
  * One Worker, serving the app and its API.
  *
- * On Freehostia these were two different things: Apache served the built React
- * files, and each URL under /api/ was a separate PHP script that re-opened the
- * database, re-read the session and re-declared its own CORS headers. Here the
+ * This used to be two different things: a web server for the built React files,
+ * and a separate PHP script per URL under /api/, each re-opening the database,
+ * re-reading the session and re-declaring its own CORS headers. Here the
  * platform serves the assets and everything under /api/ arrives at this
  * router, which resolves the session once and hands off.
  *

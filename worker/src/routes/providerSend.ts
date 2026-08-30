@@ -2,10 +2,10 @@
  * Sending over HTTPS, for customers who use a provider rather than their own
  * SMTP server.
  *
- * On Freehostia this existed because shared hosting blocks outbound mail ports
- * and port 443 is the one route that always survives. Here SMTP works, so this
- * is no longer a fallback — it is simply the other thing customers use, and
- * for several of these the API is the only way in.
+ * This began as a way around shared hosting blocking outbound mail ports, where
+ * 443 was the one route that always survived. Here SMTP works, so it is no
+ * longer a fallback — it is simply the other thing customers use, and for
+ * several of these the API is the only way in.
  *
  * It stays server-side for the reason it always should have been: none of
  * these APIs send an Access-Control-Allow-Origin header, so a browser refuses

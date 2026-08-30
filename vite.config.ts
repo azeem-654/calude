@@ -27,20 +27,20 @@ export default defineConfig({
   base: process.env.VITE_BASE ?? '/calude/',
   /*
    * In production the same host serves the app and the PHP endpoints, so a
-   * request to /api/track.php is answered by PHP. In development it was
-   * answered by Vite, which handed back the source of the script as a file —
-   * so open tracking, click tracking and the unsubscribe link could not be
-   * tried locally at all, and only broke once deployed.
+   * request to /api/track.php is answered by the Worker. In development Vite
+   * would otherwise answer it itself and hand back the built asset, so open
+   * tracking, click tracking and the unsubscribe link could not be exercised
+   * locally at all — they only broke once deployed.
    *
-   * Pointing /api at a local `php -S 127.0.0.1:3001 -t public` makes
-   * development behave like production. With no PHP server running the
-   * requests fail exactly as they did before, so this costs nothing when it
-   * is not wanted.
+   * Pointing /api at a local `npx wrangler dev` makes development behave like
+   * production, against the real runtime and a local D1. With nothing running
+   * on 8787 the requests fail exactly as they did before, so this costs
+   * nothing when it is not wanted.
    */
   server: {
     proxy: {
       '^/[^/]*/?api/.*\\.php': {
-        target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:3001',
+        target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8787',
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^.*?(\/api\/)/, '$1'),
       },
