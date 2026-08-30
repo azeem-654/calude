@@ -5,6 +5,8 @@ import {
   PanelLeftClose, PanelLeftOpen, Menu, Scissors, Palette,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { LogoMark } from '../shared/Logo';
+import { activeBranding } from '../../services/tenancy';
 
 const navGroups = [
   {
@@ -132,18 +134,11 @@ export default function Sidebar() {
         gap: '8px', flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-          <div style={{
-            width: '32px', height: '32px', borderRadius: '9px', flexShrink: 0,
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
-          }}>
-            <Zap size={17} color="white" fill="white" />
-          </div>
+          <LogoMark size={32} />
           {isFull && (
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ color: 'white', fontWeight: 700, fontSize: '14.5px', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>CRMPro</div>
-              <div style={{ color: '#5f6b7f', fontSize: '10.5px', whiteSpace: 'nowrap' }}>Business Suite</div>
+              <div style={{ color: 'white', fontWeight: 700, fontSize: '14.5px', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>{activeBranding().appName}</div>
+              <div style={{ color: '#5f6b7f', fontSize: '10.5px', whiteSpace: 'nowrap' }}>Every step, in the open.</div>
             </div>
           )}
         </div>

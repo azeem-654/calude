@@ -1,4 +1,18 @@
-# CRM Pro — multi-tenant marketing CRM
+# Protected Central — multi-tenant marketing CRM
+
+> **Every step, in the open.**
+
+The name, the motto and the mark are set in three places and nowhere else:
+`activeBranding()` in `src/services/tenancy.ts` is the product name every screen
+reads, `public/favicon.svg` is the browser tab, and `src/components/shared/Logo.tsx`
+is the same mark for the nav, the login screen and the marketing header. A
+sub-account that sets its own `branding.appName` still overrides all of it —
+that is what the white-label layer is for.
+
+The mark is a shield with its centre cut out: "protected" and "central" in one
+figure. The hole is not styling — it is what keeps the icon legible at the 16px
+a browser tab actually renders.
+
 
 A GoHighLevel-style CRM SaaS built with **React + TypeScript + Vite**, running on
 one Cloudflare Worker deployed by GitHub Actions. An agency owns isolated client

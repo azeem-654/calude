@@ -83,11 +83,21 @@ export interface AuthStatus {
 export async function authStatus(): Promise<AuthStatus> {
   const res = await php('status', {});
   if (res?.ok) {
+    /*
+     * Two names for one fact. This asked for `initialised`; the Worker answers
+     * `hasOwner`, and has since the PHP backend was replaced. Neither side was
+     * wrong on its own and nothing failed loudly — the field simply read as
+     * undefined, every visitor was told the product had never been set up, and
+     * the sign-in link opened the create-the-owner form on an install that
+     * already had an owner. Read both, so the screen is right whichever name
+     * the server on the other end happens to use.
+     */
+    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown };
     return {
-      initialised: !!res.data.initialised,
-      writable: res.data.writable !== false,
+      initialised: !!(data.initialised ?? data.hasOwner),
+      writable: data.writable !== false,
       backend: 'php',
-      testLogin: (res.data.testLogin as AuthStatus['testLogin']) ?? null,
+      testLogin: (data.testLogin as AuthStatus['testLogin']) ?? null,
     };
   }
   return { initialised: hasAnyUser(), writable: true, backend: 'local', testLogin: null };

@@ -61,7 +61,11 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
   /* Lets the login screen decide between "set up the owner account" and
      "sign in" without leaking whether any particular address is registered. */
   if (action === 'status') {
-    return json({ success: true, hasOwner: await hasAnyUser(env.DB) });
+    const owner = await hasAnyUser(env.DB);
+    /* `initialised` is what the client has always asked for and `hasOwner` is
+       what this has always answered. Both, so neither side has to be the one
+       that changes, and an older bundle still in somebody's cache keeps working. */
+    return json({ success: true, hasOwner: owner, initialised: owner, writable: true });
   }
 
   if (action === 'me') {

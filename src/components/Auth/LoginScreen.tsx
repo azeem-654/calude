@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Layers, Mail, Lock, ArrowRight, Loader, UserPlus, AlertTriangle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader, UserPlus, AlertTriangle } from 'lucide-react';
 import { login, bootstrap, hasAnyUser, authStatus } from '../../services/auth';
 import { activeBranding } from '../../services/tenancy';
 import { passwordProblem, passwordStrength } from '../../services/password';
+import { LogoMark } from '../shared/Logo';
 
 const INK = '#17191c';
 
@@ -24,9 +25,25 @@ function signupProblem(name: string, email: string, password: string, confirm: s
 
 const MUTED = '#8a8f98';
 
-export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
+/**
+ * Which form the visitor asked for.
+ *
+ * The marketing site has two doors and they have to lead somewhere different.
+ * Before this the screen worked the mode out entirely from the server and the
+ * visitor's own choice was discarded, so "Sign in" and "Sign up" opened the
+ * same form and one of the two was always the wrong one.
+ *
+ * The server still has the final say on what is *possible* — you cannot create
+ * an owner on an install that has one, and you cannot sign in to one that does
+ * not — but where both are possible the intent wins.
+ */
+export type AuthIntent = 'signin' | 'signup';
+
+export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed: () => void; intent?: AuthIntent }) {
   const brand = activeBranding();
-  const [mode, setMode] = useState<'login' | 'setup'>(hasAnyUser() ? 'login' : 'setup');
+  const [mode, setMode] = useState<'login' | 'setup'>(
+    hasAnyUser() ? 'login' : intent === 'signup' ? 'setup' : 'login',
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -46,7 +63,17 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
     let alive = true;
     authStatus().then(st => {
       if (!alive) return;
+      /* An install with an owner can only be signed in to; one without can only
+         be set up. In neither case is there a choice to respect — the intent
+         matters only for what we say about it below. */
       setMode(st.initialised ? 'login' : 'setup');
+      if (st.initialised && intent === 'signup') {
+        setNotice('This workspace already has an owner account, so there is nothing to create. '
+          + 'Sign in below, or ask whoever runs it to add you from Settings → Team & Permissions.');
+      } else if (!st.initialised && intent === 'signin') {
+        setNotice('No account exists on this workspace yet. Create the owner account below — '
+          + 'it is the first one, and it is yours.');
+      }
       setTestLogin(st.testLogin ?? null);
       if (!st.writable) {
         setError('This server cannot write to api/data/, so accounts cannot be saved. Set that folder to 755 in your host file manager, then reload.');
@@ -54,7 +81,7 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
       setChecking(false);
     });
     return () => { alive = false; };
-  }, []);
+  }, [intent]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +120,7 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 22 }}>
           {brand.logoUrl
             ? <img src={brand.logoUrl} alt="" style={{ height: 34, maxWidth: 180, objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-            : <><Layers size={26} color={INK} strokeWidth={2.4} /><span style={{ fontSize: 22, fontWeight: 800, color: INK, letterSpacing: '-0.03em' }}>{brand.appName}</span></>}
+            : <><LogoMark size={32} /><span style={{ fontSize: 22, fontWeight: 800, color: INK, letterSpacing: '-0.03em' }}>{brand.appName}</span></>}
         </div>
 
         <div style={{ background: '#fff', borderRadius: 22, padding: '32px 30px', boxShadow: '0 12px 40px -12px rgba(16,24,40,0.18)' }}>
@@ -175,7 +202,7 @@ export default function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
 
         <p style={{ fontSize: 11.5, color: MUTED, textAlign: 'center', marginTop: 18 }}>
           {mode === 'login'
-            ? 'Locked out? Delete api/data/users.php on your host to reset the owner account, then reload.'
+            ? 'Locked out? The owner account can be reset from the Cloudflare dashboard, in the crmpro D1 database.'
             : 'You can add client logins later from the Agency dashboard.'}
         </p>
 

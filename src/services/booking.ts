@@ -128,7 +128,7 @@ export function buildIcs(opts: { title: string; description?: string; location?:
     `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}T${String(dt.getHours()).padStart(2, '0')}${String(dt.getMinutes()).padStart(2, '0')}00`;
   const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
   const ics = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CRMPro//Booking//EN',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Protected Central//Booking//EN',
     'BEGIN:VEVENT',
     `UID:${Date.now()}@crmpro-booking`,
     `DTSTAMP:${stamp(new Date())}`,

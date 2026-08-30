@@ -236,9 +236,9 @@ function PersistentTestBar({ smtp, imap }: { smtp: SMTPConfig; imap: IMAPConfig 
           token: sessionToken(),
           host: smtp.host, port: smtp.port, username: smtp.user, password: smtp.pass,
           secure: smtp.encryption === 'ssl', encryption: smtp.encryption,
-          fromName: smtp.fromName || 'CRMPro',
+          fromName: smtp.fromName || 'Protected Central',
           fromEmail: smtp.fromEmail || smtp.user, to: sendTo.trim(),
-          subject: '✅ CRMPro SMTP Test',
+          subject: '✅ Protected Central SMTP Test',
           html: `<div style="font-family:Inter,sans-serif;max-width:560px;padding:32px"><h2 style="color:#17191c">✅ SMTP Connection Verified</h2><p>Your SMTP integration is working correctly.</p><table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0"><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Host</td><td style="padding:8px;border:1px solid #e2e8f0">${smtp.host}:${smtp.port}</td></tr><tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600">Sent at</td><td style="padding:8px;border:1px solid #e2e8f0">${new Date().toLocaleString()}</td></tr></table></div>`,
         }),
       });

@@ -31,9 +31,10 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, ArrowUpRight, BarChart3, Building2, Check, ChevronDown,
-  Info, Layers, MousePointerClick, Send, Sparkles, Users,
+  Info, MousePointerClick, Send, Sparkles, Users,
 } from 'lucide-react';
 import { activeBranding } from '../../services/tenancy';
+import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { clamp01, mix, smoothstep, useScrollScene } from './useScrollScene';
 import './site.css';
@@ -185,8 +186,8 @@ const SCENES: Scene[] = [
         {LIFECYCLE.map(s => (
           <li key={s.n}>
             <span className="mono" style={{ color: 'var(--lime-deep)' }}>{s.n}</span>
-            <h3 style={{ margin: '8px 0 5px', fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{s.title}</h3>
-            <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-mute)' }}>{s.body}</p>
+            <h3 style={{ margin: '8px 0 5px', fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{s.title}</h3>
+            <p style={{ margin: 0, fontSize: 'clamp(12.5px, 1vw, 12.5px)', lineHeight: 1.55, color: 'var(--text-mute)' }}>{s.body}</p>
           </li>
         ))}
       </ol>
@@ -206,10 +207,10 @@ const SCENES: Scene[] = [
             <div key={c.group} className="tile">
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="glyph soft"><Glyph size={13} strokeWidth={2.2} /></span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{c.group}</span>
+                <span style={{ fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{c.group}</span>
               </span>
               <ul style={{ margin: '9px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {c.items.map(i => <li key={i} style={{ fontSize: 11.5, color: 'var(--text-mute)', lineHeight: 1.5 }}>{i}</li>)}
+                {c.items.map(i => <li key={i} style={{ fontSize: 'clamp(12.5px, 1vw, 12.5px)', color: 'var(--text-mute)', lineHeight: 1.5 }}>{i}</li>)}
               </ul>
             </div>
           );
@@ -228,8 +229,8 @@ const SCENES: Scene[] = [
         {LIMITS.map(l => (
           <div key={l.title} className="tile" style={{ padding: 'clamp(15px, 2vw, 22px)' }}>
             <span className="glyph soft" style={{ marginBottom: 10 }}><Info size={13} strokeWidth={2.2} /></span>
-            <h3 style={{ margin: '0 0 7px', fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{l.title}</h3>
-            <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.7, color: 'var(--text-mute)' }}>{l.body}</p>
+            <h3 style={{ margin: '0 0 7px', fontSize: 'clamp(14.5px, 1.1vw, 14.5px)', fontWeight: 600, color: 'var(--text)' }}>{l.title}</h3>
+            <p style={{ margin: 0, fontSize: 'clamp(13px, 1vw, 13px)', lineHeight: 1.6, color: 'var(--text-mute)' }}>{l.body}</p>
           </div>
         ))}
       </div>
@@ -272,7 +273,7 @@ function Heading({ lead, emph, as = 'h2' }: { lead: string; emph: string; as?: '
   return (
     <Tag style={{
       margin: 0, maxWidth: 620, fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.13,
-      fontSize: as === 'h1' ? 'clamp(31px, 4.6vw, 60px)' : 'clamp(23px, 3.1vw, 40px)',
+      fontSize: as === 'h1' ? 'clamp(34px, 4.6vw, 60px)' : 'clamp(26px, 3.1vw, 40px)',
     }}>
       <span className="lead">{lead} </span>
       <span className="emph">{emph}</span>
@@ -300,6 +301,17 @@ export default function SiteHome() {
    * state would re-render ten scenes sixty times a second.
    */
   const paint = useCallback((u: number) => {
+    /*
+     * How far a line travels as it arrives.
+     *
+     * On a wide screen the copy and the screen sit side by side and 22px of
+     * travel is just movement. Stacked on a phone they are one above the other
+     * with a 14px gap, and a line still 22px below its resting place is a line
+     * sitting on top of the screenshot — which is exactly what the last bullet
+     * did for the whole of its entrance.
+     */
+    const rise = window.innerWidth < 760 ? 10 : 22;
+
     for (let i = 0; i < SCENES.length; i++) {
       const el = stage.current[i];
       if (!el) continue;
@@ -332,7 +344,7 @@ export default function SiteHome() {
           const lag = k * 0.07;
           const a = smoothstep(-0.42 + lag, 0.06 + lag, t);
           kids[k].style.opacity = String(a);
-          kids[k].style.transform = `translate3d(0, ${mix(22, 0, a)}px, 0)`;
+          kids[k].style.transform = `translate3d(0, ${mix(rise, 0, a)}px, 0)`;
         }
       }
 
@@ -407,7 +419,7 @@ export default function SiteHome() {
                 {s.body && (
                   <p data-rise style={{
                     margin: '16px 0 0', maxWidth: 460,
-                    fontSize: 'clamp(12.5px, 1.1vw, 14.5px)', lineHeight: 1.72,
+                    fontSize: 'clamp(15px, 1.15vw, 15.5px)', lineHeight: 1.68,
                     color: s.tone === 'dark' ? 'var(--on-dark-mute)' : 'var(--text-mute)',
                   }}>
                     {s.body}
@@ -416,9 +428,9 @@ export default function SiteHome() {
                 {s.points && (
                   <ul style={{ margin: '16px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {s.points.map(p => (
-                      <li key={p} data-rise style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-mute)' }}>
-                        <span className="glyph soft" style={{ width: 18, height: 18, borderRadius: 6, marginTop: 1 }}>
-                          <Check size={10} strokeWidth={3} />
+                      <li key={p} data-rise style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 'clamp(13.5px, 1vw, 13px)', lineHeight: 1.5, color: 'var(--text-mute)' }}>
+                        <span className="glyph soft" style={{ width: 19, height: 19, borderRadius: 6, marginTop: 1, flexShrink: 0 }}>
+                          <Check size={11} strokeWidth={3} />
                         </span>
                         {p}
                       </li>
@@ -427,7 +439,7 @@ export default function SiteHome() {
                 )}
                 {(i === 0 || s.id === 'start') && (
                   <div data-rise style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 24 }}>
-                    <AppLink to="/login" className="btn btn-primary">
+                    <AppLink to="/signup" className="btn btn-primary">
                       Sign up free <ArrowRight size={13} />
                     </AppLink>
                     <AppLink to="/login" className="btn btn-quiet">
@@ -465,18 +477,14 @@ export default function SiteHome() {
 
       <header className="scene-chrome scene-top">
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-          <span className="glyph" style={{ width: 24, height: 24, borderRadius: 7 }}>
-            <Layers size={13} strokeWidth={2.4} />
-          </span>
-          <span className="mono" style={{ color: 'var(--text)', fontSize: 11.5, letterSpacing: '0.2em', fontWeight: 600 }}>
-            {name}
-          </span>
+          <LogoMark size={26} />
+          <span className="wordmark">{name}</span>
         </span>
-        <span className="strapline mono">Sales · Marketing · Sites · Content</span>
+        <span className="strapline mono">Every step, in the open.</span>
         <span style={{ flex: 1 }} />
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <AppLink to="/login" className="btn btn-quiet">Sign in</AppLink>
-          <AppLink to="/login" className="btn btn-primary">Sign up <ArrowRight size={13} /></AppLink>
+          <AppLink to="/signup" className="btn btn-primary">Sign up <ArrowRight size={13} /></AppLink>
         </span>
       </header>
 

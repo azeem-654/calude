@@ -165,7 +165,7 @@ export function activeAccount(): SubAccount | null {
 export function activeBranding(): Required<Branding> {
   const a = activeAccount();
   return {
-    appName: a?.branding?.appName || 'crmpro',
+    appName: a?.branding?.appName || 'Protected Central',
     logoUrl: a?.branding?.logoUrl || '',
     loginHeadline: a?.branding?.loginHeadline || 'Sign in to your workspace',
   };
@@ -175,7 +175,7 @@ export function activeBranding(): Required<Branding> {
  * The customer's own business name, for signing mail they send.
  *
  * Deliberately not activeBranding().appName. That is the white-label *product*
- * name and it falls back to "crmpro", so a dental practice's cold outreach went
+ * name and it falls back to "Protected Central", so a dental practice's cold outreach went
  * out signed with the name of the CRM it was written in. Better unsigned than
  * signed by somebody else: an empty string here leaves the sign-off off
  * entirely, which every caller already handles.
@@ -195,7 +195,8 @@ export function customerBusinessName(): string {
   /* A branding name that was actually set is the customer's own; the default
      is the product's, and signing with it would be the original mistake. */
   const branded = (account?.branding?.appName || '').trim();
-  return branded && branded.toLowerCase() !== 'crmpro' ? branded : '';
+  const generic = ['crmpro', 'protected central'];
+  return branded && !generic.includes(branded.toLowerCase()) ? branded : '';
 }
 
 export function loadAgency(): AgencyProfile {

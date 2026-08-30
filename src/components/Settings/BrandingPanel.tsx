@@ -94,7 +94,7 @@ export default function BrandingPanel() {
 
   const reset = () => { setAppName(''); setLogoUrl(''); setHeadline(''); setErr(''); setSaved(false); };
 
-  const previewName = appName.trim() || 'crmpro';
+  const previewName = appName.trim() || 'Protected Central';
   const previewHeadline = headline.trim() || 'Sign in to your workspace';
 
   return (

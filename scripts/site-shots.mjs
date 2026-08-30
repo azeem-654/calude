@@ -178,4 +178,42 @@ for (const s of SHOTS) {
 }
 
 console.log('ERRORS:', errs.length ? errs.join(' | ') : 'none');
+
+/*
+ * PNG → WebP, in the browser that just took them.
+ *
+ * This step used to not exist. The script wrote full-size PNGs to a temp
+ * directory and stopped, and somebody converted them by hand with cwebp — so
+ * re-running it appeared to work, printed "captured" seven times, and changed
+ * nothing the site actually serves. The pictures on the marketing page were
+ * whatever was converted the last time someone remembered to.
+ *
+ * Chromium encodes WebP natively, and there is a Chromium right here. No
+ * ImageMagick, no libwebp, nothing to install on a machine or a runner.
+ *
+ * The resize to 1400 wide is deliberate: the shots are taken at 2x for
+ * sharpness and served at roughly half that, which is the width the <img> tags
+ * on the site declare.
+ */
+const OUT_W = 1400;
+const conv = await ctx.newPage();
+await conv.goto('about:blank');
+for (const s of SHOTS) {
+  const png = `${RAW}/${s.file}.png`;
+  if (!fs.existsSync(png)) { console.log('skipped', s.file, '— no capture'); continue; }
+  const b64 = fs.readFileSync(png).toString('base64');
+  const webp = await conv.evaluate(async ({ b64, w }) => {
+    const img = new Image();
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = 'data:image/png;base64,' + b64; });
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = Math.round((img.naturalHeight / img.naturalWidth) * w);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/webp', 0.82).split(',')[1];
+  }, { b64, w: OUT_W });
+  fs.writeFileSync(`${OUT}/${s.file}.webp`, Buffer.from(webp, 'base64'));
+  const kb = (fs.statSync(`${OUT}/${s.file}.webp`).size / 1024).toFixed(0);
+  console.log(`wrote ${s.file}.webp  ${kb}kB`);
+}
+
 await browser.close(); vite.kill();

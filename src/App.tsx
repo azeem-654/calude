@@ -7,7 +7,7 @@ import { getSession } from './services/auth';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isAppHost, isMarketingHost } from './services/hosts';
 import { initCloudSync } from './services/serverData';
-import { Layers, Loader } from 'lucide-react';
+import { Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import DueWorkRunner from './components/shared/DueWorkRunner';
 import Dashboard from './components/Dashboard/Dashboard';
@@ -35,6 +35,7 @@ import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
 import ClientBilling from './components/Billing/ClientBilling';
 import SiteHome from './components/Site/SiteHome';
+import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -119,7 +120,7 @@ function SyncGate({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: '100vh', background: '#e9ebee', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Layers size={26} color="#17191c" strokeWidth={2.4} />
+        <LogoMark size={32} />
         <span style={{ fontSize: 22, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>{brand.appName}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8a8f98', fontSize: 13, fontWeight: 500 }}>
@@ -194,7 +195,10 @@ export default function App() {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         <Routes>
-          <Route path="/login" element={<LoginScreen onAuthed={signedIn} />} />
+          {/* Two doors, because the marketing site has two buttons. What each
+              one can actually do is still the server's call. */}
+          <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
+          <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
           <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />
         </Routes>
       </BrowserRouter>

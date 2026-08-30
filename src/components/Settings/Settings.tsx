@@ -1150,7 +1150,7 @@ export default function Settings() {
                 <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>JD</div>
                 <div>
                   <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>John Doe</p>
-                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px' }}>Admin · CRMPro Inc.</p>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px' }}>Admin · Protected Central</p>
                   <button style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white', color: '#475569', fontWeight: 500 }}>Change Photo</button>
                 </div>
               </div>
