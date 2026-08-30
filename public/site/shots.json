@@ -1,0 +1,116 @@
+[
+  {
+    "file": "dashboard",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "dash-kpis",
+    "w": 560,
+    "h": 180,
+    "label": "Counted from your own records, not estimated"
+  },
+  {
+    "file": "dash-next",
+    "w": 600,
+    "h": 262,
+    "label": "What to do next, ranked by lift"
+  },
+  {
+    "file": "agent",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "agent-objective",
+    "w": 620,
+    "h": 146,
+    "label": "Your sentence, kept word for word"
+  },
+  {
+    "file": "agent-metrics",
+    "w": 600,
+    "h": 192,
+    "label": "Every figure read live from the module that owns it"
+  },
+  {
+    "file": "flow",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "marketing",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "mkt-stats",
+    "w": 580,
+    "h": 114,
+    "label": "Sent, opened and replied across every campaign"
+  },
+  {
+    "file": "mkt-list",
+    "w": 620,
+    "h": 310,
+    "label": "Each campaign, and the sequence that produced it"
+  },
+  {
+    "file": "contacts",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "contacts-filters",
+    "w": 620,
+    "h": 240,
+    "label": "Filter by status, stage, owner or tag"
+  },
+  {
+    "file": "contacts-table",
+    "w": 620,
+    "h": 400,
+    "label": "Health, stage and pipeline on every row"
+  },
+  {
+    "file": "pipelines",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "pipe-summary",
+    "w": 580,
+    "h": 142,
+    "label": "Open value, and the same value weighted by probability"
+  },
+  {
+    "file": "pipe-board",
+    "w": 600,
+    "h": 420,
+    "label": "Stages you define, dragged straight across"
+  },
+  {
+    "file": "calendar",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "cal-week",
+    "w": 600,
+    "h": 420,
+    "label": "The week, on one grid"
+  },
+  {
+    "file": "cal-upcoming",
+    "w": 352,
+    "h": 380,
+    "label": "What is booked, and who booked it"
+  }
+]

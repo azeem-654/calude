@@ -495,6 +495,44 @@ A post marked as failed can be retried from the campaign dashboard. Attempts
 are capped at three; past that the post keeps its caption and its place in the
 plan but needs a person to look at it, rather than being retried forever.
 
+## The marketing site
+
+Fourteen sections, one viewport each, driven by scroll position rather than by
+a scroll container per section (`useScrollScene.ts`).
+
+Seven of them are a module of the app, and each shows **two close-ups** rather
+than one whole window. That distinction is the whole point: a 1240px screen
+shrunk into a column renders at about 0.26x, which shows that a screen exists
+and nothing about what it does. The close-ups are cut from the running app at
+560–620px and shown at ~470px — roughly 0.8x, close enough to read the numbers.
+`scripts/site-shots.mjs` holds the clip regions in document pixels against a
+fixed 1240x800 viewport, so changing that viewport invalidates them.
+
+On a phone the views become a horizontal swipe row. Stacked they made a section
+twice as tall as the screen; laid across, any number of them costs the height of
+one.
+
+Each view carries a caption naming the function it shows, a sheen that crosses
+it every few seconds and a live dot, all offset per view so a row never animates
+in unison. All of it is removed under `prefers-reduced-motion`.
+
+### Re-taking the pictures
+
+```bash
+node scripts/site-shots.mjs
+```
+
+It boots the app against a seeded workspace, captures every region, encodes the
+WebP in the same Chromium, and writes `public/site/shots.json` with each view's
+real dimensions so the page can reserve space before the image arrives.
+
+The seed is part of the product's honesty here. Photographing a module with
+nothing in it puts an empty table under a headline about what the table does, so
+the workspace is seeded with campaigns, deals that are actually *won* with a
+recent closing date, and meetings on the days the calendar's week grid shows.
+Each of those was a real defect found by looking at the crop: an empty Marketing
+screen, "Revenue won $0" beside a $113k pipeline, and a ruled but empty diary.
+
 ## The two sites
 
 `protectedcentral.com` is a marketing page and nothing else. `app.protectedcentral.com`

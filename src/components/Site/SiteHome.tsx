@@ -31,7 +31,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, ArrowUpRight, BarChart3, Building2, Check, ChevronDown,
-  Info, MousePointerClick, Send, Sparkles, Users,
+  Inbox, Info, Lock, MousePointerClick, Palette, Receipt, Send, ShieldCheck,
+  Sparkles, Users,
 } from 'lucide-react';
 import { activeBranding } from '../../services/tenancy';
 import { LogoMark } from '../shared/Logo';
@@ -46,6 +47,23 @@ const SHOT = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$
 
 /* ── The content ──────────────────────────────────────────────────────── */
 
+/**
+ * One close-up of one function.
+ *
+ * `src` is a crop of the running application, not the whole window: a 1240px
+ * screen shrunk into a column shows that a screen exists and nothing about what
+ * it does. `label` says which function is being shown, because a crop without
+ * one is just a smaller screenshot. `w`/`h` are the real pixel size, so the
+ * space is reserved before the picture arrives and the page does not jump.
+ */
+interface View {
+  src: string;
+  label: string;
+  alt: string;
+  w: number;
+  h: number;
+}
+
 interface Scene {
   id: string;
   chapter: string;
@@ -53,13 +71,19 @@ interface Scene {
   lead: string;
   emph: string;
   body?: string;
-  /** A real screen from the app. */
+  /** The whole window, for the scenes that are about the screen as a whole. */
   shot?: { src: string; alt: string };
+  /** Close-ups of the functions that make the module's case. */
+  views?: View[];
   points?: string[];
   tone?: 'dark';
   /** Rendered instead of the body/points column. */
   extra?: React.ReactNode;
 }
+
+/** A close-up, described once and used by whichever scene needs it. */
+const view = (file: string, label: string, alt: string, w: number, h: number): View =>
+  ({ src: SHOT(file), label, alt, w, h });
 
 const CAPABILITIES: { group: string; items: string[] }[] = [
   { group: 'Reach', items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up', 'Prospect search'] },
@@ -85,6 +109,28 @@ const LIFECYCLE = [
   { n: '07', title: 'Rewrite', body: 'When the figures say the funnel is failing, it rewrites the half that failed.' },
 ];
 
+/* The three sections added below the product tour. Each is a claim the software
+   can be checked against, not a benefit statement. */
+const AGENCY = [
+  { icon: Building2, title: 'A sub-account per client', body: 'Its own contacts, pipelines, campaigns and calendar. Switching between them takes one click.' },
+  { icon: Lock, title: 'Enforced on the server', body: 'A workspace you do not own is refused by the API, not merely hidden by the interface.' },
+  { icon: Palette, title: 'Your name on it', body: 'White-label the product name and logo per client, so what they log into looks like yours.' },
+  { icon: Receipt, title: 'Billed per client', body: 'Each sub-account carries its own plan and its own billing status.' },
+];
+
+const OWNERSHIP = [
+  { icon: Send, title: 'Your SMTP', body: 'Gmail, Microsoft 365, Brevo, or anything else that speaks SMTP. Stored encrypted, used only to send your mail.' },
+  { icon: Inbox, title: 'Your IMAP', body: 'Replies are read from your own mailbox, so a conversation stays a conversation.' },
+  { icon: ShieldCheck, title: 'Your domain’s reputation', body: 'SPF, DKIM and DMARC are checked against your domain, and the warm-up ramp holds sending back rather than dropping it.' },
+];
+
+const START = [
+  { title: 'Create your account', body: 'Free, and it takes a minute. Your workspace is yours alone from the moment it exists.' },
+  { title: 'Connect your mailbox', body: 'Your own SMTP and IMAP. Tested before anything is saved, so you know it works.' },
+  { title: 'Say what you want', body: 'One sentence. The agent turns it into a plan and shows it to you before creating anything.' },
+  { title: 'Approve, then watch', body: 'Nothing sends until you say so, and every figure afterwards is read from the module that owns it.' },
+];
+
 const LIMITS = [
   { title: 'Follow-ups need the app open', body: 'The schedule is checked every minute while a tab is open. Nothing goes out with every tab closed.' },
   { title: 'You bring your own mailbox', body: 'Email goes through your SMTP and replies come back over IMAP. Your sending reputation stays yours.' },
@@ -101,11 +147,24 @@ const SCENES: Scene[] = [
     tone: 'dark',
   },
   {
+    id: 'dashboard', chapter: 'Products', eyebrow: 'Dashboard',
+    lead: 'Open it once', emph: 'and know where you stand.',
+    body: 'Not a wall of charts. The three things worth acting on this morning, each counted from '
+      + 'your own records rather than estimated.',
+    views: [
+      view('dash-kpis', 'Counted from your own records, not estimated', 'Open pipeline and revenue won for the week', 560, 180),
+      view('dash-next', 'What to do next, ranked by lift', 'A ranked list of the next actions', 600, 262),
+    ],
+  },
+  {
     id: 'agent', chapter: 'Products', eyebrow: 'AI Sales Agent',
     lead: 'Describe the outcome.', emph: 'It builds the campaign.',
     body: 'Write what you want in a sentence. The agent works out who to reach and how, shows you the '
       + 'plan before anything exists, then creates the real contacts, the real sequence and the real enrolments.',
-    shot: { src: SHOT('agent'), alt: 'A live campaign, with the figures read from each module' },
+    views: [
+      view('agent-objective', 'Your sentence, kept word for word', 'The objective, stored verbatim', 620, 146),
+      view('agent-metrics', 'Every figure read live from the module that owns it', 'Prospects found, enrolled, sent, opened and replied', 600, 192),
+    ],
     points: [
       'Every plan is editable before a record is created',
       'Nothing sends until you say it may',
@@ -131,7 +190,10 @@ const SCENES: Scene[] = [
     lead: 'Cadences that stop', emph: 'the moment somebody answers.',
     body: 'Multi-step sequences on your own SMTP, with merge fields, open and click tracking, bounce '
       + 'suppression and a warm-up ramp that refuses to send past the day’s allowance.',
-    shot: { src: SHOT('marketing'), alt: 'The sequence list in Marketing' },
+    views: [
+      view('mkt-stats', 'Sent, opened, replied — across every campaign', 'Totals across all campaigns', 580, 114),
+      view('mkt-list', 'Campaigns, with the sequence that produced them', 'The campaign list', 620, 310),
+    ],
     points: [
       'A/B test any step',
       'Hard bounces suppressed on the first rejection',
@@ -143,7 +205,10 @@ const SCENES: Scene[] = [
     lead: 'The record of', emph: 'everyone you have spoken to.',
     body: 'Custom fields, notes, tasks and a full activity history, with a command centre that shows '
       + 'what each person has opened, clicked and replied to.',
-    shot: { src: SHOT('contacts'), alt: 'The contact list with filters and segments' },
+    views: [
+      view('contacts-filters', 'Filter by status, stage, owner or tag', 'Contact filters and segments', 620, 240),
+      view('contacts-table', 'Health, stage and pipeline on every row', 'The contact table', 620, 400),
+    ],
     points: [
       'Import a list, deduplicate on the way in',
       'Timezone inferred from the number when it is not set',
@@ -155,7 +220,10 @@ const SCENES: Scene[] = [
     lead: 'Deals you can', emph: 'actually see moving.',
     body: 'Drag-and-drop stages you define, weighted forecasting, and board, list, table, calendar, '
       + 'funnel and Gantt views of the same deals.',
-    shot: { src: SHOT('pipelines'), alt: 'The deal board with stages and weighted value' },
+    views: [
+      view('pipe-summary', 'Open value, and the same value weighted by probability', 'Pipeline totals', 580, 142),
+      view('pipe-board', 'Stages you define, dragged straight across', 'The deal board', 600, 420),
+    ],
     points: [
       'Stages, fields and priorities you set',
       'Automations on stage change',
@@ -167,7 +235,10 @@ const SCENES: Scene[] = [
     lead: 'An interested reply', emph: 'becomes a meeting.',
     body: 'Booking pages on your real availability, so nobody spends four emails agreeing on Tuesday. '
       + 'Meetings land in the calendar and back on the campaign that produced them.',
-    shot: { src: SHOT('calendar'), alt: 'The calendar with the week’s appointments' },
+    views: [
+      view('cal-week', 'The week, on one grid', 'The week view', 600, 420),
+      view('cal-upcoming', 'What is booked, and who booked it', 'Upcoming appointments', 352, 380),
+    ],
     points: [
       'Booking pages work for signed-out visitors',
       'Reminders before the meeting',
@@ -178,7 +249,7 @@ const SCENES: Scene[] = [
     id: 'lifecycle', chapter: 'How it runs', eyebrow: 'How a campaign runs',
     lead: 'Seven steps, and', emph: 'you can stop it at any of them.',
     extra: (
-      <ol className="mesh" style={{
+      <ol className="mesh lifecycle" style={{
         margin: 0, padding: 0, listStyle: 'none',
         /* Four across, so seven steps land 4 + 3 rather than 6 + 1. */
         gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
@@ -191,6 +262,42 @@ const SCENES: Scene[] = [
           </li>
         ))}
       </ol>
+    ),
+  },
+  {
+    id: 'agency', chapter: 'How it runs', eyebrow: 'Run it as an agency',
+    lead: 'One login,', emph: 'every client kept apart.',
+    body: 'Each client is a sub-account with its own contacts, pipelines and campaigns. Nothing leaks '
+      + 'between them, and the separation is enforced on the server rather than by the interface hiding things.',
+    extra: (
+      <div className="mesh" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))' }}>
+        {AGENCY.map(a => (
+          <div key={a.title}>
+            <span className="glyph soft" style={{ marginBottom: 9 }}><a.icon size={13} strokeWidth={2.2} /></span>
+            <h3 style={{ margin: '0 0 6px', fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{a.title}</h3>
+            <p style={{ margin: 0, fontSize: 'clamp(12.5px, 1vw, 12.5px)', lineHeight: 1.55, color: 'var(--text-mute)' }}>{a.body}</p>
+          </div>
+        ))}
+      </div>
+    ),
+    tone: 'dark',
+  },
+  {
+    id: 'own', chapter: 'How it runs', eyebrow: 'Your mailbox, your reputation',
+    lead: 'It sends from you,', emph: 'not from us.',
+    body: 'Connect your own SMTP and replies come back over your own IMAP. Nothing is relayed through '
+      + 'a shared pool, so your deliverability is the result of how you send rather than of who else '
+      + 'happens to be on the same server.',
+    extra: (
+      <div className="mesh" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))' }}>
+        {OWNERSHIP.map(o => (
+          <div key={o.title}>
+            <span className="glyph soft" style={{ marginBottom: 9 }}><o.icon size={13} strokeWidth={2.2} /></span>
+            <h3 style={{ margin: '0 0 6px', fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{o.title}</h3>
+            <p style={{ margin: 0, fontSize: 'clamp(12.5px, 1vw, 12.5px)', lineHeight: 1.55, color: 'var(--text-mute)' }}>{o.body}</p>
+          </div>
+        ))}
+      </div>
     ),
   },
   {
@@ -239,8 +346,19 @@ const SCENES: Scene[] = [
   {
     id: 'start', chapter: 'Start', eyebrow: 'Free to try',
     lead: 'Point it at your list and', emph: 'watch it show its working.',
-    body: 'Connect your own mailbox, write one sentence about what you want, and approve the plan '
-      + 'before anything is created.',
+    body: 'Create your account, connect your own mailbox, write one sentence about what you want, '
+      + 'and approve the plan before anything is created. Four steps, and you can stop at any of them.',
+    extra: (
+      <ol className="steps">
+        {START.map((s, i) => (
+          <li key={s.title}>
+            <span className="mono step-n">{String(i + 1).padStart(2, '0')}</span>
+            <h3>{s.title}</h3>
+            <p>{s.body}</p>
+          </li>
+        ))}
+      </ol>
+    ),
     tone: 'dark',
   },
 ];
@@ -410,7 +528,10 @@ export default function SiteHome() {
             aria-label={s.eyebrow}
           >
             {s.tone === 'dark' && <span className="beam" />}
-            <div className="scene-inner" data-wide={!s.shot}>
+            {/* A scene with close-ups stacks: centred copy above, the views
+                below it across the full width. A scene with one whole window
+                keeps the two-column layout, which is what that picture wants. */}
+            <div className="scene-inner" data-wide={!s.shot} data-views={!!s.views}>
               <div className="scene-copy" ref={el => { copy.current[i] = el; }}>
                 <span className="chip" data-rise>{s.eyebrow}</span>
                 <div data-rise style={{ marginTop: 16 }}>
@@ -449,6 +570,28 @@ export default function SiteHome() {
                 )}
                 {s.extra && <div data-rise style={{ marginTop: 20 }}>{s.extra}</div>}
               </div>
+
+              {s.views && (
+                /*
+                  Several close-ups of one module, each on the function it is
+                  making a case for. They arrive one after another rather than
+                  together — a row of three appearing at once reads as a
+                  decorative strip, while three arriving in order reads as an
+                  argument being made.
+                */
+                <div className="views" ref={el => { shots.current[i] = el; }} data-n={s.views.length}>
+                  {s.views.map((v, k) => (
+                    <figure className="view" key={v.src} style={{ '--k': k } as React.CSSProperties}>
+                      <div className="view-frame">
+                        <img src={v.src} alt={v.alt} loading={i < 2 ? 'eager' : 'lazy'} width={v.w} height={v.h} />
+                        <span className="view-sheen" aria-hidden="true" />
+                        <span className="view-pulse" aria-hidden="true" />
+                      </div>
+                      <figcaption className="view-label">{v.label}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              )}
 
               {s.shot && (
                 /*

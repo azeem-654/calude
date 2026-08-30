@@ -54,9 +54,15 @@ function CampaignsTab() {
 
   const emailReady = isEmailConfigured();
   const filtered = campaigns.filter(c => typeFilter === 'all' || c.type === typeFilter);
-  const totalSent = campaigns.reduce((s, c) => s + c.sent, 0);
-  const withSent = campaigns.filter(c => c.sent > 0);
-  const avgOpen = withSent.length > 0 ? withSent.reduce((s, c) => s + c.opened / c.sent, 0) / withSent.length * 100 : 0;
+  /* One campaign missing a counter used to make the whole tile read "NaN":
+     `s + undefined` is NaN and every later addition keeps it. A record can
+     arrive without one from an import, from an older version, or from any
+     creator that did not think to set it, and the total of everything else is
+     still worth showing. */
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const totalSent = campaigns.reduce((s, c) => s + n(c.sent), 0);
+  const withSent = campaigns.filter(c => n(c.sent) > 0);
+  const avgOpen = withSent.length > 0 ? withSent.reduce((s, c) => s + n(c.opened) / n(c.sent), 0) / withSent.length * 100 : 0;
 
   const handleEditFromPanel = () => {
     setEditingCampaign(selectedCampaign);
@@ -148,7 +154,7 @@ function CampaignsTab() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.name}</p>
                     <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>
-                      {campaign.createdAt} · {campaign.type.toUpperCase()}
+                      {campaignDate(campaign.createdAt)} · {campaign.type.toUpperCase()}
                       {campaign.goal ? ` · ${campaign.goal}` : ''}
                       {campaign.audience ? ` · ${campaign.audience}` : ''}
                     </p>
@@ -414,6 +420,22 @@ function DeliverabilityTab() {
 type TabId = 'campaigns' | 'import' | 'sequences' | 'automations' | 'deliverability' | 'emailapps';
 
 /* ─── Root component ─── */
+
+/**
+ * The stored date, as a person would write it.
+ *
+ * This printed `campaign.createdAt` straight out. The app's own creator stores
+ * a plain `YYYY-MM-DD`, so it usually looked fine — but anything that stored a
+ * full timestamp put `2026-08-16T16:43:48.343Z` in the middle of the campaign
+ * list, and a string nobody set is worse than a blank. Formatting it here means
+ * the list is right whatever wrote the record.
+ */
+function campaignDate(raw: string): string {
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 export default function Marketing() {
   const [activeTab, setActiveTab] = useState<TabId>('campaigns');

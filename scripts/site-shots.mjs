@@ -49,7 +49,13 @@ function workspace() {
       value: [4200, 12800, 7400, 3600, 21500, 9100][(i + n) % 6],
       stage: id, probability: [20, 45, 65, 85][['new','qualified','proposal','won'].indexOf(id)] ?? 40,
       expectedClose: day(9 + n * 4), assignedTo: 'You', createdAt: iso(-12 + n),
-      priority: ['normal','high','urgent','normal'][n % 4], status: 'active',
+      priority: ['normal','high','urgent','normal'][n % 4],
+      /* A deal sitting in the Won column had `status: 'active'` and no closing
+         date, so the dashboard's "Revenue won, last 7 days" — which counts
+         won deals by the day they closed — was $0 next to a $113k pipeline.
+         The board said one thing and the figure above it another. */
+      status: id === 'won' ? 'won' : 'active',
+      ...(id === 'won' ? { closedAt: iso(-2 - n) } : {}),
     })),
   });
 
@@ -110,7 +116,25 @@ function workspace() {
     enrolledAt: iso(-12), nextSendAt: iso(1), history: [],
   }));
 
+  /*
+   * Some of these are deliberately in the *current* week.
+   *
+   * They were all a day or more ahead, which put every one of them in next
+   * week's column — so the calendar's week grid, photographed for the marketing
+   * site, was an empty ruled page under a headline about interested replies
+   * becoming meetings. The diary has to have something in it on the day the
+   * picture is taken.
+   */
   const appointments = [
+    /* Monday to Wednesday of the week on screen. The first attempt put these on
+       day(-2) to day(0), which is Friday to Sunday — inside the week, and
+       outside the three columns the close-up crops to, so the grid was still
+       photographed empty. */
+    { id: 'a0', title: 'Intro call', contactId: 'c3', contactName: contacts[3].name, date: day(-6), time: '09:00', duration: 30, status: 'completed', type: 'call' },
+    { id: 'a6', title: 'Scoping call', contactId: 'c5', contactName: contacts[5].name, date: day(-6), time: '11:00', duration: 45, status: 'completed', type: 'consultation' },
+    { id: 'a7', title: 'Retainer review', contactId: 'c8', contactName: contacts[8].name, date: day(-5), time: '10:00', duration: 30, status: 'completed', type: 'meeting' },
+    { id: 'a8', title: 'Follow-up', contactId: 'c11', contactName: contacts[11].name, date: day(-4), time: '08:30', duration: 30, status: 'completed', type: 'call' },
+    { id: 'a9', title: 'Kickoff', contactId: 'c6', contactName: contacts[6].name, date: day(-4), time: '11:30', duration: 60, status: 'completed', type: 'meeting' },
     { id: 'a1', title: 'Discovery call', contactId: 'c1', contactName: contacts[1].name, date: day(1), time: '10:00', duration: 30, status: 'scheduled', type: 'consultation' },
     { id: 'a2', title: 'Proposal walkthrough', contactId: 'c4', contactName: contacts[4].name, date: day(1), time: '14:30', duration: 45, status: 'scheduled', type: 'meeting' },
     { id: 'a3', title: 'Onboarding', contactId: 'c9', contactName: contacts[9].name, date: day(2), time: '09:30', duration: 60, status: 'scheduled', type: 'meeting' },
@@ -130,11 +154,34 @@ function workspace() {
     createdAt: iso(-10),
   }));
 
-  return { contacts, pipelines, sequences, campaign, emails, enrolments, appointments, leads };
+  /* Marketing reads crm_campaigns, which nothing seeded — so the picture of
+     the email module on the marketing site was of an empty module, under a
+     headline about cadences that stop when somebody answers. */
+  const campaigns = [
+    { id: 'cmp-1', name: 'North Texas outreach', type: 'sequence', status: 'active',
+      goal: 'Book consultations', audience: 'Clinics and firms, North Texas',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-14), sent: 118, opened: 61, clicked: 22, replied: 9, bounced: 4,
+      source: { origin: 'ai-sales-agent', title: 'North Texas outreach', refId: 'AI-SA-2026-0001', route: '/ai-sales-agent/AI-SA-2026-0001', at: iso(-14) } },
+    { id: 'cmp-2', name: 'Lapsed customers — win back', type: 'email', status: 'scheduled',
+      goal: 'Reopen conversations', audience: 'Customers with no activity in 90 days',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-5), scheduledAt: iso(2), sent: 0, opened: 0, clicked: 0, replied: 0, bounced: 0 },
+    { id: 'cmp-3', name: 'Booking service — spring offer', type: 'email', status: 'completed',
+      goal: 'Upsell existing customers', audience: 'Active customers',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-38), sent: 96, opened: 54, clicked: 19, replied: 7, bounced: 1 },
+  ];
+
+  return { contacts, pipelines, sequences, campaign, campaigns, emails, enrolments, appointments, leads };
 }
 
+/* The window every capture is measured against. The clip regions below are
+   document pixels at exactly this size, so changing it invalidates them. */
+const VIEWPORT = { width: 1240, height: 800 };
+
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-const ctx = await browser.newContext({ viewport: { width: 1240, height: 800 }, deviceScaleFactor: 2 });
+const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 2 });
 await ctx.addInitScript((w) => {
   localStorage.setItem('crm_session', JSON.stringify({ token: 't', user: { email: 'you@studio.test', name: 'Alex Rivera', role: 'agency', accountId: null }, backend: 'local' }));
   localStorage.setItem('crm_onboarding', JSON.stringify({ version: 1, step: 5, completed: true, skipped: true, profile: { companyName: 'Rivera Studio' }, goals: {}, channels: [], plan: [], audit: [] }));
@@ -142,6 +189,7 @@ await ctx.addInitScript((w) => {
   localStorage.setItem('crm_pipelines', JSON.stringify(w.pipelines));
   localStorage.setItem('crm_sequences', JSON.stringify(w.sequences));
   localStorage.setItem('crm_ai_campaigns', JSON.stringify([w.campaign]));
+  localStorage.setItem('crm_campaigns', JSON.stringify(w.campaigns));
   localStorage.setItem('crm_contact_emails', JSON.stringify(w.emails));
   localStorage.setItem('crm_sequence_enrollments', JSON.stringify(w.enrolments));
   localStorage.setItem('crm_appointments', JSON.stringify(w.appointments));
@@ -154,26 +202,63 @@ const errs = [];
 page.on('pageerror', e => errs.push(e.stack || e.message));
 page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 400)); });
 
+/*
+ * What to photograph.
+ *
+ * One picture per module was one picture too few. A whole 1240px window shrunk
+ * into a marketing page shows that a screen exists and nothing about what it
+ * does; the parts that carry the argument — the figures, the board, the ranked
+ * list of what to do next — are each a few dozen pixels tall in it.
+ *
+ * So each module is captured several times, close in, on the region that
+ * actually makes its point. The regions come from measuring the running app
+ * rather than from taste: `clip` is in document pixels at the 1240x800 viewport
+ * below, and `fullPage` lets a region below the fold be captured without
+ * scrolling the page under it.
+ *
+ * `label` is what the site prints under the view. It says which function is
+ * being shown, because a crop without one is just a smaller screenshot.
+ */
 const SHOTS = [
-  { file: 'dashboard', path: '/' },
-  { file: 'agent', path: '/ai-sales-agent/AI-SA-2026-0001' },
-  { file: 'marketing', path: '/marketing' },
-  { file: 'contacts', path: '/contacts' },
-  { file: 'pipelines', path: '/pipelines' },
-  { file: 'calendar', path: '/calendar' },
-  /* The canvas is dark and the rest are light, which is the point of showing
-     it: it is a different kind of surface. */
-  { file: 'flow', path: '/ai-sales-agent/AI-SA-2026-0001?tab=flow', settle: 3400 },
+  { file: 'dashboard',      path: '/', settle: 2800 },
+  { file: 'dash-kpis',      path: '/', clip: { x: 96, y: 248, width: 560, height: 180 }, label: 'Counted from your own records, not estimated' },
+  { file: 'dash-next',      path: '/', clip: { x: 114, y: 700, width: 600, height: 262 }, label: 'What to do next, ranked by lift' },
+
+  { file: 'agent',          path: '/ai-sales-agent/AI-SA-2026-0001', settle: 2800 },
+  { file: 'agent-objective', path: '/ai-sales-agent/AI-SA-2026-0001', clip: { x: 84, y: 326, width: 620, height: 146 }, label: 'Your sentence, kept word for word' },
+  { file: 'agent-metrics',  path: '/ai-sales-agent/AI-SA-2026-0001', clip: { x: 106, y: 544, width: 600, height: 192 }, label: 'Every figure read live from the module that owns it' },
+
+  { file: 'flow',           path: '/ai-sales-agent/AI-SA-2026-0001?tab=flow', settle: 3400 },
+
+  { file: 'marketing',      path: '/marketing', settle: 2800 },
+  { file: 'mkt-stats',      path: '/marketing', clip: { x: 84, y: 334, width: 580, height: 114 }, label: 'Sent, opened and replied across every campaign' },
+  { file: 'mkt-list',       path: '/marketing', clip: { x: 84, y: 452, width: 620, height: 310 }, label: 'Each campaign, and the sequence that produced it' },
+
+  { file: 'contacts',       path: '/contacts', settle: 2800 },
+  { file: 'contacts-filters', path: '/contacts', clip: { x: 56, y: 190, width: 620, height: 240 }, label: 'Filter by status, stage, owner or tag' },
+  { file: 'contacts-table', path: '/contacts', clip: { x: 84, y: 430, width: 620, height: 400 }, label: 'Health, stage and pipeline on every row' },
+
+  { file: 'pipelines',      path: '/pipelines', settle: 2800 },
+  { file: 'pipe-summary',   path: '/pipelines', clip: { x: 84, y: 216, width: 580, height: 142 }, label: 'Open value, and the same value weighted by probability' },
+  { file: 'pipe-board',     path: '/pipelines', clip: { x: 84, y: 462, width: 600, height: 420 }, label: 'Stages you define, dragged straight across' },
+
+  { file: 'calendar',       path: '/calendar', settle: 2800 },
+  { file: 'cal-week',       path: '/calendar', clip: { x: 78, y: 280, width: 600, height: 420 }, label: 'The week, on one grid' },
+  { file: 'cal-upcoming',   path: '/calendar', clip: { x: 878, y: 266, width: 352, height: 380 }, label: 'What is booked, and who booked it' },
 ];
 
+/* One navigation per address, however many crops come off it. */
+let at = '';
 for (const s of SHOTS) {
-  await page.goto(`${BASE}${s.path}`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(s.settle ?? 2600);
-  // Notifications would date the picture and add nothing.
-  await page.evaluate(() => document.querySelectorAll('[class*="notif"], [role="status"]').forEach(n => n.remove()));
+  if (at !== s.path) {
+    await page.goto(`${BASE}${s.path}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(s.settle ?? 2600);
+    await page.evaluate(() => document.querySelectorAll('[class*="notif"], [role="status"]').forEach(n => n.remove()));
+    at = s.path;
+  }
   const broken = await page.evaluate(() => /ran into a problem/i.test(document.body.innerText));
   if (broken) { console.log('REFUSED', s.file, '— the screen is showing the error boundary'); process.exitCode = 1; continue; }
-  await page.screenshot({ path: `${RAW}/${s.file}.png` });
+  await page.screenshot({ path: `${RAW}/${s.file}.png`, ...(s.clip ? { clip: s.clip, fullPage: true } : {}) });
   console.log('captured', s.file);
 }
 
@@ -185,35 +270,42 @@ console.log('ERRORS:', errs.length ? errs.join(' | ') : 'none');
  * This step used to not exist. The script wrote full-size PNGs to a temp
  * directory and stopped, and somebody converted them by hand with cwebp — so
  * re-running it appeared to work, printed "captured" seven times, and changed
- * nothing the site actually serves. The pictures on the marketing page were
- * whatever was converted the last time someone remembered to.
+ * nothing the site actually serves.
  *
- * Chromium encodes WebP natively, and there is a Chromium right here. No
- * ImageMagick, no libwebp, nothing to install on a machine or a runner.
- *
- * The resize to 1400 wide is deliberate: the shots are taken at 2x for
- * sharpness and served at roughly half that, which is the width the <img> tags
- * on the site declare.
+ * Chromium encodes WebP natively, and there is a Chromium right here. The crops
+ * are already close in, so they are written at their captured width rather than
+ * being scaled down again into illegibility; only the full-window shots need
+ * reducing.
  */
-const OUT_W = 1400;
 const conv = await ctx.newPage();
 await conv.goto('about:blank');
+const manifest = [];
 for (const s of SHOTS) {
   const png = `${RAW}/${s.file}.png`;
   if (!fs.existsSync(png)) { console.log('skipped', s.file, '— no capture'); continue; }
   const b64 = fs.readFileSync(png).toString('base64');
-  const webp = await conv.evaluate(async ({ b64, w }) => {
+  const out = await conv.evaluate(async ({ b64, cap }) => {
     const img = new Image();
     await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = 'data:image/png;base64,' + b64; });
+    /* Captured at 2x for sharpness, written at 1x. A crop written wider than
+       the region it came from would be upscaled mush; written narrower it is
+       shrunk again, which is the thing these crops exist to avoid. */
+    const w = Math.min(img.naturalWidth, cap);
     const c = document.createElement('canvas');
     c.width = w;
     c.height = Math.round((img.naturalHeight / img.naturalWidth) * w);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/webp', 0.82).split(',')[1];
-  }, { b64, w: OUT_W });
-  fs.writeFileSync(`${OUT}/${s.file}.webp`, Buffer.from(webp, 'base64'));
-  const kb = (fs.statSync(`${OUT}/${s.file}.webp`).size / 1024).toFixed(0);
-  console.log(`wrote ${s.file}.webp  ${kb}kB`);
+    return { data: c.toDataURL('image/webp', 0.85).split(',')[1], w: c.width, h: c.height };
+  }, { b64, cap: s.clip ? s.clip.width : 1400 });
+  fs.writeFileSync(`${OUT}/${s.file}.webp`, Buffer.from(out.data, 'base64'));
+  manifest.push({ file: s.file, w: out.w, h: out.h, label: s.label ?? null });
+  console.log(`wrote ${s.file}.webp  ${out.w}x${out.h}  ${(fs.statSync(`${OUT}/${s.file}.webp`).size / 1024).toFixed(0)}kB`);
 }
+
+/* The site needs each picture's real size to reserve space for it before it
+   loads; guessing one aspect for crops of five different shapes is what makes
+   a page jump about while it settles. */
+fs.writeFileSync(`${OUT}/shots.json`, JSON.stringify(manifest, null, 2));
+console.log(`wrote shots.json (${manifest.length} views)`);
 
 await browser.close(); vite.kill();
