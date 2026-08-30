@@ -11,8 +11,8 @@ import type { Contact } from '../types';
 import { getSession } from './auth';
 import { verifyEmails, recordHealth, type VerifyResult, type Verdict } from './deliverability';
 import { recordPlacement, log as warmupLog, type Seed } from './warmup';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 const QUEUE_KEY = 'crm_verify_queue';
 const PLACEMENT_KEY = 'crm_placement_runs';
 

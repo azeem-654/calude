@@ -821,7 +821,7 @@ function IntegrationsTab() {
         {cardHeader(<Zap size={20} color="#10a37f" />, 'OpenAI API', 'Validate your OpenAI API key for AI features')}
         <div style={{ padding: '10px 14px', backgroundColor: '#fefce8', borderRadius: '8px', border: '1px solid #fef08a', marginBottom: '14px' }}>
           <p style={{ fontSize: '12px', color: '#a16207', margin: 0 }}>
-            <strong>Note:</strong> OpenAI API requires a backend proxy due to CORS restrictions. Start the local backend server (<code>npm start</code> in the <code>server/</code> directory) for full validation. Without the backend, key format will be checked only.
+            <strong>Note:</strong> the key is checked by asking OpenAI to list the models your account can use. That call bills nothing, and the key is not stored anywhere by the test.
           </p>
         </div>
         <div style={{ marginBottom: '12px' }}>
@@ -845,7 +845,7 @@ function IntegrationsTab() {
         {cardHeader(<Globe size={20} color="#17191c" />, 'Apollo.io API', 'Validate your Apollo.io API key for contact enrichment')}
         <div style={{ padding: '10px 14px', backgroundColor: '#fefce8', borderRadius: '8px', border: '1px solid #fef08a', marginBottom: '14px' }}>
           <p style={{ fontSize: '12px', color: '#a16207', margin: 0 }}>
-            <strong>Note:</strong> Apollo.io API requires a backend proxy. Start the local backend server for full validation.
+            <strong>Note:</strong> the key is checked against Apollo.io's own health endpoint, which confirms the key without spending any of your credits.
           </p>
         </div>
         <div style={{ marginBottom: '12px' }}>
@@ -885,10 +885,12 @@ function IntegrationsTab() {
 
       {/* SMTP */}
       {card(<>
-        {cardHeader(<Mail size={20} color="#374151" />, 'SMTP Server', 'Test SMTP credentials via backend proxy')}
+        {cardHeader(<Mail size={20} color="#374151" />, 'SMTP Server', 'Sign in to your mail server and confirm it accepts these credentials')}
         <div style={{ padding: '10px 14px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '14px' }}>
           <p style={{ fontSize: '12px', color: '#1d4ed8', margin: 0 }}>
-            <strong>Requires backend:</strong> SMTP testing uses Nodemailer and needs the local server running (<code>cd server && npm install && npm start</code>). The backend connects on <code>localhost:3001</code>.
+            The test runs on our servers, not in your browser: we open a real connection to your mail
+            server and sign in with these details. Nothing is sent to anyone — it only checks that the
+            credentials work before you rely on them.
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px', marginBottom: '12px' }}>

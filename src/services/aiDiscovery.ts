@@ -22,8 +22,8 @@ import type { Contact } from '../types';
 import type {
   AIChannel, AILead, AIStrategy, LeadQualification, LeadSource, SignalCheck,
 } from '../types/aiSalesAgent';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 const LEADS_KEY = 'crm_ai_leads';
 
 /* ── Store ─────────────────────────────────────────────────────────────── */

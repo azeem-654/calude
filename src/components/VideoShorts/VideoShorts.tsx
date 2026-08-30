@@ -19,6 +19,7 @@ import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExp
 import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
 import type { ThumbPreset } from '../../lib/thumbnail';
 import ShortsFeed from './ShortsFeed';
+import { API_BASE } from '../../services/apiBase';
 
 /* A real, public long-form video used for the one-click demo so anyone can try
    the module end-to-end without an API key or their own upload. */
@@ -66,14 +67,13 @@ async function downloadClip(
   // YouTube footage can't be captured in-browser, but the real thumbnail can
   // (via the CORS proxy) — render over it with motion instead of a flat gradient.
   const ytId = project.sourceUrl ? getYouTubeId(project.sourceUrl) : null;
-  const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
   const result = await renderSyntheticClip({
     gradient: clip.thumbnailGradient,
     title: clip.title,
     captions: clip.captions,
     aspectRatio: clip.aspectRatio,
     durationSec: clip.sceneImages?.length ? Math.min(clip.duration, 40) : Math.min(clip.duration, 15),
-    backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
+    backgroundImageUrl: ytId ? `${API_BASE}/api/yt-thumb.php?id=${ytId}` : undefined,
     captionStyle: clip.captionStyle,
     sfx: clip.sfx,
     music: clip.musicTrack,
@@ -435,7 +435,6 @@ function geminiClipsToVideoClips(analysis: GeminiAnalysis, project: VideoProject
 /* Editor side-panel ids (deep-linkable from the dashboard tools row). */
 type EditorPanel = 'details' | 'thumb' | 'display' | 'captions' | 'audio' | 'broll' | 'brand' | 'publish';
 
-const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /* Video Dubbing target languages (speechSynthesis codes for voice preview). */
 const DUB_LANGUAGES: { name: string; code: string }[] = [
@@ -472,7 +471,6 @@ async function autoThumbnails(
   src: { sourceType: VideoProject['sourceType']; sourceUrl?: string; sourceBlobUrl?: string },
 ): Promise<VideoClip[]> {
   const ytId = src.sourceUrl ? getYouTubeId(src.sourceUrl) : null;
-  const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
   const presets = THUMB_PRESETS.map(p => p.id);
   return Promise.all(clips.map(async (clip, i) => {
     try {
@@ -482,7 +480,7 @@ async function autoThumbnails(
         bgImageUrl = (await captureVideoFrame(src.sourceBlobUrl, clip.startTime + Math.min(2, clip.duration / 2))) ?? undefined;
       } else if (ytId) {
         // Rotate through YouTube's auto-generated frames so clips differ
-        bgImageUrl = `${apiBase}/api/yt-thumb.php?id=${ytId}&f=${YT_FRAME_VARIANTS[i % YT_FRAME_VARIANTS.length]}`;
+        bgImageUrl = `${API_BASE}/api/yt-thumb.php?id=${ytId}&f=${YT_FRAME_VARIANTS[i % YT_FRAME_VARIANTS.length]}`;
       }
       const thumbnailUrl = await composeThumbnail({
         bgImageUrl,
@@ -1313,14 +1311,13 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
         });
         downloadBlob(result.blob, `${localClip.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.${result.fileExt}`);
       } else {
-        const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
         const result = await renderSyntheticClip({
           gradient: localClip.thumbnailGradient,
           title: localClip.title,
           captions: localClip.captions,
           aspectRatio: localClip.aspectRatio,
           durationSec: Math.min(trimEnd - trimStart, 15),
-          backgroundImageUrl: ytId ? `${apiBase}/api/yt-thumb.php?id=${ytId}` : undefined,
+          backgroundImageUrl: ytId ? `${API_BASE}/api/yt-thumb.php?id=${ytId}` : undefined,
           captionStyle: localClip.captionStyle,
           sfx: localClip.sfx,
           music: localClip.musicTrack,
@@ -1452,9 +1449,8 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   /* Load candidate background frames when the Thumb tab is first opened. */
   useEffect(() => {
     if (activePanel !== 'thumb' || framePreviews.length > 0) return;
-    const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
     if (ytId) {
-      setFramePreviews(YT_FRAME_VARIANTS.map(f => `${apiBase}/api/yt-thumb.php?id=${ytId}&f=${f}`));
+      setFramePreviews(YT_FRAME_VARIANTS.map(f => `${API_BASE}/api/yt-thumb.php?id=${ytId}&f=${f}`));
     } else if (project.sourceBlobUrl) {
       const offsets = [0.1, 0.35, 0.6, 0.85];
       Promise.all(offsets.map(o => captureVideoFrame(project.sourceBlobUrl!, trimStart + (trimEnd - trimStart) * o)))
@@ -1548,7 +1544,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
         thumbnail: GRADIENTS[i % GRADIENTS.length],
         duration: 3,
         source: 'AI · stock image',
-        imageUrl: `${API_BASE_URL}/api/img-proxy.php?q=${encodeURIComponent(sug.keyword)}&sig=${i + 1}`,
+        imageUrl: `${API_BASE}/api/img-proxy.php?q=${encodeURIComponent(sug.keyword)}&sig=${i + 1}`,
       }));
       set({ broll: [...localClip.broll.filter(b => !b.id.startsWith('ai-br-')), ...items] });
       addNotification(`${items.length} AI image b-roll cutaways added — they'll be burned into the export.`, 'success');
@@ -3137,7 +3133,7 @@ export default function VideoShorts() {
       createdAt: new Date().toISOString(),
       captionStyle: 'bold',
       sfx: 'riser',
-      sceneImages: scenes.map((s, i) => `${API_BASE_URL}/api/img-proxy.php?q=${encodeURIComponent(s.keyword)}&sig=${i + 1}`),
+      sceneImages: scenes.map((s, i) => `${API_BASE}/api/img-proxy.php?q=${encodeURIComponent(s.keyword)}&sig=${i + 1}`),
     };
     const project: VideoProject = {
       id, name: title, sourceType: 'upload', sourceName: 'Script to video',

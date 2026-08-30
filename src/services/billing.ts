@@ -9,8 +9,9 @@
  * Keys live only in this browser + are sent per-request to your own PHP proxy;
  * they are never stored server-side.
  */
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 
 export interface StripeConfig {
   secretKey: string;       // sk_… (agency)

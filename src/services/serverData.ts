@@ -13,8 +13,8 @@ import { onScopedWrite, rawSetScoped, getActiveAccountId } from './tenancy';
 import { getSession } from './auth';
 import { updateBilling } from './billing';
 import type { BillingRecord } from './billing';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 const STATUS_KEY = 'crm_cloud_status';   // global: 'cloud' | 'local'
 
 export function cloudStatus(): 'cloud' | 'local' {

@@ -1,4 +1,5 @@
 import type { DesignTemplate, CanvasBackground } from './types';
+import { API_BASE } from '../../services/apiBase';
 
 const solidBg = (color: string): CanvasBackground => ({
   type: 'color', color, gradientStart: '#6366f1', gradientEnd: '#8b5cf6', gradientAngle: 135, imageFit: 'cover',
@@ -10,7 +11,7 @@ const gradBg = (start: string, end: string, angle = 135): CanvasBackground => ({
 
 /** Stock photo placeholder (server image proxy — swaps for real photos; users replace via Upload). */
 const IMG = (q: string, sig: number) =>
-  `${import.meta.env.DEV ? 'http://localhost:3001' : ''}/api/img-proxy.php?q=${q}&sig=${sig}`;
+  `${API_BASE}/api/img-proxy.php?q=${q}&sig=${sig}`;
 
 export const PLATFORM_PRESETS = {
   instagram: { label: 'Instagram', icon: '📸', primaryColor: '#E1306C' },

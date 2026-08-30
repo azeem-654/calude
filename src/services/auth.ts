@@ -10,8 +10,9 @@
  * falls back to a local store so the app is usable in dev/demo. The local
  * fallback is a soft gate — production security comes from the PHP backend.
  */
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 const SESSION_KEY = 'crm_session';        // global (not scoped): { token, user, backend }
 const LOCAL_USERS_KEY = 'crm_local_users'; // fallback user store (global)
 

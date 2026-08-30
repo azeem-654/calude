@@ -12,8 +12,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, ExternalLink, Loader, MapPin, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { sessionToken } from '../../services/auth';
+import { API_BASE } from '../../services/apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 export default function ProspectSearchCard() {
   const { addNotification } = useApp();

@@ -1,3 +1,6 @@
+import { API_BASE } from './apiBase';
+import { sessionToken } from './auth';
+
 export interface ValidationResult {
   success: boolean;
   message: string;
@@ -8,7 +11,7 @@ export interface ValidationResult {
 
 export type ValidationType = 'smtp' | 'resend' | 'mailtrap' | 'openai' | 'apollo' | 'webhook' | 'api_key';
 
-function getSmtpSuggestions(error: string): string[] {
+export function getSmtpSuggestions(error: string): string[] {
   const e = error.toLowerCase();
   const tips: string[] = [];
   if (e.includes('535') || e.includes('authentication') || e.includes('auth')) {
@@ -51,9 +54,9 @@ function getApiKeySuggestions(type: string, error: string): string[] {
     tips.push(`You've hit the rate limit. Wait a moment and try again`);
     tips.push(`Consider upgrading your ${type} plan for higher limits`);
   }
-  if (e.includes('cors') || e.includes('fetch') || e.includes('network')) {
-    tips.push(`This API cannot be tested directly from a browser due to CORS restrictions`);
-    tips.push(`Run the local backend server to test this integration: cd server && npm install && node index.js`);
+  if (e.includes('could not reach') || e.includes('fetch') || e.includes('network') || e.includes('timeout')) {
+    tips.push(`The request to ${type} did not get through — check your connection and try again`);
+    tips.push(`If ${type} is having an outage, the key itself may be fine`);
   }
   if (tips.length === 0) {
     tips.push(`Verify the API key is correct and has not expired`);
@@ -115,6 +118,31 @@ export async function validateMailtrap(apiKey: string, inboxId: string): Promise
   }
 }
 
+/**
+ * Check a key by using it. The call is made by our server, not the browser:
+ * neither provider sends CORS headers, so a request from the page is refused
+ * before it is sent.
+ */
+async function checkKeyOnServer(provider: 'openai' | 'apollo', label: string, apiKey: string): Promise<ValidationResult> {
+  try {
+    const res = await fetch(`${API_BASE}/api/validate-key.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: sessionToken(), provider, apiKey }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await res.json() as { success?: boolean; message?: string; error?: string; status?: number };
+    if (data.success) return { success: true, message: data.message || `${label} key is valid`, suggestions: [] };
+    const msg = data.error || data.message || `${label} could not be reached (HTTP ${res.status})`;
+    return { success: false, message: msg, suggestions: getApiKeySuggestions(label, msg), errorCode: data.status ? String(data.status) : undefined };
+  } catch (e) {
+    const msg = e instanceof Error && e.name === 'TimeoutError'
+      ? `${label} did not answer in time`
+      : 'The key check could not be reached';
+    return { success: false, message: msg, suggestions: ['Check your internet connection and try again'] };
+  }
+}
+
 export async function validateOpenAI(apiKey: string): Promise<ValidationResult> {
   if (!apiKey?.trim()) {
     return { success: false, message: 'API key is required', suggestions: ['Get your OpenAI API key from platform.openai.com/api-keys'] };
@@ -122,32 +150,14 @@ export async function validateOpenAI(apiKey: string): Promise<ValidationResult> 
   if (!apiKey.startsWith('sk-')) {
     return { success: false, message: 'Invalid OpenAI API key format', suggestions: ['OpenAI API keys start with "sk-" — check your key at platform.openai.com/api-keys'], errorCode: 'format' };
   }
-  return {
-    success: false,
-    message: 'OpenAI validation requires the backend server (CORS restriction)',
-    suggestions: [
-      'Run the local backend: cd server && npm install && node index.js',
-      'Or test manually: import OpenAI in a Node.js script and call openai.models.list()',
-      'Check your API key at platform.openai.com/api-keys',
-    ],
-    errorCode: 'cors',
-  };
+  return checkKeyOnServer('openai', 'OpenAI', apiKey.trim());
 }
 
 export async function validateApollo(apiKey: string): Promise<ValidationResult> {
   if (!apiKey?.trim()) {
     return { success: false, message: 'API key is required', suggestions: ['Find your Apollo.io API key at app.apollo.io/#/settings/integrations/api'] };
   }
-  return {
-    success: false,
-    message: 'Apollo.io validation requires the backend server (CORS restriction)',
-    suggestions: [
-      'Run the local backend: cd server && npm install && node index.js',
-      'Test manually: GET https://api.apollo.io/v1/auth/health with your key',
-      'Verify your key at app.apollo.io/#/settings/integrations/api',
-    ],
-    errorCode: 'cors',
-  };
+  return checkKeyOnServer('apollo', 'Apollo.io', apiKey.trim());
 }
 
 export async function validateWebhook(url: string): Promise<ValidationResult> {
@@ -188,29 +198,48 @@ export async function validateSmtp(host: string, port: number, username: string,
   if (!host || !username || !password) {
     return { success: false, message: 'Host, username, and password are required', suggestions: ['Fill in all SMTP fields before testing'] };
   }
-  // Try backend first
+  /* A browser cannot open an SMTP connection, so the test is run by the server:
+     it signs in to the mail server with these credentials and reports what the
+     server said. This used to call a local development process that does not
+     exist in production, so pressing Test always failed for a customer. */
   try {
-    const res = await fetch('http://localhost:3001/api/validate/smtp', {
+    const res = await fetch(`${API_BASE}/api/smtp-test.php`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, port, username, password, secure }),
-      signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({
+        token: sessionToken(),
+        host,
+        port: Number(port) || 587,
+        username,
+        password,
+        encryption: secure ? 'ssl' : 'tls',
+      }),
+      signal: AbortSignal.timeout(30000),
     });
-    const data = await res.json();
+    const data = await res.json() as { success?: boolean; message?: string; error?: string; port?: number };
     if (data.success) {
-      return { success: true, message: 'SMTP connection successful! Ready to send emails.', suggestions: [] };
+      return {
+        success: true,
+        message: data.message || 'SMTP connection successful — ready to send.',
+        suggestions: [],
+      };
     }
-    return { success: false, message: data.error || 'SMTP connection failed', suggestions: getSmtpSuggestions(data.error || ''), errorCode: data.code };
-  } catch {
-    // Backend not running — provide smart client-side guidance
+    const err = data.error || data.message || `The mail server refused the connection (HTTP ${res.status}).`;
+    return { success: false, message: err, suggestions: getSmtpSuggestions(err) };
+  } catch (e) {
+    /* Reaching the app's own API failed — that is a different problem from the
+       mail server rejecting the credentials, and saying so stops people
+       rewriting settings that were never the cause. */
+    const reason = e instanceof Error && e.name === 'TimeoutError'
+      ? `${host} did not answer within 30 seconds.`
+      : 'The connection test could not be reached.';
     return {
       success: false,
-      message: 'SMTP validation requires the backend server',
-      details: `Cannot test SMTP directly from a browser. Start the backend server to test your ${host} connection.`,
+      message: reason,
+      details: 'The test runs on the server; this attempt did not get an answer back.',
       suggestions: [
-        'Start the backend: cd server && npm install && node index.js',
-        `Common settings for ${host.includes('gmail') ? 'Gmail: port 587, STARTTLS' : host.includes('outlook') || host.includes('office365') ? 'Outlook: smtp.office365.com port 587' : 'your provider: check their documentation'}`,
-        'Make sure SMTP access is enabled in your email account settings',
+        'Check your internet connection and try again',
+        `Confirm ${host} is the right server name and that it accepts connections from outside your network`,
       ],
     };
   }

@@ -8,8 +8,8 @@
  */
 
 import { sessionToken } from './auth';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /* ─── Types ─── */
 export interface CompanyProfile {

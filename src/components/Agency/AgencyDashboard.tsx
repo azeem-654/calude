@@ -15,6 +15,7 @@ import {
   switchAccount, accountUsage, loadAgency, saveAgency, blankSubAccount, planById, PLANS,
 } from '../../services/tenancy';
 import type { SubAccount, AccountStatus, PlanId } from '../../services/tenancy';
+import { API_BASE } from '../../services/apiBase';
 
 const INK = '#17191c';
 const MUTED = '#8a8f98';
@@ -449,7 +450,6 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
 }
 
 /* ── Cloud database status ── */
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 function CloudModal({ current, onDone, onClose }: { current: 'cloud' | 'local'; onDone: (s: 'cloud' | 'local') => void; onClose: () => void }) {
   const [form, setForm] = useState({ host: 'localhost', db: '', user: '', pass: '' });
   const [busy, setBusy] = useState(false);

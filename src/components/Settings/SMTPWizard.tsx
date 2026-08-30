@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle, XCircle, Loader, Eye, EyeOff, Send, RefreshCw, ChevronRight, ChevronLeft, Mail, Inbox, Wifi, WifiOff, AlertCircle, Info, Pencil } from 'lucide-react';
 
 import { sessionToken } from '../../services/auth';
+import { API_BASE } from '../../services/apiBase';
+import { getSmtpSuggestions } from '../../services/validationService';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 /* ── types ── */
 export interface SMTPConfig {
@@ -426,15 +427,15 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: sessionToken(), host: smtp.host, port: parseInt(smtp.port) || 587, username: smtp.user, password: smtp.pass, encryption: smtp.encryption }),
       });
-      const d = await r.json() as { success: boolean; message: string; note?: string; suggestions?: string[] };
+      const d = await r.json() as { success: boolean; message: string; error?: string; note?: string; suggestions?: string[] };
       setTestState(d.success ? 'ok' : 'fail');
       const extra = (!d.success && d.note) ? `\n${d.note}` : '';
       setTestMsg(d.message + extra);
-      setTestDetails(d.suggestions ?? []);
+      setTestDetails(d.success ? [] : (d.suggestions ?? getSmtpSuggestions(d.error || d.message || '')));
     } catch {
       setTestState('fail');
-      setTestMsg('Cannot reach SMTP test endpoint');
-      setTestDetails(['Ensure the server is reachable', 'In local dev run: cd server && node index.js']);
+      setTestMsg('The connection test could not be reached.');
+      setTestDetails(['Check your internet connection and try again', 'If this keeps happening, the mail server may be taking too long to answer']);
     }
   };
 

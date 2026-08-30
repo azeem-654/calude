@@ -20,6 +20,7 @@ import { handleData } from './routes/data';
 import { handleMailbox } from './routes/mailbox';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
+import { handleValidateKey } from './routes/validateKey';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
@@ -43,6 +44,7 @@ const ROUTES: Record<string, Handler> = {
      implementation that can drift from the first. */
   '/api/smtp-test.php': (req, env) => handleSmtpSend(req, env, { forceVerify: true }),
   '/api/provider-send.php': handleProviderSend,
+  '/api/validate-key.php': handleValidateKey,
   '/api/mail-probe.php': handleMailProbe,
   '/api/imap-fetch.php': handleImapFetch,
   '/api/sms-send.php': handleSmsSend,

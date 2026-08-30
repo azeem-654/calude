@@ -211,3 +211,112 @@ export async function imapFetch(creds: ImapCreds, limit: number): Promise<{ ok: 
     try { await socket?.close(); } catch { /* already gone */ }
   }
 }
+
+/* ── Inbox placement ──────────────────────────────────────────────────────── */
+
+/**
+ * The folder name in a LIST reply.
+ *
+ * `* LIST (\HasNoChildren) "/" "[Gmail]/Spam"` — the name is the last item and
+ * may be quoted or a bare atom, so both are handled rather than assuming the
+ * quoted form every provider does not use.
+ */
+function listedFolder(line: string): string {
+  const quoted = line.match(/"((?:[^"\\]|\\.)*)"\s*$/);
+  if (quoted) return quoted[1].replace(/\\(.)/g, '$1');
+  const atom = line.trim().match(/(\S+)$/);
+  return atom ? atom[1] : '';
+}
+
+/** Whichever of this mailbox's folders is where junk is filed. */
+function spamFolders(lines: string[]): string[] {
+  const found = lines
+    .filter(l => /^\* LIST/i.test(l))
+    .map(listedFolder)
+    .filter(name => name && /(spam|junk|bulk|unwanted|ongewenste|indésirable)/i.test(name));
+  /* Providers that do not advertise a junk folder still usually have one under
+     one of these two names, so it is worth asking before reporting "missing". */
+  return found.length ? found : ['Spam', 'Junk'];
+}
+
+export interface Placement {
+  ok: boolean;
+  placement: 'inbox' | 'spam' | 'missing' | null;
+  folder: string | null;
+  searched: string[];
+  error: string;
+  /** True when the mailbox itself could not be opened, which is not "missing". */
+  connectFailed: boolean;
+}
+
+/**
+ * Look for one message in a seed mailbox and report where it landed.
+ *
+ * The marker goes in the subject of the placement test, and IMAP TEXT search
+ * finds it whether the body is HTML or plain. The inbox is checked first
+ * because that is the common answer; only if it is not there is the junk
+ * folder list read and searched.
+ */
+export async function imapFindMarker(creds: ImapCreds, marker: string): Promise<Placement> {
+  const miss: Placement = { ok: false, placement: null, folder: null, searched: [], error: '', connectFailed: true };
+  let socket: ReturnType<typeof connect> | null = null;
+  try {
+    socket = connect(
+      { hostname: creds.host, port: creds.port },
+      { secureTransport: creds.encryption === 'ssl' ? 'on' : creds.encryption === 'tls' ? 'starttls' : 'off', allowHalfOpen: false },
+    );
+    let active = socket;
+    let wire = new ImapWire(active.readable.getReader(), active.writable.getWriter());
+
+    const hello = await wire.greeting();
+    if (!/^\*\s+OK/i.test(hello)) return { ...miss, error: `The mailbox refused the connection: ${hello.trim()}` };
+
+    if (creds.encryption === 'tls') {
+      const st = await wire.command('STARTTLS');
+      if (!st.ok) return { ...miss, error: 'The mailbox refused STARTTLS, so the credentials were not sent.' };
+      wire.release();
+      active = active.startTls() as unknown as typeof active;
+      wire = new ImapWire(active.readable.getReader(), active.writable.getWriter());
+    }
+
+    const login = await wire.command(`LOGIN ${quoted(creds.username)} ${quoted(creds.password)}`);
+    if (!login.ok) {
+      return { ...miss, error: 'Could not sign in to that mailbox. Gmail and Outlook need an app password, not the normal one.' };
+    }
+
+    /* Past this point the mailbox is open, so anything not found really is not
+       there — a different answer from "could not look". */
+    const searched: string[] = [];
+
+    const hunt = async (folder: string): Promise<boolean | null> => {
+      const sel = await wire.command(`SELECT ${quoted(folder)}`);
+      if (!sel.ok) return null;
+      searched.push(folder);
+      const r = await wire.command(`SEARCH TEXT ${quoted(marker)}`);
+      if (!r.ok) return null;
+      const hits = (r.lines.find(l => /^\* SEARCH/i.test(l)) ?? '')
+        .replace(/^\* SEARCH\s*/i, '').trim();
+      return hits.length > 0;
+    };
+
+    if (await hunt('INBOX')) {
+      await wire.command('LOGOUT').catch(() => {});
+      return { ok: true, placement: 'inbox', folder: 'INBOX', searched, error: '', connectFailed: false };
+    }
+
+    const listed = await wire.command('LIST "" "*"');
+    for (const folder of spamFolders(listed.ok ? listed.lines : [])) {
+      if (await hunt(folder)) {
+        await wire.command('LOGOUT').catch(() => {});
+        return { ok: true, placement: 'spam', folder, searched, error: '', connectFailed: false };
+      }
+    }
+
+    await wire.command('LOGOUT').catch(() => {});
+    return { ok: true, placement: 'missing', folder: null, searched, error: '', connectFailed: false };
+  } catch (e) {
+    return { ...miss, error: `Could not reach ${creds.host}:${creds.port} (${e instanceof Error ? e.message : String(e)})` };
+  } finally {
+    try { await socket?.close(); } catch { /* already gone */ }
+  }
+}

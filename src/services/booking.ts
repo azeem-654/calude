@@ -5,8 +5,8 @@
  * when the backend isn't reachable (local/dev mode).
  */
 import type { Booking, ScheduleAvailability } from '../types';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   try {

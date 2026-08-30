@@ -14,8 +14,8 @@ import type { Contact } from '../types';
 import { getSession } from './auth';
 import { getActiveAccountId } from './tenancy';
 import { loadEmails, type ContactEmail } from './contactEmail';
+import { API_BASE } from './apiBase';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 const SUPPRESSION_KEY = 'crm_suppression_list';
 const HEALTH_KEY = 'crm_email_health';
