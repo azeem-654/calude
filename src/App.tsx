@@ -5,6 +5,7 @@ import TopNav, { IconRail } from './components/Layout/TopNav';
 import LoginScreen from './components/Auth/LoginScreen';
 import { getSession } from './services/auth';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
+import { isAppHost, isMarketingHost } from './services/hosts';
 import { initCloudSync } from './services/serverData';
 import { Layers, Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
@@ -165,16 +166,36 @@ export default function App() {
   }
 
   /*
+   * protectedcentral.com is the marketing site and nothing else. There is no
+   * login form on it and no session to find — sessions belong to the app's own
+   * origin — so every address on this host is the page, and the two ways in are
+   * links across to app.protectedcentral.com.
+   */
+  if (isMarketingHost()) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="*" element={<SiteHome />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+
+  /*
    * A visitor who has never heard of this arrives at the marketing site, not at
    * a password box. The login form keeps its own address, so a bookmark to it
    * still works and so does anything that links people straight to signing in.
+   *
+   * On the app host the marketing page is a different site at a different
+   * address, so a signed-out visitor gets the login form wherever they landed
+   * rather than a second copy of the pitch under the wrong domain.
    */
   if (!session) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         <Routes>
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} />} />
-          <Route path="*" element={<SiteHome />} />
+          <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />
         </Routes>
       </BrowserRouter>
     );

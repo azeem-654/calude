@@ -1,8 +1,17 @@
 # CRM Pro — multi-tenant marketing CRM
 
-A GoHighLevel-style CRM SaaS built with **React + TypeScript + Vite**, deployed to
-[protectedcentral.com](https://protectedcentral.com) via GitHub Actions (FTP).
-An agency owns isolated client sub-accounts; every module below is tenant-scoped.
+A GoHighLevel-style CRM SaaS built with **React + TypeScript + Vite**, running on
+one Cloudflare Worker deployed by GitHub Actions. An agency owns isolated client
+sub-accounts; every module below is tenant-scoped.
+
+Two hostnames, one Worker and one bundle:
+
+| | |
+|---|---|
+| [protectedcentral.com](https://protectedcentral.com) | the public marketing site — what it is, and two ways in |
+| [app.protectedcentral.com](https://app.protectedcentral.com) | the product: the login, and everything behind it |
+
+See [The two sites](#the-two-sites).
 
 ## Modules
 
@@ -470,35 +479,91 @@ A post marked as failed can be retried from the campaign dashboard. Attempts
 are capped at three; past that the post keeps its caption and its place in the
 plan but needs a person to look at it, rather than being retried forever.
 
-## Deployment and host-side state
+## The two sites
+
+`protectedcentral.com` is a marketing page and nothing else. `app.protectedcentral.com`
+is the product. They are the same Worker and the same JavaScript bundle, and the
+split is made at runtime from the hostname — `src/services/hosts.ts` is the only
+place that knows the two names.
+
+| On | A visitor gets | Sign in / Sign up goes to |
+|---|---|---|
+| `protectedcentral.com`, `www.` | the marketing site, at every path | `https://app.protectedcentral.com/login` |
+| `app.protectedcentral.com` | the login form, then the app | the router, no origin hop |
+| localhost, previews, `*.workers.dev` | the marketing site at `/`, the login at `/login` | the router, no origin hop |
+
+The third row is what keeps the thing developable: nothing about the split is
+baked in at build time, so one artefact serves all three cases and a local
+`npm run dev` never bounces anyone to production.
+
+Sessions belong to the app's origin, so there is no session to find on the apex
+and nothing to sign out of there. The marketing page therefore renders for
+everyone, always, with no auth check in front of it.
+
+### Making a hostname live
+
+Both names are attached to the `crmpro` Worker as *custom domains* at the
+account level. Attaching is a one-off — it is not part of a deploy, and the
+deploy token deliberately has no permissions over the zone:
+
+```bash
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run domains
+```
+
+`scripts/attach-domains.mjs` looks the zone up by name and attaches
+`protectedcentral.com` and `www.protectedcentral.com`, and it is safe to re-run.
+The token for it needs **Zone → Zone: Read** and **Zone → Workers Routes: Edit**
+on top of what the deploy uses. Cloudflare manages the DNS for a custom domain
+itself, so there is no A record to add; if a hostname is refused, something else
+is usually already serving that name — a Pages project, or an A record left over
+from the old host — and has to be removed first.
+
+The same can be done by hand in the dashboard: **Workers & Pages → crmpro →
+Settings → Domains & Routes → Add custom domain**.
+
+## Deployment and server-side state
 
 Pushing to `main` in `azeem-654/calude` runs `.github/workflows/deploy.yml`:
-`npm ci` → `npm run build` with `VITE_BASE=/` → FTP-upload `./dist/` to `/` on
-protectedcentral.com (three attempts, since the host's FTP is flaky). Pushing to
-`testing` deploys to `testing.protectedcentral.com` instead. `dangerous-clean-slate`
-is off, so files the deploy never uploaded — including everything below — are
-left alone.
+`npm ci` → both typechecks → `npm run build` with `VITE_BASE=/` → apply any new
+D1 migrations → `npx wrangler deploy`. Migrations run before the deploy on
+purpose: a Worker expecting a column its database does not have yet is a broken
+deploy, and this ordering makes that impossible.
 
-Two kinds of file live only on the host and are never in the repo:
+Nothing is uploaded anywhere. One Cloudflare Worker (`crmpro`) serves the
+marketing site, the built app and every `/api/*` route, and it answers on both
+**https://protectedcentral.com** and **https://app.protectedcentral.com**. See
+[The two sites](#the-two-sites) for which is which.
 
-| Path | What it holds | Created by |
-|---|---|---|
-| `api/config.php` | MySQL credentials | `install.php`, once |
-| `api/data/*.php` | Sessions, password hashes, bookings, tracking events | The endpoints, at runtime |
+Two GitHub secrets drive it: `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, D1:
+Edit, Account Settings: Read) and `CLOUDFLARE_ACCOUNT_ID`.
 
-**Those files are protected two ways, because one is not enough on shared
-hosting.** Each store under `api/data/` is written as a `.php` file that begins
-with `<?php http_response_code(404); exit; ?>` — fetched directly it executes,
-returns 404 and prints nothing, whatever the server config says. An install that
-predates this is migrated on first read: the plain `.json` file is rewritten in
-guarded form and deleted, so old tokens cannot keep leaking. On top of that,
-`api/.htaccess` denies `config.php` and the `_*.php` includes, and
-`api/data/.htaccess` denies the directory outright.
+The custom domains are attached at the account level rather than declared in
+`wrangler.jsonc`. Declaring them makes every deploy call the *zone* route API,
+which is a separate permission, and fails the run even when the code published
+fine. `npm run domains` attaches one that is missing.
 
-`install.php` requires an agency session once any account exists, so a public
-endpoint cannot be used to repoint a running install at another database.
-First-run setup stays open, because at that point there is nothing to protect
-and nobody to authenticate as.
+### Where the state lives
+
+All of it is in one D1 database, `crmpro`, created by `worker/migrations/`:
+
+| Table | What it holds |
+|---|---|
+| `crm_data` | the per-account key/value store the app syncs into |
+| `crm_users`, `crm_sessions` | accounts and their live sessions |
+| `crm_mailboxes` | each customer's own SMTP/IMAP settings, password encrypted with AES-GCM |
+| `crm_track`, `crm_unsubscribes` | open/click events and opt-outs |
+| `crm_booking_config`, `crm_bookings` | public booking pages and guest bookings |
+| `crm_meta` | signing keys and other singletons |
+
+Passwords are PBKDF2-HMAC-SHA256 at 100,000 iterations — the ceiling the
+Workers runtime will accept; it refuses higher counts outright. The format
+records its own parameters, so the cost can be raised later without stranding
+existing rows.
+
+There are no files on a host, no `config.php`, no `.htaccess`, and no installer
+to run: `wrangler d1 migrations apply` is the whole of setup, and the deploy
+does it.
+
 
 ## 12-Month Content Pipeline
 
@@ -526,46 +591,42 @@ Key files: `src/services/onboarding.ts` (storage + plan engine), `contentGen.ts`
 
 ```bash
 npm install
-npm run dev        # Vite dev server
-npm run build      # type-check + production build to dist/
+npm run dev        # Vite dev server on :5173
+npx wrangler dev   # the API, on :8787 — the same Worker code that runs live
+npm run typecheck  # tsc -b; a bare `tsc --noEmit` compiles nothing here
+npm run build      # production build to dist/
 ```
 
-Optional AI: add a Gemini API key in Settings — every AI feature has an offline fallback.
-PHP endpoints in `public/api/` (booking, mail, image proxy) deploy alongside the SPA and
-run zero-config via a JSON file store, or MySQL/SQLite through `api/config.php`.
+`npm run dev` serves only the page. In development the app calls the API on
+`localhost:8787`, so run `npx wrangler dev` alongside it for anything that talks
+to the server — sign-in, sync, sending mail, bookings. `wrangler dev` runs the
+real Workers runtime against a local D1, so what passes there is what deploys.
 
-## Deployment
+The API base is defined once, in `src/services/apiBase.ts`. In production it is
+empty, because the Worker serving the page also serves `/api/*`.
 
-Pushing to `main` triggers `.github/workflows` → build → FTP upload to protectedcentral.com.
-The workflow retries the FTP step up to 3 times; a failed upload can be re-triggered with an
-empty commit.
+Note on typechecking: the root `tsconfig.json` is a solution file (`"files": []`
+plus references), so `tsc --noEmit` type-checks *nothing* and exits 0. Use
+`npm run typecheck`, which runs `tsc -b`.
+
+Optional AI: add a Gemini API key in Settings — every AI feature has an offline
+fallback.
 
 ## Signing in
 
-| Login | When it works | Purpose |
-|---|---|---|
-| Your own account | always | the real owner |
-| `demo` | always | a standing sandbox account, for showing the app without handing over the owner's login |
-| `test` | only while no real account exists | first-run smoke test on a fresh install |
+Signing in happens on **app.protectedcentral.com**. Every way in from the
+marketing site — the header, the hero, the closing panel — is a link to
+`/login` there.
 
-The `demo` password is **not in this repository** — only its bcrypt hash, in
-`public/api/auth.php`. That is deliberate: this repo is public, and a guessable
-shared password on a live site (`test`/`test123` being the classic) is found by
-bots within days.
+The first person to open a fresh install creates the owner account, and from
+that moment every endpoint that opens an outbound connection requires a live
+session. There is no demo login and no standing test account: a shared password
+on a public site is found by bots within days, and one that also has to be
+documented in a public repository cannot be kept secret at all.
 
-Rotate it with:
+Additional logins are created in **Settings → Team & Permissions**. Clients are
+bound to a single workspace; the agency role sees all of them.
 
-```bash
-php -r 'echo password_hash("your-new-password", PASSWORD_BCRYPT), "\n";'
-```
-
-and paste the result into `DEMO_PASS_HASH`. Set that constant to an empty string
-to switch the account off, or delete the user in **Settings → Team & Permissions**
-to remove it.
-
-The demo account is flagged so it does not count as "this workspace is set up" —
-signing up properly stays available while it exists — and it gets its own tenant
-scope, so nothing it does touches real data.
 
 ## Where generated content came from
 

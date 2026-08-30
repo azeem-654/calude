@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "domains": "node scripts/attach-domains.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

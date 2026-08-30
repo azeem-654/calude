@@ -92,7 +92,7 @@
 .site .scene.dark { background: transparent; }
 
 .site .scene-inner {
-  width: min(1180px, 100%);
+  width: min(1420px, 100%);
   display: grid;
   gap: clamp(20px, 3.4vw, 56px);
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
@@ -105,7 +105,26 @@
    the point of the scene is the screen, not the paragraph beside it. */
 @media (min-width: 980px) {
   .site .scene-inner:not([data-wide='true']) {
-    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(0, 0.68fr) minmax(0, 1.32fr);
+  }
+}
+
+/* Wide enough to give the screen its head: the frame runs out past the text
+   column and into the margin, so it reads as a window onto something larger
+   than the page rather than a thumbnail sitting politely in a cell.
+
+   How far out is not a taste number. The dark band is inset from the viewport
+   by less than the scene is padded, so the difference between the two is the
+   distance that takes the frame's right edge to the band's. On a window narrow
+   enough for that padding to be what bounds the scene the two line up exactly;
+   on a wider one the frame simply stops at the width the layout allows. */
+@media (min-width: 1240px) {
+  .site .scene-inner:not([data-wide='true']) {
+    gap: clamp(34px, 4vw, 68px);
+    grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
+  }
+  .site .scene-inner:not([data-wide='true']) .shot {
+    margin-right: calc(-1 * (clamp(16px, 5vw, 72px) - clamp(12px, 4vw, 56px)));
   }
 }
 
@@ -119,20 +138,172 @@
   .site [data-rise] { opacity: 1 !important; transform: none !important; }
 }
 
-/* The photograph of a real screen. */
+/*
+ * The photograph of a real screen.
+ *
+ * Three layers, because they move at different speeds. The <figure> is flown in
+ * by useScrollScene, which owns its transform outright — nothing else may write
+ * one there or the two fight every frame. The frame inside it carries the idle
+ * drift, and the sheen and the glow are their own elements so they can run on
+ * their own clocks. `--in` is how far the scene has settled, written from the
+ * same frame loop, and it is what brings the light up behind the screen as it
+ * lands.
+ */
 .site .shot {
+  position: relative;
+  /* The glow sits behind the frame and must stay behind *this* rather than
+     behind the scene. The frame is transformed from the first animation frame,
+     which would give it a stacking context anyway; this makes it true on the
+     paint before that one too. */
+  isolation: isolate;
   margin: 0;
   min-width: 0;
-  border-radius: 12px;
+  will-change: transform, opacity;
+  transform-origin: 50% 58%;
+  --in: 0;
+  /* Shrunk by the cap below rather than by the grid, so it keeps the right
+     edge it was given and gives the room back to the copy. */
+  margin-left: auto;
+}
+
+/*
+ * A scene is exactly one screen tall, so what limits the picture is the height
+ * left after the chrome, not the width of its column. Without this a short wide
+ * window — a laptop with a browser's worth of toolbars — lays out a frame taller
+ * than the scene and the bottom of it is cut off by the stage.
+ *
+ * 1.55 is the screenshot's own aspect (1400 × 903); the subtraction is the
+ * scene's padding, the frame's title bar and a little air.
+ */
+@media (min-width: 980px) {
+  .site .shot { max-width: min(100%, calc((100vh - 270px) * 1.55)); }
+}
+/* The stage lets pointer events through to the document so the page still
+   scrolls; the screen takes them back, because it answers to the cursor. A
+   wheel over it has no scrollable ancestor inside the fixed stage, so it still
+   scrolls the page. */
+.site .scene .shot { pointer-events: auto; }
+
+/* The light behind the screen, strongest once the scene has arrived. */
+.site .shot-glow {
+  position: absolute;
+  inset: 6% 2% -8%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 50%, rgba(200, 242, 77, 0.34), rgba(143, 217, 196, 0.16) 46%, transparent 72%);
+  filter: blur(58px);
+  opacity: calc(var(--in) * 0.85);
+  z-index: -1;
+  pointer-events: none;
+}
+.site .dark .shot-glow {
+  background: radial-gradient(ellipse at 50% 50%, rgba(200, 242, 77, 0.3), rgba(120, 200, 175, 0.14) 48%, transparent 74%);
+}
+
+.site .shot-frame {
+  border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--card);
-  box-shadow: 0 30px 70px rgba(16, 24, 40, 0.18), 0 4px 12px rgba(16, 24, 40, 0.06);
-  will-change: transform, opacity;
-  transform-origin: 50% 60%;
+  box-shadow: 0 44px 100px rgba(16, 24, 40, 0.24), 0 8px 22px rgba(16, 24, 40, 0.08);
+  /* A slow, shallow breath, so the screen is alive between scenes rather than
+     only while the wheel is moving. */
+  animation: shot-drift 11s ease-in-out infinite;
+  transition: box-shadow 320ms ease;
 }
-.site .dark .shot { border-color: rgba(255, 255, 255, 0.12); box-shadow: 0 34px 90px rgba(0, 0, 0, 0.55); }
-.site .shot img { display: block; width: 100%; height: auto; }
+.site .dark .shot-frame {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #0c0f0b;
+  box-shadow: 0 48px 120px rgba(0, 0, 0, 0.62);
+}
+.site .shot:hover .shot-frame {
+  box-shadow: 0 54px 120px rgba(16, 24, 40, 0.3), 0 10px 26px rgba(16, 24, 40, 0.1);
+  animation-play-state: paused;
+}
+
+/* The strip of window furniture above the picture. It is what makes a flat
+   screenshot read as an application rather than as a diagram. */
+.site .shot-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  height: 32px;
+  background: var(--card-sunk);
+  border-bottom: 1px solid var(--line);
+}
+.site .shot-bar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d8dbd2;
+  flex-shrink: 0;
+}
+.site .shot-bar i:first-child { background: #e6b9ac; }
+.site .shot-bar i:nth-child(2) { background: #e6d6ac; }
+.site .shot-bar i:nth-child(3) { background: #bcd9a8; }
+.site .shot-tab {
+  margin-left: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.site .dark .shot-bar { background: rgba(255, 255, 255, 0.05); border-bottom-color: rgba(255, 255, 255, 0.09); }
+.site .dark .shot-bar i { background: rgba(255, 255, 255, 0.18); }
+.site .dark .shot-tab { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
+
+.site .shot-screen { display: block; position: relative; overflow: hidden; }
+.site .shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: scale(1.006);
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.site .shot:hover img { transform: scale(1.035); }
+
+/* A band of light crossing the glass. It sweeps once as the scene settles, and
+   again on a slow loop, which is what stops a still picture reading as dead. */
+.site .shot-sheen {
+  position: absolute;
+  inset: -40% -60%;
+  pointer-events: none;
+  background: linear-gradient(
+    104deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.42) 48%,
+    rgba(226, 255, 138, 0.26) 52%,
+    transparent 62%
+  );
+  opacity: calc(var(--in) * 0.9);
+  animation: shot-sheen 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.site .dark .shot-sheen {
+  background: linear-gradient(
+    104deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.16) 48%,
+    rgba(200, 242, 77, 0.2) 52%,
+    transparent 62%
+  );
+}
+
+@keyframes shot-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, -12px, 0) rotate(-0.22deg); }
+}
+
+@keyframes shot-sheen {
+  0% { transform: translate3d(-115%, 0, 0); }
+  /* One pass, then most of the cycle spent off the right-hand edge. A sheen
+     that crosses continuously is a barber's pole, not a highlight. */
+  34%, 100% { transform: translate3d(115%, 0, 0); }
+}
 
 /* The light that falls through a dark scene. */
 .site .beam {
@@ -411,4 +582,8 @@
   }
   /* The scenes still change; they simply do not travel to get there. */
   .site .shot { transform: none !important; }
+  .site .shot img { transform: none !important; }
+  /* Both of these are pure motion: held still, the sheen is a grey diagonal
+     stripe laid across the screenshot and the glow is a smudge. */
+  .site .shot-sheen, .site .shot-glow { display: none; }
 }
