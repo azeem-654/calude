@@ -45,6 +45,35 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # ── The secrets, before anything expensive ──────────────────────────
+      #
+      # These were empty for a while and nothing said so. The run installed,
+      # typechecked and built — ninety seconds of green ticks — and then wrangler
+      # failed with "it's necessary to set a CLOUDFLARE_API_TOKEN environment
+      # variable", which reads like a wrangler problem rather than a missing
+      # repository secret. Worse, the *migrations* step is the one that hit it
+      # first, so the failure pointed at the database.
+      #
+      # A missing secret is knowable in the first second of the run. Checking it
+      # here costs nothing and names the exact thing to go and set.
+      - name: Check the Cloudflare credentials are present
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ]  || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error title=Cloudflare credentials missing::Repository secret(s) not set:$missing"
+            echo ""
+            echo "Set them at Settings -> Secrets and variables -> Actions -> New repository secret."
+            echo "The token needs Workers Scripts: Edit, D1: Edit and Account Settings: Read."
+            echo "Nothing was deployed and the database was not touched."
+            exit 1
+          fi
+          echo "Both credentials are present."
+
       - name: Install dependencies
         run: npm ci
 

@@ -39,6 +39,21 @@ jobs:
         with:
           node-version: '22'
 
+      # Same trap as the deploy: an unset secret arrives as an empty string, and
+      # the script's own error would blame the token rather than its absence.
+      - name: Check the Cloudflare credentials are present
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ]  || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error title=Cloudflare credentials missing::Repository secret(s) not set:$missing"
+            exit 1
+          fi
+
       # The script is dependency-free — it talks to the Cloudflare REST API with
       # fetch — so there is nothing to install and no lockfile to restore.
       - name: Attach protectedcentral.com and www to crmpro
