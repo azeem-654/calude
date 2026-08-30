@@ -150,7 +150,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationLog, setNotificationLog] = useState<LoggedNotification[]>(() => loadLS(NOTIF_LOG_KEY, []));
 
-  /* The server enforces the permission rules on every write (api/_perm.php).
+  /* The server enforces the permission rules on every write (api/data.php).
      When it refuses one, it also hands back its own copy, which serverData has
      already written locally — so all that is left is to tell the user why the
      change they just made has reverted. */

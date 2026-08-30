@@ -21,6 +21,7 @@ import { handleMailbox } from './routes/mailbox';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
+import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
@@ -53,6 +54,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/unsubscribe.php': handleUnsubscribe,
   '/api/booking.php': handleBooking,
   '/api/deliverability.php': handleDeliverability,
+  '/api/placement.php': handlePlacement,
   '/api/blog-publish.php': handleBlogPublish,
 
   '/api/stripe-config.php': handleStripeConfig,

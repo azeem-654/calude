@@ -1,5 +1,5 @@
 /**
- * booking.ts — client for public/api/booking.php: server-side bookings so the
+ * booking.ts — client for api/booking.php: server-side bookings so the
  * public booking page works for real visitors (cross-device), plus the
  * publish/list endpoints the owner app uses. Every call degrades gracefully
  * when the backend isn't reachable (local/dev mode).

@@ -4,7 +4,7 @@
  *
  * The rules themselves live in two places that must agree:
  *   src/services/contactPermissions.ts   what the UI offers
- *   public/api/_perm.php                 what the server accepts
+ *   worker/src/routes/data.ts            what the server accepts
  * This screen shows the matrix the server returned, so what you read here is
  * what the database will actually do — not a local guess.
  */
@@ -72,7 +72,7 @@ export default function TeamPermissions() {
             </div>
             <p style={{ margin: '5px 0 0', fontSize: 12.5, color: enforced ? '#166534' : '#92400e', lineHeight: 1.55 }}>
               {enforced
-                ? 'Every write goes through api/data.php, which checks role and ownership in api/_perm.php before touching the database. A user who edits the interface in devtools still cannot change records they do not own — the server refuses the write and this browser is resynced from the server’s copy.'
+                ? 'Every write goes through api/data.php, which checks role and ownership before touching the database. A user who edits the interface in devtools still cannot change records they do not own — the server refuses the write and this browser is resynced from the server’s copy.'
                 : 'This workspace is running local-only, so the rules below shape the interface but nothing checks them. Connect the cloud database in Agency → Cloud Database to turn on real enforcement.'}
             </p>
           </div>

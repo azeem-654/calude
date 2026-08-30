@@ -12,6 +12,7 @@
  * reply is finished when a line starting with that tag arrives.
  */
 import { connect } from 'cloudflare:sockets';
+import { closeQuietly, readBefore } from './deadline';
 
 export interface ImapCreds {
   host: string;
@@ -67,8 +68,9 @@ class ImapWire {
     for (;;) {
       const idx = this.buf.indexOf('\r\n');
       if (idx === -1) {
-        if (Date.now() > deadline) throw new Error('the mailbox stopped responding');
-        const { value, done } = await this.reader.read();
+        const { value, done } = await readBefore(
+          this.reader.read(), deadline, 'the mailbox stopped responding',
+        );
         if (done) throw new Error('the mailbox closed the connection');
         this.buf += dec.decode(value, { stream: true });
         continue;
@@ -90,8 +92,9 @@ class ImapWire {
     for (;;) {
       const idx = this.buf.indexOf('\r\n');
       if (idx !== -1) { const l = this.buf.slice(0, idx); this.buf = this.buf.slice(idx + 2); return l; }
-      if (Date.now() > deadline) throw new Error('the mailbox did not greet us');
-      const { value, done } = await this.reader.read();
+      const { value, done } = await readBefore(
+        this.reader.read(), deadline, 'the mailbox did not greet us',
+      );
       if (done) throw new Error('the mailbox closed the connection');
       this.buf += dec.decode(value, { stream: true });
     }
@@ -208,7 +211,7 @@ export async function imapFetch(creds: ImapCreds, limit: number): Promise<{ ok: 
   } catch (e) {
     return { ok: false, error: `Could not reach ${creds.host}:${creds.port} (${e instanceof Error ? e.message : String(e)})`, messages: [] };
   } finally {
-    try { await socket?.close(); } catch { /* already gone */ }
+    closeQuietly(socket);
   }
 }
 
@@ -317,6 +320,6 @@ export async function imapFindMarker(creds: ImapCreds, marker: string): Promise<
   } catch (e) {
     return { ...miss, error: `Could not reach ${creds.host}:${creds.port} (${e instanceof Error ? e.message : String(e)})` };
   } finally {
-    try { await socket?.close(); } catch { /* already gone */ }
+    closeQuietly(socket);
   }
 }

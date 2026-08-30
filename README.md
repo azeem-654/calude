@@ -67,7 +67,7 @@ rule-based, so it works offline with no API key and every number can be explaine
 
 ### Email from the contact profile
 
-`src/services/contactEmail.ts` plus `public/api/track.php` make the Email tab a
+`src/services/contactEmail.ts` plus the Worker's `api/track.php` route make the Email tab a
 working outbound channel rather than a log viewer.
 
 - **Compose and send** through whichever provider is configured in Settings →
@@ -78,7 +78,7 @@ working outbound channel rather than a log viewer.
   A background job on the dashboard sends anything whose time has come.
 - **Real open and click tracking.** Outbound HTML is instrumented with a 1×1
   tracking pixel and rewritten links before it leaves. `api/track.php` records
-  each hit (MySQL via `crm_pdo()`, JSON file fallback), then `syncTracking()`
+  each hit as a row in D1's `crm_track`, then `syncTracking()`
   folds the events back into history — status advances sent → opened → clicked,
   with open counts, click counts and the exact URLs clicked. The click
   redirector only accepts `http(s)` targets, so it can't be used as an open
@@ -198,7 +198,7 @@ The same rules live in two places that have to agree:
 | | |
 |---|---|
 | `src/services/contactPermissions.ts` | what the interface offers |
-| `public/api/_perm.php` | what the database accepts |
+| `worker/src/routes/data.ts` | what the database accepts |
 
 Every write reaches the server through `api/data.php`, which is the only path
 to the account store, so the guard sits at the choke point. Before anything is
@@ -259,18 +259,18 @@ widths, and gradient presets.
 
 ### Not included (needs infrastructure this deployment doesn't have)
 
-This app is a static SPA on shared hosting with `localStorage` persistence and a
-few PHP endpoints — there is no application server, database or object store. So
-the following are deliberately **not** implemented rather than faked:
-custom-domain DNS verification and serving, S3/Cloudinary uploads (images are
-stored as data URLs), Stripe/PayPal checkout, and server-side screenshot
-generation. Wire up a backend before expecting those.
+The Worker and D1 cover the server side, but there is still no object store
+and no image pipeline. So these are deliberately **not** implemented rather
+than faked: S3/Cloudinary uploads (images are stored as data URLs), serving a
+customer's own custom domain for a published site, and server-side screenshot
+generation.
 
-Two things that *are* server-backed on this deployment, because the PHP
-endpoints carry them: **email open/click tracking** (`api/track.php`) and
-**permission enforcement** (`api/_perm.php`, guarding `api/data.php`). Both
-need `api/config.php` to exist — run the installer from Agency → Cloud
-Database once.
+Everything else here is server-backed: **email open/click tracking**
+(`api/track.php`), **permission enforcement** (in `api/data.php`, the only path
+to the account store), **scheduled sending** (a cron trigger, so a campaign no
+longer needs an open tab), and **Stripe checkout**. None of it needs an
+installer — `wrangler d1 migrations apply` is the whole of setup, and the
+deploy runs it.
 
 ## Email Deliverability engine
 
@@ -280,7 +280,7 @@ the work:
 | | |
 |---|---|
 | `src/services/deliverability.ts` | everything decidable from data we already hold — syntax, suppression, content scanning, reputation, volume and timing advice. Instant, offline. |
-| `public/api/deliverability.php` | the checks a browser physically cannot make — DNS for SPF/DKIM/DMARC/MX, DNSBL blacklist queries, SMTP mailbox probes, and any paid verification API. |
+| `api/deliverability.php` (the Worker) | the checks a browser physically cannot make — DNS for SPF/DKIM/DMARC/MX, DNSBL blacklist queries, SMTP mailbox probes, and any paid verification API. |
 
 ### Authentication
 
@@ -317,9 +317,9 @@ follows a warmup ramp for new senders.
 
 ### Verification provider (optional)
 
-ZeroBounce or Kickbox can be connected in Settings. The key is written to
-`api/config.php` **on the server** and never returned to the browser — the UI can
-only report whether one is present. Without a key everything above still works;
+ZeroBounce or Kickbox can be connected in Settings. The key is held **on the
+server**, encrypted, and never returned to the browser — the UI can only report
+whether one is present. Without a key everything above still works;
 the provider adds mailbox-level certainty that DNS alone cannot give.
 
 ### Warmup and per-provider throttling
@@ -354,7 +354,7 @@ provider for our own caution. All three are fixed and covered by tests.
 
 ### Bulk verification and inbox placement
 
-`src/services/verifyQueue.ts` plus `public/api/placement.php` handle the two
+`src/services/verifyQueue.ts` plus the Worker's `api/placement.php` route handle the two
 slow jobs.
 
 - **Bulk verification** runs as a durable queue, not an in-memory loop: the job
@@ -369,11 +369,13 @@ slow jobs.
   and reports inbox, spam or not delivered per provider. Spam folders are found
   by reading the folder list and matching, because Gmail uses `[Gmail]/Spam`,
   Outlook uses `Junk Email` and cPanel uses `INBOX.spam`.
-- **Seed mailbox credentials are stored server-side** in the guarded store and
-  never returned to the browser — the UI can only see whether a password is
-  present. Use app passwords, and prefer mailboxes that exist only for this.
-  When the host has no PHP IMAP extension the screen says so and falls back to
-  recording placement by hand.
+- **Seed mailbox credentials are stored server-side**, encrypted with AES-GCM
+  in `crm_placement_seeds`, and never returned to the browser — the UI can only
+  see whether a password is present. Each seed belongs to the account that
+  created it. Use app passwords, and prefer mailboxes that exist only for this.
+- A mailbox that cannot be opened is reported as such, rather than as a message
+  that did not arrive: "could not look" and "not there" are different answers,
+  and conflating them would report a perfectly delivered campaign as missing.
 
 ### Alerts and the help centre
 

@@ -1,5 +1,5 @@
 /**
- * serverData.ts — cloud sync for CRM data (MySQL via public/api/data.php).
+ * serverData.ts — cloud sync for CRM data (D1, via the Worker's api/data.php).
  *
  * localStorage stays the fast local cache; the server is the source of truth
  * that makes each workspace's data follow the login across devices.
@@ -58,7 +58,7 @@ async function flush() {
   const res = await call('bulk_set', { token: pushToken, accountId: pushAccount, items });
   if (!res) return;   // offline — the next flush will retry
 
-  // The server enforces the permission model (api/_perm.php). When it refuses a
+  // The server enforces the permission model in api/data.php. When it refuses a
   // change, take its version back rather than leaving the browser showing an
   // edit that was never saved.
   const rejected = (res.rejected ?? []) as string[];

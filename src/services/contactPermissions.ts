@@ -2,7 +2,7 @@
  * contactPermissions.ts — ownership and what each role may do with a contact.
  *
  * This decides what the interface offers. The matching rules are enforced
- * server-side in `public/api/_perm.php`, which guards every write to the
+ * server-side in `worker/src/routes/data.ts`, which guards every write to the
  * account store, so a user who edits the UI in devtools still cannot change
  * data they are not allowed to change — the server refuses the write and the
  * browser is resynced from the server's copy.
@@ -60,7 +60,7 @@ const OWNER_ONLY: Capability[] = ['edit', 'delete', 'reassign', 'merge'];
 
 /**
  * Whether the rules are actually enforced, or only presented.
- *  - 'server'   the cloud database is configured and api/_perm.php guards writes
+ *  - 'server'   the cloud database is reachable and api/data.php guards writes
  *  - 'local'    local-only deployment; the rules shape the UI but nothing else
  */
 export function enforcementMode(): 'server' | 'local' {

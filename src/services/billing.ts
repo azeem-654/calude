@@ -2,7 +2,7 @@
  * billing.ts — Stripe subscription billing for sub-accounts.
  *
  * The agency stores its Stripe keys once (agency-global). For each sub-account
- * we can spin up a real Stripe Checkout Session (via public/api/stripe-checkout.php)
+ * we can spin up a real Stripe Checkout Session (via api/stripe-checkout.php)
  * and track the resulting subscription status. Payment Links are also supported
  * as a zero-backend option.
  *
