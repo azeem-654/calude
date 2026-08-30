@@ -257,8 +257,8 @@ const SCENES: Scene[] = [
         {LIFECYCLE.map(s => (
           <li key={s.n}>
             <span className="mono" style={{ color: 'var(--lime-deep)' }}>{s.n}</span>
-            <h3 style={{ margin: '8px 0 5px', fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{s.title}</h3>
-            <p style={{ margin: 0, fontSize: 'clamp(12.5px, 1vw, 12.5px)', lineHeight: 1.55, color: 'var(--text-mute)' }}>{s.body}</p>
+            <h3 className="card-title">{s.title}</h3>
+            <p className="card-body">{s.body}</p>
           </li>
         ))}
       </ol>
@@ -274,8 +274,8 @@ const SCENES: Scene[] = [
         {AGENCY.map(a => (
           <div key={a.title}>
             <span className="glyph soft" style={{ marginBottom: 9 }}><a.icon size={13} strokeWidth={2.2} /></span>
-            <h3 style={{ margin: '0 0 6px', fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{a.title}</h3>
-            <p style={{ margin: 0, fontSize: 'clamp(12.5px, 1vw, 12.5px)', lineHeight: 1.55, color: 'var(--text-mute)' }}>{a.body}</p>
+            <h3 className="card-title">{a.title}</h3>
+            <p className="card-body">{a.body}</p>
           </div>
         ))}
       </div>
@@ -293,8 +293,8 @@ const SCENES: Scene[] = [
         {OWNERSHIP.map(o => (
           <div key={o.title}>
             <span className="glyph soft" style={{ marginBottom: 9 }}><o.icon size={13} strokeWidth={2.2} /></span>
-            <h3 style={{ margin: '0 0 6px', fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{o.title}</h3>
-            <p style={{ margin: 0, fontSize: 'clamp(12.5px, 1vw, 12.5px)', lineHeight: 1.55, color: 'var(--text-mute)' }}>{o.body}</p>
+            <h3 className="card-title">{o.title}</h3>
+            <p className="card-body">{o.body}</p>
           </div>
         ))}
       </div>
@@ -314,10 +314,10 @@ const SCENES: Scene[] = [
             <div key={c.group} className="tile">
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="glyph soft"><Glyph size={13} strokeWidth={2.2} /></span>
-                <span style={{ fontSize: 'clamp(14px, 1.1vw, 14px)', fontWeight: 600, color: 'var(--text)' }}>{c.group}</span>
+                <span className="card-title">{c.group}</span>
               </span>
               <ul style={{ margin: '9px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {c.items.map(i => <li key={i} style={{ fontSize: 'clamp(12.5px, 1vw, 12.5px)', color: 'var(--text-mute)', lineHeight: 1.5 }}>{i}</li>)}
+                {c.items.map(i => <li key={i} className="card-body">{i}</li>)}
               </ul>
             </div>
           );
@@ -336,8 +336,8 @@ const SCENES: Scene[] = [
         {LIMITS.map(l => (
           <div key={l.title} className="tile" style={{ padding: 'clamp(15px, 2vw, 22px)' }}>
             <span className="glyph soft" style={{ marginBottom: 10 }}><Info size={13} strokeWidth={2.2} /></span>
-            <h3 style={{ margin: '0 0 7px', fontSize: 'clamp(14.5px, 1.1vw, 14.5px)', fontWeight: 600, color: 'var(--text)' }}>{l.title}</h3>
-            <p style={{ margin: 0, fontSize: 'clamp(13px, 1vw, 13px)', lineHeight: 1.6, color: 'var(--text-mute)' }}>{l.body}</p>
+            <h3 className="card-title">{l.title}</h3>
+            <p className="card-body">{l.body}</p>
           </div>
         ))}
       </div>
@@ -454,13 +454,26 @@ export default function SiteHome() {
         c.style.transform = `translate3d(0, ${mix(30, -30, clamp01((t + 0.55) / 1.4))}px, 0)`;
         c.style.opacity = String(smoothstep(-0.5, 0.0, t) * (1 - smoothstep(0.4, 0.85, t)));
 
-        /* Each line lags a little behind the one above it, so the scene reads
-           as being written rather than pasted. Cached on first sight: querying
-           the DOM sixty times a second for nine scenes is wasteful. */
+        /*
+         * Each line lags a little behind the one above it, so the scene reads
+         * as being written rather than pasted. Cached on first sight: querying
+         * the DOM sixty times a second for fourteen scenes is wasteful.
+         *
+         * Every line's fade has to *finish before* the scene is centred, and
+         * the old numbers did not. The window was (-0.42 + lag, 0.06 + lag)
+         * with lag = k * 0.07, so the fifth line's window still ran to t = 0.34
+         * — and at t = 0, where a scene rests while you read it, that line sat
+         * at 20% opacity and the paragraph above it at 62%. Permanently. Every
+         * section on the site was showing its body copy and its bullets
+         * half-faded, which is most of what "the text is not visible" was.
+         *
+         * Now the whole staircase lands by t = -0.09: the last line is opaque
+         * slightly before the scene stops moving, and stays that way.
+         */
         const kids = pieces.current[i] ?? (pieces.current[i] = [...c.querySelectorAll<HTMLElement>('[data-rise]')]);
         for (let k = 0; k < kids.length; k++) {
-          const lag = k * 0.07;
-          const a = smoothstep(-0.42 + lag, 0.06 + lag, t);
+          const from = -0.78 + k * 0.055;
+          const a = smoothstep(from, from + 0.32, t);
           kids[k].style.opacity = String(a);
           kids[k].style.transform = `translate3d(0, ${mix(rise, 0, a)}px, 0)`;
         }

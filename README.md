@@ -508,9 +508,26 @@ and nothing about what it does. The close-ups are cut from the running app at
 `scripts/site-shots.mjs` holds the clip regions in document pixels against a
 fixed 1240x800 viewport, so changing that viewport invalidates them.
 
-On a phone the views become a horizontal swipe row. Stacked they made a section
-twice as tall as the screen; laid across, any number of them costs the height of
-one.
+The views are a **collage**: overlapping a little, leaning opposite ways, the
+hovered one coming to the front. On a phone they stack, each nudged the other
+way, with the image shown at its own width and cropped by the frame so the
+pixels stay 1:1. Both stay on screen at every size — an earlier swipe row put
+everything after the first view behind a gesture nothing announced.
+
+### Contrast and opacity
+
+Two separate reasons the text was hard to read, both measured rather than
+judged:
+
+- `--text-mute` — every paragraph and caption — was **4.35:1** against the
+  paper, under the 4.5:1 floor, and `--text-faint` was 2.36:1. They are 7.79:1
+  and 4.76:1 now. Cards no longer name their own colours: on the dark bands the
+  hardcoded `var(--text)` title measured **1.03:1** against its own background,
+  which is not hard to read, it is invisible.
+- The staggered entry never finished. Each line's fade ran from `-0.42 + k*0.07`
+  to `0.06 + k*0.07`, so at `t = 0` — where a scene rests while you read it —
+  the fifth line sat at 21% opacity and the seventh at zero. The whole staircase
+  now lands by `t = -0.09`.
 
 Each view carries a caption naming the function it shows, a sheen that crosses
 it every few seconds and a live dot, all offset per view so a row never animates
