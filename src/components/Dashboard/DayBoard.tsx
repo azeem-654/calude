@@ -91,7 +91,7 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
     }}>
 
       {/* ── The hour bar ── */}
-      <div style={{
+      <div className="day-bar" style={{
         backgroundColor: CHROME, borderRadius: 999, padding: '10px 14px',
         display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
       }}>

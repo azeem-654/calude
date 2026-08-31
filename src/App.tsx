@@ -74,7 +74,11 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <TopNav />
       <IconRail />
       <DueWorkRunner />
-      <main style={{ minHeight: 'calc(100vh - 68px)', paddingLeft: 62 }}>
+      {/* The 62px is the floating icon rail's width. The rail is hidden below
+          760px (see index.css), so on a phone that padding was 62px of nothing
+          shoving every screen off-centre to the right; `app-main` takes it back
+          there. */}
+      <main className="app-main" style={{ minHeight: 'calc(100vh - 68px)' }}>
         {/* Keyed on the path so moving to another screen clears a crash rather
             than trapping the user on the error page. */}
         <ErrorBoundary resetKey={location.pathname}>

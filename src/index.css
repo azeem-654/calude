@@ -667,33 +667,145 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
  * half off the screen is the wrong shape anyway, so it becomes a sheet pinned
  * under the header, the full width of the screen.
  */
+/*
+ * The module menu on a phone: two rows, centred.
+ *
+ * It was a single sideways-scrolling row, which meant arriving at the dashboard
+ * with Dashboard, Customers and Sales already scrolled off the left and no sign
+ * that they were there. Seven groups do not fit on one line at this width and
+ * pretending otherwise hides half the product.
+ *
+ * The panel goes back to `absolute`, and that is not a style preference. The
+ * header carries `backdrop-filter`, which makes it a containing block for
+ * `position: fixed` — so a "fixed" panel was being positioned against the
+ * header rather than the viewport and then clipped by the scroller around it.
+ * That is why opening a menu showed a sliver of its contents and hid the rest.
+ */
 @media (max-width: 760px) {
   .nav-pills {
-    flex-wrap: nowrap !important;
-    justify-content: flex-start !important;
-    overflow-x: auto;
-    overflow-y: visible;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    /* Room for the panel to escape: a scroll container clips its children, so
-       the panel is taken out of the flow with position: fixed below. */
-    padding: 4px 6px !important;
-    border-radius: 999px !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    overflow: visible !important;
+    row-gap: 4px !important;
+    padding: 5px 8px !important;
+    border-radius: 22px !important;
     max-width: 100%;
   }
-  .nav-pills::-webkit-scrollbar { display: none; }
+
+  /*
+   * The panel spans the bar, not the pill.
+   *
+   * Each group is a `position: relative` wrapper, so an absolutely positioned
+   * panel takes *that* as its containing block — and a viewport-wide panel
+   * anchored to a 90px pill hangs off whichever side the pill happens to sit
+   * on. Marketing's overhung the left edge by 140px, Sales' the right by 37.
+   *
+   * Making the wrapper static on a phone hands the containing block to the bar
+   * itself, and left/right of 0 then means the width of the bar, which is the
+   * width of the screen.
+   */
+  .nav-pills { position: relative; }
+  .nav-pills > div { position: static !important; }
 
   .nav-panel {
-    position: fixed !important;
-    top: auto !important;
-    left: 10px !important;
-    right: 10px !important;
-    bottom: 12px !important;
+    position: absolute !important;
+    top: calc(100% + 8px) !important;
+    left: 0 !important;
+    right: 0 !important;
     transform: none !important;
     width: auto !important;
-    max-height: 62vh;
+    max-width: none !important;
+    max-height: 58vh;
     overflow-y: auto;
-    border-radius: 22px !important;
-    box-shadow: 0 -10px 44px -8px rgba(23, 25, 28, 0.3) !important;
+    border-radius: 20px !important;
   }
 }
+
+
+/* ── Horizontal rails ─────────────────────────────────────────────────── */
+
+/*
+ * `overflow-x: auto` only clips a box that has a width to clip to. These rails
+ * sit inside flex and grid parents, where an item's automatic minimum size is
+ * its *content* — so a rail of eight 300px cards asked for 2500px, got it, and
+ * scrolled nothing: the cards simply ran off the side of the phone, one of them
+ * 2191px past the edge.
+ *
+ * min-width: 0 is what lets the box be narrower than what is in it, which is
+ * the whole premise of a scroller.
+ */
+.rail-scroll {
+  min-width: 0;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+.rail-scroll::-webkit-scrollbar { display: none; }
+
+/* And the ancestors have to allow it too — one un-shrinkable link in the chain
+   is enough to push the width back up. */
+.dash-section,
+.dash-section > *,
+main > div,
+main section { min-width: 0; }
+
+@media (max-width: 760px) {
+  /* A card sized for a desktop rail is wider than the screen it is now on. */
+  .rail-scroll > .tilt-card { flex: 0 0 86% !important; }
+}
+
+/* ── Centre the phone ─────────────────────────────────────────────────── */
+
+/*
+ * Asked for, and it suits the layout: at this width every block is full-bleed
+ * and stacked, so a left-aligned heading over a centred card reads as a
+ * mistake. Tables, lists and anything inside a card keep their own alignment —
+ * centred rows of data are harder to scan, not easier.
+ */
+@media (max-width: 760px) {
+  main .dash-head,
+  main h1,
+  main h2,
+  main > div > p { text-align: center; }
+  main .dash-head { align-items: center; }
+}
+
+
+/* ── "Your day" on a phone ────────────────────────────────────────────── */
+
+/*
+ * The bar is three pieces — the date and clocks, the hour strip, the booked
+ * count — laid in a row with `flexShrink: 0` on the outer two so they keep
+ * their shape on a desktop. At 390px that is 40px of the date and the whole
+ * right-hand end of the hour strip pushed off the screen: "Kara…" and "6 p"
+ * were the last things visible of each.
+ *
+ * They are allowed to shrink and wrap here, and the strip takes a full row of
+ * its own, which is the only way it is readable at this width anyway.
+ */
+@media (max-width: 760px) {
+  .day-bar {
+    border-radius: 20px !important;
+    justify-content: center;
+    row-gap: 10px !important;
+  }
+  .day-bar > * {
+    flex-shrink: 1 !important;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .day-bar > span {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  /* The hour strip is the one piece that wants the whole width. */
+  .day-bar > div { flex: 1 0 100% !important; }
+}
+
+/* The decorative glows are positioned off the edge on purpose; they should not
+   be able to widen the page while doing it. */
+.dash { overflow-x: clip; }
+
+
+/* The floating icon rail's gutter — and nothing where there is no rail. */
+.app-main { padding-left: 62px; }
+@media (max-width: 760px) { .app-main { padding-left: 0; } }
