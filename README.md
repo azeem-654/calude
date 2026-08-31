@@ -709,6 +709,41 @@ plus references), so `tsc --noEmit` type-checks *nothing* and exits 0. Use
 Optional AI: add a Gemini API key in Settings — every AI feature has an offline
 fallback.
 
+## Accounts, resale and the three plans
+
+One master account sells to sub-accounts, and a sub-account is itself an agency
+to the workspaces it opens. The tree is arbitrarily deep; what bounds it is the
+plan each holder is on:
+
+| | Price | Sub-accounts it may open |
+|---|---|---|
+| Studio | $49 | 2 |
+| Agency | $97 | 12 |
+| Network | $149 | unlimited |
+
+A reseller sets its own price for what it sells — `SubAccount.price` is
+independent of `planById(plan).price` — and white-labels its workspaces through
+`branding`, so what its clients log into carries its name and not this one's.
+
+`parentId` is what makes the tree. `childrenOf`, `descendantsOf` and `depthOf`
+read it; `resellAllowance` is the single place that answers "may this account
+open another one", and `createSubAccount` throws rather than silently dropping
+the workspace when the answer is no. Deleting an account takes its whole line
+with it, data included — rows left behind would be invisible to every dashboard,
+counted against nobody's allowance, and still holding customer records.
+
+The tree walks are iterative and remember where they have been. A `parentId`
+that somehow points at an ancestor should draw a short tree, not hang the tab.
+
+### Who sees what
+
+The agency dashboard scopes to **who you are**, not to which workspace you have
+open. Those are different: `ensureDefaultAccount` selects the first sub-account
+on a fresh browser so there is always somewhere to work, which had the master
+arriving at its own dashboard scoped to its first client's network and told it
+had used 2 of 2 sub-accounts. The master's session carries no `accountId`; a
+reseller's carries its own, and a breadcrumb walks down from there.
+
 ## Signing up, and how tenants are kept apart
 
 Anyone can create an account at **app.protectedcentral.com/signup**. Each one is

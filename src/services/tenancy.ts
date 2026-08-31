@@ -21,13 +21,37 @@ export interface Plan {
   price: number;          // monthly, what the agency charges the client
   color: string;
   features: string[];
-  limits: { contacts: number; users: number };   // -1 = unlimited
+  /** -1 = unlimited. `resell` is how many sub-accounts this plan may create. */
+  limits: { contacts: number; users: number; resell: number };
 }
 
+/*
+ * The three plans, and what each one lets a workspace resell.
+ *
+ * `resell` is the number of sub-accounts the holder of the plan may create
+ * underneath itself: 2, 12, or no limit. It is what makes the hierarchy more
+ * than one level deep — a sub-account on Studio is itself an agency to the two
+ * workspaces it opens, sets their price, and puts its own name on them.
+ *
+ * -1 means no limit throughout, matching how `contacts` and `users` already
+ * read here.
+ */
 export const PLANS: Plan[] = [
-  { id: 'starter', name: 'Starter', price: 97, color: '#3e63dd', features: ['CRM & Pipelines', 'Conversations inbox', '2 team members', 'Up to 2,500 contacts'], limits: { contacts: 2500, users: 2 } },
-  { id: 'pro', name: 'Pro', price: 297, color: '#8b5cf6', features: ['Everything in Starter', 'Marketing & Funnels', 'AI auto-replies', 'Reputation management', '10 team members', 'Up to 25,000 contacts'], limits: { contacts: 25000, users: 10 } },
-  { id: 'agency', name: 'Agency', price: 497, color: '#17191c', features: ['Everything in Pro', 'AI Shorts & Social Creator', 'Unlimited team members', 'Unlimited contacts', 'Priority support'], limits: { contacts: -1, users: -1 } },
+  {
+    id: 'starter', name: 'Studio', price: 49, color: '#3e63dd',
+    features: ['CRM & Pipelines', 'Conversations inbox', 'Resell to 2 sub-accounts', 'White-label your own name', 'Up to 2,500 contacts'],
+    limits: { contacts: 2500, users: 2, resell: 2 },
+  },
+  {
+    id: 'pro', name: 'Agency', price: 97, color: '#8b5cf6',
+    features: ['Everything in Studio', 'Marketing & Funnels', 'AI auto-replies', 'Resell to 12 sub-accounts', 'Up to 25,000 contacts'],
+    limits: { contacts: 25000, users: 10, resell: 12 },
+  },
+  {
+    id: 'agency', name: 'Network', price: 149, color: '#17191c',
+    features: ['Everything in Agency', 'AI Shorts & Social Creator', 'Unlimited sub-accounts', 'Unlimited contacts', 'Priority support'],
+    limits: { contacts: -1, users: -1, resell: -1 },
+  },
 ];
 export function planById(id: PlanId): Plan { return PLANS.find(p => p.id === id) ?? PLANS[0]; }
 
@@ -39,6 +63,15 @@ export interface Branding {
 
 export interface SubAccount {
   id: string;
+  /**
+   * Who opened this workspace.
+   *
+   * `null` is the master account's own children — the top level. Anything else
+   * is the id of the sub-account that resold it, which is what makes the tree
+   * more than two deep. A workspace is only ever visible to its own line of
+   * ancestors; see `descendantsOf` and the server's crm_workspaces table.
+   */
+  parentId?: string | null;
   name: string;             // workspace / location name
   businessName: string;
   contactName: string;
@@ -213,21 +246,131 @@ export function blankSubAccount(): SubAccount {
   };
 }
 
+/* ── The tree ─────────────────────────────────────────────────────────── */
+
+/**
+ * The workspaces one account opened directly.
+ *
+ * `null` means the master account's own children. Passing a sub-account's id
+ * gives the ones it resold, which is the same question one level down — the
+ * hierarchy is the same shape at every level, and so is the code that reads it.
+ */
+export function childrenOf(parentId: string | null): SubAccount[] {
+  return loadSubAccounts().filter(a => (a.parentId ?? null) === parentId);
+}
+
+/**
+ * Everything below an account, at any depth.
+ *
+ * Iterative rather than recursive, and it remembers where it has been: a
+ * `parentId` that somehow points at an ancestor would otherwise be an infinite
+ * loop in the middle of rendering the agency dashboard. Bad data should draw a
+ * short tree, not hang the tab.
+ */
+export function descendantsOf(parentId: string | null): SubAccount[] {
+  const all = loadSubAccounts();
+  const out: SubAccount[] = [];
+  const seen = new Set<string>();
+  let frontier = all.filter(a => (a.parentId ?? null) === parentId);
+  while (frontier.length) {
+    const next: SubAccount[] = [];
+    for (const a of frontier) {
+      if (seen.has(a.id)) continue;
+      seen.add(a.id);
+      out.push(a);
+      next.push(...all.filter(c => c.parentId === a.id));
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+/** How deep a workspace sits. The master account's own children are 1. */
+export function depthOf(id: string): number {
+  const all = loadSubAccounts();
+  let depth = 0;
+  let at: string | null | undefined = id;
+  const seen = new Set<string>();
+  while (at && !seen.has(at)) {
+    seen.add(at);
+    depth += 1;
+    at = all.find(a => a.id === at)?.parentId ?? null;
+  }
+  return depth;
+}
+
+export interface ResellAllowance {
+  /** How many this account may have open at once. -1 is unlimited. */
+  allowed: number;
+  used: number;
+  /** What is left, or -1 when there is no ceiling. */
+  remaining: number;
+  canCreate: boolean;
+  reason: string;
+}
+
+/**
+ * May this account open another workspace, and how many has it left?
+ *
+ * `null` is the master account, which sells the plans rather than holding one
+ * and is not limited by them. Everyone else is bounded by the plan they are on,
+ * counted against the workspaces they have actually opened.
+ */
+export function resellAllowance(parentId: string | null): ResellAllowance {
+  if (parentId === null) {
+    return { allowed: -1, used: childrenOf(null).length, remaining: -1, canCreate: true, reason: '' };
+  }
+  const parent = loadSubAccounts().find(a => a.id === parentId);
+  if (!parent) {
+    return { allowed: 0, used: 0, remaining: 0, canCreate: false, reason: 'That workspace no longer exists.' };
+  }
+  const allowed = planById(parent.plan).limits.resell;
+  const used = childrenOf(parentId).length;
+  if (allowed < 0) return { allowed, used, remaining: -1, canCreate: true, reason: '' };
+  const remaining = Math.max(0, allowed - used);
+  return {
+    allowed,
+    used,
+    remaining,
+    canCreate: remaining > 0,
+    reason: remaining > 0 ? '' :
+      `${planById(parent.plan).name} includes ${allowed} sub-account${allowed === 1 ? '' : 's'} and all ${allowed} are in use. Upgrade the plan to open more.`,
+  };
+}
+
+/**
+ * Open a workspace under another one.
+ *
+ * The allowance is checked here rather than only in the form, because the form
+ * is one of several callers and the limit is what the customer is paying for.
+ */
 export function createSubAccount(partial: SubAccount): SubAccount {
+  const parentId = partial.parentId ?? null;
+  const allowance = resellAllowance(parentId);
+  if (!allowance.canCreate) throw new Error(allowance.reason);
   const list = loadSubAccounts();
-  saveSubAccounts([...list, partial]);
-  return partial;
+  saveSubAccounts([...list, { ...partial, parentId }]);
+  return { ...partial, parentId };
 }
 export function updateSubAccount(id: string, patch: Partial<SubAccount>) {
   saveSubAccounts(loadSubAccounts().map(a => a.id === id ? { ...a, ...patch } : a));
 }
 export function deleteSubAccount(id: string) {
-  saveSubAccounts(loadSubAccounts().filter(a => a.id !== id));
-  // wipe its scoped data
+  /* Everything the account resold goes with it. Left behind, those rows have a
+     parentId pointing at nothing: invisible to every dashboard, still counted
+     against nobody's allowance, and still holding their data. */
+  const doomed = new Set([id, ...descendantsOf(id).map(a => a.id)]);
+  saveSubAccounts(loadSubAccounts().filter(a => !doomed.has(a.id)));
+  /* And their data — every one of them, not just the account named. Wiping only
+     the parent's keys would leave each resold workspace's contacts and
+     campaigns in storage with no account left to reach them by. */
   const toDelete: string[] = [];
   for (let i = 0; i < window.localStorage.length; i++) {
     const k = window.localStorage.key(i);
-    if (k && k.startsWith(`${PREFIX}${id}_`)) toDelete.push(k);
+    if (!k) continue;
+    for (const gone of doomed) {
+      if (k.startsWith(`${PREFIX}${gone}_`)) { toDelete.push(k); break; }
+    }
   }
   toDelete.forEach(k => window.localStorage.removeItem(k));
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Building2, Plus, Search, ArrowRight, MoreVertical, Users, TrendingUp,
   DollarSign, Pause, Play, Trash2, Edit2, X, CheckCircle2, Zap, Star,
@@ -8,11 +8,12 @@ import { createUser, getSession } from '../../services/auth';
 import { loadStripeConfig, saveStripeConfig, billingFor, updateBilling, createCheckout, saveStripeSecretToServer, serverBillingEnabled } from '../../services/billing';
 import type { StripeConfig } from '../../services/billing';
 import { cloudStatus, isConfigured } from '../../services/serverData';
-import { Database, Cloud, HardDrive } from 'lucide-react';
+import { Database, Cloud, HardDrive, ChevronRight } from 'lucide-react';
 import Header from '../Layout/Header';
 import {
-  loadSubAccounts, saveSubAccounts, createSubAccount, updateSubAccount, deleteSubAccount,
+  loadSubAccounts, createSubAccount, updateSubAccount, deleteSubAccount,
   switchAccount, accountUsage, loadAgency, saveAgency, blankSubAccount, planById, PLANS,
+  descendantsOf, resellAllowance, depthOf, childrenOf,
 } from '../../services/tenancy';
 import type { SubAccount, AccountStatus, PlanId } from '../../services/tenancy';
 import { API_BASE } from '../../services/apiBase';
@@ -30,8 +31,61 @@ const STATUS = {
   cancelled: { label: 'Cancelled', bg: '#fceaea', color: '#e5484d' },
 } as const;
 
+/** How many workspaces this one has opened underneath it. */
+const childCount = (id: string) => childrenOf(id).length;
+
 export default function AgencyDashboard() {
-  const [accounts, setAccounts] = useState<SubAccount[]>(loadSubAccounts);
+  /*
+   * Whose network is this?
+   *
+   * The dashboard used to list `loadSubAccounts()` — every workspace on the
+   * install, whoever opened it. With one agency that was the same set. Now that
+   * a sub-account can resell to its own sub-accounts, it is the difference
+   * between a reseller seeing its own clients and seeing everybody's.
+   *
+   * It is *who you are*, not which workspace you happen to have open. The two
+   * are not the same: `ensureDefaultAccount` selects the first sub-account on a
+   * fresh browser so there is always somewhere to work, which had the master
+   * account arriving at its own agency dashboard scoped to its first client's
+   * network and told it had used 2 of 2 sub-accounts.
+   *
+   * The master's session carries no accountId; a reseller's carries its own.
+   * `into` lets the master walk down a reseller's tree from there.
+   */
+  const home = getSession()?.user.accountId ?? null;
+  const [into, setInto] = useState<string | null>(null);
+  const parentId = into ?? home;
+  const trail = useMemo(() => {
+    const all = loadSubAccounts();
+    const out: SubAccount[] = [];
+    let at: string | null | undefined = parentId;
+    const seen = new Set<string>();
+    while (at && at !== home && !seen.has(at)) {
+      seen.add(at);
+      const node = all.find(a => a.id === at);
+      if (!node) break;
+      out.unshift(node);
+      at = node.parentId ?? null;
+    }
+    return out;
+  }, [parentId, home]);
+
+  /*
+   * The list is derived, not stored. Keeping it in state meant an effect to
+   * re-read it whenever the viewer walked into another network, which is a
+   * synchronous setState inside an effect — a cascading render, and the lint
+   * rule that catches it is right. A counter that mutations bump says the same
+   * thing without the round trip through state.
+   */
+  const [version, setVersion] = useState(0);
+  /* `version` is not read inside — it is the invalidation key. descendantsOf
+     reads localStorage, which React cannot see change, so a mutation has to say
+     so explicitly. */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const accounts = useMemo(() => descendantsOf(parentId), [parentId, version]);
+  const reload = () => setVersion(v => v + 1);
+  const [limitError, setLimitError] = useState('');
+  const allowance = resellAllowance(parentId);
   const [agency, setAgencyState] = useState(loadAgency);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<SubAccount | undefined>();
@@ -42,8 +96,6 @@ export default function AgencyDashboard() {
   const [billFor, setBillFor] = useState<SubAccount | undefined>();
   const [cloudOpen, setCloudOpen] = useState(false);
   const [cloud, setCloud] = useState<'cloud' | 'local'>(cloudStatus());
-
-  const persist = (list: SubAccount[]) => { setAccounts(list); saveSubAccounts(list); };
 
   const clients = accounts.filter(a => a.status !== undefined);
   const mrr = clients.filter(a => a.status === 'active').reduce((s, a) => s + a.price, 0);
@@ -56,12 +108,27 @@ export default function AgencyDashboard() {
 
   const saveAccount = (a: SubAccount) => {
     const exists = accounts.some(x => x.id === a.id);
-    if (exists) { updateSubAccount(a.id, a); setAccounts(loadSubAccounts()); }
-    else { createSubAccount(a); setAccounts(loadSubAccounts()); }
+    if (exists) {
+      updateSubAccount(a.id, a);
+      reload();
+    } else {
+      /* The plan's allowance is enforced in tenancy, which throws rather than
+         silently dropping the workspace. Surfacing the reason is the whole
+         point — "you are on Studio and both its sub-accounts are in use" is
+         actionable, a button that does nothing is not. */
+      try {
+        createSubAccount({ ...a, parentId });
+      } catch (e) {
+        setLimitError(e instanceof Error ? e.message : 'Could not create that sub-account.');
+        return;
+      }
+      reload();
+    }
+    setLimitError('');
     setEditing(undefined); setCreating(false);
   };
-  const setStatus = (id: string, status: AccountStatus) => { updateSubAccount(id, { status }); setAccounts(loadSubAccounts()); setMenuFor(null); };
-  const remove = (id: string) => { if (confirm('Delete this sub-account and ALL its data? This cannot be undone.')) { deleteSubAccount(id); setAccounts(loadSubAccounts()); setMenuFor(null); } };
+  const setStatus = (id: string, status: AccountStatus) => { updateSubAccount(id, { status }); reload(); setMenuFor(null); };
+  const remove = (id: string) => { if (confirm('Delete this sub-account and ALL its data? This cannot be undone.')) { deleteSubAccount(id); reload(); setMenuFor(null); } };
 
   return (
     <div style={{ minHeight: '100vh' }} onClick={() => setMenuFor(null)}>
@@ -99,8 +166,65 @@ export default function AgencyDashboard() {
           </button>
           <button onClick={() => { setBillFor(undefined); setBillingOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><CreditCard size={13} /> Billing</button>
           <button onClick={() => setEditAgency(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1px solid #e6e9f0', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Edit2 size={13} /> Agency settings</button>
-          <button onClick={() => { setCreating(true); setEditing(blankSubAccount()); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Plus size={15} /> New Sub-Account</button>
+          <button
+            onClick={() => { setLimitError(''); setCreating(true); setEditing(blankSubAccount()); }}
+            disabled={!allowance.canCreate}
+            title={allowance.canCreate ? '' : allowance.reason}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: allowance.canCreate ? INK : '#c9ced6', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: allowance.canCreate ? 'pointer' : 'not-allowed' }}
+          ><Plus size={15} /> New Sub-Account</button>
         </div>
+
+        {/*
+          Where you are in the tree, and the way back up. Without this a master
+          can see that a workspace resells to three others and has no way to
+          look at them.
+        */}
+        {trail.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12.5 }}>
+            <button onClick={() => setInto(null)} style={{ border: 'none', background: 'none', padding: '4px 8px', borderRadius: 8, cursor: 'pointer', color: MUTED, fontWeight: 700, fontSize: 12.5 }}>
+              Your network
+            </button>
+            {trail.map((node, i) => (
+              <span key={node.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ChevronRight size={13} color={FAINT} />
+                <button
+                  onClick={() => setInto(node.id)}
+                  disabled={i === trail.length - 1}
+                  style={{ border: 'none', background: 'none', padding: '4px 8px', borderRadius: 8, cursor: i === trail.length - 1 ? 'default' : 'pointer', color: i === trail.length - 1 ? INK : MUTED, fontWeight: 700, fontSize: 12.5 }}
+                >
+                  {node.name}
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/*
+          What the plan allows, said plainly and before the button is pressed.
+          A reseller on Studio has two to sell; knowing that it is two, and how
+          many are left, is the thing they are paying attention to.
+        */}
+        {parentId !== null && (
+          <div style={{ ...FROST, display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+              {allowance.allowed < 0
+                ? `${allowance.used} sub-account${allowance.used === 1 ? '' : 's'} · unlimited on this plan`
+                : `${allowance.used} of ${allowance.allowed} sub-accounts used`}
+            </span>
+            {allowance.allowed >= 0 && (
+              <span style={{ flex: '1 1 120px', height: 6, borderRadius: 999, background: '#e9ecf2', overflow: 'hidden', maxWidth: 220 }}>
+                <span style={{ display: 'block', height: '100%', width: `${Math.min(100, (allowance.used / Math.max(1, allowance.allowed)) * 100)}%`, background: allowance.canCreate ? '#3f9142' : '#e5484d', borderRadius: 999 }} />
+              </span>
+            )}
+            {!allowance.canCreate && <span style={{ fontSize: 12, color: '#e5484d', fontWeight: 600 }}>{allowance.reason}</span>}
+          </div>
+        )}
+
+        {limitError && (
+          <div style={{ ...FROST, padding: '11px 16px', border: '1px solid #f5c2c2', background: '#fdf3f3', color: '#b42318', fontSize: 12.5, fontWeight: 600 }}>
+            {limitError}
+          </div>
+        )}
 
         {/* Sub-account grid */}
         {filtered.length === 0 ? (
@@ -108,7 +232,7 @@ export default function AgencyDashboard() {
             <div style={{ width: 60, height: 60, borderRadius: 18, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><Building2 size={26} color="#fff" /></div>
             <div style={{ fontSize: 17, fontWeight: 800, color: INK, marginBottom: 6 }}>No sub-accounts yet</div>
             <p style={{ fontSize: 13, color: MUTED, margin: '0 0 18px' }}>Create a workspace for each client you sell a subscription to.</p>
-            <button onClick={() => { setCreating(true); setEditing(blankSubAccount()); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 22px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}><Plus size={16} /> Create your first client</button>
+            <button onClick={() => { setLimitError(''); setCreating(true); setEditing(blankSubAccount()); }} disabled={!allowance.canCreate} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 22px', background: allowance.canCreate ? INK : '#c9ced6', color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: allowance.canCreate ? 'pointer' : 'not-allowed' }}><Plus size={16} /> Create your first client</button>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: 16 }}>
@@ -116,6 +240,11 @@ export default function AgencyDashboard() {
               const u = accountUsage(a.id);
               const plan = planById(a.plan);
               const st = STATUS[a.status];
+              /* Relative to the viewer, not to the master: a reseller looking
+                 at its own network cares that a workspace is one of *its*
+                 clients or one of theirs, not how far it is from the top. */
+              const below = depthOf(a.id) - (parentId ? depthOf(parentId) : 0);
+              const resold = childCount(a.id);
               return (
                 <div key={a.id} style={{ ...CARD, overflow: 'hidden', position: 'relative' }}>
                   <div style={{ height: 5, background: a.color }} />
@@ -125,6 +254,22 @@ export default function AgencyDashboard() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: INK, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
                         <div style={{ fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.businessName || a.industry || '—'}</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                          {below > 1 && (
+                            <span title="Opened by one of your sub-accounts, not by you" style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#eef1f6', color: '#5a6472' }}>
+                              {below} levels down
+                            </span>
+                          )}
+                          {resold > 0 && (
+                            <button
+                              onClick={e => { e.stopPropagation(); setInto(a.id); }}
+                              title={`Open ${a.name}'s own network`}
+                              style={{ border: 'none', cursor: 'pointer', fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#eaf3ec', color: '#3f9142' }}
+                            >
+                              resells to {resold} →
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div style={{ position: 'relative' }}>
                         <button onClick={e => { e.stopPropagation(); setMenuFor(menuFor === a.id ? null : a.id); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: FAINT, display: 'flex' }}><MoreVertical size={16} /></button>
@@ -178,7 +323,7 @@ export default function AgencyDashboard() {
 
       {editing && <SubAccountModal account={editing} creating={creating} onSave={saveAccount} onClose={() => { setEditing(undefined); setCreating(false); }} />}
       {editAgency && <AgencyModal agency={agency} onSave={a => { saveAgency(a); setAgencyState(a); setEditAgency(false); }} onClose={() => setEditAgency(false)} />}
-      {billingOpen && <BillingModal account={billFor} onClose={() => { setBillingOpen(false); setAccounts(loadSubAccounts()); }} />}
+      {billingOpen && <BillingModal account={billFor} onClose={() => { setBillingOpen(false); reload(); }} />}
       {cloudOpen && <CloudModal current={cloud} onDone={s => setCloud(s)} onClose={() => setCloudOpen(false)} />}
     </div>
   );
