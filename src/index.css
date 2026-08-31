@@ -809,3 +809,33 @@ main section { min-width: 0; }
 /* The floating icon rail's gutter — and nothing where there is no rail. */
 .app-main { padding-left: 62px; }
 @media (max-width: 760px) { .app-main { padding-left: 0; } }
+
+
+/* ── The setup checklist ──────────────────────────────────────────────── */
+
+/*
+ * Part 1 centres headings on a phone, which is right for the dashboard's own
+ * sections and wrong inside a card: a left-aligned number beside centred text
+ * reads as broken. The card opts out for its own contents.
+ */
+.setup-card h2,
+.setup-card p,
+.setup-card li { text-align: left; }
+
+@media (max-width: 760px) {
+  /*
+   * The row is icon | text | button. At this width the button took a third of
+   * it and left the sentence in a four-word column — "Your own SMTP / sends and
+   * your / own IMAP / reads the / replies." The button goes underneath and
+   * spans the row, which is also a much easier tap target.
+   */
+  .setup-step { flex-wrap: wrap; }
+  .setup-step > button {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    margin-top: 4px;
+    padding: 10px 12px !important;
+  }
+  .setup-card { padding: 15px !important; border-radius: 20px !important; }
+}

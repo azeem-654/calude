@@ -11,7 +11,6 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { getSession } from '../../services/auth';
-import { loadOnboarding } from '../../services/onboarding';
 import { onContentJobsChange, resumePendingGeneration, registerPublishApi } from '../../services/contentGen';
 import { sendToContact } from '../../services/contactEmail';
 import { runBehaviourTriggers, moveDealToStage, findDeal } from '../../services/contactDeals';
@@ -20,6 +19,7 @@ import { runQueuePass, loadJob } from '../../services/verifyQueue';
 import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilityAlerts';
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
+import SetupChecklist from '../Onboarding/SetupChecklist';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
@@ -542,8 +542,15 @@ export default function Dashboard() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [obRefresh, setObRefresh] = useState(0);
   useEffect(() => {
-    const ob = loadOnboarding();
-    if (!ob.completed && !ob.skipped) setWizardOpen(true);
+    /*
+     * The AI wizard no longer opens by itself.
+     *
+     * It planned a year of content, which is a reasonable fifth thing to do and
+     * a strange first one: a brand-new workspace has no mailbox, no sending
+     * domain and no contacts, so the first screen a customer met was a content
+     * planner for a product that could not yet send anything. The setup
+     * checklist is what greets them now, and this wizard is its last step.
+     */
     // Refresh the pipeline widget when a background content job changes state,
     // resume any generation interrupted by a reload, and register the publish
     // API so auto-approve can publish straight from a background job.
@@ -767,7 +774,14 @@ export default function Dashboard() {
     (Date.now() - new Date(d.lastStageChangedAt ?? d.createdAt).getTime()) / 86_400_000 > 14
   ).length;
   const unrepliedReviews = reviews.filter(r => !r.replied).length;
-  const untaggedPct = contacts.length > 0 ? Math.round((contacts.filter(c => c.tags.length === 0).length / contacts.length) * 100) : 0;
+  /* `tags` is required on the Contact type and absent in practice often enough
+     to matter — an import, a record written by an older version, anything that
+     did not go through the form. Reading `.length` off it threw and took the
+     whole dashboard down to the error boundary, which is a large consequence
+     for one missing array on one contact. */
+  const untaggedPct = contacts.length > 0
+    ? Math.round((contacts.filter(c => (c.tags?.length ?? 0) === 0).length / contacts.length) * 100)
+    : 0;
   const draftCampaigns = campaigns.filter(c => c.status === 'draft').length;
   let hasAutomations = false;
   try { hasAutomations = (JSON.parse(localStorage.getItem('crm_pipeline_automations') || '[]') as unknown[]).length > 0; } catch { /* ignore */ }
@@ -842,6 +856,12 @@ export default function Dashboard() {
       {/* Roomier than it was: the wash behind the panels is most of the effect,
           and it only shows in the space they leave. */}
       <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        {/* ── What is left to set up ──
+            Above the figures for as long as it has anything to say, because a
+            workspace that cannot send yet has nothing to read in them. It
+            removes itself once every step is done. */}
+        <SetupChecklist onOpenAiWizard={() => setWizardOpen(true)} refreshKey={obRefresh} />
 
         {/* ── The four numbers this week turned on ──
             Ahead of everything else on purpose: a sales lead opening the CRM

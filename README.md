@@ -709,6 +709,28 @@ plus references), so `tsc --noEmit` type-checks *nothing* and exits 0. Use
 Optional AI: add a Gemini API key in Settings — every AI feature has an offline
 fallback.
 
+## Setting a workspace up
+
+The dashboard leads with a six-step checklist: company portfolio, mailbox,
+sending domain, brand, contacts, first campaign. It removes itself when all six
+are done, and can be dismissed per workspace before that.
+
+No step stores "I am done". Each reads the thing it is about — is there a
+mailbox, is there a sending domain, are there contacts — so the list is right
+however the work got done, and a step whose data is later deleted goes back to
+outstanding instead of staying ticked because a flag says so
+(`src/services/setup.ts`).
+
+Two of the six are marked **required to send**, because a workspace without a
+mailbox or a sending domain cannot do the thing the other four are in aid of.
+
+The AI onboarding wizard no longer opens by itself. It plans a year of content,
+which is a reasonable fifth thing to do and a strange first one: a brand-new
+workspace has no mailbox, no domain and no contacts, so what a customer met on
+sign-in was a content planner for a product that could not yet send anything.
+It is step one's destination now — its opening screen asks for exactly the four
+portfolio fields that step is about.
+
 ## Accounts, resale and the three plans
 
 One master account sells to sub-accounts, and a sub-account is itself an agency
