@@ -601,3 +601,99 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
     width: auto !important;
   }
 }
+
+
+/* ── Toasts ───────────────────────────────────────────────────────────── */
+
+/*
+ * Top-right on a desktop, where it is out of the way. Across the bottom on a
+ * phone, where the top is the header and the workspace switcher and anything
+ * pinned there covers the thing the person just did.
+ */
+.toast-stack {
+  top: 76px;
+  right: 24px;
+  left: auto;
+  bottom: auto;
+}
+
+@media (max-width: 760px) {
+  .toast-stack {
+    top: auto;
+    bottom: 12px;
+    left: 10px;
+    right: 10px;
+  }
+  .toast-stack > * { max-width: none !important; }
+  /* One line each. Three announcements two lines tall is a third of a phone
+     screen covered by things that will remove themselves in four seconds. */
+  .toast-stack > div > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toast-stack > div {
+    padding: 9px 12px !important;
+    border-radius: 12px !important;
+    font-size: 12.5px !important;
+  }
+}
+
+/* ── The header, on a phone ───────────────────────────────────────────── */
+
+/*
+ * Three stacked rows — brand and workspace, then five round icon buttons, then
+ * the module pills — took 320px of an 844px screen before any of the product
+ * appeared. The pieces are all needed; they do not all need to be that big.
+ */
+@media (max-width: 760px) {
+  .app-header { padding: 8px 10px !important; gap: 8px !important; row-gap: 8px !important; }
+  .app-header .icon-btn,
+  .app-header button[aria-label] { width: 34px !important; height: 34px !important; }
+  .nav-pills button, .nav-pills a { padding: 6px 11px !important; font-size: 12.5px !important; }
+}
+
+
+/* ── The module menu on a phone ───────────────────────────────────────── */
+
+/*
+ * Seven groups of pills wrapped onto three rows and became a white slab across
+ * the middle of the screen, sitting on top of the dashboard behind it. Wrapping
+ * was the deliberate choice — it keeps the dropdown panels from being clipped
+ * by a scroll container — but the cure was worse than the disease at this size.
+ *
+ * One row that scrolls sideways instead, and the panels come out of the
+ * scroller entirely: on a phone a 288px card anchored to a pill that may be
+ * half off the screen is the wrong shape anyway, so it becomes a sheet pinned
+ * under the header, the full width of the screen.
+ */
+@media (max-width: 760px) {
+  .nav-pills {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* Room for the panel to escape: a scroll container clips its children, so
+       the panel is taken out of the flow with position: fixed below. */
+    padding: 4px 6px !important;
+    border-radius: 999px !important;
+    max-width: 100%;
+  }
+  .nav-pills::-webkit-scrollbar { display: none; }
+
+  .nav-panel {
+    position: fixed !important;
+    top: auto !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 12px !important;
+    transform: none !important;
+    width: auto !important;
+    max-height: 62vh;
+    overflow-y: auto;
+    border-radius: 22px !important;
+    box-shadow: 0 -10px 44px -8px rgba(23, 25, 28, 0.3) !important;
+  }
+}

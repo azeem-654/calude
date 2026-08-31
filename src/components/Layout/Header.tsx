@@ -29,14 +29,41 @@ const miniBtn: React.CSSProperties = {
 
 /** Floating toast stack. Rendered by Header, and standalone by full-screen
     views that don't use Header (e.g. the AI Shorts clip editor). */
+/*
+ * How many announcements can be on screen at once.
+ *
+ * Each one expires after four seconds, which is fine when they arrive one at a
+ * time. On load they do not: the due-work runner catches up on every queued
+ * follow-up and appointment at once, so a dozen landed together and — stacked
+ * downward from the top with nothing capping the column — covered the entire
+ * phone screen. The dashboard was behind a wall of "Appointment updated".
+ *
+ * Three is enough to say something is happening. Nothing is lost by dropping
+ * the rest: the toast is the announcement and the bell's panel is the record,
+ * and every one of these is already in it.
+ */
+const MAX_TOASTS = 3;
+
 export function Toasts() {
   const { notifications, dismissNotification } = useApp();
+  /* The newest are the ones worth showing. */
+  const shown = notifications.slice(-MAX_TOASTS);
+  const hidden = notifications.length - shown.length;
 
   return (
     <>
       {notifications.length > 0 && (
-        <div style={{ position: 'fixed', top: 76, right: 24, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
-          {notifications.map(n => {
+        <div className="toast-stack" style={{ position: 'fixed', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+          {hidden > 0 && (
+            <div style={{
+              alignSelf: 'flex-end', padding: '6px 11px', borderRadius: 999,
+              backgroundColor: 'rgba(23,25,28,0.86)', color: '#fff', fontSize: 11.5, fontWeight: 600,
+              boxShadow: '0 10px 26px -8px rgba(23,25,28,0.4)',
+            }}>
+              +{hidden} more in the bell
+            </div>
+          )}
+          {shown.map(n => {
             const Icon = n.type === 'success' ? CheckCircle2 : n.type === 'error' ? AlertCircle : Info;
             const color = n.type === 'success' ? '#3f9142' : n.type === 'error' ? '#e5484d' : '#3e63dd';
             return (

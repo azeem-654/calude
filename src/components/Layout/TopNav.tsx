@@ -15,6 +15,8 @@ import { getTheme, toggleTheme } from '../../services/theme';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
+/* `icon-btn` so the phone stylesheet can shrink these; the size lives here
+   because everything else about them does. */
 const circleBtn: React.CSSProperties = {
   width: 40, height: 40, borderRadius: 999, border: 'none',
   backgroundColor: '#fff', cursor: 'pointer',
@@ -296,18 +298,18 @@ export default function TopNav() {
 
       {/* Right: circular icon buttons + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} style={circleBtn}>
+        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn" style={circleBtn}>
           {theme === 'dark' ? <Sun size={16} strokeWidth={2.2} /> : <Moon size={16} strokeWidth={2.2} />}
         </button>
         <button
           title="Go to a module (⌘K)"
           aria-label="Go to a module"
           onClick={() => setPaletteOpen(true)}
-          style={circleBtn}
+          className="icon-btn" style={circleBtn}
         >
           <Search size={16} strokeWidth={2.2} />
         </button>
-        <button title="Inbox" aria-label="Inbox" onClick={() => navigate('/conversations')} style={circleBtn}>
+        <button title="Inbox" aria-label="Inbox" onClick={() => navigate('/conversations')} className="icon-btn" style={circleBtn}>
           <Mail size={16} strokeWidth={2.2} />
         </button>
 
@@ -321,7 +323,7 @@ export default function TopNav() {
             aria-haspopup="true"
             aria-expanded={bellOpen}
             onClick={() => { setBellOpen(v => { if (!v) markNotificationsRead(); return !v; }); }}
-            style={{ ...circleBtn, position: 'relative' }}
+            className="icon-btn" style={{ ...circleBtn, position: 'relative' }}
           >
             <Bell size={16} strokeWidth={2.2} />
             {unreadNotifications > 0 && (
