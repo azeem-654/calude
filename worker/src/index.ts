@@ -19,6 +19,7 @@ import { handleAuth } from './routes/auth';
 import { handleData } from './routes/data';
 import { handleMailbox } from './routes/mailbox';
 import { handleInfra } from './routes/infra';
+import { handleAutomation } from './routes/automation';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -32,7 +33,7 @@ import {
   handleImapFetch, handleMailProbe, handleSmsSend, handleDeliverability,
   handleBlogPublish, handleDiagnostics, handleInstall,
 } from './routes/misc';
-import { runScheduledSends } from './scheduled';
+import { runScheduledSends, recordTick } from './scheduled';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -43,6 +44,8 @@ const ROUTES: Record<string, Handler> = {
   /* Domains, DNS and mailbox provisioning. Every provider credential lives on
      this side of the wire; the browser only ever asks for an outcome. */
   '/api/infra.php': handleInfra,
+  /* Scheduled campaign starts, the tick's own health, and what the plan allows. */
+  '/api/automation.php': handleAutomation,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second
@@ -117,11 +120,16 @@ export default {
     ctx.waitUntil((async () => {
       const started = Date.now();
       const report = await runScheduledSends(env);
+      const ms = Date.now() - started;
+      /* Written to the database as well as the log: the log is for us, the row
+         is for the customer asking why their campaign did not go out. */
+      await recordTick(env, ms, report);
       /* Logged rather than swallowed: with no user watching, this log is the
          only account of what the schedule actually did. */
       console.log(JSON.stringify({
-        cron: event.cron, ms: Date.now() - started,
+        cron: event.cron, ms,
         accounts: report.accounts, sent: report.sent, failed: report.failed,
+        started: report.started,
         notes: report.notes.slice(0, 20),
       }));
     })());

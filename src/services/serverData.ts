@@ -46,6 +46,20 @@ function queue(accountId: string, key: string, value: string | null) {
   flushTimer = window.setTimeout(flush, 900);
 }
 
+/**
+ * Push everything queued, now, and wait for it to land.
+ *
+ * The 900ms debounce is right for ordinary edits and wrong for the one case
+ * where something is about to *ask the server about* what was just written —
+ * scheduling a campaign the server has not seen yet gets refused, correctly,
+ * for not existing. This closes that gap without making every keystroke a
+ * round trip.
+ */
+export async function flushNow(): Promise<void> {
+  window.clearTimeout(flushTimer);
+  await flush();
+}
+
 /** Listeners told when the server refuses a write, so the UI can say so. */
 type RejectionHandler = (message: string, keys: string[]) => void;
 let onRejected: RejectionHandler | null = null;

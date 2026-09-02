@@ -8,7 +8,7 @@
  * another workspace's records by naming it.
  */
 import { body, fail, json, ok } from '../lib/http';
-import { canAccess, dataDelete, dataGet, dataList, dataPut, storageWorkspace, userFromToken, type Env } from '../lib/db';
+import { workspaceAccess, dataDelete, dataGet, dataList, dataPut, storageWorkspace, userFromToken, type Env } from '../lib/db';
 
 interface DataBody {
   token?: string;
@@ -43,7 +43,26 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
 
   const accountId = String(d.accountId ?? '').trim();
   if (!ACCOUNT_OK.test(accountId)) return fail('A valid account id is required.');
-  if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to read.', 403);
+
+  /*
+   * The action is checked before the workspace, and that order matters now.
+   *
+   * Reaching an unowned workspace claims it, and a claim costs a sub-account
+   * against the plan — so a request with a misspelt action used to open a
+   * workspace nobody asked for and charge somebody for it. Nothing below this
+   * line runs for an action that was never going to work.
+   */
+  const KNOWN = new Set(['caps', 'list', 'get_all', 'bulk_set', 'get', 'put', 'delete']);
+  if (!KNOWN.has(String(d.action ?? ''))) {
+    return fail(`"${d.action ?? ''}" is not something this endpoint does.`);
+  }
+  /* Told apart on purpose. "Not yours" and "your plan is full" are different
+     problems with different fixes, and returning the first for the second sends
+     somebody hunting a permissions bug that does not exist. */
+  const access = await workspaceAccess(env.DB, user, accountId);
+  if (!access.ok) {
+    return fail(access.message ?? 'That workspace is not yours to read.', 403, { code: access.code });
+  }
 
   /* From here on the rows are addressed by the *storage* id, which is the same
      string for an ordinary workspace and a per-agency one for the reserved

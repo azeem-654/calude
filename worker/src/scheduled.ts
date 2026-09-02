@@ -71,12 +71,34 @@ function personalise(text: string, c: Contact): string {
     Object.prototype.hasOwnProperty.call(map, key) ? map[key] : whole);
 }
 
+const note = (report: TickReport, accountId: string, text: string, kind: 'info' | 'problem' = 'problem') => {
+  /* Bounded: a workspace with a thousand bad addresses must not write a
+     megabyte of JSON into every tick row. */
+  if (report.notes.length < 200) report.notes.push({ accountId, text: text.slice(0, 300), kind });
+};
+
 function nextSendFor(amount: number, unit: 'hours' | 'days'): string {
   const ms = unit === 'hours' ? amount * 3_600_000 : amount * 86_400_000;
   return new Date(Date.now() + ms).toISOString();
 }
 
-export interface TickReport { accounts: number; sent: number; failed: number; notes: string[] }
+/**
+ * Notes carry the workspace they belong to.
+ *
+ * The tick is shared by every customer on the install, and its account of
+ * itself is now read back by them — so "no mail server is set up" has to be
+ * attributable to one workspace rather than shown to all of them.
+ */
+export interface TickNote {
+  accountId: string;
+  text: string;
+  /* 'info' is something that went right and is worth seeing; 'problem' is
+     something a person has to act on. Told apart because a health screen that
+     files "1 contact enrolled" under things that went wrong teaches people to
+     stop reading it. */
+  kind: 'info' | 'problem';
+}
+export interface TickReport { accounts: number; sent: number; failed: number; started: number; notes: TickNote[] }
 
 /**
  * One account's due work.
@@ -101,11 +123,11 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     /* Nothing to send with. Said out loud in the log rather than silently
        skipped, because "my scheduled campaign never went" with no explanation
        is the worst possible version of this. */
-    report.notes.push(`${accountId}: ${due.length} message(s) due but no mail server is set up`);
+    note(report, accountId, `${due.length} message(s) due, but no mail server is set up for this workspace.`);
     return;
   }
   if (mailbox.smtp.username && !mailbox.smtp.password) {
-    report.notes.push(`${accountId}: stored mailbox password could not be decrypted — it needs re-entering`);
+    note(report, accountId, 'The stored mailbox password could not be read back. Enter it again in Settings → Email.');
     return;
   }
 
@@ -114,7 +136,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
 
   for (const enr of due) {
     if (sentHere >= MAX_SENDS_PER_ACCOUNT) {
-      report.notes.push(`${accountId}: reached the per-run limit; the rest will go on the next tick`);
+      note(report, accountId, 'Reached this run\'s limit; the rest go on the next tick.');
       break;
     }
 
@@ -161,7 +183,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
 
     touched = true;
     if (out.ok) { report.sent++; sentHere++; }
-    else { report.failed++; report.notes.push(`${accountId}: ${contact.email} — ${out.error.slice(0, 120)}`); }
+    else { report.failed++; note(report, accountId, `${contact.email} — ${out.error.slice(0, 140)}`); }
 
     /* A record of the send, in the same shape the app keeps locally, so the
        contact's history shows server-sent mail alongside everything else. */
@@ -192,7 +214,17 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
  * scanning them all would grow the tick's cost with the customer list.
  */
 export async function runScheduledSends(env: Env): Promise<TickReport> {
-  const report: TickReport = { accounts: 0, sent: 0, failed: 0, notes: [] };
+  const report: TickReport = { accounts: 0, sent: 0, failed: 0, started: 0, notes: [] };
+
+  /*
+   * Starts first, sends second, in that order and in the same tick.
+   *
+   * A campaign told to begin at nine should go out at nine. Enrolling on one
+   * tick and sending on the next would make every scheduled start up to five
+   * minutes late for no reason — and the enrolments this creates are due
+   * immediately, so the pass below picks them up as it goes.
+   */
+  await runDueSchedules(env, report);
 
   const { results } = await env.DB.prepare(
     "SELECT account_id FROM crm_mailboxes WHERE smtp_host != '' LIMIT 500",
@@ -204,9 +236,179 @@ export async function runScheduledSends(env: Env): Promise<TickReport> {
       await runAccount(env, row.account_id, report);
     } catch (e) {
       /* One workspace's bad data must not stop every other workspace's mail. */
-      report.notes.push(`${row.account_id}: tick failed — ${e instanceof Error ? e.message : String(e)}`);
+      note(report, row.account_id, `This workspace's turn failed — ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   return report;
+}
+
+/* ── Campaigns that start on their own ───────────────────────────────────── */
+
+interface ScheduleRow {
+  id: string;
+  account_id: string;
+  ref_id: string;
+  label: string;
+  audience: string;
+}
+
+interface Audience { status?: string[]; tags?: string[]; limit?: number }
+
+/** Contacts as the app stores them, only the fields the audience filter reads. */
+interface AudienceContact { id: string; email?: string; status?: string; tags?: string[] }
+
+/**
+ * Who this schedule is for.
+ *
+ * An empty filter means everybody with an address, which is what somebody who
+ * left the fields alone meant. Anything they did name narrows it: statuses are
+ * an "any of these" set, tags likewise, and both together is an and.
+ */
+function matches(c: AudienceContact, a: Audience): boolean {
+  if (!c.email) return false;
+  if (a.status?.length && !a.status.includes(c.status ?? '')) return false;
+  if (a.tags?.length) {
+    const tags = c.tags ?? [];
+    if (!a.tags.some(t => tags.includes(t))) return false;
+  }
+  return true;
+}
+
+/**
+ * Every schedule that has come due, enrolled and switched on.
+ *
+ * The conservative choices are the interesting ones. A contact already in this
+ * sequence is not enrolled twice — somebody who scheduled the same campaign
+ * for two dates, or re-ran a flow, would otherwise get their list mailed twice
+ * over. And a schedule that finds nobody is marked done with the reason rather
+ * than left pending: retrying it every five minutes forever would never find
+ * anybody either, and the row would hide the fact that the audience was empty.
+ */
+async function runDueSchedules(env: Env, report: TickReport): Promise<void> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, account_id, ref_id, label, audience FROM crm_schedules
+      WHERE status = 'pending' AND kind = 'sequence_start' AND start_at <= ?
+      ORDER BY start_at LIMIT 20`,
+  ).bind(new Date().toISOString()).all<ScheduleRow>();
+
+  for (const row of results ?? []) {
+    try {
+      const audience = parseJson<Audience>(row.audience, {});
+      const sequences = parseJson<Sequence[]>(await dataGet(env.DB, row.account_id, SEQ_KEY), []);
+      const seq = sequences.find(s => s.id === row.ref_id);
+
+      if (!seq || !seq.steps?.length) {
+        await finish(env, row.id, 'failed', 'That campaign no longer exists in this workspace.');
+        note(report, row.account_id, `"${row.label}" did not start: the campaign is gone.`);
+        continue;
+      }
+
+      const contacts = parseJson<AudienceContact[]>(await dataGet(env.DB, row.account_id, CONTACTS_KEY), []);
+      const enrolments = parseJson<Enrollment[]>(await dataGet(env.DB, row.account_id, ENROLL_KEY), []);
+      const already = new Set(
+        enrolments.filter(e => e.sequenceId === seq.id && e.status !== 'cancelled').map(e => e.contactId),
+      );
+
+      const picked = contacts
+        .filter(c => matches(c, audience) && !already.has(c.id))
+        .slice(0, audience.limit ?? 2000);
+
+      if (!picked.length) {
+        await finish(env, row.id, 'done', 'Nobody matched — either the audience is empty or everyone is already enrolled.');
+        note(report, row.account_id, `"${row.label}" started but matched nobody.`);
+        continue;
+      }
+
+      const now = new Date();
+      const first = seq.steps[0];
+      /* The first step's own delay is honoured from the start date rather than
+         ignored: a sequence whose step one waits two days should wait them. */
+      const firstDue = new Date(
+        now.getTime()
+        + (first?.day ?? 0) * (first?.waitUnit === 'hours' ? 3_600_000 : 86_400_000),
+      ).toISOString();
+
+      for (const c of picked) {
+        enrolments.push({
+          id: `enr-${row.id}-${c.id}`.slice(0, 80),
+          contactId: c.id,
+          sequenceId: seq.id,
+          sequenceName: seq.name,
+          status: 'active',
+          currentStep: 0,
+          totalSteps: seq.steps.length,
+          enrolledAt: now.toISOString(),
+          nextSendAt: firstDue,
+          history: [],
+        });
+      }
+
+      await dataPut(env.DB, row.account_id, ENROLL_KEY, JSON.stringify(enrolments));
+
+      /* Draft campaigns do not send. The schedule is the act of turning it on,
+         so this is what makes a flow written on Friday actually go on Tuesday. */
+      if (seq.status !== 'active') {
+        const next = sequences.map(s => (s.id === seq.id ? { ...s, status: 'active' } : s));
+        await dataPut(env.DB, row.account_id, SEQ_KEY, JSON.stringify(next));
+      }
+
+      await finish(env, row.id, 'done', `Enrolled ${picked.length} contact${picked.length === 1 ? '' : 's'} and switched the campaign on.`);
+      report.started++;
+      note(report, row.account_id, `"${row.label}" started — ${picked.length} contact${picked.length === 1 ? '' : 's'} enrolled.`, 'info');
+
+      /*
+       * Said now rather than never.
+       *
+       * The sending pass only visits workspaces that have a mail server, so a
+       * schedule that starts in a workspace without one would enrol everybody
+       * and then go quiet with nothing anywhere explaining why. One extra query
+       * per started schedule buys the customer the sentence that answers it.
+       */
+      const hasMail = await env.DB.prepare(
+        "SELECT 1 AS n FROM crm_mailboxes WHERE account_id = ? AND smtp_host != ''",
+      ).bind(row.account_id).first<{ n: number }>();
+      if (!hasMail) {
+        note(report, row.account_id, `"${row.label}" is enrolled and on, but nothing can send until a mail server is set up in Settings → Email.`);
+      }
+    } catch (e) {
+      /* One bad schedule must not stop the others, and the row keeps the reason
+         so somebody can see it without reading a log. */
+      const why = e instanceof Error ? e.message : String(e);
+      await finish(env, row.id, 'failed', why.slice(0, 280));
+      note(report, row.account_id, `"${row.label}" failed to start — ${why.slice(0, 140)}`);
+    }
+  }
+}
+
+async function finish(env: Env, id: string, status: 'done' | 'failed', detail: string): Promise<void> {
+  await env.DB.prepare('UPDATE crm_schedules SET status = ?, detail = ?, ran_at = ? WHERE id = ?')
+    .bind(status, detail.slice(0, 300), new Date().toISOString(), id).run();
+}
+
+/* ── The tick's own record ───────────────────────────────────────────────── */
+
+/**
+ * What this tick did, written where the customer can read it.
+ *
+ * Pruned in the same statement that writes: a row every five minutes is a
+ * hundred thousand a year, and a health readout nobody prunes eventually costs
+ * more to store than the thing it is reporting on. Four days is enough to
+ * answer "did last night's campaign go out".
+ */
+export async function recordTick(env: Env, ms: number, report: TickReport): Promise<void> {
+  try {
+    await env.DB.prepare(
+      'INSERT INTO crm_ticks (id, at, ms, accounts, sent, failed, started, notes) VALUES (?,?,?,?,?,?,?,?)',
+    ).bind(
+      crypto.randomUUID(), new Date().toISOString(), ms,
+      report.accounts, report.sent, report.failed, report.started,
+      JSON.stringify(report.notes),
+    ).run();
+
+    await env.DB.prepare("DELETE FROM crm_ticks WHERE at < datetime('now', '-4 days')").run();
+  } catch {
+    /* A health readout that cannot be written is not a reason to fail a tick
+       that has already sent real mail. */
+  }
 }

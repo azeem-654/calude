@@ -14,13 +14,15 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   X, ChevronRight, ChevronLeft, Loader, Mail, MessageSquare, Image, FileText,
-  Clapperboard, LayoutTemplate, Check, Sparkles, AlertTriangle, Undo2,
+  Clapperboard, LayoutTemplate, Check, Sparkles, AlertTriangle, Undo2, CalendarClock,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
   FLOWS, planFlow, planCounts, type FlowPlan, type ChannelId, type BusinessFlow,
 } from '../../services/businessFlow';
 import { applyPlan, undoRun, loadRuns, type FlowApi } from '../../services/flowRun';
+import { scheduleStart } from '../../services/automation';
+import { flushNow } from '../../services/serverData';
 
 const INK = '#17191c';
 const MUTED = '#5b6472';
@@ -164,7 +166,30 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [chosen, setChosen] = useState<Set<ChannelId>>(new Set(CHANNELS.map(c => c.id)));
-  const [result, setResult] = useState<{ created: string[]; runId?: string; skipped: { channel: ChannelId; why: string }[] } | null>(null);
+  const [result, setResult] = useState<{
+    created: string[]; runId?: string; sequenceId?: string;
+    skipped: { channel: ChannelId; why: string }[];
+  } | null>(null);
+
+  /*
+   * Scheduling is offered after creating, not before.
+   *
+   * A start date chosen next to an unread plan is a date chosen for something
+   * nobody has looked at. By this point the campaign exists and has been read,
+   * and the only remaining question is when it goes.
+   */
+  const [when, setWhen] = useState(() => {
+    /* Tomorrow at nine: soon enough to be the answer most of the time, far
+       enough away to leave a night to change your mind. */
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  const [who, setWho] = useState<'all' | 'lead' | 'prospect' | 'customer'>('all');
+  const [scheduled, setScheduled] = useState<{ at: string; note: string } | null>(null);
+  const [schedErr, setSchedErr] = useState('');
 
   const api: FlowApi = useMemo(() => ({
     addSequence: app.addSequence,
@@ -197,7 +222,7 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
       app.addNotification(r.error ?? 'Nothing could be created.', 'error');
       return;
     }
-    setResult({ created: r.created, runId: r.run?.id, skipped: r.skipped });
+    setResult({ created: r.created, runId: r.run?.id, sequenceId: r.run?.sequenceId, skipped: r.skipped });
     setStep('done');
     onDone?.();
   };
@@ -208,6 +233,29 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
     app.addNotification(r.ok ? `Removed ${r.removed.join(', ')}.` : 'That run was already removed.', r.ok ? 'success' : 'info');
     onDone?.();
     onClose();
+  };
+
+  const startLater = async () => {
+    if (!result?.sequenceId || !plan) return;
+    const at = new Date(when);
+    if (Number.isNaN(at.getTime())) { setSchedErr('That is not a date.'); return; }
+
+    setBusy(true);
+    setSchedErr('');
+    /* The server refuses to schedule a campaign it cannot see, and the sync
+       that would send it up is debounced — so push first, then ask. */
+    await flushNow();
+    const r = await scheduleStart(
+      result.sequenceId,
+      at,
+      plan.name,
+      who === 'all' ? {} : { status: [who] },
+    );
+    setBusy(false);
+
+    if (!r.success) { setSchedErr(r.error ?? 'That could not be scheduled.'); return; }
+    setScheduled({ at: at.toISOString(), note: r.message ?? '' });
+    app.addNotification(`${plan.name} starts ${at.toLocaleString()}.`, 'success');
   };
 
   const toggle = (id: ChannelId) => setChosen(prev => {
@@ -409,6 +457,62 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
                 turn it on in its own module.
               </p>
 
+              {/* ── Or let it start itself ──
+                  The one thing a draft cannot do is go out on Tuesday morning.
+                  This hands the start to the server: it enrols the audience and
+                  switches the campaign on with nobody logged in. */}
+              {result.sequenceId && !scheduled && (
+                <div style={{ marginTop: 16, background: '#fff', border: `1px solid ${LINE}`, borderRadius: 14, padding: 14 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 800, color: INK }}>
+                    <CalendarClock size={15} /> Start it on its own
+                  </span>
+                  <p style={{ margin: '4px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+                    The server enrols the people you pick and switches the emails on at this time — no tab open, nothing
+                    to remember.
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginTop: 12 }}>
+                    <label>
+                      <span style={fieldLabel}>When</span>
+                      <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} style={field} />
+                    </label>
+                    <label>
+                      <span style={fieldLabel}>Who</span>
+                      <select value={who} onChange={e => setWho(e.target.value as typeof who)} style={field}>
+                        <option value="all">Everyone with an email address</option>
+                        <option value="lead">Leads only</option>
+                        <option value="prospect">Prospects only</option>
+                        <option value="customer">Customers only</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  {schedErr && (
+                    <p style={{ ...warn, color: '#b42318', background: '#fdecec', borderColor: '#f7cdc9' }}>{schedErr}</p>
+                  )}
+
+                  <button onClick={startLater} disabled={busy} style={{ ...darkBtn, marginTop: 12 }}>
+                    {busy ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <CalendarClock size={13} />}
+                    Schedule the start
+                  </button>
+                  <p style={{ margin: '8px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                    Nobody already in this campaign is enrolled twice, and you can call it off any time from
+                    Settings → Automation.
+                  </p>
+                </div>
+              )}
+
+              {scheduled && (
+                <div style={{ marginTop: 16, padding: '12px 13px', borderRadius: 13, background: '#fbfdfb', border: '1px solid #cfe6d2' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 800, color: INK }}>
+                    <Check size={14} color="#1e6b32" strokeWidth={3} /> Starts {new Date(scheduled.at).toLocaleString()}
+                  </span>
+                  <p style={{ margin: '5px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
+                    Settings → Automation shows whether it ran, and lets you call it off before it does.
+                  </p>
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                 <button onClick={() => { navigate('/marketing'); onClose(); }} style={darkBtn}>Open Marketing</button>
                 <button onClick={() => { navigate('/social-creator'); onClose(); }} style={ghostBtn}>Open Social Creator</button>
@@ -468,6 +572,15 @@ const bodyText: React.CSSProperties = {
 const warn: React.CSSProperties = {
   margin: '10px 0 0', fontSize: 12, lineHeight: 1.55, color: '#8a6d00',
   background: '#fff9e6', border: '1px solid #f6e2a8', borderRadius: 10, padding: '8px 11px',
+};
+
+const field: React.CSSProperties = {
+  width: '100%', padding: '9px 11px', borderRadius: 10, border: `1px solid ${LINE}`,
+  fontSize: 13, color: INK, background: '#fff', boxSizing: 'border-box',
+};
+
+const fieldLabel: React.CSSProperties = {
+  display: 'block', fontSize: 12, fontWeight: 700, color: INK, marginBottom: 5,
 };
 
 const btnBase: React.CSSProperties = {

@@ -17,6 +17,8 @@ import {
 } from '../../services/tenancy';
 import type { SubAccount, AccountStatus, PlanId } from '../../services/tenancy';
 import { API_BASE } from '../../services/apiBase';
+import { planUsage, releaseWorkspace, type PlanUsage } from '../../services/automation';
+import { useApp } from '../../context/AppContext';
 
 const INK = '#17191c';
 const MUTED = '#8a8f98';
@@ -86,6 +88,26 @@ export default function AgencyDashboard() {
   const reload = () => setVersion(v => v + 1);
   const [limitError, setLimitError] = useState('');
   const allowance = resellAllowance(parentId);
+  const { addNotification } = useApp();
+
+  /*
+   * The server's count, alongside the browser's.
+   *
+   * `allowance` is worked out from local storage and is what greys the button
+   * out; this is the number the server will actually refuse on. They should
+   * agree, and when they do not it is worth saying so — a browser that thinks
+   * there is room while the server does not is a customer about to meet an
+   * error they cannot explain.
+   */
+  const [usage, setUsage] = useState<PlanUsage | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const u = await planUsage();
+      if (alive) setUsage(u);
+    })();
+    return () => { alive = false; };
+  }, [version]);
   const [agency, setAgencyState] = useState(loadAgency);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<SubAccount | undefined>();
@@ -128,7 +150,28 @@ export default function AgencyDashboard() {
     setEditing(undefined); setCreating(false);
   };
   const setStatus = (id: string, status: AccountStatus) => { updateSubAccount(id, { status }); reload(); setMenuFor(null); };
-  const remove = (id: string) => { if (confirm('Delete this sub-account and ALL its data? This cannot be undone.')) { deleteSubAccount(id); reload(); setMenuFor(null); } };
+  const remove = async (id: string) => {
+    if (!confirm('Delete this sub-account and ALL its data? This cannot be undone.')) return;
+    /* Everything it resold goes with it locally; the server is told separately
+       because that is what gives the plan slot back — deleting only in the
+       browser would leave the allowance permanently spent. */
+    const gone = [id, ...descendantsOf(id).map(a => a.id)];
+    deleteSubAccount(id);
+    reload();
+    setMenuFor(null);
+    const failed: string[] = [];
+    for (const target of gone) {
+      const r = await releaseWorkspace(target);
+      if (!r.success) failed.push(target);
+    }
+    if (failed.length) {
+      /* Said out loud rather than swallowed: the local copy is gone either way,
+         and a slot that silently stayed taken is exactly the kind of thing
+         somebody discovers when they cannot open their next client. */
+      addNotification(`Deleted here, but the server still counts ${failed.length} of ${gone.length} against your plan. Try again when you are back online.`, 'error');
+    }
+    setUsage(await planUsage());
+  };
 
   return (
     <div style={{ minHeight: '100vh' }} onClick={() => setMenuFor(null)}>
@@ -217,6 +260,15 @@ export default function AgencyDashboard() {
               </span>
             )}
             {!allowance.canCreate && <span style={{ fontSize: 12, color: '#e5484d', fontWeight: 600 }}>{allowance.reason}</span>}
+          </div>
+        )}
+
+        {/* Shown only when the two counts disagree, so the ordinary case stays
+            quiet and the exceptional one is impossible to miss. */}
+        {usage && usage.limit >= 0 && usage.remaining === 0 && allowance.canCreate && (
+          <div style={{ ...FROST, padding: '11px 16px', border: '1px solid #f6e2a8', background: '#fff9e6', color: '#8a6d00', fontSize: 12.5, fontWeight: 600 }}>
+            {usage.note} The server will refuse another one until you close one or upgrade — Settings → Automation has the
+            same figure.
           </div>
         )}
 

@@ -121,34 +121,141 @@ export async function userFromToken(db: D1Database, token: string | undefined): 
  * Reserved ids are already namespaced per agency by `storageWorkspace`, so by
  * the time one arrives here it carries its owner in the id and needs no lookup.
  */
-export async function canAccess(
+export interface AccessResult {
+  ok: boolean;
+  /** Why not, when not. `plan_limit` is a different problem from `not_yours`. */
+  code?: 'not_yours' | 'plan_limit';
+  message?: string;
+}
+
+export async function workspaceAccess(
   db: D1Database,
   user: SessionUser | null,
   accountId: string,
-): Promise<boolean> {
-  if (!user) return false;
-  if (user.role !== 'agency') return user.accountId === accountId;
+): Promise<AccessResult> {
+  if (!user) return { ok: false, code: 'not_yours', message: 'Sign in again.' };
+  if (user.role !== 'agency') {
+    return user.accountId === accountId
+      ? { ok: true }
+      : { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+  }
 
   if (accountId.startsWith(RESERVED_PREFIX)) {
     /* The caller may name the reserved bucket and nothing else; storageWorkspace
        then binds that name to them, so what they get is their own. An id that
        arrives already suffixed is someone naming another agency's bucket
        directly, which is the one thing this has to refuse. */
-    return accountId === RESERVED_AGENCY;
+    return accountId === RESERVED_AGENCY
+      ? { ok: true }
+      : { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
   }
 
   const row = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
     .bind(accountId).first<{ owner_email: string }>();
-  if (row) return row.owner_email === user.email;
+  if (row) {
+    return row.owner_email === user.email
+      ? { ok: true }
+      : { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+  }
 
-  /* Unowned: claim it. `INSERT OR IGNORE` rather than a plain insert because
-     two requests from the same agency can race here, and losing that race is
-     not a reason to refuse the second one. */
+  /*
+   * Unowned, so this is a new workspace coming into existence — and the only
+   * moment the server ever sees one being created.
+   *
+   * The browser has always checked the resale allowance before opening a
+   * sub-account, and a check in the browser is a courtesy: the storage it reads
+   * is the customer's own, and the id it would then use is just a string in a
+   * request. So the boundary is enforced here, once, at the point of claiming.
+   */
+  const limit = await resellLimitFor(db, user.email);
+  if (limit >= 0) {
+    const used = await workspacesOwned(db, user);
+    if (used >= limit) {
+      return {
+        ok: false,
+        code: 'plan_limit',
+        message: limit === 0
+          ? 'Your plan does not include sub-accounts. Upgrade to open one.'
+          : `Your plan covers ${limit} sub-account${limit === 1 ? '' : 's'} and ${used} ${used === 1 ? 'is' : 'are'} already open. Upgrade, or close one first.`,
+      };
+    }
+  }
+
+  /* `INSERT OR IGNORE` rather than a plain insert because two requests from the
+     same agency can race here, and losing that race is not a reason to refuse
+     the second one. */
   await db.prepare('INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)')
     .bind(accountId, user.email, nowIso()).run();
   const now = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
     .bind(accountId).first<{ owner_email: string }>();
-  return now?.owner_email === user.email;
+  return now?.owner_email === user.email
+    ? { ok: true }
+    : { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+}
+
+/** The old shape, kept because most callers only need yes or no. */
+export async function canAccess(
+  db: D1Database,
+  user: SessionUser | null,
+  accountId: string,
+): Promise<boolean> {
+  return (await workspaceAccess(db, user, accountId)).ok;
+}
+
+/**
+ * How many workspaces this agency runs beyond its own.
+ *
+ * Their own is not a sub-account and must not count against the allowance —
+ * somebody on the two-account plan would otherwise be able to open one.
+ */
+export async function workspacesOwned(db: D1Database, user: SessionUser): Promise<number> {
+  const row = await db.prepare(
+    'SELECT COUNT(*) AS n FROM crm_workspaces WHERE owner_email = ? AND account_id != ?',
+  ).bind(user.email, user.accountId ?? '').first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+/** Plan ids the client knows, and what each one allows. -1 is unlimited. */
+export const PLAN_RESELL: Record<string, number> = {
+  starter: 2,
+  pro: 12,
+  agency: -1,
+};
+
+/**
+ * The allowance, and what it means when there is no row.
+ *
+ * The install's original owner is unlimited: they are the person running this,
+ * not a customer of it, and locking them out of their own product on a limit
+ * nobody sold them would be absurd. Everybody who signed up afterwards gets the
+ * entry plan until Stripe or the operator says otherwise — the safe direction
+ * for a default to be wrong in, because it refuses rather than gives away.
+ */
+export async function resellLimitFor(db: D1Database, email: string): Promise<number> {
+  const row = await db.prepare('SELECT resell_limit FROM crm_plans WHERE owner_email = ?')
+    .bind(email).first<{ resell_limit: number }>();
+  if (row) return row.resell_limit;
+
+  const first = await db.prepare(
+    "SELECT email FROM crm_users WHERE role = 'agency' ORDER BY created_at LIMIT 1",
+  ).first<{ email: string }>();
+  if (first?.email === email) return -1;
+
+  return PLAN_RESELL.starter;
+}
+
+/** The plan id, for display. Mirrors resellLimitFor's defaults exactly. */
+export async function planFor(db: D1Database, email: string): Promise<{ planId: string; limit: number; source: string }> {
+  const row = await db.prepare('SELECT plan_id, resell_limit, source FROM crm_plans WHERE owner_email = ?')
+    .bind(email).first<{ plan_id: string; resell_limit: number; source: string }>();
+  if (row) return { planId: row.plan_id, limit: row.resell_limit, source: row.source };
+
+  const first = await db.prepare(
+    "SELECT email FROM crm_users WHERE role = 'agency' ORDER BY created_at LIMIT 1",
+  ).first<{ email: string }>();
+  if (first?.email === email) return { planId: 'agency', limit: -1, source: 'default' };
+
+  return { planId: 'starter', limit: PLAN_RESELL.starter, source: 'default' };
 }
 
 const RESERVED_PREFIX = '__';

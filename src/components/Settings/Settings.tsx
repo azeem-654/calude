@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users, ShieldCheck, Server } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users, ShieldCheck, Server, Activity } from 'lucide-react';
 import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import Header from '../Layout/Header';
 import TeamPermissions from './TeamPermissions';
@@ -23,6 +23,7 @@ import RouteCheck from './RouteCheck';
 import SecurityPanel from './SecurityPanel';
 import BrandingPanel from './BrandingPanel';
 import InfrastructurePanel from './InfrastructurePanel';
+import AutomationPanel from './AutomationPanel';
 import ProspectSearchCard from './ProspectSearchCard';
 import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
@@ -1046,6 +1047,9 @@ const tabs = [
   /* Domains, DNS and mailbox provisioning — the accounts that let the app set a
      client up rather than hand them instructions. */
   { id: 'infrastructure', label: 'Infrastructure', icon: Server },
+  /* What the schedule did while nobody was watching — the only place that can
+     answer it, because it runs on the server. */
+  { id: 'automation', label: 'Automation', icon: Activity },
   { id: 'branding', label: 'Branding', icon: Palette },
 ];
 
@@ -1270,6 +1274,7 @@ export default function Settings() {
           {activeTab === 'security' && <SecurityPanel />}
           {activeTab === 'branding' && <BrandingPanel />}
           {activeTab === 'infrastructure' && <InfrastructurePanel />}
+          {activeTab === 'automation' && <AutomationPanel />}
         </div>
       </div>
     </div>

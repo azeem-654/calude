@@ -71,11 +71,16 @@ function KindSection({ kind, specs, connected, onChanged }: {
   const { addNotification } = useApp();
   const meta = KIND_META[kind];
   const [open, setOpen] = useState(false);
-  const [chosen, setChosen] = useState(connected?.provider ?? specs[0]?.id ?? '');
+  /*
+   * Which provider is selected is derived, not stored — until somebody picks a
+   * different one, at which point their choice is. Keeping it in state and
+   * re-syncing it from props in an effect meant a render with the old value,
+   * then a second render to correct it, every time the connection reloaded.
+   */
+  const [picked, setPicked] = useState<string | null>(null);
+  const chosen = picked ?? connected?.provider ?? specs[0]?.id ?? '';
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
-
-  useEffect(() => { setChosen(connected?.provider ?? specs[0]?.id ?? ''); }, [connected?.provider, specs]);
 
   const spec = specs.find(s => s.id === chosen);
 
@@ -136,7 +141,7 @@ function KindSection({ kind, specs, connected, onChanged }: {
         <div style={{ marginTop: 16, borderTop: `1px solid ${LINE}`, paddingTop: 16 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
             {specs.map(s => (
-              <button key={s.id} onClick={() => { setChosen(s.id); setValues({}); }}
+              <button key={s.id} onClick={() => { setPicked(s.id); setValues({}); }}
                 style={{
                   textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
                   border: `1.5px solid ${chosen === s.id ? INK : LINE}`,
@@ -533,13 +538,23 @@ export default function InfrastructurePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const refresh = async () => {
-    const r = await loadProviders();
-    setSpecs(r.catalogue); setConnected(r.providers); setError(r.error ?? '');
-    setLoading(false);
-  };
+  /* Bumped by anything that changes what is connected, so there is one loader
+     rather than a copy of it behind every button. */
+  const [reload, setReload] = useState(0);
+  const refresh = () => setReload(k => k + 1);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    /* Guarded: this is a round trip, and Settings is twelve tabs somebody can
+       click straight past. */
+    let alive = true;
+    (async () => {
+      const r = await loadProviders();
+      if (!alive) return;
+      setSpecs(r.catalogue); setConnected(r.providers); setError(r.error ?? '');
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [reload]);
 
   const byKind = (k: ProviderKind) => connected.find(c => c.kind === k) ?? null;
 
