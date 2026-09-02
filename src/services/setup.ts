@@ -137,7 +137,10 @@ export function setupSteps(): SetupStep[] {
       id: 'domain',
       title: 'Set your sending domain',
       why: 'SPF, DKIM and DMARC on your own domain are what keep your mail out of spam.',
-      route: '/settings?tab=deliverability',
+      /* Infrastructure rather than Deliverability: this is the screen that can
+         actually buy the domain, read what is live and write the missing
+         records, and naming the domain there sets it for the workspace. */
+      route: '/settings?tab=infrastructure',
       action: 'Set the domain',
       state: domain ? 'done' : 'todo',
       detail: domain || 'Not set — mail will be sent unauthenticated',

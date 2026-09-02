@@ -18,6 +18,7 @@ import type { Env } from './lib/db';
 import { handleAuth } from './routes/auth';
 import { handleData } from './routes/data';
 import { handleMailbox } from './routes/mailbox';
+import { handleInfra } from './routes/infra';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -39,6 +40,9 @@ const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
   '/api/data.php': handleData,
   '/api/mailbox.php': handleMailbox,
+  /* Domains, DNS and mailbox provisioning. Every provider credential lives on
+     this side of the wire; the browser only ever asks for an outcome. */
+  '/api/infra.php': handleInfra,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second
