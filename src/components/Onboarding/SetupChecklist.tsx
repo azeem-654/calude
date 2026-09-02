@@ -79,8 +79,10 @@ function StepRow({ step, index, onGo }: { step: SetupStep; index: number; onGo: 
   );
 }
 
-export default function SetupChecklist({ onOpenAiWizard, refreshKey = 0 }: {
+export default function SetupChecklist({ onOpenAiWizard, onOpenFlow, refreshKey = 0 }: {
   onOpenAiWizard?: () => void;
+  /** Opens the business-flow launcher — the last step's real destination. */
+  onOpenFlow?: () => void;
   refreshKey?: number;
 }) {
   const navigate = useNavigate();
@@ -101,6 +103,11 @@ export default function SetupChecklist({ onOpenAiWizard, refreshKey = 0 }: {
        the four things that step is about, so sending somebody to a Settings
        panel that asked them again would be two places to enter one thing. */
     if (s.id === 'portfolio' && onOpenAiWizard) { onOpenAiWizard(); return; }
+    /* The last step asks somebody to describe an outcome and have the campaign
+       written for them. That is the flow launcher, not a module screen — and
+       the launcher needs the portfolio the first step collected, which is why
+       it is last. */
+    if (s.id === 'campaign' && onOpenFlow) { onOpenFlow(); return; }
     navigate(s.route);
   };
 

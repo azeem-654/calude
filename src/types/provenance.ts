@@ -24,6 +24,11 @@ export type ContentOrigin =
   | 'ai-shorts'
   /** Created by an AI Sales Agent campaign to carry out its strategy. */
   | 'ai-sales-agent'
+  /** One business flow fanned out across every channel at once — the chain
+   *  that turns a company portfolio and a stated outcome into an email
+   *  sequence, an SMS campaign, social posts, a blog project and a landing
+   *  page in a single run. */
+  | 'business-flow'
   /** A scheduled send or a multi-step follow-up flow, materialized into the
    *  sequence engine so the same tested heartbeat that runs Sequences carries
    *  it forward — rather than a second, parallel scheduler. */
@@ -53,6 +58,7 @@ export const ORIGIN_LABEL: Record<ContentOrigin, string> = {
   'video-campaign': 'Video campaign',
   'ai-shorts': 'AI Shorts',
   'ai-sales-agent': 'AI Sales Agent',
+  'business-flow': 'Business flow',
   'marketing-campaign': 'Marketing campaign',
 };
 

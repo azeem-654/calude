@@ -3,7 +3,7 @@ import {
   MessageSquare, ShoppingBag, CornerUpLeft, UserPlus, Briefcase,
   Check, CheckCheck, Calendar as CalIcon, MoreHorizontal,
   Star, Lightbulb,
-  AlertTriangle, ArrowRight, Rocket,
+  AlertTriangle, ArrowRight, Rocket, Wand2, ChevronRight,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,7 @@ import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilit
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import SetupChecklist from '../Onboarding/SetupChecklist';
+import FlowLauncher from '../Onboarding/FlowLauncher';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
@@ -540,6 +541,7 @@ export default function Dashboard() {
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [flowOpen, setFlowOpen] = useState(false);
   const [obRefresh, setObRefresh] = useState(0);
   useEffect(() => {
     /*
@@ -861,7 +863,33 @@ export default function Dashboard() {
             Above the figures for as long as it has anything to say, because a
             workspace that cannot send yet has nothing to read in them. It
             removes itself once every step is done. */}
-        <SetupChecklist onOpenAiWizard={() => setWizardOpen(true)} refreshKey={obRefresh} />
+        <SetupChecklist
+          onOpenAiWizard={() => setWizardOpen(true)}
+          onOpenFlow={() => setFlowOpen(true)}
+          refreshKey={obRefresh}
+        />
+
+        {/* ── The chain, with a door on it ──
+            The checklist removes itself once setup is done, and this is the one
+            thing on the dashboard somebody comes back to weekly: pick an
+            outcome, get the whole campaign written across every module. So it
+            stays after the checklist has gone. */}
+        <button
+          type="button"
+          onClick={() => setFlowOpen(true)}
+          className="flow-strip press"
+          aria-label="Build a campaign from your portfolio"
+        >
+          <span className="flow-strip-icon" aria-hidden="true"><Wand2 size={17} /></span>
+          <span className="flow-strip-text">
+            <span className="flow-strip-title">Build a campaign from your portfolio</span>
+            <span className="flow-strip-sub">
+              Pick an outcome — the emails, texts, posts, blog and landing page are written from what you sell, and
+              shown to you before anything is created.
+            </span>
+          </span>
+          <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, opacity: 0.5 }} />
+        </button>
 
         {/* ── The four numbers this week turned on ──
             Ahead of everything else on purpose: a sales lead opening the CRM
@@ -1028,6 +1056,12 @@ export default function Dashboard() {
       </div>
 
       <OnboardingWizard open={wizardOpen} onClose={() => { setWizardOpen(false); setObRefresh(k => k + 1); }} />
+      {flowOpen && (
+        <FlowLauncher
+          onClose={() => setFlowOpen(false)}
+          onDone={() => setObRefresh(k => k + 1)}
+        />
+      )}
     </div>
   );
 }

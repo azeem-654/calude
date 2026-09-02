@@ -80,7 +80,9 @@ export function setupSteps(): SetupStep[] {
   const portfolioFilled = [p.companyName, p.industry, p.description, p.audience].filter(v => (v ?? '').trim().length > 1).length;
 
   const contacts = countList('crm_contacts');
-  const campaigns = countList('crm_campaigns') + countList('crm_ai_campaigns');
+  /* A business flow that has run counts: it creates a sequence and an SMS
+     campaign, so the step it ticks is the one about having a campaign. */
+  const campaigns = countList('crm_campaigns') + countList('crm_ai_campaigns') + countList('crm_flow_runs');
 
   const mailbox = isEmailConfigured();
   const domain = (deliver.sendingDomain ?? '').trim();
@@ -169,9 +171,9 @@ export function setupSteps(): SetupStep[] {
     {
       id: 'campaign',
       title: 'Plan your first campaign',
-      why: 'Describe the outcome in a sentence. The agent plans it and shows you before anything is created.',
+      why: 'Pick the outcome you want. Everything — emails, texts, posts, the blog, the landing page — is written from your portfolio and shown to you before anything is created.',
       route: '/ai-sales-agent',
-      action: campaigns > 0 ? 'Open campaigns' : 'Describe the outcome',
+      action: campaigns > 0 ? 'Open campaigns' : 'Pick an outcome',
       state: campaigns > 0 ? 'done' : 'todo',
       detail: campaigns > 0 ? `${campaigns} campaign${campaigns === 1 ? '' : 's'}` : 'None yet',
       blocking: false,

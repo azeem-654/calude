@@ -548,6 +548,120 @@ Return ONLY JSON: {"emails": [{"day": 1, "subject": "...", "body": "..."}, ...5 
 }
 
 /**
+ * The business-flow chain: one outcome, written across every channel at once.
+ *
+ * Asked for in a single call rather than six, because the point of the chain is
+ * that the email, the text, the post and the blog are the *same* campaign — six
+ * separate prompts produce six campaigns that happen to share a company name.
+ *
+ * Every field is optional in the caller's eyes: businessFlow.ts merges what
+ * comes back over a version it already wrote from the portfolio, so a partial
+ * answer improves the plan instead of failing it.
+ */
+export async function generateBusinessFlow(input: {
+  company: string; industry: string; description: string; audience: string; voice: string;
+  outcome: string; arc: string; cta: string;
+}): Promise<{
+  name?: string;
+  promise?: string;
+  emails?: { day: number; subject: string; body: string }[];
+  sms?: { day: number; body: string }[];
+  social?: { day: number; platform: 'instagram' | 'facebook' | 'linkedin'; headline: string; caption: string; hashtags: string[] }[];
+  blog?: { title: string; angle: string; outline: string[]; keywords: string[] };
+  short?: { title: string; hook: string; script: string[] };
+  landing?: { title: string; subhead: string; bullets: string[]; cta: string };
+}> {
+  const prompt = `You are a senior direct-response copywriter. Write ONE campaign for this business, carried across every channel. Every piece must belong to the same campaign — same promise, same offer, same call to action.
+
+Business: ${input.company} (${input.industry})
+What they do: ${input.description.slice(0, 400)}
+Who they serve: ${input.audience.slice(0, 300)}
+Brand voice: ${input.voice}
+
+The outcome the owner wants: ${input.outcome}
+The journey: ${input.arc}
+The one action every piece asks for: ${input.cta}
+
+Write:
+- "name": what to call this campaign internally (max 8 words)
+- "promise": the campaign's promise in one sentence
+- "emails": 4 emails on days 0, 2, 5 and 9. Each has a subject under 55 characters and a 90-170 word plain-text body. Use {{firstName}} exactly once, as the greeting. Give each a distinct job: open, teach, prove, ask. No exclamation marks in subjects.
+- "sms": 2 texts on days 1 and 6, each under 160 characters, starting with the business name, ending in a clear reply instruction.
+- "social": 4 posts on days 0, 3, 6 and 10 across instagram, linkedin and facebook. Each has a headline under 60 characters, a caption of 2-3 sentences, and 2-3 hashtags.
+- "blog": one post idea with a title, a one-sentence angle, a 5-point outline, and 3 search keywords real buyers would type.
+- "short": a 30-second vertical video with a title, a scroll-stopping hook line, and 6 script lines of one sentence each.
+- "landing": a landing page with a title, a subhead, 3 benefit bullets and a button label.
+
+Write like a person who knows this industry. No filler, no "in today's fast-paced world", no em dashes.
+
+Return ONLY JSON: {"name":"...","promise":"...","emails":[{"day":0,"subject":"...","body":"..."}],"sms":[{"day":1,"body":"..."}],"social":[{"day":0,"platform":"instagram","headline":"...","caption":"...","hashtags":["#..."]}],"blog":{"title":"...","angle":"...","outline":["..."],"keywords":["..."]},"short":{"title":"...","hook":"...","script":["..."]},"landing":{"title":"...","subhead":"...","bullets":["..."],"cta":"..."}}`;
+
+  const json = await callGemini(prompt, 0.75);
+  const r = JSON.parse(json) as Record<string, unknown>;
+
+  /* Trusted for shape, not for content: a model that returns an email with no
+     subject would otherwise put an empty string into a real campaign. Anything
+     incomplete is dropped here so the caller keeps its own version of it. */
+  const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  const strs = (v: unknown, max: number, cap: number): string[] =>
+    list(v).map(x => str(x, max)).filter(Boolean).slice(0, cap);
+
+  const emails = list(r.emails)
+    .map(e => e as Record<string, unknown>)
+    .map((e, i) => ({
+      day: typeof e.day === 'number' ? e.day : [0, 2, 5, 9][i] ?? i * 3,
+      subject: str(e.subject, 120),
+      body: str(e.body, 4000),
+    }))
+    .filter(e => e.subject && e.body.length > 40)
+    .slice(0, 5);
+
+  const sms = list(r.sms)
+    .map(m => m as Record<string, unknown>)
+    .map((m, i) => ({ day: typeof m.day === 'number' ? m.day : [1, 6][i] ?? i * 5 + 1, body: str(m.body, 480) }))
+    .filter(m => m.body)
+    .slice(0, 4);
+
+  const PLATFORMS = new Set(['instagram', 'facebook', 'linkedin']);
+  const social = list(r.social)
+    .map(p => p as Record<string, unknown>)
+    .map((p, i) => ({
+      day: typeof p.day === 'number' ? p.day : [0, 3, 6, 10][i] ?? i * 3,
+      platform: (PLATFORMS.has(String(p.platform)) ? String(p.platform) : 'instagram') as 'instagram' | 'facebook' | 'linkedin',
+      headline: str(p.headline, 120),
+      caption: str(p.caption, 900),
+      hashtags: strs(p.hashtags, 40, 5).map(h => (h.startsWith('#') ? h : `#${h}`)),
+    }))
+    .filter(p => p.headline && p.caption)
+    .slice(0, 6);
+
+  const b = (r.blog ?? {}) as Record<string, unknown>;
+  const blogTitle = str(b.title, 160);
+  const blog = blogTitle
+    ? { title: blogTitle, angle: str(b.angle, 400), outline: strs(b.outline, 160, 8), keywords: strs(b.keywords, 80, 6) }
+    : undefined;
+
+  const sh = (r.short ?? {}) as Record<string, unknown>;
+  const shortScript = strs(sh.script, 220, 10);
+  const short = shortScript.length >= 3
+    ? { title: str(sh.title, 120) || 'Short', hook: str(sh.hook, 220) || shortScript[0], script: shortScript }
+    : undefined;
+
+  const l = (r.landing ?? {}) as Record<string, unknown>;
+  const landingTitle = str(l.title, 120);
+  const landing = landingTitle
+    ? { title: landingTitle, subhead: str(l.subhead, 300), bullets: strs(l.bullets, 200, 5), cta: str(l.cta, 40) || 'Get started' }
+    : undefined;
+
+  return {
+    name: str(r.name, 90),
+    promise: str(r.promise, 300),
+    emails, sms, social, blog, short, landing,
+  };
+}
+
+/**
  * Onboarding: generate one month's 30-day social calendar + short-video scripts.
  */
 export async function generateSocialCalendar(input: {

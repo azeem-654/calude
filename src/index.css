@@ -839,3 +839,77 @@ main section { min-width: 0; }
   }
   .setup-card { padding: 15px !important; border-radius: 20px !important; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The business-flow strip on the dashboard.
+
+   A button that has to read as a piece of the page rather than a banner ad:
+   the same glass surface as the cards around it, one clear line of intent, and
+   the explanation underneath at the size explanations are read at. On a phone
+   it stacks and centres like everything else on that screen.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.flow-strip {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 15px 17px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 36px -18px rgba(16, 24, 40, 0.22);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.flow-strip:hover {
+  box-shadow: 0 20px 46px -18px rgba(16, 24, 40, 0.3);
+}
+
+.flow-strip-icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #17191c;
+  color: #fff;
+}
+
+.flow-strip-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-strip-title {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #17191c;
+  letter-spacing: -0.015em;
+}
+
+.flow-strip-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #454c55;
+}
+
+@media (max-width: 760px) {
+  .flow-strip {
+    flex-direction: column;
+    text-align: center;
+    gap: 10px;
+  }
+  /* The chevron points along a row that no longer exists once this stacks. */
+  .flow-strip > svg:last-child {
+    display: none;
+  }
+}
