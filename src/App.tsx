@@ -105,6 +105,18 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/agency" element={isClient ? <Navigate to="/" replace /> : <AgencyDashboard />} />
           <Route path="/billing" element={<ClientBilling />} />
           <Route path="/settings" element={<Settings />} />
+          {/*
+           * Every other Routes block in this file has a catch-all; this one did
+           * not, and the result was a screen that looked broken rather than
+           * missing: the nav and the rail rendered, `main` rendered nothing.
+           *
+           * The commonest way in is not a typo. `/login` and `/signup` are real
+           * addresses — the marketing site's two buttons point at them, and
+           * people bookmark them — but they are routes of the *signed-out*
+           * tree. Arriving at either with a session already in hand fell
+           * through to nothing at all.
+           */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </ErrorBoundary>
       </main>
