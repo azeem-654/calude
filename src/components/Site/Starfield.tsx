@@ -22,12 +22,29 @@
  */
 import { useEffect, useRef } from 'react';
 
-/** How many stars, by how far away they are. Nearer means fewer and brighter. */
+/**
+ * How many stars, by how far away they are. Nearer means fewer, brighter and
+ * faster — which is the whole of what makes a flat field of dots read as depth.
+ *
+ * The first cut moved at a hundredth of a pixel a frame. That is a star
+ * crossing the screen in about forty minutes, which is indistinguishable from
+ * a still image; these are roughly six times that, slow enough to be calm and
+ * fast enough to be visibly moving while you read a paragraph.
+ */
 const LAYERS = [
-  { count: 120, size: [0.5, 1.1], speed: 0.010, alpha: [0.20, 0.45], drift: 0.04 },
-  { count: 70, size: [0.9, 1.7], speed: 0.022, alpha: [0.35, 0.70], drift: 0.10 },
-  { count: 28, size: [1.4, 2.4], speed: 0.040, alpha: [0.55, 0.95], drift: 0.20 },
+  { count: 130, size: [0.5, 1.1], speed: 0.055, alpha: [0.22, 0.50], drift: 0.04 },
+  { count: 78, size: [0.9, 1.7], speed: 0.115, alpha: [0.38, 0.75], drift: 0.10 },
+  { count: 32, size: [1.4, 2.5], speed: 0.210, alpha: [0.58, 1.00], drift: 0.20 },
 ];
+
+/**
+ * Seconds between meteors — a range, so they never arrive on a beat.
+ *
+ * Roughly one on screen at a time. Faster than this and it is a meteor shower,
+ * which stops being a detail somebody notices and becomes the thing the page
+ * is about.
+ */
+const METEOR_GAP = [1.2, 3.6];
 
 /* The mark's own colours, so the sky belongs to the logo rather than to space
    in general. Most stars stay white — a sky of entirely lime stars reads as a
@@ -50,6 +67,22 @@ interface Body {
   size: number; tint: string; alpha: number;
 }
 
+/**
+ * A falling star.
+ *
+ * Drawn as a tapering line rather than a dot with a blur behind it: the streak
+ * *is* the meteor, and a gradient stroke from the head back along its own
+ * direction of travel is both cheaper and more convincing than a sprite.
+ */
+interface Meteor {
+  x: number; y: number;
+  vx: number; vy: number;
+  len: number;
+  life: number;
+  max: number;
+  tint: string;
+}
+
 export default function Starfield() {
   const ref = useRef<HTMLCanvasElement | null>(null);
 
@@ -65,7 +98,10 @@ export default function Starfield() {
     let h = 0;
     let stars: Star[] = [];
     let bodies: Body[] = [];
+    let meteors: Meteor[] = [];
+    let nextMeteor = 0;
     let raf = 0;
+    let last = 0;
     let scrollY = window.scrollY;
 
     const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -82,6 +118,8 @@ export default function Starfield() {
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+      meteors = [];
+      nextMeteor = 0;
       stars = [];
       LAYERS.forEach(layer => {
         for (let i = 0; i < layer.count; i++) {
@@ -112,15 +150,40 @@ export default function Starfield() {
 
     const centre = () => ({ cx: w * 0.82, cy: h * 0.28 });
 
+    /**
+     * One falling star, from somewhere along the top or the right edge.
+     *
+     * Always down-and-left, because a sky where they arrive from every
+     * direction reads as confetti. The angle varies a little so they are not
+     * all parallel.
+     */
+    const spawnMeteor = () => {
+      const angle = Math.PI * (0.62 + Math.random() * 0.16);   // down-left
+      const speed = rnd(7.5, 13);
+      const fromTop = Math.random() < 0.7;
+      meteors.push({
+        x: fromTop ? rnd(w * 0.25, w * 1.05) : w + 20,
+        y: fromTop ? -20 : rnd(0, h * 0.45),
+        vx: Math.cos(angle) * speed,
+        vy: -Math.sin(angle) * speed * -1,
+        len: rnd(90, 210),
+        life: 0,
+        max: rnd(70, 130),
+        tint: Math.random() < 0.55 ? '200,242,77' : '255,255,255',
+      });
+    };
+
     const draw = (t: number) => {
+      const dt = last ? Math.min((t - last) / 16.67, 3) : 1;   // frames since last, capped
+      last = t;
       ctx.clearRect(0, 0, w, h);
 
       /* Parallax: the further back a layer is, the less the page's scroll moves
          it. This is what turns a flat field of dots into distance. */
       for (const s of stars) {
         if (!reduced) {
-          s.x += s.vx;
-          s.y += s.vy;
+          s.x += s.vx * dt;
+          s.y += s.vy * dt;
           if (s.x < -2) s.x = w + 2; else if (s.x > w + 2) s.x = -2;
           if (s.y < -2) s.y = h + 2; else if (s.y > h + 2) s.y = -2;
         }
@@ -175,6 +238,53 @@ export default function Starfield() {
         ctx.fill();
       }
 
+      /* ── Falling stars ── */
+      if (!reduced) {
+        if (t > nextMeteor) {
+          spawnMeteor();
+          nextMeteor = t + rnd(METEOR_GAP[0], METEOR_GAP[1]) * 1000;
+        }
+        for (let i = meteors.length - 1; i >= 0; i--) {
+          const m = meteors[i];
+          m.x += m.vx * dt;
+          m.y += m.vy * dt;
+          m.life += dt;
+          if (m.life > m.max || m.x < -260 || m.y > h + 260) { meteors.splice(i, 1); continue; }
+
+          /* Fades in over the first fifth of its life and out over the last
+             third, so it never appears or vanishes on a hard edge. */
+          const p = m.life / m.max;
+          const fade = p < 0.2 ? p / 0.2 : p > 0.66 ? (1 - p) / 0.34 : 1;
+
+          const nx = m.vx / Math.hypot(m.vx, m.vy);
+          const ny = m.vy / Math.hypot(m.vx, m.vy);
+          const tailX = m.x - nx * m.len;
+          const tailY = m.y - ny * m.len;
+
+          const streak = ctx.createLinearGradient(m.x, m.y, tailX, tailY);
+          streak.addColorStop(0, `rgba(${m.tint},${0.95 * fade})`);
+          streak.addColorStop(0.35, `rgba(${m.tint},${0.35 * fade})`);
+          streak.addColorStop(1, `rgba(${m.tint},0)`);
+
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = streak;
+          ctx.lineWidth = 2;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(m.x, m.y);
+          ctx.lineTo(tailX, tailY);
+          ctx.stroke();
+
+          /* A bright head, so it reads as a body with a tail rather than a
+             gradient someone drew. */
+          ctx.globalAlpha = fade;
+          ctx.fillStyle = `rgb(${m.tint})`;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 1.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       ctx.globalAlpha = 1;
     };
 
@@ -189,6 +299,7 @@ export default function Starfield() {
       /* A background tab still runs rAF in some browsers, and always burns
          battery in the ones that throttle it rather than stopping it. */
       cancelAnimationFrame(raf);
+      last = 0;                    // do not integrate the time spent hidden
       if (!document.hidden && !reduced) raf = requestAnimationFrame(loop);
     };
 

@@ -1035,3 +1035,144 @@
   .dc-btn-lg { padding: 12px 20px; font-size: 14px; }
   .dc-chain-out { grid-template-columns: 1fr; }
 }
+
+/* ── Ambient motion ─────────────────────────────────────────────────────────
+   The part the entrance animations are not.
+
+   Everything above this comment animates once, when it arrives, and then holds
+   perfectly still — which means a page you have already scrolled through is a
+   photograph. These are the loops: they never stop, they need no hover, and
+   they run on `transform` and `opacity` only, so the compositor carries them
+   and the main thread never sees them.
+
+   Each is paired with its entrance in a comma-separated list, with the loop
+   delayed past the arrival. Both animate `transform`, and the later animation
+   in the list wins while it is running — so the entrance plays, finishes, and
+   the loop takes the element over.
+
+   Amplitudes are small on purpose: 6px on a card, 2px on an icon. A marketing
+   page where every tile bobs an inch is a page you cannot read.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes dc-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+
+@keyframes dc-float-soft {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@keyframes dc-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-2.5px) rotate(-4deg); }
+}
+
+@keyframes dc-glow-pulse {
+  0%, 100% { box-shadow: 0 10px 30px -10px rgba(200, 242, 77, 0.55); }
+  50%      { box-shadow: 0 14px 40px -10px rgba(200, 242, 77, 0.95); }
+}
+
+@keyframes dc-nudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(4px); }
+}
+
+@keyframes dc-sheen {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  55%  { transform: translateX(320%) skewX(-18deg); }
+  100% { transform: translateX(320%) skewX(-18deg); }
+}
+
+@keyframes dc-ring {
+  0%   { transform: scale(0.9); opacity: 0.55; }
+  70%  { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+/* ── Tiles ── */
+/* `.in` so the float only starts once the tile has arrived, and `--i` so the
+   grid breathes out of phase rather than sixteen tiles rising as one slab. */
+.dc-bento.in > .dc-tile {
+  animation: dc-float 7s ease-in-out infinite;
+  animation-delay: calc(1s + var(--i, 0) * 0.45s);
+}
+/* Hovering hands the tile back to its transition, so the lift still works. */
+.dc-bento.in > .dc-tile:hover { animation: none; }
+
+.dc-tile-icon { animation: dc-bob 4.5s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.3s); }
+
+/* A lime sheen crosses each tile's screenshot on its own schedule. */
+.dc-tile-shot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 40%, rgba(200, 242, 77, 0.16) 50%, transparent 60%);
+  animation: dc-sheen 9s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 1.1s);
+}
+
+/* ── Wall, plans, chain ── */
+.dc-wall.in > .dc-wall-card {
+  animation: dc-float-soft 8s ease-in-out infinite;
+  animation-delay: calc(1s + var(--i, 0) * 0.5s);
+}
+.dc-wall.in > .dc-wall-card:hover { animation: none; }
+
+.dc-plans.in > .dc-plan {
+  animation: dc-float-soft 7.5s ease-in-out infinite;
+  animation-delay: calc(1s + var(--i, 0) * 0.6s);
+}
+.dc-plans.in > .dc-plan:hover { animation: none; }
+/* The featured plan keeps its travelling border *and* floats. */
+.dc-plans.in > .dc-plan.featured {
+  animation: dc-slide-bg 9s linear infinite,
+             dc-float-soft 7.5s ease-in-out infinite;
+  animation-delay: 0s, calc(1s + var(--i, 0) * 0.6s);
+}
+
+.dc-chain-out.in > .dc-chain-node {
+  animation: dc-float 5.5s ease-in-out infinite;
+  animation-delay: calc(0.8s + var(--i, 0) * 0.28s);
+}
+.dc-chain-out.in > .dc-chain-node:hover { animation: none; }
+
+/* ── The source node throws a ring, continuously ── */
+.dc-chain-source::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1.5px solid rgba(200, 242, 77, 0.6);
+  animation: dc-ring 2.8s ease-out infinite;
+  pointer-events: none;
+}
+.dc-chain-source { position: relative; }
+
+/* ── Buttons ── */
+/* The primary button breathes rather than waiting to be pointed at. */
+.dc-btn-primary { animation: dc-glow-pulse 3.2s ease-in-out infinite; }
+.dc-btn-primary svg,
+.dc-btn-outline svg { animation: dc-nudge 2.4s ease-in-out infinite; }
+
+/* ── Pills ── */
+/* Not in a stagger group, so no --i to inherit; nth-child gives them the same
+   out-of-phase drift rather than three pills bobbing in unison. */
+.dc-pill { animation: dc-float-soft 6s ease-in-out infinite; }
+.dc-pill:nth-child(2) { animation-delay: 0.7s; }
+.dc-pill:nth-child(3) { animation-delay: 1.4s; }
+
+/* ── The hero, once it has landed ── */
+.dc-lead-2 { animation: dc-in-up 0.85s 0.72s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.dc-lead-3 {
+  animation: dc-in-rise 1.25s 0.88s cubic-bezier(0.22, 1, 0.36, 1) both,
+             dc-float 9s 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-tile-shot::after,
+  .dc-chain-source::before { display: none; }
+}
