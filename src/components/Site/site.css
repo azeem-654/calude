@@ -1,1170 +1,800 @@
-/*
- * The public site.
- *
- * Scoped under .site so none of it can leak into the app, which is a dense
- * working surface while this is a light, roomy, mostly-white marketing page
- * with a few dark bands cut into it.
- *
- * Everything here is a keyframe, a hover state or a shared surface — the kinds
- * of thing an inline style cannot express — and the layout stays in the
- * components, where the rest of this codebase keeps it.
- */
+/* ─────────────────────────────────────────────────────────────────────────
+   protectedcentral.com
 
-.site {
-  --paper: #f2f3ef;        /* the page itself */
-  --card: #ffffff;
-  --card-sunk: #f7f8f5;    /* a tile inside a card */
-  --ink: #0f1210;          /* the dark bands */
-  --ink-2: #171b15;
-  --line: #e4e6e0;
-  --line-dark: #23271f;
+   A dark hero, then chapters of coloured tiles on a light ground. The tiles
+   carry the weight: each one is a photograph of a real module, and the colour
+   and span vary so a row has somewhere for the eye to land instead of reading
+   as a table.
 
-  /*
-   * Measured, not eyeballed. The greys here were picked to look calm in a
-   * design mock and two of them failed outright when checked against the paper
-   * they sit on: --text-mute, which is every paragraph and every caption on the
-   * page, came to 4.35:1 — under the 4.5:1 floor for body text — and
-   * --text-faint was 2.36:1, which is decoration pretending to be words.
-   *
-   * The replacements are 7.79:1 and 4.76:1. Still clearly secondary to the
-   * near-black headline at 16:1, and now actually readable on a phone held at
-   * arm's length in daylight, which is where this page is mostly read.
-   */
-  --text: #12151a;
-  --text-mute: #454c55;      /* 7.79:1 on --paper */
-  --text-faint: #656c75;     /* 4.76:1 */
-  /* The muted half of a two-tone headline. It was --text-mute, which made half
-     of every heading on the site the same weight as the body copy under it. */
-  --text-lead: #3a4149;      /* 9.27:1 */
-  --on-dark: #f4f6f1;
-  --on-dark-mute: #c3ccc0;   /* 11.41:1 on --ink */
+   Everything animates on arrival and nothing animates on the way out —
+   see useReveal.ts for why. `prefers-reduced-motion` is honoured there by
+   applying the finished state immediately, so no rule here needs to guess.
+   ───────────────────────────────────────────────────────────────────────── */
 
-  /* One accent, and one supporting tint for the thing being singled out. */
-  --lime: #c8f24d;
-  --lime-lit: #d6f96f;
-  --lime-deep: #a8d431;
-  --mint: #8fd9c4;
+.dc {
+  --ink: #0a0b1e;
+  --ink-2: #12142e;
+  --violet: #6d3bf5;
+  --violet-2: #9a6bff;
+  --blue: #2f6bff;
+  --teal: #12a594;
+  --amber: #f0912d;
+  --coral: #f2545b;
+  --paper: #f4f5f9;
+  --line: #e6e8f0;
+  --text: #16182b;
+  /* 7.4:1 on white. The muted body colour is most of the page's words, so it
+     is a contrast decision rather than a shade. */
+  --muted: #4c5566;
 
-  --radius: 16px;
-  --radius-sm: 11px;
-
-  background: var(--paper);
+  background: #fff;
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
-/* ── The stage: a fixed scene over a tall document ────────────────────── */
+.dc *,
+.dc *::before,
+.dc *::after { box-sizing: border-box; }
 
-.site.scene-root {
-  position: relative;
-  min-height: 100vh;
-}
+.dc h1, .dc h2, .dc h3, .dc h4, .dc h5, .dc p, .dc ul { margin: 0; }
+.dc ul { list-style: none; padding: 0; }
+.dc a { text-decoration: none; color: inherit; }
+.dc img { max-width: 100%; display: block; }
 
-/* Nothing but height. This is what there is to scroll. */
-.site .scene-spacer { width: 100%; pointer-events: none; }
+/* ── Motion ─────────────────────────────────────────────────────────────── */
 
-.site .scene-stage {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* One scene, stacked on all the others. Only the one in view is opaque, and
-   the transforms are written frame by frame from useScrollScene. */
-.site .scene {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: clamp(74px, 11vh, 120px) clamp(16px, 5vw, 72px) clamp(66px, 10vh, 100px);
-  box-sizing: border-box;
+.dc .reveal,
+.dc .dc-tile,
+.dc .dc-chain-node,
+.dc .dc-wall-card,
+.dc .dc-own-card,
+.dc .dc-plan {
   opacity: 0;
-  visibility: hidden;
-  will-change: transform, opacity;
-  /* The controls inside a scene have to stay clickable even though the stage
-     itself lets scroll events through to the document underneath. */
-  pointer-events: none;
-}
-.site .scene button, .site .scene a { pointer-events: auto; }
-
-.site .scene.dark {
-  background: var(--ink);
-  color: var(--on-dark);
-}
-.site .scene.dark::before {
-  /* The band does not fill the screen; it is a slab laid on the page. */
-  content: '';
-  position: absolute;
-  inset: clamp(60px, 9vh, 96px) clamp(12px, 4vw, 56px);
-  background: var(--ink);
-  border-radius: var(--radius);
-  z-index: -1;
-}
-.site .scene.dark { background: transparent; }
-
-.site .scene-inner {
-  width: min(1420px, 100%);
-  display: grid;
-  gap: clamp(20px, 3.4vw, 56px);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
-  align-items: center;
-}
-/* A scene with no screenshot gets the full width for its own layout. */
-.site .scene-inner[data-wide='true'] { grid-template-columns: 1fr; }
-
-/* Once there is room for two columns, the picture takes the larger share —
-   the point of the scene is the screen, not the paragraph beside it. */
-@media (min-width: 980px) {
-  .site .scene-inner:not([data-wide='true']) {
-    grid-template-columns: minmax(0, 0.68fr) minmax(0, 1.32fr);
-  }
+  transform: translateY(22px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Wide enough to give the screen its head: the frame runs out past the text
-   column and into the margin, so it reads as a window onto something larger
-   than the page rather than a thumbnail sitting politely in a cell.
-
-   How far out is not a taste number. The dark band is inset from the viewport
-   by less than the scene is padded, so the difference between the two is the
-   distance that takes the frame's right edge to the band's. On a window narrow
-   enough for that padding to be what bounds the scene the two line up exactly;
-   on a wider one the frame simply stops at the width the layout allows. */
-@media (min-width: 1240px) {
-  .site .scene-inner:not([data-wide='true']) {
-    gap: clamp(34px, 4vw, 68px);
-    grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
-  }
-  .site .scene-inner:not([data-wide='true']) .shot {
-    margin-right: calc(-1 * (clamp(16px, 5vw, 72px) - clamp(12px, 4vw, 56px)));
-  }
+.dc .reveal.in,
+.dc .in .dc-tile,
+.dc .in .dc-chain-node,
+.dc .in .dc-wall-card,
+.dc .in .dc-own-card,
+.dc .in .dc-plan {
+  opacity: 1;
+  transform: none;
+  /* --i is set per child by useRevealGroup. Capped so a long grid does not end
+     with a tile that arrives two seconds after the one above it. */
+  transition-delay: calc(min(var(--i, 0) * 70ms, 560ms));
 }
 
-.site .scene-copy { min-width: 0; will-change: transform, opacity; }
-/* 450 rather than 400: at the sizes this page uses, a half-step of weight does
-   more for legibility on a phone than another pixel of size would. */
-.site .scene-copy p { font-weight: 450; }
-.site .view-label { font-weight: 500; }
-
-/* The pieces of a scene start hidden and are placed by useScrollScene as the
-   scene arrives. Starting at 0 stops the first paint flashing the whole block
-   before the first frame runs. */
-.site [data-rise] { opacity: 0; will-change: transform, opacity; }
 @media (prefers-reduced-motion: reduce) {
-  .site [data-rise] { opacity: 1 !important; transform: none !important; }
+  .dc .reveal,
+  .dc .dc-tile,
+  .dc .dc-chain-node,
+  .dc .dc-wall-card,
+  .dc .dc-own-card,
+  .dc .dc-plan { opacity: 1; transform: none; transition: none; }
 }
 
-/*
- * The sections that are a grid of cards rather than a picture centre their copy
- * too. Left-aligned over a symmetrical grid the heading looks like it belongs
- * to the first card rather than to all of them.
- */
-.site .scene-inner[data-wide='true'] .scene-copy {
-  text-align: center;
-  max-width: 820px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.site .scene-inner[data-wide='true'] .scene-copy h1,
-.site .scene-inner[data-wide='true'] .scene-copy h2,
-.site .scene-inner[data-wide='true'] .scene-copy p {
-  margin-left: auto;
-  margin-right: auto;
-}
-/* The cards stay left-aligned — centred body text inside a tile is harder to
-   read and looks like a certificate. */
-.site .scene-inner[data-wide='true'] .mesh,
-.site .scene-inner[data-wide='true'] .tile,
-.site .scene-inner[data-wide='true'] .steps { text-align: left; }
-/* The block holding the grid is full width even though the copy above it is
-   not, so it cannot inherit the copy's max-width. */
-.site .scene-inner[data-wide='true'] .scene-copy > [data-rise]:last-child {
-  max-width: none;
-  width: 100%;
-}
+/* ── Buttons ────────────────────────────────────────────────────────────── */
 
-/* ── Close-ups: several views of one module, as a collage ─────────────── */
-
-/*
- * A scene that carries close-ups is laid out down the page rather than across
- * it: the copy centred at the top, the views under it using the full width.
- */
-.site .scene-inner[data-views='true'] {
-  grid-template-columns: 1fr;
-  gap: clamp(16px, 2.2vw, 26px);
-  justify-items: center;
-}
-.site .scene-inner[data-views='true'] .scene-copy {
-  text-align: center;
-  max-width: 780px;
-}
-.site .scene-inner[data-views='true'] .scene-copy h1,
-.site .scene-inner[data-views='true'] .scene-copy h2,
-.site .scene-inner[data-views='true'] .scene-copy p {
-  margin-left: auto;
-  margin-right: auto;
-}
-.site .scene-inner[data-views='true'] .scene-copy ul { align-items: center; }
-.site .scene-inner[data-views='true'] .scene-copy li { text-align: left; }
-
-/*
- * The collage.
- *
- * This was a swipe row on a phone, which put every view after the first one off
- * the side of the screen — the section's whole point, hidden behind a gesture
- * nothing announced. It is now a collage at every size: the views overlap by a
- * little and lean against each other, so the section reads as several parts of
- * one working screen rather than as a carousel.
- *
- * The overlap is deliberately small. A collage that stacks its pieces properly
- * looks better and hides the thing each piece was cut to show, so they sit
- * corner to corner with about a tenth of one covered, and the covered tenth is
- * always the edge rather than the middle.
- */
-.site .views {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 10px;
-  will-change: transform, opacity;
-  /*
-   * A grid item's automatic minimum size is its content, and on a phone the
-   * content is an image shown at its own 620px width so the frame can crop it.
-   * Without this the row grew to 622px inside a 390px screen, taking the whole
-   * centred section with it — the heading ran off the right-hand edge and
-   * everything looked shunted across. `overflow: hidden` on the frame clips the
-   * painting; it does not stop the box being asked for.
-   */
-  min-width: 0;
-  max-width: 100%;
-}
-.site .view-frame { width: 100%; }
-
-.site .view {
-  margin: 0;
-  min-width: 0;
-  flex: 0 1 auto;
-  max-width: 46%;
-  /* Each arrives after the one before it. --k is its index, so the stagger is a
-     property of position rather than a delay written by hand per item. */
-  animation: view-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: calc(var(--k, 0) * 150ms);
-  transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* The lean, and the overlap. Odd ones tip one way, even the other, and every
-   view after the first is pulled back over the one before it. */
-.site .view:nth-child(odd)  { transform: rotate(-1.4deg); z-index: 1; }
-.site .view:nth-child(even) { transform: rotate(1.4deg) translateY(16px); z-index: 2; margin-left: -3%; }
-
-/* Whichever is under the cursor comes to the front and straightens up, so
-   anything the collage covers is one hover away from being fully visible. */
-.site .view:hover { transform: rotate(0deg) translateY(-6px) scale(1.04); z-index: 5; }
-
-.site .view-frame {
-  position: relative;
-  overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  box-shadow: 0 18px 44px rgba(16, 24, 40, 0.16), 0 3px 10px rgba(16, 24, 40, 0.06);
-  transition: box-shadow 320ms ease;
-  /* A ceiling, so one tall crop cannot set the height of the whole scene. */
-  max-height: min(38vh, 350px);
-}
-.site .view:hover .view-frame {
-  box-shadow: 0 30px 70px rgba(16, 24, 40, 0.24), 0 6px 16px rgba(16, 24, 40, 0.09);
-}
-.site .dark .view-frame {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: #0c0f0b;
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
-}
-.site .view-frame img { display: block; width: 100%; height: auto; }
-
-/* The moving parts. A crop of a table is a still life; these say it is running,
-   and all of them go under prefers-reduced-motion. */
-
-.site .view-sheen {
-  position: absolute;
-  inset: -50% -60%;
-  pointer-events: none;
-  background: linear-gradient(
-    104deg,
-    transparent 42%,
-    rgba(255, 255, 255, 0.34) 49%,
-    rgba(226, 255, 138, 0.2) 53%,
-    transparent 60%
-  );
-  animation: view-sheen 7.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  animation-delay: calc(var(--k, 0) * 900ms);
-}
-.site .dark .view-sheen {
-  background: linear-gradient(
-    104deg,
-    transparent 42%,
-    rgba(255, 255, 255, 0.14) 49%,
-    rgba(200, 242, 77, 0.18) 53%,
-    transparent 60%
-  );
-}
-
-.site .view-pulse {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--lime-deep);
-  animation: view-pulse 2.6s ease-out infinite;
-  animation-delay: calc(var(--k, 0) * 420ms);
-}
-
-/*
- * The caption sits on the picture, not under it.
- *
- * Under it, in a collage, it collided with whatever was overlapping — the left
- * view's caption ended up half behind the right view, and the right one's fell
- * below the fold because that view is offset downwards. On the frame it cannot
- * collide with anything, and it costs the section no height at all.
- */
-.site .view { position: relative; }
-.site .view-label {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  z-index: 2;
-  margin: 0;
-  padding: 7px 11px;
-  border-radius: 9px;
-  font-size: clamp(11.5px, 0.95vw, 12.5px);
-  font-weight: 600;
-  line-height: 1.35;
-  text-align: left;
-  color: #12151a;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(16, 24, 40, 0.08);
-  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-.site .dark .view-label {
-  color: var(--on-dark);
-  background: rgba(18, 22, 17, 0.88);
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-@keyframes view-in {
-  from { opacity: 0; transform: translate3d(0, 26px, 0) scale(0.96) rotate(0deg); }
-}
-
-@keyframes view-sheen {
-  0%        { transform: translate3d(-115%, 0, 0); }
-  30%, 100% { transform: translate3d(115%, 0, 0); }
-}
-
-@keyframes view-pulse {
-  0%        { box-shadow: 0 0 0 0 rgba(168, 212, 49, 0.5); }
-  70%, 100% { box-shadow: 0 0 0 9px rgba(168, 212, 49, 0); }
-}
-
-/* ── The closing panel's four steps ───────────────────────────────────── */
-
-.site .steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: clamp(10px, 1.4vw, 16px);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-  text-align: left;
-}
-.site .steps li {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: var(--radius-sm);
-  padding: clamp(13px, 1.6vw, 18px);
-}
-.site .dark .steps .step-n,
-.site .steps .step-n { color: var(--lime); }
-.site .steps h3 {
-  margin: 8px 0 5px;
-  font-size: clamp(14px, 1.1vw, 14px);
-  font-weight: 600;
-  color: var(--on-dark);
-}
-.site .steps p {
-  margin: 0;
-  font-size: clamp(12.5px, 1vw, 12.5px);
-  line-height: 1.55;
-  color: var(--on-dark-mute);
-}
-
-/*
- * The photograph of a real screen.
- *
- * Three layers, because they move at different speeds. The <figure> is flown in
- * by useScrollScene, which owns its transform outright — nothing else may write
- * one there or the two fight every frame. The frame inside it carries the idle
- * drift, and the sheen and the glow are their own elements so they can run on
- * their own clocks. `--in` is how far the scene has settled, written from the
- * same frame loop, and it is what brings the light up behind the screen as it
- * lands.
- */
-.site .shot {
-  position: relative;
-  /* The glow sits behind the frame and must stay behind *this* rather than
-     behind the scene. The frame is transformed from the first animation frame,
-     which would give it a stacking context anyway; this makes it true on the
-     paint before that one too. */
-  isolation: isolate;
-  margin: 0;
-  min-width: 0;
-  will-change: transform, opacity;
-  transform-origin: 50% 58%;
-  --in: 0;
-  /* Shrunk by the cap below rather than by the grid, so it keeps the right
-     edge it was given and gives the room back to the copy. */
-  margin-left: auto;
-}
-
-/*
- * A scene is exactly one screen tall, so what limits the picture is the height
- * left after the chrome, not the width of its column. Without this a short wide
- * window — a laptop with a browser's worth of toolbars — lays out a frame taller
- * than the scene and the bottom of it is cut off by the stage.
- *
- * 1.55 is the screenshot's own aspect (1400 × 903); the subtraction is the
- * scene's padding, the frame's title bar and a little air.
- */
-@media (min-width: 980px) {
-  .site .shot { max-width: min(100%, calc((100vh - 270px) * 1.55)); }
-}
-/* The stage lets pointer events through to the document so the page still
-   scrolls; the screen takes them back, because it answers to the cursor. A
-   wheel over it has no scrollable ancestor inside the fixed stage, so it still
-   scrolls the page. */
-.site .scene .shot { pointer-events: auto; }
-
-/* The light behind the screen, strongest once the scene has arrived. */
-.site .shot-glow {
-  position: absolute;
-  inset: 6% 2% -8%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at 50% 50%, rgba(200, 242, 77, 0.34), rgba(143, 217, 196, 0.16) 46%, transparent 72%);
-  filter: blur(58px);
-  opacity: calc(var(--in) * 0.85);
-  z-index: -1;
-  pointer-events: none;
-}
-.site .dark .shot-glow {
-  background: radial-gradient(ellipse at 50% 50%, rgba(200, 242, 77, 0.3), rgba(120, 200, 175, 0.14) 48%, transparent 74%);
-}
-
-.site .shot-frame {
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: var(--card);
-  box-shadow: 0 44px 100px rgba(16, 24, 40, 0.24), 0 8px 22px rgba(16, 24, 40, 0.08);
-  /* A slow, shallow breath, so the screen is alive between scenes rather than
-     only while the wheel is moving. */
-  animation: shot-drift 11s ease-in-out infinite;
-  transition: box-shadow 320ms ease;
-}
-.site .dark .shot-frame {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: #0c0f0b;
-  box-shadow: 0 48px 120px rgba(0, 0, 0, 0.62);
-}
-.site .shot:hover .shot-frame {
-  box-shadow: 0 54px 120px rgba(16, 24, 40, 0.3), 0 10px 26px rgba(16, 24, 40, 0.1);
-  animation-play-state: paused;
-}
-
-/* The strip of window furniture above the picture. It is what makes a flat
-   screenshot read as an application rather than as a diagram. */
-.site .shot-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 13px;
-  height: 32px;
-  background: var(--card-sunk);
-  border-bottom: 1px solid var(--line);
-}
-.site .shot-bar i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #d8dbd2;
-  flex-shrink: 0;
-}
-.site .shot-bar i:first-child { background: #e6b9ac; }
-.site .shot-bar i:nth-child(2) { background: #e6d6ac; }
-.site .shot-bar i:nth-child(3) { background: #bcd9a8; }
-.site .shot-tab {
-  margin-left: 10px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.site .dark .shot-bar { background: rgba(255, 255, 255, 0.05); border-bottom-color: rgba(255, 255, 255, 0.09); }
-.site .dark .shot-bar i { background: rgba(255, 255, 255, 0.18); }
-.site .dark .shot-tab { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
-
-.site .shot-screen { display: block; position: relative; overflow: hidden; }
-.site .shot img {
-  display: block;
-  width: 100%;
-  height: auto;
-  transform: scale(1.006);
-  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.site .shot:hover img { transform: scale(1.035); }
-
-/* A band of light crossing the glass. It sweeps once as the scene settles, and
-   again on a slow loop, which is what stops a still picture reading as dead. */
-.site .shot-sheen {
-  position: absolute;
-  inset: -40% -60%;
-  pointer-events: none;
-  background: linear-gradient(
-    104deg,
-    transparent 38%,
-    rgba(255, 255, 255, 0.42) 48%,
-    rgba(226, 255, 138, 0.26) 52%,
-    transparent 62%
-  );
-  opacity: calc(var(--in) * 0.9);
-  animation: shot-sheen 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-.site .dark .shot-sheen {
-  background: linear-gradient(
-    104deg,
-    transparent 38%,
-    rgba(255, 255, 255, 0.16) 48%,
-    rgba(200, 242, 77, 0.2) 52%,
-    transparent 62%
-  );
-}
-
-@keyframes shot-drift {
-  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
-  50% { transform: translate3d(0, -12px, 0) rotate(-0.22deg); }
-}
-
-@keyframes shot-sheen {
-  0% { transform: translate3d(-115%, 0, 0); }
-  /* One pass, then most of the cycle spent off the right-hand edge. A sheen
-     that crosses continuously is a barber's pole, not a highlight. */
-  34%, 100% { transform: translate3d(115%, 0, 0); }
-}
-
-/* The light that falls through a dark scene. */
-.site .beam {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: min(620px, 66%);
-  height: 76%;
-  transform: translateX(-50%);
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 26% 34% at 50% 6%, rgba(226, 255, 138, 0.8), transparent 72%),
-    radial-gradient(ellipse 12% 56% at 50% 26%, rgba(200, 242, 77, 0.55), transparent 74%),
-    radial-gradient(ellipse 46% 40% at 50% 58%, rgba(168, 212, 49, 0.2), transparent 76%);
-  filter: blur(28px);
-}
-
-/* ── Card type ────────────────────────────────────────────────────────── */
-
-/*
- * Cards used to name their own colours inline — `color: var(--text)` for the
- * title, `--text-mute` for the body. That is right on the light sections and
- * catastrophic on the dark ones: near-black text on the ink band measured
- * 1.03:1 against its own background, which is not "hard to read", it is
- * invisible. Four card titles in "Run it as an agency" were simply not there.
- *
- * The card no longer decides. The surface it is sitting on does, which is the
- * only thing that can know.
- */
-.site .card-title {
-  display: block;
-  margin: 0 0 6px;
-  font-size: clamp(14px, 1.1vw, 14.5px);
-  font-weight: 650;
-  line-height: 1.3;
-  color: var(--text);
-}
-.site .card-body {
-  margin: 0;
-  font-size: clamp(12.5px, 1vw, 13px);
-  line-height: 1.55;
-  font-weight: 450;
-  color: var(--text-mute);
-}
-.site .mesh > * .card-title { margin-top: 8px; }
-
-.site .dark .card-title { color: var(--on-dark); }
-.site .dark .card-body { color: var(--on-dark-mute); }
-
-/* ── Motion in the sections that have no screenshots ──────────────────── */
-
-/*
- * Half the page is grids of cards — the lifecycle, the agency points, what is
- * included, the straight answers, the closing steps — and they sat completely
- * still while the product sections moved. Next to each other that reads as the
- * still ones being unfinished.
- *
- * Each card arrives after the one before it. The delay comes from nth-child
- * rather than from an index written onto every element: these are rendered by
- * five different loops in three files, and a rule here covers all of them
- * without any of them having to know.
- */
-.site .mesh > *,
-.site .tile,
-.site .steps li {
-  animation: card-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.site .mesh > *:nth-child(1),  .site .tile:nth-child(1),  .site .steps li:nth-child(1)  { animation-delay: 40ms; }
-.site .mesh > *:nth-child(2),  .site .tile:nth-child(2),  .site .steps li:nth-child(2)  { animation-delay: 110ms; }
-.site .mesh > *:nth-child(3),  .site .tile:nth-child(3),  .site .steps li:nth-child(3)  { animation-delay: 180ms; }
-.site .mesh > *:nth-child(4),  .site .tile:nth-child(4),  .site .steps li:nth-child(4)  { animation-delay: 250ms; }
-.site .mesh > *:nth-child(5),  .site .tile:nth-child(5)   { animation-delay: 320ms; }
-.site .mesh > *:nth-child(6),  .site .tile:nth-child(6)   { animation-delay: 390ms; }
-.site .mesh > *:nth-child(7)  { animation-delay: 460ms; }
-
-@keyframes card-in {
-  from { opacity: 0; transform: translate3d(0, 16px, 0); }
-}
-
-/*
- * The marker on each card breathes.
- *
- * One slow, shallow pulse on the small lime square every card already carries.
- * It is the only moving thing on these sections and it is deliberately almost
- * nothing — a grid of cards where each one animates loudly is a fairground.
- */
-.site .glyph.soft {
-  animation: glyph-breathe 4.2s ease-in-out infinite;
-}
-.site .mesh > *:nth-child(even) .glyph.soft,
-.site .tile:nth-child(even) .glyph.soft { animation-delay: 1.1s; }
-
-@keyframes glyph-breathe {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(168, 212, 49, 0); }
-  50%      { transform: scale(1.07); box-shadow: 0 0 0 5px rgba(168, 212, 49, 0.14); }
-}
-
-/*
- * A light that drifts behind every section.
- *
- * The dark bands already had `.beam`. The light ones had nothing at all moving
- * in the background, so a section of cards was a static page between two that
- * were alive. This is the same idea at a fraction of the strength — slow enough
- * that it reads as depth rather than as something demanding attention.
- */
-.site .scene::after {
-  content: '';
-  position: absolute;
-  z-index: -2;
-  top: 12%;
-  left: 50%;
-  width: min(760px, 78%);
-  height: 62%;
-  pointer-events: none;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at 50% 50%, rgba(200, 242, 77, 0.16), rgba(143, 217, 196, 0.08) 45%, transparent 72%);
-  filter: blur(70px);
-  animation: scene-drift 18s ease-in-out infinite;
-}
-/* The dark scenes have their own beam and do not need a second one. */
-.site .scene.dark::after { display: none; }
-
-@keyframes scene-drift {
-  0%, 100% { transform: translateX(-50%) translateY(0) scale(1); }
-  50%      { transform: translateX(-46%) translateY(-22px) scale(1.08); }
-}
-
-/* ── Chrome, pinned over the stage ────────────────────────────────────── */
-
-.site .scene-chrome {
-  position: fixed;
-  left: 0;
-  right: 0;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  gap: clamp(10px, 3vw, 40px);
-  padding: clamp(11px, 1.8vw, 18px) clamp(14px, 4vw, 46px);
-  min-width: 0;
-  background: color-mix(in srgb, var(--paper) 84%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.site .scene-chrome > * { min-width: 0; }
-.site .scene-top { top: 0; border-bottom: 1px solid var(--line); }
-.site .scene-bottom { bottom: 0; border-top: 1px solid var(--line); justify-content: space-between; }
-
-.site .scroll-hint { color: var(--text-faint); white-space: nowrap; }
-.site .scene-chapter { white-space: nowrap; }
-
-/* The rail is the position indicator and a way to jump. */
-.site .scene-rail {
-  position: relative;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-/* A hairline under the ticks that fills as the page runs. */
-.site .scene-progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 2px;
-  height: 1px;
-  background: var(--line);
-  transform-origin: left;
-}
-.site .scene-progress::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--lime-deep);
-  transform: scaleX(var(--at, 0));
-  transform-origin: left;
-}
-.site .tick {
-  width: 20px;
-  height: 14px;
-  padding: 6px 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  position: relative;
-  z-index: 1;
-}
-.site .tick::after {
-  content: '';
-  display: block;
-  height: 2px;
-  border-radius: 2px;
-  background: #d4d7cf;
-  transition: background-color 300ms ease;
-}
-.site .tick:hover::after { background: #b3b8ac; }
-.site .tick[aria-selected='true']::after { background: var(--lime-deep); }
-
-/* ── Type ─────────────────────────────────────────────────────────────── */
-
-/* The label style the reference uses above every section. */
-.site .mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-.site .dark .mono { color: var(--on-dark-mute); }
-
-/* A heading in two tones: the run-up muted, the point of the sentence in full
-   colour. Straight from the reference, and it does real work — the eye lands
-   on the half that matters. */
-.site .lead { color: var(--text-lead); }
-.site .emph { color: var(--text); }
-.site .dark .lead { color: var(--on-dark-mute); }
-.site .dark .emph { color: var(--on-dark); }
-
-/* The small rounded chip that opens the hero. */
-.site .chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 13px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  font-size: 10.5px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-mute);
-}
-.site .dark .chip {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--on-dark-mute);
-}
-
-/* ── Buttons ──────────────────────────────────────────────────────────── */
-
-.site a { color: inherit; text-decoration: none; }
-
-.site .btn {
+.dc-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   padding: 10px 18px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
   white-space: nowrap;
-  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
-.site .btn:hover { border-color: #cfd3c9; background: #fbfcfa; }
-.site .btn:active { transform: translateY(1px); }
 
-.site .dark .btn {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--on-dark);
+.dc-btn:hover { transform: translateY(-1px); }
+.dc-btn-lg { padding: 14px 26px; font-size: 15px; }
+
+.dc-btn-primary {
+  background: linear-gradient(135deg, var(--violet), #4f7cff);
+  color: #fff;
+  box-shadow: 0 10px 26px -10px rgba(109, 59, 245, 0.75);
 }
-.site .dark .btn:hover { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.1); }
+.dc-btn-primary:hover { box-shadow: 0 16px 34px -12px rgba(109, 59, 245, 0.85); }
 
-/* The one loud thing on the page. */
-.site .btn-primary,
-.site .dark .btn-primary {
-  background: var(--lime);
-  border-color: var(--lime);
-  color: #16200a;
+.dc-btn-ghost { color: #fff; }
+.dc-nav:not(.stuck) .dc-btn-ghost { color: rgba(255, 255, 255, 0.86); }
+.dc-nav.stuck .dc-btn-ghost { color: var(--text); }
+
+.dc-btn-outline { border-color: rgba(255, 255, 255, 0.28); color: #fff; }
+.dc-chapter .dc-btn-outline,
+.dc-pricing .dc-btn-outline { border-color: var(--line); color: var(--text); }
+
+.dc-btn-light { background: #fff; color: var(--ink); }
+.dc-btn-outline-light { border-color: rgba(255, 255, 255, 0.4); color: #fff; }
+
+/* ── Nav ────────────────────────────────────────────────────────────────── */
+
+.dc-nav {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px clamp(16px, 4vw, 44px);
+  transition: background 0.25s ease, box-shadow 0.25s ease, backdrop-filter 0.25s ease;
+}
+
+.dc-nav.stuck {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 var(--line), 0 10px 30px -22px rgba(10, 11, 30, 0.4);
+}
+
+/* `.dc a { color: inherit }` is one class *and* one type, which outranks a bare
+   `.dc-brand`; the wordmark went dark ink on the dark hero. Qualified so the
+   brand wins its own colour back. */
+.dc .dc-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  flex-shrink: 0;
+}
+.dc-nav.stuck .dc-brand { color: var(--text); }
+
+.dc-links {
+  display: flex;
+  gap: 22px;
+  margin-left: auto;
+  font-size: 14px;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+  color: rgba(255, 255, 255, 0.8);
 }
-.site .btn-primary:hover,
-.site .dark .btn-primary:hover { background: var(--lime-lit); border-color: var(--lime-lit); }
+.dc-nav.stuck .dc-links { color: var(--muted); }
+.dc-links a { transition: color 0.15s ease; }
+.dc-links a:hover { color: var(--violet-2); }
+.dc-nav.stuck .dc-links a:hover { color: var(--violet); }
 
-/* "Book a demo ›" — a link that is not competing with the primary. */
-.site .btn-quiet {
-  border-color: transparent;
-  background: transparent;
-  color: var(--text-mute);
-  padding-left: 10px;
-  padding-right: 10px;
-}
-.site .btn-quiet:hover { border-color: transparent; background: rgba(0, 0, 0, 0.04); color: var(--text); }
-.site .dark .btn-quiet { background: transparent; border-color: transparent; color: var(--on-dark-mute); }
-.site .dark .btn-quiet:hover { background: rgba(255, 255, 255, 0.07); color: var(--on-dark); }
+.dc-nav-cta { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.dc-links + .dc-nav-cta { margin-left: 0; }
 
-.site .btn.nav { padding: 9px 12px; }
-.site .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.site .btn:disabled:hover { border-color: var(--line); background: var(--card); }
+/* ── Hero ───────────────────────────────────────────────────────────────── */
 
-.site .btn:focus-visible,
-.site .tick:focus-visible,
-.site a:focus-visible {
-  outline: 2px solid var(--lime-deep);
-  outline-offset: 2px;
+.dc-hero {
+  position: relative;
+  background: radial-gradient(120% 90% at 50% 0%, #1b1a4d 0%, var(--ink) 55%);
+  color: #fff;
+  padding: clamp(110px, 15vh, 170px) clamp(16px, 4vw, 44px) 0;
+  overflow: hidden;
 }
 
-/* ── Tiles ────────────────────────────────────────────────────────────── */
+.dc-hero-glow {
+  position: absolute;
+  left: 50%;
+  top: -16%;
+  width: min(1100px, 130vw);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(109, 59, 245, 0.5), transparent 62%);
+  filter: blur(40px);
+  pointer-events: none;
+  animation: dc-drift 14s ease-in-out infinite alternate;
+}
 
-/* The soft white boxes the reference lays its features out in. */
-.site .tile {
-  background: var(--card-sunk);
+@keyframes dc-drift {
+  from { transform: translateX(-52%) scale(1); }
+  to   { transform: translateX(-48%) scale(1.1); }
+}
+
+.dc-hero-inner { position: relative; max-width: 1180px; margin: 0 auto; text-align: center; }
+
+/* The split headline: two claims either side of a rule, which is the shape
+   that says "it does both of these" faster than a sentence with "and" in it. */
+.dc-split {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 3vw, 34px);
+  flex-wrap: wrap;
+  font-size: clamp(30px, 5.4vw, 60px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.06;
+}
+
+.dc-split i {
+  width: 2px;
+  align-self: stretch;
+  min-height: 1.1em;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  flex-shrink: 0;
+}
+
+.dc-hero-sub {
+  max-width: 640px;
+  margin: 24px auto 0;
+  font-size: clamp(14.5px, 1.5vw, 17px);
+  line-height: 1.62;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.dc-hero-cta {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+
+.dc-hero-shot {
+  position: relative;
+  max-width: 1080px;
+  margin: clamp(38px, 6vw, 62px) auto 0;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.14), 0 40px 90px -30px rgba(0, 0, 0, 0.7);
+}
+
+.dc-chrome {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  background: #f4f5f9;
+  border-bottom: 1px solid var(--line);
+}
+.dc-chrome i { width: 10px; height: 10px; border-radius: 50%; background: #d5d9e3; }
+
+/* ── The band ───────────────────────────────────────────────────────────── */
+
+.dc-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 20px clamp(16px, 4vw, 44px);
+  background: linear-gradient(100deg, var(--violet), #4f7cff 60%, #8b5cf6);
+  color: #fff;
+  font-size: clamp(13px, 1.5vw, 15.5px);
+  text-align: center;
+}
+.dc-band span { opacity: 0.82; }
+.dc-band b { font-weight: 800; }
+
+/* Anchor targets clear the fixed nav. Without this, "Pricing" scrolls the
+   heading to the very top of the viewport, which is behind the bar. */
+.dc-chapter,
+.dc-platform,
+.dc-pricing,
+.dc-process { scroll-margin-top: 78px; }
+
+/* ── Chapters ───────────────────────────────────────────────────────────── */
+
+.dc-chapter,
+.dc-process,
+.dc-wallsec,
+.dc-pricing {
+  padding: clamp(64px, 9vw, 118px) clamp(16px, 4vw, 44px);
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.dc-chapter-head { text-align: center; max-width: 720px; margin: 0 auto clamp(34px, 5vw, 54px); }
+
+.dc-eyebrow {
+  display: inline-block;
+  padding: 5px 13px;
+  border-radius: 999px;
+  background: rgba(109, 59, 245, 0.09);
+  color: var(--violet);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.dc-chapter-head h2 {
+  margin: 16px 0 0;
+  font-size: clamp(28px, 4.6vw, 50px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.dc-chapter-head h2 em {
+  font-style: normal;
+  background: linear-gradient(100deg, var(--violet), #3b82f6 55%, var(--teal));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dc-chapter-head p {
+  margin: 14px auto 0;
+  font-size: clamp(14px, 1.5vw, 16.5px);
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.dc-chapter-head .dc-btn { margin-top: 22px; }
+
+.dc-pills { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+
+.dc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: clamp(13px, 1.5vw, 18px);
-  transition: border-color 200ms ease, background-color 200ms ease, transform 200ms ease;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
 }
-.site .tile:hover { border-color: #d3d7cc; background: #fff; transform: translateY(-1px); }
 
-.site .dark .tile {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.09);
-}
-.site .dark .tile:hover { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.16); }
+/* ── The bento ──────────────────────────────────────────────────────────── */
 
-/* A small square holding an icon, the way each feature row is marked. */
-.site .glyph {
+.dc-bento {
   display: grid;
-  place-items: center;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(12px, 1.4vw, 18px);
+}
+
+.dc-tile {
+  /* min-width: 0 because a grid item's automatic minimum size is its content,
+     and the screenshot inside is 1400px wide. Without it every tile refuses to
+     shrink and the page scrolls sideways. */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 0;
+  border-radius: 22px;
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.28s ease,
+              opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dc-tile.dc-wide { grid-column: span 3; }
+
+.dc-tile:hover { transform: translateY(-4px); box-shadow: 0 26px 50px -26px rgba(10, 11, 30, 0.45); }
+
+.dc-tile-head { display: flex; align-items: center; gap: 9px; }
+
+.dc-tile-icon {
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  background: var(--lime);
-  color: #16200a;
-  flex-shrink: 0;
-}
-.site .glyph.soft { background: #eaf7c6; color: #4d6a12; }
-.site .dark .glyph.soft { background: rgba(200, 242, 77, 0.16); color: var(--lime); }
-
-/*
- * A grid with hairlines between the cells.
- *
- * The lines are drawn on each cell rather than as a coloured gap: seven items
- * in a four-across grid leave an empty cell, and a gap-coloured container
- * paints that leftover as a solid grey block in the corner.
- */
-.site .mesh {
   display: grid;
-  gap: 1px;
-  /* Transparent, not white: a container colour paints the leftover cells of a
-     ragged last row as a solid slab. Each cell carries its own background. */
-  background: transparent;
-  border-radius: var(--radius-sm);
+  place-items: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.16);
 }
-.site .mesh > * {
-  background: var(--card);
-  box-shadow: 0 0 0 1px var(--line);
-  padding: clamp(13px, 1.6vw, 20px);
+
+.dc-tile h3 { font-size: 16.5px; font-weight: 800; letter-spacing: -0.02em; }
+
+.dc-tile p {
+  margin-top: 9px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  max-width: 56ch;
 }
-.site .dark .mesh { background: transparent; }
-.site .dark .mesh > * { background: var(--ink); }
-.site .dark .mesh > * { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
 
-.site .hint { color: var(--text-faint); }
+.dc-tile-shot {
+  margin: 20px 0 0;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.2), 0 -20px 44px -22px rgba(0, 0, 0, 0.55);
+}
 
-.site .row-link { transition: background-color 200ms ease, border-color 200ms ease; }
+.dc-tile-shot img {
+  width: 100%;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dc-tile:hover .dc-tile-shot img { transform: scale(1.035); }
 
-/* The wordmark in the header. */
-.site .wordmark {
-  font-size: 15px;
+/* A wide tile puts its words beside the picture rather than above it, which is
+   what stops the row of three below looking like more of the same. */
+@media (min-width: 900px) {
+  .dc-tile.dc-wide {
+    display: grid;
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    align-items: end;
+    column-gap: 30px;
+    padding: 34px 34px 0;
+  }
+  .dc-tile.dc-wide .dc-tile-head { align-self: start; }
+  .dc-tile.dc-wide p { grid-column: 1; margin-top: 12px; align-self: start; font-size: 14.5px; }
+  .dc-tile.dc-wide .dc-tile-shot { grid-column: 2; grid-row: 1 / span 2; margin: 26px 0 0; }
+  .dc-tile.dc-wide h3 { font-size: 22px; }
+}
+
+/* Tones. Each names its own text colour rather than inheriting, so a tile can
+   be moved between sections without its words disappearing. */
+.dc-ink    { background: linear-gradient(160deg, #171a3c, var(--ink)); color: #fff; }
+.dc-ink p  { color: rgba(255, 255, 255, 0.72); }
+.dc-violet { background: linear-gradient(160deg, #7b4bff, #5a2ee0); color: #fff; }
+.dc-violet p { color: rgba(255, 255, 255, 0.82); }
+.dc-blue   { background: linear-gradient(160deg, #3f7bff, #2455d8); color: #fff; }
+.dc-blue p { color: rgba(255, 255, 255, 0.82); }
+.dc-teal   { background: linear-gradient(160deg, #17b8a4, #0d8578); color: #fff; }
+.dc-teal p { color: rgba(255, 255, 255, 0.86); }
+.dc-amber  { background: linear-gradient(160deg, #ffa845, #e0781a); color: #201200; }
+.dc-amber p { color: rgba(32, 18, 0, 0.75); }
+.dc-amber .dc-tile-icon { background: rgba(32, 18, 0, 0.14); }
+.dc-coral  { background: linear-gradient(160deg, #ff6b72, #dd3a43); color: #fff; }
+.dc-coral p { color: rgba(255, 255, 255, 0.84); }
+.dc-paper  { background: var(--paper); color: var(--text); border: 1px solid var(--line); }
+.dc-paper p { color: var(--muted); }
+.dc-paper .dc-tile-icon { background: rgba(10, 11, 30, 0.06); }
+
+/* ── The chain ──────────────────────────────────────────────────────────── */
+
+.dc-process { text-align: center; }
+
+.dc-chain {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.dc-chain-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 12px 30px -22px rgba(10, 11, 30, 0.4);
+  min-width: 0;
+}
+
+.dc-chain-node .dc-tile-icon { background: rgba(109, 59, 245, 0.1); color: var(--violet); }
+.dc-chain-node b { font-size: 13.5px; font-weight: 700; }
+.dc-chain-node small { font-size: 11.5px; color: var(--muted); }
+
+.dc-chain-source {
+  border-color: rgba(109, 59, 245, 0.35);
+  box-shadow: 0 18px 40px -22px rgba(109, 59, 245, 0.7);
+}
+
+/* The fan is one element rather than six lines: at this size the six would
+   overlap into a smudge, and a single taper reads as "this becomes those". */
+.dc-chain-fan {
+  width: min(560px, 82%);
+  height: 44px;
+  background:
+    linear-gradient(180deg, var(--violet), rgba(109, 59, 245, 0)) no-repeat center / 2px 100%,
+    radial-gradient(120% 100% at 50% 0%, rgba(109, 59, 245, 0.16), transparent 70%);
+}
+
+.dc-chain-out {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.dc-flow-shot {
+  margin: clamp(34px, 5vw, 56px) auto 0;
+  max-width: 1080px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: 0 40px 80px -40px rgba(10, 11, 30, 0.5);
+}
+
+/* ── Platform ───────────────────────────────────────────────────────────── */
+
+.dc-platform {
+  background: radial-gradient(100% 80% at 50% 0%, #1b1a4d, var(--ink) 60%);
+  color: #fff;
+  padding: clamp(64px, 9vw, 118px) clamp(16px, 4vw, 44px);
+}
+
+.dc-platform .dc-chapter-head { color: #fff; }
+.dc-platform .dc-chapter-head p { color: rgba(255, 255, 255, 0.72); }
+.dc-platform .dc-eyebrow { background: rgba(255, 255, 255, 0.1); color: #c3b5ff; }
+.dc-platform .dc-chapter-head h2 em {
+  background: linear-gradient(100deg, #a78bfa, #60a5fa 60%, #34d399);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dc-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 1240px;
+  margin: 0 auto clamp(24px, 3vw, 34px);
+}
+
+.dc-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.dc-tabs button:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.dc-tabs button.on { background: #fff; color: var(--ink); border-color: #fff; }
+
+.dc-own {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(20px, 3vw, 40px);
+  align-items: center;
+  max-width: 1240px;
+  margin: 0 auto;
 }
 
-/*
- * The phone.
- *
- * Two separate problems, and the second is the one that made the first look
- * worse than it was. Every type size on this page was written as a clamp whose
- * *lower* bound is what a 390px screen actually gets — so the body copy resolved
- * to 12.5px and the tile text to 11.5px, sizes chosen to look neat on a desktop
- * mock and never checked at arm's length. Those floors are raised at source.
- *
- * The screenshots are the harder one. Each is a 1400px-wide application, and no
- * amount of care makes that readable inside 360px — scaled to fit, a row of the
- * contact list is under two pixels tall. Fitting the whole window in is the
- * wrong goal on a phone. So on a small screen the frame shows a *detail* at
- * roughly twice the scale instead: the top-left of the real screen, where the
- * title and the first rows of real data are, cropped by the frame rather than
- * shrunk inside it. What the visitor sees is legible and still entirely real.
- */
+.dc-own-lead h3 { font-size: clamp(20px, 2.6vw, 28px); font-weight: 800; letter-spacing: -0.03em; }
+.dc-own-lead p { margin-top: 12px; font-size: 15px; line-height: 1.68; color: rgba(255, 255, 255, 0.74); }
+
+.dc-own-shot {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 40px 80px -36px rgba(0, 0, 0, 0.8);
+}
+
+/* ── The wall ───────────────────────────────────────────────────────────── */
+
+.dc-wallsec { background: #fff; }
+
+.dc-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 14px;
+}
+
+.dc-wall-card {
+  min-width: 0;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  transition: transform 0.24s ease, box-shadow 0.24s ease,
+              opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dc-wall-card:hover { transform: translateY(-3px); box-shadow: 0 20px 40px -26px rgba(10, 11, 30, 0.4); }
+
+.dc-wall-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--violet);
+}
+
+.dc-wall-card ul { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dc-wall-card li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.dc-wall-card li svg { margin-top: 3px; flex-shrink: 0; color: var(--teal); }
+
+/* ── Pricing ────────────────────────────────────────────────────────────── */
+
+.dc-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.dc-plan {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 26px 24px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: #fff;
+  transition: transform 0.24s ease, box-shadow 0.24s ease,
+              opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dc-plan:hover { transform: translateY(-4px); box-shadow: 0 26px 54px -28px rgba(10, 11, 30, 0.4); }
+
+.dc-plan.featured {
+  border-color: transparent;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(140deg, var(--violet), #3b82f6) border-box;
+  border: 2px solid transparent;
+  box-shadow: 0 26px 60px -30px rgba(109, 59, 245, 0.65);
+}
+
+.dc-plan-flag {
+  position: absolute;
+  top: -11px;
+  left: 24px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--violet), #4f7cff);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dc-plan h3 { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+
+.dc-plan-price {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 10px;
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.dc-plan-price span { font-size: 20px; margin-top: 6px; }
+.dc-plan-price small { font-size: 13px; font-weight: 600; color: var(--muted); align-self: flex-end; margin-bottom: 5px; }
+
+.dc-plan-sub { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--violet); }
+
+.dc-plan ul { margin: 16px 0 20px; display: flex; flex-direction: column; gap: 9px; }
+.dc-plan li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.dc-plan li svg { margin-top: 3px; flex-shrink: 0; color: var(--teal); }
+.dc-plan .dc-btn { margin-top: auto; justify-content: center; }
+
+/* ── Closing call ───────────────────────────────────────────────────────── */
+
+.dc-cta {
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  padding: clamp(64px, 9vw, 110px) clamp(16px, 4vw, 44px) 0;
+  background: linear-gradient(160deg, #7b4bff, #4f2fd0 55%, #2a1a7a);
+  color: #fff;
+}
+
+.dc-cta-glow {
+  position: absolute;
+  left: 50%;
+  top: -30%;
+  width: min(900px, 120vw);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.28), transparent 62%);
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.dc-cta h2 {
+  position: relative;
+  font-size: clamp(28px, 4.8vw, 52px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+.dc-cta p { position: relative; margin-top: 14px; font-size: 15.5px; color: rgba(255, 255, 255, 0.82); }
+.dc-cta .dc-hero-cta { position: relative; }
+
+.dc-cta-shot {
+  position: relative;
+  max-width: 1000px;
+  margin: clamp(38px, 5vw, 58px) auto 0;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.2), 0 -30px 70px -30px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.dc-foot { background: var(--ink); color: rgba(255, 255, 255, 0.66); padding: clamp(44px, 6vw, 72px) clamp(16px, 4vw, 44px) 26px; }
+
+.dc-foot-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));
+  gap: 28px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.dc-foot-brand .dc-brand { color: #fff; }
+.dc-foot-brand p { margin-top: 10px; font-size: 13px; }
+
+.dc-foot h5 { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; margin-bottom: 12px; }
+.dc-foot-cols div a { display: block; font-size: 13.5px; padding: 4px 0; transition: color 0.15s ease; }
+.dc-foot-cols div a:hover { color: #fff; }
+
+.dc-foot-base {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  max-width: 1240px;
+  margin: clamp(30px, 4vw, 46px) auto 0;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12.5px;
+}
+
+/* ── Narrow ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1000px) {
+  .dc-bento { grid-template-columns: repeat(2, 1fr); }
+  .dc-tile.dc-wide { grid-column: span 2; }
+  .dc-own { grid-template-columns: 1fr; }
+  .dc-chain-out { grid-template-columns: repeat(3, 1fr); }
+  .dc-foot-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 760px) {
-  .site .strapline { display: none !important; }
-  .site .scene-chrome { padding: 10px 14px; }
-  .site .tick { width: 13px; }
-  .site .scene-bottom { gap: 8px; }
-  /* The rail already says where you are; the fraction next to the chapter
-     name only had room to wrap down the side of the screen. */
-  .site .scene-count, .site .scroll-hint { display: none; }
-  .site .wordmark { font-size: 14px; }
+  /* The section links go rather than wrap: five of them plus two buttons on a
+     phone leaves the brand no room, and every one of them is reachable by
+     scrolling the page they sit on. */
+  .dc-links { display: none; }
 
-  .site .scene { padding: 58px 14px 52px; }
-  /* Enough that a line arriving from below never lands on the frame. */
-  .site .scene-inner { gap: 22px; }
+  .dc-bento { grid-template-columns: 1fr; }
+  .dc-tile.dc-wide { grid-column: span 1; }
+  .dc-tile { padding: 18px 18px 0; }
+  .dc-chain-out { grid-template-columns: repeat(2, 1fr); }
 
-  /* Room has to come from somewhere for type this size, and it comes from the
-     gaps and the padding rather than from the words. */
-  .site .tile { padding: 12px 13px; }
-  .site .mesh > * { padding: 12px 13px; }
-
-  .site .shot-bar { height: 28px; padding: 0 11px; }
-  .site .shot-tab { font-size: 9px; padding: 2px 8px; }
-
-  /*
-    The crop. A fixed ratio keeps the frame a predictable height whatever the
-    picture is, and the image is anchored top-left inside it at ~2x.
-
-    16/10 rather than something squarer because the height is the scarce thing
-    here: at 5/4 the frame stood 318px tall on a 390px screen and the hero's
-    buttons ended up underneath it. The scene is one viewport and the copy has
-    first claim on it.
-  */
-  .site .shot-screen {
-    aspect-ratio: 16 / 10;
-    display: block;
-    /* The ratio sets the height from the width; this stops that height from
-       exceeding what is left of the screen once the copy has had its share. */
-    max-height: 34vh;
-  }
-  .site .shot-screen img {
-    width: 205%;
-    max-width: none;
-    height: auto;
-    transform: none;
-  }
-  .site .shot:hover img { transform: none; }
-  /* The idle drift costs vertical room the phone does not have to spare. */
-  .site .shot-frame { animation: none; }
+  /* Centred on a phone, matching the rest of the product. */
+  .dc-chapter-head,
+  .dc-tile,
+  .dc-wall-card,
+  .dc-plan { text-align: center; }
+  .dc-tile-head,
+  .dc-wall-card h4 { justify-content: center; }
+  .dc-tile p { margin-left: auto; margin-right: auto; }
+  .dc-wall-card li,
+  .dc-plan li { justify-content: center; text-align: left; }
+  .dc-plan-price { justify-content: center; }
+  .dc-foot-base { justify-content: center; text-align: center; }
 }
 
-/*
- * A short phone — a 360x640 android, or any phone with the browser's own bars
- * eating the viewport.
- *
- * There is not room for the heading, the paragraph, three bullets and a screen,
- * and something has to go. It is the bullets: they restate what the paragraph
- * above them already says, which makes them the only part of the scene that can
- * be dropped without losing anything the visitor did not already read. Keeping
- * them and shrinking the picture instead would protect the least important
- * thing on the screen at the expense of the most.
- */
-/*
- * The collage, on a phone.
- *
- * Side by side at 46% each, the views came out 166px wide showing a 620px crop
- * — 0.27x, which is the shrunk-screenshot problem this section exists to fix,
- * reintroduced at the size where it hurts most. They stack instead, nearly full
- * width, each nudged the opposite way and tipped a degree so the pair still
- * reads as a collage rather than as a list. Both stay on screen: nothing is
- * hidden behind a swipe.
- *
- * The image is shown at its own width and cropped by the frame, so the pixels
- * stay 1:1 — less of the region, legibly, rather than all of it and none of the
- * words.
- */
-@media (max-width: 760px) {
-  .site .views {
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    padding-top: 4px;
-  }
-  .site .view {
-    max-width: 94%;
-    width: 94%;
-  }
-  .site .view:nth-child(odd)  { transform: rotate(-0.9deg) translateX(-2%); }
-  .site .view:nth-child(even) {
-    transform: rotate(0.9deg) translateX(2%);
-    margin-left: 0;
-    margin-top: -6px;
-  }
-  .site .view:hover { transform: none; }
-  .site .view-frame { max-height: 21vh; }
-  .site .view-frame img { width: auto; max-width: none; height: auto; }
-  .site .view-label {
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    padding: 5px 9px;
-    font-size: 11.5px;
-    border-radius: 8px;
-  }
-}
-
-@media (max-width: 760px) and (max-height: 720px) {
-  /* The list carries an inline `display: flex` from the component, so this
-     has to outrank it — a plain rule loses to a style attribute. */
-  .site .scene-copy ul { display: none !important; }
-  .site .scene { padding: 52px 14px 46px; }
-  .site .scene-inner { gap: 18px; }
-
-  /* The hero has no bullets to give up — its whole column is the headline, the
-     paragraph and the two buttons — so there the room comes from the type and
-     the picture together. Still well above where this started: the paragraph
-     was 12.5px on every phone before any of this. Sizes are inline on the
-     component, hence the overrides. */
-  .site .scene-copy h1 { font-size: 28px !important; }
-  .site .scene-copy h2 { font-size: 24px !important; }
-  .site .scene-copy p { font-size: 14.5px !important; line-height: 1.55 !important; }
-  .site .shot-screen { max-height: 25vh; }
-
-  /*
-   * On the card sections the paragraph and the cards say the same thing twice —
-   * the heading sets it up and each card carries one point of it. At 640px
-   * there is not room for both, and the cards are the half with the substance,
-   * so the intro goes. Sections that lead with a picture keep theirs: there the
-   * paragraph is the only prose on the screen.
-   */
-  .site .scene-inner[data-wide='true'] .scene-copy > p { display: none; }
-  .site .mesh > *, .site .steps li, .site .tile { padding: 8px 9px; }
-  .site .steps { gap: 6px; }
-  .site .mesh h3, .site .steps h3, .site .tile h3 { font-size: 12.5px !important; margin-top: 5px !important; }
-  .site .mesh p, .site .steps p, .site .tile li, .site .tile p { font-size: 11px !important; line-height: 1.4 !important; }
-  .site .glyph { width: 21px; height: 21px; border-radius: 6px; margin-bottom: 5px !important; }
-
-  /*
-   * The lifecycle is seven cards where the others are three or four, and seven
-   * will not fit at this height however tight the padding gets. Its bodies go
-   * and the numbered titles stay: "01 Objective … 07 Rewrite" is the shape of
-   * the thing, which is what that section is for, and the detail is one scroll
-   * away on any larger screen.
-   */
-  .site .lifecycle p { display: none; }
-  .site .lifecycle { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-  .site .lifecycle h3 { margin: 4px 0 0 !important; }
-}
-
-/*
- * The card grids, on a phone.
- *
- * Each of these declares `repeat(auto-fit, minmax(min(100%, 250px), 1fr))`
- * inline, which on a 362px-wide column resolves to exactly one card across —
- * so seven lifecycle steps became a 1004px-tall section inside an 844px screen,
- * and the six capability groups became 1315px. Two across costs nothing in
- * legibility at this size (the cards are short labels, not paragraphs) and
- * halves the height. The inline style is why these need `!important`.
- */
-@media (max-width: 760px) {
-  .site .mesh,
-  .site .steps,
-  .site .scene-copy [data-rise] > div[style*="grid"] {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 1px;
-  }
-  .site .steps { gap: 8px; }
-  .site .mesh > *,
-  .site .steps li,
-  .site .tile { padding: 10px 11px; }
-  .site .mesh h3,
-  .site .steps h3,
-  .site .tile h3 { font-size: 13px !important; }
-  .site .mesh p,
-  .site .steps p,
-  .site .tile li,
-  .site .tile p { font-size: 11.5px !important; line-height: 1.45 !important; }
-  .site .glyph { width: 24px; height: 24px; border-radius: 7px; }
-}
-
-/* A landscape phone has the width for the whole window again, and almost no
-   height — so the crop comes off and the frame is bounded by height instead. */
-@media (max-width: 900px) and (orientation: landscape) {
-  .site .shot-screen { aspect-ratio: auto; }
-  .site .shot-screen img { width: 100%; }
-}
-
-/* Motion is decoration here; anyone who has asked for less gets the layout
-   without any of it. */
-@media (prefers-reduced-motion: reduce) {
-  .site *,
-  .site *::before,
-  .site *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-  /* The scenes still change; they simply do not travel to get there. */
-  .site .shot { transform: none !important; }
-  .site .shot img { transform: none !important; }
-  /* Both of these are pure motion: held still, the sheen is a grey diagonal
-     stripe laid across the screenshot and the glow is a smudge. */
-  .site .shot-sheen, .site .shot-glow { display: none; }
-  .site .view-sheen, .site .view-pulse { display: none; }
-  .site .view { animation: none !important; opacity: 1 !important; }
-  .site .scene::after { display: none; }
-  .site .mesh > *, .site .tile, .site .steps li, .site .glyph.soft {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
-  }
+@media (max-width: 420px) {
+  .dc-split { font-size: 27px; gap: 8px; }
+  .dc-split i { display: none; }
+  .dc-nav { gap: 10px; padding: 12px 14px; }
+  .dc-btn { padding: 9px 14px; font-size: 13px; }
+  .dc-btn-lg { padding: 12px 20px; font-size: 14px; }
+  .dc-chain-out { grid-template-columns: 1fr; }
 }

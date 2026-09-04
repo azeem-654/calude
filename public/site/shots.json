@@ -112,5 +112,83 @@
     "w": 352,
     "h": 380,
     "label": "What is booked, and who booked it"
+  },
+  {
+    "file": "conversations",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "funnels",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "websites",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "blog",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "shorts",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "social",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "social-auto",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "analytics",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "reputation",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "scheduling",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "agency",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "infrastructure",
+    "w": 1400,
+    "h": 903,
+    "label": null
+  },
+  {
+    "file": "automation",
+    "w": 1400,
+    "h": 903,
+    "label": null
   }
 ]

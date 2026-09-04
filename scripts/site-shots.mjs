@@ -173,7 +173,108 @@ function workspace() {
       createdAt: day(-38), sent: 96, opened: 54, clicked: 19, replied: 7, bounced: 1 },
   ];
 
-  return { contacts, pipelines, sequences, campaign, campaigns, emails, enrolments, appointments, leads };
+  /*
+   * The modules that photographed empty.
+   *
+   * Funnels, Websites, Booking pages and Blog all rendered their "nothing here
+   * yet" state, and the marketing page then showed a tile headed "Multi-step
+   * funnels with real pages behind them" above a screenshot of the words *No
+   * funnels yet*. An empty screen is a worse argument than no screen.
+   */
+  const funnels = [
+    { id: 'fn-1', name: 'Free audit → consultation', slug: 'free-audit', status: 'active',
+      goal: 'Book consultations', steps: 3, visitors: 1840, conversions: 214, revenue: 18600, createdAt: day(-52),
+      pages: [
+        { id: 'fn-1-a', name: 'Free audit offer', type: 'landing', slug: 'free-audit', blocks: [], visitors: 1840, conversions: 612 },
+        { id: 'fn-1-b', name: 'Pick a time', type: 'booking', slug: 'book', blocks: [], visitors: 612, conversions: 214 },
+        { id: 'fn-1-c', name: 'Confirmed', type: 'thankyou', slug: 'done', blocks: [], visitors: 214, conversions: 214 },
+      ] },
+    { id: 'fn-2', name: 'Spring offer → checkout', slug: 'spring-offer', status: 'active',
+      goal: 'Sell the retainer', steps: 2, visitors: 960, conversions: 88, revenue: 24200, createdAt: day(-24),
+      pages: [
+        { id: 'fn-2-a', name: 'Spring offer', type: 'landing', slug: 'spring-offer', blocks: [], visitors: 960, conversions: 141 },
+        { id: 'fn-2-b', name: 'Checkout', type: 'checkout', slug: 'checkout', blocks: [], visitors: 141, conversions: 88 },
+      ] },
+    { id: 'fn-3', name: 'Webinar registration', slug: 'webinar', status: 'draft',
+      goal: 'Fill the seats', steps: 2, visitors: 0, conversions: 0, revenue: 0, createdAt: day(-3),
+      pages: [{ id: 'fn-3-a', name: 'Register', type: 'landing', slug: 'webinar', blocks: [], visitors: 0, conversions: 0 }] },
+  ];
+
+  const websites = [
+    { id: 'ws-1', name: 'Rivera Studio', subdomain: 'riverastudio', domain: 'riverastudio.com',
+      status: 'published', template: 'agency', visitors: 4120, pageViews: 9840, createdAt: day(-96),
+      description: 'The studio site — services, work and a booking page.',
+      seoTitle: 'Rivera Studio — growth for local services',
+      seoDescription: 'Campaigns, sites and booking for clinics, firms and trades across North Texas.',
+      pages: [
+        { id: 'ws-1-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 4120, conversions: 168 },
+        { id: 'ws-1-b', name: 'Services', type: 'custom', slug: 'services', blocks: [], visitors: 1610, conversions: 74 },
+        { id: 'ws-1-c', name: 'Contact', type: 'custom', slug: 'contact', blocks: [], visitors: 980, conversions: 122 },
+      ] },
+    { id: 'ws-2', name: 'Parkway Dental', subdomain: 'parkwaydental', domain: 'parkwaydental.co',
+      status: 'published', template: 'clinic', visitors: 2260, pageViews: 5100, createdAt: day(-61),
+      description: 'Client site — treatments, team and online booking.',
+      pages: [{ id: 'ws-2-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 2260, conversions: 96 }] },
+    { id: 'ws-3', name: 'Legacy Fitness', subdomain: 'legacyfitness', status: 'draft',
+      template: 'fitness', visitors: 0, pageViews: 0, createdAt: day(-6),
+      description: 'In progress — class timetable and trial signup.',
+      pages: [{ id: 'ws-3-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 0, conversions: 0 }] },
+  ];
+
+  const bookings = [0, 1, 2, 3, 4].map(i => ({
+    id: `bk-${i}`,
+    slotDate: day(i === 0 ? 0 : i + 1),
+    slotTime: ['09:30', '11:00', '14:00', '15:30', '10:00'][i],
+    guestName: `${FIRST[i + 2]} ${LAST[i + 2]}`,
+    guestEmail: `${FIRST[i + 2].toLowerCase()}@${CO[i + 2].split(' ')[0].toLowerCase()}.com`,
+    guestPhone: `(972) 555-01${20 + i}`,
+    status: i === 0 ? 'completed' : 'confirmed',
+    timezone: 'America/Chicago',
+    createdAt: iso(-4 + i),
+    eventTypeName: ['Intro call', 'Strategy session', 'Intro call', 'Onboarding', 'Intro call'][i],
+    duration: [30, 45, 30, 60, 30][i],
+    location: 'Google Meet',
+    notes: ['Wants the booking service priced up.', 'Two locations, one list.', '', 'Migrating from spreadsheets.', ''][i],
+  }));
+
+  const reviews = [
+    { id: 'rv-1', platform: 'google', rating: 5, author: 'Marta Vega', date: day(-3), replied: true,
+      content: 'They set the whole thing up in a week and we could see exactly what was going out before it went.' },
+    { id: 'rv-2', platform: 'google', rating: 5, author: 'Devon Brooks', date: day(-9), replied: true,
+      content: 'The follow-ups stop the moment somebody answers, which sounds small until you have annoyed a customer.' },
+    { id: 'rv-3', platform: 'facebook', rating: 4, author: 'Priya Nair', date: day(-14), replied: false,
+      content: 'Took a little while to get our mailbox connected. Once it was, the reporting is the clearest we have used.' },
+    { id: 'rv-4', platform: 'google', rating: 5, author: 'Grant Whitfield', date: day(-21), replied: true,
+      content: 'Every number on the dashboard traces back to a record you can open. No mystery metrics.' },
+  ];
+
+  /* Blog Automation plans posts against a portfolio and a topic cluster, so a
+     project with neither is the empty state however many rows exist. */
+  const blogProjects = [{
+    id: 'bp-1', name: 'Rivera Studio — organic', domain: 'riverastudio.com',
+    portfolio: [{ id: 'pf-1', kind: 'text', label: 'Services page', addedAt: day(-30),
+      text: 'Rivera Studio runs campaigns, sites and booking for clinics, firms and trades across North Texas.' }],
+    voice: { tone: 'plain, direct', readingLevel: 'plain', averageSentenceWords: 16, signaturePhrases: [], avoid: [], person: 'we' },
+    seo: { offering: 'Campaigns, sites and booking for local service businesses.', audience: 'Clinics, firms and trades in North Texas', location: 'North Texas', competitorTerms: [] },
+    clusters: [
+      { id: 'cl-1', pillar: 'Getting more consultations booked', keywords: [
+        { term: 'how to get more consultations', intent: 'informational', difficulty: 46, weight: 3 },
+        { term: 'booking software for clinics', intent: 'commercial', difficulty: 62, weight: 2 },
+        { term: 'reduce no shows', intent: 'informational', difficulty: 38, weight: 2 },
+      ] },
+      { id: 'cl-2', pillar: 'Email that does not land in spam', keywords: [
+        { term: 'spf dkim dmarc setup', intent: 'informational', difficulty: 54, weight: 4 },
+        { term: 'cold email deliverability', intent: 'commercial', difficulty: 66, weight: 3 },
+      ] },
+    ],
+    moneyPages: [{ id: 'mp-1', title: 'Booking service', url: 'https://riverastudio.com/booking', purpose: 'The retainer we sell', term: 'booking service for clinics' }],
+    profileSource: 'heuristic', edited: true, createdAt: day(-30), updatedAt: day(-2),
+  }];
+
+  return {
+    contacts, pipelines, sequences, campaign, campaigns, emails, enrolments, appointments, leads,
+    funnels, websites, bookings, reviews, blogProjects,
+  };
 }
 
 /* The window every capture is measured against. The clip regions below are
@@ -184,7 +285,30 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 2 });
 await ctx.addInitScript((w) => {
   localStorage.setItem('crm_session', JSON.stringify({ token: 't', user: { email: 'you@studio.test', name: 'Alex Rivera', role: 'agency', accountId: null }, backend: 'local' }));
-  localStorage.setItem('crm_onboarding', JSON.stringify({ version: 1, step: 5, completed: true, skipped: true, profile: { companyName: 'Rivera Studio' }, goals: {}, channels: [], plan: [], audit: [] }));
+  /*
+   * A finished portfolio, not a stub.
+   *
+   * The dashboard leads with the setup checklist until every step is done, and
+   * the hero of the marketing site is a photograph of the dashboard — so a
+   * half-filled profile put "1 of 4 filled in" at the top of the page. The
+   * checklist is right on a real new workspace; the picture should be of one
+   * that is up and running.
+   */
+  localStorage.setItem('crm_onboarding', JSON.stringify({
+    version: 1, step: 5, completed: true, skipped: false,
+    profile: {
+      companyName: 'Rivera Studio', industry: 'Marketing Agency',
+      description: 'Campaigns, sites and booking for clinics, firms and trades across North Texas',
+      audience: 'Owner-run clinics, law firms and trades doing $1m–$10m a year',
+      brandVoice: 'Friendly & approachable', brandColor: '#6d3bf5',
+      website: 'riverastudio.com', email: 'alex@riverastudio.com', phone: '(972) 555-0100',
+      workDays: ['mon','tue','wed','thu','fri'], workFrom: '09:00', workTo: '17:00',
+    },
+    goals: {}, channels: ['email','sms','blog'], plan: [], audit: [],
+  }));
+  /* The last step is branding, which lives on the account rather than in
+     onboarding. Dismissing is what a set-up workspace looks like. */
+  localStorage.setItem('crm_setup_hidden', '1');
   localStorage.setItem('crm_contacts', JSON.stringify(w.contacts));
   localStorage.setItem('crm_pipelines', JSON.stringify(w.pipelines));
   localStorage.setItem('crm_sequences', JSON.stringify(w.sequences));
@@ -194,6 +318,32 @@ await ctx.addInitScript((w) => {
   localStorage.setItem('crm_sequence_enrollments', JSON.stringify(w.enrolments));
   localStorage.setItem('crm_appointments', JSON.stringify(w.appointments));
   localStorage.setItem('crm_ai_leads', JSON.stringify(w.leads));
+  /*
+   * A configured workspace, because the hero is a photograph of this screen.
+   *
+   * Without a mailbox and a sending domain the dashboard leads with the setup
+   * checklist — "No mailbox connected", "Required to send" — and that was the
+   * first thing anybody saw on the marketing site. The checklist is right to be
+   * there on a real new workspace; it is the wrong thing to photograph.
+   */
+  localStorage.setItem('crm_email_provider', JSON.stringify({ provider: 'smtp' }));
+  localStorage.setItem('crm_smtp', JSON.stringify({
+    host: 'smtp.riverastudio.com', port: '587', user: 'alex@riverastudio.com', pass: '••••••••',
+    fromName: 'Alex Rivera', fromEmail: 'alex@riverastudio.com', encryption: 'tls',
+  }));
+  localStorage.setItem('crm_imap', JSON.stringify({
+    host: 'imap.riverastudio.com', port: '993', user: 'alex@riverastudio.com', pass: '••••••••', folder: 'INBOX',
+  }));
+  localStorage.setItem('crm_deliverability_settings', JSON.stringify({
+    sendingDomain: 'riverastudio.com',
+    dkimSelectors: ['default', 'google', 'selector1', 'selector2', 'k1', 'mail'],
+  }));
+
+  localStorage.setItem('crm_funnels', JSON.stringify(w.funnels));
+  localStorage.setItem('crm_websites', JSON.stringify(w.websites));
+  localStorage.setItem('crm_bookings', JSON.stringify(w.bookings));
+  localStorage.setItem('crm_reviews', JSON.stringify(w.reviews));
+  localStorage.setItem('crm_blog_projects', JSON.stringify(w.blogProjects));
   localStorage.setItem('crm_sidebar_mode', JSON.stringify('hidden'));
 }, workspace());
 
@@ -245,6 +395,29 @@ const SHOTS = [
   { file: 'calendar',       path: '/calendar', settle: 2800 },
   { file: 'cal-week',       path: '/calendar', clip: { x: 78, y: 280, width: 600, height: 420 }, label: 'The week, on one grid' },
   { file: 'cal-upcoming',   path: '/calendar', clip: { x: 878, y: 266, width: 352, height: 380 }, label: 'What is booked, and who booked it' },
+
+  /*
+   * One full-window view per remaining module.
+   *
+   * The site's card grid shows a whole screen shrunk into a tile rather than a
+   * crop — at that size a crop reads as an unidentifiable fragment, while a
+   * whole screen still reads as "that is a product". So these need no `clip`;
+   * they exist so that every card on the marketing page is a real module and
+   * not a placeholder.
+   */
+  { file: 'conversations',  path: '/conversations', settle: 2800 },
+  { file: 'funnels',        path: '/funnels', settle: 2600 },
+  { file: 'websites',       path: '/websites', settle: 2600 },
+  { file: 'blog',           path: '/blog-automation', settle: 2800 },
+  { file: 'shorts',         path: '/ai-shorts', settle: 2800 },
+  { file: 'social',         path: '/social-creator', settle: 2800 },
+  { file: 'social-auto',    path: '/social-automation', settle: 2800 },
+  { file: 'analytics',      path: '/analytics', settle: 3000 },
+  { file: 'reputation',     path: '/reputation', settle: 2600 },
+  { file: 'scheduling',     path: '/scheduling', settle: 2600 },
+  { file: 'agency',         path: '/agency', settle: 2600 },
+  { file: 'infrastructure', path: '/settings?tab=infrastructure', settle: 3000 },
+  { file: 'automation',     path: '/settings?tab=automation', settle: 3000 },
 ];
 
 /* One navigation per address, however many crops come off it. */

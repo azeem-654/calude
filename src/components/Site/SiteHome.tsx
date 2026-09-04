@@ -1,671 +1,533 @@
 /**
  * The public site.
  *
- * Until now protectedcentral.com opened on a login box, which tells a visitor
- * who has never heard of the product exactly nothing. This is the page that
- * answers "what is it" before asking anyone to sign in.
- *
  * It is the whole of protectedcentral.com. The product is a separate hostname,
  * app.protectedcentral.com, and every way in from here — sign in, sign up, the
  * hero buttons — is a link across to it. services/hosts.ts owns that decision
  * so the same bundle still runs as one site on localhost.
  *
- * The page holds still and the scroll moves the scene. A tall document sits
- * under a fixed stage, and every pixel of scroll advances the scene by a
- * proportional amount — a nudge of the wheel starts the next screen arriving,
- * and it keeps arriving for as long as you keep going. useScrollScene.ts owns
- * that; this file is the scenes and the chrome.
+ * The shape is the one a modern platform site has settled on, and it is that
+ * shape for a reason: a visitor deciding between platforms is counting, and a
+ * wall of tiles each containing a real screen answers "how much is in here"
+ * faster than any paragraph. So the spine of the page is three chapters of
+ * bento grid — get leads, close deals, scale — each tile a module, each module
+ * photographed rather than illustrated.
  *
- * The screens are photographs of the real modules, taken by a script against a
- * seeded workspace rather than drawn in a design tool. What the visitor sees is
- * what they get, and when a module changes the picture is re-taken rather than
- * redrawn.
+ * Every screenshot is a photograph of the running application, taken by
+ * scripts/site-shots.mjs against a seeded workspace. Nothing here is a mock-up,
+ * and when a module's look changes the picture is re-taken rather than redrawn.
  *
- * Every claim on it is checkable against the software. There are no customer
- * counts, no uptime figures and no testimonials, because there is nothing to
- * base them on yet and a marketing page that opens with an invented number is
- * the worst possible first impression for a product whose entire argument is
- * that it shows you its working.
+ * What this page will not do is invent evidence. There are no customer counts,
+ * no star ratings and no testimonials, because there is nothing yet to base
+ * them on — and a page whose entire argument is "we show you our working"
+ * cannot open with a number nobody counted. Where a site of this shape would
+ * carry a wall of reviews, this one carries a wall of what the software
+ * actually does, which is checkable.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
-  ArrowRight, ArrowUpRight, BarChart3, Building2, Check, ChevronDown,
-  Inbox, Info, Lock, MousePointerClick, Palette, Receipt, Send, ShieldCheck,
-  Sparkles, Users,
+  ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
+  BarChart3, Building2, Inbox, Lock, Palette, ShieldCheck, Server, Activity,
+  Mail, MessageSquare, Image as ImageIcon, FileText, Clapperboard,
+  LayoutTemplate, Wand2,
 } from 'lucide-react';
-import { activeBranding } from '../../services/tenancy';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
-import { clamp01, mix, smoothstep, useScrollScene } from './useScrollScene';
+import { PLANS } from '../../services/tenancy';
+import { useReveal, useRevealGroup } from './useReveal';
 import './site.css';
-
-/** How many viewport heights of scroll one scene occupies. Higher is slower. */
-const SCENE_VH = 118;
 
 const SHOT = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/${name}.webp`;
 
-/* ── The content ──────────────────────────────────────────────────────── */
+/* ── The tiles ───────────────────────────────────────────────────────────── */
 
 /**
- * One close-up of one function.
+ * One module, as it appears in a chapter grid.
  *
- * `src` is a crop of the running application, not the whole window: a 1240px
- * screen shrunk into a column shows that a screen exists and nothing about what
- * it does. `label` says which function is being shown, because a crop without
- * one is just a smaller screenshot. `w`/`h` are the real pixel size, so the
- * space is reserved before the picture arrives and the page does not jump.
+ * `tone` is the tile's colour and `span` its width in grid columns. Both are
+ * data rather than taste: a grid where every tile is the same size and colour
+ * reads as a table, and the eye needs somewhere to land first in each row.
  */
-interface View {
-  src: string;
-  label: string;
+interface Tile {
+  id: string;
+  title: string;
+  body: string;
+  shot: string;
   alt: string;
-  w: number;
-  h: number;
+  tone: 'ink' | 'violet' | 'blue' | 'teal' | 'amber' | 'coral' | 'paper';
+  span?: 2 | 3;
+  icon: typeof Send;
 }
 
-interface Scene {
+interface Chapter {
   id: string;
-  chapter: string;
   eyebrow: string;
   lead: string;
+  /** The half of the heading that carries the gradient. */
   emph: string;
-  body?: string;
-  /** The whole window, for the scenes that are about the screen as a whole. */
-  shot?: { src: string; alt: string };
-  /** Close-ups of the functions that make the module's case. */
-  views?: View[];
-  points?: string[];
-  tone?: 'dark';
-  /** Rendered instead of the body/points column. */
-  extra?: React.ReactNode;
+  body: string;
+  pills: string[];
+  tiles: Tile[];
 }
 
-/** A close-up, described once and used by whichever scene needs it. */
-const view = (file: string, label: string, alt: string, w: number, h: number): View =>
-  ({ src: SHOT(file), label, alt, w, h });
-
-const CAPABILITIES: { group: string; items: string[] }[] = [
-  { group: 'Reach', items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up', 'Prospect search'] },
-  { group: 'Convert', items: ['Funnels', 'Websites', 'Landing pages', 'Booking pages', 'Forms & surveys'] },
-  { group: 'Manage', items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Tasks & notes'] },
-  { group: 'Create', items: ['AI Shorts', 'Blog automation', 'Social creator', 'Content library', 'Brand overlays'] },
-  { group: 'Understand', items: ['Campaign performance', 'Open & reply rates', 'Reputation', 'Analytics', 'Decision log'] },
-  { group: 'Run it as an agency', items: ['Sub-accounts', 'White-label branding', 'Per-client billing', 'Role-based access', 'Isolated data'] },
+const CHAPTERS: Chapter[] = [
+  {
+    id: 'leads',
+    eyebrow: 'Find the work',
+    lead: 'Get more',
+    emph: 'leads.',
+    body: 'Say what you want in a sentence and the agent builds the campaign — then every place a '
+      + 'lead can come from, in the same login.',
+    pills: ['Describe the outcome', 'Approve before it exists', 'Sends on your own mailbox'],
+    tiles: [
+      {
+        id: 'agent', title: 'AI Sales Agent', tone: 'ink', span: 3, icon: Sparkles,
+        body: 'Write the outcome you want. It works out who to reach and how, shows you the plan '
+          + 'before anything exists, then creates the real contacts, sequence and enrolments.',
+        shot: 'agent', alt: 'The AI Sales Agent, showing a campaign built from one sentence',
+      },
+      {
+        id: 'contacts', title: 'Contacts', tone: 'paper', icon: Users,
+        body: 'Everyone you have spoken to, with custom fields, notes, tasks and the full history. '
+          + 'Imports deduplicate on the way in.',
+        shot: 'contacts', alt: 'The contact list with filters and health on every row',
+      },
+      {
+        id: 'funnels', title: 'Funnels', tone: 'violet', icon: MousePointerClick,
+        body: 'Multi-step funnels with real pages behind them, published on your own domain.',
+        shot: 'funnels', alt: 'The funnel builder',
+      },
+      {
+        id: 'websites', title: 'Websites', tone: 'blue', icon: LayoutTemplate,
+        body: 'Whole sites, built and published from the same place the campaigns run.',
+        shot: 'websites', alt: 'The website builder',
+      },
+      {
+        id: 'scheduling', title: 'Booking pages', tone: 'teal', icon: MessageSquare,
+        body: 'Your availability, a public link, and the meeting on your calendar without an email thread.',
+        shot: 'scheduling', alt: 'Scheduling and booking pages',
+      },
+      {
+        id: 'blog', title: 'Blog automation', tone: 'amber', icon: FileText,
+        body: 'A topic plan from your own portfolio, written to the search terms your buyers use.',
+        shot: 'blog', alt: 'Blog automation with topic clusters',
+      },
+      {
+        id: 'social', title: 'Social creator', tone: 'coral', icon: ImageIcon,
+        body: 'Posts on the right canvas for each platform, in your colours, editable before they go.',
+        shot: 'social', alt: 'The social post creator',
+      },
+    ],
+  },
+  {
+    id: 'deals',
+    eyebrow: 'Do the work',
+    lead: 'Close more',
+    emph: 'deals.',
+    body: 'The pipeline, the inbox and the calendar in one place — so the follow-up happens whether '
+      + 'or not anybody remembers it.',
+    pills: ['Stages you define', 'Replies end the cadence', 'Sends with nobody logged in'],
+    tiles: [
+      {
+        id: 'pipelines', title: 'Pipelines', tone: 'blue', span: 3, icon: BarChart3,
+        body: 'Stages you define, dragged straight across. Open value and the same value weighted by '
+          + 'probability, counted from your own records rather than estimated.',
+        shot: 'pipelines', alt: 'The pipeline board with deals by stage',
+      },
+      {
+        id: 'marketing', title: 'Email & sequences', tone: 'violet', icon: Mail,
+        body: 'Multi-step cadences on your own SMTP that stop the moment somebody answers. '
+          + 'The server sends them, so a scheduled campaign goes out with every tab closed.',
+        shot: 'marketing', alt: 'Campaigns and their sequences',
+      },
+      {
+        id: 'conversations', title: 'Conversations', tone: 'ink', icon: Inbox,
+        body: 'Replies read from your own mailbox over IMAP, so a conversation stays a conversation.',
+        shot: 'conversations', alt: 'The conversations inbox',
+      },
+      {
+        id: 'calendar', title: 'Calendar', tone: 'paper', icon: Users,
+        body: 'The week on one grid, with what is booked and who booked it.',
+        shot: 'calendar', alt: 'The calendar week view',
+      },
+      {
+        id: 'reputation', title: 'Reputation', tone: 'coral', icon: ShieldCheck,
+        body: 'Ask the customers most likely to say something good, and answer the ones who did not.',
+        shot: 'reputation', alt: 'Reputation and review management',
+      },
+    ],
+  },
+  {
+    id: 'scale',
+    eyebrow: 'Sell the work',
+    lead: 'Scale your business',
+    emph: 'faster.',
+    body: 'A workspace per client, your name on all of it, and a schedule that runs whether or not '
+      + 'anyone is watching.',
+    pills: ['A sub-account per client', 'White-label per client', 'Enforced on the server'],
+    tiles: [
+      {
+        id: 'agency', title: 'Agency & sub-accounts', tone: 'violet', span: 3, icon: Building2,
+        body: 'Its own contacts, pipelines, campaigns and calendar for every client, switched between '
+          + 'in one click. A workspace you do not own is refused by the API, not merely hidden by the '
+          + 'interface — and each sub-account carries its own plan and its own price.',
+        shot: 'agency', alt: 'The agency dashboard listing client sub-accounts',
+      },
+      {
+        id: 'analytics', title: 'Analytics', tone: 'blue', icon: BarChart3,
+        body: 'Every figure read live from the module that owns it. A rate over four sends is not shown as a rate.',
+        shot: 'analytics', alt: 'The analytics screen',
+      },
+      {
+        id: 'automation', title: 'Automation', tone: 'ink', icon: Activity,
+        body: 'What the schedule did while you were away — what started, what sent, and the exact '
+          + 'sentence for anything it could not do.',
+        shot: 'automation', alt: 'The automation health screen',
+      },
+      {
+        id: 'infrastructure', title: 'Domains & mailboxes', tone: 'teal', icon: Server,
+        body: 'Search a domain and register it, write SPF, DKIM and DMARC, create the mailbox — '
+          + 'without leaving the app.',
+        shot: 'infrastructure', alt: 'The infrastructure settings screen',
+      },
+    ],
+  },
 ];
 
-const GROUP_ICON: Record<string, typeof Check> = {
-  Reach: Send, Convert: MousePointerClick, Manage: Users,
-  Create: Sparkles, Understand: BarChart3, 'Run it as an agency': Building2,
-};
+/* ── The chain, as a diagram ─────────────────────────────────────────────── */
 
-const LIFECYCLE = [
-  { n: '01', title: 'Objective', body: 'One or two sentences in your own words, kept verbatim.' },
-  { n: '02', title: 'Plan', body: 'Who to reach, what is on offer, how many follow-ups, when to stop.' },
-  { n: '03', title: 'Prospects', body: 'Checked one signal at a time. What cannot be settled is reported as unknown.' },
-  { n: '04', title: 'Build', body: 'Real contacts, a real sequence, real enrolments in the modules that own them.' },
-  { n: '05', title: 'Send', body: 'Inside the limits you set. A reply ends the cadence.' },
-  { n: '06', title: 'Measure', body: 'Read live from whichever module owns each figure.' },
-  { n: '07', title: 'Rewrite', body: 'When the figures say the funnel is failing, it rewrites the half that failed.' },
+const CHAIN = [
+  { icon: Mail, label: 'Email sequence', where: 'Marketing' },
+  { icon: MessageSquare, label: 'SMS campaign', where: 'Marketing' },
+  { icon: ImageIcon, label: 'Social posts', where: 'Social Creator' },
+  { icon: FileText, label: 'Blog project', where: 'Blog Automation' },
+  { icon: Clapperboard, label: 'Short script', where: 'Ready to shoot' },
+  { icon: LayoutTemplate, label: 'Landing page', where: 'Funnels' },
 ];
 
-/* The three sections added below the product tour. Each is a claim the software
-   can be checked against, not a benefit statement. */
-const AGENCY = [
-  { icon: Building2, title: 'A sub-account per client', body: 'Its own contacts, pipelines, campaigns and calendar. Switching between them takes one click.' },
-  { icon: Lock, title: 'Enforced on the server', body: 'A workspace you do not own is refused by the API, not merely hidden by the interface.' },
-  { icon: Palette, title: 'Your name on it', body: 'White-label the product name and logo per client, so what they log into looks like yours.' },
-  { icon: Receipt, title: 'Billed per client', body: 'Each sub-account carries its own plan and its own billing status.' },
+/* ── What it actually does, in place of testimonials ─────────────────────── */
+
+const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
+  { group: 'Reach', icon: Send, items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up', 'Prospect search'] },
+  { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Landing pages', 'Booking pages', 'Forms & surveys'] },
+  { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Tasks & notes'] },
+  { group: 'Create', icon: Sparkles, items: ['AI Shorts', 'Blog automation', 'Social creator', 'Content library', 'Brand overlays'] },
+  { group: 'Understand', icon: BarChart3, items: ['Campaign performance', 'Open & reply rates', 'Reputation', 'Analytics', 'Decision log'] },
+  { group: 'Run it as an agency', icon: Building2, items: ['Sub-accounts', 'White-label branding', 'Per-client billing', 'Role-based access', 'Isolated data'] },
 ];
 
 const OWNERSHIP = [
-  { icon: Send, title: 'Your SMTP', body: 'Gmail, Microsoft 365, Brevo, or anything else that speaks SMTP. Stored encrypted, used only to send your mail.' },
-  { icon: Inbox, title: 'Your IMAP', body: 'Replies are read from your own mailbox, so a conversation stays a conversation.' },
-  { icon: ShieldCheck, title: 'Your domain’s reputation', body: 'SPF, DKIM and DMARC are checked against your domain, and the warm-up ramp holds sending back rather than dropping it.' },
+  { icon: Send, title: 'Your mailbox', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
+  { icon: ShieldCheck, title: 'Your domain', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
+  { icon: Palette, title: 'Your name', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
+  { icon: Lock, title: 'Your data', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
 ];
 
-const START = [
-  { title: 'Create your account', body: 'Free, and it takes a minute. Your workspace is yours alone from the moment it exists.' },
-  { title: 'Connect your mailbox', body: 'Your own SMTP and IMAP. Tested before anything is saved, so you know it works.' },
-  { title: 'Say what you want', body: 'One sentence. The agent turns it into a plan and shows it to you before creating anything.' },
-  { title: 'Approve, then watch', body: 'Nothing sends until you say so, and every figure afterwards is read from the module that owns it.' },
-];
-
-const LIMITS = [
-  { title: 'Follow-ups need the app open', body: 'The schedule is checked every minute while a tab is open. Nothing goes out with every tab closed.' },
-  { title: 'You bring your own mailbox', body: 'Email goes through your SMTP and replies come back over IMAP. Your sending reputation stays yours.' },
-  { title: 'It says so when it cannot tell', body: 'Where an answer is unknown it says unknown, and a rate over four sends is not shown as a rate.' },
-];
-
-const SCENES: Scene[] = [
-  {
-    id: 'hero', chapter: 'Intro', eyebrow: 'For agencies & growing teams',
-    lead: 'Everything it takes to', emph: 'win the next customer.',
-    body: 'Find the people worth contacting, write to them, book the meeting and see what actually '
-      + 'worked — in one place, on your own mailbox, with every step visible and editable before it happens.',
-    shot: { src: SHOT('dashboard'), alt: 'The dashboard, showing the day at a glance' },
-    tone: 'dark',
-  },
-  {
-    id: 'dashboard', chapter: 'Products', eyebrow: 'Dashboard',
-    lead: 'Open it once', emph: 'and know where you stand.',
-    body: 'Not a wall of charts. The three things worth acting on this morning, each counted from '
-      + 'your own records rather than estimated.',
-    views: [
-      view('dash-kpis', 'Counted from your own records, not estimated', 'Open pipeline and revenue won for the week', 560, 180),
-      view('dash-next', 'What to do next, ranked by lift', 'A ranked list of the next actions', 600, 262),
-    ],
-  },
-  {
-    id: 'agent', chapter: 'Products', eyebrow: 'AI Sales Agent',
-    lead: 'Describe the outcome.', emph: 'It builds the campaign.',
-    body: 'Write what you want in a sentence. The agent works out who to reach and how, shows you the '
-      + 'plan before anything exists, then creates the real contacts, the real sequence and the real enrolments.',
-    views: [
-      view('agent-objective', 'Your sentence, kept word for word', 'The objective, stored verbatim', 620, 146),
-      view('agent-metrics', 'Every figure read live from the module that owns it', 'Prospects found, enrolled, sent, opened and replied', 600, 192),
-    ],
-    points: [
-      'Every plan is editable before a record is created',
-      'Nothing sends until you say it may',
-      'Percentages appear only once the sample can carry them',
-    ],
-  },
-  {
-    id: 'flow', chapter: 'Products', eyebrow: 'The campaign canvas',
-    lead: 'Drag the nodes.', emph: 'Join the ports. Press Run.',
-    body: 'The same campaign as a graph you can rearrange — objective, plan, prospects, build, '
-      + 'send, measure, rewrite. Pull a wire from one port to another and the run follows it, '
-      + 'handing each step to the module that already owns it.',
-    shot: { src: SHOT('flow'), alt: 'The campaign canvas, with nodes joined by wires' },
-    points: [
-      'Wires only join ports that carry the same thing',
-      'Skip a node and everything downstream of it stands down',
-      'Each node shows what it knows, read live',
-    ],
-    tone: 'dark',
-  },
-  {
-    id: 'email', chapter: 'Products', eyebrow: 'Email & Sequences',
-    lead: 'Cadences that stop', emph: 'the moment somebody answers.',
-    body: 'Multi-step sequences on your own SMTP, with merge fields, open and click tracking, bounce '
-      + 'suppression and a warm-up ramp that refuses to send past the day’s allowance.',
-    views: [
-      view('mkt-stats', 'Sent, opened, replied — across every campaign', 'Totals across all campaigns', 580, 114),
-      view('mkt-list', 'Campaigns, with the sequence that produced them', 'The campaign list', 620, 310),
-    ],
-    points: [
-      'A/B test any step',
-      'Hard bounces suppressed on the first rejection',
-      'A daily cap holds messages back rather than dropping them',
-    ],
-  },
-  {
-    id: 'contacts', chapter: 'Products', eyebrow: 'Contacts',
-    lead: 'The record of', emph: 'everyone you have spoken to.',
-    body: 'Custom fields, notes, tasks and a full activity history, with a command centre that shows '
-      + 'what each person has opened, clicked and replied to.',
-    views: [
-      view('contacts-filters', 'Filter by status, stage, owner or tag', 'Contact filters and segments', 620, 240),
-      view('contacts-table', 'Health, stage and pipeline on every row', 'The contact table', 620, 400),
-    ],
-    points: [
-      'Import a list, deduplicate on the way in',
-      'Timezone inferred from the number when it is not set',
-      'Every record traceable to what created it',
-    ],
-  },
-  {
-    id: 'pipelines', chapter: 'Products', eyebrow: 'Pipelines',
-    lead: 'Deals you can', emph: 'actually see moving.',
-    body: 'Drag-and-drop stages you define, weighted forecasting, and board, list, table, calendar, '
-      + 'funnel and Gantt views of the same deals.',
-    views: [
-      view('pipe-summary', 'Open value, and the same value weighted by probability', 'Pipeline totals', 580, 142),
-      view('pipe-board', 'Stages you define, dragged straight across', 'The deal board', 600, 420),
-    ],
-    points: [
-      'Stages, fields and priorities you set',
-      'Automations on stage change',
-      'Weighted value by probability',
-    ],
-  },
-  {
-    id: 'calendar', chapter: 'Products', eyebrow: 'Calendar & Booking',
-    lead: 'An interested reply', emph: 'becomes a meeting.',
-    body: 'Booking pages on your real availability, so nobody spends four emails agreeing on Tuesday. '
-      + 'Meetings land in the calendar and back on the campaign that produced them.',
-    views: [
-      view('cal-week', 'The week, on one grid', 'The week view', 600, 420),
-      view('cal-upcoming', 'What is booked, and who booked it', 'Upcoming appointments', 352, 380),
-    ],
-    points: [
-      'Booking pages work for signed-out visitors',
-      'Reminders before the meeting',
-      'Meetings trace back to the campaign',
-    ],
-  },
-  {
-    id: 'lifecycle', chapter: 'How it runs', eyebrow: 'How a campaign runs',
-    lead: 'Seven steps, and', emph: 'you can stop it at any of them.',
-    extra: (
-      <ol className="mesh lifecycle" style={{
-        margin: 0, padding: 0, listStyle: 'none',
-        /* Four across, so seven steps land 4 + 3 rather than 6 + 1. */
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
-      }}>
-        {LIFECYCLE.map(s => (
-          <li key={s.n}>
-            <span className="mono" style={{ color: 'var(--lime-deep)' }}>{s.n}</span>
-            <h3 className="card-title">{s.title}</h3>
-            <p className="card-body">{s.body}</p>
-          </li>
-        ))}
-      </ol>
-    ),
-  },
-  {
-    id: 'agency', chapter: 'How it runs', eyebrow: 'Run it as an agency',
-    lead: 'One login,', emph: 'every client kept apart.',
-    body: 'Each client is a sub-account with its own contacts, pipelines and campaigns. Nothing leaks '
-      + 'between them, and the separation is enforced on the server rather than by the interface hiding things.',
-    extra: (
-      <div className="mesh" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))' }}>
-        {AGENCY.map(a => (
-          <div key={a.title}>
-            <span className="glyph soft" style={{ marginBottom: 9 }}><a.icon size={13} strokeWidth={2.2} /></span>
-            <h3 className="card-title">{a.title}</h3>
-            <p className="card-body">{a.body}</p>
-          </div>
-        ))}
-      </div>
-    ),
-    tone: 'dark',
-  },
-  {
-    id: 'own', chapter: 'How it runs', eyebrow: 'Your mailbox, your reputation',
-    lead: 'It sends from you,', emph: 'not from us.',
-    body: 'Connect your own SMTP and replies come back over your own IMAP. Nothing is relayed through '
-      + 'a shared pool, so your deliverability is the result of how you send rather than of who else '
-      + 'happens to be on the same server.',
-    extra: (
-      <div className="mesh" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))' }}>
-        {OWNERSHIP.map(o => (
-          <div key={o.title}>
-            <span className="glyph soft" style={{ marginBottom: 9 }}><o.icon size={13} strokeWidth={2.2} /></span>
-            <h3 className="card-title">{o.title}</h3>
-            <p className="card-body">{o.body}</p>
-          </div>
-        ))}
-      </div>
-    ),
-  },
-  {
-    id: 'included', chapter: 'Included', eyebrow: 'Everything included',
-    lead: 'No add-ons, no tiers,', emph: 'no second tool to keep in sync.',
-    extra: (
-      <div style={{
-        display: 'grid', gap: 'clamp(9px, 1.2vw, 14px)',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))',
-      }}>
-        {CAPABILITIES.map(c => {
-          const Glyph = GROUP_ICON[c.group] ?? Check;
-          return (
-            <div key={c.group} className="tile">
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="glyph soft"><Glyph size={13} strokeWidth={2.2} /></span>
-                <span className="card-title">{c.group}</span>
-              </span>
-              <ul style={{ margin: '9px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {c.items.map(i => <li key={i} className="card-body">{i}</li>)}
-              </ul>
-            </div>
-          );
-        })}
-      </div>
-    ),
-  },
-  {
-    id: 'answers', chapter: 'Straight answers', eyebrow: 'Straight answers',
-    lead: 'The three things everybody', emph: 'finds out in week one.',
-    extra: (
-      <div style={{
-        display: 'grid', gap: 'clamp(10px, 1.6vw, 18px)',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))',
-      }}>
-        {LIMITS.map(l => (
-          <div key={l.title} className="tile" style={{ padding: 'clamp(15px, 2vw, 22px)' }}>
-            <span className="glyph soft" style={{ marginBottom: 10 }}><Info size={13} strokeWidth={2.2} /></span>
-            <h3 className="card-title">{l.title}</h3>
-            <p className="card-body">{l.body}</p>
-          </div>
-        ))}
-      </div>
-    ),
-  },
-  {
-    id: 'start', chapter: 'Start', eyebrow: 'Free to try',
-    lead: 'Point it at your list and', emph: 'watch it show its working.',
-    body: 'Create your account, connect your own mailbox, write one sentence about what you want, '
-      + 'and approve the plan before anything is created. Four steps, and you can stop at any of them.',
-    extra: (
-      <ol className="steps">
-        {START.map((s, i) => (
-          <li key={s.title}>
-            <span className="mono step-n">{String(i + 1).padStart(2, '0')}</span>
-            <h3>{s.title}</h3>
-            <p>{s.body}</p>
-          </li>
-        ))}
-      </ol>
-    ),
-    tone: 'dark',
-  },
-];
-
-/* ── Pieces ───────────────────────────────────────────────────────────── */
+/* ── Small pieces ────────────────────────────────────────────────────────── */
 
 /**
- * A way in.
+ * The extra attributes a link to the app needs.
  *
- * On protectedcentral.com the product is another origin, so this has to be a
- * real link the browser follows; anywhere the two live together it is a router
- * navigation, and either way it is an anchor rather than a button — a way into
- * a site belongs in the address bar, in the right-click menu and in whatever
- * a crawler makes of the page.
+ * On the marketing host these go to another origin and want `rel="noopener"`;
+ * on localhost the same bundle serves both, so the link is same-origin and the
+ * attribute would be noise. hosts.ts decides, per href.
  */
-function AppLink({ to, className, children }: { to: string; className?: string; children: React.ReactNode }) {
-  const navigate = useNavigate();
-  const href = appHref(to);
-  const onClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
-    /* Off-origin, or the visitor asked for a new tab: leave it to the browser. */
-    if (isCrossOrigin(href) || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    e.preventDefault();
-    navigate(to);
-  }, [href, navigate, to]);
-  return <a className={className} href={href} onClick={onClick}>{children}</a>;
-}
+const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
 
-function Heading({ lead, emph, as = 'h2' }: { lead: string; emph: string; as?: 'h1' | 'h2' }) {
-  const Tag = as;
+function Tile({ t }: { t: Tile }) {
   return (
-    <Tag style={{
-      margin: 0, maxWidth: 620, fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.13,
-      fontSize: as === 'h1' ? 'clamp(34px, 4.6vw, 60px)' : 'clamp(26px, 3.1vw, 40px)',
-    }}>
-      <span className="lead">{lead} </span>
-      <span className="emph">{emph}</span>
-    </Tag>
+    <article className={`dc-tile dc-${t.tone}${t.span === 3 ? ' dc-wide' : ''}`}>
+      <div className="dc-tile-head">
+        <span className="dc-tile-icon"><t.icon size={15} /></span>
+        <h3>{t.title}</h3>
+      </div>
+      <p>{t.body}</p>
+      <figure className="dc-tile-shot">
+        {/* Width and height are the real pixel size so the space is reserved
+            before the picture arrives and the grid does not jump as it loads. */}
+        <img src={SHOT(t.shot)} alt={t.alt} loading="lazy" width={1400} height={903} />
+      </figure>
+    </article>
   );
 }
 
-/* ── The page ─────────────────────────────────────────────────────────── */
-
-export default function SiteHome() {
-  const name = activeBranding().appName;
-
-  const stage = useRef<(HTMLElement | null)[]>([]);
-  const copy = useRef<(HTMLElement | null)[]>([]);
-  const shots = useRef<(HTMLElement | null)[]>([]);
-  /* The individual lines inside a scene, so they can arrive in order rather
-     than the whole block sliding in as one slab. */
-  const pieces = useRef<(HTMLElement[] | null)[]>([]);
-  const rail = useRef<HTMLDivElement | null>(null);
-  const [current, setCurrent] = useState(0);
-  const shown = useRef(0);
-
-  /**
-   * One frame. Styles are written straight onto the nodes: putting this in
-   * state would re-render ten scenes sixty times a second.
-   */
-  const paint = useCallback((u: number) => {
-    /*
-     * How far a line travels as it arrives.
-     *
-     * On a wide screen the copy and the screen sit side by side and 22px of
-     * travel is just movement. Stacked on a phone they are one above the other
-     * with a 14px gap, and a line still 22px below its resting place is a line
-     * sitting on top of the screenshot — which is exactly what the last bullet
-     * did for the whole of its entrance.
-     */
-    const rise = window.innerWidth < 760 ? 10 : 22;
-
-    for (let i = 0; i < SCENES.length; i++) {
-      const el = stage.current[i];
-      if (!el) continue;
-      const t = u - i;
-
-      /* Off screen in either direction: hidden, and cheap. */
-      if (t < -1.05 || t > 1.05) {
-        if (el.style.visibility !== 'hidden') { el.style.visibility = 'hidden'; el.style.opacity = '0'; }
-        continue;
-      }
-      el.style.visibility = 'visible';
-
-      const inA = smoothstep(-0.62, -0.05, t);
-      const outA = 1 - smoothstep(0.34, 0.92, t);
-      el.style.opacity = String(inA * outA);
-      /* The whole scene drifts up as it passes, so the eye is carried rather
-         than cut to. */
-      el.style.transform = `translate3d(0, ${mix(46, -46, clamp01((t + 0.6) / 1.5))}px, 0)`;
-
-      const c = copy.current[i];
-      if (c) {
-        c.style.transform = `translate3d(0, ${mix(30, -30, clamp01((t + 0.55) / 1.4))}px, 0)`;
-        c.style.opacity = String(smoothstep(-0.5, 0.0, t) * (1 - smoothstep(0.4, 0.85, t)));
-
-        /*
-         * Each line lags a little behind the one above it, so the scene reads
-         * as being written rather than pasted. Cached on first sight: querying
-         * the DOM sixty times a second for fourteen scenes is wasteful.
-         *
-         * Every line's fade has to *finish before* the scene is centred, and
-         * the old numbers did not. The window was (-0.42 + lag, 0.06 + lag)
-         * with lag = k * 0.07, so the fifth line's window still ran to t = 0.34
-         * — and at t = 0, where a scene rests while you read it, that line sat
-         * at 20% opacity and the paragraph above it at 62%. Permanently. Every
-         * section on the site was showing its body copy and its bullets
-         * half-faded, which is most of what "the text is not visible" was.
-         *
-         * Now the whole staircase lands by t = -0.09: the last line is opaque
-         * slightly before the scene stops moving, and stays that way.
-         */
-        const kids = pieces.current[i] ?? (pieces.current[i] = [...c.querySelectorAll<HTMLElement>('[data-rise]')]);
-        for (let k = 0; k < kids.length; k++) {
-          const from = -0.78 + k * 0.055;
-          const a = smoothstep(from, from + 0.32, t);
-          kids[k].style.opacity = String(a);
-          kids[k].style.transform = `translate3d(0, ${mix(rise, 0, a)}px, 0)`;
-        }
-      }
-
-      const s = shots.current[i];
-      if (s) {
-        /* The screen lands: it arrives small and tilted away, grows and squares
-           up as it comes into place, then leans off again.
-
-           Every term here is written to be exactly zero at t = 0. The frame is
-           now wide enough to reach the edge of the band it sits on, so the
-           resting offset and the resting scale of 1.03 the earlier numbers left
-           behind are the difference between a picture that fits the screen and
-           one whose right-hand edge is past it. */
-        const settle = smoothstep(-0.62, -0.02, t);
-        const past = smoothstep(0.3, 1.0, t);
-        const drift = t < -1.1 ? -1.1 : t > 1.1 ? 1.1 : t;
-        s.style.transform = [
-          `perspective(1700px)`,
-          `translate3d(${-drift * 64}px, ${-drift * 88}px, 0)`,
-          `rotateY(${mix(-16, 0, settle) + past * 10}deg)`,
-          `rotateX(${mix(11, 0, settle) + past * 4.5}deg)`,
-          `scale(${mix(0.82, 1, settle) - past * 0.08})`,
-        ].join(' ');
-        s.style.opacity = String(smoothstep(-0.55, -0.05, t) * (1 - smoothstep(0.42, 0.95, t)));
-        /* How far in this scene is, for the sheen that crosses the glass as it
-           settles and for the glow that comes up behind it. */
-        s.style.setProperty('--in', String(settle));
-      }
-    }
-
-    /* The rail is the only thing that needs React, and only when it changes. */
-    const next = Math.max(0, Math.min(SCENES.length - 1, Math.round(u)));
-    if (next !== shown.current) { shown.current = next; setCurrent(next); }
-    if (rail.current) rail.current.style.setProperty('--at', String(clamp01(u / (SCENES.length - 1))));
-  }, []);
-
-  const scene = useScrollScene(SCENES.length, SCENE_VH, paint);
-
-  const chapter = SCENES[current].chapter;
-  const withinChapter = useMemo(() => {
-    const all = SCENES.filter(s => s.chapter === chapter);
-    return { n: all.findIndex(s => s.id === SCENES[current].id) + 1, of: all.length };
-  }, [chapter, current]);
+function ChapterBlock({ c }: { c: Chapter }) {
+  const head = useReveal<HTMLDivElement>();
+  const grid = useRevealGroup<HTMLDivElement>('.dc-tile');
 
   return (
-    <div className="site scene-root">
-      {/*
-        The document's height is what there is to scroll, and it stops on the
-        last scene rather than past it. One scene occupies SCENE_VH of scroll,
-        so the last one is centred at (n - 1) strides; a document any taller
-        than that scrolls on into a screen where every scene has already faded
-        out, which is the blank page you used to land on at the bottom.
-      */}
-      <div className="scene-spacer"
-        style={{ height: `calc(${(SCENES.length - 1) * SCENE_VH}vh + 100vh)` }} />
-
-      <div className="scene-stage" aria-hidden="false">
-        {SCENES.map((s, i) => (
-          <section
-            key={s.id}
-            ref={el => { stage.current[i] = el; }}
-            className={s.tone === 'dark' ? 'scene dark' : 'scene'}
-            aria-label={s.eyebrow}
-          >
-            {s.tone === 'dark' && <span className="beam" />}
-            {/* A scene with close-ups stacks: centred copy above, the views
-                below it across the full width. A scene with one whole window
-                keeps the two-column layout, which is what that picture wants. */}
-            <div className="scene-inner" data-wide={!s.shot} data-views={!!s.views}>
-              <div className="scene-copy" ref={el => { copy.current[i] = el; }}>
-                <span className="chip" data-rise>{s.eyebrow}</span>
-                <div data-rise style={{ marginTop: 16 }}>
-                  <Heading as={i === 0 ? 'h1' : 'h2'} lead={s.lead} emph={s.emph} />
-                </div>
-                {s.body && (
-                  <p data-rise style={{
-                    margin: '16px 0 0', maxWidth: 460,
-                    fontSize: 'clamp(15px, 1.15vw, 15.5px)', lineHeight: 1.68,
-                    color: s.tone === 'dark' ? 'var(--on-dark-mute)' : 'var(--text-mute)',
-                  }}>
-                    {s.body}
-                  </p>
-                )}
-                {s.points && (
-                  <ul style={{ margin: '16px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {s.points.map(p => (
-                      <li key={p} data-rise style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 'clamp(13.5px, 1vw, 13px)', lineHeight: 1.5, color: 'var(--text-mute)' }}>
-                        <span className="glyph soft" style={{ width: 19, height: 19, borderRadius: 6, marginTop: 1, flexShrink: 0 }}>
-                          <Check size={11} strokeWidth={3} />
-                        </span>
-                        {p}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {(i === 0 || s.id === 'start') && (
-                  <div data-rise style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 24 }}>
-                    <AppLink to="/signup" className="btn btn-primary">
-                      Sign up free <ArrowRight size={13} />
-                    </AppLink>
-                    <AppLink to="/login" className="btn btn-quiet">
-                      Sign in <ArrowUpRight size={12} />
-                    </AppLink>
-                  </div>
-                )}
-                {s.extra && <div data-rise style={{ marginTop: 20 }}>{s.extra}</div>}
-              </div>
-
-              {s.views && (
-                /*
-                  Several close-ups of one module, each on the function it is
-                  making a case for. They arrive one after another rather than
-                  together — a row of three appearing at once reads as a
-                  decorative strip, while three arriving in order reads as an
-                  argument being made.
-                */
-                <div className="views" ref={el => { shots.current[i] = el; }} data-n={s.views.length}>
-                  {s.views.map((v, k) => (
-                    <figure className="view" key={v.src} style={{ '--k': k } as React.CSSProperties}>
-                      <div className="view-frame">
-                        <img src={v.src} alt={v.alt} loading={i < 2 ? 'eager' : 'lazy'} width={v.w} height={v.h} />
-                        <span className="view-sheen" aria-hidden="true" />
-                        <span className="view-pulse" aria-hidden="true" />
-                      </div>
-                      <figcaption className="view-label">{v.label}</figcaption>
-                    </figure>
-                  ))}
-                </div>
-              )}
-
-              {s.shot && (
-                /*
-                  The screen is the argument, so it is given the room: a wide
-                  frame that runs out past the text column, lit from behind,
-                  breathing on its own while the scroll flies it in.
-                */
-                <figure className="shot" ref={el => { shots.current[i] = el; }}>
-                  <span className="shot-glow" aria-hidden="true" />
-                  <div className="shot-frame">
-                    <span className="shot-bar" aria-hidden="true">
-                      <i /><i /><i />
-                      <span className="shot-tab mono">{s.eyebrow}</span>
-                    </span>
-                    <span className="shot-screen">
-                      <img src={s.shot.src} alt={s.shot.alt} loading={i < 2 ? 'eager' : 'lazy'} width={1400} height={903} />
-                      <span className="shot-sheen" aria-hidden="true" />
-                    </span>
-                  </div>
-                </figure>
-              )}
-            </div>
-          </section>
-        ))}
+    <section className="dc-chapter" id={c.id} aria-label={`${c.lead} ${c.emph}`}>
+      <div className="dc-chapter-head reveal" ref={head}>
+        <span className="dc-eyebrow">{c.eyebrow}</span>
+        <h2>{c.lead} <em>{c.emph}</em></h2>
+        <p>{c.body}</p>
+        <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>
+          Start free <ArrowRight size={15} />
+        </a>
+        <div className="dc-pills">
+          {c.pills.map(p => <span key={p} className="dc-pill"><Check size={11} /> {p}</span>)}
+        </div>
       </div>
 
-      <header className="scene-chrome scene-top">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+      <div className="dc-bento" ref={grid}>
+        {c.tiles.map(t => <Tile key={t.id} t={t} />)}
+      </div>
+    </section>
+  );
+}
+
+/* ── The page ────────────────────────────────────────────────────────────── */
+
+export default function SiteHome() {
+  const [stuck, setStuck] = useState(false);
+  const [tab, setTab] = useState(0);
+
+  /* The nav is transparent over the hero and solid once you leave it, which is
+     the only way a dark translucent bar stays legible over a light page. */
+  useEffect(() => {
+    const onScroll = () => setStuck(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const hero = useReveal<HTMLDivElement>();
+  const chain = useRevealGroup<HTMLDivElement>('.dc-chain-node');
+  const wall = useRevealGroup<HTMLDivElement>('.dc-wall-card');
+  const own = useRevealGroup<HTMLDivElement>('.dc-own-card');
+  const price = useRevealGroup<HTMLDivElement>('.dc-plan');
+
+  return (
+    <div className="dc">
+      {/* ── Nav ── */}
+      <header className={`dc-nav${stuck ? ' stuck' : ''}`}>
+        <a className="dc-brand" href="#top">
           <LogoMark size={26} />
-          <span className="wordmark">{name}</span>
-        </span>
-        <span className="strapline mono">Every step, in the open.</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <AppLink to="/login" className="btn btn-quiet">Sign in</AppLink>
-          <AppLink to="/signup" className="btn btn-primary">Sign up <ArrowRight size={13} /></AppLink>
-        </span>
+          <span>Protected Central</span>
+        </a>
+        <nav className="dc-links" aria-label="Sections">
+          <a href="#leads">Leads</a>
+          <a href="#deals">Deals</a>
+          <a href="#scale">Agency</a>
+          <a href="#platform">Platform</a>
+          <a href="#pricing">Pricing</a>
+        </nav>
+        <div className="dc-nav-cta">
+          <a className="dc-btn dc-btn-ghost" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
+          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free</a>
+        </div>
       </header>
 
-      <footer className="scene-chrome scene-bottom">
-        <span className="scene-chapter" style={{ display: 'flex', alignItems: 'baseline', gap: 11, minWidth: 0 }}>
-          <span className="mono" style={{ color: 'var(--text)' }}>{chapter}</span>
-          {withinChapter.of > 1 && (
-            <span className="mono scene-count">{withinChapter.n} / {withinChapter.of}</span>
-          )}
-        </span>
+      {/* ── Hero ── */}
+      <section className="dc-hero" id="top">
+        <div className="dc-hero-glow" aria-hidden="true" />
+        <div className="dc-hero-inner reveal" ref={hero}>
+          <h1 className="dc-split">
+            <span>Run your agency</span>
+            <i aria-hidden="true" />
+            <span>Resell it as your own</span>
+          </h1>
+          <p className="dc-hero-sub">
+            Find the people worth contacting, write to them, book the meeting and see what actually
+            worked — one login, on your own mailbox, with every step visible and editable before it happens.
+          </p>
+          <div className="dc-hero-cta">
+            <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
+              Start free <ArrowRight size={16} />
+            </a>
+            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#leads">See the modules</a>
+          </div>
+          <figure className="dc-hero-shot">
+            <div className="dc-chrome" aria-hidden="true"><i /><i /><i /></div>
+            <img src={SHOT('dashboard')} alt="The dashboard, showing the day at a glance" width={1400} height={903} />
+          </figure>
+        </div>
+      </section>
 
-        <div className="scene-rail" ref={rail} role="tablist" aria-label="Sections">
-          <span className="scene-progress" aria-hidden="true" />
-          {SCENES.map((s, i) => (
-            <button key={s.id} role="tab" aria-selected={i === current} aria-label={s.eyebrow}
-              title={s.eyebrow} className="tick" onClick={() => scene.scrollTo(i)} />
+      {/* ── The band under the hero.
+             Where a site of this shape prints a star rating, this prints
+             something that can be checked by opening the product. ── */}
+      <div className="dc-band">
+        <span>Twenty modules. One login.</span>
+        <b>Your mailbox, your domain, your name on it.</b>
+      </div>
+
+      {/* ── The three chapters ── */}
+      {CHAPTERS.map(c => <ChapterBlock key={c.id} c={c} />)}
+
+      {/* ── The chain ── */}
+      <section className="dc-process" aria-label="One outcome, every channel">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">The part nobody else does</span>
+          <h2>One outcome in. <em>Every channel out.</em></h2>
+          <p>
+            Pick what you want to happen — book more consultations, launch an offer, win back the
+            customers who went quiet — and the whole campaign is written from your company portfolio.
+            You read it in full before anything is created.
+          </p>
+        </div>
+
+        <div className="dc-chain" ref={chain}>
+          <div className="dc-chain-node dc-chain-source">
+            <span className="dc-tile-icon"><Wand2 size={16} /></span>
+            <b>Your portfolio</b>
+            <small>What you sell, and to whom</small>
+          </div>
+          <div className="dc-chain-fan" aria-hidden="true" />
+          <div className="dc-chain-out">
+            {CHAIN.map(c => (
+              <div key={c.label} className="dc-chain-node">
+                <span className="dc-tile-icon"><c.icon size={14} /></span>
+                <b>{c.label}</b>
+                <small>{c.where}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <figure className="dc-flow-shot">
+          <img src={SHOT('flow')} alt="The campaign canvas, with each step as a node joined by wires" loading="lazy" width={1400} height={903} />
+        </figure>
+      </section>
+
+      {/* ── Platform / ownership ── */}
+      <section className="dc-platform" id="platform">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">Yours, not ours</span>
+          <h2>A single, powerful, <em>white-label platform.</em></h2>
+          <p>
+            Every third-party call is made from the server, never from the browser. Customer
+            credentials are encrypted at rest and are never returned to a page — endpoints report
+            whether a secret is set, never what it is.
+          </p>
+        </div>
+
+        <div className="dc-tabs" role="tablist" aria-label="What you own">
+          {OWNERSHIP.map((o, i) => (
+            <button
+              key={o.title}
+              role="tab"
+              aria-selected={tab === i}
+              className={tab === i ? 'on' : ''}
+              onClick={() => setTab(i)}
+            >
+              <o.icon size={14} /> {o.title}
+            </button>
           ))}
         </div>
 
-        {/* There is nothing under the last scene any more, so it stops asking. */}
-        <span className="mono scroll-hint">
-          {current === SCENES.length - 1
-            ? 'End'
-            : <>Scroll <ChevronDown size={12} style={{ verticalAlign: -2 }} /></>}
-        </span>
+        <div className="dc-own" ref={own}>
+          <div className="dc-own-card dc-own-lead">
+            <h3>{OWNERSHIP[tab].title}</h3>
+            <p>{OWNERSHIP[tab].body}</p>
+          </div>
+          <figure className="dc-own-shot">
+            <img
+              src={SHOT(tab === 3 ? 'agency' : 'infrastructure')}
+              alt={tab === 3 ? 'Client sub-accounts' : 'Domain, DNS and mailbox settings'}
+              loading="lazy" width={1400} height={903}
+            />
+          </figure>
+        </div>
+      </section>
+
+      {/* ── The wall.
+             A site of this shape puts a grid of reviews here. There are none to
+             put, so this is what the software does instead — a claim per line,
+             each one checkable by opening the product. ── */}
+      <section className="dc-wallsec" aria-label="What is in it">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">All of it, in one login</span>
+          <h2>Everything you would otherwise <em>buy five times.</em></h2>
+        </div>
+        <div className="dc-wall" ref={wall}>
+          {CAPABILITIES.map(g => (
+            <div key={g.group} className="dc-wall-card">
+              <h4><g.icon size={14} /> {g.group}</h4>
+              <ul>{g.items.map(i => <li key={i}><Check size={12} /> {i}</li>)}</ul>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Pricing ── */}
+      <section className="dc-pricing" id="pricing">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">Resell it at your price</span>
+          <h2>One subscription. <em>As many clients as your plan allows.</em></h2>
+          <p>
+            You are billed once. What you charge your own clients is entirely yours to set, and the
+            sub-account allowance is enforced on the server rather than in the browser.
+          </p>
+        </div>
+        <div className="dc-plans" ref={price}>
+          {PLANS.map((p, i) => (
+            <div key={p.id} className={`dc-plan${i === 1 ? ' featured' : ''}`}>
+              {i === 1 && <span className="dc-plan-flag">Most agencies</span>}
+              <h3>{p.name}</h3>
+              <div className="dc-plan-price"><span>$</span>{p.price}<small>/month</small></div>
+              <p className="dc-plan-sub">
+                {p.limits.resell < 0
+                  ? 'Unlimited sub-accounts'
+                  : `${p.limits.resell} sub-account${p.limits.resell === 1 ? '' : 's'}`}
+              </p>
+              <ul>{p.features.map(f => <li key={f}><Check size={12} /> {f}</li>)}</ul>
+              <a className={`dc-btn ${i === 1 ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={appHref('/signup')} {...cross(appHref('/signup'))}>
+                Start free <ArrowRight size={14} />
+              </a>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Closing call ── */}
+      <section className="dc-cta">
+        <div className="dc-cta-glow" aria-hidden="true" />
+        <h2>Get started with<br />Protected Central today</h2>
+        <p>Free to start. Your workspace is yours alone from the moment it exists.</p>
+        <div className="dc-hero-cta">
+          <a className="dc-btn dc-btn-light dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
+            Create your account <ArrowUpRight size={16} />
+          </a>
+          <a className="dc-btn dc-btn-outline-light dc-btn-lg" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
+        </div>
+        <figure className="dc-cta-shot">
+          <img src={SHOT('marketing')} alt="Campaigns running in the product" loading="lazy" width={1400} height={903} />
+        </figure>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer className="dc-foot">
+        <div className="dc-foot-cols">
+          <div className="dc-foot-brand">
+            <a className="dc-brand" href="#top"><LogoMark size={24} /><span>Protected Central</span></a>
+            <p>Every step, in the open.</p>
+          </div>
+          <div>
+            <h5>Find</h5>
+            <a href="#leads">AI Sales Agent</a><a href="#leads">Contacts</a>
+            <a href="#leads">Funnels</a><a href="#leads">Websites</a>
+          </div>
+          <div>
+            <h5>Do</h5>
+            <a href="#deals">Pipelines</a><a href="#deals">Email &amp; sequences</a>
+            <a href="#deals">Conversations</a><a href="#deals">Calendar</a>
+          </div>
+          <div>
+            <h5>Sell</h5>
+            <a href="#scale">Sub-accounts</a><a href="#scale">White-label</a>
+            <a href="#scale">Automation</a><a href="#pricing">Pricing</a>
+          </div>
+          <div>
+            <h5>Account</h5>
+            <a href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
+            <a href={appHref('/signup')} {...cross(appHref('/signup'))}>Create an account</a>
+          </div>
+        </div>
+        <div className="dc-foot-base">
+          <span>© {new Date().getFullYear()} Protected Central</span>
+          <span>Sends on your own mailbox. Your data stays in your workspace.</span>
+        </div>
       </footer>
     </div>
   );
