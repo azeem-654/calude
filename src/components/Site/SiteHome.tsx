@@ -35,6 +35,7 @@ import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { PLANS } from '../../services/tenancy';
 import { useReveal, useRevealGroup } from './useReveal';
+import Starfield from './Starfield';
 import './site.css';
 
 const ASSET = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/${name}`;
@@ -358,7 +359,6 @@ export default function SiteHome() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const hero = useReveal<HTMLDivElement>();
   const chain = useRevealGroup<HTMLDivElement>('.dc-chain-node');
   const wall = useRevealGroup<HTMLDivElement>('.dc-wall-card');
   const own = useRevealGroup<HTMLDivElement>('.dc-own-card');
@@ -372,6 +372,9 @@ export default function SiteHome() {
 
   return (
     <div className="dc">
+      {/* The sky everything else is translucent over. */}
+      <Starfield />
+
       {/* ── Nav ── */}
       <header className={`dc-nav${stuck ? ' stuck' : ''}`}>
         <a className="dc-brand" href="#top">
@@ -394,17 +397,17 @@ export default function SiteHome() {
       {/* ── Hero ── */}
       <section className="dc-hero" id="top">
         <div className="dc-hero-glow" aria-hidden="true" />
-        <div className="dc-hero-inner reveal" ref={hero}>
+        <div className="dc-hero-inner">
           <h1 className="dc-split">
-            <span className="reveal from-l in">Run your agency</span>
+            <span className="dc-lead-l">Run your agency</span>
             <i aria-hidden="true" />
-            <span className="reveal from-r in">Resell it as your own</span>
+            <span className="dc-lead-r">Resell it as your own</span>
           </h1>
-          <p className="dc-hero-sub">
+          <p className="dc-hero-sub dc-lead-1">
             Find the people worth contacting, write to them, book the meeting and see what actually
             worked — one login, on your own mailbox, with every step visible and editable before it happens.
           </p>
-          <div className="dc-hero-cta">
+          <div className="dc-hero-cta dc-lead-2">
             <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
               Start free <ArrowRight size={16} />
             </a>
@@ -413,7 +416,7 @@ export default function SiteHome() {
           {/* The hero's screenshot is the one clip that loads eagerly — it is
               the first thing anybody sees, and waiting for it to be scrolled to
               would mean it never plays. */}
-          <div className="dc-hero-shot rise in">
+          <div className="dc-hero-shot dc-lead-3">
             <div className="dc-chrome" aria-hidden="true"><i /><i /><i /></div>
             <ModuleClip name="dashboard" alt="The dashboard, showing the day at a glance" eager />
           </div>

@@ -39,10 +39,16 @@ export function useReveal<T extends HTMLElement = HTMLElement>() {
           io.unobserve(e.target);
         }
       },
-      /* Fires a little before the element is fully visible, so the movement is
-         finishing as it reaches comfortable reading position rather than
-         starting there. */
-      { rootMargin: '0px 0px -12% 0px', threshold: 0.08 },
+      /*
+       * Fires when the element is properly in view, not as its first pixel
+       * appears.
+       *
+       * At -12%/0.08 the entrance was finished before it reached anywhere you
+       * would look, which is most of why the page read as having no animation.
+       * A quarter of the viewport of margin means the movement plays where the
+       * eye already is.
+       */
+      { rootMargin: '0px 0px -24% 0px', threshold: 0.12 },
     );
 
     io.observe(el);
@@ -82,7 +88,7 @@ export function useRevealGroup<T extends HTMLElement = HTMLElement>(selector = '
           io.unobserve(e.target);
         }
       },
-      { rootMargin: '0px 0px -10% 0px', threshold: 0.05 },
+      { rootMargin: '0px 0px -20% 0px', threshold: 0.08 },
     );
 
     io.observe(el);
