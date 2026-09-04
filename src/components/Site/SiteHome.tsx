@@ -24,7 +24,7 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Inbox, Lock, Palette, ShieldCheck, Server, Activity,
@@ -37,7 +37,9 @@ import { PLANS } from '../../services/tenancy';
 import { useReveal, useRevealGroup } from './useReveal';
 import './site.css';
 
-const SHOT = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/${name}.webp`;
+const ASSET = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/${name}`;
+const SHOT = (name: string) => ASSET(`${name}.webp`);
+const CLIP = (name: string) => ASSET(`${name}.webm`);
 
 /* ── The tiles ───────────────────────────────────────────────────────────── */
 
@@ -54,7 +56,7 @@ interface Tile {
   body: string;
   shot: string;
   alt: string;
-  tone: 'ink' | 'violet' | 'blue' | 'teal' | 'amber' | 'coral' | 'paper';
+  tone: 'ink' | 'lime' | 'mint' | 'forest' | 'slate' | 'moss' | 'paper';
   span?: 2 | 3;
   icon: typeof Send;
 }
@@ -93,27 +95,27 @@ const CHAPTERS: Chapter[] = [
         shot: 'contacts', alt: 'The contact list with filters and health on every row',
       },
       {
-        id: 'funnels', title: 'Funnels', tone: 'violet', icon: MousePointerClick,
+        id: 'funnels', title: 'Funnels', tone: 'lime', icon: MousePointerClick,
         body: 'Multi-step funnels with real pages behind them, published on your own domain.',
         shot: 'funnels', alt: 'The funnel builder',
       },
       {
-        id: 'websites', title: 'Websites', tone: 'blue', icon: LayoutTemplate,
+        id: 'websites', title: 'Websites', tone: 'slate', icon: LayoutTemplate,
         body: 'Whole sites, built and published from the same place the campaigns run.',
         shot: 'websites', alt: 'The website builder',
       },
       {
-        id: 'scheduling', title: 'Booking pages', tone: 'teal', icon: MessageSquare,
+        id: 'scheduling', title: 'Booking pages', tone: 'mint', icon: MessageSquare,
         body: 'Your availability, a public link, and the meeting on your calendar without an email thread.',
         shot: 'scheduling', alt: 'Scheduling and booking pages',
       },
       {
-        id: 'blog', title: 'Blog automation', tone: 'amber', icon: FileText,
+        id: 'blog', title: 'Blog automation', tone: 'forest', icon: FileText,
         body: 'A topic plan from your own portfolio, written to the search terms your buyers use.',
         shot: 'blog', alt: 'Blog automation with topic clusters',
       },
       {
-        id: 'social', title: 'Social creator', tone: 'coral', icon: ImageIcon,
+        id: 'social', title: 'Social creator', tone: 'moss', icon: ImageIcon,
         body: 'Posts on the right canvas for each platform, in your colours, editable before they go.',
         shot: 'social', alt: 'The social post creator',
       },
@@ -129,13 +131,13 @@ const CHAPTERS: Chapter[] = [
     pills: ['Stages you define', 'Replies end the cadence', 'Sends with nobody logged in'],
     tiles: [
       {
-        id: 'pipelines', title: 'Pipelines', tone: 'blue', span: 3, icon: BarChart3,
+        id: 'pipelines', title: 'Pipelines', tone: 'slate', span: 3, icon: BarChart3,
         body: 'Stages you define, dragged straight across. Open value and the same value weighted by '
           + 'probability, counted from your own records rather than estimated.',
         shot: 'pipelines', alt: 'The pipeline board with deals by stage',
       },
       {
-        id: 'marketing', title: 'Email & sequences', tone: 'violet', icon: Mail,
+        id: 'marketing', title: 'Email & sequences', tone: 'lime', icon: Mail,
         body: 'Multi-step cadences on your own SMTP that stop the moment somebody answers. '
           + 'The server sends them, so a scheduled campaign goes out with every tab closed.',
         shot: 'marketing', alt: 'Campaigns and their sequences',
@@ -151,7 +153,7 @@ const CHAPTERS: Chapter[] = [
         shot: 'calendar', alt: 'The calendar week view',
       },
       {
-        id: 'reputation', title: 'Reputation', tone: 'coral', icon: ShieldCheck,
+        id: 'reputation', title: 'Reputation', tone: 'moss', icon: ShieldCheck,
         body: 'Ask the customers most likely to say something good, and answer the ones who did not.',
         shot: 'reputation', alt: 'Reputation and review management',
       },
@@ -167,14 +169,14 @@ const CHAPTERS: Chapter[] = [
     pills: ['A sub-account per client', 'White-label per client', 'Enforced on the server'],
     tiles: [
       {
-        id: 'agency', title: 'Agency & sub-accounts', tone: 'violet', span: 3, icon: Building2,
+        id: 'agency', title: 'Agency & sub-accounts', tone: 'forest', span: 3, icon: Building2,
         body: 'Its own contacts, pipelines, campaigns and calendar for every client, switched between '
           + 'in one click. A workspace you do not own is refused by the API, not merely hidden by the '
           + 'interface — and each sub-account carries its own plan and its own price.',
         shot: 'agency', alt: 'The agency dashboard listing client sub-accounts',
       },
       {
-        id: 'analytics', title: 'Analytics', tone: 'blue', icon: BarChart3,
+        id: 'analytics', title: 'Analytics', tone: 'lime', icon: BarChart3,
         body: 'Every figure read live from the module that owns it. A rate over four sends is not shown as a rate.',
         shot: 'analytics', alt: 'The analytics screen',
       },
@@ -185,7 +187,7 @@ const CHAPTERS: Chapter[] = [
         shot: 'automation', alt: 'The automation health screen',
       },
       {
-        id: 'infrastructure', title: 'Domains & mailboxes', tone: 'teal', icon: Server,
+        id: 'infrastructure', title: 'Domains & mailboxes', tone: 'mint', icon: Server,
         body: 'Search a domain and register it, write SPF, DKIM and DMARC, create the mailbox — '
           + 'without leaving the app.',
         shot: 'infrastructure', alt: 'The infrastructure settings screen',
@@ -226,6 +228,75 @@ const OWNERSHIP = [
 /* ── Small pieces ────────────────────────────────────────────────────────── */
 
 /**
+ * A module, moving.
+ *
+ * The still is an `<img>` underneath and the loop is a `<video>` on top, which
+ * is what makes this degrade properly: before the clip loads, while it loads,
+ * and for good on a browser that will not play WebM, the screenshot is what
+ * shows. The video fades over it once it is actually playing.
+ *
+ * It is also why `preload="none"`. Sixteen clips fetched on load is a page
+ * nobody on a phone waits for, so nothing is requested until the tile is
+ * nearly on screen — and playback stops again when it leaves, because sixteen
+ * videos decoding at once is a warm laptop for no benefit.
+ *
+ * The files are trimmed to their motion at capture time (scripts/site-clips.mjs),
+ * so there is nothing here to skip past — the whole clip is the loop.
+ */
+function ModuleClip({ name, alt, eager = false }: { name: string; alt: string; eager?: boolean }) {
+  const box = useRef<HTMLElement | null>(null);
+  const vid = useRef<HTMLVideoElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const el = box.current;
+    const v = vid.current;
+    if (!el || !v) return;
+
+
+    /* Somebody who asked their system not to animate things does not want
+       sixteen looping videos either. They keep the stills. */
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    const io = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          if (!v.src) v.src = CLIP(name);
+          v.play().then(() => setPlaying(true)).catch(() => { /* autoplay refused; the still stands */ });
+        } else {
+          v.pause();
+        }
+      }
+    }, { rootMargin: '260px 0px', threshold: 0.01 });
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, [name]);
+
+  return (
+    <figure className="dc-tile-shot" ref={box as React.RefObject<HTMLElement>}>
+      <img src={SHOT(name)} alt={alt} loading={eager ? 'eager' : 'lazy'} width={1400} height={903} />
+      <video
+        ref={vid}
+        className={`dc-clip${playing ? ' playing' : ''}`}
+        poster={SHOT(name)}
+        muted
+        loop
+        playsInline
+        preload="none"
+        aria-hidden="true"
+        tabIndex={-1}
+        /* A clip that will not decode — a half-written file, a codec the
+           browser lacks — hands the tile back to its screenshot rather than
+           leaving a blank rectangle where the product should be. */
+        onError={() => setPlaying(false)}
+        onStalled={() => setPlaying(false)}
+      />
+    </figure>
+  );
+}
+
+/**
  * The extra attributes a link to the app needs.
  *
  * On the marketing host these go to another origin and want `rel="noopener"`;
@@ -242,11 +313,7 @@ function Tile({ t }: { t: Tile }) {
         <h3>{t.title}</h3>
       </div>
       <p>{t.body}</p>
-      <figure className="dc-tile-shot">
-        {/* Width and height are the real pixel size so the space is reserved
-            before the picture arrives and the grid does not jump as it loads. */}
-        <img src={SHOT(t.shot)} alt={t.alt} loading="lazy" width={1400} height={903} />
-      </figure>
+      <ModuleClip name={t.shot} alt={t.alt} />
     </article>
   );
 }
@@ -269,7 +336,7 @@ function ChapterBlock({ c }: { c: Chapter }) {
         </div>
       </div>
 
-      <div className="dc-bento" ref={grid}>
+      <div className="dc-bento stagger" ref={grid}>
         {c.tiles.map(t => <Tile key={t.id} t={t} />)}
       </div>
     </section>
@@ -296,6 +363,12 @@ export default function SiteHome() {
   const wall = useRevealGroup<HTMLDivElement>('.dc-wall-card');
   const own = useRevealGroup<HTMLDivElement>('.dc-own-card');
   const price = useRevealGroup<HTMLDivElement>('.dc-plan');
+  const band = useReveal<HTMLDivElement>();
+  const tabs = useRevealGroup<HTMLDivElement>('button');
+  const foot = useRevealGroup<HTMLDivElement>(':scope > div');
+  const source = useReveal<HTMLDivElement>();
+  const flow = useReveal<HTMLDivElement>();
+  const ctaShot = useReveal<HTMLDivElement>();
 
   return (
     <div className="dc">
@@ -323,9 +396,9 @@ export default function SiteHome() {
         <div className="dc-hero-glow" aria-hidden="true" />
         <div className="dc-hero-inner reveal" ref={hero}>
           <h1 className="dc-split">
-            <span>Run your agency</span>
+            <span className="reveal from-l in">Run your agency</span>
             <i aria-hidden="true" />
-            <span>Resell it as your own</span>
+            <span className="reveal from-r in">Resell it as your own</span>
           </h1>
           <p className="dc-hero-sub">
             Find the people worth contacting, write to them, book the meeting and see what actually
@@ -337,17 +410,20 @@ export default function SiteHome() {
             </a>
             <a className="dc-btn dc-btn-outline dc-btn-lg" href="#leads">See the modules</a>
           </div>
-          <figure className="dc-hero-shot">
+          {/* The hero's screenshot is the one clip that loads eagerly — it is
+              the first thing anybody sees, and waiting for it to be scrolled to
+              would mean it never plays. */}
+          <div className="dc-hero-shot rise in">
             <div className="dc-chrome" aria-hidden="true"><i /><i /><i /></div>
-            <img src={SHOT('dashboard')} alt="The dashboard, showing the day at a glance" width={1400} height={903} />
-          </figure>
+            <ModuleClip name="dashboard" alt="The dashboard, showing the day at a glance" eager />
+          </div>
         </div>
       </section>
 
       {/* ── The band under the hero.
              Where a site of this shape prints a star rating, this prints
              something that can be checked by opening the product. ── */}
-      <div className="dc-band">
+      <div className="dc-band reveal" ref={band}>
         <span>Twenty modules. One login.</span>
         <b>Your mailbox, your domain, your name on it.</b>
       </div>
@@ -367,14 +443,14 @@ export default function SiteHome() {
           </p>
         </div>
 
-        <div className="dc-chain" ref={chain}>
-          <div className="dc-chain-node dc-chain-source">
+        <div className="dc-chain">
+          <div className="dc-chain-node dc-chain-source reveal" ref={source}>
             <span className="dc-tile-icon"><Wand2 size={16} /></span>
             <b>Your portfolio</b>
             <small>What you sell, and to whom</small>
           </div>
           <div className="dc-chain-fan" aria-hidden="true" />
-          <div className="dc-chain-out">
+          <div className="dc-chain-out stagger" ref={chain}>
             {CHAIN.map(c => (
               <div key={c.label} className="dc-chain-node">
                 <span className="dc-tile-icon"><c.icon size={14} /></span>
@@ -385,9 +461,9 @@ export default function SiteHome() {
           </div>
         </div>
 
-        <figure className="dc-flow-shot">
-          <img src={SHOT('flow')} alt="The campaign canvas, with each step as a node joined by wires" loading="lazy" width={1400} height={903} />
-        </figure>
+        <div className="dc-flow-shot reveal" ref={flow}>
+          <ModuleClip name="flow" alt="The campaign canvas, with each step as a node joined by wires" />
+        </div>
       </section>
 
       {/* ── Platform / ownership ── */}
@@ -402,7 +478,7 @@ export default function SiteHome() {
           </p>
         </div>
 
-        <div className="dc-tabs" role="tablist" aria-label="What you own">
+        <div className="dc-tabs stagger" role="tablist" aria-label="What you own" ref={tabs}>
           {OWNERSHIP.map((o, i) => (
             <button
               key={o.title}
@@ -416,18 +492,18 @@ export default function SiteHome() {
           ))}
         </div>
 
-        <div className="dc-own" ref={own}>
-          <div className="dc-own-card dc-own-lead">
+        <div className="dc-own stagger" ref={own}>
+          <div className="dc-own-card dc-own-lead" key={tab}>
             <h3>{OWNERSHIP[tab].title}</h3>
             <p>{OWNERSHIP[tab].body}</p>
           </div>
-          <figure className="dc-own-shot">
-            <img
-              src={SHOT(tab === 3 ? 'agency' : 'infrastructure')}
+          <div className="dc-own-shot">
+            <ModuleClip
+              key={tab === 3 ? 'agency' : 'infrastructure'}
+              name={tab === 3 ? 'agency' : 'infrastructure'}
               alt={tab === 3 ? 'Client sub-accounts' : 'Domain, DNS and mailbox settings'}
-              loading="lazy" width={1400} height={903}
             />
-          </figure>
+          </div>
         </div>
       </section>
 
@@ -440,7 +516,7 @@ export default function SiteHome() {
           <span className="dc-eyebrow">All of it, in one login</span>
           <h2>Everything you would otherwise <em>buy five times.</em></h2>
         </div>
-        <div className="dc-wall" ref={wall}>
+        <div className="dc-wall stagger" ref={wall}>
           {CAPABILITIES.map(g => (
             <div key={g.group} className="dc-wall-card">
               <h4><g.icon size={14} /> {g.group}</h4>
@@ -460,7 +536,7 @@ export default function SiteHome() {
             sub-account allowance is enforced on the server rather than in the browser.
           </p>
         </div>
-        <div className="dc-plans" ref={price}>
+        <div className="dc-plans stagger" ref={price}>
           {PLANS.map((p, i) => (
             <div key={p.id} className={`dc-plan${i === 1 ? ' featured' : ''}`}>
               {i === 1 && <span className="dc-plan-flag">Most agencies</span>}
@@ -491,14 +567,14 @@ export default function SiteHome() {
           </a>
           <a className="dc-btn dc-btn-outline-light dc-btn-lg" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
         </div>
-        <figure className="dc-cta-shot">
-          <img src={SHOT('marketing')} alt="Campaigns running in the product" loading="lazy" width={1400} height={903} />
-        </figure>
+        <div className="dc-cta-shot reveal" ref={ctaShot}>
+          <ModuleClip name="marketing" alt="Campaigns running in the product" />
+        </div>
       </section>
 
       {/* ── Footer ── */}
       <footer className="dc-foot">
-        <div className="dc-foot-cols">
+        <div className="dc-foot-cols stagger" ref={foot}>
           <div className="dc-foot-brand">
             <a className="dc-brand" href="#top"><LogoMark size={24} /><span>Protected Central</span></a>
             <p>Every step, in the open.</p>
