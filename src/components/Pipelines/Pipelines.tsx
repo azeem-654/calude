@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
-import type { Deal, Stage, ChecklistItem, DealActivity, SubTask } from '../../types';
+import type { Deal, Stage, DealActivity, SubTask } from '../../types';
 import {
   AutomationsModal, ConfettiBurst, loadAutomationRules, saveAutomationRules,
   runAutomations, runIdleSweep, appendAutomationLog, describeAction,
@@ -21,6 +21,22 @@ import PipelineDesigner from './PipelineDesigner';
 import { playbookChecklist, seedExistingDeals } from '../../services/pipelineAI';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
+
+/**
+ * The tasks on a deal, and how many are done.
+ *
+ * Sub-tasks when there are any, the older checklist otherwise. The form now
+ * writes sub-tasks, so a board column that counted only `checklist` showed 0/0
+ * beside a deal that plainly had two of them — which reads as "it did not
+ * save". One helper so the card, the list and the table cannot drift apart
+ * again.
+ */
+function dealTasks(deal: Deal): { total: number; done: number } {
+  const subs = deal.subtasks ?? [];
+  if (subs.length) return { total: subs.length, done: subs.filter(t => t.done).length };
+  const cl = deal.checklist ?? [];
+  return { total: cl.length, done: cl.filter(c => c.done).length };
+}
 type ViewMode = 'board' | 'list' | 'calendar' | 'gantt' | 'table' | 'funnel';
 type SortKey = 'manual' | 'title' | 'value' | 'close' | 'priority' | 'days';
 
@@ -53,7 +69,7 @@ const ALL_CARD_FIELDS: { key: CardFieldKey; label: string; defaultOn: boolean }[
   { key: 'source',      label: 'Source',         defaultOn: false },
   { key: 'closeDate',   label: 'Close Date',     defaultOn: true  },
   { key: 'assignedTo',  label: 'Assigned To',    defaultOn: false },
-  { key: 'checklist',   label: 'Checklist',      defaultOn: true  },
+  { key: 'checklist',   label: 'Tasks',          defaultOn: true  },
   { key: 'quickActions',label: 'Quick Actions',  defaultOn: true  },
 ];
 function loadCardFields(): Set<CardFieldKey> {
@@ -322,10 +338,10 @@ function DealCard({
   const people = dealPeople(deal);
   const attachCount = (deal as unknown as { attachments?: unknown[] }).attachments?.length ?? 0;
   const commentCount = (deal.activity ?? []).length;
-  // Progress segments (setup → done) driven by the checklist/subtasks.
-  const items = (deal.subtasks && deal.subtasks.length ? deal.subtasks.map(s => ({ done: s.done })) : checklist.map(c => ({ done: c.done })));
-  const segCount = Math.max(3, Math.min(5, items.length || 3));
-  const doneRatio = items.length ? items.filter(i => i.done).length / items.length : (isWon ? 1 : deal.probability ? deal.probability / 100 : 0);
+  // Progress segments (setup → done) driven by whichever task list the deal has.
+  const tasks = dealTasks(deal);
+  const segCount = Math.max(3, Math.min(5, tasks.total || 3));
+  const doneRatio = tasks.total ? tasks.done / tasks.total : (isWon ? 1 : deal.probability ? deal.probability / 100 : 0);
   const segFilled = Math.round(doneRatio * segCount);
   const segColor = p === 'urgent' ? '#f87171' : p === 'high' ? '#fb923c' : p === 'low' ? '#cbd5e1' : isWon ? '#34d399' : '#818cf8';
 
@@ -1088,8 +1104,7 @@ function GroupedListView({ stages, applyFilter, onOpen, onEdit, onDelete, onQuic
                   const p = (deal.priority ?? 'normal') as Priority;
                   const pc = PRIORITY[p];
                   const st = deal.status ?? 'active';
-                  const cl = deal.checklist ?? [];
-                  const dn = cl.filter(c => c.done).length;
+                  const { total: clTotal, done: clDone } = dealTasks(deal);
                   return (
                     <div key={deal.id}
                       onClick={() => onOpen(deal)}
@@ -1111,8 +1126,8 @@ function GroupedListView({ stages, applyFilter, onOpen, onEdit, onDelete, onQuic
                         {(deal.labels ?? []).slice(0, 2).map((l, li) => (
                           <span key={li} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 999, backgroundColor: l.color + '22', color: l.color, flexShrink: 0 }}>{l.text}</span>
                         ))}
-                        {cl.length > 0 && (
-                          <span style={{ fontSize: 10, color: dn === cl.length ? '#22c55e' : '#94a3b8', fontWeight: 600, flexShrink: 0 }}>✓ {dn}/{cl.length}</span>
+                        {clTotal > 0 && (
+                          <span style={{ fontSize: 10, color: clDone === clTotal ? '#22c55e' : '#94a3b8', fontWeight: 600, flexShrink: 0 }}>✓ {clDone}/{clTotal}</span>
                         )}
                       </div>
 
@@ -1499,8 +1514,8 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
   const [priority, setPriority] = useState<Priority>((deal?.priority ?? 'normal') as Priority);
   const [description, setDescription] = useState(deal?.description ?? '');
   const [labels, setLabels] = useState<{ color: string; text: string }[]>(deal?.labels ?? []);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(deal?.checklist ?? []);
-  const [newCheckItem, setNewCheckItem] = useState('');
+  const [subtasks, setSubtasks] = useState<SubTask[]>(deal?.subtasks ?? []);
+  const [newSubtask, setNewSubtask] = useState('');
   const [customLabel, setCustomLabel] = useState('');
   const [customLabelColor, setCustomLabelColor] = useState(LABEL_COLORS[0]);
   const [status, setStatus] = useState<'active' | 'won' | 'lost'>((deal?.status ?? 'active') as 'active' | 'won' | 'lost');
@@ -1510,10 +1525,13 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
     setLabels(prev => prev.some(l => l.text === label.text) ? prev.filter(l => l.text !== label.text) : [...prev, label]);
   };
 
-  const addChecklist = () => {
-    if (!newCheckItem.trim()) return;
-    setChecklist(prev => [...prev, { id: `ci-${Date.now()}`, text: newCheckItem.trim(), done: false }]);
-    setNewCheckItem('');
+  const addSubtask = () => {
+    if (!newSubtask.trim()) return;
+    setSubtasks(prev => [...prev, {
+      id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: newSubtask.trim(), done: false, createdAt: new Date().toISOString(),
+    }]);
+    setNewSubtask('');
   };
 
   const addCustomLabel = () => {
@@ -1541,7 +1559,12 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
       priority,
       description,
       labels,
-      checklist,
+      /* Sub-tasks, not a checklist. The two lists existed side by side and
+         nobody could say which one a deal's work belonged on; the detail panel
+         already opens on sub-tasks, so that is the one the form fills. An
+         existing deal's checklist is left alone rather than cleared — `saveDeal`
+         spreads this over the deal, so omitting the key preserves it. */
+      subtasks,
       status,
       source,
       activity: deal?.activity ?? [],
@@ -1681,19 +1704,19 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
           </div>
 
           <div>
-            <label style={lbl}>Checklist ({checklist.filter(c => c.done).length}/{checklist.length})</label>
+            <label style={lbl}>Sub-tasks ({subtasks.filter(t => t.done).length}/{subtasks.length})</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-              {checklist.map((item, i) => (
+              {subtasks.map((item, i) => (
                 <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', backgroundColor: '#f8fafc', borderRadius: 7 }}>
-                  <input type="checkbox" checked={item.done} onChange={() => setChecklist(prev => prev.map((c, j) => j === i ? { ...c, done: !c.done } : c))} style={{ cursor: 'pointer' }} />
-                  <span style={{ flex: 1, fontSize: 13, color: item.done ? '#94a3b8' : '#374151', textDecoration: item.done ? 'line-through' : 'none' }}>{item.text}</span>
-                  <button onClick={() => setChecklist(prev => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 2 }}><X size={12} /></button>
+                  <input type="checkbox" checked={item.done} onChange={() => setSubtasks(prev => prev.map((t, j) => j === i ? { ...t, done: !t.done } : t))} style={{ cursor: 'pointer' }} />
+                  <span style={{ flex: 1, fontSize: 13, color: item.done ? '#94a3b8' : '#374151', textDecoration: item.done ? 'line-through' : 'none' }}>{item.title}</span>
+                  <button onClick={() => setSubtasks(prev => prev.filter((_, j) => j !== i))} aria-label={`Remove sub-task ${item.title}`} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 2 }}><X size={12} /></button>
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input value={newCheckItem} onChange={e => setNewCheckItem(e.target.value)} placeholder="Add checklist item..." style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addChecklist()} />
-              <button onClick={addChecklist} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#374151', whiteSpace: 'nowrap' }}>+ Add</button>
+              <input value={newSubtask} onChange={e => setNewSubtask(e.target.value)} placeholder="Add sub-task..." style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addSubtask()} />
+              <button onClick={addSubtask} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#374151', whiteSpace: 'nowrap' }}>+ Add</button>
             </div>
           </div>
         </div>
@@ -2275,6 +2298,10 @@ export default function Pipelines() {
            it, which is the whole point of having designed one. Anything the
            form already put on the list stays in front of them. */
         checklist: [...(data.checklist ?? []), ...playbookChecklist(targetStage)],
+        /* Whatever the form collected. Without this the sub-tasks somebody
+           typed while creating the deal were thrown away at the moment of
+           creation — the field wrote to a key the new Deal never copied. */
+        subtasks: data.subtasks ?? [],
         status: data.status ?? 'active',
         source: data.source ?? '',
         lastStageChangedAt: new Date().toISOString(),
@@ -2788,8 +2815,7 @@ export default function Pipelines() {
                 {applyFilter(allDeals).map((deal, i, arr) => {
                   const p = (deal.priority ?? 'normal') as Priority;
                   const pc = PRIORITY[p];
-                  const cl = deal.checklist ?? [];
-                  const dn = cl.filter(c => c.done).length;
+                  const { total: clTotal, done: clDone } = dealTasks(deal);
                   const stageObj = selected.stages.find(s => s.name === deal.stage);
                   const st = deal.status ?? 'active';
                   return (
@@ -2831,12 +2857,12 @@ export default function Pipelines() {
                       </td>
                       <td style={{ padding: '11px 14px', fontSize: 13, color: '#374151' }}>{deal.assignedTo || '—'}</td>
                       <td style={{ padding: '11px 14px' }}>
-                        {cl.length > 0 ? (
+                        {clTotal > 0 ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                             <div style={{ width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2 }}>
-                              <div style={{ height: '100%', width: `${(dn / cl.length) * 100}%`, backgroundColor: dn === cl.length ? '#22c55e' : '#17191c', borderRadius: 2 }} />
+                              <div style={{ height: '100%', width: `${(clDone / clTotal) * 100}%`, backgroundColor: clDone === clTotal ? '#22c55e' : '#17191c', borderRadius: 2 }} />
                             </div>
-                            <span style={{ fontSize: 11, color: dn === cl.length ? '#22c55e' : '#94a3b8', fontWeight: 600 }}>{dn}/{cl.length}</span>
+                            <span style={{ fontSize: 11, color: clDone === clTotal ? '#22c55e' : '#94a3b8', fontWeight: 600 }}>{clDone}/{clTotal}</span>
                           </div>
                         ) : <span style={{ fontSize: 11, color: '#d1d5db' }}>—</span>}
                       </td>

@@ -169,12 +169,22 @@
 .dc-btn:active { transform: translateY(0); }
 .dc-btn-lg { padding: 14px 26px; font-size: 15px; }
 
-.dc-btn-primary {
+/*
+ * Every variant below is qualified with `.dc`.
+ *
+ * `.dc a { color: inherit }` is one class *and* one type — (0,1,1) — which
+ * outranks a bare `.dc-btn-light` at (0,1,0). Since these buttons are anchors,
+ * an unqualified `color` here loses, and the button inherits its section's
+ * colour instead. On the closing call that meant `--ink` on `--ink-2`: dark on
+ * dark, a button with no readable text on it at all. `.dc` in front makes each
+ * rule (0,2,0) and the intended colour wins.
+ */
+.dc .dc-btn-primary {
   background: linear-gradient(135deg, var(--lime-lt), var(--lime));
   color: var(--ink);
   box-shadow: 0 10px 30px -10px rgba(200, 242, 77, 0.65);
 }
-.dc-btn-primary:hover { box-shadow: 0 18px 40px -12px rgba(200, 242, 77, 0.9); }
+.dc .dc-btn-primary:hover { box-shadow: 0 18px 40px -12px rgba(200, 242, 77, 0.9); }
 
 /* A light sweep crosses the button on hover. */
 .dc-btn-primary::after,
@@ -190,15 +200,15 @@
 .dc-btn-primary:hover::after,
 .dc-btn-light:hover::after { left: 120%; }
 
-.dc-btn-ghost { color: rgba(255, 255, 255, 0.86); }
-.dc-btn-ghost:hover { color: var(--lime); }
+.dc .dc-btn-ghost { color: rgba(255, 255, 255, 0.86); }
+.dc .dc-btn-ghost:hover { color: var(--lime); }
 
-.dc-btn-outline { border-color: var(--edge-2); color: var(--text); }
-.dc-btn-outline:hover { border-color: var(--lime); color: var(--lime); background: rgba(200, 242, 77, 0.06); }
+.dc .dc-btn-outline { border-color: var(--edge-2); color: var(--text); }
+.dc .dc-btn-outline:hover { border-color: var(--lime); color: var(--lime); background: rgba(200, 242, 77, 0.06); }
 
-.dc-btn-light { background: var(--ink-2); color: var(--lime); border-color: rgba(200, 242, 77, 0.35); }
-.dc-btn-outline-light { border-color: rgba(15, 18, 16, 0.3); color: var(--ink); }
-.dc-btn-outline-light:hover { border-color: var(--ink); background: rgba(15, 18, 16, 0.08); }
+.dc .dc-btn-light { background: var(--ink-2); color: var(--lime); border-color: rgba(200, 242, 77, 0.35); }
+.dc .dc-btn-outline-light { border-color: rgba(15, 18, 16, 0.3); color: var(--ink); }
+.dc .dc-btn-outline-light:hover { border-color: var(--ink); background: rgba(15, 18, 16, 0.08); }
 
 /* ── Nav ────────────────────────────────────────────────────────────────── */
 

@@ -10,6 +10,7 @@
  * for the monthly approval workflow.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Sparkles, Building2, Target, Megaphone, CalendarRange, X, ArrowRight, ArrowLeft,
   Check, Loader, Plus, Trash2, Wand2, PencilLine, Users, UploadCloud, FileText, Rocket,
@@ -321,11 +322,27 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
 
   if (!open) return null;
 
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 4000, backgroundColor: 'rgba(23,25,28,0.55)',
-      backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-    }}>
+  /*
+   * Rendered into <body>, not into the dashboard that opened it.
+   *
+   * `.dash` sets `isolation: isolate` (dashboard.css), which makes it a
+   * stacking context — so the z-index below was ranked only against this
+   * dialog's siblings *inside* the dashboard, and `.dash` as a whole still
+   * painted under the sticky top bar. 4000 against the bar's 100 looked
+   * decisive and did nothing: the bar and the left rail stayed sharp on top of
+   * the dim, and on a short window the dialog's own header sat behind them.
+   * Raising the number cannot fix this; leaving the stacking context can.
+   */
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Company onboarding"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 4000, backgroundColor: 'rgba(23,25,28,0.55)',
+        backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
       <div style={{
         width: 'min(880px, 100%)', maxHeight: '92vh', backgroundColor: '#f7f8fa', borderRadius: 24,
         display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px -16px rgba(23,25,28,0.5)',
@@ -795,6 +812,7 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
