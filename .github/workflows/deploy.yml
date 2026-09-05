@@ -74,6 +74,52 @@ jobs:
           fi
           echo "Both credentials are present."
 
+      # ── And that the token still works ──────────────────────────────────
+      #
+      # Present is not the same as valid. A rolled, expired or revoked token is
+      # a string of the right shape, so the check above passes, the run installs
+      # and builds for eighty seconds, and then wrangler reports
+      # "Authentication error [code: 10000]" from the *migrations* step — which
+      # reads as a database fault. Two deploys were lost that way before anyone
+      # looked at the log, and the site quietly stayed on an older build while
+      # every push appeared to have been sent.
+      #
+      # Verifying costs one request and one second. `/accounts/{id}/tokens/verify`
+      # is the endpoint for an account-owned token; `/user/tokens/verify` is for
+      # one created under My Profile. Either is fine, so try both before failing.
+      - name: Check the Cloudflare token is still valid
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          verify() {
+            curl -sS -o /tmp/verify.json -w '%{http_code}' \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/$1"
+          }
+          code=$(verify "accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify")
+          if [ "$code" != "200" ]; then
+            code=$(verify "user/tokens/verify")
+          fi
+          if [ "$code" = "200" ]; then
+            echo "Token verified (status: $(grep -o '"status":"[a-z]*"' /tmp/verify.json | head -1))."
+            exit 0
+          fi
+          # The body names the reason (expired, revoked, wrong account). It
+          # contains no secret — the token is only ever in the request header.
+          echo "::error title=Cloudflare token rejected::CLOUDFLARE_API_TOKEN is set but Cloudflare will not accept it (HTTP $code)."
+          echo ""
+          echo "Cloudflare said:"
+          cat /tmp/verify.json; echo
+          echo ""
+          echo "The token is expired, revoked, or belongs to a different account."
+          echo "Create a new one at Cloudflare -> Manage Account -> Account API Tokens,"
+          echo "with Workers Scripts: Edit, D1: Edit and Account Settings: Read,"
+          echo "then replace the CLOUDFLARE_API_TOKEN repository secret."
+          echo ""
+          echo "Nothing was built, nothing was deployed and the database was not touched."
+          exit 1
+
       - name: Install dependencies
         run: npm ci
 
