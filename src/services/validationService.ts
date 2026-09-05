@@ -16,7 +16,11 @@ export function getSmtpSuggestions(error: string): string[] {
   const tips: string[] = [];
   if (e.includes('535') || e.includes('authentication') || e.includes('auth')) {
     tips.push('Double-check your password or app password (not your account password)');
-    tips.push('For Gmail: enable 2FA and use an App Password from myaccount.google.com/apppasswords');
+    /* The username is the half people get wrong on API-key providers, because
+       it is not their address and nothing on the form says so. Resend wants the
+       literal word `resend`, SendGrid wants `apikey`, and the key itself goes in
+       the password box. */
+    tips.push('On an API-key provider the username is a fixed word, not your email — Resend uses "resend", SendGrid uses "apikey", and the key goes in the password field');
     tips.push('For Outlook: ensure "Less secure app access" is enabled or use an App Password');
   }
   if (e.includes('connection') || e.includes('timeout') || e.includes('econnrefused') || e.includes('network')) {

@@ -133,6 +133,22 @@
 .dc-lead-2 { animation: dc-in-up 0.85s 0.72s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .dc-lead-3 { animation: dc-in-rise 1.25s 0.88s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/*
+ * Reduced motion: still, not dead.
+ *
+ * This used to be one blanket `animation: none !important` over everything,
+ * and the result was a photograph — no drifting stars, no bobbing icons, no
+ * pulse anywhere. Anyone with Windows battery saver on, "Show animations"
+ * off, or macOS Reduce Motion got a page that looked broken, and had no way
+ * to tell that from a page that *was* broken.
+ *
+ * What the guidance actually asks us to remove is movement: travel, parallax,
+ * scaling — the things that provoke vestibular symptoms. A colour or an
+ * opacity changing in place provokes nothing. So everything is stopped first,
+ * then the handful of loops that move no geometry are switched back on. They
+ * are listed by name rather than by a rule of thumb, because "does this
+ * animate transform?" is not something a future edit can be trusted to check.
+ */
 @media (prefers-reduced-motion: reduce) {
   .dc .reveal,
   .dc .stagger > *,
@@ -142,6 +158,15 @@
   .dc *,
   .dc *::before,
   .dc *::after { animation: none !important; }
+
+  /* Back on: these change colour, shadow or background position only. */
+  .dc .dc-btn-primary { animation: dc-glow-pulse 3.2s ease-in-out infinite !important; }
+  .dc .dc-eyebrow::before { animation: dc-blip 2.6s ease-in-out infinite !important; }
+  .dc .dc-chain-source { animation: dc-breathe 3.4s ease-in-out infinite !important; }
+  .dc .dc-cta { animation: dc-slide-bg 18s linear infinite !important; }
+  .dc .dc-band { animation: dc-slide-bg 18s linear infinite !important; }
+  .dc .dc-chapter-head h2 em { animation: dc-slide-bg 8s linear infinite !important; }
+  .dc .dc-plan.featured { animation: dc-slide-bg 9s linear infinite !important; }
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */

@@ -131,7 +131,7 @@ export default function MailboxSetup({ initial, onSave, onClose }: {
                   <Mail size={14} color={INK} /><span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Incoming — IMAP</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-                  <div><label style={label}>IMAP host</label><input style={inp} value={mb.imapHost} onChange={e => set({ imapHost: e.target.value })} placeholder="imap.gmail.com" /></div>
+                  <div><label style={label}>IMAP host</label><input style={inp} value={mb.imapHost} onChange={e => set({ imapHost: e.target.value })} placeholder="imap.yourdomain.com" /></div>
                   <div><label style={label}>Port</label><input style={inp} type="number" value={mb.imapPort} onChange={e => set({ imapPort: Number(e.target.value) })} /></div>
                   <div>
                     <label style={label}>Security</label>
@@ -149,7 +149,7 @@ export default function MailboxSetup({ initial, onSave, onClose }: {
                   <span style={{ fontSize: 11, color: MUTED }}>(leave blank to reuse IMAP settings)</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-                  <div><label style={label}>SMTP host</label><input style={inp} value={mb.smtpHost} onChange={e => set({ smtpHost: e.target.value })} placeholder="smtp.gmail.com" /></div>
+                  <div><label style={label}>SMTP host</label><input style={inp} value={mb.smtpHost} onChange={e => set({ smtpHost: e.target.value })} placeholder="smtp.yourdomain.com" /></div>
                   <div><label style={label}>Port</label><input style={inp} type="number" value={mb.smtpPort} onChange={e => set({ smtpPort: Number(e.target.value) })} /></div>
                   <div>
                     <label style={label}>Security</label>

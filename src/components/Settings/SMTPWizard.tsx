@@ -29,9 +29,6 @@ const PROVIDERS = [
   { id: 'cpanel', label: 'cPanel / shared host', emoji: '🗄️', desc: 'Hosting account email · usually mail.yourdomain.com', color: '#475569',
     smtp: { host: '', port: '465', encryption: 'ssl' as const, user: '', pass: '', fromName: '', fromEmail: '' },
     imap: { host: '', port: '993', user: '', pass: '', folder: 'INBOX' } },
-  { id: 'gmail', label: 'Gmail', emoji: '📧', desc: 'smtp.gmail.com · App Password required', color: '#ea4335',
-    smtp: { host: 'smtp.gmail.com', port: '587', encryption: 'tls' as const, user: '', pass: '', fromName: '', fromEmail: '' },
-    imap: { host: 'imap.gmail.com', port: '993', user: '', pass: '', folder: 'INBOX' } },
   { id: 'outlook', label: 'Outlook', emoji: '💼', desc: 'smtp-mail.outlook.com · Office 365', color: '#0078d4',
     smtp: { host: 'smtp-mail.outlook.com', port: '587', encryption: 'tls' as const, user: '', pass: '', fromName: '', fromEmail: '' },
     imap: { host: 'outlook.office365.com', port: '993', user: '', pass: '', folder: 'INBOX' } },
@@ -59,11 +56,34 @@ function validateEmail(v: string): FieldValidation {
     ? { ok: true, msg: 'Valid email address' }
     : { ok: false, msg: 'Enter a valid email address' };
 }
+/**
+ * An SMTP username is a login, not an address.
+ *
+ * Requiring an `@` here blocked real, correct credentials: Resend's username
+ * is the literal word `resend`, SendGrid's is `apikey`, and AWS SES issues an
+ * access key id. Those accounts could not be connected at all — the form
+ * refused to advance past a value the provider had told the customer to use.
+ *
+ * So: an address if it looks like one, otherwise any single-token login. The
+ * only things rejected are whitespace and a half-typed address, because
+ * `user@` reaching the server is a mistake worth catching here rather than in
+ * an SMTP rejection twenty seconds later.
+ */
+function validateUsername(v: string): FieldValidation {
+  if (!v) return { ok: false, msg: 'Required' };
+  if (/\s/.test(v)) return { ok: false, msg: 'No spaces in a username' };
+  if (v.includes('@')) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+      ? { ok: true, msg: 'Valid email address' }
+      : { ok: false, msg: 'Looks like a half-finished email address' };
+  }
+  return { ok: true, msg: 'Username set' };
+}
 function validateHost(v: string): FieldValidation {
   if (!v) return { ok: false, msg: 'Required' };
   return /^[a-zA-Z0-9]([a-zA-Z0-9\-\.]+)[a-zA-Z0-9]$/.test(v)
     ? { ok: true, msg: 'Host looks good' }
-    : { ok: false, msg: 'Enter a valid hostname (e.g. smtp.gmail.com)' };
+    : { ok: false, msg: 'Enter a valid hostname (e.g. smtp.yourdomain.com)' };
 }
 function validatePort(v: string): FieldValidation {
   const n = parseInt(v);
@@ -83,7 +103,7 @@ function smtpErrors(cfg: SMTPConfig): FormErrors {
   const e: FormErrors = {};
   const h = validateHost(cfg.host); if (!h.ok) e.host = h.msg;
   const p = validatePort(cfg.port); if (!p.ok) e.port = p.msg;
-  const u = validateEmail(cfg.user); if (!u.ok) e.user = u.msg;
+  const u = validateUsername(cfg.user); if (!u.ok) e.user = u.msg;
   const pw = validatePassword(cfg.pass); if (!pw.ok) e.pass = pw.msg;
   const fe = validateEmail(cfg.fromEmail); if (!fe.ok) e.fromEmail = fe.msg;
   return e;
@@ -399,7 +419,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
     const e: FormErrors = {};
     if (!validateHost(cfg.host).ok) e.host = validateHost(cfg.host).msg;
     if (!validatePort(cfg.port).ok) e.port = validatePort(cfg.port).msg;
-    if (!validateEmail(cfg.user).ok) e.user = validateEmail(cfg.user).msg;
+    if (!validateUsername(cfg.user).ok) e.user = validateUsername(cfg.user).msg;
     if (!validatePassword(cfg.pass).ok) e.pass = validatePassword(cfg.pass).msg;
     if (cfg.fromEmail && !validateEmail(cfg.fromEmail).ok) e.fromEmail = validateEmail(cfg.fromEmail).msg;
     setSmtpErrors(e);
@@ -521,14 +541,6 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 </div>
               </div>
             )}
-            {selectedProvider === 'gmail' && (
-              <div style={{ padding: '12px 14px', backgroundColor: '#fef9c3', borderRadius: '8px', border: '1px solid #fde047', marginBottom: '16px', display: 'flex', gap: '8px' }}>
-                <Info size={14} color="#a16207" style={{ flexShrink: 0, marginTop: '1px' }} />
-                <p style={{ fontSize: '12px', color: '#a16207', margin: 0 }}>
-                  Gmail requires an <strong>App Password</strong> (not your account password). Enable 2-Factor Authentication, then generate one at <strong>myaccount.google.com → Security → App Passwords</strong>.
-                </p>
-              </div>
-            )}
             {selectedProvider === 'sendgrid' && (
               <div style={{ padding: '12px 14px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '16px' }}>
                 <p style={{ fontSize: '12px', color: '#1d4ed8', margin: 0 }}>SendGrid username is always <code>apikey</code>. The password is your SendGrid API key.</p>
@@ -551,7 +563,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px', marginBottom: '14px' }}>
               <LabeledField label="SMTP Host" value={smtp.host} onChange={v => setSMTP(p => ({ ...p, host: v }))}
-                placeholder="smtp.gmail.com" required
+                placeholder="smtp.yourdomain.com" required
                 hint={{ val: smtp.host, validator: validateHost }} />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '10px' }}>
                 <LabeledField label="Port" value={smtp.port} onChange={v => setSMTP(p => ({ ...p, port: v }))}
@@ -567,7 +579,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
                 </div>
               </div>
               <LabeledField label="Username / Email" value={smtp.user} onChange={v => setSMTP(p => ({ ...p, user: v }))}
-                placeholder="you@example.com" required hint={{ val: smtp.user, validator: validateEmail }} />
+                placeholder="you@example.com or a provider login" required hint={{ val: smtp.user, validator: validateUsername }} />
               <LabeledField label="Password / App Key" value={smtp.pass} onChange={v => setSMTP(p => ({ ...p, pass: v }))}
                 type="password" placeholder="••••••••" required hint={{ val: smtp.pass, validator: validatePassword }} />
               <LabeledField label="From Name" value={smtp.fromName} onChange={v => setSMTP(p => ({ ...p, fromName: v }))}
@@ -622,7 +634,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '14px', marginBottom: '16px' }}>
               <LabeledField label="IMAP Host" value={imap.host} onChange={v => setIMAP(p => ({ ...p, host: v }))}
-                placeholder="imap.gmail.com"
+                placeholder="imap.yourdomain.com"
                 hint={imap.host ? { val: imap.host, validator: validateHost } : undefined} />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '10px' }}>
                 <LabeledField label="Port" value={imap.port} onChange={v => setIMAP(p => ({ ...p, port: v }))}
@@ -635,7 +647,7 @@ export default function SMTPWizard({ onSave, initialSMTP, initialIMAP }: Props) 
               </div>
               <LabeledField label="IMAP Username" value={imap.user} onChange={v => setIMAP(p => ({ ...p, user: v }))}
                 placeholder="you@example.com"
-                hint={imap.user ? { val: imap.user, validator: validateEmail } : undefined} />
+                hint={imap.user ? { val: imap.user, validator: validateUsername } : undefined} />
               <LabeledField label="IMAP Password" value={imap.pass} onChange={v => setIMAP(p => ({ ...p, pass: v }))}
                 type="password" placeholder="••••••••" />
             </div>

@@ -15,8 +15,11 @@
  *
  *   - Run when nobody is looking. A hidden tab stops the loop entirely, which
  *     is the difference between a page you leave open and a warm laptop.
- *   - Run when asked not to. `prefers-reduced-motion` draws one still frame
- *     and stops; the depth is still there, the movement is not.
+ *   - Travel when asked not to. Under `prefers-reduced-motion` nothing moves
+ *     across the canvas — no drift, no orbits, no falling stars — but the
+ *     stars keep twinkling, which changes opacity in place and moves nothing.
+ *     This used to freeze on a single frame, and a visitor with battery saver
+ *     on could not tell that from a broken page.
  *   - Intercept the cursor. It is `pointer-events: none` and `aria-hidden`, so
  *     it is invisible to both the mouse and a screen reader.
  */
@@ -31,10 +34,19 @@ import { useEffect, useRef } from 'react';
  * a still image; these are roughly six times that, slow enough to be calm and
  * fast enough to be visibly moving while you read a paragraph.
  */
+/*
+ * Speeds are px per 60Hz frame, so 0.12 is about 7px a second.
+ *
+ * They were a third of this. On the back layer — which is 130 of the 240 stars,
+ * so it is what the eye reads as "the sky" — that worked out at 3px a second: a
+ * star taking seven minutes to cross the page, which is not slow motion, it is
+ * a photograph. The front layer carries most of the visible movement now and
+ * the back one is still slow enough to sit behind the text.
+ */
 const LAYERS = [
-  { count: 130, size: [0.5, 1.1], speed: 0.055, alpha: [0.22, 0.50], drift: 0.04 },
-  { count: 78, size: [0.9, 1.7], speed: 0.115, alpha: [0.38, 0.75], drift: 0.10 },
-  { count: 32, size: [1.4, 2.5], speed: 0.210, alpha: [0.58, 1.00], drift: 0.20 },
+  { count: 130, size: [0.5, 1.1], speed: 0.13, alpha: [0.22, 0.50], drift: 0.04 },
+  { count: 78, size: [0.9, 1.7], speed: 0.28, alpha: [0.38, 0.75], drift: 0.10 },
+  { count: 32, size: [1.4, 2.5], speed: 0.52, alpha: [0.58, 1.00], drift: 0.20 },
 ];
 
 /**
@@ -189,7 +201,10 @@ export default function Starfield() {
         }
         const y = s.y - (scrollY * s.depth) % (h + 4);
         const wrapped = y < -2 ? y + h + 4 : y;
-        const twinkle = reduced ? 1 : 0.72 + 0.28 * Math.sin(t * s.tw + s.phase);
+        /* Twinkle survives `reduce`: it changes opacity in place and moves
+           nothing, so it is not the kind of animation the setting is asking us
+           to stop — and without it the sky is a flat still. */
+        const twinkle = 0.72 + 0.28 * Math.sin(t * s.tw + s.phase);
 
         ctx.globalAlpha = s.a * twinkle;
         ctx.fillStyle = `rgb(${s.tint})`;
@@ -300,15 +315,14 @@ export default function Starfield() {
          battery in the ones that throttle it rather than stopping it. */
       cancelAnimationFrame(raf);
       last = 0;                    // do not integrate the time spent hidden
-      if (!document.hidden && !reduced) raf = requestAnimationFrame(loop);
+      if (!document.hidden) raf = requestAnimationFrame(loop);
     };
 
     build();
-    if (reduced) {
-      draw(0);
-    } else {
-      raf = requestAnimationFrame(loop);
-    }
+    /* Runs either way. Under `reduce` nothing travels — no drift, no orbits, no
+       falling stars — but the stars still twinkle, so the sky reads as a sky
+       rather than as a page that failed to load. */
+    raf = requestAnimationFrame(loop);
 
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);

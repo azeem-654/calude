@@ -139,7 +139,7 @@ function EmailProviderCard() {
      whether your hosting blocks SMTP ports. The free allowances are the
      published ones and none of them ask for a card. */
   const providerDocs: Record<string, { label: string; url: string; hint: string }> = {
-    smtp:     { label: 'SMTP',     url: '',                       hint: 'Uses the SMTP server configured in the wizard above — Gmail, Outlook, your host, anything. Blocked ports are retried automatically.' },
+    smtp:     { label: 'SMTP',     url: '',                       hint: 'Uses the SMTP server configured in the wizard above — Outlook, your host, a sending API, anything that speaks SMTP. Blocked ports are retried automatically.' },
     brevo:    { label: 'Brevo',    url: 'https://www.brevo.com',  hint: 'Free: 300 emails a day, no card. Sends over HTTPS, so it works even when your host blocks every SMTP port — the safest choice on shared hosting.' },
     resend:   { label: 'Resend',   url: 'https://resend.com',     hint: 'Free: 3,000 a month. Its onboarding@resend.dev sender works before you verify a domain, so it is the fastest route to a first real send.' },
     mailjet:  { label: 'Mailjet',  url: 'https://www.mailjet.com',hint: 'Free: 200 a day. Needs both an API key and an API secret — they sit on the same page of your account.' },
@@ -898,7 +898,7 @@ function IntegrationsTab() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px', marginBottom: '12px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>SMTP Host</label>
-            <input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" style={inputStyle} />
+            <input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.yourdomain.com" style={inputStyle} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Port</label>
