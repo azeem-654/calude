@@ -8,7 +8,7 @@
  */
 import { addr, body, fail, json, ok } from '../lib/http';
 import { hashPassword, newToken, verifyPassword } from '../lib/crypto';
-import { hasAnyUser, nowIso, sweepSessions, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { hasAnyUser, hasInstallOwner, nowIso, sweepSessions, userFromToken, type Env, type SessionUser } from '../lib/db';
 
 const SESSION_DAYS = 30;
 
@@ -80,6 +80,17 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
 
   /* ── First run: create the owner ── */
   if (action === 'bootstrap') {
+    /*
+     * Two guards, not one.
+     *
+     * `hasAnyUser` is the first-run test and it is the weaker of the two: it
+     * stops passing the moment anybody signs up, but it is not what makes the
+     * owner unique. `hasInstallOwner` is — it asks whether the privileged
+     * no-workspace account exists, and it keeps refusing even if the users
+     * table were emptied of everyone else. There is one owner on this install
+     * and there is no route here to a second.
+     */
+    if (await hasInstallOwner(env.DB)) return fail('This install already has an owner account.');
     if (await hasAnyUser(env.DB)) return fail('This install already has an owner account.');
     const email = addr(d.email);
     if (!email) return fail('Enter a valid email address.');
@@ -211,11 +222,22 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     const problem = passwordProblem(String(d.password ?? ''), String(d.name ?? ''), email);
     if (problem) return fail(problem);
 
+    /*
+     * A user made here belongs to a workspace, always.
+     *
+     * `d.accountId ?? null` used to be the fallback, and a null `account_id`
+     * on an agency row *is* the install owner — so this endpoint would mint a
+     * second one for any caller who simply omitted the field. The owner is
+     * created once, by `bootstrap`, and never again.
+     */
+    const accountId = String(d.accountId ?? '').trim();
+    if (!accountId) return fail('Choose which workspace this user belongs to.');
+
     await env.DB.prepare(
       'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     ).bind(
       email.toLowerCase(), String(d.name ?? '').slice(0, 120),
-      d.role === 'agency' ? 'agency' : 'client', d.accountId ?? null,
+      d.role === 'agency' ? 'agency' : 'client', accountId,
       await hashPassword(String(d.password)), nowIso(),
     ).run();
     return ok();

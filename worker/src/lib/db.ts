@@ -91,6 +91,26 @@ export async function hasAnyUser(db: D1Database): Promise<boolean> {
   return !!row;
 }
 
+/**
+ * Is there already an install owner?
+ *
+ * The owner is the one account with no `account_id` — the row `bootstrap`
+ * writes on first run. It is the only genuinely privileged account on the
+ * install: `resellLimitFor` gives it an unlimited sub-account allowance, where
+ * every other agency is held to its plan.
+ *
+ * Distinct from `hasAnyUser`, deliberately. `bootstrap` guards on "are there
+ * any users at all", which is right for first-run detection and wrong as a
+ * defence: a second owner can be made while plenty of users exist. This asks
+ * the question that actually matters, so there can be exactly one, ever.
+ */
+export async function hasInstallOwner(db: D1Database): Promise<boolean> {
+  const row = await db.prepare(
+    "SELECT 1 AS n FROM crm_users WHERE account_id IS NULL AND role = 'agency' LIMIT 1",
+  ).first<{ n: number }>();
+  return !!row;
+}
+
 export async function userFromToken(db: D1Database, token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   const row = await db.prepare(
