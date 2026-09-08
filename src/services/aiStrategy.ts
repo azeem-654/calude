@@ -21,10 +21,11 @@
  * claim than "the word 'multi-location' appeared in your sentence", and a user
  * deciding how much to trust the plan needs to know which one happened.
  */
-import { getGeminiKey } from '../lib/gemini';
+import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
 import type { AIChannel, AIStrategy } from '../types/aiSalesAgent';
 
-const MODEL = 'gemini-2.0-flash';
+/* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
+const MODEL = DEFAULT_TEXT_MODEL;
 
 /** Sensible when the objective is silent, and always declared as a default. */
 export const DEFAULTS = {

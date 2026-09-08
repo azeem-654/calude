@@ -28,19 +28,48 @@ export function hasGeminiKey() {
   return !!getGeminiKey();
 }
 
-/** Verify a key actually works before saving it (cheap 1-token generate call). */
+/*
+ * ── Which models to ask for ───────────────────────────────────────────────
+ *
+ * Google retires model ids, and every id in this file was a 2.0 that no longer
+ * exists: "models/gemini-2.0-flash-lite is no longer available". They were
+ * hardcoded in six files, so one retirement broke AI Shorts, the blog writer,
+ * the SEO reader, the pipeline coach and the strategy generator at once — and
+ * the *key verification* too, which is what made a perfectly good key look
+ * rejected.
+ *
+ * Named once, here. A chain rather than a single id, so the next retirement
+ * costs one wasted request instead of an outage: `postGeminiWithFallback`
+ * treats a 404 as "this one is gone, try the next".
+ *
+ * Order is cheapest-capable first. The lite model cannot ingest a YouTube URL —
+ * it fetches the watch page and returns a text/html MIME error — so that path
+ * has a chain of its own.
+ */
+export const TEXT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+export const VIDEO_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+export const YOUTUBE_MODELS = ['gemini-3.5-flash', 'gemini-2.5-flash'];
+
+/** The first model of a chain — for callers that make a single plain call. */
+export const DEFAULT_TEXT_MODEL = TEXT_MODELS[0];
+
+/**
+ * Verify a key actually works before saving it.
+ *
+ * This used to send a one-token `generateContent` to a named model, which tied
+ * "is this key good?" to "does that model still exist?" — so when Google
+ * retired gemini-2.0-flash-lite, a valid key was reported as an error, and the
+ * message shown was Google's 404 about a model the customer had never chosen.
+ *
+ * ListModels asks the question actually being asked: does this key
+ * authenticate, and is the Generative Language API enabled for its project. It
+ * is free, it needs no quota, and no model retirement can ever break it.
+ */
 export async function testGeminiKey(key: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const k = key.trim();
   if (!k) return { ok: false, error: 'Enter an API key first.' };
   try {
-    const res = await fetch(`${BASE}/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${k}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Reply with the single word: ok' }] }],
-        generationConfig: { maxOutputTokens: 5 },
-      }),
-    });
+    const res = await fetch(`${BASE}/v1beta/models?key=${encodeURIComponent(k)}&pageSize=1`);
     if (res.ok) return { ok: true };
     return { ok: false, error: friendlyGeminiError(res.status, await res.text().catch(() => '')) };
   } catch {
@@ -50,6 +79,9 @@ export async function testGeminiKey(key: string): Promise<{ ok: true } | { ok: f
 
 /** Transient errors worth retrying: rate limit, or Google's servers being overloaded. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+/** Google's wording when an id has been retired, in case the status is not 404. */
+const MODEL_GONE = /no longer available|is not found|not supported for|deprecated/i;
 
 /** Turn Gemini's verbose JSON error bodies into a short, human-readable message. */
 function friendlyGeminiError(status: number, raw: string): string {
@@ -105,10 +137,18 @@ async function postGeminiWithFallback(
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
       lastStatus = res.status;
       if (!RETRYABLE_STATUS.has(res.status)) {
-        // Non-transient (e.g. 400 bad request). Some models don't support a
-        // given input (e.g. flash-lite can't ingest a YouTube URL and returns
-        // a text/html MIME error) — when asked, fall through to the next model
-        // instead of failing the whole request.
+        /*
+         * A 404 means this model id is gone. That is exactly what the chain
+         * exists for, so it always falls through — unconditionally, not only
+         * when the caller opted in. Without this the chain was decorative:
+         * the first id being retired threw before the second was ever tried,
+         * which is how a stale name took out five features at once.
+         */
+        if (res.status === 404 || MODEL_GONE.test(lastError)) break;
+        // Other non-transient failures (e.g. 400 bad request). Some models
+        // don't support a given input — flash-lite can't ingest a YouTube URL
+        // and returns a text/html MIME error — so when asked, fall through
+        // rather than failing the whole request.
         if (fallThroughOnBadRequest) break;
         throw new Error(friendlyGeminiError(res.status, lastError));
       }
@@ -292,9 +332,7 @@ Return ONLY valid JSON with NO markdown fences:
   // which flash-lite lacks — it fetches the watch page and returns a text/html
   // MIME error. Use the models that support YouTube ingestion for that path.
   const isYouTube = mimeType === null;
-  const MODELS = isYouTube
-    ? ['gemini-2.5-flash', 'gemini-2.0-flash']
-    : ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  const MODELS = isYouTube ? YOUTUBE_MODELS : VIDEO_MODELS;
 
   const data = await postGeminiWithFallback(MODELS, body, isYouTube);
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
@@ -388,7 +426,7 @@ export function sanitizeAnalysis(analysis: GeminiAnalysis, maxClipDuration: numb
 
 /** Shared helper: call Gemini text models with fallback chain. */
 async function callGemini(prompt: string, temperature = 0.7): Promise<string> {
-  const MODELS = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  const MODELS = TEXT_MODELS;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', temperature },

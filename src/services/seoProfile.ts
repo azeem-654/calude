@@ -17,7 +17,7 @@
  * starts with what it has.
  */
 import { extractPhrases, extractSentences } from './campaignAnalysis';
-import { getGeminiKey } from '../lib/gemini';
+import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
 import { newId } from './blogAutomation';
 import type {
   Keyword, MoneyPage, PortfolioItem, SearchIntent, SeoProfile, TopicCluster, VoiceProfile,
@@ -327,7 +327,8 @@ export function distilFromText(items: PortfolioItem[]): DistilledProfile {
 
 /* ── The AI reader ── */
 
-const MODEL = 'gemini-2.0-flash';
+/* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
+const MODEL = DEFAULT_TEXT_MODEL;
 
 interface RawProfile {
   offering?: string;

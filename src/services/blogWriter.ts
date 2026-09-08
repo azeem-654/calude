@@ -19,7 +19,7 @@
  * A generator that believes it put the keyword in the first paragraph and did
  * not is exactly the failure the checks exist to catch.
  */
-import { getGeminiKey } from '../lib/gemini';
+import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
 import type {
   Article, ArticleSeo, BlogProject, MonthPlan, PlannedPost, SeoCheck,
 } from '../types/blogAutomation';
@@ -657,7 +657,8 @@ function composed(post: PlannedPost, project: BlogProject, prefix = ''): Article
 
 /* ── The AI pass ── */
 
-const MODEL = 'gemini-2.0-flash';
+/* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
+const MODEL = DEFAULT_TEXT_MODEL;
 
 /**
  * Write one post.

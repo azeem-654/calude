@@ -26,10 +26,11 @@
  * silently deleting somebody's opportunities to tidy up a board would be the
  * worst bug this file could have.
  */
-import { getGeminiKey } from '../lib/gemini';
+import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
 import type { Deal, Pipeline, Stage } from '../types';
 
-const MODEL = 'gemini-2.0-flash';
+/* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
+const MODEL = DEFAULT_TEXT_MODEL;
 
 /* ── The brief ─────────────────────────────────────────────────────────── */
 

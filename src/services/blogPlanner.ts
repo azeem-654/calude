@@ -20,7 +20,7 @@
  * All three are enforced when the plan is built and re-checked afterwards by
  * `auditPlan`, so a hand-edited plan cannot silently break them either.
  */
-import { getGeminiKey } from '../lib/gemini';
+import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
 import { newId } from './blogAutomation';
 import { inlinePhrase } from './blogWriter';
 import type {
@@ -380,7 +380,8 @@ export function reflow(plan: MonthPlan, now = new Date()): MonthPlan {
 
 /* ── The AI pass ── */
 
-const MODEL = 'gemini-2.0-flash';
+/* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
+const MODEL = DEFAULT_TEXT_MODEL;
 
 interface RawPost {
   keyword?: string;
