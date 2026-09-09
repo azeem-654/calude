@@ -17,6 +17,7 @@ import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
 import SMTPWizard from './SMTPWizard';
+import MailboxesPanel from './MailboxesPanel';
 import DiagnosticsCard from './DiagnosticsCard';
 import DeliveryCheck from './DeliveryCheck';
 import RouteCheck from './RouteCheck';
@@ -571,7 +572,24 @@ function EmailSMSTab() {
       {/* API Email Provider — for campaigns */}
       <EmailProviderCard />
 
-      {/* SMTP Integration Wizard */}
+      {/*
+        Mailboxes — the one place a mail server is connected.
+
+        This is where the wizard below used to be the only route in. The wizard
+        could produce exactly one mailbox, walked the two directions as
+        consecutive steps of a single thing when they are separate connections
+        that fail separately, and tested at the very end — so a wrong password
+        surfaced four screens after it was typed.
+      */}
+      {card(<MailboxesPanel />)}
+
+      {/*
+        The old wizard, kept for now.
+
+        It still writes to the same endpoint through the compatibility actions,
+        and some customers know it. It comes out once the panel above has been
+        live long enough to be sure nothing was lost with it.
+      */}
       <SMTPWizard onSave={handleSMTPSave} initialSMTP={initialSMTP} initialIMAP={initialIMAP} />
 
       {/* Mailbox Warmup */}

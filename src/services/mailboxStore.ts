@@ -25,11 +25,45 @@ export interface StoredMailbox {
   lastError: string;
 }
 
+/**
+ * One connected mailbox, as the server describes it.
+ *
+ * The two directions carry their own verification. A single "verified" flag
+ * could not answer the question people actually ask — *can I send?* and *can I
+ * receive?* — separately, and sending through one provider while collecting
+ * replies from another is ordinary.
+ */
+export interface MailboxRecord {
+  id: string;
+  label: string;
+  isPrimary: boolean;
+  smtp: { host: string; port: number; encryption: string; username: string; hasPassword: boolean };
+  from: { name: string; email: string; replyTo: string };
+  imap: { host: string; port: number; encryption: string; username: string; folder: string; hasPassword: boolean };
+  provider: { name: string; domain: string; url: string; hasKey: boolean; hasSecret: boolean };
+  outgoing: { verifiedAt: string | null; verifiedPort: number | null; lastError: string };
+  incoming: { verifiedAt: string | null; lastError: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What broke, and what to do about it. Built on the Worker, where the real
+ *  wire text is — see worker/src/lib/mailDiagnosis.ts. */
+export interface Diagnosis {
+  summary: string;
+  steps: string[];
+  raw: string;
+}
+
 interface Reply {
   success: boolean;
   message?: string;
   error?: string;
   mailbox?: StoredMailbox | null;
+  mailboxes?: MailboxRecord[];
+  diagnosis?: Diagnosis;
+  direction?: 'outgoing' | 'incoming';
+  id?: string;
   port?: number;
 }
 
@@ -122,3 +156,68 @@ export async function hydrateLocalCache(): Promise<StoredMailbox | null> {
   } catch { /* a browser refusing storage is not a reason to fail the load */ }
   return mb;
 }
+
+/* ── Many mailboxes ────────────────────────────────────────────────────────
+ *
+ * Everything above this line predates a workspace being allowed more than one
+ * mailbox, and is kept because the older settings wizard still calls it. What
+ * follows is the real API: a workspace has a list, each entry is validated in
+ * each direction on its own, and one of them is the primary that campaigns and
+ * the scheduler send from.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** What a form hands back for one mailbox. Blank passwords mean "keep". */
+export interface MailboxDraft {
+  id?: string;
+  label: string;
+  smtp: { host: string; port: string | number; encryption: string; username: string; password: string };
+  from: { name: string; email: string; replyTo?: string };
+  imap: { host: string; port: string | number; encryption: string; username: string; password: string; folder: string };
+}
+
+export async function listMailboxes(): Promise<MailboxRecord[]> {
+  const r = await call('list');
+  return r.success ? (r.mailboxes ?? []) : [];
+}
+
+/**
+ * Create or update one.
+ *
+ * Passwords are sent as typed, including empty. The endpoint reads an empty
+ * string as "keep the stored one" — the form shows dots and cannot send back a
+ * password it was never given, so treating blank as an erasure would wipe a
+ * working mailbox every time somebody corrected a port number.
+ */
+export async function saveMailboxRecord(draft: MailboxDraft): Promise<Reply> {
+  return call('save', {
+    id: draft.id,
+    label: draft.label,
+    smtp: {
+      host: draft.smtp.host.trim(), port: Number(draft.smtp.port) || 587,
+      encryption: draft.smtp.encryption, username: draft.smtp.username.trim(),
+      password: draft.smtp.password,
+    },
+    from: {
+      name: draft.from.name, email: draft.from.email.trim(), replyTo: draft.from.replyTo ?? '',
+    },
+    imap: {
+      host: draft.imap.host.trim(), port: Number(draft.imap.port) || 993,
+      encryption: draft.imap.encryption, username: draft.imap.username.trim(),
+      password: draft.imap.password, folder: draft.imap.folder || 'INBOX',
+    },
+  });
+}
+
+export async function deleteMailboxById(id: string): Promise<Reply> { return call('delete', { id }); }
+export async function setPrimaryMailbox(id: string): Promise<Reply> { return call('set_primary', { id }); }
+
+/**
+ * Prove one direction works, and record the answer server-side.
+ *
+ * Two calls rather than one, because they fail independently and a customer
+ * fixing their outgoing password should not have to re-prove their inbox. A
+ * failure comes back with `diagnosis`: what the server objected to, and the
+ * steps that address it.
+ */
+export async function validateOutgoing(id: string): Promise<Reply> { return call('test_outgoing', { id }); }
+export async function validateIncoming(id: string): Promise<Reply> { return call('test_incoming', { id }); }
