@@ -22,6 +22,7 @@ import { handleInfra } from './routes/infra';
 import { handleAutomation } from './routes/automation';
 import { handleAutopilot } from './routes/autopilot';
 import { handleReplies } from './routes/replies';
+import { handleCommerce } from './routes/commerce';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -57,6 +58,9 @@ const ROUTES: Record<string, Handler> = {
   /* The AI key Autopilot writes replies with, and the replies a guardrail held
      back for a person to read. */
   '/api/replies.php': handleReplies,
+  /* Business ideas, products and orders. No checkout — see routes/commerce.ts
+     for why that is stated rather than stubbed. */
+  '/api/commerce.php': handleCommerce,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second

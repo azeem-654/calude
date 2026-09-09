@@ -1,0 +1,284 @@
+/**
+ * Something to sell — ideas, products, and the orders you have taken.
+ *
+ * For the customer this product also promises to serve: the one who has no
+ * business yet. They describe themselves, the app suggests things they could
+ * actually start, and the one they pick becomes a product.
+ *
+ * ── What this screen refuses to imply ──
+ *
+ * There is no checkout. The orders list says so at the top rather than sitting
+ * empty and letting somebody conclude nobody has bought anything. And the
+ * startup and revenue figures on an idea are a language model's guesses; they
+ * are labelled "estimate" every single time, because a number like that
+ * presented as a forecast is how a person commits money they do not have.
+ */
+import { useEffect, useState } from 'react';
+import {
+  Lightbulb, Package, Receipt, Plus, Trash2, Sparkles, Loader, Star, X,
+} from 'lucide-react';
+import Header from '../Layout/Header';
+import { useApp } from '../../context/AppContext';
+import {
+  fetchCommerce, suggestIdeas, setIdeaStatus, saveProduct, deleteProduct,
+  recordOrder, setOrderStatus, money,
+  type BusinessIdea, type Product, type Order,
+} from '../../services/commerce';
+
+const INK = '#17191c';
+const MUTED = '#6b7280';
+const LINE = '#e6e9f0';
+
+const card: React.CSSProperties = { background: '#fff', border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' };
+const head: React.CSSProperties = { padding: '13px 15px', borderBottom: `1px solid ${LINE}`, background: '#fafbfc', display: 'flex', alignItems: 'center', gap: 8 };
+const inp: React.CSSProperties = { width: '100%', padding: '9px 11px', border: `1px solid ${LINE}`, borderRadius: 9, fontSize: 13, color: INK, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
+const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 };
+const btn = (primary = false): React.CSSProperties => ({
+  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 15px', borderRadius: 9,
+  border: primary ? 'none' : `1px solid ${LINE}`, background: primary ? INK : '#fff',
+  color: primary ? '#fff' : INK, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+});
+
+export default function Commerce() {
+  const { addNotification } = useApp();
+  const [ideas, setIdeas] = useState<BusinessIdea[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [storefront, setStorefront] = useState({ available: false, note: '' });
+  const [busy, setBusy] = useState(false);
+  const [about, setAbout] = useState('');
+  const [budget, setBudget] = useState('');
+  const [reload, setReload] = useState(0);
+
+  const [draft, setDraft] = useState<Partial<Product> | null>(null);
+  const [order, setOrder] = useState<{ email: string; productId: string; qty: string } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const r = await fetchCommerce();
+      if (!live) return;
+      setIdeas(r.ideas); setProducts(r.products); setOrders(r.orders); setStorefront(r.storefront);
+    })();
+    return () => { live = false; };
+  }, [reload]);
+
+  const again = () => setReload(n => n + 1);
+
+  const doSuggest = async () => {
+    setBusy(true);
+    const r = await suggestIdeas(about, Number(budget) || 0);
+    setBusy(false);
+    if (!r.success) { addNotification(r.error ?? 'Could not suggest anything.', 'error'); return; }
+    if (r.ideas) setIdeas(r.ideas);
+    addNotification('Five ideas, written from what you said about yourself.', 'success');
+  };
+
+  const decide = async (id: string, status: BusinessIdea['status']) => {
+    const r = await setIdeaStatus(id, status);
+    if (r.ideas) setIdeas(r.ideas);
+  };
+
+  const doSaveProduct = async () => {
+    if (!draft?.name?.trim()) return;
+    setBusy(true);
+    const r = await saveProduct({
+      ...draft,
+      priceCents: Math.round(Number(draft.priceCents ?? 0) * 100),
+      costCents: Math.round(Number(draft.costCents ?? 0) * 100),
+    });
+    setBusy(false);
+    if (!r.success) { addNotification(r.error ?? 'Could not save.', 'error'); return; }
+    if (r.products) setProducts(r.products);
+    setDraft(null);
+    addNotification('Product saved.', 'success');
+  };
+
+  const doRecordOrder = async () => {
+    if (!order) return;
+    const p = products.find(x => x.id === order.productId);
+    if (!p) { addNotification('Pick a product first.', 'error'); return; }
+    setBusy(true);
+    const r = await recordOrder(order.email, [{
+      productId: p.id, name: p.name,
+      qty: Math.max(1, Number(order.qty) || 1), priceCents: p.priceCents,
+    }]);
+    setBusy(false);
+    if (!r.success) { addNotification(r.error ?? 'Could not record it.', 'error'); return; }
+    if (r.orders) setOrders(r.orders);
+    setOrder(null);
+    addNotification('Order recorded.', 'success');
+  };
+
+  return (
+    <div style={{ minHeight: '100vh' }}>
+      <Header title="Sell" subtitle="What you sell, and what you have sold" />
+
+      <div style={{ padding: '18px clamp(16px, 3vw, 32px) 60px', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 980, margin: '0 auto' }}>
+
+        {/* ── Ideas ── */}
+        <div style={card}>
+          <div style={head}>
+            <Lightbulb size={15} color={INK} />
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Ideas</h3>
+          </div>
+          <div style={{ padding: 15, display: 'grid', gap: 12 }}>
+            <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+              No business yet? Say a little about yourself — what you are good at, how much time you have,
+              anything you have already tried — and this suggests things you could realistically start.
+            </p>
+            <textarea value={about} onChange={e => setAbout(e.target.value)} rows={3}
+              placeholder="I am a joiner, I have evenings and weekends free, and about £500 to start with."
+              style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ maxWidth: 200 }}>
+                <label style={lbl}>Budget to start (optional)</label>
+                <input value={budget} onChange={e => setBudget(e.target.value)} placeholder="500" style={inp} />
+              </div>
+              <button onClick={() => void doSuggest()} disabled={busy} style={btn(true)}>
+                {busy ? <Loader size={14} /> : <Sparkles size={14} />} Suggest ideas
+              </button>
+            </div>
+
+            {ideas.map(i => (
+              <div key={i.id} style={{ padding: 13, border: `1px solid ${LINE}`, borderRadius: 12, background: i.status === 'chosen' ? '#f4fbf5' : '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>{i.title}</h4>
+                    <p style={{ margin: '5px 0 0', fontSize: 13, color: '#3a4150', lineHeight: 1.6 }}>{i.summary}</p>
+                    <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+                      <strong>For:</strong> {i.audience} · <strong>Solves:</strong> {i.problem}
+                    </p>
+                    {i.because && (
+                      <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>because {i.because}</p>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => void decide(i.id, i.status === 'chosen' ? 'shortlisted' : 'chosen')} style={btn(i.status === 'chosen')}>
+                      <Star size={12} /> {i.status === 'chosen' ? 'Chosen' : 'Choose'}
+                    </button>
+                    <button onClick={() => void decide(i.id, 'dismissed')} aria-label="Dismiss" style={{ ...btn(), padding: '9px 10px' }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+                {/* Estimates, said as estimates. Every time. */}
+                <p style={{ margin: '9px 0 0', fontSize: 11.5, color: MUTED }}>
+                  Rough estimate only — {money(Math.round(i.estStartup * 100), i.currency)} to start,
+                  around {money(Math.round(i.estMonthly * 100), i.currency)} a month once going.
+                  These are the model's guesses, not a forecast.
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Products ── */}
+        <div style={card}>
+          <div style={head}>
+            <Package size={15} color={INK} />
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Products</h3>
+            <button onClick={() => setDraft({ name: '', status: 'draft', source: 'own' })} style={{ ...btn(), marginLeft: 'auto' }}>
+              <Plus size={13} /> Add
+            </button>
+          </div>
+          <div style={{ padding: products.length || draft ? 15 : 0, display: 'grid', gap: 10 }}>
+            {!products.length && !draft && (
+              <p style={{ margin: 0, padding: '18px 15px', fontSize: 13, color: MUTED }}>Nothing to sell yet.</p>
+            )}
+            {products.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${LINE}`, borderRadius: 10, flexWrap: 'wrap' }}>
+                <span style={{ flex: 1, minWidth: 160, fontSize: 13.5, fontWeight: 700, color: INK }}>{p.name}</span>
+                <span style={{ fontSize: 13, color: INK, fontWeight: 700 }}>{money(p.priceCents, p.currency)}</span>
+                <span style={{ fontSize: 11.5, color: MUTED }}>cost {money(p.costCents, p.currency)}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: p.status === 'active' ? '#e8f5e9' : '#f1f5f9', color: p.status === 'active' ? '#1e6b32' : MUTED }}>
+                  {p.status}
+                </span>
+                <button onClick={() => void deleteProduct(p.id).then(r => r.products && setProducts(r.products))}
+                  aria-label={`Delete ${p.name}`} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#a02216', display: 'flex' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+
+            {draft && (
+              <div style={{ padding: 13, border: `1px solid ${LINE}`, borderRadius: 12, background: '#f7f8fa', display: 'grid', gap: 10 }}>
+                <div><label style={lbl}>Name</label>
+                  <input value={draft.name ?? ''} onChange={e => setDraft({ ...draft, name: e.target.value })} style={inp} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div><label style={lbl}>Price</label>
+                    <input value={String(draft.priceCents ?? '')} onChange={e => setDraft({ ...draft, priceCents: Number(e.target.value) })} placeholder="85.00" style={inp} /></div>
+                  <div><label style={lbl}>What it costs you</label>
+                    <input value={String(draft.costCents ?? '')} onChange={e => setDraft({ ...draft, costCents: Number(e.target.value) })} placeholder="32.00" style={inp} /></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => void doSaveProduct()} disabled={busy || !draft.name?.trim()} style={btn(true)}>Save</button>
+                  <button onClick={() => setDraft(null)} style={btn()}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Orders ── */}
+        <div style={card}>
+          <div style={head}>
+            <Receipt size={15} color={INK} />
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Orders</h3>
+            {products.length > 0 && (
+              <button onClick={() => setOrder({ email: '', productId: products[0].id, qty: '1' })} style={{ ...btn(), marginLeft: 'auto' }}>
+                <Plus size={13} /> Record one
+              </button>
+            )}
+          </div>
+          <div style={{ padding: 15, display: 'grid', gap: 10 }}>
+            {/* Said plainly, at the top, so an empty list is not mistaken for
+                "nobody bought anything". */}
+            {!storefront.available && storefront.note && (
+              <p style={{ margin: 0, padding: '10px 12px', borderRadius: 10, background: '#eef2f8', color: '#3a4a63', fontSize: 12.5, lineHeight: 1.6 }}>
+                {storefront.note}
+              </p>
+            )}
+
+            {order && (
+              <div style={{ padding: 13, border: `1px solid ${LINE}`, borderRadius: 12, background: '#f7f8fa', display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px', gap: 10 }}>
+                  <div><label style={lbl}>Customer email</label>
+                    <input value={order.email} onChange={e => setOrder({ ...order, email: e.target.value })} placeholder="ann@example.com" style={inp} /></div>
+                  <div><label style={lbl}>Product</label>
+                    <select value={order.productId} onChange={e => setOrder({ ...order, productId: e.target.value })} style={inp}>
+                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select></div>
+                  <div><label style={lbl}>Qty</label>
+                    <input value={order.qty} onChange={e => setOrder({ ...order, qty: e.target.value })} style={inp} /></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => void doRecordOrder()} disabled={busy} style={btn(true)}>Record</button>
+                  <button onClick={() => setOrder(null)} style={btn()}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {orders.map(o => (
+              <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${LINE}`, borderRadius: 10, flexWrap: 'wrap' }}>
+                <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: INK }}>
+                  {o.email || 'No email'} — {o.items.map(i => `${i.qty} × ${i.name}`).join(', ')}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{money(o.totalCents, o.currency)}</span>
+                <select value={o.status} onChange={e => void setOrderStatus(o.id, e.target.value as Order['status']).then(r => r.orders && setOrders(r.orders))}
+                  style={{ ...inp, width: 'auto', padding: '5px 8px', fontSize: 12 }}>
+                  {['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            ))}
+            {!orders.length && !order && (
+              <p style={{ margin: 0, fontSize: 13, color: MUTED }}>No orders recorded yet.</p>
+            )}
+          </div>
+        </div>
+
+        <button onClick={again} style={{ ...btn(), alignSelf: 'flex-start' }}>Refresh</button>
+      </div>
+    </div>
+  );
+}

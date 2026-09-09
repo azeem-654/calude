@@ -19,8 +19,7 @@ import {
   BarChart3, Bot, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, Star, TrendingUp, Users,
-  type LucideIcon,
-} from 'lucide-react';
+  type LucideIcon, Package } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -84,6 +83,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/funnels', label: 'Funnels', desc: 'Landing pages built to capture a lead', icon: LayoutTemplate, aka: ['landing pages', 'opt-in'] },
       { path: '/websites', label: 'Websites', desc: 'Full sites, built and published from here', icon: Globe, aka: ['site', 'pages', 'web'] },
       { path: '/blog-automation', label: 'Blog & SEO', desc: 'A planned blog that ranks your own pages', icon: Newspaper, aka: ['seo', 'articles', 'content', 'ranking'] },
+      /* For the customer who has no business yet, as well as the one who has:
+         what you sell, and what you have sold. */
+      { path: '/sell', label: 'Sell', desc: 'Business ideas, products and the orders you have taken', icon: Package, aka: ['products', 'orders', 'shop', 'store', 'ecommerce', 'ideas'] },
     ],
   },
   {
