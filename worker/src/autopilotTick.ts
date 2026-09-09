@@ -19,10 +19,15 @@
  * it inline and save a few minutes, but then two code paths could send the same
  * email, and the failure mode of that is a customer receiving it twice.
  */
-import { dataGet, dataPut, nowIso, type Env } from './lib/db';
+import { dataGet, dataPut, installSecret, nowIso, type Env } from './lib/db';
 import { loadMailbox, loadMailboxes } from './routes/mailbox';
+import { encryptSecret } from './lib/crypto';
 import { loadSmsConfig } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
+import {
+  createMailbox, credsForMode, poolDomainCandidates, priceDomain,
+  record as recordProvisioned, recordPurchase, registerDomain,
+} from './lib/provisioning';
 import { planNext, type PlannedAction, type Workspace, type Contact, type Sequence, type Enrolment, type Pipeline } from './lib/autopilotPlan';
 
 const CONTACTS_KEY = 'crm_contacts';
@@ -292,24 +297,7 @@ async function carryOut(
   }
 
   if (effect.type === 'pool_step') {
-    /*
-     * Approved, but not carried out here.
-     *
-     * Registering a domain and creating a mailbox both spend money against a
-     * real provider account, and both already have a confirmed path through
-     * infra.ts that reports what the provider said. Duplicating that here would
-     * be a second way to spend somebody's money, written in a hurry, with no
-     * screen showing the result.
-     *
-     * So this records that the step is cleared to go and points at the screen
-     * where it happens. The honest version of "not built yet" is saying which
-     * button to press, not doing half of it silently.
-     */
-    return {
-      ok: true,
-      detail: 'Cleared to go. Open Infrastructure to carry it out and see what the provider charges.',
-      link: { kind: 'domain', id: effect.step, label: 'Infrastructure', route: '/settings?tab=infrastructure' },
-    };
+    return carryOutPoolStep(env, accountId, effect);
   }
 
   if (effect.type === 'flag_stalled') {
@@ -320,6 +308,155 @@ async function carryOut(
       ok: true,
       detail: `${effect.dealIds.length} deal(s) worth a look.`,
       link: { kind: 'pipeline', id: 'stalled', label: 'Deals that stopped moving', route: '/pipelines' },
+    };
+  }
+
+  return { ok: true, detail: '' };
+}
+
+/**
+ * Actually build a piece of the sending pool.
+ *
+ * This used to record that the step was "cleared to go" and point at the
+ * Infrastructure screen — an honest placeholder, but a placeholder: a customer
+ * who approved "register two domains" still had to go and do it. It now buys,
+ * on whichever account the workspace's mode says, and records the cost.
+ *
+ * Every path through here writes to crm_provisioned whether it worked or not.
+ * A purchase that failed silently is worse than one that failed loudly, because
+ * the next plan will look at an unbuilt pool and cheerfully propose buying it
+ * again.
+ */
+async function carryOutPoolStep(
+  env: Env,
+  accountId: string,
+  effect: { type: 'pool_step'; step: string; detail: string },
+): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
+  const step = parse<{ count?: number; domain?: string; domains?: string[]; addresses?: number }>(effect.detail, {});
+  const run = await env.DB.prepare('SELECT purchase_mode FROM crm_autopilot WHERE account_id = ?')
+    .bind(accountId).first<{ purchase_mode: string }>();
+  const mode = run?.purchase_mode === 'managed' ? 'managed' : 'byo';
+
+  if (effect.step === 'register_domain') {
+    const reg = await credsForMode(env, accountId, 'registrar', mode);
+    if (!reg) {
+      return { ok: false, detail: mode === 'managed'
+        ? 'Managed buying is not switched on for this installation, so nothing could be bought.'
+        : 'No registrar is connected, so there was nowhere to buy a domain from.' };
+    }
+
+    /* A name based on the business, not the business's own domain: a filtered
+       cold campaign should cost the reputation of a throwaway rather than of
+       the address invoices come from. */
+    const profile = parse<{ companyName?: string }>(await dataGet(env.DB, accountId, 'crm_onboarding'), {});
+    const base = (profile.companyName || 'business').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const wanted = Math.min(Math.max(step.count ?? 1, 1), 5);
+
+    const bought: string[] = [];
+    let spent = 0;
+    const problems: string[] = [];
+
+    for (const candidate of poolDomainCandidates(base)) {
+      if (bought.length >= wanted) break;
+      const check = await priceDomain(reg.provider, reg.creds, candidate);
+      if (!check.available) continue;
+      const r = await registerDomain(reg.provider, reg.creds, candidate, 1);
+      await recordProvisioned(env, accountId, 'domain', candidate, reg.provider,
+        r.ok ? 'ok' : 'failed', r.ok ? `${r.cost}` : r.error);
+      if (r.ok) {
+        bought.push(candidate);
+        spent += r.cost;
+        /* Only a managed purchase is billable — a customer buying on their own
+           registrar has already been charged by it directly. */
+        if (reg.managed) {
+          await recordPurchase(env, accountId, 'domain', candidate, reg.provider, r.cost, r.cost, 'ok', '1 year');
+        }
+      } else {
+        problems.push(`${candidate}: ${r.error}`);
+      }
+    }
+
+    if (!bought.length) {
+      return { ok: false, detail: problems.length
+        ? problems[0].slice(0, 200)
+        : 'None of the names tried was available. Choose one yourself in Infrastructure.' };
+    }
+    return {
+      ok: true,
+      detail: `Registered ${bought.join(', ')}${spent > 0 ? ` for ${spent.toFixed(2)}` : ''}.`,
+      link: { kind: 'domain', id: bought[0], label: bought[0], route: '/settings?tab=infrastructure' },
+    };
+  }
+
+  if (effect.step === 'create_mailboxes') {
+    const domain = String(step.domain ?? '');
+    const mbp = await credsForMode(env, accountId, 'mailbox', mode);
+    if (!mbp) return { ok: false, detail: 'No mailbox provider is connected, so no addresses could be created.' };
+
+    /* Ordinary-looking names. A pool of sales1@, sales2@, sales3@ is a pattern
+       a spam filter can see from orbit. */
+    const names = ['hello', 'team', 'hi', 'contact', 'enquiries', 'info', 'mail', 'office', 'desk', 'reach'];
+    const wanted = Math.min(Math.max(step.count ?? 1, 1), 10);
+    const made: string[] = [];
+    const problems: string[] = [];
+
+    for (const name of names) {
+      if (made.length >= wanted) break;
+      const r = await createMailbox(mbp.provider, mbp.creds, domain, name);
+      await recordProvisioned(env, accountId, 'mailbox', r.item, mbp.provider,
+        r.ok ? 'ok' : 'failed', r.ok ? '' : r.error);
+      if (r.ok && r.secret) {
+        made.push(r.item);
+        if (mbp.managed) {
+          await recordPurchase(env, accountId, 'mailbox', r.item, mbp.provider, 0, 0, 'ok', '');
+        }
+        /* Saved here, immediately, because the provider will never show this
+           password again — and a mailbox whose password was lost is a mailbox
+           that has to be deleted and made a second time. */
+        await env.DB.prepare(
+          `INSERT INTO crm_mailbox_accounts
+           (id, account_id, label, is_primary, smtp_host, smtp_port, smtp_encryption, smtp_username, smtp_password,
+            from_name, from_email, imap_host, imap_port, imap_encryption, imap_username, imap_password, imap_folder,
+            created_at, updated_at)
+           VALUES (?,?,?,0,'smtp.migadu.com',587,'tls',?,?,?,?,'imap.migadu.com',993,'ssl',?,?, 'INBOX', ?,?)`,
+        ).bind(
+          `mb-${crypto.randomUUID()}`, accountId, r.item,
+          r.secret.address, await encryptSecret(await installSecret(env.DB, 'mailbox_key'), r.secret.password),
+          '', r.secret.address,
+          r.secret.address, await encryptSecret(await installSecret(env.DB, 'mailbox_key'), r.secret.password),
+          nowIso(), nowIso(),
+        ).run();
+      } else if (!r.ok) {
+        problems.push(r.error);
+      }
+    }
+
+    if (!made.length) {
+      return { ok: false, detail: problems[0]?.slice(0, 200) ?? 'No mailboxes could be created.' };
+    }
+    return {
+      ok: true,
+      detail: `Created ${made.join(', ')}. They are connected and ready to validate.`,
+      link: { kind: 'mailbox', id: made[0], label: made[0], route: '/settings?tab=email-sms' },
+    };
+  }
+
+  /* authenticate and warm_up cost nothing and touch DNS or a schedule rather
+     than a provider account. Both are pointed at their own screens, which is
+     the truth rather than a placeholder: applying DNS needs the customer to see
+     what is being written to their zone. */
+  if (effect.step === 'authenticate') {
+    return {
+      ok: true,
+      detail: 'Open Infrastructure to write SPF, DKIM and DMARC — you should see the records before they go into your zone.',
+      link: { kind: 'domain', id: 'dns', label: 'DNS records', route: '/settings?tab=infrastructure' },
+    };
+  }
+  if (effect.step === 'warm_up') {
+    return {
+      ok: true,
+      detail: 'Warm-up runs from the Deliverability screen, where the ramp is set.',
+      link: { kind: 'mailbox', id: 'warmup', label: 'Warm-up', route: '/settings?tab=email-sms' },
     };
   }
 
