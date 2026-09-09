@@ -21,6 +21,7 @@ import { handleMailbox } from './routes/mailbox';
 import { handleInfra } from './routes/infra';
 import { handleAutomation } from './routes/automation';
 import { handleAutopilot } from './routes/autopilot';
+import { handleReplies } from './routes/replies';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -36,6 +37,7 @@ import {
 } from './routes/misc';
 import { runScheduledSends, recordTick } from './scheduled';
 import { runAutopilot } from './autopilotTick';
+import { runReplies } from './replyTick';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -52,6 +54,9 @@ const ROUTES: Record<string, Handler> = {
      decisions that belong to a person — approving a held-back action, and
      pausing the whole thing. */
   '/api/autopilot.php': handleAutopilot,
+  /* The AI key Autopilot writes replies with, and the replies a guardrail held
+     back for a person to read. */
+  '/api/replies.php': handleReplies,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second
@@ -141,12 +146,19 @@ export default {
        * settled for scheduled campaign starts.
        */
       const auto = await runAutopilot(env);
+      /*
+       * Replies before sends, for the same reason planning comes before both:
+       * answering a lead is the most time-sensitive thing on this tick, and a
+       * person who emails at nine should not wait for a campaign batch first.
+       */
+      const replies = await runReplies(env);
       const report = await runScheduledSends(env);
       const ms = Date.now() - started;
 
       /* Autopilot's problems belong in the same place a customer already looks
          to find out what the schedule did while they were away. */
       for (const n of auto.notes.slice(0, 10)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
+      for (const n of replies.notes.slice(0, 10)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
       /* Written to the database as well as the log: the log is for us, the row
          is for the customer asking why their campaign did not go out. */
       await recordTick(env, ms, report);
@@ -159,6 +171,10 @@ export default {
         autopilot: {
           planned: auto.planned, carried: auto.carried,
           awaiting: auto.awaiting, failed: auto.failed,
+        },
+        replies: {
+          read: replies.read, replied: replies.replied,
+          drafted: replies.drafted, refused: replies.refused, failed: replies.failed,
         },
         notes: report.notes.slice(0, 20),
       }));

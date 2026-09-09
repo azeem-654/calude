@@ -11,6 +11,7 @@ import { getSession } from '../../services/auth';
 import { activeAccount, planById } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
 import { fetchSmsStatus, saveSmsConfig, testSmsConfig } from '../../services/smsStore';
+import { saveAiKey } from '../../services/replies';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -86,8 +87,6 @@ function loadSMS() {
   catch { return { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
 }
 
-interface SmtpConfig { host: string; port: string; user: string; pass: string; fromName: string; fromEmail: string; encryption: string; }
-interface ImapConfig { host: string; port: string; user: string; pass: string; folder: string; }
 interface SmsConfig { provider: string; accountSid: string; authToken: string; fromNumber: string; }
 
 /* ─── Mailbox Warmup ─── */
@@ -792,17 +791,41 @@ function AIEngineTab() {
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const savedKey = getGeminiKey();
 
+  /*
+   * Saved twice, on purpose, and they are not the same copy.
+   *
+   * The browser keeps one because AI Shorts analyses video *from the page* —
+   * uploading a file to the Worker to hand on to Google would be a needless
+   * round trip through our own bandwidth.
+   *
+   * The server keeps one, encrypted, because Autopilot writes replies from the
+   * cron and there is no browser there. That is the whole reason a customer who
+   * shut their laptop stopped answering leads: the key was somewhere the
+   * scheduler could not reach.
+   *
+   * If the server copy fails to save, the local one still works and the message
+   * says exactly what is lost — replies while signed out — rather than claiming
+   * success.
+   */
   const handleSaveAndTest = async () => {
     setTesting(true);
     setResult(null);
     const res = await testGeminiKey(key);
+    if (!res.ok) { setTesting(false); setResult({ ok: false, msg: res.error }); return; }
+
+    setGeminiKey(key);
+    const stored = await saveAiKey(key);
     setTesting(false);
-    if (res.ok) {
-      setGeminiKey(key);
-      setResult({ ok: true, msg: 'Key verified and saved. AI features are now live.' });
-      addNotification('Gemini API key verified — AI Shorts will now analyze your real videos', 'success');
+
+    if (stored.success) {
+      setResult({ ok: true, msg: 'Key verified and saved. Autopilot can now answer replies even when you are signed out.' });
+      addNotification('Gemini key verified and stored on the server.', 'success');
     } else {
-      setResult({ ok: false, msg: res.error });
+      setResult({
+        ok: true,
+        msg: `Saved in this browser, but not on the server — Autopilot will not be able to write replies while you are signed out. ${stored.error ?? ''}`,
+      });
+      addNotification('Saved locally only. Autopilot cannot reply while you are signed out.', 'error');
     }
   };
 
@@ -810,7 +833,7 @@ function AIEngineTab() {
     setGeminiKey('');
     setKey('');
     setResult(null);
-    addNotification('API key removed — AI features are disabled', 'info');
+    addNotification('API key removed from this browser. It stays on the server until replaced.', 'info');
   };
 
   const card: React.CSSProperties = { backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' };

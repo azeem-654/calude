@@ -32,6 +32,8 @@ import {
   type AutopilotAction, type AutopilotRun, type ActionStatus,
 } from '../../services/autopilot';
 import { LINK_LABEL } from '../../types/aiSalesAgent';
+import ReplyQueue from './ReplyQueue';
+import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -145,14 +147,18 @@ export default function Autopilot() {
   /* Bumped to ask again, rather than calling setState inside the effect that
      fetches — the shape this codebase settled on in AutomationPanel. */
   const [reload, setReload] = useState(0);
+  const [drafts, setDrafts] = useState<ReplyDraft[]>([]);
 
   useEffect(() => {
     let live = true;
     void (async () => {
-      const r = await fetchAutopilot();
+      const [r, rep] = await Promise.all([fetchAutopilot(), fetchReplies()]);
       if (!live) return;
       setRun(r.run);
       setActions(r.actions);
+      /* Fetched together so the page cannot show "2 things need you" beside an
+         empty queue while the second request is still in flight. */
+      setDrafts(rep.drafts);
       setLoading(false);
     })();
     return () => { live = false; };
@@ -187,6 +193,16 @@ export default function Autopilot() {
     setBusy(false);
     if (!r.success) { addNotification(r.error ?? 'Could not record that.', 'error'); return; }
     if (r.actions) setActions(r.actions);
+  };
+
+  const decideDraft = async (id: string, yes: boolean, subject?: string, bodyText?: string) => {
+    setBusy(true);
+    const r = yes ? await sendDraft(id, subject, bodyText) : await discardDraft(id);
+    setBusy(false);
+    if (!r.success) { addNotification(r.error ?? 'Could not do that.', 'error'); return; }
+    if (r.drafts) setDrafts(r.drafts);
+    addNotification(r.message ?? (yes ? 'Sent.' : 'Discarded.'), 'success');
+    again();
   };
 
   const awaiting = actions.filter(a => a.status === 'awaiting');
@@ -273,6 +289,16 @@ export default function Autopilot() {
             </button>
           </div>
         )}
+
+        {/* Replies come first even among the things that need you: a customer
+            is waiting at the other end of one of these, and a campaign approval
+            is not. */}
+        <ReplyQueue
+          drafts={drafts}
+          busy={busy}
+          onSend={(id, subject, bodyText) => void decideDraft(id, true, subject, bodyText)}
+          onDiscard={id => void decideDraft(id, false)}
+        />
 
         {/* ── Blocked on a person, so it goes first ── */}
         {awaiting.length > 0 && (
