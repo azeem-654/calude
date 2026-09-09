@@ -21,7 +21,7 @@
  * evidence is worse than none, because nobody can tell when it has guessed
  * wrong.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Mail, Inbox, Plus, Trash2, Star, CheckCircle2, XCircle, Loader,
   ChevronDown, ChevronRight, ShieldCheck, AlertTriangle, Eye, EyeOff,
@@ -320,18 +320,25 @@ export default function MailboxesPanel() {
   /* A mailbox being added has no id yet, so it needs a key of its own. */
   const [adding, setAdding] = useState<MailboxDraft | null>(null);
 
-  const reload = useCallback(async () => {
-    const l = await listMailboxes();
-    setList(l);
-    setDrafts(prev => {
-      const next = { ...prev };
-      for (const m of l) if (!next[m.id]) next[m.id] = toDraft(m);
-      return next;
-    });
-    setLoading(false);
+  /* A guarded async IIFE rather than an effect that calls setState as it runs.
+     The same shape AutomationPanel and InfrastructurePanel settled on: `live`
+     stops a reply from a workspace you have already navigated away from
+     overwriting the one you are looking at. */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const l = await listMailboxes();
+      if (!live) return;
+      setList(l);
+      setDrafts(prev => {
+        const next = { ...prev };
+        for (const m of l) if (!next[m.id]) next[m.id] = toDraft(m);
+        return next;
+      });
+      setLoading(false);
+    })();
+    return () => { live = false; };
   }, []);
-
-  useEffect(() => { void reload(); }, [reload]);
 
   const afterSave = (mailboxes: MailboxRecord[], id?: string) => {
     setList(mailboxes);

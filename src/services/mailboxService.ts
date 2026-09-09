@@ -9,6 +9,8 @@
 
 import { sessionToken } from './auth';
 import { API_BASE } from './apiBase';
+import { getActiveAccountId } from './tenancy';
+import { listMailboxes } from './mailboxStore';
 
 
 /* ─── Types ─── */
@@ -83,15 +85,83 @@ export interface InboxMessage {
 }
 
 /* ─── Storage ─── */
-const MB_KEY = 'crm_mailboxes';
 const MSG_KEY = 'crm_inbox_messages';         // enrichment/state keyed by mailbox:uid
 const AR_LOG_KEY = 'crm_autoreply_log';
 
-export function loadMailboxes(): Mailbox[] {
-  try { return JSON.parse(localStorage.getItem(MB_KEY) || '[]'); } catch { return []; }
+/**
+ * The mailboxes, and where each half of them lives.
+ *
+ * The connection itself — host, port, username, password — belongs to the
+ * server. It used to live here, in localStorage, in plain text, and go back to
+ * the API on every single inbox poll. That is the exact thing crm_mailboxes was
+ * created to stop, and this module was quietly still doing it.
+ *
+ * What legitimately stays local is everything that is not a secret and that
+ * only this screen cares about: the colour, the company voice, the auto-reply
+ * rules. Those are keyed by the *server's* mailbox id, so connecting a mailbox
+ * in Settings and giving it a voice here are two halves of one record rather
+ * than two unrelated mailboxes with the same name.
+ */
+const EXTRAS_KEY = 'crm_mailbox_extras';
+
+export interface MailboxExtras {
+  color: string;
+  profile: CompanyProfile;
+  autoReplyRules: AutoReplyRule[];
 }
+
+function loadExtras(): Record<string, MailboxExtras> {
+  try { return JSON.parse(localStorage.getItem(EXTRAS_KEY) || '{}'); } catch { return {}; }
+}
+
+export function saveExtras(id: string, patch: Partial<MailboxExtras>) {
+  const all = loadExtras();
+  all[id] = {
+    color: patch.color ?? all[id]?.color ?? '#3e63dd',
+    profile: patch.profile ?? all[id]?.profile ?? blankProfile(),
+    autoReplyRules: patch.autoReplyRules ?? all[id]?.autoReplyRules ?? [],
+  };
+  try { localStorage.setItem(EXTRAS_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+}
+
+/**
+ * Every mailbox this workspace has, as the inbox wants to see it.
+ *
+ * The password fields are deliberately left empty. Nothing in the browser needs
+ * them any more: `fetchInbox` names the mailbox and the Worker resolves its own
+ * credentials.
+ */
+export async function loadMailboxes(): Promise<Mailbox[]> {
+  const records = await listMailboxes();
+  const extras = loadExtras();
+  return records.map(r => {
+    const ex = extras[r.id];
+    return {
+      id: r.id,
+      label: r.label || r.from.email || r.imap.host || 'Mailbox',
+      color: ex?.color ?? '#3e63dd',
+      address: r.from.email || r.imap.username,
+      imapHost: r.imap.host, imapPort: r.imap.port,
+      imapEncryption: (r.imap.encryption === 'tls' ? 'tls' : r.imap.encryption === 'none' ? 'none' : 'ssl') as Mailbox['imapEncryption'],
+      imapUser: r.imap.username, imapPassword: '',
+      smtpHost: r.smtp.host, smtpPort: r.smtp.port,
+      smtpEncryption: (r.smtp.encryption === 'ssl' ? 'ssl' : r.smtp.encryption === 'none' ? 'none' : 'tls') as Mailbox['smtpEncryption'],
+      smtpUser: r.smtp.username, smtpPassword: '', fromName: r.from.name,
+      profile: ex?.profile ?? blankProfile(),
+      autoReplyRules: ex?.autoReplyRules ?? [],
+      /* What the last real validation found, not a guess from whether fields
+         are filled in. */
+      connected: !!r.incoming.verifiedAt,
+      createdAt: r.createdAt,
+    };
+  });
+}
+
+/** Only the local half. The connection is saved in Settings → Mailboxes. */
 export function saveMailboxes(list: Mailbox[]) {
-  try { localStorage.setItem(MB_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+  for (const mb of list) {
+    saveExtras(mb.id, { color: mb.color, profile: mb.profile, autoReplyRules: mb.autoReplyRules });
+  }
 }
 
 interface MsgState { sentiment?: InboxMessage['sentiment']; priority?: InboxMessage['priority']; tags?: string[]; assignedTo?: string; status?: InboxMessage['status']; autoRepliedAt?: string; }
@@ -181,12 +251,21 @@ export async function fetchInbox(mb: Mailbox, limit = 20): Promise<{ ok: boolean
   }
 
   try {
+    /*
+     * The mailbox is named, not described.
+     *
+     * This used to post the host, username and the *password* on every poll —
+     * read out of localStorage, in plain text, several times a minute. The
+     * Worker holds those credentials encrypted and can look them up itself, so
+     * the only thing it needs is which mailbox to open.
+     */
     const resp = await fetch(`${API_BASE}/api/imap-fetch.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: sessionToken(),
-        host: mb.imapHost, port: mb.imapPort, encryption: mb.imapEncryption,
-        username: mb.imapUser, password: mb.imapPassword, folder: 'INBOX', limit,
+        accountId: getActiveAccountId(),
+        mailboxId: mb.id,
+        folder: 'INBOX', limit,
       }),
     });
     const data = await resp.json() as { success: boolean; messages?: Omit<InboxMessage, 'mailboxId'>[]; error?: string };

@@ -13,14 +13,15 @@
 import { body, fail, headerSafe, json, ok } from '../lib/http';
 import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
 import { imapFetch } from '../lib/imap';
-import { loadMailbox } from './mailbox';
+import { loadMailbox, loadMailboxById } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
 
 /* ── Inbox ───────────────────────────────────────────────────────────────── */
 
 export async function handleImapFetch(req: Request, env: Env): Promise<Response> {
   const d = await body<{
-    token?: string; accountId?: string; host?: string; port?: number; encryption?: string;
+    token?: string; accountId?: string; mailboxId?: string;
+    host?: string; port?: number; encryption?: string;
     username?: string; password?: string; folder?: string; limit?: number;
   }>(req);
 
@@ -39,9 +40,21 @@ export async function handleImapFetch(req: Request, env: Env): Promise<Response>
   };
 
   if (!creds.host && d.accountId) {
-    const mb = await loadMailbox(env, String(d.accountId));
+    const accountId = String(d.accountId);
+    /*
+     * A unified inbox draws on several mailboxes, so it names the one it wants.
+     *
+     * Without `mailboxId` this resolved the workspace's primary and nothing
+     * else, which is right for sending and wrong for reading: a customer with a
+     * support address and a sales address would only ever see one of them. The
+     * id is checked against the workspace, so naming somebody else's mailbox
+     * finds nothing rather than fetching it.
+     */
+    const mb = d.mailboxId
+      ? await loadMailboxById(env, accountId, String(d.mailboxId))
+      : await loadMailbox(env, accountId);
     if (!mb || !mb.imap.host) {
-      return fail('This workspace has no incoming mailbox set up yet. Add one in Settings → Email & SMS.');
+      return fail('That mailbox has no incoming server set up yet. Add one in Settings → Email & SMS → Mailboxes.');
     }
     creds = { ...mb.imap, folder: mb.imap.folder };
   }

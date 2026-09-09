@@ -57,11 +57,18 @@ const CHAT_RAIL = '__chat__';
 
 export default function Conversations() {
   const { addNotification, conversations, markConversationRead } = useApp();
-  const [mailboxes, setMailboxes] = useState<Mailbox[]>(loadMailboxes);
+  /*
+   * The mailbox list comes from the server now, so it arrives a moment after
+   * the first render rather than being read straight out of localStorage.
+   * `mbLoaded` is what tells the empty state apart from "not back yet" — without
+   * it, every visit flashed "connect your first mailbox" before the real list
+   * landed.
+   */
+  const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
+  const [mbLoaded, setMbLoaded] = useState(false);
   // 'all' and a mailbox id select IMAP inboxes; CHAT_RAIL selects the chat/SMS
   // threads, which have their own shape and so get their own pane.
-  const [activeMbId, setActiveMbId] = useState<string>(
-    () => (loadMailboxes().length === 0 && conversations.length > 0 ? CHAT_RAIL : 'all'));
+  const [activeMbId, setActiveMbId] = useState<string>('all');
   const [chatId, setChatId] = useState<string>('');
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [selectedUid, setSelectedUid] = useState<string>('');   // `${mailboxId}:${uid}`
@@ -81,6 +88,21 @@ export default function Conversations() {
   const autoRunRef = useRef<Set<string>>(new Set());
 
   const persist = (list: Mailbox[]) => { setMailboxes(list); saveMailboxes(list); };
+
+  /* Fetch the workspace's mailboxes once. A workspace with no mailbox but with
+     existing chat threads opens on those rather than on an empty pane. */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const list = await loadMailboxes();
+      if (!live) return;
+      setMailboxes(list);
+      setMbLoaded(true);
+      if (list.length === 0 && conversations.length > 0) setActiveMbId(CHAT_RAIL);
+    })();
+    return () => { live = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── Load all mailbox inboxes (takes the list explicitly to avoid stale closures) ── */
   const refreshList = useCallback(async (list: Mailbox[], silent = false) => {
@@ -246,10 +268,10 @@ export default function Conversations() {
   /* ── Empty state: no mailboxes AND no chat history. Threads on their own are
         enough to show the inbox, otherwise a user's existing conversations sit
         behind a wall they cannot get past. ── */
-  if (mailboxes.length === 0 && conversations.length === 0) {
+  if (mbLoaded && mailboxes.length === 0 && conversations.length === 0) {
     return (
       <div style={{ minHeight: '100vh' }}>
-        <Header title="Inbox" subtitle="A live shared inbox for every mailbox" />
+        <Header title="Unified Inbox" subtitle="Every mailbox you have connected, in one thread list" />
         <div style={{ padding: '60px 28px', display: 'flex', justifyContent: 'center' }}>
           <div style={{ maxWidth: 460, textAlign: 'center', background: 'rgba(255,255,255,0.6)', borderRadius: 24, padding: '40px 32px' }}>
             <div style={{ width: 64, height: 64, borderRadius: 20, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
@@ -257,11 +279,15 @@ export default function Conversations() {
             </div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: INK, margin: '0 0 8px', letterSpacing: '-0.02em' }}>Connect your first mailbox</h2>
             <p style={{ fontSize: 13.5, color: MUTED, lineHeight: 1.6, margin: '0 0 22px' }}>
-              Bring incoming email into a live shared inbox. Each mailbox gets its own company profile, so AI-drafted and auto-sent replies always speak in that brand's voice with its own knowledge.
+              Every mailbox you connect appears here in one thread list. Each one can carry its own company
+              voice and knowledge, so drafted replies sound like that brand rather than a generic assistant.
             </p>
-            <button onClick={() => { setEditMb(undefined); setSetupOpen(true); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-              <Plus size={16} /> Connect a Mailbox
-            </button>
+            {/* Settings, not a dialog here. A mailbox is a server-side, encrypted
+                record used by sending and the scheduler too — connecting one in
+                two places is how a workspace ends up with two of them. */}
+            <a href="/settings?tab=email" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+              <Plus size={16} /> Connect a mailbox in Settings
+            </a>
           </div>
         </div>
         {setupOpen && <MailboxSetup initial={editMb} onSave={saveMailbox} onClose={() => setSetupOpen(false)} />}
@@ -271,7 +297,7 @@ export default function Conversations() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Header title="Conversations" subtitle={`${mailboxes.length} mailbox${mailboxes.length > 1 ? 'es' : ''} · ${messages.filter(m => !m.seen).length} unread`} />
+      <Header title="Unified Inbox" subtitle={`${mailboxes.length} mailbox${mailboxes.length === 1 ? '' : 'es'} · ${messages.filter(m => !m.seen).length} unread`} />
 
       <div style={{ padding: '10px 28px 0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {/* connection status */}

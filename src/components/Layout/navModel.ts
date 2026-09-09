@@ -54,7 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Customers',
     items: [
       { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history', icon: Users, aka: ['people', 'leads', 'crm', 'customers'] },
-      { path: '/conversations', label: 'Inbox', desc: 'Email, SMS and chat in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email'] },
+      { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
     ],
   },
