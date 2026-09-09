@@ -37,26 +37,17 @@ export default function DiagnosticsCard() {
   const run = async () => {
     setState('running'); setError(''); setResult(null); setCopied(false);
 
-    /* The saved settings are sent so the server tests the same credentials the
-       app itself would use — testing anything else would prove nothing. */
-    const smtp = readStored<{ host?: string; port?: string; user?: string; pass?: string; encryption?: string }>('crm_smtp', {});
-    const imap = readStored<{ host?: string; port?: string; user?: string; pass?: string; folder?: string }>('crm_imap', {});
-
+    /* No credentials are sent. This used to post the SMTP and IMAP passwords
+       out of localStorage on every run — and worker/src/routes/misc.ts
+       handleDiagnostics reads only the token, so they were never used for
+       anything. A copy of the customer's mail passwords crossed the wire each
+       time somebody pressed a diagnostics button, for nothing. */
     try {
       const r = await fetch(`${API_BASE}/api/diagnostics.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: sessionToken(),
-          smtp: smtp.host ? {
-            host: smtp.host, port: parseInt(smtp.port || '587') || 587,
-            encryption: smtp.encryption || 'tls', username: smtp.user, password: smtp.pass,
-          } : null,
-          imap: imap.host ? {
-            host: imap.host, port: parseInt(imap.port || '993') || 993,
-            encryption: (parseInt(imap.port || '993') || 993) === 143 ? 'tls' : 'ssl',
-            username: imap.user, password: imap.pass, folder: imap.folder || 'INBOX',
-          } : null,
         }),
       });
       if (r.status === 401) {

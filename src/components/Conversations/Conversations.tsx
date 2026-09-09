@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
-import MailboxSetup from './MailboxSetup';
 import { sendEmail, loadEmailConfig } from '../../services/emailService';
 import { sanitizeEmailHtml } from '../../services/emailHtml';
 import { draftEmailReply } from '../../lib/gemini';
@@ -76,8 +75,6 @@ export default function Conversations() {
   const [filter, setFilter] = useState<'all' | 'unread' | 'urgent'>('all');
   const [loading, setLoading] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [editMb, setEditMb] = useState<Mailbox | undefined>();
   const [showLog, setShowLog] = useState(false);
 
   // reply composer
@@ -241,15 +238,9 @@ export default function Conversations() {
     setMessages(prev => prev.map(m => m === selected ? { ...m, tags } : m));
   };
 
-  const saveMailbox = (mb: Mailbox) => {
-    const exists = mailboxes.some(x => x.id === mb.id);
-    const next = exists ? mailboxes.map(x => x.id === mb.id ? mb : x) : [...mailboxes, mb];
-    persist(next);   // the [mailboxes] effect re-fetches automatically
-    setSetupOpen(false); setEditMb(undefined);
-    addNotification(`Mailbox "${mb.label}" ${exists ? 'updated' : 'connected'}`, 'success');
-  };
+  /* Connecting and disconnecting happen in Settings, against the server. What
+     is left here is choosing which mailbox you are looking at. */
   const removeMailbox = (id: string) => {
-    persist(mailboxes.filter(x => x.id !== id));
     if (activeMbId === id) setActiveMbId('all');
   };
 
@@ -290,7 +281,6 @@ export default function Conversations() {
             </a>
           </div>
         </div>
-        {setupOpen && <MailboxSetup initial={editMb} onSave={saveMailbox} onClose={() => setSetupOpen(false)} />}
       </div>
     );
   }
@@ -326,9 +316,12 @@ export default function Conversations() {
           <Activity size={13} /> Auto-reply log{log.length ? ` (${log.length})` : ''}
         </button>
         <div style={{ marginLeft: 'auto' }}>
-          <button onClick={() => { setEditMb(undefined); setSetupOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            <Plus size={14} /> Connect Mailbox
-          </button>
+          {/* Settings, not a dialog here. A mailbox is a server-side encrypted
+              record that sending and the scheduler use too; connecting one in
+              two places is how a workspace ends up with two of them. */}
+          <a href="/settings?tab=email-sms" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+            <Plus size={14} /> Connect a mailbox
+          </a>
         </div>
       </div>
 
@@ -382,7 +375,7 @@ export default function Conversations() {
             <div style={{ marginTop: 4, padding: '10px 12px', background: 'rgba(255,255,255,0.6)', borderRadius: 12 }}>
               <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 6 }}>{activeMb.profile.companyName || activeMb.label}</div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => { setEditMb(activeMb); setSetupOpen(true); }} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '6px', border: '1px solid #e6e9f0', borderRadius: 8, background: '#fff', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', color: INK }}><Settings2 size={12} /> Edit</button>
+                <a href="/settings?tab=email-sms" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '6px', border: '1px solid #e6e9f0', borderRadius: 8, background: '#fff', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', color: INK, textDecoration: 'none' }}><Settings2 size={12} /> Edit</a>
                 <button onClick={() => removeMailbox(activeMb.id)} style={{ padding: '6px 9px', border: '1px solid #f4d4d4', borderRadius: 8, background: '#fceaea', cursor: 'pointer', display: 'flex' }}><Trash2 size={12} color="#e5484d" /></button>
               </div>
               {activeMb.autoReplyRules.filter(r => r.enabled).length > 0 && (
@@ -615,7 +608,6 @@ export default function Conversations() {
         )}
       </div>
 
-      {setupOpen && <MailboxSetup initial={editMb} onSave={saveMailbox} onClose={() => { setSetupOpen(false); setEditMb(undefined); }} />}
     </div>
   );
 }

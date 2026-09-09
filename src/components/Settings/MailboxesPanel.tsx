@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import {
   listMailboxes, saveMailboxRecord, deleteMailboxById, setPrimaryMailbox,
-  validateOutgoing, validateIncoming,
+  validateOutgoing, validateIncoming, cacheMailboxes,
   type MailboxRecord, type MailboxDraft, type Diagnosis,
 } from '../../services/mailboxStore';
 
@@ -45,6 +45,7 @@ const blank = (): MailboxDraft => ({
   smtp: { host: '', port: 587, encryption: 'tls', username: '', password: '' },
   from: { name: '', email: '', replyTo: '' },
   imap: { host: '', port: 993, encryption: 'ssl', username: '', password: '', folder: 'INBOX' },
+  provider: { name: 'smtp', key: '', secret: '', domain: '', url: '' },
 });
 
 const toDraft = (m: MailboxRecord): MailboxDraft => ({
@@ -55,6 +56,7 @@ const toDraft = (m: MailboxRecord): MailboxDraft => ({
   smtp: { host: m.smtp.host, port: m.smtp.port, encryption: m.smtp.encryption, username: m.smtp.username, password: '' },
   from: { name: m.from.name, email: m.from.email, replyTo: m.from.replyTo },
   imap: { host: m.imap.host, port: m.imap.port, encryption: m.imap.encryption, username: m.imap.username, password: '', folder: m.imap.folder },
+  provider: { name: m.provider.name || 'smtp', key: '', secret: '', domain: m.provider.domain, url: m.provider.url },
 });
 
 const inp: React.CSSProperties = {
@@ -199,6 +201,64 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
       </div>
 
       <div style={{ display: 'grid', gap: 12 }}>
+        {/*
+          How this address sends, asked once, here.
+
+          This was a separate "Email Sending Provider" card with its own
+          storage, so "how does this workspace send?" had two answers that could
+          disagree — an SMTP host saved in one place and a Resend key in
+          another, with nothing to say which won. A mailbox is an address and
+          the way messages leave it; they belong to the same record.
+        */}
+        {out && (
+          <div>
+            <label style={lbl}>How this mailbox sends</label>
+            <select
+              value={draft.provider.name || 'smtp'}
+              onChange={e => onChange({ ...draft, provider: { ...draft.provider, name: e.target.value } })}
+              style={{ ...inp, maxWidth: 320 }}
+            >
+              <option value="smtp">Its own SMTP server</option>
+              <option value="resend">Resend</option>
+              <option value="brevo">Brevo</option>
+              <option value="sendgrid">SendGrid</option>
+              <option value="mailgun">Mailgun</option>
+              <option value="mailjet">Mailjet</option>
+              <option value="postmark">Postmark</option>
+            </select>
+          </div>
+        )}
+
+        {out && draft.provider.name !== 'smtp' && draft.provider.name !== '' ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <Field
+              label="API key"
+              type="password"
+              value={draft.provider.key}
+              placeholder={record?.provider.hasKey ? 'Stored — leave blank to keep it' : ''}
+              hint={record?.provider.hasKey ? 'A key is saved. Leaving this empty keeps it.' : 'From your provider dashboard. It is stored encrypted and never sent back to this page.'}
+              onChange={v => onChange({ ...draft, provider: { ...draft.provider, key: v } })}
+            />
+            {draft.provider.name === 'mailjet' && (
+              <Field label="API secret" type="password" value={draft.provider.secret}
+                placeholder={record?.provider.hasSecret ? 'Stored — leave blank to keep it' : ''}
+                onChange={v => onChange({ ...draft, provider: { ...draft.provider, secret: v } })} />
+            )}
+            {draft.provider.name === 'mailgun' && (
+              <Field label="Sending domain" value={draft.provider.domain} placeholder="mg.yourdomain.com"
+                hint="The domain you verified with Mailgun."
+                onChange={v => onChange({ ...draft, provider: { ...draft.provider, domain: v } })} />
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="From name" value={draft.from.name} placeholder="Wild West Corp"
+                onChange={v => onChange({ ...draft, from: { ...draft.from, name: v } })} />
+              <Field label="From address" value={draft.from.email} placeholder="support@yourdomain.com"
+                hint="Providers refuse to send from a domain you have not verified with them."
+                onChange={v => onChange({ ...draft, from: { ...draft.from, email: v } })} />
+            </div>
+          </div>
+        ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
           <Field
             label={out ? 'SMTP host' : 'IMAP host'}
@@ -283,6 +343,8 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
               onChange={v => onChange({ ...draft, imap: { ...draft.imap, folder: v } })} />
           </div>
         )}
+        </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
@@ -330,6 +392,9 @@ export default function MailboxesPanel() {
       const l = await listMailboxes();
       if (!live) return;
       setList(l);
+      /* Mirror it for the code that cannot await — campaign sender lists,
+         "is mail set up?" badges, the DNS suggestions. No secrets go in. */
+      cacheMailboxes(l);
       setDrafts(prev => {
         const next = { ...prev };
         for (const m of l) if (!next[m.id]) next[m.id] = toDraft(m);
@@ -342,6 +407,7 @@ export default function MailboxesPanel() {
 
   const afterSave = (mailboxes: MailboxRecord[], id?: string) => {
     setList(mailboxes);
+    cacheMailboxes(mailboxes);
     setDrafts(prev => {
       const next = { ...prev };
       for (const m of mailboxes) if (!next[m.id]) next[m.id] = toDraft(m);
@@ -365,12 +431,12 @@ export default function MailboxesPanel() {
   const remove = async (m: MailboxRecord) => {
     if (!window.confirm(`Disconnect ${m.label || m.from.email || m.smtp.host}? Campaigns using it will stop sending.`)) return;
     const r = await deleteMailboxById(m.id);
-    if (r.mailboxes) setList(r.mailboxes);
+    if (r.mailboxes) { setList(r.mailboxes); cacheMailboxes(r.mailboxes); }
   };
 
   const makePrimary = async (m: MailboxRecord) => {
     const r = await setPrimaryMailbox(m.id);
-    if (r.mailboxes) setList(r.mailboxes);
+    if (r.mailboxes) { setList(r.mailboxes); cacheMailboxes(r.mailboxes); }
   };
 
   const title = (m: MailboxRecord) => m.label || m.from.email || m.smtp.host || m.imap.host || 'Untitled mailbox';

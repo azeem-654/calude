@@ -14,9 +14,11 @@
  */
 import { addr, body, fail, headerSafe, json } from '../lib/http';
 import { requireSessionForSocket, type Env } from '../lib/db';
+import { loadMailbox } from './mailbox';
 
 interface ProviderBody {
   token?: string;
+  accountId?: string;
   provider?: string;
   apiKey?: string; apiSecret?: string; apiUrl?: string; domain?: string;
   fromName?: string; fromEmail?: string;
@@ -86,13 +88,35 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
 
-  const provider = String(d.provider ?? '').toLowerCase().trim();
-  const apiKey = String(d.apiKey ?? '').trim();
-  const apiSecret = String(d.apiSecret ?? '').trim();
-  const domain = String(d.domain ?? '').trim();
+  /*
+   * The key comes from the workspace's mailbox, not from the browser.
+   *
+   * It used to arrive in the request body, which meant a licence to send as the
+   * customer sat in localStorage — readable by any script or extension on the
+   * page — and that the cron could not use an API provider at all, because a
+   * scheduler has no request to take a key from. The mailbox record already had
+   * provider fields; this reads them.
+   *
+   * Explicit values still win, so the settings screen can test a key before
+   * committing it. That path never carries a campaign.
+   */
+  let provider = String(d.provider ?? '').toLowerCase().trim();
+  let apiKey = String(d.apiKey ?? '').trim();
+  let apiSecret = String(d.apiSecret ?? '').trim();
+  let domain = String(d.domain ?? '').trim();
+
+  if (!apiKey && d.accountId) {
+    const mb = await loadMailbox(env, String(d.accountId));
+    if (mb?.provider.key) {
+      provider = provider || mb.provider.name;
+      apiKey = mb.provider.key;
+      apiSecret = apiSecret || mb.provider.secret;
+      domain = domain || mb.provider.domain;
+    }
+  }
 
   if (!provider) return fail('No provider was named.');
-  if (!apiKey) return fail('An API key is required. Paste the one from your provider dashboard into Settings → Email & SMS.');
+  if (!apiKey) return fail('No sending key is set up for this workspace. Add one in Settings → Email & SMS → Mailboxes.');
   if (!String(d.to ?? '').trim()) return fail('Recipient address is required');
 
   const to = addr(d.to);

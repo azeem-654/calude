@@ -1,15 +1,17 @@
 /**
- * The workspace's mail server, kept on the server.
+ * The workspace's mailboxes. One system, and this is it.
  *
- * These settings used to live only in the browser. That meant they vanished
+ * These settings used to live only in the browser — which meant they vanished
  * when somebody cleared their history, the password travelled with every send,
- * and — the reason this exists — nothing could send while the tab was closed,
- * because the server never held the credentials. Scheduled campaigns were a
- * feature that only worked if you happened to be watching.
+ * and nothing could send while the tab was closed, because the server never
+ * held the credentials. Scheduled campaigns only worked if you happened to be
+ * watching.
  *
- * localStorage stays as a fast local cache so the settings screen fills in
- * instantly and the existing readers keep working. The server is the durable
- * copy and the one the scheduler uses.
+ * They live on the server now, encrypted, and this is the only way to reach
+ * them. What is left in the browser is `crm_mailbox_cache`: hosts, from
+ * addresses and whether each direction has been validated, with no secret in
+ * it. Code that has to decide something during a render reads that; nothing
+ * can send from it.
  */
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
@@ -123,40 +125,6 @@ export async function testStoredImap(): Promise<Reply> { return call('test_imap'
 
 export async function deleteMailbox(): Promise<Reply> { return call('delete'); }
 
-/**
- * Fill the local cache from the server.
- *
- * Called when the settings screen opens on a device that has never seen this
- * workspace — a second computer, a new browser — so the mailbox appears
- * already configured rather than blank. The passwords are not in the reply, so
- * the cached copy carries empty ones; sending does not need them any more,
- * since the server resolves its own.
- */
-export async function hydrateLocalCache(): Promise<StoredMailbox | null> {
-  const mb = await fetchMailbox();
-  if (!mb?.smtp.host) return mb;
-  try {
-    const localRaw = window.localStorage.getItem('crm_smtp');
-    const local = localRaw ? JSON.parse(localRaw) as { host?: string } : null;
-    /* Only when the browser has nothing. A local copy may hold a password the
-       server will not hand back, and overwriting it would lose that. */
-    if (!local?.host) {
-      window.localStorage.setItem('crm_smtp', JSON.stringify({
-        host: mb.smtp.host, port: String(mb.smtp.port), user: mb.smtp.username, pass: '',
-        fromName: mb.from.name, fromEmail: mb.from.email, encryption: mb.smtp.encryption,
-      }));
-    }
-    const imapRaw = window.localStorage.getItem('crm_imap');
-    const imapLocal = imapRaw ? JSON.parse(imapRaw) as { host?: string } : null;
-    if (!imapLocal?.host && mb.imap.host) {
-      window.localStorage.setItem('crm_imap', JSON.stringify({
-        host: mb.imap.host, port: String(mb.imap.port), user: mb.imap.username, pass: '', folder: mb.imap.folder,
-      }));
-    }
-  } catch { /* a browser refusing storage is not a reason to fail the load */ }
-  return mb;
-}
-
 /* ── Many mailboxes ────────────────────────────────────────────────────────
  *
  * Everything above this line predates a workspace being allowed more than one
@@ -173,6 +141,14 @@ export interface MailboxDraft {
   smtp: { host: string; port: string | number; encryption: string; username: string; password: string };
   from: { name: string; email: string; replyTo?: string };
   imap: { host: string; port: string | number; encryption: string; username: string; password: string; folder: string };
+  /*
+   * How this mailbox sends: its own SMTP server, or a provider's HTTPS API.
+   *
+   * These used to be a separate card with its own storage, which made "how does
+   * this workspace send mail?" a question with two answers that could disagree.
+   * They are one record: an address, and the way messages leave it.
+   */
+  provider: { name: string; key: string; secret: string; domain: string; url: string };
 }
 
 export async function listMailboxes(): Promise<MailboxRecord[]> {
@@ -205,6 +181,11 @@ export async function saveMailboxRecord(draft: MailboxDraft): Promise<Reply> {
       encryption: draft.imap.encryption, username: draft.imap.username.trim(),
       password: draft.imap.password, folder: draft.imap.folder || 'INBOX',
     },
+    provider: {
+      name: draft.provider.name || 'smtp',
+      key: draft.provider.key, secret: draft.provider.secret,
+      domain: draft.provider.domain, url: draft.provider.url,
+    },
   });
 }
 
@@ -221,3 +202,68 @@ export async function setPrimaryMailbox(id: string): Promise<Reply> { return cal
  */
 export async function validateOutgoing(id: string): Promise<Reply> { return call('test_outgoing', { id }); }
 export async function validateIncoming(id: string): Promise<Reply> { return call('test_incoming', { id }); }
+
+/* ── A read-only mirror, for code that has to decide something synchronously ──
+ *
+ * The server is the only place a mailbox lives and the only thing that sends.
+ * But plenty of the app needs to answer "is mail set up?" or "what address do
+ * we send from?" during a render, and cannot await.
+ *
+ * Those questions used to be answered from `crm_smtp` — a full copy of the
+ * credentials, password included, written by the old setup wizard. This
+ * replaces it with a snapshot that has no secrets in it at all: hosts, the from
+ * address, and whether each direction has been validated. Nothing can send from
+ * it, so a stale or absent cache degrades to "not configured" rather than to a
+ * failed send with the wrong credentials.
+ */
+const CACHE_KEY = 'crm_mailbox_cache';
+
+export interface MailboxSnapshot {
+  id: string;
+  label: string;
+  isPrimary: boolean;
+  smtpHost: string;
+  fromEmail: string;
+  fromName: string;
+  imapHost: string;
+  canSend: boolean;
+  canReceive: boolean;
+}
+
+function toSnapshot(m: MailboxRecord): MailboxSnapshot {
+  return {
+    id: m.id, label: m.label, isPrimary: m.isPrimary,
+    smtpHost: m.smtp.host,
+    fromEmail: m.from.email || m.smtp.username,
+    fromName: m.from.name,
+    imapHost: m.imap.host,
+    /* "Configured" is not the same as "works". These say what the last real
+       validation found, so a screen cannot claim a workspace can send on the
+       strength of a host name somebody typed. */
+    canSend: !!m.outgoing.verifiedAt,
+    canReceive: !!m.incoming.verifiedAt,
+  };
+}
+
+export function cacheMailboxes(list: MailboxRecord[]): void {
+  try { window.localStorage.setItem(CACHE_KEY, JSON.stringify(list.map(toSnapshot))); }
+  catch { /* a browser refusing storage is not a reason to fail */ }
+}
+
+export function cachedMailboxes(): MailboxSnapshot[] {
+  try { return JSON.parse(window.localStorage.getItem(CACHE_KEY) || '[]') as MailboxSnapshot[]; }
+  catch { return []; }
+}
+
+/** The mailbox campaigns and the scheduler send from. */
+export function cachedPrimary(): MailboxSnapshot | null {
+  const all = cachedMailboxes();
+  return all.find(m => m.isPrimary) ?? all[0] ?? null;
+}
+
+/** Fetch and mirror in one go — what a screen calls when it opens. */
+export async function refreshMailboxCache(): Promise<MailboxRecord[]> {
+  const list = await listMailboxes();
+  cacheMailboxes(list);
+  return list;
+}

@@ -1,3 +1,4 @@
+import { cachedMailboxes } from '../../services/mailboxStore';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useNavigate } from 'react-router-dom';
@@ -754,37 +755,42 @@ function getSenderProfiles(): SenderProfile[] {
   const profiles: SenderProfile[] = [];
   const seen = new Set<string>();
 
-  try {
-    const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
-    if (smtp?.host && smtp?.user) {
-      const email = smtp.fromEmail || smtp.user;
-      if (email && !seen.has(email)) {
-        seen.add(email);
-        const providerGuess =
-          smtp.host.includes('gmail') ? 'Gmail' :
-          smtp.host.includes('outlook') || smtp.host.includes('office365') ? 'Outlook' :
-          smtp.host.includes('mailgun') ? 'Mailgun' :
-          smtp.host.includes('sendgrid') ? 'SendGrid' :
-          smtp.host.includes('zoho') ? 'Zoho Mail' :
-          smtp.host.includes('amazonaws') ? 'AWS SES' : 'SMTP';
-        const icon =
-          smtp.host.includes('gmail') ? '📧' :
-          smtp.host.includes('outlook') ? '💼' :
-          smtp.host.includes('mailgun') ? '🔫' :
-          smtp.host.includes('sendgrid') ? '⚡' :
-          smtp.host.includes('zoho') ? '🟡' :
-          smtp.host.includes('amazonaws') ? '☁️' : '🏠';
-        profiles.push({
-          id: 'smtp',
-          name: smtp.fromName || email.split('@')[0],
-          email,
-          replyTo: email,
-          provider: providerGuess,
-          providerIcon: icon,
-        });
-      }
-    }
-  } catch { /* ignore */ }
+  /*
+   * Every mailbox the workspace has connected, not just one.
+   *
+   * This read a single `crm_smtp` blob out of the browser, so a workspace with
+   * a support address and a sales address could only ever pick one of them to
+   * send a campaign from — the other was invisible here even after it had been
+   * connected and validated. The list comes from the server's mailboxes now,
+   * through the cache, which is also why no password is involved in drawing a
+   * dropdown.
+   */
+  const guess = (host: string): { provider: string; icon: string } =>
+    host.includes('outlook') || host.includes('office365') ? { provider: 'Outlook', icon: '💼' }
+    : host.includes('mailgun') ? { provider: 'Mailgun', icon: '🔫' }
+    : host.includes('sendgrid') ? { provider: 'SendGrid', icon: '⚡' }
+    : host.includes('resend') ? { provider: 'Resend', icon: '✳️' }
+    : host.includes('zoho') ? { provider: 'Zoho Mail', icon: '🟡' }
+    : host.includes('brevo') || host.includes('sendinblue') ? { provider: 'Brevo', icon: '🅱️' }
+    : host.includes('amazonaws') ? { provider: 'AWS SES', icon: '☁️' }
+    : { provider: 'SMTP', icon: '🏠' };
+
+  for (const mb of cachedMailboxes()) {
+    const email = mb.fromEmail;
+    if (!mb.smtpHost || !email || seen.has(email)) continue;
+    seen.add(email);
+    const g = guess(mb.smtpHost.toLowerCase());
+    profiles.push({
+      id: mb.id,
+      /* The customer's own label wins — "Support" is more use in a dropdown
+         than the local part of an address. */
+      name: mb.label || mb.fromName || email.split('@')[0],
+      email,
+      replyTo: email,
+      provider: g.provider + (mb.isPrimary ? ' · primary' : ''),
+      providerIcon: g.icon,
+    });
+  }
 
   try {
     const ep = JSON.parse(localStorage.getItem('crm_email_provider') || 'null');

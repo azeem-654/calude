@@ -10,15 +10,12 @@ import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import { activeAccount, planById } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
-import { saveMailbox, hydrateLocalCache } from '../../services/mailboxStore';
 import { fetchSmsStatus, saveSmsConfig, testSmsConfig } from '../../services/smsStore';
-import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
-import type { EmailProviderConfig } from '../../services/emailService';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
-import SMTPWizard from './SMTPWizard';
 import MailboxesPanel from './MailboxesPanel';
+import { cachedPrimary } from '../../services/mailboxStore';
 import DiagnosticsCard from './DiagnosticsCard';
 import DeliveryCheck from './DeliveryCheck';
 import RouteCheck from './RouteCheck';
@@ -27,7 +24,6 @@ import BrandingPanel from './BrandingPanel';
 import InfrastructurePanel from './InfrastructurePanel';
 import AutomationPanel from './AutomationPanel';
 import ProspectSearchCard from './ProspectSearchCard';
-import type { SMTPConfig, IMAPConfig } from './SMTPWizard';
 
 /* ─── helpers ─── */
 
@@ -85,16 +81,6 @@ function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestSt
 
 /* ─── SMTP tab ─── */
 
-function loadSMTP() {
-  const EMPTY: SmtpConfig = { host: '', port: '587', user: '', pass: '', fromName: '', fromEmail: '', encryption: 'tls' };
-  try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null') ?? EMPTY; }
-  catch { return EMPTY; }
-}
-function loadIMAP() {
-  const EMPTY: ImapConfig = { host: '', port: '993', user: '', pass: '', folder: 'INBOX' };
-  try { return JSON.parse(localStorage.getItem('crm_imap') || 'null') ?? EMPTY; }
-  catch { return EMPTY; }
-}
 function loadSMS() {
   try { return JSON.parse(localStorage.getItem('crm_sms') || 'null') ?? { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
   catch { return { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
@@ -103,195 +89,6 @@ function loadSMS() {
 interface SmtpConfig { host: string; port: string; user: string; pass: string; fromName: string; fromEmail: string; encryption: string; }
 interface ImapConfig { host: string; port: string; user: string; pass: string; folder: string; }
 interface SmsConfig { provider: string; accountSid: string; authToken: string; fromNumber: string; }
-
-/* ─── Email Provider (API-based sending for campaigns) ─── */
-
-function EmailProviderCard() {
-  const { addNotification } = useApp();
-  const [cfg, setCfg] = useState<EmailProviderConfig>(loadEmailConfig);
-  const [testAddr, setTestAddr] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
-  const [lastResult, setLastResult] = useState('');
-
-  const save = () => { saveEmailConfig(cfg); addNotification('Email provider saved!'); };
-
-  const runTest = async () => {
-    if (cfg.provider === 'none') { addNotification('Select a provider first', 'error'); return; }
-    if (!testAddr.trim()) { addNotification('Enter a test recipient address', 'error'); return; }
-    setStatus('sending'); setLastResult('');
-    const result = await sendEmail(cfg, {
-      to: testAddr.trim(),
-      toName: 'Test Recipient',
-      subject: '✅ CRM Email Test',
-      html: `<h2>Email provider working!</h2><p>This test was sent from your CRM at ${new Date().toLocaleString()}.</p><p>Provider: <strong>${cfg.provider}</strong></p>`,
-    });
-    if (result.success) {
-      setStatus('ok');
-      setLastResult(`Sent! Message ID: ${result.id}`);
-      addNotification(`Test email delivered to ${testAddr}!`);
-    } else {
-      setStatus('fail');
-      setLastResult(result.error || 'Unknown error');
-      addNotification(result.error || 'Send failed', 'error');
-    }
-  };
-
-  const statusColors: Record<string, string> = { idle: '#64748b', sending: '#2563eb', ok: '#16a34a', fail: '#dc2626' };
-  /* Every one of these sends over HTTPS from this host, so none of them care
-     whether your hosting blocks SMTP ports. The free allowances are the
-     published ones and none of them ask for a card. */
-  const providerDocs: Record<string, { label: string; url: string; hint: string }> = {
-    smtp:     { label: 'SMTP',     url: '',                       hint: 'Uses the SMTP server configured in the wizard above — Outlook, your host, a sending API, anything that speaks SMTP. Blocked ports are retried automatically.' },
-    brevo:    { label: 'Brevo',    url: 'https://www.brevo.com',  hint: 'Free: 300 emails a day, no card. Sends over HTTPS, so it works even when your host blocks every SMTP port — the safest choice on shared hosting.' },
-    resend:   { label: 'Resend',   url: 'https://resend.com',     hint: 'Free: 3,000 a month. Its onboarding@resend.dev sender works before you verify a domain, so it is the fastest route to a first real send.' },
-    mailjet:  { label: 'Mailjet',  url: 'https://www.mailjet.com',hint: 'Free: 200 a day. Needs both an API key and an API secret — they sit on the same page of your account.' },
-    smtp2go:  { label: 'SMTP2GO',  url: 'https://www.smtp2go.com',hint: 'Free: 1,000 a month. Built for hosts with awkward firewalls.' },
-    sendgrid: { label: 'SendGrid', url: 'https://sendgrid.com',   hint: 'Free: 100 a day. Requires sender verification before the first send.' },
-    postmark: { label: 'Postmark', url: 'https://postmarkapp.com',hint: 'Free: 100 a month. The strictest about verified senders, and the best deliverability of the group.' },
-    mailgun:  { label: 'Mailgun',  url: 'https://www.mailgun.com',hint: 'Needs your Mailgun sending domain as well as the key. Free trial only — the others have standing free tiers.' },
-    mailtrap: { label: 'Mailtrap', url: 'https://mailtrap.io',    hint: 'A capture inbox for testing. Mail lands in the Mailtrap UI and reaches nobody — use it to check a campaign is well-formed without mailing customers.' },
-    activecampaign: { label: 'ActiveCampaign', url: 'https://www.activecampaign.com', hint: 'Sends through your existing ActiveCampaign account. Needs the account URL from Settings → Developer.' },
-  };
-
-  return (
-    <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px', marginBottom: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
-        <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Zap size={20} color="#17191c" />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Email Sending Provider</h4>
-            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#17191c15', color: '#17191c', fontWeight: 600 }}>Campaign Sending</span>
-          </div>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>API-based sending used by campaigns and sequences</p>
-        </div>
-      </div>
-
-      {/* Provider selector */}
-      <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Campaign Sending Provider</label>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: '8px', marginBottom: '10px' }}>
-          {[
-            { id: 'smtp',     label: '🔐 SMTP',     desc: 'Your own server' },
-            { id: 'brevo',    label: '📮 Brevo',    desc: '300/day free · HTTPS' },
-            { id: 'resend',   label: '⚡ Resend',   desc: '3,000/mo free · HTTPS' },
-            { id: 'mailjet',  label: '✈️ Mailjet',  desc: '200/day free · HTTPS' },
-            { id: 'smtp2go',  label: '🚀 SMTP2GO',  desc: '1,000/mo free · HTTPS' },
-            { id: 'sendgrid', label: '📨 SendGrid', desc: '100/day free · HTTPS' },
-            { id: 'postmark', label: '📯 Postmark', desc: '100/mo free · HTTPS' },
-            { id: 'mailgun',  label: '🔫 Mailgun',  desc: 'Needs a domain · HTTPS' },
-            { id: 'mailtrap', label: '🧪 Mailtrap', desc: 'Test capture only' },
-            { id: 'none',     label: '🚫 None',     desc: 'Disabled' },
-          ].map(p => (
-            <button key={p.id} onClick={() => setCfg(prev => ({ ...prev, provider: p.id as EmailProviderConfig['provider'] }))}
-              style={{ padding: '10px', border: `2px solid ${cfg.provider === p.id ? '#17191c' : '#e2e8f0'}`, borderRadius: '10px', backgroundColor: cfg.provider === p.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'center', transition: 'all 0.12s' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: cfg.provider === p.id ? '#17191c' : '#374151' }}>{p.label}</div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{p.desc}</div>
-            </button>
-          ))}
-        </div>
-        {cfg.provider !== 'none' && providerDocs[cfg.provider] && (
-          <div style={{ padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: 0, flex: 1 }}>{providerDocs[cfg.provider].hint}</p>
-            <a href={providerDocs[cfg.provider].url} target="_blank" rel="noopener noreferrer"
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#17191c', fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-              Get free API key <ExternalLink size={11} />
-            </a>
-          </div>
-        )}
-      </div>
-
-      {cfg.provider === 'smtp' && (
-        <div style={{ padding: '12px 14px', backgroundColor: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
-          <p style={{ fontSize: '13px', fontWeight: 600, color: '#16a34a', margin: '0 0 3px' }}>✓ Uses SMTP Wizard credentials</p>
-          <p style={{ fontSize: '12px', color: '#15803d', margin: 0 }}>Campaigns will send via the SMTP server configured in the wizard above. No API key needed.</p>
-        </div>
-      )}
-
-      {cfg.provider !== 'none' && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px', marginBottom: '12px' }}>
-            {cfg.provider !== 'smtp' && (
-              <div style={{ gridColumn: cfg.provider === 'mailtrap' ? '1' : '1/-1' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>API Key *</label>
-                <input type="password" value={cfg.apiKey} onChange={e => setCfg(prev => ({ ...prev, apiKey: e.target.value }))} placeholder="Paste your API key here"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            )}
-            {cfg.provider === 'mailtrap' && (
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Inbox ID *</label>
-                <input value={cfg.inboxId} onChange={e => setCfg(prev => ({ ...prev, inboxId: e.target.value }))} placeholder="e.g. 1234567"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            )}
-            {/* Mailjet authenticates with a pair, and a missing secret otherwise
-                comes back as a rejected key, which sends people to regenerate a
-                key that was never the problem. */}
-            {cfg.provider === 'mailjet' && (
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>API Secret *</label>
-                <input type="password" value={cfg.apiSecret || ''} onChange={e => setCfg(prev => ({ ...prev, apiSecret: e.target.value }))} placeholder="Secret from the same Mailjet page"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            )}
-            {cfg.provider === 'mailgun' && (
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Sending domain *</label>
-                <input value={cfg.domain || ''} onChange={e => setCfg(prev => ({ ...prev, domain: e.target.value }))} placeholder="mg.yourdomain.com"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            )}
-            {cfg.provider === 'activecampaign' && (
-              <div style={{ gridColumn: '1/-1' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Account URL *</label>
-                <input value={cfg.apiUrl || ''} onChange={e => setCfg(prev => ({ ...prev, apiUrl: e.target.value }))} placeholder="https://youraccount.api-us1.com"
-                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            )}
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>From Name</label>
-              <input value={cfg.fromName} onChange={e => setCfg(prev => ({ ...prev, fromName: e.target.value }))} placeholder="CRM Pro"
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>From Email</label>
-              <input value={cfg.fromEmail} onChange={e => setCfg(prev => ({ ...prev, fromEmail: e.target.value }))} placeholder="hello@yourdomain.com"
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-            </div>
-          </div>
-
-          {/* Test send */}
-          <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', margin: '0 0 6px' }}>Send test email</p>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-              <input value={testAddr} onChange={e => setTestAddr(e.target.value)} placeholder="recipient@example.com"
-                style={{ flex: 1, padding: '8px 11px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
-            </div>
-            <button onClick={runTest} disabled={status === 'sending'}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: status === 'sending' ? '#e2e8f0' : '#17191c', color: status === 'sending' ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}>
-              {status === 'sending' ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Send size={13} /> Send Test</>}
-            </button>
-            {lastResult && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '8px 10px', backgroundColor: status === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: '7px', border: `1px solid ${status === 'ok' ? '#bbf7d0' : '#fecaca'}`, marginTop: '8px' }}>
-                {status === 'ok' ? <CheckCircle size={14} color="#16a34a" style={{ marginTop: 1, flexShrink: 0 }} /> : <XCircle size={14} color="#dc2626" style={{ marginTop: 1, flexShrink: 0 }} />}
-                <p style={{ fontSize: '12px', color: statusColors[status], margin: 0, lineHeight: 1.5, wordBreak: 'break-word' }}>{lastResult}</p>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-        <button onClick={save} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-          <Save size={14} /> Save Provider
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /* ─── Mailbox Warmup ─── */
 
@@ -554,41 +351,17 @@ function EmailSMSTab() {
     addNotification(r.message ?? r.error ?? (r.success ? 'Twilio accepted the credentials.' : 'Twilio refused them.'), r.success ? 'success' : 'error');
   };
 
-  const handleSMTPSave = (smtp: SMTPConfig, imap: IMAPConfig) => {
-    /* The local copy stays: it fills this form in instantly and every existing
-       reader still expects it. What changed is that it is no longer the only
-       copy — the server now holds these too, which is what lets a scheduled
-       campaign send with nobody logged in. */
-    localStorage.setItem('crm_smtp', JSON.stringify({ host: smtp.host, port: smtp.port, user: smtp.user, pass: smtp.pass, fromName: smtp.fromName, fromEmail: smtp.fromEmail, encryption: smtp.encryption }));
-    localStorage.setItem('crm_imap', JSON.stringify({ host: imap.host, port: imap.port, user: imap.user, pass: imap.pass, folder: imap.folder }));
-
-    void saveMailbox({
-      smtp: { host: smtp.host, port: smtp.port, user: smtp.user, pass: smtp.pass, encryption: smtp.encryption },
-      from: { name: smtp.fromName, email: smtp.fromEmail },
-      imap: imap.host ? { host: imap.host, port: imap.port, user: imap.user, pass: imap.pass, folder: imap.folder } : undefined,
-    }).then(res => {
-      addNotification(
-        res.success
-          ? 'Mail server saved. Scheduled campaigns will send even when nobody is signed in.'
-          /* Said plainly rather than swallowed: the browser copy worked, so
-             sending from an open tab still will — but the scheduler will not
-             see it, and that is worth knowing now rather than on Tuesday. */
-          : `Saved on this device, but not on the server — scheduled sending will not work until it is. ${res.error ?? ''}`,
-        res.success ? 'success' : 'error',
-      );
-    });
-  };
-
-  /* A workspace configured on another machine should not look unconfigured
-     here. Fills the blanks from the server; never overwrites a local copy,
-     which may hold a password the server will not hand back. */
-  useEffect(() => { void hydrateLocalCache(); }, []);
-
-  const savedSMTP = loadSMTP();
-  const savedIMAP = loadIMAP();
-
-  const initialSMTP: SMTPConfig = { host: savedSMTP.host, port: savedSMTP.port, user: savedSMTP.user, pass: savedSMTP.pass, fromName: savedSMTP.fromName, fromEmail: savedSMTP.fromEmail, encryption: savedSMTP.encryption as 'tls' | 'ssl' | 'none' };
-  const initialIMAP: IMAPConfig = { host: savedIMAP.host, port: savedIMAP.port, user: savedIMAP.user, pass: savedIMAP.pass, folder: savedIMAP.folder };
+  /*
+   * The local copies are gone.
+   *
+   * `crm_smtp` and `crm_imap` held a full set of credentials, password
+   * included, and were the thing eight other files read to decide whether mail
+   * was set up. That made the browser a second source of truth for something
+   * only the server can act on — and meant a campaign could not send from a
+   * machine that had not typed the password in, however well the workspace was
+   * configured. MailboxesPanel writes to the server, and everything else reads
+   * the secret-free cache in mailboxStore.
+   */
 
   const sectionHead = (icon: ReactElement, title: string, desc: string, badge?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
@@ -613,8 +386,6 @@ function EmailSMSTab() {
 
   return (
     <div>
-      {/* API Email Provider — for campaigns */}
-      <EmailProviderCard />
 
       {/*
         Mailboxes — the one place a mail server is connected.
@@ -627,20 +398,8 @@ function EmailSMSTab() {
       */}
       {card(<MailboxesPanel />)}
 
-      {/*
-        The old wizard, kept for now.
-
-        It still writes to the same endpoint through the compatibility actions,
-        and some customers know it. It comes out once the panel above has been
-        live long enough to be sure nothing was lost with it.
-      */}
-      <SMTPWizard onSave={handleSMTPSave} initialSMTP={initialSMTP} initialIMAP={initialIMAP} />
-
       {/* Mailbox Warmup */}
       <MailboxWarmupCard />
-
-      {/* Prospect search for the AI Sales Agent */}
-      <ProspectSearchCard />
 
       {/* What this server can actually do */}
       <RouteCheck />
@@ -1189,15 +948,19 @@ export default function Settings() {
      badge cannot claim a connection that does not exist. The two with no
      integration behind them say so rather than offering a button that lies. */
   const integrations = (() => {
-    const email = loadEmailConfig();
     const sms = loadSMS();
     const stripe = loadStripeConfig();
-    const smtp = (() => { try { return JSON.parse(localStorage.getItem('crm_smtp') || 'null'); } catch { return null; } })();
+    /* Whether mail is connected is one question with one answer now: has this
+       workspace a mailbox the server has actually validated. */
+    const primary = cachedPrimary();
     return [
       { name: 'Stripe', description: 'Take subscription payments', logo: '💳', connected: !!stripe.secretKey, where: 'Agency → Billing', tab: null as string | null },
-      { name: 'Email sending', description: email.provider === 'none' ? 'No provider chosen yet' : `Sending through ${email.provider}`, logo: '📧', connected: email.provider !== 'none' && (email.provider === 'smtp' ? !!smtp?.host : !!email.apiKey), where: 'Email & SMS', tab: 'email-sms' },
+      /* "Connected" means validated, not filled in. A host somebody typed is
+         not a mailbox that can send, and a badge claiming otherwise is how a
+         campaign gets scheduled against a mailbox that has never worked. */
+      { name: 'Email sending', description: primary ? `Sending from ${primary.fromEmail || primary.smtpHost}` : 'No mailbox connected yet', logo: '📧', connected: !!primary?.canSend, where: 'Email & SMS', tab: 'email-sms' },
       { name: 'Twilio', description: 'Send and receive SMS', logo: '📱', connected: !!(sms.accountSid && sms.authToken), where: 'Email & SMS', tab: 'email-sms' },
-      { name: 'Incoming mailbox', description: 'Read replies over IMAP', logo: '📥', connected: !!smtp?.imapHost, where: 'Email & SMS', tab: 'email-sms' },
+      { name: 'Incoming mailbox', description: 'Read replies over IMAP', logo: '📥', connected: !!primary?.canReceive, where: 'Email & SMS', tab: 'email-sms' },
     ];
   })();
 
@@ -1236,7 +999,14 @@ export default function Settings() {
         {/* Content */}
         <div style={{ flex: '999 1 320px', minWidth: 0 }}>
           {activeTab === 'email-sms' && <EmailSMSTab />}
-          {activeTab === 'ai-engine' && <AIEngineTab />}
+          {activeTab === 'ai-engine' && (
+            <>
+              <AIEngineTab />
+              {/* Moved off Email & SMS. It configures how the AI Sales Agent
+                  finds prospects, which has nothing to do with a mailbox. */}
+              <ProspectSearchCard />
+            </>
+          )}
           {activeTab === 'api-validation' && <IntegrationsTab />}
 
           {activeTab === 'profile' && (

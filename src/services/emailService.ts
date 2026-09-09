@@ -1,5 +1,6 @@
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
+import { cachedPrimary } from './mailboxStore';
 import { API_BASE } from './apiBase';
 
 /**
@@ -81,13 +82,13 @@ export function loadEmailConfig(): EmailProviderConfig {
 }
 
 function defaultConfig(): EmailProviderConfig {
-  // Pre-fill from SMTP wizard config if available
-  try {
-    const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
-    if (smtp?.host && smtp?.user) {
-      return { provider: 'smtp', apiKey: '', inboxId: '', fromName: smtp.fromName || '', fromEmail: smtp.fromEmail || smtp.user };
-    }
-  } catch { /* ignore */ }
+  /* A connected mailbox means this workspace sends over SMTP unless it has
+     chosen otherwise. Read from the cached server list rather than from a copy
+     of the credentials in the browser. */
+  const primary = cachedPrimary();
+  if (primary?.smtpHost) {
+    return { provider: 'smtp', apiKey: '', inboxId: '', fromName: primary.fromName, fromEmail: primary.fromEmail };
+  }
   return { provider: 'none', apiKey: '', inboxId: '', fromName: '', fromEmail: '' };
 }
 
@@ -98,12 +99,10 @@ export function saveEmailConfig(cfg: EmailProviderConfig) {
 /** Returns true if a real sending provider is configured */
 export function isEmailConfigured(): boolean {
   const cfg = loadEmailConfig();
-  if (cfg.provider === 'smtp') {
-    try {
-      const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
-      return !!(smtp?.host && smtp?.user && smtp?.pass);
-    } catch { return false; }
-  }
+  /* A mailbox that has never been validated is not a mailbox that can send,
+     and saying so here beats a campaign discovering it one recipient at a
+     time. */
+  if (cfg.provider === 'smtp') return !!cachedPrimary()?.canSend;
   /* Two providers need more than a key, and saying so up front beats a
      rejected send that blames the key. */
   if (cfg.provider === 'activecampaign') return !!(cfg.apiKey && cfg.apiUrl);
@@ -124,24 +123,27 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
 
   try {
     if (config.provider === 'smtp') {
-      const smtpCfg = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
-      if (!smtpCfg?.host || !smtpCfg?.user) {
-        return { success: false, error: 'SMTP not configured. Go to Settings → Email & SMS → SMTP Setup.' };
+      const primary = cachedPrimary();
+      if (!primary?.smtpHost) {
+        return { success: false, error: 'No mailbox is connected. Go to Settings → Email & SMS → Mailboxes.' };
       }
+      /*
+       * The workspace is named; the credentials are not sent.
+       *
+       * This used to read host, username and *password* out of `crm_smtp` and
+       * post them with every message — which meant the browser had to be
+       * holding a working password for a campaign to go out at all, and a
+       * second device or a cleared cache silently could not send. The mailbox
+       * lives on the server, encrypted; the server resolves its own.
+       */
       const resp = await fetch(`${API_BASE}/api/smtp-send.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: sessionToken(),
-          /* Named so the server can fall back to this workspace's stored
-             mailbox when the browser has no password — a second device, or a
-             cache that was cleared. The explicit credentials below still win
-             when they are present, which is what the setup wizard relies on. */
           accountId: getActiveAccountId(),
-          host: smtpCfg.host, port: smtpCfg.port, username: smtpCfg.user,
-          password: smtpCfg.pass, encryption: smtpCfg.encryption,
-          fromName: config.fromName || smtpCfg.fromName,
-          fromEmail: config.fromEmail || smtpCfg.fromEmail,
+          fromName: config.fromName || primary.fromName,
+          fromEmail: config.fromEmail || primary.fromEmail,
           to: payload.to, toName: payload.toName,
           replyTo: payload.replyTo || '',
           unsubscribeUrl: payload.unsubscribeUrl || '',
@@ -172,6 +174,10 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: sessionToken(),
+          /* Named, not described. With a workspace the server reads the key off
+             the mailbox record; `apiKey` stays only so the settings screen can
+             test one before it is committed. */
+          accountId: getActiveAccountId(),
           provider: config.provider,
           apiKey: config.apiKey,
           apiSecret: config.apiSecret || '',

@@ -14,6 +14,7 @@
  * It has to run on the deployed host to mean anything: the answer is a property
  * of that server's firewall, not of the developer's laptop.
  */
+import { cachedPrimary } from '../../services/mailboxStore';
 import { useState } from 'react';
 import { Radar, CheckCircle, XCircle, Loader, ArrowRight, ExternalLink } from 'lucide-react';
 import { sessionToken } from '../../services/auth';
@@ -53,9 +54,9 @@ export default function RouteCheck() {
        all, so it is probed alongside the public relays. */
     let own: { host?: string; port?: number } = {};
     try {
-      const smtp = JSON.parse(localStorage.getItem('crm_smtp') || 'null');
-      if (smtp?.host) own = { host: smtp.host, port: Number(smtp.port) || 587 };
-    } catch { /* no SMTP configured yet, which is fine */ }
+      const primary = cachedPrimary();
+      if (primary?.smtpHost) own = { host: primary.smtpHost, port: 587 };
+    } catch { /* no mailbox connected yet, which is fine */ }
 
     try {
       const resp = await fetch(`${API_BASE}/api/mail-probe.php`, {

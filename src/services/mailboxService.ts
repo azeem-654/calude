@@ -10,7 +10,7 @@
 import { sessionToken } from './auth';
 import { API_BASE } from './apiBase';
 import { getActiveAccountId } from './tenancy';
-import { listMailboxes } from './mailboxStore';
+import { cacheMailboxes, listMailboxes } from './mailboxStore';
 
 
 /* ─── Types ─── */
@@ -133,6 +133,9 @@ export function saveExtras(id: string, patch: Partial<MailboxExtras>) {
  */
 export async function loadMailboxes(): Promise<Mailbox[]> {
   const records = await listMailboxes();
+  /* The inbox is opened far more often than Settings, so this is where the
+     shared cache most reliably stays current. */
+  cacheMailboxes(records);
   const extras = loadExtras();
   return records.map(r => {
     const ex = extras[r.id];

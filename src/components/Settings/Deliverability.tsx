@@ -6,6 +6,7 @@
  * comes from a real lookup or from mail this account actually sent — nothing
  * is illustrative.
  */
+import { cachedPrimary } from '../../services/mailboxStore';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ShieldCheck, ShieldAlert, RefreshCw, Copy, Check, X, AlertTriangle, Info,
@@ -138,7 +139,9 @@ function DeliverabilityHealth() {
     try { return JSON.parse(localStorage.getItem('crm_email_config') || '{}'); } catch { return {}; }
   }, []);
   const smtpCfg = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('crm_smtp') || '{}'); } catch { return {}; }
+    /* The connected mailbox, not a copy of its credentials. Only the host is
+       needed here — it decides which SPF include to suggest. */
+    return { host: cachedPrimary()?.smtpHost ?? '' };
   }, []);
 
   const records = useMemo(
