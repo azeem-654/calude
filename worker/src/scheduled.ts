@@ -20,6 +20,7 @@
 import type { Env } from './lib/db';
 import { dataGet, dataPut } from './lib/db';
 import { loadMailbox } from './routes/mailbox';
+import { loadSmsConfig, sendSms } from './lib/sms';
 import { smtpSend } from './lib/smtp';
 import { buildMime } from './lib/mime';
 
@@ -42,9 +43,21 @@ interface Enrollment {
   history: { step: number; at: string; action: string }[];
 }
 
-interface Step { id: string; day: number; waitUnit: 'hours' | 'days'; subject: string; body: string }
+/**
+ * A step in a sequence.
+ *
+ * `channel` is optional and absent means email. Every sequence written before
+ * SMS existed has no such field, and defaulting to email is what keeps those
+ * running unchanged — a required field here would have stopped every existing
+ * campaign at its next step.
+ */
+interface Step {
+  id: string; day: number; waitUnit: 'hours' | 'days';
+  subject: string; body: string;
+  channel?: 'email' | 'sms';
+}
 interface Sequence { id: string; name: string; status: string; steps: Step[] }
-interface Contact { id: string; name?: string; firstName?: string; lastName?: string; email?: string; company?: string; jobTitle?: string }
+interface Contact { id: string; name?: string; firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; jobTitle?: string }
 
 /** The per-run ceiling. A workspace with a huge backlog is spread over ticks
  *  rather than being allowed to exhaust the Worker's time budget in one go. */
@@ -119,16 +132,29 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
   const contacts = parseJson<Contact[]>(await dataGet(env.DB, accountId, CONTACTS_KEY), []);
 
   const mailbox = await loadMailbox(env, accountId);
-  if (!mailbox?.smtp.host) {
-    /* Nothing to send with. Said out loud in the log rather than silently
-       skipped, because "my scheduled campaign never went" with no explanation
-       is the worst possible version of this. */
-    note(report, accountId, `${due.length} message(s) due, but no mail server is set up for this workspace.`);
+  const sms = await loadSmsConfig(env, accountId);
+
+  /*
+   * Neither channel is a precondition for the run any more.
+   *
+   * This used to return early when there was no mail server, which was right
+   * when every step was an email and wrong the moment one could be an SMS: a
+   * workspace that had only ever set up Twilio would have its texts silently
+   * skipped because its SMTP was blank. Each step now checks what *it* needs,
+   * and says so per step.
+   */
+  const canEmail = !!mailbox?.smtp.host && !(mailbox.smtp.username && !mailbox.smtp.password);
+  const canSms = !!sms?.accountSid && !!sms.fromNumber;
+
+  if (!canEmail && !canSms) {
+    /* Said out loud rather than silently skipped, because "my scheduled
+       campaign never went" with no explanation is the worst possible version
+       of this. */
+    note(report, accountId, `${due.length} message(s) due, but this workspace has no mail server and no SMS sender set up.`);
     return;
   }
-  if (mailbox.smtp.username && !mailbox.smtp.password) {
+  if (mailbox?.smtp.host && mailbox.smtp.username && !mailbox.smtp.password) {
     note(report, accountId, 'The stored mailbox password could not be read back. Enter it again in Settings → Email.');
-    return;
   }
 
   let touched = false;
@@ -143,24 +169,58 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     const seq = sequences.find(s => s.id === enr.sequenceId);
     const contact = contacts.find(c => c.id === enr.contactId);
     const step = seq?.steps[enr.currentStep];
-    if (!seq || !contact || !step || !contact.email) continue;
+    if (!seq || !contact || !step) continue;
+
+    const isSms = step.channel === 'sms';
+    /* The address this step needs, not the one the contact happens to have.
+       A text step on a contact with no phone number is a step that can never
+       run, and it is worth saying which. */
+    const target = isSms ? (contact.phone ?? '').trim() : (contact.email ?? '').trim();
+    if (!target) {
+      note(report, accountId, `${contact.name ?? contact.id} has no ${isSms ? 'phone number' : 'email address'}, so a ${isSms ? 'text' : 'email'} step could not be sent.`);
+      continue;
+    }
+    if (isSms && !canSms) {
+      note(report, accountId, 'A text step is due, but no SMS sender is set up. Add one in Settings → Email & SMS.');
+      continue;
+    }
+    if (!isSms && !canEmail) continue;
     /* A sequence someone paused mid-flight must not keep sending. */
     if (seq.status === 'paused') continue;
 
     const html = personalise(step.body ?? '', contact);
     const subject = personalise(step.subject ?? '', contact);
-    const fromEmail = mailbox.from.email || mailbox.smtp.username;
 
-    const mime = buildMime({
-      fromName: mailbox.from.name || 'CRM',
-      fromEmail,
-      to: contact.email,
-      subject,
-      html,
-      replyTo: mailbox.from.replyTo || undefined,
-    }, mailbox.smtp.host);
+    /*
+     * One result shape for both channels, so everything below — advancing the
+     * step, the history entry, the counters, the note — stays channel-blind.
+     * The alternative was two nearly-identical loops, and they would have
+     * drifted the first time one of them was fixed.
+     */
+    let out: { ok: boolean; error: string };
 
-    const out = await smtpSend(mailbox.smtp, { from: fromEmail, to: contact.email, mime });
+    if (isSms) {
+      /* SMS is plain text. Sending the HTML body of an email step would post
+         markup to somebody's phone. */
+      const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+      const r = await sendSms(env, sms!, target, text, accountId);
+      out = { ok: r.ok, error: r.error };
+      /* An opt-out is not a failure to retry or a fault to fix — it is the
+         person's decision, and it is worth naming as that in the log. */
+      if (r.suppressed) note(report, accountId, `${target} has opted out, so the text was not sent.`);
+    } else {
+      const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
+      const mime = buildMime({
+        fromName: mailbox!.from.name || 'CRM',
+        fromEmail,
+        to: target,
+        subject,
+        html,
+        replyTo: mailbox!.from.replyTo || undefined,
+      }, mailbox!.smtp.host);
+      const r = await smtpSend(mailbox!.smtp, { from: fromEmail, to: target, mime });
+      out = { ok: r.ok, error: r.error };
+    }
 
     /* Advance whether or not the send succeeded.
        Leaving currentStep where it was means the next tick — a minute later —
@@ -183,20 +243,28 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
 
     touched = true;
     if (out.ok) { report.sent++; sentHere++; }
-    else { report.failed++; note(report, accountId, `${contact.email} — ${out.error.slice(0, 140)}`); }
+    else { report.failed++; note(report, accountId, `${target} — ${out.error.slice(0, 140)}`); }
 
     /* A record of the send, in the same shape the app keeps locally, so the
-       contact's history shows server-sent mail alongside everything else. */
+       contact's history shows server-sent messages alongside everything else.
+       `channel` and `toPhone` distinguish a text from an email — without them
+       a contact's history would show every text as an email with no recipient,
+       and open and click counts that can never mean anything for SMS. */
     const emails = parseJson<Record<string, unknown>[]>(await dataGet(env.DB, accountId, EMAILS_KEY), []);
     emails.unshift({
-      id: `em-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      contactId: contact.id, subject, body: html,
+      id: `${isSms ? 'sms' : 'em'}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      contactId: contact.id,
+      channel: isSms ? 'sms' : 'email',
+      subject: isSms ? '' : subject,
+      body: html,
       status: out.ok ? 'sent' : 'failed',
       direction: 'outbound',
       createdAt: new Date().toISOString(),
       sentAt: out.ok ? new Date().toISOString() : undefined,
       opens: 0, clicks: 0, clickedUrls: [], attachments: [],
-      threadId: `th-${enr.id}`, toEmail: contact.email,
+      threadId: `th-${enr.id}`,
+      toEmail: isSms ? undefined : target,
+      toPhone: isSms ? target : undefined,
       sequenceId: seq.id,
       error: out.ok ? undefined : out.error,
     });
@@ -226,8 +294,22 @@ export async function runScheduledSends(env: Env): Promise<TickReport> {
    */
   await runDueSchedules(env, report);
 
+  /*
+   * Every workspace that can send *something*.
+   *
+   * This read crm_mailboxes alone, which was right when email was the only
+   * channel and became a silent bug the moment a step could be a text: a
+   * workspace with Twilio set up and no SMTP was never visited, so its texts
+   * were not skipped with a reason — the tick simply never looked at it.
+   *
+   * crm_mailbox_accounts rather than crm_mailboxes, because 0007 moved the
+   * mailboxes there and left the old table frozen behind them.
+   */
   const { results } = await env.DB.prepare(
-    "SELECT account_id FROM crm_mailboxes WHERE smtp_host != '' LIMIT 500",
+    `SELECT account_id FROM crm_mailbox_accounts WHERE smtp_host != ''
+     UNION
+     SELECT account_id FROM crm_sms_config WHERE from_number != '' AND account_sid != ''
+     LIMIT 500`,
   ).all<{ account_id: string }>();
 
   for (const row of results ?? []) {

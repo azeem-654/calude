@@ -30,7 +30,7 @@ import { handleBooking } from './routes/booking';
 import { handleYtThumb, handleImgProxy, handlePlacesSearch, handleReviewsFetch } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
-  handleImapFetch, handleMailProbe, handleSmsSend, handleDeliverability,
+  handleImapFetch, handleMailProbe, handleSmsSend, handleSmsInbound, handleDeliverability,
   handleBlogPublish, handleDiagnostics, handleInstall,
 } from './routes/misc';
 import { runScheduledSends, recordTick } from './scheduled';
@@ -56,6 +56,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/mail-probe.php': handleMailProbe,
   '/api/imap-fetch.php': handleImapFetch,
   '/api/sms-send.php': handleSmsSend,
+  /* Twilio's inbound webhook. Unauthenticated by necessity — Twilio has no
+     session — so it identifies the workspace by the number the message was
+     sent to, and does nothing at all for a number we do not own. */
+  '/api/sms-inbound.php': handleSmsInbound,
 
   '/api/track.php': handleTrack,
   '/api/unsubscribe.php': handleUnsubscribe,

@@ -15,6 +15,9 @@ import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, stora
 import { imapFetch } from '../lib/imap';
 import { loadMailbox, loadMailboxById } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
+import { encryptSecret } from '../lib/crypto';
+import { installSecret, nowIso } from '../lib/db';
+import { E164, isStopMessage, loadSmsConfig, recordOptOut, sendSms, verifySmsCredentials } from '../lib/sms';
 
 /* ── Inbox ───────────────────────────────────────────────────────────────── */
 
@@ -133,35 +136,180 @@ export async function handleMailProbe(req: Request, env: Env): Promise<Response>
 
 /* ── SMS ─────────────────────────────────────────────────────────────────── */
 
+/**
+ * Send an SMS, save the sender, or list who has opted out.
+ *
+ * This used to take the Twilio SID and auth token out of the request body,
+ * which meant the only place they could live was the browser — and so the cron
+ * could not send an SMS step at all, because a scheduler has no request to read
+ * credentials from. They are stored per workspace and encrypted now, the same
+ * as a mailbox password, and the send resolves its own.
+ *
+ * Explicit credentials still work, for one reason: the settings screen has to
+ * be able to test a SID and token before committing them. That path never
+ * carries a campaign.
+ */
 export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
-  const d = await body<{ token?: string; accountSid?: string; authToken?: string; from?: string; to?: string; body?: string }>(req);
-  const gate = await requireSessionForSocket(env.DB, d.token);
-  if ('denied' in gate) return gate.denied;
+  const d = await body<{
+    token?: string; action?: string; accountId?: string;
+    accountSid?: string; authToken?: string; from?: string; to?: string; body?: string;
+    phone?: string;
+  }>(req);
 
-  const sid = String(d.accountSid ?? '').trim();
-  const auth = String(d.authToken ?? '').trim();
-  const from = String(d.from ?? '').trim();
+  const user = await userFromToken(env.DB, d.token);
+  if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
+
+  const accountId = String(d.accountId ?? '').trim();
+  if (accountId && !(await canAccess(env.DB, user, accountId))) {
+    return fail('That workspace is not yours.', 403);
+  }
+
+  const action = d.action ?? 'send';
+
+  /* ── What is set up, without the secrets ── */
+  if (action === 'get') {
+    if (!accountId) return fail('A valid workspace is required.');
+    const row = await env.DB.prepare('SELECT * FROM crm_sms_config WHERE account_id = ?')
+      .bind(accountId).first<{ provider: string; account_sid: string; auth_token: string; from_number: string; verified_at: string | null; last_error: string }>();
+    return json({
+      success: true,
+      sms: row ? {
+        provider: row.provider,
+        fromNumber: row.from_number,
+        hasCredentials: !!row.account_sid && !!row.auth_token,
+        verifiedAt: row.verified_at,
+        lastError: row.last_error,
+      } : null,
+    });
+  }
+
+  if (action === 'save') {
+    if (!accountId) return fail('A valid workspace is required.');
+    const from = String(d.from ?? '').trim();
+    if (from && !E164.test(from)) {
+      return fail(`"${from}" is not a sending number in international format, e.g. +15551234567.`);
+    }
+    const key = await installSecret(env.DB, 'mailbox_key');
+    const existing = await env.DB.prepare('SELECT account_sid, auth_token FROM crm_sms_config WHERE account_id = ?')
+      .bind(accountId).first<{ account_sid: string; auth_token: string }>();
+    /* Blank means "keep what is stored", exactly as it does for a mailbox
+       password — the settings form shows dots and cannot send back a secret it
+       was never given. */
+    const keep = async (given: unknown, current: string | undefined) => {
+      const v = typeof given === 'string' ? given : '';
+      return v === '' ? (current ?? '') : encryptSecret(key, v);
+    };
+    await env.DB.prepare(
+      `INSERT INTO crm_sms_config (account_id, provider, account_sid, auth_token, from_number, verified_at, last_error, updated_at)
+       VALUES (?,?,?,?,?,NULL,'',?)
+       ON CONFLICT(account_id) DO UPDATE SET
+         provider=excluded.provider, account_sid=excluded.account_sid,
+         auth_token=excluded.auth_token, from_number=excluded.from_number,
+         verified_at=NULL, last_error='', updated_at=excluded.updated_at`,
+    ).bind(
+      accountId, String(d.body ?? 'twilio').toLowerCase().slice(0, 32) || 'twilio',
+      await keep(d.accountSid, existing?.account_sid),
+      await keep(d.authToken, existing?.auth_token),
+      from, nowIso(),
+    ).run();
+    return ok();
+  }
+
+  /* ── Who has told us to stop ── */
+  if (action === 'optouts') {
+    if (!accountId) return fail('A valid workspace is required.');
+    const rows = await env.DB.prepare('SELECT phone, source, at FROM crm_sms_optouts WHERE account_id = ? ORDER BY at DESC LIMIT 500')
+      .bind(accountId).all<{ phone: string; source: string; at: string }>();
+    return json({ success: true, optOuts: rows.results ?? [] });
+  }
+
+  if (action === 'opt_out') {
+    if (!accountId) return fail('A valid workspace is required.');
+    const phone = String(d.phone ?? '').trim();
+    if (!E164.test(phone)) return fail(`"${phone}" is not a phone number in international format.`);
+    await recordOptOut(env, accountId, phone, 'manual');
+    return ok();
+  }
+
+  /* ── Prove the credentials, without messaging anybody ── */
+  if (action === 'test') {
+    const explicitSid = String(d.accountSid ?? '').trim();
+    const creds = explicitSid
+      ? { provider: 'twilio', accountSid: explicitSid, authToken: String(d.authToken ?? '').trim(), fromNumber: String(d.from ?? '').trim() }
+      : accountId ? await loadSmsConfig(env, accountId) : null;
+    if (!creds) return fail('Save your Twilio details first, then test them.');
+    const r = await verifySmsCredentials(creds);
+    /* Only a test of the *saved* sender updates the saved state. Trying a pair
+       of credentials in the form is not a statement about the ones on the
+       record, and letting it overwrite them turned a working sender amber
+       because somebody pasted a typo into the box and pressed Test. */
+    if (accountId && !explicitSid) {
+      await env.DB.prepare('UPDATE crm_sms_config SET verified_at = ?, last_error = ?, updated_at = ? WHERE account_id = ?')
+        .bind(r.ok ? nowIso() : null, r.ok ? '' : r.error, nowIso(), accountId).run();
+    }
+    return r.ok
+      ? json({ success: true, message: `Twilio accepted the credentials${r.id && r.id !== 'ok' ? ` for "${r.id}"` : ''}. This does not prove the sending number is approved — only a real send does that.` })
+      : fail(r.error);
+  }
+
+  /* ── Send ── */
   const to = String(d.to ?? '').trim();
   const text = String(d.body ?? '').trim();
 
-  if (!sid || !auth || !from) return fail('Add your Twilio SID, auth token and sending number in Settings → Email & SMS.');
-  if (!/^\+[1-9]\d{6,14}$/.test(to)) return fail(`"${to}" is not a phone number in international format, e.g. +15551234567.`);
-  if (!text) return fail('The message is empty.');
-  if (!/^AC[0-9a-f]{32}$/i.test(sid)) return fail('That does not look like a Twilio Account SID — they start with "AC".');
+  const explicit = String(d.accountSid ?? '').trim();
+  const creds = explicit
+    ? { provider: 'twilio', accountSid: explicit, authToken: String(d.authToken ?? '').trim(), fromNumber: String(d.from ?? '').trim() }
+    : accountId ? await loadSmsConfig(env, accountId) : null;
 
-  const form = new URLSearchParams({ From: from, To: to, Body: text.slice(0, 1600) });
-  try {
-    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method: 'POST',
-      headers: { Authorization: 'Basic ' + btoa(`${sid}:${auth}`), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form,
-    });
-    const data = await r.json<{ sid?: string; message?: string; code?: number }>().catch(() => ({}) as { sid?: string; message?: string; code?: number });
-    if (r.ok) return json({ success: true, id: data.sid ?? 'sent', message: 'Twilio accepted the message.' });
-    return fail(`Twilio refused it (HTTP ${r.status}): ${data.message ?? 'no reason given'}`);
-  } catch (e) {
-    return fail(`Could not reach Twilio: ${e instanceof Error ? e.message : String(e)}`);
+  if (!creds) return fail('Add your Twilio SID, auth token and sending number in Settings → Email & SMS.');
+
+  const r = await sendSms(env, creds, to, text, explicit ? undefined : accountId || undefined);
+
+  /* Remember what a real attempt found, so the settings screen shows a state
+     rather than "unknown". Only for a saved sender — a one-off test of unsaved
+     credentials has no row to write to. */
+  if (!explicit && accountId) {
+    await env.DB.prepare('UPDATE crm_sms_config SET verified_at = ?, last_error = ?, updated_at = ? WHERE account_id = ?')
+      .bind(r.ok ? nowIso() : null, r.ok ? '' : r.error, nowIso(), accountId).run();
   }
+
+  if (r.ok) return json({ success: true, id: r.id, message: 'Twilio accepted the message.' });
+  return fail(r.error, r.suppressed ? 409 : 400);
+}
+
+/**
+ * Twilio's inbound webhook — the only way we hear a reply.
+ *
+ * Deliberately unauthenticated, because Twilio has no session: it posts a form
+ * to whatever URL the number is configured with. The workspace is found from
+ * the number the message was sent *to*, so a request naming a number we do not
+ * own reaches nothing. There is no session to check and nothing here trusts the
+ * body beyond matching that number.
+ *
+ * Twilio expects TwiML back. An empty <Response/> means "accepted, say nothing"
+ * — replying with text here would send a second message to somebody who may
+ * have just asked us to stop.
+ */
+export async function handleSmsInbound(req: Request, env: Env): Promise<Response> {
+  const form = await req.formData().catch(() => null);
+  const twiml = () => new Response('<?xml version="1.0" encoding="UTF-8"?><Response/>', {
+    headers: { 'Content-Type': 'text/xml' },
+  });
+  if (!form) return twiml();
+
+  const from = String(form.get('From') ?? '').trim();
+  const to = String(form.get('To') ?? '').trim();
+  const text = String(form.get('Body') ?? '');
+  if (!E164.test(from) || !to) return twiml();
+
+  const owner = await env.DB.prepare('SELECT account_id FROM crm_sms_config WHERE from_number = ?')
+    .bind(to).first<{ account_id: string }>();
+  if (!owner) return twiml();
+
+  if (isStopMessage(text)) {
+    await recordOptOut(env, owner.account_id, from, 'reply');
+  }
+  return twiml();
 }
 
 /* ── Deliverability ──────────────────────────────────────────────────────── */

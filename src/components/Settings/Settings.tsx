@@ -11,6 +11,7 @@ import { getSession } from '../../services/auth';
 import { activeAccount, planById } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
 import { saveMailbox, hydrateLocalCache } from '../../services/mailboxStore';
+import { fetchSmsStatus, saveSmsConfig, testSmsConfig } from '../../services/smsStore';
 import { loadEmailConfig, saveEmailConfig, sendEmail } from '../../services/emailService';
 import type { EmailProviderConfig } from '../../services/emailService';
 import { validate } from '../../services/validationService';
@@ -493,21 +494,64 @@ function EmailSMSTab() {
   const { addNotification } = useApp();
   const [sms, setSMS] = useState<SmsConfig>(loadSMS);
   const [smsStatus, setSmsStatus] = useState<TestStatus>('idle');
+  const [smsSaved, setSmsSaved] = useState<{ hasCredentials: boolean; verifiedAt: string | null; lastError: string } | null>(null);
 
   const setSsf = (k: keyof SmsConfig, v: string) => setSMS(p => ({ ...p, [k]: v }));
 
-  const runSmsTest = () => {
+  /* What the server holds, so the form can show a real state rather than
+     whatever this browser last typed. */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const st = await fetchSmsStatus();
+      if (!live || !st) return;
+      setSmsSaved({ hasCredentials: st.hasCredentials, verifiedAt: st.verifiedAt, lastError: st.lastError });
+      setSMS(p => ({ ...p, fromNumber: st.fromNumber || p.fromNumber, provider: st.provider || p.provider }));
+    })();
+    return () => { live = false; };
+  }, []);
+
+  const persistSms = async () => {
+    const r = await saveSmsConfig({ accountSid: sms.accountSid, authToken: sms.authToken, fromNumber: sms.fromNumber });
+    if (r.success) {
+      /* The secrets are on the server now; keeping a copy here would put back
+         exactly what moving them was meant to stop. */
+      setSMS(p => ({ ...p, accountSid: '', authToken: '' }));
+      /* Saving changes the credentials, so whatever the last check found no
+         longer describes them — unverified again until re-tested. */
+      setSmsSaved({ hasCredentials: true, verifiedAt: null, lastError: '' });
+    }
+    return r;
+  };
+
+  /*
+   * A real check, at last.
+   *
+   * This was a setTimeout that looked at whether the fields were non-empty and
+   * then announced "SMS configuration verified!". It verified nothing — a typo
+   * in the auth token passed it, and the customer found out when a campaign
+   * silently failed to text anybody.
+   *
+   * It now saves and asks Twilio. Twilio is asked for the account rather than
+   * to send something, because a test that sends costs money and messages a
+   * real phone.
+   */
+  const runSmsTest = async () => {
     setSmsStatus('testing');
-    setTimeout(() => {
-      const hasConfig = Object.values(sms).filter(v => v && v !== 'twilio').some(Boolean);
-      setSmsStatus(hasConfig ? 'ok' : 'fail');
-      if (hasConfig) {
-        localStorage.setItem('crm_sms', JSON.stringify(sms));
-        addNotification('SMS configuration verified!');
-      } else {
-        addNotification('SMS test failed — fill in all required fields', 'error');
-      }
-    }, 1800);
+    const saved = await persistSms();
+    if (!saved.success) {
+      setSmsStatus('fail');
+      addNotification(saved.error ?? 'Could not save the SMS settings.', 'error');
+      return;
+    }
+    const r = await testSmsConfig();
+    setSmsStatus(r.success ? 'ok' : 'fail');
+    setSmsSaved({
+      hasCredentials: true,
+      verifiedAt: r.success ? new Date().toISOString() : null,
+      lastError: r.success ? '' : (r.error ?? ''),
+    });
+    addNotification(r.message ?? r.error ?? (r.success ? 'Twilio accepted the credentials.' : 'Twilio refused them.'), r.success ? 'success' : 'error');
   };
 
   const handleSMTPSave = (smtp: SMTPConfig, imap: IMAPConfig) => {
@@ -643,13 +687,39 @@ function EmailSMSTab() {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>Webhook URL (for incoming SMS)</label>
+              {/* Built from where the app actually is. This was hardcoded to a
+                  GitHub Pages address the app left long ago, pointing at a path
+                  that has never existed — so anybody who pasted it into Twilio
+                  got a webhook that silently went nowhere, and STOP replies were
+                  never recorded. */}
               <div style={{ padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '12px', color: '#17191c', backgroundColor: '#f8fafc', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                https://azeem-654.github.io/calude/api/sms/inbound
+                {`${window.location.origin}/api/sms-inbound.php`}
               </div>
-              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>Paste this URL in your SMS provider's webhook settings</p>
+              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>
+                Paste this into your Twilio number's "A message comes in" webhook. It is how a STOP reply
+                reaches us — without it, Twilio blocks the person silently and the app keeps queueing messages
+                that are never delivered.
+              </p>
             </div>
           </div>
-          <TestBtn status={smsStatus} onTest={runSmsTest} label="Test SMS Provider" />
+
+          {/* What the server actually holds, rather than what this browser last
+              typed into the form. */}
+          {smsSaved && (
+            <div style={{ padding: '10px 13px', borderRadius: 10, marginBottom: 12, fontSize: 12.5, fontWeight: 600,
+              background: smsSaved.verifiedAt ? '#e8f5e9' : smsSaved.lastError ? '#fdecea' : '#f1f5f9',
+              color: smsSaved.verifiedAt ? '#1e6b32' : smsSaved.lastError ? '#a02216' : '#6b7280' }}>
+              {smsSaved.verifiedAt
+                ? `Twilio accepted these credentials on ${new Date(smsSaved.verifiedAt).toLocaleString()}.`
+                : smsSaved.lastError
+                  ? smsSaved.lastError
+                  : smsSaved.hasCredentials
+                    ? 'Credentials are saved but have not been checked yet. Press Test.'
+                    : 'No SMS sender saved yet.'}
+            </div>
+          )}
+
+          <TestBtn status={smsStatus} onTest={() => { void runSmsTest(); }} label="Test SMS Provider" />
         </>
       )}
 
@@ -694,7 +764,7 @@ function EmailSMSTab() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-        <button onClick={() => { localStorage.setItem('crm_sms', JSON.stringify(sms)); addNotification('SMS settings saved!'); }}
+        <button onClick={() => { void persistSms().then(r => addNotification(r.success ? 'SMS sender saved on the server.' : (r.error ?? 'Could not save.'), r.success ? 'success' : 'error')); }}
           style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.35)' }}>
           <Save size={16} /> Save SMS Settings
         </button>
