@@ -42,6 +42,16 @@ export interface Workspace {
     mode: 'byo' | 'managed';
     canBuy: boolean;
   };
+  /** What the workspace already has to show for itself, and whether Autopilot
+   *  has a key to write more with. */
+  content?: {
+    funnels: number;
+    websites: number;
+    blogPosts: number;
+    socialPosts: number;
+    shorts: number;
+    canWrite: boolean;
+  };
 }
 
 export interface Contact {
@@ -77,6 +87,9 @@ export interface PlannedAction {
        effect names the step; carrying it out is a separate, confirmed act
        because two of the four steps spend real money. */
     | { type: 'pool_step'; step: string; detail: string }
+    /* Writing something. The kind names which writer; the tick calls it and
+       files the result in the module that owns it. */
+    | { type: 'write'; what: 'landing' | 'blog' | 'social' | 'short' }
     | { type: 'none' };
 }
 
@@ -156,6 +169,57 @@ export function planNext(ws: Workspace): PlannedAction[] {
         because: step.because,
         permission: spends ? 'activateWorkflows' : undefined,
         effect: { type: 'pool_step', step: step.type, detail: JSON.stringify(step) },
+      });
+    }
+  }
+
+  /* ── Something to show for itself ──
+     A campaign with nowhere to send people, and a business with nothing
+     published, is the commonest reason a small workspace does nothing. These
+     only fire when there is a key to write with — a plan to write a page that
+     cannot be written is not a plan. */
+  if (ws.content?.canWrite) {
+    const c = ws.content;
+    if (c.funnels === 0 && c.websites === 0) {
+      out.push({
+        key: 'write-landing',
+        kind: 'create',
+        summary: 'Write a landing page for what you do',
+        because: 'there is no website or funnel in this workspace, so every campaign would send people nowhere',
+        permission: 'createWorkflows',
+        effect: { type: 'write', what: 'landing' },
+      });
+    }
+    if (c.blogPosts === 0) {
+      out.push({
+        key: 'write-blog',
+        kind: 'create',
+        summary: 'Write your first blog post',
+        because: 'nothing has been published, and the pages that bring people in from a search are the ones that answer a question before they buy',
+        permission: 'createWorkflows',
+        effect: { type: 'write', what: 'blog' },
+      });
+    }
+    if (c.socialPosts < 3) {
+      out.push({
+        key: 'write-social',
+        kind: 'create',
+        summary: 'Write a week of social posts',
+        because: c.socialPosts === 0
+          ? 'nothing is scheduled, and a page with no posts on it reads as a business that has closed'
+          : `there ${c.socialPosts === 1 ? 'is 1 post' : `are ${c.socialPosts} posts`} scheduled, which is not enough to keep a page looking alive`,
+        permission: 'createWorkflows',
+        effect: { type: 'write', what: 'social' },
+      });
+    }
+    if (c.shorts === 0) {
+      out.push({
+        key: 'write-short',
+        kind: 'create',
+        summary: 'Write a script for a 30-second video',
+        because: 'no short has been made, and a phone video is the cheapest thing this business can put in front of people',
+        permission: 'createWorkflows',
+        effect: { type: 'write', what: 'short' },
       });
     }
   }

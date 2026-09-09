@@ -28,6 +28,10 @@ import {
   createMailbox, credsForMode, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
 } from './lib/provisioning';
+import { loadAiKey } from './lib/ai';
+import {
+  writeBlogPost, writeLandingPage, writeShortScript, writeSocialPosts, type Brand,
+} from './lib/autopilotWrite';
 import { planNext, type PlannedAction, type Workspace, type Contact, type Sequence, type Enrolment, type Pipeline } from './lib/autopilotPlan';
 
 const CONTACTS_KEY = 'crm_contacts';
@@ -35,6 +39,12 @@ const SEQ_KEY = 'crm_sequences';
 const ENROLL_KEY = 'crm_sequence_enrollments';
 const PIPELINES_KEY = 'crm_pipelines';
 const REVIEW_REQ_KEY = 'crm_reputation_requests';
+const FUNNELS_KEY = 'crm_funnels';
+const WEBSITES_KEY = 'crm_websites';
+const BLOG_POSTS_KEY = 'crm_blog_posts';
+const SOCIAL_KEY = 'crm_social_posts';
+const SHORTS_KEY = 'crm_shorts';
+const ONBOARDING_KEY = 'crm_onboarding';
 
 /** A day between plans. Anything shorter and the same advice repeats. */
 const PLAN_EVERY_MS = 20 * 60 * 60 * 1000;
@@ -131,6 +141,40 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     canEmail: !!mailbox?.smtp.host,
     canSms: !!sms?.accountSid && !!sms.fromNumber,
     pool: await poolFor(env, accountId, run),
+    content: await contentFor(env, accountId),
+  };
+}
+
+/** How much this workspace has published, and whether Autopilot can write more. */
+async function contentFor(env: Env, accountId: string): Promise<Workspace['content']> {
+  const count = async (key: string) =>
+    parse<unknown[]>(await dataGet(env.DB, accountId, key), []).length;
+  return {
+    funnels: await count(FUNNELS_KEY),
+    websites: await count(WEBSITES_KEY),
+    blogPosts: await count(BLOG_POSTS_KEY),
+    socialPosts: await count(SOCIAL_KEY),
+    shorts: await count(SHORTS_KEY),
+    /* No key, no writing. Planning "write a landing page" for a workspace that
+       cannot write one produces a queue item that fails every tick. */
+    canWrite: !!(await loadAiKey(env, accountId)),
+  };
+}
+
+/** What the writers need to know about the business. */
+async function brandFor(env: Env, accountId: string): Promise<Brand> {
+  const ob = parse<Record<string, string>>(await dataGet(env.DB, accountId, ONBOARDING_KEY), {});
+  const run = await env.DB.prepare('SELECT objective FROM crm_autopilot WHERE account_id = ?')
+    .bind(accountId).first<{ objective: string }>();
+  return {
+    companyName: ob.companyName ?? ob.businessName ?? '',
+    industry: ob.industry ?? '',
+    description: ob.description ?? ob.whatYouDo ?? '',
+    products: ob.products ?? ob.services ?? '',
+    audience: ob.audience ?? ob.idealCustomer ?? '',
+    tone: ob.brandVoice ?? ob.tone ?? '',
+    website: ob.website ?? '',
+    objective: run?.objective ?? '',
   };
 }
 
@@ -300,6 +344,10 @@ async function carryOut(
     return carryOutPoolStep(env, accountId, effect);
   }
 
+  if (effect.type === 'write') {
+    return carryOutWrite(env, accountId, effect.what);
+  }
+
   if (effect.type === 'flag_stalled') {
     /* Flagged, not chased. What to say to a stalled deal is a judgement about
        that particular customer, and a generic nudge sent automatically is worse
@@ -461,6 +509,108 @@ async function carryOutPoolStep(
   }
 
   return { ok: true, detail: '' };
+}
+
+/**
+ * Write something, and file it where the module that owns it will find it.
+ *
+ * Everything lands as a *draft*, stamped as Autopilot's. A landing page that
+ * went live the moment a model finished writing it would be a business's public
+ * face chosen by nobody — and the customer would find out when somebody
+ * mentioned the wording. Drafting removes the blank page, which is the thing
+ * that actually stops a plumber ever publishing, and leaves the decision where
+ * it belongs.
+ */
+async function carryOutWrite(
+  env: Env,
+  accountId: string,
+  what: 'landing' | 'blog' | 'social' | 'short',
+): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
+  const apiKey = await loadAiKey(env, accountId);
+  if (!apiKey) return { ok: false, detail: 'No AI key is set up, so nothing could be written. Add one in Settings → AI Engine.' };
+  const brand = await brandFor(env, accountId);
+  const now = nowIso();
+
+  /* The stamp every generated record carries, so a list full of them can still
+     be traced back to the run that made it. Matches src/types/provenance.ts. */
+  const source = { origin: 'autopilot', title: 'Autopilot', route: '/autopilot', at: now };
+
+  const push = async (key: string, row: Record<string, unknown>) => {
+    const list = parse<Record<string, unknown>[]>(await dataGet(env.DB, accountId, key), []);
+    list.unshift(row);
+    await dataPut(env.DB, accountId, key, JSON.stringify(list.slice(0, 500)));
+  };
+
+  if (what === 'landing') {
+    const r = await writeLandingPage(apiKey, brand);
+    if (!r.ok || !r.value) return { ok: false, detail: r.error };
+    const v = r.value;
+    const id = `fn-${crypto.randomUUID()}`;
+    await push(FUNNELS_KEY, {
+      id, name: v.headline.slice(0, 90), status: 'draft', source, createdAt: now,
+      steps: [{
+        id: `st-${crypto.randomUUID()}`, type: 'landing', name: v.headline.slice(0, 90),
+        headline: v.headline, subheadline: v.subhead,
+        bullets: v.bullets, ctaText: v.cta,
+        sections: v.sections,
+      }],
+    });
+    return {
+      ok: true,
+      detail: `Drafted "${v.headline}". Nothing is live until you publish it.`,
+      link: { kind: 'funnel', id, label: v.headline.slice(0, 60), route: '/funnels' },
+    };
+  }
+
+  if (what === 'blog') {
+    const r = await writeBlogPost(apiKey, brand);
+    if (!r.ok || !r.value) return { ok: false, detail: r.error };
+    const v = r.value;
+    const id = `bp-${crypto.randomUUID()}`;
+    await push(BLOG_POSTS_KEY, {
+      id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body,
+      keywords: v.keywords, status: 'draft', source, createdAt: now, updatedAt: now,
+    });
+    return {
+      ok: true,
+      detail: `Drafted "${v.title}". Read it before it goes anywhere.`,
+      link: { kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' },
+    };
+  }
+
+  if (what === 'social') {
+    const r = await writeSocialPosts(apiKey, brand, 5);
+    if (!r.ok || !r.value?.posts?.length) return { ok: false, detail: r.error || 'Nothing usable came back.' };
+    for (const p of r.value.posts.slice(0, 10)) {
+      await push(SOCIAL_KEY, {
+        id: `sp-${crypto.randomUUID()}`,
+        platform: p.platform || 'facebook',
+        content: p.body, hashtags: p.hashtags ?? [],
+        status: 'draft', source, createdAt: now,
+      });
+    }
+    return {
+      ok: true,
+      detail: `Drafted ${r.value.posts.length} posts. None is scheduled until you say so.`,
+      link: { kind: 'social-post', id: 'queue', label: 'Social posts', route: '/social-creator' },
+    };
+  }
+
+  const r = await writeShortScript(apiKey, brand);
+  if (!r.ok || !r.value) return { ok: false, detail: r.error };
+  const v = r.value;
+  const id = `sh-${crypto.randomUUID()}`;
+  await push(SHORTS_KEY, {
+    id, title: v.title, hook: v.hook, script: v.script, caption: v.caption,
+    status: 'script', source, createdAt: now,
+  });
+  return {
+    ok: true,
+    /* Said plainly: this is a script, not a video. Nothing here films anything,
+       and a customer expecting a finished clip would be right to be annoyed. */
+    detail: `Wrote a script for "${v.title}" — you still have to film it, which takes about five minutes on a phone.`,
+    link: { kind: 'short', id, label: v.title.slice(0, 60), route: '/ai-shorts' },
+  };
 }
 
 /** Do what is due, oldest first, within the per-tick ceiling. */
