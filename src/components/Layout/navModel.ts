@@ -49,6 +49,14 @@ export const NAV_GROUPS: NavGroup[] = [
     path: '/',
     items: [{ path: '/', label: 'Dashboard', desc: 'The week so far, today, and what to do next', icon: LayoutDashboard, aka: ['home', 'overview'] }],
   },
+  /* First after the dashboard, because it is the thing that does the work.
+     Everything below it is where to go and look at, or override, what it did. */
+  {
+    id: 'autopilot',
+    label: 'Autopilot',
+    path: '/autopilot',
+    items: [{ path: '/autopilot', label: 'Autopilot', desc: 'Say what you want to happen — it runs the whole thing', icon: Rocket, aka: ['auto', 'brain', 'automation', 'ai', 'run', 'hands off'] }],
+  },
   {
     id: 'customers',
     label: 'Customers',

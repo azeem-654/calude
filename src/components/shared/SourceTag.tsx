@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Bot, CalendarRange, Film, Mail, Sparkles, Video, Wand2 } from 'lucide-react';
+import { Bot, CalendarRange, Film, Mail, Sparkles, Video, Wand2, Rocket } from 'lucide-react';
 import { ORIGIN_LABEL, type ContentSource } from '../../types/provenance';
 
 /**
@@ -22,6 +22,7 @@ const ICON = {
   'ai-sales-agent': Bot,
   'business-flow': Wand2,
   'marketing-campaign': Mail,
+  autopilot: Rocket,
 } as const;
 
 interface Props {

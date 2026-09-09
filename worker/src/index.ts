@@ -20,6 +20,7 @@ import { handleData } from './routes/data';
 import { handleMailbox } from './routes/mailbox';
 import { handleInfra } from './routes/infra';
 import { handleAutomation } from './routes/automation';
+import { handleAutopilot } from './routes/autopilot';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -46,6 +47,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/infra.php': handleInfra,
   /* Scheduled campaign starts, the tick's own health, and what the plan allows. */
   '/api/automation.php': handleAutomation,
+  /* Autopilot's ledger: what it is doing, what it did and why, and the two
+     decisions that belong to a person — approving a held-back action, and
+     pausing the whole thing. */
+  '/api/autopilot.php': handleAutopilot,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second

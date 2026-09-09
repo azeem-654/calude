@@ -35,6 +35,7 @@ import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
 import ClientBilling from './components/Billing/ClientBilling';
 import SiteHome from './components/Site/SiteHome';
+import Autopilot from './components/Autopilot/Autopilot';
 import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
@@ -104,6 +105,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           {/* Agency dashboard is off-limits to client logins */}
           <Route path="/agency" element={isClient ? <Navigate to="/" replace /> : <AgencyDashboard />} />
           <Route path="/billing" element={<ClientBilling />} />
+          <Route path="/autopilot" element={<Autopilot />} />
           <Route path="/settings" element={<Settings />} />
           {/*
            * Every other Routes block in this file has a catch-all; this one did

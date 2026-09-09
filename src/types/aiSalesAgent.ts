@@ -114,7 +114,15 @@ export const DEFAULT_GUARDRAILS: AIGuardrails = {
   bookAppointments: 'on',
 };
 
-/** The kinds of record an AI campaign can be responsible for. */
+/**
+ * The kinds of record something automated can be responsible for.
+ *
+ * This began as "what an AI sales campaign creates" and covered the outreach
+ * modules only. Autopilot runs the whole business — it builds a site, publishes
+ * a blog, buys a domain — so the list is now every module a run can touch. The
+ * point is unchanged: a run does not describe what it did, it points at the
+ * real record, and following the pointer is how the two cannot disagree.
+ */
 export type LinkKind =
   | 'sequence'
   | 'email-campaign'
@@ -123,7 +131,19 @@ export type LinkKind =
   | 'contact'
   | 'appointment'
   | 'pipeline'
-  | 'lead-list';
+  | 'lead-list'
+  /* ── Everything Autopilot can also produce ── */
+  | 'website'
+  | 'funnel'
+  | 'blog-project'
+  | 'blog-post'
+  | 'short'
+  | 'social-post'
+  | 'review-request'
+  | 'booking-page'
+  | 'domain'
+  | 'mailbox'
+  | 'phone-number';
 
 export const LINK_LABEL: Record<LinkKind, string> = {
   sequence: 'Email sequence',
@@ -134,6 +154,46 @@ export const LINK_LABEL: Record<LinkKind, string> = {
   appointment: 'Appointment',
   pipeline: 'Pipeline',
   'lead-list': 'Lead list',
+  website: 'Website',
+  funnel: 'Funnel',
+  'blog-project': 'Blog plan',
+  'blog-post': 'Blog post',
+  short: 'Short video',
+  'social-post': 'Social post',
+  'review-request': 'Review request',
+  'booking-page': 'Booking page',
+  domain: 'Domain',
+  mailbox: 'Mailbox',
+  'phone-number': 'Phone number',
+};
+
+/**
+ * Where each kind of record lives, so a link can be followed without every
+ * caller re-deriving the route and one of them getting it wrong.
+ *
+ * A kind with no route is real but has no screen of its own — a domain is shown
+ * on the infrastructure panel, not at /domains/<id>.
+ */
+export const LINK_ROUTE: Record<LinkKind, ((id: string) => string) | null> = {
+  sequence: () => '/marketing?tab=sequences',
+  'email-campaign': () => '/marketing',
+  'sms-campaign': () => '/marketing',
+  automation: () => '/marketing?tab=automations',
+  contact: id => `/contacts?id=${encodeURIComponent(id)}`,
+  appointment: () => '/calendar',
+  pipeline: () => '/pipelines',
+  'lead-list': () => '/contacts',
+  website: () => '/websites',
+  funnel: () => '/funnels',
+  'blog-project': () => '/blog-automation',
+  'blog-post': () => '/blog-automation',
+  short: () => '/ai-shorts',
+  'social-post': () => '/social-creator',
+  'review-request': () => '/reputation',
+  'booking-page': () => '/scheduling',
+  domain: () => '/settings?tab=infrastructure',
+  mailbox: () => '/settings?tab=email-sms',
+  'phone-number': () => '/settings?tab=email-sms',
 };
 
 /**

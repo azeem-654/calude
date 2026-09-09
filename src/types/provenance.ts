@@ -32,7 +32,11 @@ export type ContentOrigin =
   /** A scheduled send or a multi-step follow-up flow, materialized into the
    *  sequence engine so the same tested heartbeat that runs Sequences carries
    *  it forward — rather than a second, parallel scheduler. */
-  | 'marketing-campaign';
+  | 'marketing-campaign'
+  /** Autopilot — the central execution system. Everything it builds carries
+   *  this, so a record can always be traced back to the run that made it and
+   *  to the reason that run decided to. */
+  | 'autopilot';
 
 export interface ContentSource {
   origin: ContentOrigin;
@@ -60,6 +64,7 @@ export const ORIGIN_LABEL: Record<ContentOrigin, string> = {
   'ai-sales-agent': 'AI Sales Agent',
   'business-flow': 'Business flow',
   'marketing-campaign': 'Marketing campaign',
+  autopilot: 'Autopilot',
 };
 
 /** "Video campaign · Five mistakes that kill your first hire" */
