@@ -64,7 +64,13 @@ function ActionRow({ action, onApprove, onReject, busy }: {
   busy?: boolean;
 }) {
   const navigate = useNavigate();
-  const s = STATE[action.status] ?? STATE.pending;
+  /* A blocker is neither done nor broken. "Autopilot cannot do anything, no
+     mailbox is connected" marked Done reads as though it fixed the thing it is
+     warning about; marked "Did not work" blames itself for the customer's
+     missing configuration. It is neither — it is something in the way. */
+  const s = action.kind === 'error'
+    ? { label: 'Blocked', fg: '#a05a16', bg: '#fdf0e3' }
+    : (STATE[action.status] ?? STATE.pending);
   const counts = Object.entries(action.counts ?? {});
 
   return (

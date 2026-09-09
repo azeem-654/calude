@@ -35,6 +35,7 @@ import {
   handleBlogPublish, handleDiagnostics, handleInstall,
 } from './routes/misc';
 import { runScheduledSends, recordTick } from './scheduled';
+import { runAutopilot } from './autopilotTick';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -128,8 +129,24 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil((async () => {
       const started = Date.now();
+
+      /*
+       * Autopilot decides first, the sends go second, in that order and in the
+       * same tick.
+       *
+       * Enrolling somebody is what makes a message due, so planning after
+       * sending would make every lead Autopilot picks up wait a full tick for
+       * no reason. The enrolments it creates are due immediately, and the pass
+       * below picks them up as it goes — the same argument runDueSchedules
+       * settled for scheduled campaign starts.
+       */
+      const auto = await runAutopilot(env);
       const report = await runScheduledSends(env);
       const ms = Date.now() - started;
+
+      /* Autopilot's problems belong in the same place a customer already looks
+         to find out what the schedule did while they were away. */
+      for (const n of auto.notes.slice(0, 10)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
       /* Written to the database as well as the log: the log is for us, the row
          is for the customer asking why their campaign did not go out. */
       await recordTick(env, ms, report);
@@ -139,6 +156,10 @@ export default {
         cron: event.cron, ms,
         accounts: report.accounts, sent: report.sent, failed: report.failed,
         started: report.started,
+        autopilot: {
+          planned: auto.planned, carried: auto.carried,
+          awaiting: auto.awaiting, failed: auto.failed,
+        },
         notes: report.notes.slice(0, 20),
       }));
     })());
