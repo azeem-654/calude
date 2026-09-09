@@ -52,6 +52,18 @@ export interface Order {
   status: 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded';
   channel: string;
   placedAt: string;
+  /* Collected by Stripe at checkout, when the order has something to post. */
+  shipName: string;
+  shipCity: string;
+  shipCountry: string;
+  /* Empty until it has actually reached a supplier. '' | 'draft' | 'submitted'
+     | 'failed' — draft means sent and not yet charged or made. */
+  supplierProvider: string;
+  supplierRef: string;
+  supplierStatus: string;
+  supplierError: string;
+  /** How many lines a supplier could actually make. Zero means don't offer it. */
+  supplierLines: number;
 }
 
 interface Reply {
@@ -62,6 +74,7 @@ interface Reply {
   products?: Product[];
   orders?: Order[];
   storefront?: { available: boolean; note: string };
+  supplierConnected?: boolean;
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -86,6 +99,7 @@ export async function fetchCommerce() {
     products: r.products ?? [],
     orders: r.orders ?? [],
     storefront: r.storefront ?? { available: false, note: '' },
+    supplierConnected: !!r.supplierConnected,
   };
 }
 

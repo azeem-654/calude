@@ -24,6 +24,7 @@ import { handleAutopilot } from './routes/autopilot';
 import { handleReplies } from './routes/replies';
 import { handleCommerce } from './routes/commerce';
 import { handleStorefront, handleStorefrontWebhook } from './routes/storefront';
+import { handleSupplier } from './routes/supplier';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -65,6 +66,8 @@ const ROUTES: Record<string, Handler> = {
      account — never the operator's. routes/storefront.ts says why. */
   '/api/storefront.php': handleStorefront,
   '/api/storefront-webhook.php': handleStorefrontWebhook,
+  /* The supplier who makes and posts the goods, on the customer's own account. */
+  '/api/supplier.php': handleSupplier,
   '/api/smtp-send.php': (req, env) => handleSmtpSend(req, env),
   /* The connection test is the same conversation as a send, stopped after the
      login — so it is the same handler in verify mode rather than a second

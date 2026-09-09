@@ -16,7 +16,7 @@
  */
 import { useEffect, useState } from 'react';
 import {
-  Lightbulb, Package, Receipt, Plus, Trash2, Sparkles, Loader, Star, X, Link2,
+  Lightbulb, Package, Receipt, Plus, Trash2, Sparkles, Loader, Star, X, Link2, Truck,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -26,7 +26,9 @@ import {
   type BusinessIdea, type Product, type Order,
 } from '../../services/commerce';
 import { payLink } from '../../services/storefront';
+import { fulfilOrder } from '../../services/supplier';
 import GettingPaid from './GettingPaid';
+import SupplierPanel from './SupplierPanel';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -48,6 +50,7 @@ export default function Commerce() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [storefront, setStorefront] = useState({ available: false, note: '' });
+  const [supplierConnected, setSupplierConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [about, setAbout] = useState('');
   const [budget, setBudget] = useState('');
@@ -65,6 +68,7 @@ export default function Commerce() {
       const r = await fetchCommerce();
       if (!live) return;
       setIdeas(r.ideas); setProducts(r.products); setOrders(r.orders); setStorefront(r.storefront);
+      setSupplierConnected(r.supplierConnected);
     })();
     return () => { live = false; };
   }, [reload]);
@@ -108,6 +112,32 @@ export default function Commerce() {
     setLinks(m => ({ ...m, [id]: r.url! }));
     void navigator.clipboard?.writeText(r.url).catch(() => {});
     addNotification(r.expiresNote ?? 'Payment link ready.', 'success');
+  };
+
+  /**
+   * Two presses, on purpose.
+   *
+   * The first sends a draft to the supplier; the second confirms it, which is
+   * the one that charges their Printful account and starts something being
+   * printed. Collapsing them into a single button would mean a misread address
+   * costs a shirt rather than a click.
+   */
+  const doFulfil = async (o: Order) => {
+    const confirming = !!o.supplierRef;
+    if (confirming && !window.confirm(
+      'Confirm this with Printful? They will charge your Printful account and start making it. This cannot be undone.',
+    )) return;
+    setBusy(true);
+    const r = await fulfilOrder(o.id, confirming);
+    setBusy(false);
+    if (!r.success) {
+      const steps = r.diagnosis?.steps ?? [];
+      addNotification(steps.length ? `${r.diagnosis?.summary} ${steps[0]}` : (r.error ?? 'Could not send it.'), 'error');
+      again();
+      return;
+    }
+    addNotification(r.note ?? (confirming ? 'Confirmed with Printful.' : 'Sent as a draft.'), 'success');
+    again();
   };
 
   const doRecordOrder = async () => {
@@ -239,6 +269,9 @@ export default function Commerce() {
         {/* ── Getting paid ── */}
         <GettingPaid onChange={again} />
 
+        {/* ── Who makes and posts it ── */}
+        <SupplierPanel onChange={again} />
+
         {/* ── Orders ── */}
         <div style={card}>
           <div style={head}>
@@ -296,6 +329,35 @@ export default function Commerce() {
                     <Link2 size={13} /> {links[o.id] ? 'New link' : 'Payment link'}
                   </button>
                 )}
+                {/* Offered on a paid order, once a supplier is connected. The
+                    label says which of the two presses this is: a draft costs
+                    nothing, confirming is what starts something being made. */}
+                {supplierConnected && o.supplierLines > 0 && (o.status === 'paid' || o.status === 'fulfilled') && o.supplierStatus !== 'submitted' && (
+                  <button onClick={() => void doFulfil(o)} disabled={busy} style={{ ...btn(), padding: '6px 11px' }}>
+                    <Truck size={13} /> {o.supplierRef ? 'Confirm with Printful' : 'Send to Printful'}
+                  </button>
+                )}
+                {o.supplierStatus === 'submitted' && (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#0f7b3d', background: '#e8f6ee', padding: '3px 9px', borderRadius: 999 }}>
+                    With Printful #{o.supplierRef}
+                  </span>
+                )}
+                {o.supplierStatus === 'draft' && (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#7a4d00', background: '#fff7e6', padding: '3px 9px', borderRadius: 999 }}>
+                    Draft #{o.supplierRef} — not made yet
+                  </span>
+                )}
+                {o.supplierStatus === 'failed' && o.supplierError && (
+                  <span style={{ flexBasis: '100%', fontSize: 11.5, color: '#b42318' }}>
+                    Printful refused it: {o.supplierError}
+                  </span>
+                )}
+                {o.shipName && (
+                  <span style={{ flexBasis: '100%', fontSize: 11.5, color: MUTED }}>
+                    Ship to {o.shipName}, {o.shipCity} {o.shipCountry}
+                  </span>
+                )}
+
                 {links[o.id] && (
                   <div style={{ flexBasis: '100%', display: 'flex', gap: 7, alignItems: 'center' }}>
                     <input readOnly value={links[o.id]} onFocus={e => e.currentTarget.select()}

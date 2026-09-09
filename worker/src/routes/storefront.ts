@@ -74,6 +74,28 @@ function returnUrl(v: unknown): string {
   } catch { return ''; }
 }
 
+/**
+ * Does anything on this order have to be posted?
+ *
+ * A line is physical if the product it names comes from a supplier. An 'own'
+ * product might be either, and guessing wrong in that direction costs a buyer
+ * an address form they did not need — guessing wrong in the other costs a
+ * parcel that cannot be sent, so the supplier flag is the one that decides.
+ */
+async function needsShipping(
+  env: Env, accountId: string, lines: { productId?: string }[],
+): Promise<boolean> {
+  for (const l of lines) {
+    const id = String(l.productId ?? '');
+    if (!id) continue;
+    const p = await env.DB.prepare(
+      "SELECT 1 AS n FROM crm_products WHERE id = ? AND account_id = ? AND source != 'own' AND supplier_ref != ''",
+    ).bind(id, accountId).first();
+    if (p) return true;
+  }
+  return false;
+}
+
 async function loadRow(env: Env, accountId: string): Promise<Row | null> {
   return env.DB.prepare('SELECT * FROM crm_storefront WHERE account_id = ?')
     .bind(accountId).first<Row>();
@@ -340,7 +362,7 @@ export async function handleStorefront(req: Request, env: Env): Promise<Response
     if (order.status === 'cancelled' || order.status === 'refunded') return fail('That order is cancelled — record a new one.');
     if (order.total_cents <= 0) return fail('An order worth nothing cannot be paid for.');
 
-    let lines: { name?: string; qty?: number; priceCents?: number }[] = [];
+    let lines: { productId?: string; name?: string; qty?: number; priceCents?: number }[] = [];
     try { lines = JSON.parse(order.items) as typeof lines; } catch { lines = []; }
     if (!lines.length) return fail('That order has no lines to charge for.');
 
@@ -363,6 +385,26 @@ export async function handleStorefront(req: Request, env: Env): Promise<Response
       params.set(`line_items[${i}][price_data][product_data][name]`, String(l.name ?? 'Item').slice(0, 250) || 'Item');
       params.set(`line_items[${i}][price_data][unit_amount]`, String(unit));
     });
+
+    /**
+     * Ask for a shipping address when there is something to ship.
+     *
+     * Stripe's own form asks for it correctly for the buyer's country, which
+     * the seller re-keying it from a phone call does not — and a supplier
+     * cannot post anything without one. Not asked for a service: a plumber's
+     * customer should not be made to type their address to pay for a callout.
+     */
+    const shipped = await needsShipping(env, accountId, lines);
+    if (shipped) {
+      params.set('shipping_address_collection[allowed_countries][0]', 'GB');
+      /* The list is Stripe's own required parameter and cannot be "anywhere",
+         so it is the places a print-on-demand supplier actually posts to. A
+         seller who needs more can be given more; a seller who is quietly
+         unable to sell to their own country would never know why. */
+      ['US', 'CA', 'AU', 'NZ', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'SE', 'PL', 'JP'].forEach((c, i) => {
+        params.set(`shipping_address_collection[allowed_countries][${i + 1}]`, c);
+      });
+    }
 
     const email = addr(order.email);
     if (email) params.set('customer_email', email);
@@ -460,12 +502,46 @@ export async function handleStorefrontWebhook(req: Request, env: Env): Promise<R
     : { sql: 'stripe_session = ? AND account_id = ?', args: [sessionId, accountId] };
 
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+    /**
+     * The address the buyer typed, if the session asked for one.
+     *
+     * Stripe has moved this field across versions — `shipping_details` in older
+     * API versions, `collected_information.shipping_details` in newer ones — so
+     * both are read. An account on the wrong one silently shipping nowhere is
+     * not a failure anybody would see until a parcel did not arrive.
+     */
+    const collected = (obj.collected_information ?? {}) as { shipping_details?: unknown };
+    const ship = (collected.shipping_details ?? obj.shipping_details ?? obj.shipping ?? {}) as {
+      name?: string; phone?: string;
+      address?: { line1?: string; line2?: string; city?: string; state?: string; postal_code?: string; country?: string };
+    };
+    const a = ship.address ?? {};
+    const cd = (obj.customer_details ?? {}) as { name?: string; phone?: string };
+
     /* Only a pending order moves. An order already fulfilled must not be walked
        backwards to 'paid' by a redelivered event, and Stripe redelivers. */
     await env.DB.prepare(
       `UPDATE crm_orders SET status = 'paid', channel = 'stripe', stripe_session = ?, updated_at = ?
        WHERE ${where.sql} AND status = 'pending'`,
     ).bind(sessionId, nowIso(), ...where.args).run();
+
+    /* Written separately, and only when there is something to write. A session
+       with no address collected must not blank an address already recorded —
+       that is how a redelivery erases the only copy of where a parcel goes. */
+    if (a.line1) {
+      await env.DB.prepare(
+        `UPDATE crm_orders SET ship_name = ?, ship_address1 = ?, ship_address2 = ?, ship_city = ?,
+                ship_state = ?, ship_zip = ?, ship_country = ?, ship_phone = ?, updated_at = ?
+         WHERE ${where.sql}`,
+      ).bind(
+        String(ship.name ?? cd.name ?? '').slice(0, 120),
+        String(a.line1 ?? '').slice(0, 200), String(a.line2 ?? '').slice(0, 200),
+        String(a.city ?? '').slice(0, 120), String(a.state ?? '').slice(0, 60),
+        String(a.postal_code ?? '').slice(0, 40), String(a.country ?? '').slice(0, 2).toUpperCase(),
+        String(ship.phone ?? cd.phone ?? '').slice(0, 40),
+        nowIso(), ...where.args,
+      ).run();
+    }
   } else if (event.type === 'checkout.session.async_payment_failed' || event.type === 'checkout.session.expired') {
     /* Left pending rather than cancelled — the buyer's card failing is not the
        seller deciding the order is off, and they will often try again. */

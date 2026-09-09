@@ -16,6 +16,7 @@ import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { storefrontCurrency, storefrontReady } from './storefront';
+import { supplierReady } from './supplier';
 
 interface Req {
   token?: string;
@@ -115,14 +116,29 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
   const listOrders = async () => {
     const { results } = await env.DB.prepare(
       `SELECT id, contact_id AS contactId, email, items, total_cents AS totalCents,
-              currency, status, channel, placed_at AS placedAt
+              currency, status, channel, placed_at AS placedAt,
+              ship_name AS shipName, ship_city AS shipCity, ship_country AS shipCountry,
+              supplier_provider AS supplierProvider, supplier_ref AS supplierRef,
+              supplier_status AS supplierStatus, supplier_error AS supplierError
        FROM crm_orders WHERE account_id = ? ORDER BY placed_at DESC LIMIT 200`,
     ).bind(accountId).all();
+    /* Which products a supplier could actually make, loaded once rather than
+       per order. Without it the screen offers "send to Printful" on a plumber's
+       callout, and the only way to find out is to press it. */
+    const { results: prods } = await env.DB.prepare(
+      "SELECT id, source, supplier_ref FROM crm_products WHERE account_id = ? AND source != 'own' AND supplier_ref != ''",
+    ).bind(accountId).all();
+    const supplied = new Set((prods ?? []).map(p => String((p as Record<string, unknown>).id)));
+
     return (results ?? []).map(r => {
       const row = r as Record<string, unknown>;
-      let items: unknown = [];
-      try { items = JSON.parse(String(row.items ?? '[]')); } catch { items = []; }
-      return { ...row, items };
+      let items: { productId?: string }[] = [];
+      try { items = JSON.parse(String(row.items ?? '[]')) as typeof items; } catch { items = []; }
+      return {
+        ...row,
+        items,
+        supplierLines: items.filter(i => supplied.has(String(i.productId ?? ''))).length,
+      };
     });
   };
 
@@ -130,6 +146,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     const ready = await storefrontReady(env, accountId);
     return json({
       success: true,
+      /* So a screen can offer "send to the supplier" only where it would work. */
+      supplierConnected: await supplierReady(env, accountId),
       ideas: await listIdeas(),
       products: await listProducts(),
       orders: await listOrders(),
