@@ -7,15 +7,16 @@
  *
  * ── What this screen refuses to imply ──
  *
- * There is no checkout. The orders list says so at the top rather than sitting
- * empty and letting somebody conclude nobody has bought anything. And the
- * startup and revenue figures on an idea are a language model's guesses; they
- * are labelled "estimate" every single time, because a number like that
- * presented as a forecast is how a person commits money they do not have.
+ * Until a Stripe account is connected there is no way to be paid through the
+ * app, and the orders list says so at the top rather than sitting empty and
+ * letting somebody conclude nobody has bought anything. And the startup and
+ * revenue figures on an idea are a language model's guesses; they are labelled
+ * "estimate" every single time, because a number like that presented as a
+ * forecast is how a person commits money they do not have.
  */
 import { useEffect, useState } from 'react';
 import {
-  Lightbulb, Package, Receipt, Plus, Trash2, Sparkles, Loader, Star, X,
+  Lightbulb, Package, Receipt, Plus, Trash2, Sparkles, Loader, Star, X, Link2,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -24,6 +25,8 @@ import {
   recordOrder, setOrderStatus, money,
   type BusinessIdea, type Product, type Order,
 } from '../../services/commerce';
+import { payLink } from '../../services/storefront';
+import GettingPaid from './GettingPaid';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -52,6 +55,9 @@ export default function Commerce() {
 
   const [draft, setDraft] = useState<Partial<Product> | null>(null);
   const [order, setOrder] = useState<{ email: string; productId: string; qty: string } | null>(null);
+  /* Kept per order rather than one at a time: somebody chasing three unpaid
+     orders should not lose the first link by making the second. */
+  const [links, setLinks] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let live = true;
@@ -92,6 +98,16 @@ export default function Commerce() {
     if (r.products) setProducts(r.products);
     setDraft(null);
     addNotification('Product saved.', 'success');
+  };
+
+  const doPayLink = async (id: string) => {
+    setBusy(true);
+    const r = await payLink(id);
+    setBusy(false);
+    if (!r.success || !r.url) { addNotification(r.error ?? 'Could not make a payment link.', 'error'); return; }
+    setLinks(m => ({ ...m, [id]: r.url! }));
+    void navigator.clipboard?.writeText(r.url).catch(() => {});
+    addNotification(r.expiresNote ?? 'Payment link ready.', 'success');
   };
 
   const doRecordOrder = async () => {
@@ -220,6 +236,9 @@ export default function Commerce() {
           </div>
         </div>
 
+        {/* ── Getting paid ── */}
+        <GettingPaid onChange={again} />
+
         {/* ── Orders ── */}
         <div style={card}>
           <div style={head}>
@@ -233,9 +252,10 @@ export default function Commerce() {
           </div>
           <div style={{ padding: 15, display: 'grid', gap: 10 }}>
             {/* Said plainly, at the top, so an empty list is not mistaken for
-                "nobody bought anything". */}
-            {!storefront.available && storefront.note && (
-              <p style={{ margin: 0, padding: '10px 12px', borderRadius: 10, background: '#eef2f8', color: '#3a4a63', fontSize: 12.5, lineHeight: 1.6 }}>
+                "nobody bought anything" — and, once Stripe is connected, so the
+                payment link is not a button nobody knows is there. */}
+            {storefront.note && (
+              <p style={{ margin: 0, padding: '10px 12px', borderRadius: 10, background: storefront.available ? '#e8f6ee' : '#eef2f8', color: storefront.available ? '#1f6b45' : '#3a4a63', fontSize: 12.5, lineHeight: 1.6 }}>
                 {storefront.note}
               </p>
             )}
@@ -269,6 +289,20 @@ export default function Commerce() {
                   style={{ ...inp, width: 'auto', padding: '5px 8px', fontSize: 12 }}>
                   {['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
+                {/* Offered only where it can do something: a connected Stripe
+                    account and an order still waiting to be paid. */}
+                {storefront.available && o.status === 'pending' && (
+                  <button onClick={() => void doPayLink(o.id)} disabled={busy} style={{ ...btn(), padding: '6px 11px' }}>
+                    <Link2 size={13} /> {links[o.id] ? 'New link' : 'Payment link'}
+                  </button>
+                )}
+                {links[o.id] && (
+                  <div style={{ flexBasis: '100%', display: 'flex', gap: 7, alignItems: 'center' }}>
+                    <input readOnly value={links[o.id]} onFocus={e => e.currentTarget.select()}
+                      style={{ ...inp, fontSize: 11.5, padding: '6px 9px' }} />
+                    <a href={links[o.id]} target="_blank" rel="noopener noreferrer" style={{ ...btn(), padding: '6px 11px', textDecoration: 'none' }}>Open</a>
+                  </div>
+                )}
               </div>
             ))}
             {!orders.length && !order && (

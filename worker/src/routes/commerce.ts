@@ -7,13 +7,15 @@
  * that works today because most small businesses take their first orders over
  * the phone anyway.
  *
- * What this is not: a checkout. No route here takes money, and none pretends
- * to. An order that a customer thinks was paid and was not is a worse outcome
- * than having no storefront yet.
+ * No route *here* takes money — routes/storefront.ts does, on the customer's
+ * own Stripe account. This endpoint only reports whether that is connected, so
+ * a screen never offers a payment link it cannot produce. An order a customer
+ * thinks was paid and was not is worse than having no storefront at all.
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { askGemini, loadAiKey } from '../lib/ai';
+import { storefrontCurrency, storefrontReady } from './storefront';
 
 interface Req {
   token?: string;
@@ -125,18 +127,24 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
   };
 
   if (act === 'get') {
+    const ready = await storefrontReady(env, accountId);
     return json({
       success: true,
       ideas: await listIdeas(),
       products: await listProducts(),
       orders: await listOrders(),
-      /* Said in the payload, not only in a comment. A screen that knows no
-         checkout exists can say so instead of showing an empty orders list
-         that looks like nobody has bought anything. */
-      storefront: {
-        available: false,
-        note: 'There is no online checkout yet. Orders taken by phone or in person can be recorded here, and they count towards everything else the app does.',
-      },
+      /* Said in the payload, not only in a comment. A screen that cannot take
+         money can say why instead of showing an empty orders list that looks
+         like nobody has bought anything. */
+      storefront: ready
+        ? {
+            available: true,
+            note: 'Stripe is connected. Record an order and send the buyer its payment link — it is marked paid here as soon as Stripe says so.',
+          }
+        : {
+            available: false,
+            note: 'Connect your own Stripe account under “Getting paid” above to send buyers a payment link. Orders taken by phone or in person can be recorded here either way, and they count towards everything else the app does.',
+          },
     });
   }
 
@@ -212,7 +220,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       `INSERT INTO crm_products
        (id, account_id, name, description, sku, price_cents, cost_cents, currency,
         source, supplier_ref, status, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,'USD',?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, description=excluded.description, sku=excluded.sku,
          price_cents=excluded.price_cents, cost_cents=excluded.cost_cents,
@@ -221,6 +229,10 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     ).bind(
       id, accountId, name.slice(0, 200), String(d.description ?? '').slice(0, 4000),
       String(d.sku ?? '').slice(0, 80), price, cost,
+      /* The currency the storefront is set to charge in. Hardcoding USD here
+         priced a British plumber's boiler service in dollars and then charged
+         it in dollars too. */
+      await storefrontCurrency(env, accountId),
       String(d.source ?? 'own').slice(0, 40), String(d.supplierRef ?? '').slice(0, 200),
       ['draft', 'active', 'archived'].includes(String(d.status)) ? String(d.status) : 'draft',
       existing?.created_at ?? now, now,
@@ -251,10 +263,11 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     await env.DB.prepare(
       `INSERT INTO crm_orders
        (id, account_id, contact_id, email, items, total_cents, currency, status, channel, placed_at, updated_at)
-       VALUES (?,?,?,?,?,?, 'USD', ?, 'manual', ?, ?)`,
+       VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?)`,
     ).bind(
       id, accountId, String(d.contactId ?? '').slice(0, 80), String(d.email ?? '').slice(0, 200),
       JSON.stringify(items), total,
+      await storefrontCurrency(env, accountId),
       ['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'].includes(String(d.status)) ? String(d.status) : 'pending',
       now, now,
     ).run();
