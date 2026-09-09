@@ -20,8 +20,9 @@
  * email, and the failure mode of that is a customer receiving it twice.
  */
 import { dataGet, dataPut, nowIso, type Env } from './lib/db';
-import { loadMailbox } from './routes/mailbox';
+import { loadMailbox, loadMailboxes } from './routes/mailbox';
 import { loadSmsConfig } from './lib/sms';
+import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
 import { planNext, type PlannedAction, type Workspace, type Contact, type Sequence, type Enrolment, type Pipeline } from './lib/autopilotPlan';
 
 const CONTACTS_KEY = 'crm_contacts';
@@ -55,12 +56,54 @@ interface RunRow {
   status: string;
   guardrails: string;
   last_planned_at: string | null;
+  purchase_mode: string;
+  pool_target: string;
 }
 
 const rid = () => `ap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 /** Read everything a plan needs, in one go. */
-async function readWorkspace(env: Env, accountId: string): Promise<Workspace> {
+/**
+ * What the sending pool looks like today.
+ *
+ * Read from what is actually connected, not from what was once bought: a domain
+ * whose DNS was set up on a registrar the customer has since disconnected is
+ * not a domain this workspace can send from, and treating it as one produces a
+ * plan that thinks the work is done.
+ */
+async function readPool(env: Env, accountId: string): Promise<PoolState> {
+  const mailboxes = await loadMailboxes(env, accountId);
+  const byDomain: Record<string, number> = {};
+  for (const mb of mailboxes) {
+    const addr = mb.from.email || mb.smtp.username;
+    const dm = addr.includes('@') ? addr.split('@')[1].toLowerCase() : '';
+    if (dm) byDomain[dm] = (byDomain[dm] ?? 0) + 1;
+  }
+
+  /* crm_provisioned is infra.ts's own audit of what it set up, which is the
+     only record of a domain having had its DNS written. */
+  const rows = await env.DB.prepare(
+    `SELECT DISTINCT kind, subject FROM crm_provisioned
+     WHERE account_id = ? AND outcome = 'ok' AND kind IN ('domain','dns')`,
+  ).bind(accountId).all<{ kind: string; subject: string }>();
+
+  const domains = new Set<string>(Object.keys(byDomain));
+  const authenticated = new Set<string>();
+  for (const r of rows.results ?? []) {
+    const dm = (r.subject ?? '').toLowerCase();
+    if (!dm) continue;
+    domains.add(dm);
+    if (r.kind === 'dns') authenticated.add(dm);
+  }
+
+  return {
+    domains: [...domains],
+    mailboxesByDomain: byDomain,
+    authenticated: [...authenticated],
+  };
+}
+
+async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise<Workspace> {
   const [contacts, sequences, enrolments, pipelines, reviewRequests] = await Promise.all([
     dataGet(env.DB, accountId, CONTACTS_KEY),
     dataGet(env.DB, accountId, SEQ_KEY),
@@ -82,7 +125,31 @@ async function readWorkspace(env: Env, accountId: string): Promise<Workspace> {
        that will never leave. */
     canEmail: !!mailbox?.smtp.host,
     canSms: !!sms?.accountSid && !!sms.fromNumber,
+    pool: await poolFor(env, accountId, run),
   };
+}
+
+/**
+ * The pool, only when a target has been set.
+ *
+ * No target means the customer has not asked Autopilot to build one, and
+ * inventing a default here would have it proposing to spend money on domains
+ * nobody asked for.
+ */
+async function poolFor(env: Env, accountId: string, run?: RunRow): Promise<Workspace['pool']> {
+  if (!run?.pool_target || run.pool_target === '{}') return undefined;
+  const target = normaliseTarget(parse<{ domains?: number; mailboxesPerDomain?: number }>(run.pool_target, {}));
+  const state = await readPool(env, accountId);
+  const mode = run.purchase_mode === 'managed' ? 'managed' : 'byo';
+
+  /* Whether anything *can* be bought, answered from the right table for the
+     mode. Managed reads the operator's account; bring-your-own reads the
+     customer's own. They are never the same row. */
+  const canBuy = mode === 'managed'
+    ? !!(await env.DB.prepare("SELECT 1 AS n FROM crm_install_providers WHERE kind = 'registrar' AND credentials != ''").first())
+    : !!(await env.DB.prepare("SELECT 1 AS n FROM crm_providers WHERE account_id = ? AND kind = 'registrar'").bind(accountId).first());
+
+  return { steps: planPool(state, target), mode, canBuy };
 }
 
 /**
@@ -95,7 +162,7 @@ async function readWorkspace(env: Env, accountId: string): Promise<Workspace> {
  */
 async function planFor(env: Env, run: RunRow, report: AutopilotReport): Promise<void> {
   const accountId = run.account_id;
-  const ws = await readWorkspace(env, accountId);
+  const ws = await readWorkspace(env, accountId, run);
   const planned = planNext(ws);
   if (!planned.length) return;
 
@@ -224,6 +291,27 @@ async function carryOut(
     };
   }
 
+  if (effect.type === 'pool_step') {
+    /*
+     * Approved, but not carried out here.
+     *
+     * Registering a domain and creating a mailbox both spend money against a
+     * real provider account, and both already have a confirmed path through
+     * infra.ts that reports what the provider said. Duplicating that here would
+     * be a second way to spend somebody's money, written in a hurry, with no
+     * screen showing the result.
+     *
+     * So this records that the step is cleared to go and points at the screen
+     * where it happens. The honest version of "not built yet" is saying which
+     * button to press, not doing half of it silently.
+     */
+    return {
+      ok: true,
+      detail: 'Cleared to go. Open Infrastructure to carry it out and see what the provider charges.',
+      link: { kind: 'domain', id: effect.step, label: 'Infrastructure', route: '/settings?tab=infrastructure' },
+    };
+  }
+
   if (effect.type === 'flag_stalled') {
     /* Flagged, not chased. What to say to a stalled deal is a judgement about
        that particular customer, and a generic nudge sent automatically is worse
@@ -290,8 +378,8 @@ export async function runAutopilot(env: Env): Promise<AutopilotReport> {
   const report: AutopilotReport = { planned: 0, carried: 0, awaiting: 0, failed: 0, notes: [] };
 
   const { results } = await env.DB.prepare(
-    `SELECT account_id, status, guardrails, last_planned_at FROM crm_autopilot
-     WHERE status IN ('learning','running') LIMIT 200`,
+    `SELECT account_id, status, guardrails, last_planned_at, purchase_mode, pool_target
+     FROM crm_autopilot WHERE status IN ('learning','running') LIMIT 200`,
   ).all<RunRow>();
 
   for (const run of results ?? []) {

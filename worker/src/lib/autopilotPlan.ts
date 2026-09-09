@@ -35,6 +35,13 @@ export interface Workspace {
   /** Can this workspace send at all? Nothing is worth planning if not. */
   canEmail: boolean;
   canSms: boolean;
+  /** What the sending pool looks like, and what it is meant to look like.
+   *  Absent when the customer has not asked Autopilot to build one. */
+  pool?: {
+    steps: { type: string; because: string; count?: number; domain?: string; domains?: string[]; addresses?: number }[];
+    mode: 'byo' | 'managed';
+    canBuy: boolean;
+  };
 }
 
 export interface Contact {
@@ -66,6 +73,10 @@ export interface PlannedAction {
     | { type: 'enrol'; sequenceId: string; contactIds: string[] }
     | { type: 'review_request'; contactIds: string[] }
     | { type: 'flag_stalled'; dealIds: string[] }
+    /* Building a sending pool is planned here and confirmed elsewhere. The
+       effect names the step; carrying it out is a separate, confirmed act
+       because two of the four steps spend real money. */
+    | { type: 'pool_step'; step: string; detail: string }
     | { type: 'none' };
 }
 
@@ -81,6 +92,15 @@ const allDeals = (pipelines: Pipeline[]): Deal[] =>
 
 /** How many contacts one play may touch in a single run. */
 const BATCH = 50;
+
+/** Plain-language names, kept beside the plays that use them. */
+function describePoolStep(s: { type: string; count?: number; domain?: string; domains?: string[]; addresses?: number }): string {
+  if (s.type === 'register_domain') return `Register ${s.count ?? 1} sending domain${(s.count ?? 1) === 1 ? '' : 's'}`;
+  if (s.type === 'authenticate') return `Set up SPF, DKIM and DMARC on ${(s.domains ?? []).length} domain${(s.domains ?? []).length === 1 ? '' : 's'}`;
+  if (s.type === 'create_mailboxes') return `Create ${s.count ?? 1} mailbox${(s.count ?? 1) === 1 ? '' : 'es'} on ${s.domain}`;
+  if (s.type === 'warm_up') return `Start warming up ${s.addresses ?? 0} address${(s.addresses ?? 0) === 1 ? '' : 'es'}`;
+  return 'Work on your sending pool';
+}
 
 /**
  * The plays, in the order they are considered.
@@ -105,6 +125,39 @@ export function planNext(ws: Workspace): PlannedAction[] {
       effect: { type: 'none' },
     });
     return out;
+  }
+
+  /* ── The sending pool ──
+     Only when the customer has asked for one. Autopilot does not decide on its
+     own that somebody should own more domains — that is money, and a target
+     they set. */
+  if (ws.pool?.steps.length) {
+    const step = ws.pool.steps[0];
+    const spends = step.type === 'register_domain' || step.type === 'create_mailboxes';
+    if (spends && !ws.pool.canBuy) {
+      out.push({
+        key: 'pool-cannot-buy',
+        kind: 'error',
+        summary: 'Autopilot cannot build your sending pool yet',
+        because: ws.pool.mode === 'managed'
+          ? 'managed buying is not switched on for this installation, so nothing can be purchased on your behalf'
+          : 'no registrar is connected, so there is nowhere to buy a domain from — connect one under Settings → Infrastructure',
+        effect: { type: 'none' },
+      });
+    } else {
+      out.push({
+        key: `pool:${step.type}`,
+        /* Everything that spends money asks first, whichever mode is on. In
+           bring-your-own it is the customer's registrar; in managed it is a
+           line on their bill. Neither is something to do because a plan said
+           so. */
+        kind: spends ? 'create' : 'advance',
+        summary: describePoolStep(step),
+        because: step.because,
+        permission: spends ? 'activateWorkflows' : undefined,
+        effect: { type: 'pool_step', step: step.type, detail: JSON.stringify(step) },
+      });
+    }
   }
 
   const active = ws.sequences.filter(s => s.status !== 'archived' && (s.steps?.length ?? 0) > 0);

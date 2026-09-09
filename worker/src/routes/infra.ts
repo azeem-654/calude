@@ -419,6 +419,10 @@ interface Req {
   password?: string;
   years?: number;
   confirm?: boolean;
+  /* Managed purchasing. */
+  mode?: string;
+  domains?: number;
+  mailboxesPerDomain?: number;
 }
 
 export async function handleInfra(req: Request, env: Env): Promise<Response> {
@@ -439,6 +443,118 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
   /* ── What can be connected ── */
   if (action === 'catalogue') {
     return json({ success: true, catalogue: CATALOGUE });
+  }
+
+  /* ── ─────────────────────────────────────────────────────────────────────
+     Managed purchasing.
+
+     Everything above and below this block acts on credentials the customer
+     connected themselves, which is the honest default and stays the default.
+     What follows is the other option they asked for: we buy, and bill it on.
+
+     The distinction is enforced by which table the credentials come out of.
+     crm_providers is keyed by workspace and is theirs; crm_install_providers
+     has no workspace at all and is the operator's. Mixing them is how one bad
+     query charges a purchase to somebody else's registrar, so they never meet.
+     ───────────────────────────────────────────────────────────────────────── */
+
+  if (action === 'mode') {
+    const row = await env.DB.prepare('SELECT purchase_mode, pool_target FROM crm_autopilot WHERE account_id = ?')
+      .bind(accountId).first<{ purchase_mode: string; pool_target: string }>();
+    /* Whether managed is even offerable is a fact about this install, not about
+       the customer — so it is answered here rather than letting them choose it
+       and fail at the moment they press buy. */
+    const installed = await env.DB.prepare("SELECT kind FROM crm_install_providers WHERE credentials != ''")
+      .all<{ kind: string }>();
+    const kinds = (installed.results ?? []).map(r => r.kind);
+    let target: Record<string, number> = {};
+    try { target = JSON.parse(row?.pool_target || '{}') as Record<string, number>; } catch { /* empty */ }
+    return json({
+      success: true,
+      mode: row?.purchase_mode ?? 'byo',
+      poolTarget: target,
+      managedAvailable: kinds.includes('registrar'),
+      managedKinds: kinds,
+      managedNote: kinds.includes('registrar')
+        ? 'Domains and mailboxes can be bought for you and added to your bill.'
+        : 'Managed buying is not switched on for this installation yet, so domains have to be bought on your own registrar account.',
+    });
+  }
+
+  if (action === 'set_mode') {
+    const mode = String(d.mode ?? '') === 'managed' ? 'managed' : 'byo';
+    if (mode === 'managed') {
+      const reg = await env.DB.prepare("SELECT 1 AS n FROM crm_install_providers WHERE kind = 'registrar' AND credentials != ''").first();
+      /* Refused rather than accepted-and-broken. A workspace set to managed on
+         an install that cannot buy anything would look configured and do
+         nothing, which is the failure this project keeps trying to avoid. */
+      if (!reg) return fail('Managed buying is not available on this installation. Connect your own registrar under Infrastructure instead.');
+    }
+    const res = await env.DB.prepare('UPDATE crm_autopilot SET purchase_mode = ?, updated_at = ? WHERE account_id = ?')
+      .bind(mode, nowIso(), accountId).run();
+    if (!res.meta.changes) return fail('Turn Autopilot on first — the purchasing choice belongs to it.');
+    return json({ success: true, mode });
+  }
+
+  if (action === 'set_pool_target') {
+    const domains = Math.min(Math.max(Math.round(Number(d.domains) || 2), 1), 20);
+    const per = Math.min(Math.max(Math.round(Number(d.mailboxesPerDomain) || 3), 1), 10);
+    const res = await env.DB.prepare('UPDATE crm_autopilot SET pool_target = ?, updated_at = ? WHERE account_id = ?')
+      .bind(JSON.stringify({ domains, mailboxesPerDomain: per }), nowIso(), accountId).run();
+    if (!res.meta.changes) return fail('Turn Autopilot on first.');
+    return json({ success: true, poolTarget: { domains, mailboxesPerDomain: per } });
+  }
+
+  /* What has been bought for this workspace, and what it cost. */
+  if (action === 'purchases') {
+    const { results } = await env.DB.prepare(
+      `SELECT id, kind, item, provider, workspace_cost, currency, status, detail, renews_at, created_at
+       FROM crm_managed_purchases WHERE account_id = ? ORDER BY created_at DESC LIMIT 200`,
+    ).bind(accountId).all();
+    return json({ success: true, purchases: results ?? [] });
+  }
+
+  /*
+   * The operator's own accounts — install-wide, and only the owner may touch
+   * them. `hasInstallOwner` defines the owner as the one account with no
+   * workspace, and this is the one place in the app where being that account
+   * means something beyond an allowance.
+   */
+  if (action === 'install_providers' || action === 'install_connect') {
+    if (user.accountId !== null || user.role !== 'agency') {
+      return fail('Only the installation owner can set up managed buying.', 403);
+    }
+
+    if (action === 'install_providers') {
+      const { results } = await env.DB.prepare(
+        "SELECT kind, provider, status, last_error, updated_at, (credentials != '') AS connected FROM crm_install_providers",
+      ).all();
+      return json({ success: true, installProviders: results ?? [], catalogue: CATALOGUE });
+    }
+
+    const kind = String(d.kind ?? '') as Kind;
+    const provider = String(d.provider ?? '').toLowerCase().slice(0, 32);
+    const spec = specFor(kind, provider);
+    if (!spec) return fail(`${provider || 'That provider'} is not available for ${kind}.`);
+
+    const key = await installSecret(env.DB, SECRET_KEY);
+    const creds: Creds = {};
+    for (const f of spec.fields) {
+      const given = d.credentials?.[f.key];
+      const v = typeof given === 'string' ? given.trim() : '';
+      if (v) creds[f.key] = v.slice(0, 4000);
+    }
+    const missing = spec.fields.filter(f => !f.optional && !(creds[f.key] ?? '')).map(f => f.label);
+    if (missing.length) return fail(`${spec.name} needs ${missing.join(' and ')}.`);
+
+    await env.DB.prepare(
+      `INSERT INTO crm_install_providers (kind, provider, credentials, status, last_error, updated_at)
+       VALUES (?,?,?,'unknown','',?)
+       ON CONFLICT(kind) DO UPDATE SET
+         provider=excluded.provider, credentials=excluded.credentials,
+         status='unknown', last_error='', updated_at=excluded.updated_at`,
+    ).bind(kind, provider, await encryptSecret(key, JSON.stringify(creds)), nowIso()).run();
+    return ok();
   }
 
   /* ── What is connected ── */
