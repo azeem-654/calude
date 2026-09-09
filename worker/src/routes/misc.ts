@@ -17,7 +17,7 @@ import { loadMailbox, loadMailboxById } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
 import { encryptSecret } from '../lib/crypto';
 import { installSecret, nowIso } from '../lib/db';
-import { E164, isStopMessage, loadSmsConfig, recordOptOut, sendSms, verifySmsCredentials } from '../lib/sms';
+import { E164, buyNumber, isStopMessage, loadSmsConfig, recordOptOut, searchNumbers, sendSms, verifySmsCredentials } from '../lib/sms';
 
 /* ── Inbox ───────────────────────────────────────────────────────────────── */
 
@@ -154,6 +154,7 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
     token?: string; action?: string; accountId?: string;
     accountSid?: string; authToken?: string; from?: string; to?: string; body?: string;
     phone?: string;
+    country?: string; contains?: string; number?: string; confirm?: boolean;
   }>(req);
 
   const user = await userFromToken(env.DB, d.token);
@@ -229,6 +230,48 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
     if (!E164.test(phone)) return fail(`"${phone}" is not a phone number in international format.`);
     await recordOptOut(env, accountId, phone, 'manual');
     return ok();
+  }
+
+  /* ── Numbers ──
+     Search buys nothing; buying asks first, because it is a recurring monthly
+     charge on the customer's Twilio account and not a one-off. */
+  if (action === 'search_numbers') {
+    const creds = accountId ? await loadSmsConfig(env, accountId) : null;
+    if (!creds) return fail('Add your Twilio credentials in Settings → Email & SMS first.');
+    const r = await searchNumbers(creds, String(d.country ?? 'US'), String(d.contains ?? ''));
+    return r.ok
+      ? json({ success: true, numbers: r.numbers,
+          note: 'Twilio does not quote a price on this list. What each number costs a month is on your Twilio dashboard.' })
+      : fail(r.error);
+  }
+
+  if (action === 'buy_number') {
+    if (!accountId) return fail('A valid workspace is required.');
+    const creds = await loadSmsConfig(env, accountId);
+    if (!creds) return fail('Add your Twilio credentials first.');
+    const number = String(d.number ?? '').trim();
+    /* A recurring charge, so the client asks twice — a search result is not an
+       instruction to buy. Same rule as registering a domain. */
+    if (!d.confirm) {
+      return fail(`Buying ${number} adds a monthly charge to your Twilio account. Confirm to go ahead.`, 200, { code: 'needs_confirm' });
+    }
+
+    /* The webhook goes on in the same call. A number bought without one looks
+       bought and silently swallows every STOP and every reply. */
+    const origin = new URL(req.url).origin;
+    const r = await buyNumber(creds, number, `${origin}/api/sms-inbound.php`);
+    if (!r.ok) return fail(r.error);
+
+    /* The workspace sends from its newest number unless it had none, in which
+       case this is simply the one. Saved here so the customer does not have to
+       copy it into a settings box they have just been taken away from. */
+    /* UPDATE, not an upsert. The insert branch would have had to write empty
+       credentials, and a branch that can only ever be wrong is a branch that
+       will eventually run. Getting here at all means loadSmsConfig found a row. */
+    await env.DB.prepare('UPDATE crm_sms_config SET from_number = ?, updated_at = ? WHERE account_id = ?')
+      .bind(r.number, nowIso(), accountId).run();
+
+    return json({ success: true, number: r.number, message: `${r.number} is yours and set as your sending number. Replies and STOP messages will reach the app.` });
   }
 
   /* ── Prove the credentials, without messaging anybody ── */

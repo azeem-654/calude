@@ -174,3 +174,117 @@ export async function verifySmsCredentials(creds: SmsCredentials): Promise<SmsRe
     return { ok: false, error: `Could not reach Twilio: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+
+/* ── Numbers ───────────────────────────────────────────────────────────────
+ *
+ * Buying a number is the one thing in this file that spends money, so it is
+ * kept apart from sending and every caller has to confirm it.
+ *
+ * Twilio only, and on the workspace's own account. There is no managed path
+ * here on purpose: reselling telephone numbers is a regulated business in most
+ * countries — a number carries an address requirement, a porting obligation and
+ * in several jurisdictions a licence — and quietly buying one on the operator's
+ * account would put that obligation somewhere nobody agreed to hold it.
+ */
+
+export interface AvailableNumber {
+  number: string;
+  friendly: string;
+  locality: string;
+  region: string;
+  /** What Twilio charges monthly, when it says. Zero when it does not. */
+  monthly: number;
+  sms: boolean;
+  voice: boolean;
+}
+
+/** Numbers that could be bought. Buys nothing. */
+export async function searchNumbers(
+  creds: SmsCredentials,
+  country = 'US',
+  contains = '',
+  smsOnly = true,
+): Promise<{ ok: boolean; numbers: AvailableNumber[]; error: string }> {
+  if (!creds.accountSid || !creds.authToken) {
+    return { ok: false, numbers: [], error: 'Add your Twilio credentials in Settings → Email & SMS first.' };
+  }
+  const cc = (country || 'US').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'US';
+  const params = new URLSearchParams({ PageSize: '20' });
+  if (contains.trim()) params.set('Contains', contains.trim().replace(/[^0-9*]/g, ''));
+  if (smsOnly) params.set('SmsEnabled', 'true');
+
+  try {
+    const r = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/AvailablePhoneNumbers/${cc}/Local.json?${params}`,
+      { headers: { Authorization: 'Basic ' + btoa(`${creds.accountSid}:${creds.authToken}`) } },
+    );
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      if (r.status === 404) {
+        /* Twilio 404s a country it does not sell local numbers in, which reads
+           as "broken" unless it is named. */
+        return { ok: false, numbers: [], error: `Twilio does not sell local numbers in ${cc} on this account.` };
+      }
+      return { ok: false, numbers: [], error: `Twilio refused the search (HTTP ${r.status}): ${body.slice(0, 160)}` };
+    }
+    type Row = {
+      phone_number?: string; friendly_name?: string; locality?: string; region?: string;
+      capabilities?: { SMS?: boolean; sms?: boolean; voice?: boolean; MMS?: boolean };
+    };
+    const data = await r.json<{ available_phone_numbers?: Row[] }>().catch(() => ({}) as { available_phone_numbers?: Row[] });
+    const numbers = (data.available_phone_numbers ?? []).map(n => ({
+      number: n.phone_number ?? '',
+      friendly: n.friendly_name ?? n.phone_number ?? '',
+      locality: n.locality ?? '',
+      region: n.region ?? '',
+      /* Twilio does not quote a price on this endpoint. Rather than invent one,
+         it is zero and the screen says the price comes from Twilio. */
+      monthly: 0,
+      sms: !!(n.capabilities?.SMS ?? n.capabilities?.sms),
+      voice: !!n.capabilities?.voice,
+    })).filter(n => n.number);
+    return { ok: true, numbers, error: '' };
+  } catch (e) {
+    return { ok: false, numbers: [], error: `Could not reach Twilio: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
+ * Buy one number, and point it at this install so replies arrive.
+ *
+ * The webhook is set in the same call. A number bought without one looks bought
+ * and silently swallows every STOP and every reply — which is worse than not
+ * having bought it, because the app would then believe it can receive.
+ */
+export async function buyNumber(
+  creds: SmsCredentials,
+  number: string,
+  inboundUrl: string,
+): Promise<{ ok: boolean; number: string; error: string }> {
+  if (!E164.test(number)) return { ok: false, number, error: `"${number}" is not a number in international format.` };
+  if (!creds.accountSid || !creds.authToken) {
+    return { ok: false, number, error: 'Add your Twilio credentials first.' };
+  }
+  const form = new URLSearchParams({ PhoneNumber: number });
+  if (/^https:\/\//.test(inboundUrl)) {
+    form.set('SmsUrl', inboundUrl);
+    form.set('SmsMethod', 'POST');
+  }
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/IncomingPhoneNumbers.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Basic ' + btoa(`${creds.accountSid}:${creds.authToken}`),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form,
+    });
+    const data = await r.json<{ phone_number?: string; message?: string }>()
+      .catch(() => ({}) as { phone_number?: string; message?: string });
+    if (r.ok) return { ok: true, number: data.phone_number ?? number, error: '' };
+    return { ok: false, number, error: `Twilio refused it (HTTP ${r.status}): ${data.message ?? 'no reason given'}` };
+  } catch (e) {
+    return { ok: false, number, error: `Could not reach Twilio: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
