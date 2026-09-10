@@ -127,7 +127,7 @@ export interface PlannedAction {
     | { type: 'pool_step'; step: string; detail: string }
     /* Writing something. The kind names which writer; the tick calls it and
        files the result in the module that owns it. */
-    | { type: 'write'; what: 'landing' | 'blog' | 'social' | 'short' }
+    | { type: 'write'; what: 'landing' | 'blog' | 'social' | 'short' | 'sequence' }
     /* Commerce. Each names orders rather than carrying their contents, so the
        tick reads the current state of an order rather than acting on a copy
        that was true when the plan was written — an order paid overnight must
@@ -310,16 +310,38 @@ export function planNext(ws: Workspace): PlannedAction[] {
       });
     }
   } else if (ws.contacts.length > 0 && canSend) {
-    /* Contacts and nowhere to put them. Worth saying, because the customer
-       cannot tell from the outside why nothing is happening. */
-    out.push({
-      key: 'no-sequence',
-      kind: 'observe',
-      summary: 'There are contacts but no email sequence to put them in',
-      because: `this workspace has ${ws.contacts.length} contact${ws.contacts.length === 1 ? '' : 's'} and no sequence with any steps in it`,
-      counts: { contacts: ws.contacts.length },
-      effect: { type: 'none' },
-    });
+    /*
+     * Contacts and nowhere to put them.
+     *
+     * This used to be the end of the road — a true observation that left the
+     * customer to go and build a sequence by hand, which is the one thing they
+     * signed up here to avoid. With a key to write with, Autopilot writes the
+     * first one instead; without, it can only say so, and does.
+     *
+     * Writing it does not start it. The first enrolment onto it is still
+     * governed by `sendEmail`, which holds for approval by default — so a
+     * person reads the emails before anybody receives one.
+     */
+    if (ws.content?.canWrite) {
+      out.push({
+        key: 'write-sequence',
+        kind: 'create',
+        summary: 'Write a follow-up sequence for new enquiries',
+        because: `this workspace has ${ws.contacts.length} contact${ws.contacts.length === 1 ? '' : 's'} and no sequence with any steps in it, so nothing can be followed up`,
+        counts: { contacts: ws.contacts.length },
+        permission: 'createWorkflows',
+        effect: { type: 'write', what: 'sequence' },
+      });
+    } else {
+      out.push({
+        key: 'no-sequence',
+        kind: 'observe',
+        summary: 'There are contacts but no email sequence to put them in',
+        because: `this workspace has ${ws.contacts.length} contact${ws.contacts.length === 1 ? '' : 's'} and no sequence with any steps in it, and no AI key to write one with`,
+        counts: { contacts: ws.contacts.length },
+        effect: { type: 'none' },
+      });
+    }
   }
 
   /* ── Leads who left a number and no email ──

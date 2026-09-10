@@ -185,3 +185,49 @@ Return ONLY valid JSON, no fences:
   "caption": "the caption to post it with"
 }`, 0.8);
 }
+
+/* ── An email sequence ───────────────────────────────────────────────────── */
+
+export interface WrittenSequence {
+  name: string;
+  steps: { day: number; subject: string; body: string }[];
+}
+
+/**
+ * The first follow-up sequence.
+ *
+ * This is the one that unblocks everything else. Every enrolment play needs
+ * somewhere to put people, so a workspace with no sequence could only ever be
+ * told "there are contacts and nowhere to put them" — true, unhelpful, and the
+ * opposite of hands-off.
+ *
+ * Three steps, because a small business that has never run a sequence will
+ * read three and edit them. Twelve is a wall of text they will abandon, and
+ * abandoning it is worse than not having it: the contacts sit enrolled in
+ * something nobody has read.
+ */
+export function writeSequence(apiKey: string, b: Brand): Promise<Written<WrittenSequence>> {
+  return ask<WrittenSequence>(apiKey, `Write a three-email follow-up sequence for this business, for somebody who has just enquired and not yet bought.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+
+Rules:
+- Written to one person who has just got in touch. Not a newsletter, not an announcement.
+- ${NO_INVENTING}
+- Each email does one job: the first answers them and says what happens next; the second is genuinely useful whether or not they buy; the third asks plainly whether they still want to go ahead, and accepts no for an answer.
+- Short. Under 150 words each. A tradesperson's customer reads these on a phone between jobs.
+- No "I hope this email finds you well", no "just circling back", no "touching base".
+- Plain text with line breaks. No HTML, no images, no merge tags except {{firstName}}.
+- Day 0, then a couple of days apart. Nobody wants three emails in a morning.
+
+Return ONLY valid JSON, no fences:
+{
+  "name": "short name for the sequence, e.g. \\"New enquiry follow-up\\"",
+  "steps": [
+    {"day": 0, "subject": "", "body": ""},
+    {"day": 2, "subject": "", "body": ""},
+    {"day": 5, "subject": "", "body": ""}
+  ]
+}`, 0.7);
+}

@@ -35,7 +35,7 @@ import { draftAtSupplier, supplierReady } from './routes/supplier';
 import { buildMime } from './lib/mime';
 import { smtpSend } from './lib/smtp';
 import {
-  writeBlogPost, writeLandingPage, writeShortScript, writeSocialPosts, type Brand,
+  writeBlogPost, writeLandingPage, writeSequence, writeShortScript, writeSocialPosts, type Brand,
 } from './lib/autopilotWrite';
 import { planNext, type PlannedAction, type Workspace, type Contact, type Sequence, type Enrolment, type Pipeline } from './lib/autopilotPlan';
 
@@ -900,7 +900,7 @@ async function carryOutPoolStep(
 async function carryOutWrite(
   env: Env,
   accountId: string,
-  what: 'landing' | 'blog' | 'social' | 'short',
+  what: 'landing' | 'blog' | 'social' | 'short' | 'sequence',
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
   const apiKey = await loadAiKey(env, accountId);
   if (!apiKey) return { ok: false, detail: 'No AI key is set up, so nothing could be written. Add one in Settings → AI Engine.' };
@@ -916,6 +916,50 @@ async function carryOutWrite(
     list.unshift(row);
     await dataPut(env.DB, accountId, key, JSON.stringify(list.slice(0, 500)));
   };
+
+  if (what === 'sequence') {
+    const r = await writeSequence(apiKey, brand);
+    if (!r.ok || !r.value) return { ok: false, detail: r.error };
+    const v = r.value;
+    const steps = (v.steps ?? []).slice(0, 6).filter(st => (st.subject ?? '').trim() && (st.body ?? '').trim());
+    if (!steps.length) return { ok: false, detail: 'The model returned a sequence with no usable steps.' };
+
+    const id = `seq-${crypto.randomUUID()}`;
+    const seqs = parse<Record<string, unknown>[]>(await dataGet(env.DB, accountId, SEQ_KEY), []);
+    seqs.unshift({
+      id,
+      name: (v.name || 'New enquiry follow-up').slice(0, 90),
+      /*
+       * Active, not draft — and this is the one place in the writing where
+       * that is right.
+       *
+       * A sequence is inert until somebody is enrolled on it, and the only
+       * thing that enrols anybody is a play governed by `sendEmail`, which
+       * holds for approval by default. So a person still reads these before a
+       * single one goes out. Filing it as a draft would instead mean the
+       * enrolment play could never see it, and Autopilot would go on reporting
+       * that there is nowhere to put anybody while its own sequence sat there.
+       */
+      status: 'active',
+      source,
+      createdAt: now,
+      steps: steps.map((st, i) => ({
+        id: `st-${crypto.randomUUID()}`,
+        day: Math.min(Math.max(Math.round(Number(st.day) || (i * 2)), 0), 90),
+        waitUnit: 'days',
+        subject: String(st.subject).slice(0, 200),
+        body: String(st.body).slice(0, 8000),
+        channel: 'email',
+      })),
+    });
+    await dataPut(env.DB, accountId, SEQ_KEY, JSON.stringify(seqs.slice(0, 200)));
+
+    return {
+      ok: true,
+      detail: `"${v.name}" written, ${steps.length} emails. Nobody is enrolled yet — read them first, and the first enrolment still asks you.`,
+      link: { kind: 'sequence', id, label: v.name, route: '/marketing?tab=sequences' },
+    };
+  }
 
   if (what === 'landing') {
     const r = await writeLandingPage(apiKey, brand);
