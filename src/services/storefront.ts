@@ -9,11 +9,27 @@ import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 import { API_BASE } from './apiBase';
 
+export interface ProviderChoice {
+  id: string;
+  label: string;
+  /** Empty means the processor takes most currencies. */
+  currencies: string[];
+  keyHint: string;
+}
+
 export interface StorefrontState {
-  connected: boolean;
+  /** Which processor this workspace is connected to. */
+  provider: string;
+  providerLabel: string;
   /** 'live' or 'test'. Null when nothing is connected. */
   mode: 'live' | 'test' | null;
+  connected: boolean;
   webhookSet: boolean;
+  /** False when the workspace's currency is one the processor will not take —
+   *  known before a buyer meets it rather than after. */
+  currencySupported: boolean;
+  /** What this app can connect to, for the picker. */
+  choices: ProviderChoice[];
   verifiedAt: string | null;
   lastError: string;
   successUrl: string;
@@ -37,7 +53,8 @@ interface Reply {
 }
 
 export const EMPTY_STOREFRONT: StorefrontState = {
-  connected: false, mode: null, webhookSet: false, verifiedAt: null, lastError: '',
+  provider: 'stripe', providerLabel: 'Stripe', mode: null, connected: false, webhookSet: false,
+  currencySupported: true, choices: [], verifiedAt: null, lastError: '',
   successUrl: '', cancelUrl: '', currency: 'USD', webhookUrl: '',
 };
 
@@ -59,7 +76,9 @@ async function call(action: string, extra: Record<string, unknown> = {}): Promis
 export const fetchStorefront = () => call('get');
 
 export interface StorefrontDraft {
-  stripeKey?: string;
+  provider?: string;
+  /** The processor's secret, whichever processor it is. */
+  apiKey?: string;
   webhookSecret?: string;
   successUrl?: string;
   cancelUrl?: string;

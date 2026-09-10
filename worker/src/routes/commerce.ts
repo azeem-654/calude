@@ -15,7 +15,7 @@
 import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { askGemini, loadAiKey } from '../lib/ai';
-import { storefrontCurrency, storefrontReady } from './storefront';
+import { storefrontCurrency, storefrontLabel, storefrontReady } from './storefront';
 import { supplierReady } from './supplier';
 
 interface Req {
@@ -144,6 +144,9 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
 
   if (act === 'get') {
     const ready = await storefrontReady(env, accountId);
+    /* Named rather than assumed: the note used to say "Stripe" to a workspace
+       being paid through Creem. */
+    const label = await storefrontLabel(env, accountId);
     return json({
       success: true,
       /* So a screen can offer "send to the supplier" only where it would work. */
@@ -157,11 +160,11 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       storefront: ready
         ? {
             available: true,
-            note: 'Stripe is connected. Record an order and send the buyer its payment link — it is marked paid here as soon as Stripe says so.',
+            note: `${label} is connected. Record an order and send the buyer its payment link — it is marked paid here as soon as ${label} says so.`,
           }
         : {
             available: false,
-            note: 'Connect your own Stripe account under “Getting paid” above to send buyers a payment link. Orders taken by phone or in person can be recorded here either way, and they count towards everything else the app does.',
+            note: 'Connect your own Stripe or Creem account under “Getting paid” above to send buyers a payment link. Orders taken by phone or in person can be recorded here either way, and they count towards everything else the app does.',
           },
     });
   }
