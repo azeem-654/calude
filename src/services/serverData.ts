@@ -123,11 +123,37 @@ export function clearCachedCapabilities() {
 }
 
 /* ── Pull the account's data down into localStorage ── */
+/**
+ * Bring the workspace down from the server into this browser.
+ *
+ * ── The field name, and why this comment is long ──
+ *
+ * `get_all` answers `{success, data}`. This read `res.rows`, which the endpoint
+ * has never returned. Every sign-in therefore pulled nothing, wrote nothing,
+ * and — because the old code returned `true` regardless — reported that it had
+ * worked. Cloud status went green over an empty workspace.
+ *
+ * What that looked like to a customer: sign in on a second device, or in a
+ * private window, or after clearing site data, and everything is gone. Their
+ * records were safe on the server the whole time and the app simply never asked
+ * for them properly. Nothing anywhere said so.
+ *
+ * Both names are accepted now so this cannot break again from the other side,
+ * and a response carrying neither is a failure rather than an empty success —
+ * which matters much more than the field name, because of what the caller does
+ * next.
+ */
 async function pull(accountId: string, token: string): Promise<boolean> {
   const res = await call('get_all', { token, accountId });
   if (!res || !res.success) return false;
-  const rows = (res.rows ?? {}) as Record<string, string>;
-  for (const [key, value] of Object.entries(rows)) {
+
+  const payload = (res.data ?? res.rows) as Record<string, string> | undefined;
+  /* A workspace that genuinely has nothing yet answers with `{}`, which is a
+     real answer. `undefined` is not — it means the shape changed under us, and
+     treating the two the same is what hid this for as long as it did. */
+  if (!payload || typeof payload !== 'object') return false;
+
+  for (const [key, value] of Object.entries(payload)) {
     if (typeof value === 'string') rawSetScoped(accountId, key, value);
   }
   return true;
@@ -137,7 +163,8 @@ async function pull(accountId: string, token: string): Promise<boolean> {
 export async function syncBillingStatuses(token: string): Promise<void> {
   const res = await call('get_all', { token, accountId: '__agency__' });
   if (!res || !res.success) return;
-  const rows = (res.rows ?? {}) as Record<string, string>;
+  /* Same field, same reason as `pull` above. */
+  const rows = (res.data ?? res.rows ?? {}) as Record<string, string>;
   for (const [key, value] of Object.entries(rows)) {
     if (!key.startsWith('crm_billing_status_')) continue;
     try {
@@ -161,7 +188,26 @@ export async function initCloudSync(timeoutMs = 6000): Promise<'cloud' | 'local'
     if (!configured) { window.localStorage.setItem(STATUS_KEY, 'local'); clearCachedCapabilities(); return 'local'; }
     pushAccount = accountId;
     pushToken = session.token;
-    await pull(accountId, session.token);
+
+    /*
+     * Nothing is pushed until something has been read.
+     *
+     * This is the part that mattered. The write listener below sends local
+     * changes up, key by key, as the app touches them — and a browser that has
+     * just started has a *freshly seeded* local state. Registering it after a
+     * pull that quietly returned nothing meant the empty new browser began
+     * overwriting the real workspace on the server, one key at a time, as the
+     * customer clicked around wondering where their data went.
+     *
+     * So a failed pull drops to local-only: the app still works, and the server
+     * copy is left alone rather than being written over by a blank one.
+     */
+    if (!(await pull(accountId, session.token))) {
+      window.localStorage.setItem(STATUS_KEY, 'local');
+      clearCachedCapabilities();
+      return 'local';
+    }
+
     await fetchCapabilities();
     // agency owners: apply any Stripe-webhook billing status updates
     if (session.user.role === 'agency') await syncBillingStatuses(session.token);
