@@ -43,6 +43,16 @@ export interface Workspace {
     canBuy: boolean;
   };
   /**
+   * Appointments happening tomorrow that the guest has not been reminded of.
+   *
+   * Already narrowed to "tomorrow, in the owner's own timezone, still
+   * confirmed, never reminded" — the planner does no date arithmetic, because
+   * a pure function that cannot be tested without knowing what day it is in
+   * Karachi is not much of a pure function.
+   */
+  tomorrow?: { id: string; at: string; name: string; hasPhone: boolean; hasEmail: boolean }[];
+
+  /**
    * What has been sold, and what is stuck.
    *
    * Absent when the workspace sells nothing — a services business has no
@@ -125,6 +135,7 @@ export interface PlannedAction {
     | { type: 'thank_buyers'; orderIds: string[] }
     | { type: 'chase_payment'; orderIds: string[] }
     | { type: 'draft_at_supplier'; orderIds: string[] }
+    | { type: 'remind_bookings'; bookingIds: string[] }
     | { type: 'none' };
 }
 
@@ -350,6 +361,47 @@ export function planNext(ws: Workspace): PlannedAction[] {
         effect: { type: 'none' },
       });
     }
+  }
+
+  /* ── Tomorrow's appointments ──
+     The highest-value message a trade business sends and the one most often
+     skipped, because it has to go out on the evening before, which is exactly
+     when nobody is at a desk. A no-show costs the whole slot. */
+  const due = ws.tomorrow ?? [];
+  const remindable = due.filter(b => (b.hasPhone && ws.canSms) || (b.hasEmail && ws.canEmail));
+  if (remindable.length) {
+    out.push({
+      key: 'remind-bookings',
+      kind: 'send',
+      summary: `Remind ${remindable.length} ${remindable.length === 1 ? 'person' : 'people'} about tomorrow's appointment`,
+      because: remindable.length === 1
+        ? 'they have an appointment tomorrow and have not been reminded'
+        : `${remindable.length} appointments are booked for tomorrow and none of those people has been reminded`,
+      counts: { appointments: remindable.length },
+      /*
+       * Governed by the appointment guardrail rather than by sendEmail or
+       * sendSms, and it defaults to on.
+       *
+       * This is not outreach. It is a message to somebody who booked a time
+       * with this business themselves, about that time, and holding it for
+       * approval would mean it went out the morning after the appointment or
+       * not at all. The channel guardrails exist to stop Autopilot contacting
+       * people who did not ask to be contacted; this person asked.
+       */
+      permission: 'bookAppointments',
+      effect: { type: 'remind_bookings', bookingIds: remindable.map(b => b.id) },
+    });
+  } else if (due.length) {
+    /* Bookings tomorrow and no way to reach any of them. Said, because from
+       the outside this is indistinguishable from Autopilot not bothering. */
+    out.push({
+      key: 'cannot-remind',
+      kind: 'observe',
+      summary: `${due.length} appointment${due.length === 1 ? ' is' : 's are'} booked for tomorrow and cannot be reminded`,
+      because: 'none of those guests has a contactable address on a channel this workspace has set up',
+      counts: { appointments: due.length },
+      effect: { type: 'none' },
+    });
   }
 
   const deals = allDeals(ws.pipelines);

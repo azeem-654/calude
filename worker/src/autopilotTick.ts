@@ -20,9 +20,10 @@
  * email, and the failure mode of that is a customer receiving it twice.
  */
 import { dataGet, dataPut, installSecret, nowIso, type Env } from './lib/db';
+import { addr } from './lib/http';
 import { loadMailbox, loadMailboxes } from './routes/mailbox';
 import { encryptSecret } from './lib/crypto';
-import { loadSmsConfig } from './lib/sms';
+import { loadSmsConfig, sendSms } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
 import {
   createMailbox, credsForMode, poolDomainCandidates, priceDomain,
@@ -147,7 +148,58 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     pool: await poolFor(env, accountId, run),
     content: await contentFor(env, accountId),
     commerce: await commerceFor(env, accountId),
+    tomorrow: await bookingsTomorrow(env, accountId),
   };
+}
+
+/**
+ * Appointments happening tomorrow that nobody has been reminded about.
+ *
+ * ── Whose "tomorrow" ──
+ *
+ * `slot_date` is a plain calendar date in the business's own timezone, because
+ * that is what a booking page shows and what the owner writes in a diary. So
+ * "tomorrow" has to be worked out there too: at 23:00 in Karachi it is still
+ * this afternoon in UTC, and a reminder computed from the Worker's clock would
+ * go out a day early for half the world and a day late for the other half.
+ *
+ * The zone comes from the booking page's own settings — the one place in this
+ * app a real IANA zone is stored. No zone falls back to UTC, which is wrong by
+ * at most a day at the edges and is still better than not reminding anybody.
+ */
+async function bookingsTomorrow(env: Env, accountId: string): Promise<Workspace['tomorrow']> {
+  const sched = parse<{ timezone?: string }>(await dataGet(env.DB, accountId, 'crm_schedule'), {});
+  const tz = sched.timezone || 'UTC';
+
+  let target: string;
+  try {
+    /* en-CA gives YYYY-MM-DD, which is the format slot_date is stored in.
+       Formatting the instant 24 hours from now *in that zone* is what makes
+       this correct across a DST change, where adding a day to the date string
+       would not be. */
+    target = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+      .format(new Date(Date.now() + 86_400_000));
+  } catch {
+    target = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' })
+      .format(new Date(Date.now() + 86_400_000));
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT id, slot_time, data FROM crm_bookings
+     WHERE account_id = ? AND slot_date = ? AND status = 'confirmed' AND reminded_at IS NULL
+     ORDER BY slot_time LIMIT 50`,
+  ).bind(accountId, target).all<{ id: string; slot_time: string; data: string }>();
+
+  return (results ?? []).map(r => {
+    const g = parse<{ guestName?: string; guestEmail?: string; guestPhone?: string }>(r.data, {});
+    return {
+      id: r.id,
+      at: r.slot_time,
+      name: g.guestName ?? '',
+      hasPhone: !!(g.guestPhone ?? '').trim(),
+      hasEmail: !!(g.guestEmail ?? '').trim(),
+    };
+  });
 }
 
 /**
@@ -430,6 +482,10 @@ async function carryOut(
     return carryOutSupplierDraft(env, accountId, effect.orderIds);
   }
 
+  if (effect.type === 'remind_bookings') {
+    return carryOutReminders(env, accountId, effect.bookingIds);
+  }
+
   if (effect.type === 'flag_stalled') {
     /* Flagged, not chased. What to say to a stalled deal is a judgement about
        that particular customer, and a generic nudge sent automatically is worse
@@ -442,6 +498,92 @@ async function carryOut(
   }
 
   return { ok: true, detail: '' };
+}
+
+/**
+ * Remind people about tomorrow's appointment.
+ *
+ * Texted where there is a number, emailed where there is not. A text is the
+ * right default here and the wrong one almost everywhere else in this app: it
+ * is read within minutes, which is the entire point of a reminder sent the
+ * evening before, and it goes to somebody who chose a time with this business
+ * rather than to a stranger.
+ *
+ * Each booking is re-read at send time. Between the plan and this running,
+ * somebody may have cancelled — and "don't forget your appointment tomorrow"
+ * arriving after they cancelled it is worse than no reminder at all.
+ */
+async function carryOutReminders(
+  env: Env, accountId: string, bookingIds: string[],
+): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
+  const mb = await loadMailbox(env, accountId);
+  const sms = await loadSmsConfig(env, accountId);
+  const profile = parse<{ companyName?: string }>(await dataGet(env.DB, accountId, ONBOARDING_KEY), {});
+  const company = profile.companyName || mb?.from.name || 'us';
+
+  let sent = 0, skipped = 0;
+  const failures: string[] = [];
+
+  for (const id of bookingIds) {
+    const row = await env.DB.prepare(
+      "SELECT id, slot_date, slot_time, status, data, reminded_at FROM crm_bookings WHERE id = ? AND account_id = ?",
+    ).bind(id, accountId).first<{ id: string; slot_date: string; slot_time: string; status: string; data: string; reminded_at: string | null }>();
+    /* Cancelled since the plan was written, or already reminded by a tick that
+       was cut short. Either way, not again. */
+    if (!row || row.status !== 'confirmed' || row.reminded_at) { skipped++; continue; }
+
+    const g = parse<{ guestName?: string; guestEmail?: string; guestPhone?: string }>(row.data, {});
+    const who = (g.guestName ?? '').trim().split(' ')[0] || 'there';
+    const when = `${row.slot_time}`;
+    const phone = (g.guestPhone ?? '').trim();
+    const email = addr(g.guestEmail);
+
+    let ok = false;
+    let why = '';
+
+    if (phone && sms?.accountSid && sms.fromNumber) {
+      /* Short, and it says who it is from — a reminder from an unknown number
+         reads as spam and gets ignored, which defeats the purpose. */
+      const text = `Hi ${who}, a reminder of your appointment with ${company} tomorrow at ${when}. Reply STOP to opt out.`;
+      const r = await sendSms(env, sms, phone, text, accountId);
+      ok = r.ok;
+      why = r.error;
+    } else if (email && mb?.smtp.host) {
+      const fromEmail = mb.from.email || mb.smtp.username;
+      const mime = buildMime({
+        fromName: mb.from.name || company, fromEmail, to: email,
+        subject: `Reminder: your appointment tomorrow at ${when}`,
+        html: `<p>Hi ${esc(who)},</p><p>Just a reminder of your appointment with ${esc(company)} <strong>tomorrow at ${esc(when)}</strong>.</p><p>If that no longer suits, reply to this message and we will move it.</p><p>${esc(company)}</p>`,
+        replyTo: mb.from.replyTo || undefined,
+      }, mb.smtp.host);
+      const r = await smtpSend(mb.smtp, { from: fromEmail, to: email, mime });
+      ok = r.ok;
+      why = r.error;
+    } else {
+      skipped++;
+      continue;
+    }
+
+    if (!ok) { failures.push(`${g.guestName || id}: ${why.slice(0, 120)}`); continue; }
+
+    /* Stamped only now, so a reminder lost to a dead host is tried again on the
+       next tick rather than counted as delivered. */
+    await env.DB.prepare('UPDATE crm_bookings SET reminded_at = ? WHERE id = ? AND account_id = ?')
+      .bind(nowIso(), id, accountId).run();
+    sent++;
+  }
+
+  const detail = [
+    sent ? `${sent} reminded.` : '',
+    skipped ? `${skipped} skipped — cancelled, already reminded, or no way to reach them.` : '',
+    failures.length ? `${failures.length} failed: ${failures.slice(0, 3).join('; ')}` : '',
+  ].filter(Boolean).join(' ') || 'Nothing needed reminding.';
+
+  return {
+    ok: failures.length === 0,
+    detail,
+    link: { kind: 'appointment', id: 'tomorrow', label: "Tomorrow's appointments", route: '/calendar' },
+  };
 }
 
 /**
