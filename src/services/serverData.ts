@@ -77,12 +77,26 @@ async function flush() {
   // edit that was never saved.
   const rejected = (res.rejected ?? []) as string[];
   if (!rejected.length) return;
-  const authoritative = (res.authoritative ?? {}) as Record<string, string | null>;
-  for (const key of rejected) {
-    const value = authoritative[key];
-    if (typeof value === 'string') rawSetScoped(pushAccount, key, value);
+
+  /*
+   * Take the server's version back for anything it refused.
+   *
+   * This used to read `res.authoritative`, which `bulk_set` has never
+   * returned — it answers `{success, rejected, message}`. So the loop always
+   * ran over an empty object and the browser went on showing an edit that was
+   * never saved, which is the exact thing the code was written to prevent. The
+   * customer was told it had been refused and then looked at their unsaved
+   * change anyway.
+   *
+   * Re-read instead of asking the server to send it: rejections are rare and
+   * few (oversized or misnamed records), and one round trip each is cheaper
+   * than widening a response every write pays for.
+   */
+  for (const key of rejected.slice(0, 20)) {
+    const back = await call('get', { token: pushToken, accountId: pushAccount, key });
+    if (back?.success && typeof back.value === 'string') rawSetScoped(pushAccount, key, back.value);
   }
-  onRejected?.(String(res.error || 'That change was refused by the server.'), rejected);
+  onRejected?.(String(res.error || res.message || 'That change was refused by the server.'), rejected);
 }
 
 /* ── Server-enforced capabilities ── */
@@ -104,8 +118,34 @@ export async function fetchCapabilities(): Promise<ServerCapabilities | null> {
   const accountId = getActiveAccountId();
   if (!session || !accountId) return null;
   const res = await call('caps', { token: session.token, accountId });
-  if (!res?.success || !res.matrix) return null;
-  const matrix = res.matrix as unknown as ServerCapabilities;
+  /*
+   * The endpoint answers `{success, caps: {read, write, role}}`. This read
+   * `res.matrix`, which it has never sent, so every call returned null and the
+   * whole capability path was dead — silently, because every consumer falls
+   * back to the local role table and carries on.
+   *
+   * The visible cost was one wrong sentence: Settings → Team told the customer
+   * their rules "shape the UI but nothing else" on a deployment where the
+   * server genuinely does guard every write.
+   *
+   * There is deliberately no per-capability matrix on the server — routes/data.ts
+   * says why: the rule that matters is that you may only touch your own
+   * workspace, and that is enforced. So `capabilities` stays empty and the role
+   * table decides, which is what was already happening. What changes is that
+   * `enforced` is now true when the server answered, because it is.
+   */
+  const caps = res?.caps as { role?: string } | undefined;
+  if (!res?.success || !caps) return null;
+  const matrix: ServerCapabilities = {
+    role: String(caps.role ?? session.user.role),
+    email: session.user.email,
+    name: session.user.name,
+    /* Empty on purpose. `capsFor` reads the role table when this is empty —
+       an empty matrix must never be mistaken for "allowed to do nothing". */
+    capabilities: {},
+    ownerOnly: [],
+    enforced: true,
+  };
   try { window.localStorage.setItem(CAPS_KEY, JSON.stringify(matrix)); } catch { /* storage blocked */ }
   return matrix;
 }

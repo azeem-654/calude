@@ -75,7 +75,17 @@ export function enforcementMode(): 'server' | 'local' {
  */
 function capsFor(actor: Actor): Capability[] {
   const server = cachedCapabilities();
-  if (server && server.email.toLowerCase() === actor.email.toLowerCase()) {
+  /*
+   * An empty matrix means "the server keeps no per-capability list", not
+   * "this person may do nothing".
+   *
+   * The server deliberately sends none — the rule it enforces is that you may
+   * only touch your own workspace. Reading an empty object here and filtering
+   * it would return no capabilities at all and grey out the entire product for
+   * everybody, which is how a fix for a dead code path becomes an outage.
+   */
+  const granted = server ? Object.keys(server.capabilities).length : 0;
+  if (server && granted > 0 && server.email.toLowerCase() === actor.email.toLowerCase()) {
     return (Object.entries(server.capabilities) as [Capability, boolean][])
       .filter(([, allowed]) => allowed)
       .map(([cap]) => cap);
