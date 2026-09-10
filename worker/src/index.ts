@@ -41,6 +41,7 @@ import {
 import { runScheduledSends, recordTick } from './scheduled';
 import { runAutopilot } from './autopilotTick';
 import { runReplies } from './replyTick';
+import { runDigests } from './autopilotDigest';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -164,12 +165,21 @@ export default {
        */
       const replies = await runReplies(env);
       const report = await runScheduledSends(env);
+      /*
+       * The digest goes last, and only in the customer's own morning.
+       *
+       * Last because it reports on the three passes above, and a digest sent
+       * before them would describe yesterday while today's work sat unmentioned
+       * a few milliseconds away.
+       */
+      const digest = await runDigests(env);
       const ms = Date.now() - started;
 
       /* Autopilot's problems belong in the same place a customer already looks
          to find out what the schedule did while they were away. */
       for (const n of auto.notes.slice(0, 10)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
       for (const n of replies.notes.slice(0, 10)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
+      for (const n of digest.notes.slice(0, 5)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
       /* Written to the database as well as the log: the log is for us, the row
          is for the customer asking why their campaign did not go out. */
       await recordTick(env, ms, report);
@@ -187,6 +197,7 @@ export default {
           read: replies.read, replied: replies.replied,
           drafted: replies.drafted, refused: replies.refused, failed: replies.failed,
         },
+        digest: { sent: digest.sent, skipped: digest.skipped, failed: digest.failed },
         notes: report.notes.slice(0, 20),
       }));
     })());
