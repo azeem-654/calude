@@ -182,6 +182,13 @@ Recurring traps when writing those checks:
   object) and `crm_active_account`. Both are in `GLOBAL_KEYS`, so they are *not*
   workspace-prefixed; writing a prefixed copy by hand gets you a logged-out page.
 
+**There is one end-to-end check, and it is worth running.** `npm run smoke`
+signs up, fills the portfolio, throws the browser away, signs back in on a
+clean one and asserts the workspace came back. That is the path that broke
+twice, invisibly to `tsc`, and stayed broken in production for weeks. It needs
+a built bundle and a running `wrangler dev`; it is deliberately not in the
+deploy workflow, because it needs a browser and would roughly triple it.
+
 **Scheduled work is testable.** Run `wrangler dev --local --test-scheduled` and
 fire the cron with `curl http://127.0.0.1:8787/cdn-cgi/handler/scheduled`. To
 re-plan on demand, null `crm_autopilot.last_planned_at` — the planner is

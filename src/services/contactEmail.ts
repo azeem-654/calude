@@ -13,6 +13,7 @@ import type { EmailSequence } from '../types/marketing';
 import { makeSource } from '../types/provenance';
 import { loadEmailConfig, sendEmail, personalizeHtml } from './emailService';
 import { getActiveAccountId } from './tenancy';
+import { sessionToken } from './auth';
 import { findSuppression, localCheck, loadSettings, suppress } from './deliverability';
 import { applyUnsubscribe, unsubscribeUrl } from './unsubscribe';
 import { bodyToHtml } from './emailHtml';
@@ -205,10 +206,32 @@ export async function syncTracking(): Promise<number> {
   const account = getActiveAccountId() || 'default';
   const since = localStorage.getItem(SYNC_KEY) || '';
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  /*
+   * The session token, which this asked for without.
+   *
+   * Recording an open cannot need a session — a mail client fetches the pixel,
+   * not the app — but reading the events back does, and the endpoint has always
+   * required it. This did not send one, so every poll was refused with a 401,
+   * the `!res.ok` below turned that into zero events, and the customer was
+   * shown "0 opens" for ever on campaigns that had genuinely been opened. The
+   * pixel was working the whole time; nothing could read what it recorded.
+   */
+  const token = sessionToken();
+  if (!token) return 0;
+
   let events: { emailId: string; kind: string; url?: string; at: string }[] = [];
   try {
-    const res = await fetch(`${base}/api/track.php?events=1&a=${encodeURIComponent(account)}&since=${encodeURIComponent(since)}`);
-    if (!res.ok) return 0;
+    const res = await fetch(
+      `${base}/api/track.php?events=1&a=${encodeURIComponent(account)}`
+      + `&since=${encodeURIComponent(since)}&token=${encodeURIComponent(token)}`,
+    );
+    if (!res.ok) {
+      /* Said once, to the console, rather than silently. A permanently empty
+         analytics screen with no explanation is exactly how this went unnoticed
+         in the first place. */
+      console.warn(`Tracking sync refused (${res.status}). Opens and clicks will not appear until this succeeds.`);
+      return 0;
+    }
     const json = await res.json();
     if (!json?.success || !Array.isArray(json.events)) return 0;
     events = json.events;

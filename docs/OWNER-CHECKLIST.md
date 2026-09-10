@@ -91,6 +91,9 @@ Settings → Email & SMS for the mailbox; Settings → AI Engine for the key.
 ## Done
 
 - **Master password restored** (2026-09-09) — still needs changing, see 1.
+- **`npm run smoke`** exists — an end-to-end check that a workspace survives
+  signing out and back in on a clean browser. Run it after anything that
+  touches sync, auth or onboarding.
 - **Deploys go through GitHub Actions**, never by hand. Push to `main`;
   `.github/workflows/deploy.yml` typechecks, builds, applies D1 migrations and
   then publishes, in that order.
