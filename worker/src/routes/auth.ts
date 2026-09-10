@@ -198,7 +198,38 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
 
     await sweepSessions(env.DB);
     const token = await issueSession(env, row.email);
-    return json({ success: true, token, user: publicUser(row) });
+
+    /*
+     * Which workspaces are actually theirs.
+     *
+     * The install owner's `account_id` is NULL by design — they are not bound
+     * to one workspace, they own the install. But the client used that field
+     * alone to decide where to point the browser, so signing in on a machine
+     * with nothing stored pointed at nothing, and the tenancy layer helpfully
+     * invented `acct-<timestamp>`. The owner then got an empty workspace while
+     * their real one sat under an id that nothing pointed at any more — which
+     * is how this deployment's own main account ended up with its data under a
+     * browser-generated id.
+     *
+     * Ordered by most recently written, so a browser with no memory adopts the
+     * one that was last being worked in rather than the oldest.
+     *
+     * The timestamps are compared as text, and SQLite's own `datetime()` writes
+     * `2026-09-10 05:16:25` where the app writes `2026-09-10T03:02:05.407Z`.
+     * A space sorts before a `T`, so one row written by hand puts the whole
+     * ordering out and sends the owner to the wrong workspace. Normalised here
+     * rather than trusting every writer to agree.
+     */
+    const { results: owned } = await env.DB.prepare(
+      `SELECT w.account_id AS accountId,
+              REPLACE(COALESCE((SELECT MAX(d.updated_at) FROM crm_data d WHERE d.account_id = w.account_id), w.created_at), ' ', 'T') AS lastUsed
+       FROM crm_workspaces w
+       WHERE w.owner_email = ?
+       ORDER BY lastUsed DESC
+       LIMIT 50`,
+    ).bind(row.email).all<{ accountId: string; lastUsed: string }>();
+
+    return json({ success: true, token, user: publicUser(row), workspaces: owned ?? [] });
   }
 
   /* ── Agency administration ── */

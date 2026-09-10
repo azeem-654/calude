@@ -186,7 +186,31 @@ export async function login(email: string, password: string): Promise<{ ok: bool
        * own client sub-accounts while it works, and this must not drag them home
        * every time the app re-renders.
        */
-      if (user.accountId) setActiveWorkspace(user.accountId);
+      if (user.accountId) {
+        setActiveWorkspace(user.accountId);
+      } else {
+        /*
+         * An owner is not bound to one workspace, so the server sends the list.
+         *
+         * Using `accountId` alone left the install owner — whose `account_id`
+         * is NULL by design — pointing at nothing on any machine that had not
+         * stored a choice, and the tenancy layer then invented
+         * `acct-<timestamp>`. They got an empty workspace, and their real one
+         * kept its invented id with nothing pointing at it.
+         *
+         * A stored choice is honoured as long as it is genuinely theirs: an
+         * agency moves between its own client sub-accounts while it works, and
+         * signing in again must not drag them home. It is only replaced when it
+         * is missing, or names a workspace this account does not own.
+         */
+        const owned = (res.data.workspaces as { accountId?: string }[] | undefined) ?? [];
+        const ids = owned.map(w => String(w.accountId ?? '')).filter(Boolean);
+        if (ids.length) {
+          let current = '';
+          try { current = window.localStorage.getItem('crm_active_account') ?? ''; } catch { current = ''; }
+          if (!current || !ids.includes(current)) setActiveWorkspace(ids[0]);
+        }
+      }
       return { ok: true };
     }
     return { ok: false, error: (res.data.error as string) || 'Login failed.' };
