@@ -49,17 +49,31 @@ server-issued ones.
 Open a private window, sign in, and confirm the work is there. If it is not,
 that is a regression and worth reporting immediately.
 
-### 3. Connect Stripe, to take money
+### 3. Connect Creem, so the app can charge its subscribers
 
-**Sell → Getting paid.** This is the customer's *own* Stripe account, not the
-operator's — see the "Money" section of `CLAUDE.md` for why those must never be
-confused. Nothing can be charged until this is connected.
+**Settings → Billing → How this app is paid.** Only the install owner sees this
+panel, because it decides who gets paid for everybody.
 
-### 4. Register the Stripe webhook
+1. creem.io → Developers → API keys. `creem_test_…` is the sandbox key and only
+   takes test payments; the live key takes real ones.
+2. Paste it, **Save**, then **Test**. A green tick means Creem accepted it.
+3. Copy the webhook address the panel shows. In Creem, add an endpoint for it
+   listening for `checkout.completed`, and paste the signing secret back.
 
-The same panel shows the address to paste into Stripe (Developers → Webhooks),
-listening for `checkout.session.completed`. Stripe shows the signing secret
-once; paste it back into the panel.
+Until this is done the app falls back to the Stripe key set on the deployment
+itself, and the panel says so — that works, but nobody chose it.
+
+**Creem bills in USD or EUR only.** A plan priced in anything else is refused
+when you try to charge it, by name.
+
+### 4. Sub-accounts connect their own, separately
+
+**Sell → Getting paid**, inside each workspace. This is a *customer's* own
+account — where their buyers pay them — and has nothing to do with the one
+above. They pick Stripe or Creem for themselves.
+
+Nothing can be charged in a workspace until its owner connects one. See the
+"Money" section of `CLAUDE.md` for why the two must never be confused.
 
 Without it orders never mark themselves paid and each one has to be set by hand.
 
