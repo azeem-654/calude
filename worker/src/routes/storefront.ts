@@ -203,6 +203,94 @@ function remedy(data: Record<string, unknown>): string[] {
   ];
 }
 
+/**
+ * A Stripe Checkout Session for one order, on the customer's own account.
+ *
+ * Exported because Autopilot chases unpaid orders from the cron, where there
+ * is no request to run a route handler from — and a second implementation of
+ * *take somebody's money* is the last thing in this codebase worth
+ * duplicating. `origin` is passed rather than read, because a scheduled run has
+ * no incoming URL to take it from.
+ */
+export async function createPayLink(
+  env: Env, accountId: string, orderId: string, origin: string,
+): Promise<{ ok: boolean; url: string; sessionId: string; error: string; steps: string[] }> {
+  const no = (error: string, steps: string[] = []) => ({ ok: false, url: '', sessionId: '', error, steps });
+
+  const key = await loadKey(env, accountId);
+  if (!key) return no('Connect a Stripe secret key under \u201cGetting paid\u201d before asking a buyer to pay.');
+
+  const order = await env.DB.prepare(
+    'SELECT id, email, items, total_cents, currency, status FROM crm_orders WHERE id = ? AND account_id = ?',
+  ).bind(orderId, accountId).first<{
+    id: string; email: string; items: string; total_cents: number; currency: string; status: string;
+  }>();
+  if (!order) return no('That order is not in this workspace.');
+  if (order.status === 'paid' || order.status === 'fulfilled') return no('That order is already paid.');
+  if (order.status === 'cancelled' || order.status === 'refunded') return no('That order is cancelled \u2014 record a new one.');
+  if (order.total_cents <= 0) return no('An order worth nothing cannot be paid for.');
+
+  let lines: { productId?: string; name?: string; qty?: number; priceCents?: number }[] = [];
+  try { lines = JSON.parse(order.items) as typeof lines; } catch { lines = []; }
+  if (!lines.length) return no('That order has no lines to charge for.');
+
+  const row = await loadRow(env, accountId);
+  const cur = (order.currency || row?.currency || 'USD').toLowerCase();
+  const params = new URLSearchParams({ mode: 'payment' });
+
+  /* Stripe requires both, and the customer's own site is the right
+     destination \u2014 unlike the subscription checkout, where the only correct
+     answer is this deployment. Falling back to our own origin means a customer
+     who has not set them still gets a working checkout. */
+  params.set('success_url', row?.success_url || `${origin}/commerce?paid=1`);
+  params.set('cancel_url', row?.cancel_url || `${origin}/commerce?paid=0`);
+
+  lines.forEach((l, i) => {
+    const qty = Math.min(Math.max(Math.round(Number(l.qty) || 1), 1), 100_000);
+    const unit = Math.min(Math.max(Math.round(Number(l.priceCents) || 0), 0), 100_000_000);
+    params.set(`line_items[${i}][quantity]`, String(qty));
+    params.set(`line_items[${i}][price_data][currency]`, cur);
+    params.set(`line_items[${i}][price_data][product_data][name]`, String(l.name ?? 'Item').slice(0, 250) || 'Item');
+    params.set(`line_items[${i}][price_data][unit_amount]`, String(unit));
+  });
+
+  /**
+   * Ask for a shipping address when there is something to ship.
+   *
+   * Stripe's own form asks for it correctly for the buyer's country, which the
+   * seller re-keying it from a phone call does not \u2014 and a supplier cannot
+   * post anything without one. Not asked for a service: a plumber's customer
+   * should not be made to type their address to pay for a callout.
+   */
+  if (await needsShipping(env, accountId, lines)) {
+    params.set('shipping_address_collection[allowed_countries][0]', 'GB');
+    /* The list is Stripe's own required parameter and cannot be "anywhere", so
+       it is the places a print-on-demand supplier actually posts to. A seller
+       who needs more can be given more; a seller quietly unable to sell to
+       their own country would never know why. */
+    ['US', 'CA', 'AU', 'NZ', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'SE', 'PL', 'JP'].forEach((c, i) => {
+      params.set(`shipping_address_collection[allowed_countries][${i + 1}]`, c);
+    });
+  }
+
+  const email = addr(order.email);
+  if (email) params.set('customer_email', email);
+  /* Both, because the webhook has to find this order again and Stripe's own
+     docs disagree with themselves about which field survives which flow. */
+  params.set('client_reference_id', order.id);
+  params.set('metadata[orderId]', order.id);
+  params.set('metadata[accountId]', accountId);
+
+  const r = await stripeCall(key, '/checkout/sessions', params);
+  if (!r.ok) return no(stripeError(r.data), remedy(r.data));
+
+  const sessionId = String(r.data.id ?? '');
+  await env.DB.prepare('UPDATE crm_orders SET stripe_session = ?, updated_at = ? WHERE id = ? AND account_id = ?')
+    .bind(sessionId, nowIso(), order.id, accountId).run();
+
+  return { ok: true, url: String(r.data.url ?? ''), sessionId, error: '', steps: [] };
+}
+
 export async function handleStorefront(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
   const user = await userFromToken(env.DB, d.token);
@@ -348,86 +436,17 @@ export async function handleStorefront(req: Request, env: Env): Promise<Response
 
   /* ── A link to pay an order ── */
   if (act === 'pay_link') {
-    const key = await loadKey(env, accountId);
-    if (!key) return fail('Connect a Stripe secret key under “Getting paid” before asking a buyer to pay.');
-
-    const orderId = String(d.orderId ?? '').trim();
-    const order = await env.DB.prepare(
-      'SELECT id, email, items, total_cents, currency, status FROM crm_orders WHERE id = ? AND account_id = ?',
-    ).bind(orderId, accountId).first<{
-      id: string; email: string; items: string; total_cents: number; currency: string; status: string;
-    }>();
-    if (!order) return fail('That order is not in this workspace.');
-    if (order.status === 'paid' || order.status === 'fulfilled') return fail('That order is already paid.');
-    if (order.status === 'cancelled' || order.status === 'refunded') return fail('That order is cancelled — record a new one.');
-    if (order.total_cents <= 0) return fail('An order worth nothing cannot be paid for.');
-
-    let lines: { productId?: string; name?: string; qty?: number; priceCents?: number }[] = [];
-    try { lines = JSON.parse(order.items) as typeof lines; } catch { lines = []; }
-    if (!lines.length) return fail('That order has no lines to charge for.');
-
-    const row = await loadRow(env, accountId);
-    const cur = (order.currency || row?.currency || 'USD').toLowerCase();
-    const params = new URLSearchParams({ mode: 'payment' });
-
-    /* Stripe requires both, and the customer's own site is the right
-       destination — unlike the subscription checkout, where the only correct
-       answer is this deployment. Falling back to our own origin means a
-       customer who has not set them still gets a working checkout. */
-    params.set('success_url', row?.success_url || `${origin}/commerce?paid=1`);
-    params.set('cancel_url', row?.cancel_url || `${origin}/commerce?paid=0`);
-
-    lines.forEach((l, i) => {
-      const qty = Math.min(Math.max(Math.round(Number(l.qty) || 1), 1), 100_000);
-      const unit = Math.min(Math.max(Math.round(Number(l.priceCents) || 0), 0), 100_000_000);
-      params.set(`line_items[${i}][quantity]`, String(qty));
-      params.set(`line_items[${i}][price_data][currency]`, cur);
-      params.set(`line_items[${i}][price_data][product_data][name]`, String(l.name ?? 'Item').slice(0, 250) || 'Item');
-      params.set(`line_items[${i}][price_data][unit_amount]`, String(unit));
-    });
-
-    /**
-     * Ask for a shipping address when there is something to ship.
-     *
-     * Stripe's own form asks for it correctly for the buyer's country, which
-     * the seller re-keying it from a phone call does not — and a supplier
-     * cannot post anything without one. Not asked for a service: a plumber's
-     * customer should not be made to type their address to pay for a callout.
-     */
-    const shipped = await needsShipping(env, accountId, lines);
-    if (shipped) {
-      params.set('shipping_address_collection[allowed_countries][0]', 'GB');
-      /* The list is Stripe's own required parameter and cannot be "anywhere",
-         so it is the places a print-on-demand supplier actually posts to. A
-         seller who needs more can be given more; a seller who is quietly
-         unable to sell to their own country would never know why. */
-      ['US', 'CA', 'AU', 'NZ', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'SE', 'PL', 'JP'].forEach((c, i) => {
-        params.set(`shipping_address_collection[allowed_countries][${i + 1}]`, c);
+    const r = await createPayLink(env, accountId, String(d.orderId ?? '').trim(), origin);
+    if (!r.ok) {
+      return json({
+        success: false, error: r.error, message: r.error,
+        ...(r.steps.length ? { diagnosis: { summary: r.error, steps: r.steps } } : {}),
       });
     }
-
-    const email = addr(order.email);
-    if (email) params.set('customer_email', email);
-    /* Both, because the webhook has to find this order again and Stripe's own
-       docs disagree with themselves about which field survives which flow. */
-    params.set('client_reference_id', order.id);
-    params.set('metadata[orderId]', order.id);
-    params.set('metadata[accountId]', accountId);
-
-    const r = await stripeCall(key, '/checkout/sessions', params);
-    if (!r.ok) {
-      const message = stripeError(r.data);
-      return json({ success: false, error: message, message, diagnosis: { summary: message, steps: remedy(r.data) } });
-    }
-
-    const sessionId = String(r.data.id ?? '');
-    await env.DB.prepare('UPDATE crm_orders SET stripe_session = ?, updated_at = ? WHERE id = ? AND account_id = ?')
-      .bind(sessionId, nowIso(), order.id, accountId).run();
-
     return json({
       success: true,
-      url: r.data.url,
-      sessionId,
+      url: r.url,
+      sessionId: r.sessionId,
       /* Stripe expires a Checkout Session after 24 hours. Said here so the
          screen can say it, rather than a buyer clicking a dead link. */
       expiresNote: 'This link stops working after 24 hours. Generate another if the buyer has not paid by then.',

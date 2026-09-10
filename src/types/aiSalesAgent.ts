@@ -143,7 +143,10 @@ export type LinkKind =
   | 'booking-page'
   | 'domain'
   | 'mailbox'
-  | 'phone-number';
+  | 'phone-number'
+  /* ── Commerce ── */
+  | 'order'
+  | 'product';
 
 export const LINK_LABEL: Record<LinkKind, string> = {
   sequence: 'Email sequence',
@@ -165,6 +168,8 @@ export const LINK_LABEL: Record<LinkKind, string> = {
   domain: 'Domain',
   mailbox: 'Mailbox',
   'phone-number': 'Phone number',
+  order: 'Order',
+  product: 'Product',
 };
 
 /**
@@ -194,6 +199,10 @@ export const LINK_ROUTE: Record<LinkKind, ((id: string) => string) | null> = {
   domain: () => '/settings?tab=infrastructure',
   mailbox: () => '/settings?tab=email-sms',
   'phone-number': () => '/settings?tab=email-sms',
+  /* Orders and products share one screen; there is no page per order, and
+     inventing /orders/<id> would be a link that 404s. */
+  order: () => '/sell',
+  product: () => '/sell',
 };
 
 /**

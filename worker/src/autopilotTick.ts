@@ -29,6 +29,10 @@ import {
   record as recordProvisioned, recordPurchase, registerDomain,
 } from './lib/provisioning';
 import { loadAiKey } from './lib/ai';
+import { createPayLink, storefrontReady } from './routes/storefront';
+import { draftAtSupplier, supplierReady } from './routes/supplier';
+import { buildMime } from './lib/mime';
+import { smtpSend } from './lib/smtp';
 import {
   writeBlogPost, writeLandingPage, writeShortScript, writeSocialPosts, type Brand,
 } from './lib/autopilotWrite';
@@ -142,6 +146,76 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     canSms: !!sms?.accountSid && !!sms.fromNumber,
     pool: await poolFor(env, accountId, run),
     content: await contentFor(env, accountId),
+    commerce: await commerceFor(env, accountId),
+  };
+}
+
+/**
+ * What has been sold, and what is stuck.
+ *
+ * Returns undefined for a workspace with no orders at all, so a services
+ * business never sees a commerce play. The alternative — returning zeroes —
+ * would be a plumber told every morning that nought products are still drafts.
+ *
+ * The one-day thresholds are read here rather than in the planner because they
+ * are cheaper as SQL, and because the planner is pure and testable precisely
+ * by not knowing about a database.
+ */
+async function commerceFor(env: Env, accountId: string): Promise<Workspace['commerce']> {
+  const any = await env.DB.prepare('SELECT 1 AS n FROM crm_orders WHERE account_id = ? LIMIT 1')
+    .bind(accountId).first();
+  if (!any) return undefined;
+
+  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+
+  const unthanked = (await env.DB.prepare(
+    `SELECT id, email, total_cents AS total FROM crm_orders
+     WHERE account_id = ? AND status IN ('paid','fulfilled') AND thanked_at IS NULL AND email != ''
+     ORDER BY placed_at DESC LIMIT 25`,
+  ).bind(accountId).all<{ id: string; email: string; total: number }>()).results ?? [];
+
+  /* Only orders that were actually sent a link. An order recorded by hand and
+     never given one was never asked for, and chasing it would be the first the
+     buyer had heard of it. */
+  const unpaid = (await env.DB.prepare(
+    `SELECT id, email FROM crm_orders
+     WHERE account_id = ? AND status = 'pending' AND stripe_session != ''
+       AND chased_at IS NULL AND email != '' AND placed_at < ?
+     ORDER BY placed_at DESC LIMIT 25`,
+  ).bind(accountId, dayAgo).all<{ id: string; email: string }>()).results ?? [];
+
+  /* Paid, and made by somebody else. Matched per product rather than by a flag
+     on the order, so an order of one supplier item and one of the customer's
+     own still counts — the supplier line still has to be sent.
+
+     The match is `instr` against the items JSON, which is a substring test and
+     not a join. It is sound here because a product id is a generated
+     `prod-<base36>-<random>` that cannot appear inside another value, and the
+     alternative — a line-items table — is a schema change to serve one query.
+     If ids ever become short or human-chosen, this has to become a real join. */
+  const unfulfilled = (await env.DB.prepare(
+    `SELECT o.id, o.email FROM crm_orders o
+     WHERE o.account_id = ? AND o.status = 'paid' AND o.supplier_ref = ''
+       AND o.ship_address1 != ''
+       AND EXISTS (
+         SELECT 1 FROM crm_products p
+         WHERE p.account_id = o.account_id AND p.source != 'own' AND p.supplier_ref != ''
+           AND instr(o.items, p.id) > 0
+       )
+     ORDER BY o.placed_at DESC LIMIT 25`,
+  ).bind(accountId).all<{ id: string; email: string }>()).results ?? [];
+
+  const drafts = await env.DB.prepare(
+    "SELECT count(*) AS n FROM crm_products WHERE account_id = ? AND source != 'own' AND status = 'draft'",
+  ).bind(accountId).first<{ n: number }>();
+
+  return {
+    unthanked: unthanked.map(o => ({ id: o.id, email: o.email, total: o.total })),
+    unpaid: unpaid.map(o => ({ id: o.id, email: o.email, days: 1 })),
+    unfulfilled: unfulfilled.map(o => ({ id: o.id, email: o.email })),
+    draftProducts: drafts?.n ?? 0,
+    canCharge: await storefrontReady(env, accountId),
+    canSupply: await supplierReady(env, accountId),
   };
 }
 
@@ -348,6 +422,14 @@ async function carryOut(
     return carryOutWrite(env, accountId, effect.what);
   }
 
+  if (effect.type === 'thank_buyers' || effect.type === 'chase_payment') {
+    return carryOutBuyerEmail(env, accountId, effect);
+  }
+
+  if (effect.type === 'draft_at_supplier') {
+    return carryOutSupplierDraft(env, accountId, effect.orderIds);
+  }
+
   if (effect.type === 'flag_stalled') {
     /* Flagged, not chased. What to say to a stalled deal is a judgement about
        that particular customer, and a generic nudge sent automatically is worse
@@ -360,6 +442,158 @@ async function carryOut(
   }
 
   return { ok: true, detail: '' };
+}
+
+/**
+ * Tell a buyer their order arrived, or send them a working link to pay for it.
+ *
+ * ── Why the order is re-read here ──
+ *
+ * The plan named order ids and not their contents. Between the plan being
+ * written and this running, a buyer may have paid — and chasing somebody for
+ * money they have already handed over is the single worst thing this play could
+ * do. So each order is checked again, now, and skipped if it has moved on.
+ *
+ * ── Why a new payment link ──
+ *
+ * Stripe expires a Checkout Session after 24 hours, and this play only fires on
+ * orders older than that. Re-sending the stored URL would post a dead link to
+ * somebody who was trying to buy something.
+ */
+async function carryOutBuyerEmail(
+  env: Env,
+  accountId: string,
+  effect: { type: 'thank_buyers' | 'chase_payment'; orderIds: string[] },
+): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
+  const chasing = effect.type === 'chase_payment';
+
+  const mb = await loadMailbox(env, accountId);
+  if (!mb?.smtp.host) return { ok: false, detail: 'No mailbox is connected, so nothing could be sent.' };
+
+  const origin = env.APP_ORIGIN ?? '';
+  if (chasing && !origin) {
+    /* Named rather than guessed. A Checkout Session needs an absolute return
+       address, and inventing one would send buyers to a page that does not
+       exist. */
+    return { ok: false, detail: 'APP_ORIGIN is not set on this deployment, so a fresh payment link could not be made.' };
+  }
+
+  const profile = parse<{ companyName?: string }>(await dataGet(env.DB, accountId, ONBOARDING_KEY), {});
+  const company = profile.companyName || mb.from.name || 'us';
+  const fromEmail = mb.from.email || mb.smtp.username;
+
+  let sent = 0;
+  let skipped = 0;
+  const failures: string[] = [];
+
+  for (const id of effect.orderIds) {
+    const o = await env.DB.prepare(
+      'SELECT id, email, total_cents, currency, status, chased_at, thanked_at FROM crm_orders WHERE id = ? AND account_id = ?',
+    ).bind(id, accountId).first<{
+      id: string; email: string; total_cents: number; currency: string;
+      status: string; chased_at: string | null; thanked_at: string | null;
+    }>();
+    if (!o || !o.email) { skipped++; continue; }
+
+    /* Still true? Both halves matter: the status may have changed, and the
+       marker may have been set by an earlier tick that was cut short. */
+    if (chasing && (o.status !== 'pending' || o.chased_at)) { skipped++; continue; }
+    if (!chasing && (!['paid', 'fulfilled'].includes(o.status) || o.thanked_at)) { skipped++; continue; }
+
+    const money = `${(o.total_cents / 100).toFixed(2)} ${o.currency || 'USD'}`;
+    let subject: string;
+    let html: string;
+
+    if (chasing) {
+      const link = await createPayLink(env, accountId, o.id, origin);
+      if (!link.ok) { failures.push(`${o.email}: ${link.error}`); continue; }
+      subject = `Your order is still waiting — ${company}`;
+      html = [
+        `<p>Hello,</p>`,
+        `<p>You started an order with ${esc(company)} for ${esc(money)} and it has not been paid for yet. The link you were sent has since expired, so here is a new one:</p>`,
+        `<p><a href="${esc(link.url)}">Pay for your order</a></p>`,
+        `<p>This link works for the next 24 hours. If you have changed your mind, you can ignore this — we will not send another.</p>`,
+        `<p>${esc(company)}</p>`,
+      ].join('');
+    } else {
+      subject = `We have your order — ${company}`;
+      html = [
+        `<p>Hello,</p>`,
+        `<p>Thank you — your payment of ${esc(money)} came through and your order is confirmed.</p>`,
+        `<p>We will be in touch as soon as it is on its way. If anything about it is wrong, just reply to this message.</p>`,
+        `<p>${esc(company)}</p>`,
+      ].join('');
+    }
+
+    const mime = buildMime({
+      fromName: mb.from.name || company, fromEmail, to: o.email, subject, html,
+      replyTo: mb.from.replyTo || undefined,
+    }, mb.smtp.host);
+
+    const r = await smtpSend(mb.smtp, { from: fromEmail, to: o.email, mime });
+    if (!r.ok) { failures.push(`${o.email}: ${r.error.slice(0, 120)}`); continue; }
+
+    /* Stamped only after the send succeeded. Stamping first would lose a
+       follow-up to a transient SMTP failure and never try again. */
+    await env.DB.prepare(
+      `UPDATE crm_orders SET ${chasing ? 'chased_at' : 'thanked_at'} = ?, updated_at = ? WHERE id = ? AND account_id = ?`,
+    ).bind(nowIso(), nowIso(), o.id, accountId).run();
+    sent++;
+  }
+
+  /* Partial is reported as partial. "3 sent" when two bounced is the kind of
+     success report that gets found out by a customer, not by us. */
+  const detail = [
+    sent ? `${sent} sent.` : '',
+    skipped ? `${skipped} skipped — no longer ${chasing ? 'unpaid' : 'unacknowledged'}.` : '',
+    failures.length ? `${failures.length} failed: ${failures.slice(0, 3).join('; ')}` : '',
+  ].filter(Boolean).join(' ') || 'Nothing needed sending.';
+
+  return {
+    ok: failures.length === 0,
+    detail,
+    link: { kind: 'order', id: 'orders', label: chasing ? 'Unpaid orders' : 'Orders', route: '/sell' },
+  };
+}
+
+/** Escape for an HTML body. A buyer's own company name can contain an
+ *  apostrophe or an ampersand, and neither belongs in raw markup. */
+function esc(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Send paid orders to the supplier, as drafts.
+ *
+ * Never confirmed. Confirming charges the customer's supplier account and
+ * starts a garment being printed, and no scheduled run gets to do that — the
+ * same rule buying a domain follows.
+ */
+async function carryOutSupplierDraft(
+  env: Env, accountId: string, orderIds: string[],
+): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
+  let drafted = 0;
+  const failures: string[] = [];
+  const partial: string[] = [];
+
+  for (const id of orderIds) {
+    const r = await draftAtSupplier(env, accountId, id);
+    if (!r.ok) { failures.push(`${id}: ${r.error.slice(0, 120)}`); continue; }
+    drafted++;
+    if (r.notSupplied.length) partial.push(`${id} (${r.notSupplied.join(', ')} left for you)`);
+  }
+
+  const detail = [
+    drafted ? `${drafted} drafted at the supplier — nothing is charged or made until you confirm.` : '',
+    partial.length ? `Partly: ${partial.slice(0, 3).join('; ')}.` : '',
+    failures.length ? `${failures.length} failed: ${failures.slice(0, 3).join('; ')}` : '',
+  ].filter(Boolean).join(' ') || 'Nothing needed sending.';
+
+  return {
+    ok: failures.length === 0,
+    detail,
+    link: { kind: 'order', id: 'orders', label: 'Orders', route: '/sell' },
+  };
 }
 
 /**

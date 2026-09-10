@@ -62,5 +62,16 @@
     "crons": ["*/5 * * * *"]
   },
 
+  // Where this deployment lives, as the scheduled run sees it.
+  //
+  // A fetch handler learns its own origin from the request. The cron has no
+  // request, and it needs one: Autopilot regenerates expired payment links from
+  // the cron, and Stripe refuses a Checkout Session whose return address is not
+  // an absolute URL. Left unset, that follow-up is skipped rather than sent
+  // with a broken link in it.
+  "vars": {
+    "APP_ORIGIN": "https://app.protectedcentral.com"
+  },
+
   "observability": { "enabled": true }
 }

@@ -42,6 +42,27 @@ export interface Workspace {
     mode: 'byo' | 'managed';
     canBuy: boolean;
   };
+  /**
+   * What has been sold, and what is stuck.
+   *
+   * Absent when the workspace sells nothing — a services business has no
+   * orders, and a play that fires on "you have no products" would be Autopilot
+   * telling a plumber to open a shop.
+   */
+  commerce?: {
+    /** Paid for, and never told so. */
+    unthanked: { id: string; email: string; total: number }[];
+    /** A payment link was made, a day has gone by, and it is still unpaid. */
+    unpaid: { id: string; email: string; days: number }[];
+    /** Paid, made by a supplier, and never sent to them. */
+    unfulfilled: { id: string; email: string }[];
+    /** Imported and never put on sale. */
+    draftProducts: number;
+    /** Whether the two things those plays depend on are actually connected. */
+    canCharge: boolean;
+    canSupply: boolean;
+  };
+
   /** What the workspace already has to show for itself, and whether Autopilot
    *  has a key to write more with. */
   content?: {
@@ -90,6 +111,13 @@ export interface PlannedAction {
     /* Writing something. The kind names which writer; the tick calls it and
        files the result in the module that owns it. */
     | { type: 'write'; what: 'landing' | 'blog' | 'social' | 'short' }
+    /* Commerce. Each names orders rather than carrying their contents, so the
+       tick reads the current state of an order rather than acting on a copy
+       that was true when the plan was written — an order paid overnight must
+       not still be chased for payment in the morning. */
+    | { type: 'thank_buyers'; orderIds: string[] }
+    | { type: 'chase_payment'; orderIds: string[] }
+    | { type: 'draft_at_supplier'; orderIds: string[] }
     | { type: 'none' };
 }
 
@@ -323,6 +351,87 @@ export function planNext(ws: Workspace): PlannedAction[] {
         counts: { contacts: quiet.length },
         permission: 'sendEmail',
         effect: { type: 'enrol', sequenceId: seq.id, contactIds: quiet.map(c => c.id) },
+      });
+    }
+  }
+
+  /* ── What has been sold ──
+     Only reached when the workspace actually sells something. A services
+     business has no orders, and every play below would be silent anyway — but
+     reading the block as a whole is what makes that obvious. */
+  const com = ws.commerce;
+  if (com) {
+    /* Somebody paid and was never told the order arrived.
+       This is the cheapest trust there is, and the one most often skipped: a
+       buyer who hears nothing for two days assumes the payment failed and
+       either buys again or asks for it back. */
+    if (com.unthanked.length && ws.canEmail) {
+      const n = com.unthanked.length;
+      out.push({
+        key: 'thank-buyers',
+        kind: 'send',
+        summary: `Tell ${n} buyer${n === 1 ? '' : 's'} their order came through`,
+        because: n === 1
+          ? 'somebody paid and has not been sent anything confirming it'
+          : `${n} people paid and none of them has been sent anything confirming it`,
+        counts: { orders: n },
+        permission: 'sendEmail',
+        effect: { type: 'thank_buyers', orderIds: com.unthanked.map(o => o.id) },
+      });
+    }
+
+    /* A payment link that was never used.
+       One reminder, never a series. The old link has expired by now — Stripe
+       gives a Checkout Session 24 hours — so the effect makes a fresh one
+       rather than sending a dead URL, which is the failure this play would
+       otherwise quietly produce. */
+    if (com.unpaid.length && ws.canEmail && com.canCharge) {
+      const n = com.unpaid.length;
+      out.push({
+        key: 'chase-payment',
+        kind: 'send',
+        summary: `Send ${n} unpaid order${n === 1 ? '' : 's'} a fresh payment link`,
+        because: n === 1
+          ? 'a payment link was sent more than a day ago and the order is still unpaid, and that link has now expired'
+          : `${n} orders have been unpaid for more than a day, and the links they were sent have now expired`,
+        counts: { orders: n },
+        permission: 'sendEmail',
+        effect: { type: 'chase_payment', orderIds: com.unpaid.map(o => o.id) },
+      });
+    }
+
+    /* Paid for, made by somebody else, and still sitting here.
+       Drafted at the supplier, never confirmed: confirming is what charges the
+       customer's supplier account and starts a garment being printed, and
+       nothing scheduled should do that on its own. */
+    if (com.unfulfilled.length && com.canSupply) {
+      const n = com.unfulfilled.length;
+      out.push({
+        key: 'draft-at-supplier',
+        kind: 'create',
+        summary: `Send ${n} paid order${n === 1 ? '' : 's'} to the supplier as ${n === 1 ? 'a draft' : 'drafts'}`,
+        because: n === 1
+          ? 'it is paid for and made by your supplier, and has not been sent to them'
+          : `${n} orders are paid for and made by your supplier, and none has been sent to them`,
+        counts: { orders: n },
+        permission: 'createWorkflows',
+        effect: { type: 'draft_at_supplier', orderIds: com.unfulfilled.map(o => o.id) },
+      });
+    }
+
+    /* Imported and never put on sale.
+       Noticed rather than fixed: what to charge, and whether to sell a thing at
+       all, is the business decision this system does not get to make. */
+    if (com.draftProducts > 0) {
+      out.push({
+        key: 'draft-products',
+        kind: 'observe',
+        summary: `${com.draftProducts} product${com.draftProducts === 1 ? ' is' : 's are'} still a draft`,
+        because: com.draftProducts === 1
+          ? 'it was imported from your supplier and has never been made active, so nobody can buy it'
+          : `they were imported from your supplier and none has been made active, so nobody can buy any of them`,
+        counts: { products: com.draftProducts },
+        effect: { type: 'none' },
       });
     }
   }

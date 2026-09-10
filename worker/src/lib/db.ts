@@ -13,6 +13,13 @@ export interface Env {
   /** Optional. Set with `wrangler secret put` when a customer wants Stripe. */
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /**
+   * This deployment's own address, for the scheduled run.
+   *
+   * A fetch handler reads its origin off the request; the cron has none, and
+   * Stripe will not take a relative return address. Set in wrangler.jsonc.
+   */
+  APP_ORIGIN?: string;
 }
 
 export interface SessionUser {

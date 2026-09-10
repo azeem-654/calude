@@ -102,6 +102,82 @@ function remedy(msg: string): string[] {
   ];
 }
 
+/**
+ * Send one paid order to the supplier as a draft.
+ *
+ * Exported so Autopilot can do it from the cron, where there is no request to
+ * run a handler from. Everything that decides *whether* it is safe to send \u2014
+ * paid, addressable, actually made by this supplier \u2014 lives here, so the
+ * scheduled path cannot skip a check the manual one makes.
+ *
+ * Only ever creates a draft. Confirming is what charges their account and
+ * starts a garment being printed, and nothing scheduled does that.
+ */
+export async function draftAtSupplier(
+  env: Env, accountId: string, orderId: string,
+): Promise<{ ok: boolean; ref: string; error: string; steps: string[]; notSupplied: string[] }> {
+  const no = (error: string, steps: string[] = []) => ({ ok: false, ref: '', error, steps, notSupplied: [] as string[] });
+
+  const creds = await loadCreds(env, accountId);
+  if (!creds) return no('No Printful token is connected.');
+
+  const o = await env.DB.prepare(
+    `SELECT id, email, items, status, ship_name, ship_address1, ship_address2, ship_city,
+            ship_state, ship_zip, ship_country, ship_phone, supplier_ref
+     FROM crm_orders WHERE id = ? AND account_id = ?`,
+  ).bind(orderId, accountId).first<Record<string, string>>();
+  if (!o) return no('That order is not in this workspace.');
+  if (o.status !== 'paid' && o.status !== 'fulfilled') {
+    return no('Only a paid order can be sent to the supplier \u2014 nobody should be printing something that has not been paid for.');
+  }
+  if (o.supplier_ref) return no('That order is already with the supplier.');
+
+  const recipient: PfRecipient = {
+    name: o.ship_name ?? '', address1: o.ship_address1 ?? '', address2: o.ship_address2 ?? '',
+    city: o.ship_city ?? '', state_code: o.ship_state ?? '',
+    country_code: (o.ship_country ?? '').toUpperCase(), zip: o.ship_zip ?? '',
+    phone: o.ship_phone ?? '', email: o.email ?? '',
+  };
+  const problems = addressProblems(recipient);
+  if (problems.length) {
+    return no('This order cannot be shipped as it stands.', [
+      ...problems,
+      'A payment link collects the address at checkout. An order recorded by hand does not have one \u2014 take it from the customer and record the order again through a payment link.',
+    ]);
+  }
+
+  let lines: { productId?: string; qty?: number }[] = [];
+  try { lines = JSON.parse(o.items ?? '[]') as typeof lines; } catch { lines = []; }
+
+  const items: PfItem[] = [];
+  const notSupplied: string[] = [];
+  for (const l of lines) {
+    const prod = await env.DB.prepare(
+      'SELECT name, source, supplier_ref FROM crm_products WHERE id = ? AND account_id = ?',
+    ).bind(String(l.productId ?? ''), accountId).first<{ name: string; source: string; supplier_ref: string }>();
+    if (!prod || prod.source !== PROVIDER || !prod.supplier_ref) {
+      notSupplied.push(prod?.name || String(l.productId ?? 'an item'));
+      continue;
+    }
+    items.push({ sync_variant_id: Number(prod.supplier_ref), quantity: Math.max(1, Math.round(Number(l.qty) || 1)) });
+  }
+  if (!items.length) return no('Nothing on this order comes from Printful, so there is nothing for them to make.');
+
+  const r = await submitOrder(creds, o.id, recipient, items);
+  if (!r.ok) {
+    await env.DB.prepare("UPDATE crm_orders SET supplier_status = 'failed', supplier_error = ?, supplier_provider = ?, updated_at = ? WHERE id = ? AND account_id = ?")
+      .bind(r.error.slice(0, 500), PROVIDER, nowIso(), orderId, accountId).run();
+    return { ...no(r.error, remedy(r.error)), notSupplied };
+  }
+
+  const ref = String(r.data?.id ?? '');
+  await env.DB.prepare(
+    "UPDATE crm_orders SET supplier_provider = ?, supplier_ref = ?, supplier_status = 'draft', supplier_error = '', updated_at = ? WHERE id = ? AND account_id = ?",
+  ).bind(PROVIDER, ref, nowIso(), orderId, accountId).run();
+
+  return { ok: true, ref, error: '', steps: [], notSupplied };
+}
+
 export async function handleSupplier(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
   const user = await userFromToken(env.DB, d.token);
@@ -263,65 +339,18 @@ export async function handleSupplier(req: Request, env: Env): Promise<Response> 
 
   /* ── Sending an order to be made ── */
   if (act === 'fulfil') {
-    const creds = await loadCreds(env, accountId);
-    if (!creds) return fail('Connect a Printful token first.');
-
     const orderId = String(d.orderId ?? '').trim();
-    const o = await env.DB.prepare(
-      `SELECT id, email, items, status, ship_name, ship_address1, ship_address2, ship_city,
-              ship_state, ship_zip, ship_country, ship_phone, supplier_ref, supplier_status
-       FROM crm_orders WHERE id = ? AND account_id = ?`,
-    ).bind(orderId, accountId).first<Record<string, string>>();
-    if (!o) return fail('That order is not in this workspace.');
 
-    if (o.status !== 'paid' && o.status !== 'fulfilled') {
-      return fail('Only a paid order can be sent to the supplier — nobody should be printing something that has not been paid for.');
-    }
+    /* Confirming is a different act from submitting, and it is the one that
+       spends money. Sending the order again instead would print it twice. */
+    if (d.confirm) {
+      const creds = await loadCreds(env, accountId);
+      if (!creds) return fail('Connect a Printful token first.');
+      const o = await env.DB.prepare('SELECT supplier_ref FROM crm_orders WHERE id = ? AND account_id = ?')
+        .bind(orderId, accountId).first<{ supplier_ref: string }>();
+      if (!o) return fail('That order is not in this workspace.');
+      if (!o.supplier_ref) return fail('That order has not reached Printful yet, so there is nothing to confirm.');
 
-    const recipient: PfRecipient = {
-      name: o.ship_name ?? '', address1: o.ship_address1 ?? '', address2: o.ship_address2 ?? '',
-      city: o.ship_city ?? '', state_code: o.ship_state ?? '',
-      country_code: (o.ship_country ?? '').toUpperCase(), zip: o.ship_zip ?? '',
-      phone: o.ship_phone ?? '', email: o.email ?? '',
-    };
-    const problems = addressProblems(recipient);
-    if (problems.length) {
-      return json({
-        success: false,
-        error: 'This order cannot be shipped as it stands.',
-        message: 'This order cannot be shipped as it stands.',
-        diagnosis: {
-          summary: 'This order cannot be shipped as it stands.',
-          steps: [
-            ...problems,
-            'A payment link collects the address at checkout. An order recorded by hand does not have one — take it from the customer and record the order again through a payment link.',
-          ],
-        },
-      });
-    }
-
-    let lines: { productId?: string; qty?: number }[] = [];
-    try { lines = JSON.parse(o.items ?? '[]') as typeof lines; } catch { lines = []; }
-
-    const items: PfItem[] = [];
-    const notSupplied: string[] = [];
-    for (const l of lines) {
-      const prod = await env.DB.prepare(
-        'SELECT name, source, supplier_ref FROM crm_products WHERE id = ? AND account_id = ?',
-      ).bind(String(l.productId ?? ''), accountId).first<{ name: string; source: string; supplier_ref: string }>();
-      if (!prod || prod.source !== PROVIDER || !prod.supplier_ref) {
-        notSupplied.push(prod?.name || String(l.productId ?? 'an item'));
-        continue;
-      }
-      items.push({ sync_variant_id: Number(prod.supplier_ref), quantity: Math.max(1, Math.round(Number(l.qty) || 1)) });
-    }
-    if (!items.length) {
-      return fail('Nothing on this order comes from Printful, so there is nothing for them to make.');
-    }
-
-    if (o.supplier_ref && d.confirm) {
-      /* Already at the supplier — this press is the confirmation, not a second
-         submission. Sending it again would print the order twice. */
       const c = await confirmOrder(creds, Number(o.supplier_ref));
       if (!c.ok) {
         await env.DB.prepare('UPDATE crm_orders SET supplier_error = ?, updated_at = ? WHERE id = ? AND account_id = ?')
@@ -330,29 +359,25 @@ export async function handleSupplier(req: Request, env: Env): Promise<Response> 
       }
       await env.DB.prepare("UPDATE crm_orders SET supplier_status = 'submitted', supplier_error = '', updated_at = ? WHERE id = ? AND account_id = ?")
         .bind(nowIso(), orderId, accountId).run();
-      return json({ success: true, supplierRef: o.supplier_ref, status: 'submitted', partial: notSupplied });
+      return json({ success: true, supplierRef: o.supplier_ref, status: 'submitted', note: 'Confirmed. Printful is making it.' });
     }
 
-    const r = await submitOrder(creds, o.id, recipient, items);
+    const r = await draftAtSupplier(env, accountId, orderId);
     if (!r.ok) {
-      await env.DB.prepare("UPDATE crm_orders SET supplier_status = 'failed', supplier_error = ?, supplier_provider = ?, updated_at = ? WHERE id = ? AND account_id = ?")
-        .bind(r.error.slice(0, 500), PROVIDER, nowIso(), orderId, accountId).run();
-      return json({ success: false, error: r.error, message: r.error, diagnosis: { summary: r.error, steps: remedy(r.error) } });
+      return json({
+        success: false, error: r.error, message: r.error,
+        ...(r.steps.length ? { diagnosis: { summary: r.error, steps: r.steps } } : {}),
+      });
     }
-
-    await env.DB.prepare(
-      "UPDATE crm_orders SET supplier_provider = ?, supplier_ref = ?, supplier_status = 'draft', supplier_error = '', updated_at = ? WHERE id = ? AND account_id = ?",
-    ).bind(PROVIDER, String(r.data?.id ?? ''), nowIso(), orderId, accountId).run();
-
     return json({
       success: true,
-      supplierRef: String(r.data?.id ?? ''),
+      supplierRef: r.ref,
       status: 'draft',
       /* Partial, and said so. Some lines reaching a supplier and others not is
          exactly the case where a plain "sent" leaves somebody short. */
-      partial: notSupplied,
-      note: notSupplied.length
-        ? `Sent as a draft. ${notSupplied.length} line(s) are not Printful products and were left for you to handle: ${notSupplied.join(', ')}.`
+      partial: r.notSupplied,
+      note: r.notSupplied.length
+        ? `Sent as a draft. ${r.notSupplied.length} line(s) are not Printful products and were left for you to handle: ${r.notSupplied.join(', ')}.`
         : 'Sent as a draft. Nothing is charged or printed until you confirm it.',
     });
   }
