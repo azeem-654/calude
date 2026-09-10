@@ -85,6 +85,7 @@ export interface Enrolment { id: string; contactId: string; sequenceId: string; 
 export interface Deal {
   id: string; title?: string; status?: string; stage?: string;
   contactId?: string; value?: number;
+  createdAt?: string;
   lastStageChangedAt?: string; closedAt?: string; expectedClose?: string;
 }
 export interface Pipeline { id: string; name: string; stages: { id: string; name: string; deals: Deal[] }[] }
@@ -153,19 +154,35 @@ function describePoolStep(s: { type: string; count?: number; domain?: string; do
 export function planNext(ws: Workspace): PlannedAction[] {
   const out: PlannedAction[] = [];
 
-  /* ── Nothing can happen without a way to send ──
-     Said as a problem rather than silently producing no plan. A workspace with
-     Autopilot on and an empty activity log is indistinguishable from a broken
-     one, and this is the single most common reason for it. */
-  if (!ws.canEmail && !ws.canSms) {
+  /*
+   * ── No way to send ──
+   *
+   * Said as a problem rather than silently producing no plan: a workspace with
+   * Autopilot on and an empty activity log is indistinguishable from a broken
+   * one, and this is the commonest reason for it.
+   *
+   * It used to `return` here, which was wrong and was the first thing a brand
+   * new customer met. Connecting a mailbox is the slowest step of setting this
+   * app up — DNS, a password, a validation round trip — and blocking on it
+   * meant Autopilot did *nothing at all* for the days that took, when writing
+   * the landing page and the first blog post needs no mailbox whatsoever.
+   * Those are exactly the things that remove the blank page while somebody is
+   * waiting on their DNS to propagate.
+   *
+   * So this is a notice, not a gate. Every play that actually sends checks
+   * `canSend` for itself, immediately above the send.
+   */
+  const canSend = ws.canEmail || ws.canSms;
+  if (!canSend) {
     out.push({
       key: 'no-sender',
       kind: 'error',
-      summary: 'Autopilot cannot do anything yet — no mailbox is connected',
-      because: 'nothing in this workspace has been validated for sending, so every campaign it plans would sit unsent',
+      /* Only claims what is true. It used to say "cannot do anything yet",
+         which stopped being true the moment it also queued the writing. */
+      summary: 'Nothing can be sent yet — no mailbox is connected',
+      because: 'nothing in this workspace has been validated for sending, so anything Autopilot writes will wait here rather than go out',
       effect: { type: 'none' },
     });
-    return out;
   }
 
   /* ── The sending pool ──
@@ -259,7 +276,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
      The most valuable thing a small business fails to do. A lead that arrived
      four days ago and has heard nothing is the cheapest revenue in the
      workspace. */
-  if (active.length) {
+  if (active.length && canSend) {
     const fresh = ws.contacts.filter(c =>
       c.email && !enrolledIds.has(c.id) && days(c.createdAt) <= 14 && !c.lastContactedAt,
     ).slice(0, BATCH);
@@ -275,7 +292,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
         effect: { type: 'enrol', sequenceId: seq.id, contactIds: fresh.map(c => c.id) },
       });
     }
-  } else if (ws.contacts.length > 0) {
+  } else if (ws.contacts.length > 0 && canSend) {
     /* Contacts and nowhere to put them. Worth saying, because the customer
        cannot tell from the outside why nothing is happening. */
     out.push({
@@ -294,8 +311,21 @@ export function planNext(ws: Workspace): PlannedAction[] {
      14 days is the point at which a deal in most small-business pipelines is
      not slow, it is forgotten. Flagged rather than chased automatically: what
      to say to a stalled deal is a judgement about that customer. */
+  /*
+   * Measured from the last stage change, or from when the deal was made.
+   *
+   * `days()` answers Infinity for a missing date, and a deal that has never
+   * changed stage has no `lastStageChangedAt` — so this told a workspace
+   * forty minutes old that forty-one of its deals "have not moved in two
+   * weeks". The deals onboarding creates are exactly that shape. A deal with
+   * no date at all cannot be shown to have stalled, so it is not claimed.
+   */
+  const sinceMoved = (d: Deal): number => {
+    const stamp = d.lastStageChangedAt || d.createdAt;
+    return stamp ? days(stamp) : 0;
+  };
   const stalled = deals.filter(d =>
-    (d.status ?? 'active') === 'active' && days(d.lastStageChangedAt) >= 14,
+    (d.status ?? 'active') === 'active' && sinceMoved(d) >= 14,
   ).slice(0, BATCH);
   if (stalled.length) {
     const worth = stalled.reduce((n, d) => n + (Number(d.value) || 0), 0);
@@ -322,7 +352,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   const won = deals.filter(d =>
     d.status === 'won' && days(d.closedAt) <= 30 && d.contactId && !asked.has(d.contactId) && !asked.has(d.id),
   ).slice(0, BATCH);
-  if (won.length) {
+  if (won.length && canSend) {
     out.push({
       key: 'ask-reviews',
       kind: 'create',
@@ -337,7 +367,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   /* ── People who have gone quiet ──
      Only when there is somewhere to put them; suggesting re-engagement with no
      sequence to run is advice, and this system is supposed to act. */
-  if (active.length) {
+  if (active.length && canSend) {
     const quiet = ws.contacts.filter(c =>
       c.email && !enrolledIds.has(c.id) && c.lastContactedAt && days(c.lastContactedAt) >= 60,
     ).slice(0, BATCH);
