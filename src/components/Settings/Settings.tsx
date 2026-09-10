@@ -16,6 +16,7 @@ import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
 import MailboxesPanel from './MailboxesPanel';
+import OperatorPayments from './OperatorPayments';
 import { cachedPrimary } from '../../services/mailboxStore';
 import DiagnosticsCard from './DiagnosticsCard';
 import DeliveryCheck from './DeliveryCheck';
@@ -1124,7 +1125,12 @@ export default function Settings() {
           {activeTab === 'billing' && (() => {
             const acct = activeAccount();
             const plan = acct ? planById(acct.plan) : null;
+            /* Only the install owner is billing anybody, and the endpoint
+               enforces that too — this is which of them is worth showing. */
+            const owner = getSession()?.user.accountId === null;
             return (
+              <div style={{ display: 'grid', gap: 18 }}>
+              {owner && <OperatorPayments />}
               <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing &amp; Subscription</h3>
                 <div style={{ padding: '22px 24px', borderRadius: '12px', background: '#17191c', color: 'white', marginBottom: '18px', boxShadow: '0 8px 20px rgba(23,25,28,0.25)' }}>
@@ -1142,8 +1148,10 @@ export default function Settings() {
                   <CreditCard size={14} /> Manage plan &amp; payment
                 </button>
                 <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '12px 0 0', lineHeight: 1.55 }}>
-                  Changing plan, payment method and invoices all live on the billing screen, which talks to Stripe directly.
+                  Changing plan, payment method and invoices all live on the billing screen, which talks to whichever
+                  payment processor this deployment is connected to.
                 </p>
+              </div>
               </div>
             );
           })()}

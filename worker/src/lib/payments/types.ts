@@ -51,6 +51,30 @@ export interface CheckoutRequest {
   needsShipping: boolean;
 }
 
+/**
+ * A recurring charge — what this app bills its own subscribers with.
+ *
+ * Separate from CheckoutRequest because the two are genuinely different
+ * purchases, not one with a flag: a subscription needs an interval, cannot use
+ * Creem's `custom_price` (which is one-time only), and on Stripe is a different
+ * checkout mode. Folding them together would mean every caller passing a
+ * `recurring: false` that most of them do not mean.
+ */
+export interface SubscriptionRequest {
+  /** Our own reference — the workspace being billed. */
+  reference: string;
+  /** What the plan is called, as the subscriber will see it. */
+  planName: string;
+  amountCents: number;
+  currency: string;
+  email: string;
+  successUrl: string;
+  cancelUrl: string;
+  /** A price already set up in the processor's dashboard, when there is one.
+   *  Preferred over an amount: it is the operator's own configured plan. */
+  priceId?: string;
+}
+
 export interface CheckoutResult extends Outcome {
   /** Where to send the buyer. */
   url: string;
@@ -92,8 +116,10 @@ export interface PaymentProvider {
   /** Reads the account. Must not create anything — pressing Test twice should
    *  leave no trace in the customer's dashboard. */
   verify(key: string): Promise<Connected>;
-  /** A link a buyer can pay through. */
+  /** A link a buyer can pay through, once. */
   checkout(key: string, req: CheckoutRequest, ctx: ProviderContext): Promise<CheckoutResult>;
+  /** A link somebody can start a subscription through. */
+  subscribe(key: string, req: SubscriptionRequest, ctx: ProviderContext): Promise<CheckoutResult>;
   /** True only when the body genuinely came from this processor. */
   verifySignature(secret: string, rawBody: string, headers: Headers): Promise<boolean>;
   /** What the (already verified) body means. */
@@ -109,7 +135,14 @@ export interface PaymentProvider {
  * catalogue with one entry per sale. Stripe needs nothing and ignores it.
  */
 export interface ProviderContext {
-  /** Whatever the provider stored last time, or ''. */
+  /**
+   * Whatever the provider stored last time, or ''.
+   *
+   * Opaque to everything except the provider that wrote it. Creem keeps JSON
+   * here — one product id for orders and one per subscription plan — because a
+   * checkout must name a product and creating a fresh one per charge would fill
+   * the account's catalogue. Stripe writes nothing.
+   */
   providerRef: string;
   /** Called when the provider has something new worth remembering. */
   remember(ref: string): Promise<void>;

@@ -164,6 +164,39 @@ export const stripe: PaymentProvider = {
     };
   },
 
+  async subscribe(key, req) {
+    const params = new URLSearchParams({ mode: 'subscription' });
+    params.set('success_url', req.successUrl);
+    params.set('cancel_url', req.cancelUrl);
+    params.set('line_items[0][quantity]', '1');
+    if (req.priceId) {
+      /* A price the operator configured in their own dashboard beats one built
+         here: it carries their tax behaviour, trial and interval as they set
+         them, and this cannot silently disagree with it. */
+      params.set('line_items[0][price]', req.priceId);
+    } else {
+      params.set('line_items[0][price_data][currency]', req.currency.toLowerCase());
+      params.set('line_items[0][price_data][product_data][name]', req.planName.slice(0, 250) || 'Subscription');
+      params.set('line_items[0][price_data][unit_amount]', String(req.amountCents));
+      params.set('line_items[0][price_data][recurring][interval]', 'month');
+    }
+    if (req.email) params.set('customer_email', req.email);
+    params.set('client_reference_id', req.reference);
+    params.set('metadata[accountId]', req.reference);
+
+    const r = await call(key, '/checkout/sessions', params);
+    if (!r.ok) {
+      const error = errorOf(r.data);
+      return { ok: false, url: '', sessionId: '', expiresNote: '', error, steps: remedy(error) };
+    }
+    return {
+      ok: true, error: '', steps: [],
+      url: String(r.data.url ?? ''),
+      sessionId: String(r.data.id ?? ''),
+      expiresNote: 'This link stops working after 24 hours.',
+    };
+  },
+
   async verifySignature(secret, rawBody, headers) {
     const parts = Object.fromEntries(
       (headers.get('Stripe-Signature') ?? '').split(',')

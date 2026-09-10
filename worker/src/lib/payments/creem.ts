@@ -92,13 +92,30 @@ function remedy(error: string, status: number): string[] {
 interface ProductEntity { id?: string; name?: string; status?: string }
 interface CheckoutEntity { id?: string; checkout_url?: string; status?: string }
 
+/**
+ * What this provider remembers, as a map.
+ *
+ * One string is handed back and forth, so it holds JSON: the order product
+ * under 'order', and one entry per subscription plan. A value written before
+ * this was a map is read as the order product, so an account connected
+ * yesterday keeps working.
+ */
+function readRefs(raw: string): Record<string, string> {
+  const v = (raw ?? '').trim();
+  if (!v) return {};
+  if (!v.startsWith('{')) return { order: v };
+  try { return JSON.parse(v) as Record<string, string>; } catch { return {}; }
+}
+const writeRefs = (m: Record<string, string>) => JSON.stringify(m);
+
 /** The one product every order in a workspace is charged against. */
 async function orderProduct(key: string, ctx: ProviderContext, currency: string): Promise<{ id: string; error: string; steps: string[] }> {
-  if (ctx.providerRef) {
+  const refs = readRefs(ctx.providerRef);
+  if (refs.order) {
     /* Trust the remembered one, but confirm it is still there — a customer who
        tidied their Creem catalogue would otherwise get a failed checkout with
        no explanation. */
-    const got = await call<ProductEntity>(key, `/v1/products/${encodeURIComponent(ctx.providerRef)}`);
+    const got = await call<ProductEntity>(key, `/v1/products/${encodeURIComponent(refs.order)}`);
     if (got.ok && got.data?.id) return { id: got.data.id, error: '', steps: [] };
   }
 
@@ -118,7 +135,7 @@ async function orderProduct(key: string, ctx: ProviderContext, currency: string)
   if (!made.ok || !made.data?.id) {
     return { id: '', error: made.error || 'Creem would not create the order product.', steps: remedy(made.error, made.status) };
   }
-  await ctx.remember(made.data.id);
+  await ctx.remember(writeRefs({ ...refs, order: made.data.id }));
   return { id: made.data.id, error: '', steps: [] };
 }
 
@@ -210,6 +227,82 @@ export const creem: PaymentProvider = {
       /* Creem does not publish a fixed expiry the way Stripe does, so this says
          what is known rather than inventing a number. */
       expiresNote: 'Send this to the buyer. If it stops working, generate another.',
+    };
+  },
+
+  /**
+   * A subscription.
+   *
+   * `custom_price` is one-time only, so unlike an order this cannot reuse a
+   * single product with the amount varied — each plan is genuinely its own
+   * recurring product in Creem. They are created once and remembered by name
+   * and price, so re-billing the same plan does not make a second one, and
+   * changing a plan's price makes a new product rather than silently repricing
+   * everybody already on the old one.
+   */
+  async subscribe(key, req, ctx) {
+    const no = (error: string, steps: string[] = []) =>
+      ({ ok: false, url: '', sessionId: '', expiresNote: '', error, steps });
+
+    const currency = req.currency.toUpperCase();
+    if (!['USD', 'EUR'].includes(currency)) {
+      return no(`Creem can only bill in US dollars or euros, and this plan is priced in ${currency}.`,
+        ['Price the plan in USD or EUR, or bill through Stripe instead.']);
+    }
+
+    /* An operator who set the plan up in Creem themselves has a product id
+       already, and theirs wins: it carries the trial and tax settings they
+       chose, which one built here could not know about. */
+    let productId = (req.priceId ?? '').trim();
+
+    if (!productId) {
+      const slot = `plan:${req.planName}:${req.amountCents}:${currency}`;
+      const remembered = readRefs(ctx.providerRef);
+      productId = remembered[slot] ?? '';
+
+      if (productId) {
+        const got = await call<ProductEntity>(key, `/v1/products/${encodeURIComponent(productId)}`);
+        if (!got.ok || !got.data?.id) productId = '';
+      }
+      if (!productId) {
+        const made = await call<ProductEntity>(key, '/v1/products', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: req.planName.slice(0, 100) || 'Subscription',
+            description: `${req.planName} — billed monthly.`.slice(0, 500),
+            price: Math.max(req.amountCents, 100),
+            currency,
+            billing_type: 'recurring',
+            billing_period: 'every-month',
+          }),
+        });
+        if (!made.ok || !made.data?.id) {
+          return no(made.error || 'Creem would not create the plan.', remedy(made.error, made.status));
+        }
+        productId = made.data.id;
+        await ctx.remember(writeRefs({ ...remembered, [slot]: productId }));
+      }
+    }
+
+    const r = await call<CheckoutEntity>(key, '/v1/checkouts', {
+      method: 'POST',
+      body: JSON.stringify({
+        product_id: productId,
+        units: 1,
+        request_id: req.reference,
+        metadata: { accountId: req.reference, plan: req.planName.slice(0, 120) },
+        ...(req.email ? { customer: { email: req.email } } : {}),
+        ...(req.successUrl ? { success_url: req.successUrl } : {}),
+      }),
+    });
+    if (!r.ok || !r.data?.checkout_url) {
+      return no(r.error || 'Creem did not return a checkout link.', remedy(r.error, r.status));
+    }
+    return {
+      ok: true, error: '', steps: [],
+      url: r.data.checkout_url,
+      sessionId: String(r.data.id ?? ''),
+      expiresNote: '',
     };
   },
 

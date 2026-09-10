@@ -10,6 +10,7 @@
  * they are never stored server-side.
  */
 import { API_BASE } from './apiBase';
+import { sessionToken } from './auth';
 
 
 
@@ -54,51 +55,38 @@ export function updateBilling(accountId: string, patch: Partial<BillingRecord>) 
   saveBilling(list);
 }
 
-/** Create a real Stripe Checkout Session (subscription) for a client. */
+/**
+ * Start a subscription for a client.
+ *
+ * Goes through api/billing.php, which charges on whichever processor the
+ * install owner connected — Stripe or Creem. It used to post a secret key
+ * from the browser to a Stripe-only endpoint; the key never leaves the Worker
+ * now, and the caller does not have to know who the processor is.
+ */
 export async function createCheckout(opts: {
   accountId: string; productName: string; amount: number; customerEmail: string; priceId?: string;
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
-  const cfg = loadStripeConfig();
-  if (!cfg.secretKey) return { ok: false, error: 'Add your Stripe secret key in Billing settings first.' };
-  const base = window.location.origin + (import.meta.env.BASE_URL || '/');
-  try {
-    const r = await fetch(`${API_BASE}/api/stripe-checkout.php`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        secretKey: cfg.secretKey, mode: 'subscription',
-        priceId: opts.priceId || '', amount: opts.amount, currency: 'usd',
-        productName: opts.productName, customerEmail: opts.customerEmail,
-        successUrl: `${base}?billing=success`, cancelUrl: `${base}?billing=cancel`,
-        accountId: opts.accountId,
-      }),
-    });
-    const data = await r.json() as { success: boolean; url?: string; error?: string };
-    if (data.success && data.url) {
-      updateBilling(opts.accountId, { status: 'checkout_sent', checkoutUrl: data.url, lastCheckoutAt: new Date().toISOString() });
-      return { ok: true, url: data.url };
-    }
-    return { ok: false, error: data.error || 'Stripe did not return a checkout URL.' };
-  } catch {
-    return { ok: false, error: 'Checkout endpoint unreachable. Deploy stripe-checkout.php and ensure PHP curl is enabled.' };
-  }
+  return startSubscription({ ...opts, token: sessionToken() });
 }
 
-/**
- * Client self-service checkout — uses the server-side Stripe secret (saved once
- * by the agency) authorised by the caller's session token, so the client never
- * holds the key.
- */
+/** Client self-service checkout. Same path, authorised by their own session. */
 export async function createClientCheckout(opts: {
+  accountId: string; token: string; productName: string; amount: number; customerEmail: string; priceId?: string;
+}): Promise<{ ok: boolean; url?: string; error?: string }> {
+  return startSubscription(opts);
+}
+
+async function startSubscription(opts: {
   accountId: string; token: string; productName: string; amount: number; customerEmail: string; priceId?: string;
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   const base = window.location.origin + (import.meta.env.BASE_URL || '/');
   try {
-    const r = await fetch(`${API_BASE}/api/stripe-checkout.php`, {
+    const r = await fetch(`${API_BASE}/api/billing.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        token: opts.token, mode: 'subscription',
-        priceId: opts.priceId || '', amount: opts.amount, currency: 'usd',
-        productName: opts.productName, customerEmail: opts.customerEmail,
+        token: opts.token, action: 'checkout',
+        priceId: opts.priceId || '', amount: opts.amount, currency: 'USD',
+        planName: opts.productName, customerEmail: opts.customerEmail,
         successUrl: `${base}?billing=success`, cancelUrl: `${base}?billing=cancel`,
         accountId: opts.accountId,
       }),

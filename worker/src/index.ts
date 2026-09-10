@@ -25,6 +25,7 @@ import { handleReplies } from './routes/replies';
 import { handleCommerce } from './routes/commerce';
 import { handleStorefront, handleStorefrontWebhook } from './routes/storefront';
 import { handleSupplier } from './routes/supplier';
+import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -91,6 +92,11 @@ const ROUTES: Record<string, Handler> = {
   '/api/placement.php': handlePlacement,
   '/api/blog-publish.php': handleBlogPublish,
 
+  /* How this app charges its own subscribers, on whichever processor the
+     owner connected. The stripe-* endpoints below are the older, Stripe-only
+     way in and still work — see routes/billing.ts. */
+  '/api/billing.php': handleBilling,
+  '/api/billing-webhook.php': handleBillingWebhook,
   '/api/stripe-config.php': handleStripeConfig,
   '/api/stripe-checkout.php': handleStripeCheckout,
   '/api/stripe-portal.php': handleStripePortal,

@@ -80,21 +80,36 @@ why it can be tested without a database — keep it that way.
 - Guardrails (`'off' | 'approval' | 'on'`) decide whether an action waits for a
   person. `'approval'` is the default for anything that sends.
 
-## Money — two Stripe keys, and they are not interchangeable
+## Money — two pots, and they are not interchangeable
 
 This is the trap in this codebase most likely to cost somebody real money.
 
-- `env.STRIPE_SECRET_KEY` is a Worker secret: **the operator's** account. It
-  bills customers for their subscription to this app (`routes/stripe.ts`).
-- `crm_storefront.stripe_key` is **the customer's own**, encrypted per
-  workspace. It charges *their* buyers (`routes/storefront.ts`).
+- **The operator charging their subscribers for this app.** `routes/billing.ts`,
+  on the processor connected in `crm_install_providers` (kind `payments`). Falls
+  back to `env.STRIPE_SECRET_KEY` for installs that predate that.
+- **A subscriber charging their own buyers.** `routes/storefront.ts`, on the key
+  in `crm_storefront`, per workspace.
 
-Charging a customer's buyer on the operator's key would deposit their trading
+Charging a subscriber's buyer on the operator's key would deposit their trading
 revenue into the operator's balance — somebody else's money, held without
 agreement, and in most jurisdictions money transmission. Reach for the wrong one
 and nothing will fail; it will just quietly be wrong.
 
-The same reasoning decides what may be bought on the operator's account.
+Both go through `lib/payments`, which is where Stripe and Creem live. Add a
+processor by adding a file there and a line in its index — never by branching at
+a call site. The interface deliberately exposes what differs: Stripe is a
+gateway taking most currencies; **Creem is a merchant of record, dollars and
+euros only, and a checkout must name a product that already exists**, so each
+account keeps one reusable product rather than creating one per sale.
+
+**Creem's webhook signature has no timestamp.** Stripe's is refused after five
+minutes; Creem's is an HMAC over the body alone and never expires, so a captured
+delivery stays valid. The only thing preventing a double credit is that an order
+moves only while it is still `pending`. That check is load-bearing.
+
+Only the install owner may connect the operator's processor — it decides who
+gets paid for everybody. The same reasoning decides what may be bought on the
+operator's account.
 Domains and mailboxes are offered managed *or* bring-your-own. Phone numbers and
 supplier orders are bring-your-own only: a number carries a licensing and
 porting obligation, and a supplier order makes the buyer of record liable for
