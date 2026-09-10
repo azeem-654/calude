@@ -12,6 +12,20 @@ Two hostnames, one deployment:
 Which one you get is decided at runtime from `location.hostname`
 (`src/services/hosts.ts`), not at build time.
 
+## Before you start
+
+`docs/OWNER-CHECKLIST.md` lists what only the owner can do — connecting Stripe,
+a mailbox, an AI key, and changing the password that was handed over in a chat.
+Several features are switched off until those are done, and they say so rather
+than failing quietly. Read it before concluding something is broken, remind the
+owner what is outstanding, and update it when one is finished.
+
+**There is exactly one install owner: azeem@protectedcentral.com.** That is the
+single `crm_users` row with `account_id IS NULL AND role = 'agency'`, and
+`hasInstallOwner()` makes `bootstrap` refuse a second even if every other user
+were deleted. Accounts owning their own workspaces are sub-accounts; they are
+not owners and there is no route to making one.
+
 ## Architecture
 
 ```

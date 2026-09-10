@@ -80,7 +80,13 @@ export interface Contact {
   createdAt?: string; status?: string; tags?: string[];
   lastContactedAt?: string;
 }
-export interface Sequence { id: string; name: string; status?: string; steps?: unknown[] }
+export interface Sequence {
+  id: string; name: string; status?: string;
+  /* Only the channel is read here. The rest of a step is the sender's
+     business, and re-typing it would be a second copy of a shape that already
+     lives in scheduled.ts and would drift from it. */
+  steps?: { channel?: string }[];
+}
 export interface Enrolment { id: string; contactId: string; sequenceId: string; status?: string }
 export interface Deal {
   id: string; title?: string; status?: string; stage?: string;
@@ -303,6 +309,47 @@ export function planNext(ws: Workspace): PlannedAction[] {
       counts: { contacts: ws.contacts.length },
       effect: { type: 'none' },
     });
+  }
+
+  /* ── Leads who left a number and no email ──
+     The play above only looks at contacts with an email address, so a
+     phone-only lead was invisible to Autopilot entirely — and for a trade,
+     somebody tapping the number on their phone is the commonest kind there is.
+     Deliberately a separate group rather than a fallback, so nobody is
+     contacted on two channels for one enquiry. */
+  if (ws.canSms) {
+    const textable = active.filter(s => (s.steps ?? []).some(st => st?.channel === 'sms'));
+    const phoneOnly = ws.contacts.filter(c =>
+      c.phone && !c.email && !enrolledIds.has(c.id) && days(c.createdAt) <= 14 && !c.lastContactedAt,
+    ).slice(0, BATCH);
+
+    if (textable.length && phoneOnly.length) {
+      const seq = textable[0];
+      out.push({
+        key: `enrol-sms:${seq.id}`,
+        kind: 'enrol',
+        summary: `Text ${phoneOnly.length} new lead${phoneOnly.length === 1 ? '' : 's'} on "${seq.name}"`,
+        because: phoneOnly.length === 1
+          ? 'a lead left a phone number and no email address, and has never been contacted'
+          : `${phoneOnly.length} leads left a phone number and no email address, and none has been contacted`,
+        counts: { contacts: phoneOnly.length },
+        /* Its own guardrail. Somebody who opened email up has not thereby
+           agreed to text people, and a text is the more intrusive of the two. */
+        permission: 'sendSms',
+        effect: { type: 'enrol', sequenceId: seq.id, contactIds: phoneOnly.map(c => c.id) },
+      });
+    } else if (phoneOnly.length >= 3 && !textable.length) {
+      /* Worth saying: from the outside it looks like Autopilot is ignoring
+         them, and without anywhere to put them it is. */
+      out.push({
+        key: 'no-sms-sequence',
+        kind: 'observe',
+        summary: `${phoneOnly.length} leads left a phone number and there is no text sequence to put them in`,
+        because: 'they have no email address, so an email sequence cannot reach them — a sequence with a text step can',
+        counts: { contacts: phoneOnly.length },
+        effect: { type: 'none' },
+      });
+    }
   }
 
   const deals = allDeals(ws.pipelines);
