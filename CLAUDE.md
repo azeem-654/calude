@@ -29,9 +29,62 @@ hosting and the URLs were kept so nothing client-side had to change. Add a new
 endpoint by writing `worker/src/routes/<name>.ts` and registering it in the
 `ROUTES` map in `worker/src/index.ts` as `/api/<name>.php`.
 
-A cron fires every 5 minutes (`worker/src/scheduled.ts`): it starts campaigns
-whose scheduled time has come, then sends whatever is due, then records what it
-did into `crm_ticks`.
+A cron fires every 5 minutes, and the order in `worker/src/index.ts`
+`scheduled()` is deliberate:
+
+1. `runAutopilot` — plan (once a day) and execute (every tick). Enrolling
+   somebody is what makes a message due, so planning after sending would make
+   every lead it picks up wait a full tick.
+2. `runReplies` — answering a lead is the most time-sensitive thing on a tick.
+3. `runScheduledSends` — the campaign batch.
+4. `runDigests` — reports on the three above, so it goes last.
+
+Then `recordTick` writes what happened into `crm_ticks`.
+
+**A scheduled run has no request, so it has no origin.** Anything needing an
+absolute URL (a Stripe return address, the link in the digest) reads
+`env.APP_ORIGIN`, set in `wrangler.jsonc`. Unset, those paths report that they
+were skipped rather than sending something broken.
+
+## Autopilot — the execution layer
+
+`worker/src/autopilotTick.ts` drives the modules; `lib/autopilotPlan.ts` decides
+what to drive. The planner is pure and takes a `Workspace` snapshot, which is
+why it can be tested without a database — keep it that way.
+
+- **`effect` is its own column, not `detail`.** `detail` is what happened,
+  written at the end. They were once the same column, and approving an action
+  erased what it was supposed to do; the tick then did nothing and marked it
+  **Done**.
+- **An `observe` action has nothing to carry out.** Sending one through the
+  execution pass marks it Done, which reads as though Autopilot fixed the thing
+  it was warning about.
+- **Dedupe is "is there an open action with this summary".** That is right for a
+  standing condition and wrong for a one-off act against one record — an order
+  is still unpaid tomorrow. Those markers live on the record (`chased_at`,
+  `thanked_at` on `crm_orders`), stamped only after the act succeeds.
+- Guardrails (`'off' | 'approval' | 'on'`) decide whether an action waits for a
+  person. `'approval'` is the default for anything that sends.
+
+## Money — two Stripe keys, and they are not interchangeable
+
+This is the trap in this codebase most likely to cost somebody real money.
+
+- `env.STRIPE_SECRET_KEY` is a Worker secret: **the operator's** account. It
+  bills customers for their subscription to this app (`routes/stripe.ts`).
+- `crm_storefront.stripe_key` is **the customer's own**, encrypted per
+  workspace. It charges *their* buyers (`routes/storefront.ts`).
+
+Charging a customer's buyer on the operator's key would deposit their trading
+revenue into the operator's balance — somebody else's money, held without
+agreement, and in most jurisdictions money transmission. Reach for the wrong one
+and nothing will fail; it will just quietly be wrong.
+
+The same reasoning decides what may be bought on the operator's account.
+Domains and mailboxes are offered managed *or* bring-your-own. Phone numbers and
+supplier orders are bring-your-own only: a number carries a licensing and
+porting obligation, and a supplier order makes the buyer of record liable for
+the chargeback and the customs declaration.
 
 ## Multi-tenancy — read this before touching storage
 
@@ -50,11 +103,17 @@ Client-side allowance checks are a courtesy. The server is the boundary.
 
 ## Secrets
 
-Customer credentials — mailbox passwords, registrar and DNS API keys — are
-encrypted at rest with an install secret (`installSecret` + `encryptSecret` /
-`decryptSecret`) and **never returned to a browser**. Endpoints report whether a
-secret is set, never what it is. A blank field on save means "keep the stored
-one", not "clear it".
+Customer credentials — mailbox passwords, registrar and DNS API keys, Stripe
+and supplier tokens — are encrypted at rest with an install secret
+(`installSecret` + `encryptSecret` / `decryptSecret`) and **never returned to a
+browser**. Endpoints report whether a secret is set, never what it is. Not even
+a masked tail: a secret key's last four characters are enough to confirm a
+guess, and no screen needs them to say "connected".
+
+A blank field on save means "keep the stored one", not "clear it" — the form
+shows dots and cannot send back what it was never given. And **changing a
+credential clears its verified stamp**; carrying a green tick across an edit
+shows a state somebody would trust and only discover at the moment it matters.
 
 Every third-party API call is made from the Worker, never from the bundle.
 
@@ -99,12 +158,25 @@ Build with `VITE_BASE=/`, run `npx wrangler dev --local`, then drive
 too. Worth checking on every UI change: 390px and 1280px, horizontal overflow of
 the document, and `pageerror`.
 
-Two recurring traps when writing those checks:
+Recurring traps when writing those checks:
 
 - Scope locators to the dialog. The nav behind an overlay has buttons whose
   names collide with the ones inside it.
 - `loadOnboarding()` ignores any stored state without `version: 1`. Seeded test
   fixtures need it.
+- To seed a signed-in session, write `crm_session` (a `{token, user, backend}`
+  object) and `crm_active_account`. Both are in `GLOBAL_KEYS`, so they are *not*
+  workspace-prefixed; writing a prefixed copy by hand gets you a logged-out page.
+
+**Scheduled work is testable.** Run `wrangler dev --local --test-scheduled` and
+fire the cron with `curl http://127.0.0.1:8787/cdn-cgi/handler/scheduled`. To
+re-plan on demand, null `crm_autopilot.last_planned_at` — the planner is
+otherwise once a day and you will see nothing.
+
+**Test the failure, not just the success.** Point a mailbox at a local SMTP sink
+and check that a send that fails is reported as failed and leaves its marker
+unset, so it retries. A pass that only proves the happy path proves the one case
+that was never in doubt.
 
 ## Conventions
 
