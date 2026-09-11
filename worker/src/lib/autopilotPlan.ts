@@ -27,6 +27,8 @@
 
 /** The workspace records a play may look at. Parsed once, passed to all. */
 export interface Workspace {
+  /** What this project is for. Absent is treated as 'general'. */
+  kind?: ProjectKind;
   contacts: Contact[];
   sequences: Sequence[];
   enrolments: Enrolment[];
@@ -106,6 +108,16 @@ export interface Deal {
 }
 export interface Pipeline { id: string; name: string; stages: { id: string; name: string; deals: Deal[] }[] }
 
+/**
+ * What a project is for, which decides what it plans.
+ *
+ *   leadgen      find people, write to them, book them in
+ *   consultancy  the same shape, selling expertise rather than a service
+ *   ecommerce    a catalogue, a storefront, orders and everything after a sale
+ *   general      anything that has not said — plans everything, as before
+ */
+export type ProjectKind = 'leadgen' | 'consultancy' | 'ecommerce' | 'general';
+
 /** One thing to do, ready to be written to the ledger. */
 export interface PlannedAction {
   /** Stable within a plan, so re-planning does not duplicate an open action. */
@@ -129,6 +141,15 @@ export interface PlannedAction {
    * marker check further down. Scope is the fix; the markers are the net.
    */
   scope: 'project' | 'workspace';
+  /**
+   * The kinds of project this play belongs to. Absent means every kind.
+   *
+   * A dental lead-gen project should not spend its mornings chasing unpaid
+   * orders it will never have, and a shop should not be told there is no
+   * sequence to put contacts in. Both are noise, and noise is what makes
+   * somebody stop reading the board.
+   */
+  kinds?: ProjectKind[];
   kind: 'create' | 'enrol' | 'send' | 'observe' | 'advance' | 'book' | 'error';
   summary: string;
   because: string;
@@ -189,6 +210,9 @@ function describePoolStep(s: { type: string; count?: number; domain?: string; do
  */
 export function planNext(ws: Workspace): PlannedAction[] {
   const out: PlannedAction[] = [];
+  /* Collected first and filtered once at the bottom. Twenty `if (kind === …)`
+     guards would be twenty chances to forget one, and the one forgotten is the
+     one that plans an order chase for a dentist. */
 
   /*
    * ── No way to send ──
@@ -327,6 +351,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = active[0];
       out.push({
         key: `enrol-new:${seq.id}`,
+        kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'enrol',
         summary: `Start ${fresh.length} new contact${fresh.length === 1 ? '' : 's'} on "${seq.name}"`,
@@ -352,6 +377,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (ws.content?.canWrite) {
       out.push({
         key: 'write-sequence',
+        kinds: ['leadgen', 'consultancy'],
         scope: 'project',
         kind: 'create',
         summary: 'Write a follow-up sequence for new enquiries',
@@ -363,6 +389,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     } else {
       out.push({
         key: 'no-sequence',
+        kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'observe',
         summary: 'There are contacts but no email sequence to put them in',
@@ -389,6 +416,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = textable[0];
       out.push({
         key: `enrol-sms:${seq.id}`,
+        kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'enrol',
         summary: `Text ${phoneOnly.length} new lead${phoneOnly.length === 1 ? '' : 's'} on "${seq.name}"`,
@@ -406,6 +434,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
          them, and without anywhere to put them it is. */
       out.push({
         key: 'no-sms-sequence',
+        kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'observe',
         summary: `${phoneOnly.length} leads left a phone number and there is no text sequence to put them in`,
@@ -510,6 +539,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (won.length && canSend) {
     out.push({
       key: 'ask-reviews',
+      kinds: ['leadgen', 'consultancy'],
       scope: 'workspace',
       kind: 'create',
       summary: `Ask ${won.length} recent customer${won.length === 1 ? '' : 's'} for a review`,
@@ -531,6 +561,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = active[active.length - 1];
       out.push({
         key: `re-engage:${seq.id}`,
+        kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'enrol',
         summary: `Re-engage ${quiet.length} contacts who have not heard from you in two months`,
@@ -556,6 +587,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unthanked.length;
       out.push({
         key: 'thank-buyers',
+        kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'send',
         summary: `Tell ${n} buyer${n === 1 ? '' : 's'} their order came through`,
@@ -577,6 +609,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unpaid.length;
       out.push({
         key: 'chase-payment',
+        kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'send',
         summary: `Send ${n} unpaid order${n === 1 ? '' : 's'} a fresh payment link`,
@@ -597,6 +630,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unfulfilled.length;
       out.push({
         key: 'draft-at-supplier',
+        kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'create',
         summary: `Send ${n} paid order${n === 1 ? '' : 's'} to the supplier as ${n === 1 ? 'a draft' : 'drafts'}`,
@@ -615,6 +649,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (com.draftProducts > 0) {
       out.push({
         key: 'draft-products',
+        kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'observe',
         summary: `${com.draftProducts} product${com.draftProducts === 1 ? ' is' : 's are'} still a draft`,
@@ -627,5 +662,14 @@ export function planNext(ws: Workspace): PlannedAction[] {
     }
   }
 
-  return out;
+  /*
+   * Only what this kind of project is for.
+   *
+   * 'general' predates kinds and keeps planning everything: a project that was
+   * working yesterday must not have work silently withdrawn because a column
+   * was added.
+   */
+  const kind: ProjectKind = ws.kind ?? 'general';
+  if (kind === 'general') return out;
+  return out.filter(a => !a.kinds || a.kinds.includes(kind));
 }

@@ -31,6 +31,7 @@ interface Req {
   objective?: string;
   portfolioId?: string;
   status?: string;
+  kind?: string;
   guardrails?: Record<string, string>;
   /* Portfolios */
   profile?: Record<string, unknown>;
@@ -61,6 +62,13 @@ const DEFAULT_GUARDRAILS = {
 
 const STATUSES = new Set(['off', 'learning', 'running', 'paused']);
 
+/**
+ * What a project can be for. Each plans a different set of work — see
+ * lib/autopilotPlan.ts. 'general' plans everything and is what projects made
+ * before kinds existed still are.
+ */
+const KINDS = new Set(['leadgen', 'consultancy', 'ecommerce', 'general']);
+
 export async function handleProjects(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
   const user = await userFromToken(env.DB, d.token);
@@ -90,7 +98,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
        project — a workspace with a dozen projects would otherwise cost a dozen
        round trips to draw one screen. */
     const { results } = await env.DB.prepare(
-      `SELECT j.id, j.portfolio_id AS portfolioId, j.name, j.objective, j.status,
+      `SELECT j.id, j.portfolio_id AS portfolioId, j.name, j.objective, j.kind, j.status,
               j.guardrails, j.purchase_mode AS purchaseMode, j.pool_target AS poolTarget,
               j.last_planned_at AS lastPlannedAt, j.last_acted_at AS lastActedAt,
               j.last_error AS lastError, j.created_at AS createdAt,
@@ -196,6 +204,9 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       .bind(portfolioId, accountId).first();
     if (!pf) return fail('That portfolio is not in this workspace.');
 
+    const kind = String(d.kind ?? '') || 'general';
+    if (!KINDS.has(kind)) return fail(`"${d.kind}" is not a kind of project this app runs.`);
+
     const now = nowIso();
     const existing = await env.DB.prepare('SELECT created_at, guardrails, status FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string }>();
@@ -211,16 +222,16 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
 
     await env.DB.prepare(
       `INSERT INTO crm_projects
-       (id, account_id, portfolio_id, name, objective, status, guardrails,
+       (id, account_id, portfolio_id, name, objective, kind, status, guardrails,
         purchase_mode, pool_target, last_error, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?, 'byo', '{}', '', ?,?)
+       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', '', ?,?)
        ON CONFLICT(id) DO UPDATE SET
          portfolio_id=excluded.portfolio_id, name=excluded.name,
-         objective=excluded.objective, status=excluded.status,
+         objective=excluded.objective, kind=excluded.kind, status=excluded.status,
          guardrails=excluded.guardrails, last_error='', updated_at=excluded.updated_at`,
     ).bind(
       id, accountId, portfolioId, name.slice(0, 160), objective.slice(0, 2000),
-      existing?.status ?? 'learning', JSON.stringify(guardrails),
+      kind, existing?.status ?? 'learning', JSON.stringify(guardrails),
       existing?.created_at ?? now, now,
     ).run();
 

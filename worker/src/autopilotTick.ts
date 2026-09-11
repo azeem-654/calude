@@ -79,6 +79,8 @@ interface RunRow {
   portfolio_id: string;
   name: string;
   objective: string;
+  /** leadgen | consultancy | ecommerce | general. */
+  kind: string;
   status: string;
   guardrails: string;
   last_planned_at: string | null;
@@ -141,6 +143,9 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
   const sms = await loadSmsConfig(env, accountId);
 
   return {
+    /* What this project is for, so the planner can leave out the work that
+       belongs to a different kind of business. */
+    kind: (run?.kind ?? 'general') as Workspace['kind'],
     contacts: parse<Contact[]>(contacts, []),
     sequences: parse<Sequence[]>(sequences, []),
     enrolments: parse<Enrolment[]>(enrolments, []),
@@ -1176,7 +1181,7 @@ export async function runAutopilot(env: Env): Promise<AutopilotReport> {
   const report: AutopilotReport = { planned: 0, carried: 0, awaiting: 0, failed: 0, notes: [] };
 
   const { results } = await env.DB.prepare(
-    `SELECT id, account_id, portfolio_id, name, objective, status, guardrails,
+    `SELECT id, account_id, portfolio_id, name, objective, kind, status, guardrails,
             last_planned_at, purchase_mode, pool_target
      FROM crm_projects WHERE status IN ('learning','running') LIMIT 400`,
   ).all<RunRow>();
