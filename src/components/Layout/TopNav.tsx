@@ -241,12 +241,20 @@ export default function TopNav() {
               </button>
 
               {open && (
+                /*
+                 * The wrapper starts flush at the bottom of the pill; the card
+                 * inside it is what sits 8px lower.
+                 *
+                 * It used to be `top: calc(100% + 8px)`, which put 8px of dead
+                 * space between the nav and the menu. The pointer crossed that
+                 * gap on its way down, left the nav, and `onMouseLeave` shut the
+                 * panel — so reaching the menu took two or three attempts. The
+                 * gap is still there to look at; there is simply nothing to fall
+                 * through any more.
+                 */
                 <div
-                  className="nav-panel"
-                  role="menu"
-                  aria-label={group.label}
                   style={{
-                    position: 'absolute', top: 'calc(100% + 8px)', zIndex: 300,
+                    position: 'absolute', top: '100%', paddingTop: 8, zIndex: 300,
                     /* Anchored by where the group sits in the row: a 288px card
                        centred under the first or last pill hangs off the side of
                        the bar on anything but a very wide screen. */
@@ -255,6 +263,13 @@ export default function TopNav() {
                       : gi >= NAV_GROUPS.length - 2
                         ? { right: 0 }
                         : { left: '50%', transform: 'translateX(-50%)' }),
+                  }}
+                >
+                <div
+                  className="nav-panel"
+                  role="menu"
+                  aria-label={group.label}
+                  style={{
                     backgroundColor: '#fff', borderRadius: 20, padding: 8, width: 288,
                     boxShadow: '0 16px 40px -8px rgba(23,25,28,0.18)',
                   }}
@@ -289,6 +304,7 @@ export default function TopNav() {
                       </button>
                     );
                   })}
+                </div>
                 </div>
               )}
             </div>

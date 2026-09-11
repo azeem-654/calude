@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox, Shield, Check, ToggleLeft, ToggleRight, Grid3x3, Settings } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -419,6 +419,10 @@ function DeliverabilityTab() {
 
 type TabId = 'campaigns' | 'import' | 'sequences' | 'automations' | 'deliverability' | 'emailapps';
 
+/* The set an address is checked against, so an unknown ?tab= falls back to the
+   default rather than rendering nothing at all. */
+const TAB_IDS: TabId[] = ['campaigns', 'import', 'sequences', 'automations', 'deliverability', 'emailapps'];
+
 /* ─── Root component ─── */
 
 /**
@@ -438,7 +442,23 @@ function campaignDate(raw: string): string {
 }
 
 export default function Marketing() {
-  const [activeTab, setActiveTab] = useState<TabId>('campaigns');
+  /*
+   * The chosen tab lives in the address.
+   *
+   * It was `useState('campaigns')`, so every link that named a tab was
+   * ignored — including Autopilot's own "here is the sequence I wrote", which
+   * landed on Campaigns and left the customer looking at a list that did not
+   * contain it. Nothing was missing; they were sent to the wrong shelf and
+   * reasonably concluded the app had invented the work.
+   *
+   * Settings has done this correctly for a long time; this is the same
+   * pattern, and now anything that says "/marketing?tab=…" is a real link.
+   */
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('tab');
+  const activeTab: TabId = TAB_IDS.includes(asked as TabId) ? (asked as TabId) : 'campaigns';
+  const setActiveTab = (id: TabId) =>
+    setParams(id === 'campaigns' ? {} : { tab: id }, { replace: true });
   const ctx = useApp();
   const { contacts, sequences, automations, addSequence, updateSequence, deleteSequence, addAutomation, updateAutomation, deleteAutomation, bulkImportContacts, addCampaign, addNotification } = ctx;
 
