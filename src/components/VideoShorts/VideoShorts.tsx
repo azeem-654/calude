@@ -17,6 +17,7 @@ import type { GeminiAnalysis } from '../../lib/gemini';
 import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo, normalizeSegments, segmentsDuration } from '../../lib/videoExport';
 import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExport';
 import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
+import { putSourceVideo, sourceVideoUrl, blobUrlAlive, deleteSourceVideo } from '../../lib/videoStore';
 import type { ThumbPreset } from '../../lib/thumbnail';
 import ShortsFeed from './ShortsFeed';
 import { API_BASE } from '../../services/apiBase';
@@ -3019,6 +3020,30 @@ export default function VideoShorts() {
     }
   }, [applyThumbs]);
 
+  /**
+   * Give every stored project a working source URL again.
+   *
+   * Runs once on mount. A blob URL from a previous visit is a string that still
+   * looks like a URL and points at nothing, so each is checked rather than
+   * trusted, and replaced from IndexedDB where the file was kept.
+   */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      for (const p of videoProjectsRef.current) {
+        if (p.sourceType === 'youtube' || !p.sourceBlobUrl) continue;
+        if (await blobUrlAlive(p.sourceBlobUrl)) continue;
+        const fresh = await sourceVideoUrl(p.id);
+        if (!live) return;
+        /* Cleared rather than left pointing at nothing: a screen that knows the
+           video is gone can say so, and one holding a dead URL shows an empty
+           player and looks broken. */
+        updateVideoProjectRef.current(p.id, { sourceBlobUrl: fresh ?? undefined });
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
   /** Reconstructs the original source (file/url) from a stored project so it can be reprocessed. */
   const retryProcessing = useCallback(async (projectId: string) => {
     const project = videoProjectsRef.current.find(p => p.id === projectId);
@@ -3041,6 +3066,15 @@ export default function VideoShorts() {
   const handleNewProject = (name: string, source: { type: 'upload' | 'youtube' | 'url'; url?: string; file?: File; duration: number; settings?: VideoProject['settings'] }, forceDemo = false) => {
     const id = `proj-${Date.now()}`;
     const blobUrl = source.file ? URL.createObjectURL(source.file) : undefined;
+    /*
+     * Keep the actual file, not just a URL to it.
+     *
+     * The blob URL above dies with this document, and the project outlives it
+     * in localStorage — which is why the source preview vanished on reload
+     * while the clips kept theirs. Stored here, the URL can be made again
+     * tomorrow.
+     */
+    if (source.file) void putSourceVideo(id, source.file);
     const project: VideoProject = {
       id, name,
       sourceType: source.type,
@@ -3246,7 +3280,13 @@ export default function VideoShorts() {
             <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>All clips and settings will be permanently deleted. This cannot be undone.</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button onClick={() => setDeleteConfirm(null)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
-              <button onClick={() => { deleteVideoProject(deleteConfirm); setDeleteConfirm(null); }} style={{ padding: '9px 18px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
+              <button onClick={() => {
+                /* The stored file goes with the project. Leaving it would keep
+                   a phone video in IndexedDB for ever with nothing pointing at
+                   it, and IndexedDB has no quota warning worth the name. */
+                void deleteSourceVideo(deleteConfirm);
+                deleteVideoProject(deleteConfirm); setDeleteConfirm(null);
+              }} style={{ padding: '9px 18px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
             </div>
           </div>
         </div>
