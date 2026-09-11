@@ -1,4 +1,5 @@
 import type { Caption, ClipSegment, BrandPosition } from '../types';
+import { fixWebmDuration } from './webmDuration';
 
 export type CaptionStyle = 'classic' | 'karaoke' | 'bold' | 'minimal' | 'neon';
 export type ExportResolution = '720p' | '1080p' | '4k';
@@ -221,13 +222,28 @@ export function scheduleSfx(
 /* ── Mood-matched background music (WebAudio-synthesized, no assets) ── */
 interface MoodParams { tempo: number; wave: OscillatorType; gain: number; prog: number[]; arp: boolean; kick: boolean }
 const MUSIC_MOODS: Record<string, MoodParams> = {
-  lofi:         { tempo: 74,  wave: 'sine',     gain: 0.075, prog: [220, 196, 174, 196], arp: true,  kick: false },
-  upbeat:       { tempo: 122, wave: 'sawtooth', gain: 0.05,  prog: [261, 329, 392, 349], arp: true,  kick: true  },
-  motivational: { tempo: 102, wave: 'triangle', gain: 0.06,  prog: [261, 293, 329, 392], arp: true,  kick: true  },
-  cinematic:    { tempo: 60,  wave: 'sine',     gain: 0.085, prog: [130, 146, 174, 196], arp: false, kick: false },
-  corporate:    { tempo: 104, wave: 'triangle', gain: 0.05,  prog: [261, 329, 349, 392], arp: true,  kick: false },
-  acoustic:     { tempo: 88,  wave: 'triangle', gain: 0.06,  prog: [196, 246, 293, 246], arp: true,  kick: false },
-  hiphop:       { tempo: 90,  wave: 'square',   gain: 0.045, prog: [110, 146, 130, 164], arp: true,  kick: true  },
+  /*
+   * ── Why these went up ──
+   *
+   * They were 0.045–0.085, which is roughly −27 to −21 dBFS *peak* on sparse
+   * synthesised notes, under speech that averages nearer −18. Twenty decibels
+   * below the voice is not a quiet bed, it is silence with extra steps: the
+   * music was scheduled, routed and recorded correctly, and nobody could hear
+   * any of it. "The system is not adding background music" was a reasonable
+   * thing to conclude.
+   *
+   * Background music under a voiceover normally sits 12–18 dB below it. These
+   * are set for the quieter end of that, because a bed that competes with the
+   * words is worse than one that is slightly shy — and `music` can still be set
+   * to 'none' per clip.
+   */
+  lofi:         { tempo: 74,  wave: 'sine',     gain: 0.19, prog: [220, 196, 174, 196], arp: true,  kick: false },
+  upbeat:       { tempo: 122, wave: 'sawtooth', gain: 0.13, prog: [261, 329, 392, 349], arp: true,  kick: true  },
+  motivational: { tempo: 102, wave: 'triangle', gain: 0.15, prog: [261, 293, 329, 392], arp: true,  kick: true  },
+  cinematic:    { tempo: 60,  wave: 'sine',     gain: 0.21, prog: [130, 146, 174, 196], arp: false, kick: false },
+  corporate:    { tempo: 104, wave: 'triangle', gain: 0.13, prog: [261, 329, 349, 392], arp: true,  kick: false },
+  acoustic:     { tempo: 88,  wave: 'triangle', gain: 0.15, prog: [196, 246, 293, 246], arp: true,  kick: false },
+  hiphop:       { tempo: 90,  wave: 'square',   gain: 0.12, prog: [110, 146, 130, 164], arp: true,  kick: true  },
 };
 
 /** Schedule a low-volume musical bed under the voice for `duration` seconds. */
@@ -608,7 +624,18 @@ export async function exportClipToVideo(params: ExportClipParams): Promise<Expor
     recorder.onstop = () => {
       cleanup();
       if (chunks.length === 0) { reject(new Error('Recording produced no data.')); return; }
-      resolve({ blob: new Blob(chunks, { type: mimeType }), mimeType, fileExt });
+      /*
+       * Chromium writes a WebM with no Duration in it, so the file plays but
+       * reports `Infinity` — a dead scrub bar, players that stop early, and
+       * uploads most platforms reject. The wall-clock length of the recording
+       * is the honest number and we are the only ones who know it, so it is
+       * written in here before anybody is handed the file.
+       */
+      const recordedMs = recStart ? performance.now() - recStart : 0;
+      void fixWebmDuration(new Blob(chunks, { type: mimeType }), recordedMs)
+        .then(blob => resolve({ blob, mimeType, fileExt }))
+        /* A file this could not patch is still a perfectly good recording. */
+        .catch(() => resolve({ blob: new Blob(chunks, { type: mimeType }), mimeType, fileExt }));
     };
     recorder.onerror = () => { cleanup(); reject(new Error('Recording failed.')); };
 
@@ -837,7 +864,11 @@ export async function renderSyntheticClip(params: SyntheticClipParams): Promise<
     recorder.onstop = () => {
       finish();
       if (chunks.length === 0) { reject(new Error('Recording produced no data.')); return; }
-      resolve({ blob: new Blob(chunks, { type: mimeType }), mimeType, fileExt });
+      /* Same missing-Duration fix as the clip export above. */
+      const recordedMs = startTs ? performance.now() - startTs : 0;
+      void fixWebmDuration(new Blob(chunks, { type: mimeType }), recordedMs)
+        .then(blob => resolve({ blob, mimeType, fileExt }))
+        .catch(() => resolve({ blob: new Blob(chunks, { type: mimeType }), mimeType, fileExt }));
     };
     recorder.onerror = () => { finish(); reject(new Error('Recording failed.')); };
 
