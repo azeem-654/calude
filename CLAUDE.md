@@ -198,8 +198,13 @@ Recurring traps when writing those checks:
 - `loadOnboarding()` ignores any stored state without `version: 1`. Seeded test
   fixtures need it.
 - To seed a signed-in session, write `crm_session` (a `{token, user, backend}`
-  object) and `crm_active_account`. Both are in `GLOBAL_KEYS`, so they are *not*
+  object), `crm_active_account` **and `crm_subaccounts` containing a row whose
+  `id` is that account**. All three are in `GLOBAL_KEYS`, so they are *not*
   workspace-prefixed; writing a prefixed copy by hand gets you a logged-out page.
+  Omit `crm_subaccounts` and `ensureDefaultAccount()` sees no workspace, invents
+  `acct-<timestamp>` and overwrites the id you just set — every API call then
+  answers 403 and the screen looks like a server fault. Real sign-in is immune:
+  `login()` writes the server's id *after* that has already run.
 
 **There is one end-to-end check, and it is worth running.** `npm run smoke`
 signs up, fills the portfolio, throws the browser away, signs back in on a

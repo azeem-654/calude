@@ -25,6 +25,7 @@ import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
 import DayBoard from './DayBoard';
+import AutopilotStrip from './AutopilotStrip';
 import KpiTile from './KpiTile';
 import { buildKpis, shortMoney } from './kpis';
 import { useProgressBook } from './useProgressBook';
@@ -868,6 +869,12 @@ export default function Dashboard() {
           onOpenFlow={() => setFlowOpen(true)}
           refreshKey={obRefresh}
         />
+
+        {/* ── The module that does the work ──
+            First after the checklist, and above the figures. Everything below
+            this is a report on what already happened; this is the only thing on
+            the page that is still happening. */}
+        <AutopilotStrip />
 
         {/* ── The chain, with a door on it ──
             The checklist removes itself once setup is done, and this is the one
