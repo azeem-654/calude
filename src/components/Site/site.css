@@ -28,9 +28,15 @@
   --lime-dk: #a9d92f;
   --mint: #8fd9c4;
 
-  --ink: #0b0d0b;
-  --ink-2: #0f1210;
-  --ink-3: #151a16;
+  /* Darker than it was (#0b0d0b / #0f1210 / #151a16).
+     The sky canvas is `mix-blend-mode: screen`, so everything the starfield
+     draws *adds* to this ground — a near-black that is not quite black gets
+     lifted to charcoal by a few hundred stars and a sun glow, and the page
+     read as an overcast evening rather than as space. Pulling the ground down
+     and the glow in (Starfield.tsx) is the same fix from two directions. */
+  --ink: #04060a;
+  --ink-2: #070a0e;
+  --ink-3: #0e1318;
 
   /* The glass every card is made of. One definition so a surface is the same
      surface wherever it appears. */
