@@ -64,6 +64,32 @@ async function call<T>(
 
 function remedy(error: string, status: number): string[] {
   const m = error.toLowerCase();
+
+  /*
+   * A malformed request is our fault, and must not be dressed up as theirs.
+   *
+   * This is not hypothetical tidiness: `/v1/products?page_size=1` was the wrong
+   * endpoint, Creem answered "page_size should not exist; product_id should not
+   * be empty", the word "product" matched the rule below, and a customer with a
+   * perfectly good live key was told to go and check their key. They rotated a
+   * working credential because this text sent them to the wrong problem.
+   *
+   * Creem rejects a bad request with 400/422 and names the offending fields.
+   * Nothing the customer can type causes that — the request shape is entirely
+   * ours — so say so.
+   */
+  const validation = status === 400 || status === 422
+    || m.includes('should not exist') || m.includes('should not be empty')
+    || m.includes('must be a string') || m.includes('must be a number');
+  if (validation) {
+    return [
+      'This is a fault in Protected Central, not in your Creem account or your key.',
+      `Creem rejected the request itself: “${error}”.`,
+      'Nothing you can change here will fix it, and your key is almost certainly fine.',
+      'Report it with that message — it names exactly which field was wrong.',
+    ];
+  }
+
   if (status === 401 || status === 403 || m.includes('unauthor') || m.includes('api key') || m.includes('api-key')) {
     return [
       'Sign in at creem.io and open the dashboard.',
@@ -93,6 +119,32 @@ interface ProductEntity { id?: string; name?: string; status?: string }
 interface CheckoutEntity { id?: string; checkout_url?: string; status?: string }
 
 /**
+ * Fetch one product, or null.
+ *
+ * ── Why this is not simply `GET /v1/products/{id}` ──
+ *
+ * The published reference says the id is a path segment. The live API says
+ * otherwise, and says it clearly: calling `/v1/products` with no id at all
+ * answers "product_id should not be empty; product_id must be a string", which
+ * is a query parameter complaining, not a missing route. That answer came from
+ * the real endpoint, so it is the one trusted here.
+ *
+ * The path form is still tried as a fallback, because the two disagreeing is
+ * exactly the situation where hard-coding one guess breaks quietly later. Only
+ * a genuine answer counts as existing: getting this wrong means recreating the
+ * order product on every sale, which is the catalogue-filling this whole design
+ * exists to avoid.
+ */
+async function fetchProduct(key: string, id: string): Promise<ProductEntity | null> {
+  if (!id) return null;
+  const byQuery = await call<ProductEntity>(key, `/v1/products?product_id=${encodeURIComponent(id)}`);
+  if (byQuery.ok && byQuery.data?.id) return byQuery.data;
+  const byPath = await call<ProductEntity>(key, `/v1/products/${encodeURIComponent(id)}`);
+  if (byPath.ok && byPath.data?.id) return byPath.data;
+  return null;
+}
+
+/**
  * What this provider remembers, as a map.
  *
  * One string is handed back and forth, so it holds JSON: the order product
@@ -115,8 +167,8 @@ async function orderProduct(key: string, ctx: ProviderContext, currency: string)
     /* Trust the remembered one, but confirm it is still there — a customer who
        tidied their Creem catalogue would otherwise get a failed checkout with
        no explanation. */
-    const got = await call<ProductEntity>(key, `/v1/products/${encodeURIComponent(refs.order)}`);
-    if (got.ok && got.data?.id) return { id: got.data.id, error: '', steps: [] };
+    const got = await fetchProduct(key, refs.order);
+    if (got?.id) return { id: got.id, error: '', steps: [] };
   }
 
   const name = `${ctx.companyName || 'Order'}`.slice(0, 100);
@@ -162,9 +214,17 @@ export const creem: PaymentProvider = {
   },
 
   async verify(key) {
-    /* Listing products reads the account and creates nothing, so pressing Test
-       twice leaves the customer's Creem exactly as it was. */
-    const r = await call<unknown>(key, '/v1/products?page_size=1');
+    /*
+     * `/v1/products/search` is the list endpoint. `/v1/products` is retrieve
+     * *one* and takes a product_id, so asking it for a page answered
+     * "page_size should not exist; product_id should not be empty" — a
+     * validation complaint about a malformed request, which the customer then
+     * saw as advice to check their perfectly good API key.
+     *
+     * Listing reads the account and creates nothing, so pressing Test twice
+     * leaves the customer's Creem exactly as it was.
+     */
+    const r = await call<unknown>(key, '/v1/products/search?page_size=1');
     if (!r.ok) {
       return { ok: false, error: r.error, steps: remedy(r.error, r.status), name: '', mode: isTest(key) ? 'test' : 'live', chargesEnabled: false };
     }
@@ -261,8 +321,8 @@ export const creem: PaymentProvider = {
       productId = remembered[slot] ?? '';
 
       if (productId) {
-        const got = await call<ProductEntity>(key, `/v1/products/${encodeURIComponent(productId)}`);
-        if (!got.ok || !got.data?.id) productId = '';
+        const got = await fetchProduct(key, productId);
+        if (!got?.id) productId = '';
       }
       if (!productId) {
         const made = await call<ProductEntity>(key, '/v1/products', {
