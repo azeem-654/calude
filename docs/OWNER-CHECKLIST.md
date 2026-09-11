@@ -49,7 +49,22 @@ server-issued ones.
 Open a private window, sign in, and confirm the work is there. If it is not,
 that is a regression and worth reporting immediately.
 
-### 3. Connect Creem, so the app can charge its subscribers
+### 3. Revoke the Creem key that was pasted into a chat
+
+The API key `creem_1ZcMy…` and the endpoint signing secret `whsec_4yeCh…` were
+pasted into a chat session while a connection problem was being diagnosed.
+Anything that has been in a chat log should be treated as known.
+
+In creem.io: **Developers → API keys**, revoke that key and issue a new one, and
+**Developers → Webhooks**, roll the endpoint's signing secret. Paste the new
+values into the app's own Billing panel and nowhere else — never back into a
+chat. The panel only ever reports whether a secret is set, never what it is.
+
+The signing secret matters more here than it would with Stripe: Creem's webhook
+signature is an HMAC over the body with **no timestamp in it**, so it never
+expires and a captured delivery stays valid for ever.
+
+### 4. Connect Creem, so the app can charge its subscribers
 
 **Settings → Billing → How this app is paid.** Only the install owner sees this
 panel, because it decides who gets paid for everybody.
@@ -66,7 +81,7 @@ itself, and the panel says so — that works, but nobody chose it.
 **Creem bills in USD or EUR only.** A plan priced in anything else is refused
 when you try to charge it, by name.
 
-### 4. Sub-accounts connect their own, separately
+### 5. Sub-accounts connect their own, separately
 
 **Sell → Getting paid**, inside each workspace. This is a *customer's* own
 account — where their buyers pay them — and has nothing to do with the one
@@ -77,28 +92,41 @@ Nothing can be charged in a workspace until its owner connects one. See the
 
 Without it orders never mark themselves paid and each one has to be set by hand.
 
-### 5. Connect a Printful token, for dropshipping
+### 6. Connect a Printful token, for dropshipping
 
 **Sell → Who makes and posts it.** Printful → Settings → Developers → a private
 token with the Orders and Sync Products scopes. Only needed if selling physical
 goods somebody else makes.
 
-### 6. Check `APP_ORIGIN`
+### 7. Check `APP_ORIGIN`
 
 `wrangler.jsonc` sets it to `https://app.protectedcentral.com`. A scheduled run
 has no request to read its own address from, so this is what the payment-link
 chase and the digest's "Open Autopilot" link use. If the product ever moves
 host, this moves with it.
 
-### 7. Connect a mailbox and an AI key per workspace
+### 8. Connect a mailbox and an AI key per workspace
 
 Autopilot needs both, and says so rather than failing quietly:
 
 - **no mailbox** — it still writes the landing page, blog and social posts; it
   just cannot send anything.
-- **no AI key** — it cannot write, and will not queue work it cannot do.
+- **no AI key** — it cannot write, and will not queue work it cannot do. It is
+  also what "Read their site" on a new project uses to fill a client's portfolio
+  in from their own website; without it that button says so rather than
+  inventing a description.
 
 Settings → Email & SMS for the mailbox; Settings → AI Engine for the key.
+
+### 9. Open a shop, if a workspace sells things
+
+**Websites → Shops.** A shop is a page at `/shop/<name>` that anybody can open
+without signing in, listing that workspace's active products and taking payment
+on its own processor.
+
+It will not publish until a processor is connected and tested under *Getting
+paid* (item 5) — a live shop that cannot be paid takes email addresses and gives
+nothing back. Products come from **Sell**, and only ones marked *active* appear.
 
 ---
 
