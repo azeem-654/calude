@@ -39,6 +39,7 @@ interface Req {
   profile?: Record<string, unknown>;
   source?: string;
   url?: string;
+  text?: string;
 }
 
 const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -196,17 +197,55 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
    *    field the page did not answer comes back empty rather than filled with
    *    something that reads well.
    */
-  if (act === 'read_url') {
+  /**
+   * Read something written about a client and fill their portfolio from it.
+   *
+   * Two doors on one room: `read_url` fetches a page, `read_text` takes what
+   * somebody pasted — an about page they copied, a brochure, an article, a
+   * LinkedIn summary. Everything after "here is some text about a company" is
+   * identical, so it is written once in `profileFrom` below.
+   *
+   * Two rules this refuses to bend:
+   *
+   *  - **It returns a draft; it does not save one.** The profile becomes the
+   *    voice of every email, text and post that goes out under this client's
+   *    name. A language model's reading of a marketing page is a good first
+   *    draft and a bad thing to have silently become the truth, so a person
+   *    sees it and presses save.
+   *  - **It never guesses.** No AI key, no answer — not a plausible profile
+   *    assembled from the company name. Text it could not make sense of says
+   *    so. A field the source did not answer comes back empty rather than
+   *    filled with something that reads well.
+   */
+  if (act === 'read_url' || act === 'read_text') {
     const key = await loadAiKey(env, accountId);
     if (!key) {
-      return fail('No AI key is connected to this workspace, so a page cannot be read into a portfolio. Add one under Settings → AI Engine, or fill the client in by hand.');
+      return fail('No AI key is connected to this workspace, so nothing can be read into a portfolio. Add one under Settings \u2192 AI Engine, or fill the client in by hand.');
     }
 
-    const site = await readSite(String(d.url ?? ''));
-    if (!site.ok) return fail(site.error);
+    let title = '';
+    let where = '';
+    let text = '';
+
+    if (act === 'read_url') {
+      const site = await readSite(String(d.url ?? ''));
+      if (!site.ok) return fail(site.error);
+      title = site.title;
+      where = site.url;
+      text = site.text;
+    } else {
+      text = String(d.text ?? '').trim();
+      /* Under about forty words there is nothing to extract, and a model given
+         a sentence will happily invent the other six fields. */
+      if (text.split(/\s+/).filter(Boolean).length < 40) {
+        return fail('Paste a bit more \u2014 an about page, a brochure or an article. Under about forty words there is nothing in it to read, and guessing the rest is exactly what this must not do.');
+      }
+      text = text.slice(0, 12_000);
+      where = 'what you pasted';
+    }
 
     const prompt = [
-      'You are reading a company\u2019s own website to describe them for a marketing tool.',
+      'You are reading material about a company to describe them for a marketing tool.',
       'Answer ONLY from the text given. If the text does not say, return an empty string for that field \u2014 never guess, never fill a gap with something plausible.',
       '',
       'Return JSON with exactly these keys:',
@@ -215,17 +254,17 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       'companyName: what they call themselves.',
       'description: two or three sentences on what they actually do, in plain words.',
       'audience: who they sell to.',
-      'offer: the specific services or products named on the page.',
+      'offer: the specific services or products named.',
       'industry: one short label.',
       'tone: how they write \u2014 e.g. "plain and direct", "formal", "warm".',
-      'locations: where they work, if the page says.',
+      'locations: where they work, if the text says.',
       '',
-      `Page title: ${site.title}`,
-      `Page address: ${site.url}`,
+      title ? `Page title: ${title}` : '',
+      act === 'read_url' ? `Page address: ${where}` : '',
       '',
-      'Page text:',
-      site.text,
-    ].join('\n');
+      'Text:',
+      text,
+    ].filter(Boolean).join('\n');
 
     /* Low temperature: this is extraction, not writing. */
     const ai = await askGemini(key, prompt, 0.15);
@@ -245,13 +284,15 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       industry: str('industry'),
       tone: str('tone'),
       locations: str('locations'),
-      website: site.url,
+      website: act === 'read_url' ? where : '',
     };
 
-    /* A page that yielded nothing usable is reported as that, not returned as
+    /* A source that yielded nothing usable is reported as that, not returned as
        an empty form somebody has to work out for themselves. */
     if (!profile.companyName && !profile.description) {
-      return fail('That page did not say enough about the business to describe it. Try their home or about page, or fill the client in by hand.');
+      return fail(act === 'read_url'
+        ? 'That page did not say enough about the business to describe it. Try their home or about page, or fill the client in by hand.'
+        : 'There was not enough about the business in that to describe it. Paste something that says who they are and what they sell.');
     }
 
     return json({
@@ -259,8 +300,8 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       profile,
       /* So the screen can say where this came from rather than presenting it
          as though a person had typed it. */
-      readFrom: site.url,
-      title: site.title,
+      readFrom: where,
+      title,
     });
   }
 

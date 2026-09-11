@@ -274,92 +274,62 @@ button:focus-visible, a:focus-visible {
     0 0 0 1px rgba(255, 255, 255, 0.2) inset;
 }
 
-/* The node itself: a small light, on when the module is. */
+/* ── The lane the flow diagram is drawn in ──
+ *
+ * The traces run under the pills, so the row keeps a strip of empty space below
+ * them for the bus. NavFlow measures this rather than assuming it — take the
+ * padding away and the diagram stops drawing rather than drawing wrong.
+ *
+ * Only at the width where the row is one line. Below 1280px it wraps to two or
+ * three, and a bus along the bottom would pass under the wrong pills.
+ */
+@media (min-width: 1281px) {
+  .nav-pills {
+    padding-bottom: 20px !important;
+  }
+}
+
+.nav-flow {
+  /* Behind every pill. The links are the navigation; this is a picture of what
+     connects them. */
+  z-index: 0;
+}
+
+/* ── The node on the pill ──
+ *
+ * Turns over while a project would act on the next tick, and sits still when
+ * none would. A light that blinks whatever is happening tells nobody anything.
+ */
 .nav-hero-dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
   background: #fff;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.24);
 }
 
-/* ── The wire ── */
-.nav-wire {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: inherit;
-  /* No --ap-x yet means the pill has not been measured; the centre of the row
-     is a harmless place for a line nobody can see to start from. */
-  display: none;
-}
-
-.nav-wire-line,
-.nav-wire-pulse {
-  position: absolute;
-  top: 50%;
-}
-
-.nav-wire-line {
-  left: 8px;
-  right: 8px;
-  height: 1px;
-  margin-top: -0.5px;
-  background: linear-gradient(
-    to right,
-    rgba(99, 62, 241, 0) 0%,
-    rgba(99, 62, 241, 0.18) 22%,
-    rgba(99, 62, 241, 0.18) 78%,
-    rgba(99, 62, 241, 0) 100%
-  );
-}
-
-.nav-wire-pulse {
-  left: var(--ap-x, 50%);
-  width: 5px;
-  height: 5px;
-  margin-top: -2.5px;
-  margin-left: -2.5px;
+/* How many things are waiting on a person, on the tab itself. A number, not a
+   dot: "3" is worth crossing the room for and a dot is not. */
+.nav-hero-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 1px;
   border-radius: 999px;
-  background: #6d4aec;
-  box-shadow: 0 0 8px 2px rgba(109, 74, 236, 0.55);
-  opacity: 0;
-}
-
-/* One line, so the wire has something to run along. */
-@media (min-width: 1281px) {
-  .nav-wire { display: block; }
-}
-
-/*
- * The responsive rules below tighten `.pill-link` with `!important` at four
- * breakpoints, which flattened this one back to the size of its neighbours the
- * moment the window narrowed. Space really is scarce there, so the hero keeps a
- * few pixels rather than its full width — enough that it still reads as the
- * centre of the bar on a phone, not enough to push a row into wrapping.
- */
-.pill-link.nav-hero {
-  padding: 9px 16px !important;
-  font-size: 13px !important;
-}
-
-@media (min-width: 1281px) {
-  .pill-link.nav-hero {
-    padding: 10px 20px !important;
-    font-size: 13.5px !important;
-  }
+  display: inline-grid;
+  place-items: center;
+  background: #fff;
+  color: #5b46e5;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .nav-hero { animation: hero-breathe 3.6s ease-in-out infinite; }
-  .nav-hero-dot { animation: hero-dot 3.6s ease-in-out infinite; }
-  .nav-wire-pulse-left { animation: wire-left 4.2s ease-in-out infinite; }
-  /* Offset so the two are not a symmetrical pair pinging in lockstep — a
-     network sends and receives at its own pace, not on a metronome. */
-  .nav-wire-pulse-right { animation: wire-right 4.2s ease-in-out infinite 1.9s; }
+  /* Only the running state animates — see above. */
+  .nav-hero-live .nav-hero-dot { animation: hero-dot 1.9s ease-in-out infinite; }
 }
 
 @keyframes hero-breathe {
@@ -376,25 +346,8 @@ button:focus-visible, a:focus-visible {
 }
 
 @keyframes hero-dot {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22); }
-  50%      { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.38); }
-}
-
-/* Out to the modules on the left, then nothing for most of the cycle. The
-   distance is the measured centre of the pill, so the pulse stops at the edge
-   of the row rather than somewhere arbitrary. */
-@keyframes wire-left {
-  0%             { transform: translateX(0); opacity: 0; }
-  6%             { opacity: 1; }
-  34%            { transform: translateX(calc(-1 * var(--ap-x, 50%) + 10px)); opacity: 0; }
-  100%           { transform: translateX(calc(-1 * var(--ap-x, 50%) + 10px)); opacity: 0; }
-}
-
-@keyframes wire-right {
-  0%             { transform: translateX(0); opacity: 0; }
-  6%             { opacity: 1; }
-  34%            { transform: translateX(calc(var(--ap-right, 50%) - 10px)); opacity: 0; }
-  100%           { transform: translateX(calc(var(--ap-right, 50%) - 10px)); opacity: 0; }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2); }
+  50%      { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.45); }
 }
 
 /* Icon rail buttons with custom tooltip */

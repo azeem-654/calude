@@ -78,7 +78,18 @@ why it can be tested without a database — keep it that way.
   is still unpaid tomorrow. Those markers live on the record (`chased_at`,
   `thanked_at` on `crm_orders`), stamped only after the act succeeds.
 - Guardrails (`'off' | 'approval' | 'on'`) decide whether an action waits for a
-  person. `'approval'` is the default for anything that sends.
+  person. `'approval'` is the default for anything that sends. The wizard sets
+  them from the capabilities somebody picked (`guardrailsFor` in
+  `src/services/projects.ts`) and sets everything unpicked to `'off'` — a
+  project must not hold a permission its owner never saw. `kind` is derived the
+  same way rather than asked, because it is the server's contract, not a
+  question a customer can answer.
+- **`autopilotPulse.ts` is the one reader of the board on the client.** The
+  dashboard panel and the nav diagram both want it at once; without the shared
+  cache each mounts its own fetch and the same question is asked four times a
+  minute for an answer that changes every five. It keeps `unreadable` as its own
+  state — "no projects" and "could not ask" look identical in a zero, and only
+  one of them means the customer has nothing set up.
 
 ## Money — two pots, and they are not interchangeable
 

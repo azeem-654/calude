@@ -9,6 +9,8 @@ import {
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
 import { NAV_GROUPS, activeGroupId, isItemActive } from './navModel';
+import NavFlow from './NavFlow';
+import { watchPulse, type Pulse } from '../../services/autopilotPulse';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
 import { getTheme, toggleTheme } from '../../services/theme';
@@ -71,34 +73,28 @@ export default function TopNav() {
    * exactly instead of overflowing by however tall this happens to be.
    */
   /**
-   * Where the AI Autopilot pill sits, published as --ap-x on the pill row.
+   * The pill row as state, not a ref.
    *
-   * The signal animation runs out from that pill towards the modules either
-   * side of it, and the pill is not at a fixed offset: the row is centred, the
-   * labels are translatable, and below 1280px the whole thing wraps. Measuring
-   * is the only honest answer, so the wire is drawn from a measured centre and
-   * the CSS hides it entirely on the widths where the row is not one line.
+   * NavFlow measures the pills inside it, so it needs the element itself and
+   * needs to be told when it arrives. A ref does not re-render, so a ref alone
+   * meant the diagram measured on the one render where the row was still null
+   * and never again.
    */
-  const heroRef = useRef<HTMLAnchorElement>(null);
-  const pillsRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const publish = () => {
-      const hero = heroRef.current;
-      const row = pillsRef.current;
-      if (!hero || !row) return;
-      const x = hero.offsetLeft + hero.offsetWidth / 2;
-      row.style.setProperty('--ap-x', `${Math.round(x)}px`);
-      /* How far the right-hand pulse has to travel. Deriving it in CSS would
-         need the row's own width, which CSS cannot read. */
-      row.style.setProperty('--ap-right', `${Math.round(row.offsetWidth - x)}px`);
-    };
-    publish();
-    const ro = new ResizeObserver(publish);
-    if (pillsRef.current) ro.observe(pillsRef.current);
-    if (heroRef.current) ro.observe(heroRef.current);
-    window.addEventListener('resize', publish);
-    return () => { ro.disconnect(); window.removeEventListener('resize', publish); };
-  }, [isClient]);
+  const [pillRow, setPillRow] = useState<HTMLElement | null>(null);
+
+  /**
+   * Whether anything is actually running.
+   *
+   * The traces to the other modules carry traffic only when a project would act
+   * on the next tick. An animation of data moving between modules while nothing
+   * is running is a moving picture of a claim that is not true — and the quiet
+   * state reads as idle, which is what it is. Shared with the dashboard panel
+   * through the pulse cache, so this costs no extra request.
+   */
+  const [pulse, setPulse] = useState<Pulse | null>(null);
+  useEffect(() => watchPulse(setPulse), []);
+  const autopilotLive = (pulse?.state === 'ready' && pulse.running > 0);
+  const autopilotWaiting = pulse?.state === 'ready' ? pulse.awaiting : 0;
 
   const navRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -207,7 +203,7 @@ export default function TopNav() {
         scrolling links and the "More" button.
       */}
       <nav
-        ref={el => { navMenuRef.current = el; pillsRef.current = el; }}
+        ref={el => { navMenuRef.current = el; setPillRow(el); }}
         className="nav-pills"
         aria-label="Modules"
         onMouseLeave={() => openPanel(null)}
@@ -218,13 +214,11 @@ export default function TopNav() {
           backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
         }}
       >
-        {/* The wire. Decoration only, so it is hidden from assistive software
-            and cannot be pointed at — it sits behind every pill. */}
-        <span className="nav-wire" aria-hidden="true">
-          <span className="nav-wire-line" />
-          <span className="nav-wire-pulse nav-wire-pulse-left" />
-          <span className="nav-wire-pulse nav-wire-pulse-right" />
-        </span>
+        {/* The wiring from Autopilot into every other module. Decoration in the
+            accessibility tree — the links themselves are the navigation — but
+            what it draws is real: it only carries traffic when something is
+            actually running. */}
+        <NavFlow row={pillRow} heroId="autopilot" live={autopilotLive} />
 
         {NAV_GROUPS.map((group, gi) => {
           const items = group.items.filter(i => !(i.agencyOnly && isClient));
@@ -259,10 +253,10 @@ export default function TopNav() {
             return (
               <NavLink
                 key={group.id}
-                ref={heroRef}
+                data-nav-group={group.id}
                 to={group.path ?? '/autopilot'}
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
-                className={`pill-link nav-hero${on ? ' nav-hero-on' : ''}`}
+                className={`pill-link nav-hero${on ? ' nav-hero-on' : ''}${autopilotLive ? ' nav-hero-live' : ''}`}
                 style={{
                   ...pill,
                   padding: '10px 20px',
@@ -274,8 +268,16 @@ export default function TopNav() {
                   gap: 7,
                 }}
               >
+                {/* The node. It turns over while work is in flight and sits
+                    still when nothing is, so the pill reports a real state
+                    rather than animating for decoration. */}
                 <span className="nav-hero-dot" aria-hidden="true" />
                 {group.label}
+                {autopilotWaiting > 0 && (
+                  <span className="nav-hero-count" aria-label={`${autopilotWaiting} waiting for you`}>
+                    {autopilotWaiting}
+                  </span>
+                )}
               </NavLink>
             );
           }
@@ -284,6 +286,7 @@ export default function TopNav() {
             return (
               <NavLink
                 key={group.id}
+                data-nav-group={group.id}
                 to={group.path}
                 end={group.path === '/'}
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
@@ -304,6 +307,7 @@ export default function TopNav() {
               onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(group.id); }}>
               <button
                 type="button"
+                data-nav-group={group.id}
                 aria-haspopup="true"
                 aria-expanded={open}
                 onClick={() => openPanel(open ? null : group.id)}

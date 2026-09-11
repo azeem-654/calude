@@ -256,3 +256,116 @@ button.dash-chip[aria-pressed='true'] { background: #17191c; color: #ffffff; bor
   .dash-stack > * { opacity: 1; transform: none; }
   .dash-tile:hover { transform: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The AI Autopilot panel.
+
+   A section rather than a card, and deliberately the most solid surface on
+   this screen: everything else here reports what already happened, and this is
+   the one thing still happening. It carries the module's own colour so the
+   dashboard, the nav pill and the project board read as one thing.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.ap-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(91, 70, 229, 0.16);
+  background:
+    linear-gradient(180deg, rgba(91, 70, 229, 0.055), rgba(91, 70, 229, 0) 160px),
+    rgba(255, 255, 255, 0.52);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 1px 2px rgba(23, 25, 28, 0.03),
+    0 20px 50px -30px rgba(60, 40, 180, 0.4);
+}
+
+.ap-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+}
+
+.ap-panel-badge {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 52%, #9333ea 100%);
+  box-shadow: 0 4px 12px -3px rgba(99, 62, 241, 0.5);
+}
+
+/* Each project row lifts on hover — they are buttons into the board. */
+.ap-row {
+  transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
+
+.ap-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(91, 70, 229, 0.28) !important;
+  box-shadow: 0 10px 26px -16px rgba(60, 40, 180, 0.55);
+}
+
+/* ── What it does, for the workspace that has not started anything ── */
+
+.ap-does {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 10px;
+}
+
+.ap-does-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.ap-does-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #5b46e5;
+  background: rgba(91, 70, 229, 0.1);
+}
+
+.ap-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: center;
+  padding: 12px 22px;
+  border: none;
+  border-radius: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 52%, #9333ea 100%);
+  box-shadow: 0 6px 18px -5px rgba(99, 62, 241, 0.55);
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.ap-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px -6px rgba(99, 62, 241, 0.65);
+}
+
+@media (max-width: 560px) {
+  .ap-panel { padding: 14px; border-radius: 20px; }
+}
