@@ -27,6 +27,7 @@ import { handleStorefront, handleStorefrontWebhook } from './routes/storefront';
 import { handleSupplier } from './routes/supplier';
 import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
+import { handleShop } from './routes/shop';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -66,6 +67,9 @@ const ROUTES: Record<string, Handler> = {
   /* Projects and the client portfolios they write from — what AI Autopilot
      actually runs. See routes/projects.ts for why the Sales Agent folded in. */
   '/api/projects.php': handleProjects,
+  /* The public shop. Half of this answers to nobody signed in — see
+     routes/shop.ts for what that changes. */
+  '/api/shop.php': handleShop,
   /* Business ideas, products and orders. */
   '/api/commerce.php': handleCommerce,
   /* Checkout for the customer's own products, on the customer's own Stripe

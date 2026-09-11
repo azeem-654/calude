@@ -88,7 +88,11 @@ This is the trap in this codebase most likely to cost somebody real money.
   on the processor connected in `crm_install_providers` (kind `payments`). Falls
   back to `env.STRIPE_SECRET_KEY` for installs that predate that.
 - **A subscriber charging their own buyers.** `routes/storefront.ts`, on the key
-  in `crm_storefront`, per workspace.
+  in `crm_storefront`, per workspace. `routes/shop.ts` is the public front of
+  this: `/shop/<slug>` renders with **no session at all**, so it re-earns every
+  assumption the signed-in routes make — the price is read from the product row
+  and never from the request, a draft shop 404s rather than rendering empty, and
+  orders are rate-limited per address because anonymous callers create rows.
 
 Charging a subscriber's buyer on the operator's key would deposit their trading
 revenue into the operator's balance — somebody else's money, held without

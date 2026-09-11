@@ -9,6 +9,7 @@ import TemplateGallery from '../shared/TemplateGallery';
 import { ScaledPage } from '../shared/BlockRender';
 import { activeAccount } from '../../services/tenancy';
 import SourceTag from '../shared/SourceTag';
+import Shops from './Shops';
 
 const STARTER_TEMPLATES = [
   { id: 'blank',       name: 'Blank Site',          emoji: '📄', desc: 'Start from scratch with an empty canvas.',           color: '#f1f5f9' },
@@ -123,6 +124,9 @@ export default function Websites() {
   const [statsSite, setStatsSite] = useState<Website | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  /* Sites and shops are both "a page of mine on the web", and a customer who
+     wants one to sell from should not have to guess which module that is. */
+  const [tab, setTab] = useState<'sites' | 'shops'>('sites');
   // Name of a site just created from a template — opened once it exists in state.
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
 
@@ -202,21 +206,28 @@ export default function Websites() {
           </div>
           <p style={{ margin: 0, color: '#64748b', fontSize: 14 }}>Build and manage professional websites with a drag-and-drop editor</p>
         </div>
-        <button onClick={() => setShowNew(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }}>
-          <Plus size={18} /> New Website
-        </button>
+        {tab === 'sites' && (
+          <button onClick={() => setShowNew(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }}>
+            <Plus size={18} /> New Website
+          </button>
+        )}
       </div>
 
-      {/* Funnels | Websites tabs — same control as the Funnels page, for parity */}
-      <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9', marginBottom: 24 }}>
+      {/* Funnels | Websites | Shops — same control as the Funnels page, for parity */}
+      <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9', marginBottom: 24, flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/funnels')} style={{ padding: '6px 18px', border: 'none', borderRadius: 8, backgroundColor: 'transparent', color: '#64748b', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
           Funnels
         </button>
-        <button onClick={() => {}} style={{ padding: '6px 18px', border: 'none', borderRadius: 8, backgroundColor: 'white', color: '#0f172a', fontSize: 13, fontWeight: 600, cursor: 'default', boxShadow: '0 1px 2px rgba(16,24,40,0.08)' }}>
-          Websites
-        </button>
+        {([['sites', 'Websites'], ['shops', 'Shops']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            style={{ padding: '6px 18px', border: 'none', borderRadius: 8, backgroundColor: tab === id ? 'white' : 'transparent', color: tab === id ? '#0f172a' : '#64748b', fontSize: 13, fontWeight: tab === id ? 600 : 500, cursor: 'pointer', boxShadow: tab === id ? '0 1px 2px rgba(16,24,40,0.08)' : 'none' }}>
+            {label}
+          </button>
+        ))}
       </div>
+
+      {tab === 'shops' ? <Shops /> : <>
 
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: 16, marginBottom: 28 }}>
@@ -331,6 +342,7 @@ export default function Websites() {
           })}
         </div>
       )}
+      </>}
 
       {showNew && (
         <TemplateGallery

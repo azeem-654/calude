@@ -37,11 +37,13 @@ import ClientBilling from './components/Billing/ClientBilling';
 import SiteHome from './components/Site/SiteHome';
 import Autopilot from './components/Autopilot/Autopilot';
 import Commerce from './components/Commerce/Commerce';
+import ShopPage from './components/Shop/ShopPage';
 import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
   const isBooking = location.pathname.startsWith('/book');
+  const isShop = location.pathname.startsWith('/shop');
   const isPreview = location.pathname.startsWith('/preview');
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
@@ -50,6 +52,14 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <Routes>
         <Route path="/book/:slug" element={<BookingPage />} />
         <Route path="/book" element={<BookingPage />} />
+      </Routes>
+    );
+  }
+
+  if (isShop) {
+    return (
+      <Routes>
+        <Route path="/shop/:slug" element={<ShopPage />} />
       </Routes>
     );
   }
@@ -188,7 +198,20 @@ export default function App() {
   // The public booking page must work for anonymous visitors — never gate it
   // behind the login screen.
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  /* A shopper and somebody booking a slot are the two visitors who arrive with
+     no account and must never meet a login form. */
   const isPublicBooking = window.location.pathname.startsWith(`${base}/book`);
+  const isPublicShop = window.location.pathname.startsWith(`${base}/shop`);
+  if (!session && isPublicShop) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="/shop/:slug" element={<ShopPage />} />
+          <Route path="*" element={<ShopPage />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
   if (!session && isPublicBooking) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
