@@ -12,10 +12,10 @@
  * and can then push them three different ways.
  */
 import { useState } from 'react';
-import { X, Plus, Loader } from 'lucide-react';
+import { X, Plus, Loader, Globe, Check } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  saveProject, savePortfolio, KIND_LABEL, KIND_BLURB,
+  saveProject, savePortfolio, readPortfolioFromUrl, KIND_LABEL, KIND_BLURB,
   type Portfolio, type ProjectKind,
 } from '../../services/projects';
 
@@ -48,6 +48,33 @@ export default function NewProject({
   const [clientDoes, setClientDoes] = useState('');
   const [clientWho, setClientWho] = useState('');
   const [clientSite, setClientSite] = useState('');
+  /* Everything the reader found that these four fields have no room for. Kept
+     so the saved portfolio is the whole reading, not the part that fitted on
+     this form. */
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const [reading, setReading] = useState(false);
+  /* Where the answers came from, shown on the form. Somebody reviewing fields
+     a machine filled in should be able to see that is what happened. */
+  const [readFrom, setReadFrom] = useState('');
+
+  const readSite = async () => {
+    const url = clientSite.trim();
+    if (!url) { addNotification('Paste the client\u2019s website address first.', 'error'); return; }
+    setReading(true);
+    const r = await readPortfolioFromUrl(url);
+    setReading(false);
+    if (!r.success || !r.profile) { addNotification(r.error ?? 'That page could not be read.', 'error'); return; }
+    const p = r.profile;
+    /* Filled in, not overwritten: somebody who has already typed the name
+       meant it, and a machine reading a marketing page should not win. */
+    if (!clientName.trim() && p.companyName) setClientName(p.companyName);
+    if (!clientDoes.trim() && p.description) setClientDoes(p.description);
+    if (!clientWho.trim() && p.audience) setClientWho(p.audience);
+    if (p.website) setClientSite(p.website);
+    setExtra({ offer: p.offer ?? '', industry: p.industry ?? '', tone: p.tone ?? '', locations: p.locations ?? '' });
+    setReadFrom(r.readFrom ?? url);
+    addNotification('Read from the site. Check it over before you start — this is what everything gets written from.', 'success');
+  };
 
   const create = async () => {
     setBusy(true);
@@ -58,11 +85,16 @@ export default function NewProject({
       const p = await savePortfolio({
         name: clientName.trim(),
         profile: {
+          ...extra,
           companyName: clientName.trim(),
           description: clientDoes.trim(),
           audience: clientWho.trim(),
           website: clientSite.trim(),
         },
+        /* Stamped so the portfolio says where it came from. A description a
+           person wrote and one a page was read into are worth different
+           amounts of trust when something it wrote reads oddly. */
+        source: readFrom ? 'url' : 'manual',
       });
       if (!p.success || !p.id) { setBusy(false); addNotification(p.error ?? 'Could not save the client.', 'error'); return; }
       pid = p.id;
@@ -140,10 +172,28 @@ export default function NewProject({
               <input value={clientName} onChange={e => setClientName(e.target.value)} style={inp} placeholder="Client name — e.g. Bright Smile Dental" />
               <input value={clientDoes} onChange={e => setClientDoes(e.target.value)} style={inp} placeholder="What do they do?" />
               <input value={clientWho} onChange={e => setClientWho(e.target.value)} style={inp} placeholder="Who buys it?" />
-              <input value={clientSite} onChange={e => setClientSite(e.target.value)} style={inp} placeholder="Website (optional)" />
+              <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input value={clientSite} onChange={e => setClientSite(e.target.value)}
+                  style={{ ...inp, flex: 1, minWidth: 150 }} placeholder="Website — e.g. brightsmile.co.uk" />
+                <button onClick={() => void readSite()} disabled={reading} type="button" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '10px 13px',
+                  borderRadius: 10, border: 'none', background: INK, color: '#fff',
+                  fontSize: 12.5, fontWeight: 700, cursor: reading ? 'default' : 'pointer',
+                  opacity: reading ? 0.65 : 1, whiteSpace: 'nowrap',
+                }}>
+                  {reading ? <Loader size={13} /> : <Globe size={13} />}
+                  {reading ? 'Reading…' : 'Read their site'}
+                </button>
+              </div>
+              {readFrom && (
+                <p style={{ margin: 0, fontSize: 11.5, color: '#166534', lineHeight: 1.5, display: 'flex', gap: 5, alignItems: 'flex-start' }}>
+                  <Check size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>Filled in from <strong>{readFrom}</strong>. Correct anything it got wrong — nothing is saved until you start the project.</span>
+                </p>
+              )}
               <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                Everything Autopilot writes for this project comes from here. You can fill it in properly later —
-                other projects for the same client can share it.
+                Everything Autopilot writes for this project comes from here. Paste their website and it reads
+                these in for you, or type them yourself. Other projects for the same client share it.
               </p>
               {portfolios.length > 0 && (
                 <button onClick={() => setAdding(false)} style={{ border: 'none', background: 'none', color: INK, fontSize: 12, fontWeight: 700, cursor: 'pointer', justifySelf: 'start', padding: 0, textDecoration: 'underline' }}>

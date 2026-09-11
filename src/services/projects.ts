@@ -64,6 +64,9 @@ interface Reply {
   projects?: Project[];
   portfolios?: Portfolio[];
   board?: Record<string, Card[]>;
+  profile?: Record<string, string>;
+  readFrom?: string;
+  title?: string;
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -93,6 +96,15 @@ export async function fetchBoard() {
 
 export const savePortfolio = (p: { id?: string; name: string; profile: Record<string, string>; source?: string }) =>
   call('save_portfolio', p);
+
+/**
+ * Read a client's own website into a portfolio draft.
+ *
+ * A draft, deliberately. What comes back becomes the voice of every email and
+ * post that goes out under this client's name, so a person reads it and presses
+ * save — `savePortfolio` with `source: 'url'` is the second half of this.
+ */
+export const readPortfolioFromUrl = (url: string) => call('read_url', { url });
 export const deletePortfolio = (id: string) => call('delete_portfolio', { id });
 
 export const saveProject = (p: {

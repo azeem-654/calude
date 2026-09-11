@@ -20,6 +20,8 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { askGemini, loadAiKey } from '../lib/ai';
+import { readSite } from '../lib/readSite';
 
 interface Req {
   token?: string;
@@ -36,6 +38,7 @@ interface Req {
   /* Portfolios */
   profile?: Record<string, unknown>;
   source?: string;
+  url?: string;
 }
 
 const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -172,6 +175,93 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       existing?.created_at ?? now, now,
     ).run();
     return json({ success: true, id, portfolios: await listPortfolios() });
+  }
+
+  /**
+   * Read a client's own website and fill their portfolio from it.
+   *
+   * Everything Autopilot writes for a client is written from this profile, so
+   * typing it out is the step people stall on — and the answers are already
+   * published on the client's site.
+   *
+   * Two rules this refuses to bend:
+   *
+   *  - **It returns a draft; it does not save one.** The profile becomes the
+   *    voice of every email, text and post that goes out under this client's
+   *    name. A language model's reading of a marketing page is a good first
+   *    draft and a bad thing to have silently become the truth, so a person
+   *    sees it and presses save.
+   *  - **It never guesses.** No AI key, no answer — not a plausible profile
+   *    assembled from the company name. A page it could not read says so. A
+   *    field the page did not answer comes back empty rather than filled with
+   *    something that reads well.
+   */
+  if (act === 'read_url') {
+    const key = await loadAiKey(env, accountId);
+    if (!key) {
+      return fail('No AI key is connected to this workspace, so a page cannot be read into a portfolio. Add one under Settings → AI Engine, or fill the client in by hand.');
+    }
+
+    const site = await readSite(String(d.url ?? ''));
+    if (!site.ok) return fail(site.error);
+
+    const prompt = [
+      'You are reading a company\u2019s own website to describe them for a marketing tool.',
+      'Answer ONLY from the text given. If the text does not say, return an empty string for that field \u2014 never guess, never fill a gap with something plausible.',
+      '',
+      'Return JSON with exactly these keys:',
+      '{"companyName":"","description":"","audience":"","offer":"","industry":"","tone":"","locations":""}',
+      '',
+      'companyName: what they call themselves.',
+      'description: two or three sentences on what they actually do, in plain words.',
+      'audience: who they sell to.',
+      'offer: the specific services or products named on the page.',
+      'industry: one short label.',
+      'tone: how they write \u2014 e.g. "plain and direct", "formal", "warm".',
+      'locations: where they work, if the page says.',
+      '',
+      `Page title: ${site.title}`,
+      `Page address: ${site.url}`,
+      '',
+      'Page text:',
+      site.text,
+    ].join('\n');
+
+    /* Low temperature: this is extraction, not writing. */
+    const ai = await askGemini(key, prompt, 0.15);
+    if (!ai.ok) return fail(ai.error);
+
+    let parsed: Record<string, unknown> = {};
+    try { parsed = JSON.parse(ai.text) as Record<string, unknown>; } catch {
+      return fail('The AI answered with something that was not a profile. Try again, or fill the client in by hand.');
+    }
+
+    const str = (k: string) => String(parsed[k] ?? '').trim().slice(0, 2000);
+    const profile = {
+      companyName: str('companyName'),
+      description: str('description'),
+      audience: str('audience'),
+      offer: str('offer'),
+      industry: str('industry'),
+      tone: str('tone'),
+      locations: str('locations'),
+      website: site.url,
+    };
+
+    /* A page that yielded nothing usable is reported as that, not returned as
+       an empty form somebody has to work out for themselves. */
+    if (!profile.companyName && !profile.description) {
+      return fail('That page did not say enough about the business to describe it. Try their home or about page, or fill the client in by hand.');
+    }
+
+    return json({
+      success: true,
+      profile,
+      /* So the screen can say where this came from rather than presenting it
+         as though a person had typed it. */
+      readFrom: site.url,
+      title: site.title,
+    });
   }
 
   if (act === 'delete_portfolio') {
