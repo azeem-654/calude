@@ -170,10 +170,11 @@ export function setupSteps(): SetupStep[] {
     },
     {
       id: 'campaign',
-      title: 'Plan your first campaign',
-      why: 'Pick the outcome you want. Everything — emails, texts, posts, the blog, the landing page — is written from your portfolio and shown to you before anything is created.',
-      route: '/ai-sales-agent',
-      action: campaigns > 0 ? 'Open campaigns' : 'Pick an outcome',
+      title: 'Start your first project',
+      why: 'Say what you want to happen. Everything — emails, texts, posts, the blog, the landing page — is written from that client\u2019s portfolio and shown to you before anything is sent.',
+      /* Was /ai-sales-agent, which is no longer a place you can get to. */
+      route: '/autopilot',
+      action: campaigns > 0 ? 'Open the board' : 'Start a project',
       state: campaigns > 0 ? 'done' : 'todo',
       detail: campaigns > 0 ? `${campaigns} campaign${campaigns === 1 ? '' : 's'}` : 'None yet',
       blocking: false,

@@ -237,6 +237,166 @@ button:focus-visible, a:focus-visible {
   background-color: #f0f1f3 !important;
 }
 
+/* ══ AI Autopilot: the pill that does the work, and the wire to the rest ══
+ *
+ * Every other pill on this row is a place to go and look at something. This
+ * one is the module that goes and does it, and on a schedule it reaches into
+ * the others — writes the campaign in Marketing, books the slot in Calendar,
+ * files the order under Sell. So it is drawn as a lit node with a signal
+ * travelling out along a wire to its neighbours.
+ *
+ * Two things keep this from being noise. The wire only exists at widths where
+ * the pill row is a single line: below 1280px the row wraps to two or three,
+ * and a horizontal line through the middle of a wrapped row draws a wire to
+ * nothing. And every moving part is inside `prefers-reduced-motion: no-
+ * preference` — the lit pill remains, the movement does not.
+ */
+.nav-hero {
+  position: relative;
+  z-index: 1;
+  background-image: linear-gradient(135deg, #4f46e5 0%, #7c3aed 52%, #9333ea 100%);
+  box-shadow:
+    0 4px 14px -2px rgba(99, 62, 241, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  letter-spacing: -0.01em;
+}
+
+/* The hover rule above greys out any pill that is not the active one, which
+   would flatten the gradient the moment a pointer crossed it. */
+.pill-link.nav-hero:hover:not(.pill-active) {
+  background-color: transparent !important;
+  filter: brightness(1.08);
+}
+
+.nav-hero-on {
+  box-shadow:
+    0 6px 20px -2px rgba(99, 62, 241, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+}
+
+/* The node itself: a small light, on when the module is. */
+.nav-hero-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.28);
+}
+
+/* ── The wire ── */
+.nav-wire {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  /* No --ap-x yet means the pill has not been measured; the centre of the row
+     is a harmless place for a line nobody can see to start from. */
+  display: none;
+}
+
+.nav-wire-line,
+.nav-wire-pulse {
+  position: absolute;
+  top: 50%;
+}
+
+.nav-wire-line {
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  margin-top: -0.5px;
+  background: linear-gradient(
+    to right,
+    rgba(99, 62, 241, 0) 0%,
+    rgba(99, 62, 241, 0.18) 22%,
+    rgba(99, 62, 241, 0.18) 78%,
+    rgba(99, 62, 241, 0) 100%
+  );
+}
+
+.nav-wire-pulse {
+  left: var(--ap-x, 50%);
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  margin-left: -2.5px;
+  border-radius: 999px;
+  background: #6d4aec;
+  box-shadow: 0 0 8px 2px rgba(109, 74, 236, 0.55);
+  opacity: 0;
+}
+
+/* One line, so the wire has something to run along. */
+@media (min-width: 1281px) {
+  .nav-wire { display: block; }
+}
+
+/*
+ * The responsive rules below tighten `.pill-link` with `!important` at four
+ * breakpoints, which flattened this one back to the size of its neighbours the
+ * moment the window narrowed. Space really is scarce there, so the hero keeps a
+ * few pixels rather than its full width — enough that it still reads as the
+ * centre of the bar on a phone, not enough to push a row into wrapping.
+ */
+.pill-link.nav-hero {
+  padding: 9px 16px !important;
+  font-size: 13px !important;
+}
+
+@media (min-width: 1281px) {
+  .pill-link.nav-hero {
+    padding: 10px 20px !important;
+    font-size: 13.5px !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-hero { animation: hero-breathe 3.6s ease-in-out infinite; }
+  .nav-hero-dot { animation: hero-dot 3.6s ease-in-out infinite; }
+  .nav-wire-pulse-left { animation: wire-left 4.2s ease-in-out infinite; }
+  /* Offset so the two are not a symmetrical pair pinging in lockstep — a
+     network sends and receives at its own pace, not on a metronome. */
+  .nav-wire-pulse-right { animation: wire-right 4.2s ease-in-out infinite 1.9s; }
+}
+
+@keyframes hero-breathe {
+  0%, 100% {
+    box-shadow:
+      0 4px 14px -2px rgba(99, 62, 241, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  }
+  50% {
+    box-shadow:
+      0 6px 22px 0 rgba(99, 62, 241, 0.62),
+      0 0 0 1px rgba(255, 255, 255, 0.22) inset;
+  }
+}
+
+@keyframes hero-dot {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22); }
+  50%      { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.38); }
+}
+
+/* Out to the modules on the left, then nothing for most of the cycle. The
+   distance is the measured centre of the pill, so the pulse stops at the edge
+   of the row rather than somewhere arbitrary. */
+@keyframes wire-left {
+  0%             { transform: translateX(0); opacity: 0; }
+  6%             { opacity: 1; }
+  34%            { transform: translateX(calc(-1 * var(--ap-x, 50%) + 10px)); opacity: 0; }
+  100%           { transform: translateX(calc(-1 * var(--ap-x, 50%) + 10px)); opacity: 0; }
+}
+
+@keyframes wire-right {
+  0%             { transform: translateX(0); opacity: 0; }
+  6%             { opacity: 1; }
+  34%            { transform: translateX(calc(var(--ap-right, 50%) - 10px)); opacity: 0; }
+  100%           { transform: translateX(calc(var(--ap-right, 50%) - 10px)); opacity: 0; }
+}
+
 /* Icon rail buttons with custom tooltip */
 .rail-btn {
   position: relative;

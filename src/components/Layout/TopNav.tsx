@@ -70,6 +70,36 @@ export default function TopNav() {
    * Anything using `calc(100dvh - var(--app-nav-h))` then fills the viewport
    * exactly instead of overflowing by however tall this happens to be.
    */
+  /**
+   * Where the AI Autopilot pill sits, published as --ap-x on the pill row.
+   *
+   * The signal animation runs out from that pill towards the modules either
+   * side of it, and the pill is not at a fixed offset: the row is centred, the
+   * labels are translatable, and below 1280px the whole thing wraps. Measuring
+   * is the only honest answer, so the wire is drawn from a measured centre and
+   * the CSS hides it entirely on the widths where the row is not one line.
+   */
+  const heroRef = useRef<HTMLAnchorElement>(null);
+  const pillsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const publish = () => {
+      const hero = heroRef.current;
+      const row = pillsRef.current;
+      if (!hero || !row) return;
+      const x = hero.offsetLeft + hero.offsetWidth / 2;
+      row.style.setProperty('--ap-x', `${Math.round(x)}px`);
+      /* How far the right-hand pulse has to travel. Deriving it in CSS would
+         need the row's own width, which CSS cannot read. */
+      row.style.setProperty('--ap-right', `${Math.round(row.offsetWidth - x)}px`);
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    if (pillsRef.current) ro.observe(pillsRef.current);
+    if (heroRef.current) ro.observe(heroRef.current);
+    window.addEventListener('resize', publish);
+    return () => { ro.disconnect(); window.removeEventListener('resize', publish); };
+  }, [isClient]);
+
   const navRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = navRef.current;
@@ -177,16 +207,25 @@ export default function TopNav() {
         scrolling links and the "More" button.
       */}
       <nav
-        ref={navMenuRef}
+        ref={el => { navMenuRef.current = el; pillsRef.current = el; }}
         className="nav-pills"
         aria-label="Modules"
         onMouseLeave={() => openPanel(null)}
         style={{
           display: 'flex', alignItems: 'center', gap: 2, minWidth: 0,
+          position: 'relative',
           margin: '0 auto', padding: 4, borderRadius: 999,
           backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
         }}
       >
+        {/* The wire. Decoration only, so it is hidden from assistive software
+            and cannot be pointed at — it sits behind every pill. */}
+        <span className="nav-wire" aria-hidden="true">
+          <span className="nav-wire-line" />
+          <span className="nav-wire-pulse nav-wire-pulse-left" />
+          <span className="nav-wire-pulse nav-wire-pulse-right" />
+        </span>
+
         {NAV_GROUPS.map((group, gi) => {
           const items = group.items.filter(i => !(i.agencyOnly && isClient));
           if (items.length === 0) return null;
@@ -204,6 +243,42 @@ export default function TopNav() {
             transition: 'background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
             letterSpacing: '-0.01em',
           };
+
+          /*
+           * One pill is not like the others.
+           *
+           * AI Autopilot is the module that does the work; everything else on
+           * this row is somewhere to go and inspect, or overrule, what it did.
+           * A pill of the same size and weight as "Reports" says the opposite,
+           * so this one is bigger, fully round, lit, and wired to its
+           * neighbours — the signal is what the module actually does, reaching
+           * out into the other modules on a schedule.
+           */
+          const hero = group.id === 'autopilot';
+          if (hero) {
+            return (
+              <NavLink
+                key={group.id}
+                ref={heroRef}
+                to={group.path ?? '/autopilot'}
+                onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
+                className={`pill-link nav-hero${on ? ' nav-hero-on' : ''}`}
+                style={{
+                  ...pill,
+                  padding: '10px 20px',
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  color: '#fff',
+                  backgroundColor: 'transparent',
+                  boxShadow: 'none',
+                  gap: 7,
+                }}
+              >
+                <span className="nav-hero-dot" aria-hidden="true" />
+                {group.label}
+              </NavLink>
+            );
+          }
 
           if (group.path) {
             return (

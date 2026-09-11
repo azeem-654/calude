@@ -16,7 +16,7 @@
  * side by side told nobody which was which; "Booking pages" and "Calendar" do.
  */
 import {
-  BarChart3, Bot, Building2, Calendar, CalendarClock, CreditCard,
+  BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, Star, TrendingUp, Users,
   type LucideIcon, Package } from 'lucide-react';
@@ -49,12 +49,20 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [{ path: '/', label: 'Dashboard', desc: 'The week so far, today, and what to do next', icon: LayoutDashboard, aka: ['home', 'overview'] }],
   },
   /* First after the dashboard, because it is the thing that does the work.
-     Everything below it is where to go and look at, or override, what it did. */
+     Everything below it is where to go and look at, or override, what it did.
+     The bar renders this one differently — see TopNav's `hero` group. */
   {
     id: 'autopilot',
-    label: 'Autopilot',
+    label: 'AI Autopilot',
     path: '/autopilot',
-    items: [{ path: '/autopilot', label: 'Autopilot', desc: 'Say what you want to happen — it runs the whole thing', icon: Rocket, aka: ['auto', 'brain', 'automation', 'ai', 'run', 'hands off'] }],
+    items: [{
+      path: '/autopilot', label: 'AI Autopilot',
+      desc: 'One board per project — it finds the work and does it',
+      icon: Rocket,
+      /* 'sales agent' is here on purpose: that module was folded into this one,
+         and somebody who learnt the old name must still find where it went. */
+      aka: ['auto', 'brain', 'automation', 'ai', 'run', 'hands off', 'projects', 'board', 'sales agent', 'agent'],
+    }],
   },
   {
     id: 'customers',
@@ -70,7 +78,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Sales',
     items: [
       { path: '/pipelines', label: 'Deals', desc: 'Move opportunities through to won', icon: TrendingUp, aka: ['pipeline', 'pipelines', 'opportunities', 'kanban'] },
-      { path: '/ai-sales-agent', label: 'AI Sales Agent', desc: 'Turn an objective into a campaign the CRM runs', icon: Bot, aka: ['ai', 'agent', 'outreach', 'prospecting'] },
       { path: '/calendar', label: 'Calendar', desc: 'Meetings, bookings and your own time on one grid', icon: Calendar, aka: ['diary', 'schedule', 'appointments'] },
       { path: '/scheduling', label: 'Booking pages', desc: 'Let people book you without the email chain', icon: CalendarClock, aka: ['scheduling', 'calendly', 'availability', 'event types'] },
     ],

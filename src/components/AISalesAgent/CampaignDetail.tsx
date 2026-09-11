@@ -92,10 +92,10 @@ export default function CampaignDetail() {
     purgeLeads(id);
     purgeGraph(id);
     addNotification(`${id} deleted`);
-    navigate('/ai-sales-agent');
+    navigate('/autopilot');
   };
 
-  if (!campaign) return <Missing id={id} onBack={() => navigate('/ai-sales-agent')} />;
+  if (!campaign) return <Missing id={id} onBack={() => navigate('/autopilot')} />;
 
   const tone = STATUS_TONE[campaign.status];
   const canPause = campaign.status === 'running';
@@ -109,8 +109,8 @@ export default function CampaignDetail() {
       <div style={{ padding: 'clamp(16px, 3vw, 28px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <button onClick={() => navigate('/ai-sales-agent')} className="press" style={ghostBtn}>
-            <ArrowLeft size={14} /> All campaigns
+          <button onClick={() => navigate('/autopilot')} className="press" style={ghostBtn}>
+            <ArrowLeft size={14} /> AI Autopilot
           </button>
           <span style={statusPill(tone)}>{CAMPAIGN_STATUS_LABEL[campaign.status]}</span>
           <div style={{ flex: 1 }} />

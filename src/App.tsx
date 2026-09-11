@@ -16,7 +16,6 @@ import Conversations from './components/Conversations/Conversations';
 import CalendarView from './components/Calendar/CalendarView';
 import Pipelines from './components/Pipelines/Pipelines';
 import Marketing from './components/Marketing/Marketing';
-import AISalesAgent from './components/AISalesAgent/AISalesAgent';
 import CampaignDetail from './components/AISalesAgent/CampaignDetail';
 import Funnels from './components/Funnels/Funnels';
 import Websites from './components/Websites/Websites';
@@ -101,7 +100,12 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/calendar" element={<CalendarView />} />
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/marketing" element={<Marketing />} />
-          <Route path="/ai-sales-agent" element={<AISalesAgent />} />
+          {/* The Sales Agent's front door is gone — the module folded into AI
+              Autopilot, which runs the same work per project. The detail route
+              stays because campaigns it created are stamped with it in their
+              provenance, and a traceable record that 404s is worse than a
+              retired tab. */}
+          <Route path="/ai-sales-agent" element={<Navigate to="/autopilot" replace />} />
           <Route path="/ai-sales-agent/:id" element={<CampaignDetail />} />
           <Route path="/funnels" element={<Funnels />} />
           <Route path="/blog-automation" element={<BlogAutomation />} />
