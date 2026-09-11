@@ -16,7 +16,7 @@
  * it. So a quiet day is silent, and `last_digest_at` is only stamped when
  * something actually went.
  */
-import { dataGet, nowIso, type Env } from './lib/db';
+import { dataGet, dataPut, nowIso, type Env } from './lib/db';
 import { loadMailbox } from './routes/mailbox';
 import { buildMime } from './lib/mime';
 import { smtpSend } from './lib/smtp';
@@ -33,10 +33,12 @@ const MIN_GAP_MS = 20 * 60 * 60 * 1000;
 const FROM_HOUR = 7;
 const TO_HOUR = 10;
 
+/** When this workspace was last written to. Its own key, see runDigests. */
+const DIGEST_KEY = 'crm_autopilot_digest_at';
+
 interface Row {
   account_id: string;
   status: string;
-  last_digest_at: string | null;
 }
 
 interface ActionRow {
@@ -46,6 +48,8 @@ interface ActionRow {
   because: string;
   detail: string | null;
   created_at: string;
+  /** Which project it was for. Empty for history written before projects. */
+  project: string;
 }
 
 /**
@@ -76,7 +80,12 @@ function list(title: string, rows: ActionRow[], note?: string): string {
   if (!rows.length) return '';
   const items = rows.slice(0, 12).map(r => {
     const why = r.detail?.trim() || r.because?.trim() || '';
-    return `<li style="margin:0 0 8px"><strong>${esc(r.summary)}</strong>${why ? `<br><span style="color:#5b6472">${esc(why.slice(0, 220))}</span>` : ''}</li>`;
+    const who = r.project?.trim();
+    return `<li style="margin:0 0 8px">`
+      + (who ? `<span style="color:#8b95a5;font-size:12px">${esc(who)}</span><br>` : '')
+      + `<strong>${esc(r.summary)}</strong>`
+      + (why ? `<br><span style="color:#5b6472">${esc(why.slice(0, 220))}</span>` : '')
+      + `</li>`;
   }).join('');
   const more = rows.length > 12 ? `<p style="color:#5b6472;margin:4px 0 0">…and ${rows.length - 12} more.</p>` : '';
   return `<h3 style="margin:22px 0 8px;font-size:15px">${esc(title)}</h3>`
@@ -87,14 +96,28 @@ function list(title: string, rows: ActionRow[], note?: string): string {
 export async function runDigests(env: Env): Promise<DigestReport> {
   const report: DigestReport = { sent: 0, skipped: 0, failed: 0, notes: [] };
 
+  /*
+   * One digest per workspace, not per project.
+   *
+   * Projects are the unit of work, but the person reading this is the unit of
+   * attention: an agency running six client projects wants one morning email,
+   * not six. So the workspaces with anything running are gathered here and the
+   * projects are grouped inside the message.
+   */
   const { results } = await env.DB.prepare(
-    "SELECT account_id, status, last_digest_at FROM crm_autopilot WHERE status NOT IN ('off','paused')",
+    `SELECT account_id, MIN(status) AS status
+     FROM crm_projects WHERE status NOT IN ('off','paused')
+     GROUP BY account_id LIMIT 400`,
   ).all<Row>();
 
   for (const run of results ?? []) {
     const accountId = run.account_id;
 
-    if (run.last_digest_at && Date.now() - new Date(run.last_digest_at).getTime() < MIN_GAP_MS) continue;
+    /* The clock lives in the workspace's own key/value store rather than on a
+       project row: it belongs to the reader, and picking one project to hold
+       it would break the moment that project was deleted. */
+    const lastDigestAt = (await dataGet(env.DB, accountId, DIGEST_KEY)) ?? '';
+    if (lastDigestAt && Date.now() - new Date(lastDigestAt).getTime() < MIN_GAP_MS) continue;
 
     const sched = JSON.parse(await dataGet(env.DB, accountId, 'crm_schedule') ?? '{}') as { timezone?: string };
     const hour = localHour(sched.timezone ?? '');
@@ -103,16 +126,21 @@ export async function runDigests(env: Env): Promise<DigestReport> {
     /* Since the last digest, or the last day for a workspace that has never
        had one. Not "everything ever" — a first digest listing three weeks of
        history is a wall of text nobody reads to the end of. */
-    const since = run.last_digest_at
-      && Date.now() - new Date(run.last_digest_at).getTime() < 7 * 86_400_000
-      ? run.last_digest_at
+    const since = lastDigestAt
+      && Date.now() - new Date(lastDigestAt).getTime() < 7 * 86_400_000
+      ? lastDigestAt
       : new Date(Date.now() - 86_400_000).toISOString();
 
+    /* The project's name comes along so the email can say which client each
+       line was for — an agency reading "Write the first blog post" three times
+       needs to know which three businesses. */
     const rows = (await env.DB.prepare(
-      `SELECT kind, status, summary, because, detail, created_at
-       FROM crm_autopilot_actions
-       WHERE account_id = ? AND (created_at > ? OR status = 'awaiting')
-       ORDER BY created_at DESC LIMIT 80`,
+      `SELECT a.kind, a.status, a.summary, a.because, a.detail, a.created_at,
+              COALESCE(j.name, '') AS project
+       FROM crm_autopilot_actions a
+       LEFT JOIN crm_projects j ON j.id = a.project_id
+       WHERE a.account_id = ? AND (a.created_at > ? OR a.status = 'awaiting')
+       ORDER BY a.created_at DESC LIMIT 80`,
     ).bind(accountId, since).all<ActionRow>()).results ?? [];
 
     const awaiting = rows.filter(r => r.status === 'awaiting');
@@ -178,8 +206,7 @@ export async function runDigests(env: Env): Promise<DigestReport> {
 
     /* Stamped only now. Stamping before the send would lose a day's digest to
        a transient SMTP failure and never mention it again. */
-    await env.DB.prepare('UPDATE crm_autopilot SET last_digest_at = ?, updated_at = ? WHERE account_id = ?')
-      .bind(nowIso(), nowIso(), accountId).run();
+    await dataPut(env.DB, accountId, DIGEST_KEY, nowIso());
     report.sent++;
   }
 

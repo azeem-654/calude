@@ -71,8 +71,14 @@ function parse<T>(raw: string | null, fallback: T): T {
   try { return JSON.parse(raw) as T; } catch { return fallback; }
 }
 
+/** One project's worth of settings — what a turn of Autopilot runs on. */
 interface RunRow {
+  id: string;
   account_id: string;
+  /** The client this project speaks for. Empty means it cannot write yet. */
+  portfolio_id: string;
+  name: string;
+  objective: string;
   status: string;
   guardrails: string;
   last_planned_at: string | null;
@@ -288,10 +294,29 @@ async function contentFor(env: Env, accountId: string): Promise<Workspace['conte
 }
 
 /** What the writers need to know about the business. */
-async function brandFor(env: Env, accountId: string): Promise<Brand> {
-  const ob = parse<Record<string, string>>(await dataGet(env.DB, accountId, ONBOARDING_KEY), {});
-  const run = await env.DB.prepare('SELECT objective FROM crm_autopilot WHERE account_id = ?')
-    .bind(accountId).first<{ objective: string }>();
+/**
+ * The client this project writes for.
+ *
+ * Read from the project's own portfolio, not from the workspace's onboarding
+ * profile. That distinction is the whole point of projects: an agency's
+ * sub-account running work for a dental practice and a gym must not describe
+ * one in the other's words, and before this every writer read the single
+ * workspace profile and would have done exactly that.
+ *
+ * The workspace profile is still the fallback, for a project whose portfolio
+ * was deleted out from under it — better a slightly wrong voice than a blank
+ * one, and the board says when a portfolio is missing.
+ */
+async function brandFor(env: Env, accountId: string, run: RunRow): Promise<Brand> {
+  let ob: Record<string, string> = {};
+  if (run.portfolio_id) {
+    const row = await env.DB.prepare('SELECT profile FROM crm_portfolios WHERE id = ? AND account_id = ?')
+      .bind(run.portfolio_id, accountId).first<{ profile: string }>();
+    ob = parse<Record<string, string>>(row?.profile ?? '', {});
+  }
+  if (!ob.companyName) {
+    ob = { ...parse<Record<string, string>>(await dataGet(env.DB, accountId, ONBOARDING_KEY), {}), ...ob };
+  }
   return {
     companyName: ob.companyName ?? ob.businessName ?? '',
     industry: ob.industry ?? '',
@@ -300,7 +325,9 @@ async function brandFor(env: Env, accountId: string): Promise<Brand> {
     audience: ob.audience ?? ob.idealCustomer ?? '',
     tone: ob.brandVoice ?? ob.tone ?? '',
     website: ob.website ?? '',
-    objective: run?.objective ?? '',
+    /* The project's objective, not the workspace's — it is what this
+       particular push is trying to achieve. */
+    objective: run.objective ?? '',
   };
 }
 
@@ -335,23 +362,64 @@ async function poolFor(env: Env, accountId: string, run?: RunRow): Promise<Works
  * contacts" on top of yesterday's, and the queue would grow for ever while
  * nothing new was actually true.
  */
-async function planFor(env: Env, run: RunRow, report: AutopilotReport): Promise<void> {
+async function planFor(
+  env: Env, run: RunRow, report: AutopilotReport,
+  /*
+   * Workspace-scoped summaries already planned during *this run*, shared by
+   * every project in the workspace.
+   *
+   * A database check alone is not enough: each project plans and then executes
+   * before the next one plans, so a workspace play created by the first project
+   * and carried out in the same tick is neither pending nor awaiting by the
+   * time the second asks — and gets planned again. That is precisely how "send
+   * 3 paid orders to the supplier" appeared twice. This set is the memory the
+   * query cannot have.
+   */
+  plannedThisRun: Set<string>,
+): Promise<void> {
   const accountId = run.account_id;
   const ws = await readWorkspace(env, accountId, run);
   const planned = planNext(ws);
   if (!planned.length) return;
 
-  const openRows = await env.DB.prepare(
+  /*
+   * Two dedupe questions, because there are two kinds of fact.
+   *
+   * A project's own work — the blog post, the landing page, the sequence in
+   * this client's voice — is deduped within the project: two projects should
+   * each get one, and checking across them would silence the second.
+   *
+   * A fact about the workspace — its orders, contacts, deals, diary — is
+   * deduped across every project, because there is one set of those however
+   * many projects are running. Without this a workspace with two projects
+   * planned "send 3 paid orders to the supplier" twice, and the only thing
+   * between that and two parcels was a marker check further down.
+   */
+  const mine = await env.DB.prepare(
+    `SELECT summary FROM crm_autopilot_actions
+     WHERE account_id = ? AND project_id = ? AND status IN ('pending','awaiting')`,
+  ).bind(accountId, run.id).all<{ summary: string }>();
+  const openInProject = new Set((mine.results ?? []).map(r => r.summary));
+
+  const theirs = await env.DB.prepare(
     `SELECT summary FROM crm_autopilot_actions
      WHERE account_id = ? AND status IN ('pending','awaiting')`,
   ).bind(accountId).all<{ summary: string }>();
-  const open = new Set((openRows.results ?? []).map(r => r.summary));
+  const openInWorkspace = new Set([
+    ...(theirs.results ?? []).map(r => r.summary),
+    ...plannedThisRun,
+  ]);
 
   const guardrails = parse<Record<string, string>>(run.guardrails, {});
   const now = nowIso();
 
   for (const a of planned) {
-    if (open.has(a.summary)) continue;
+    const already = a.scope === 'workspace' ? openInWorkspace : openInProject;
+    if (already.has(a.summary)) continue;
+    already.add(a.summary);
+    /* Remembered for the rest of this run, so the next project in the same
+       workspace does not plan the same workspace fact again. */
+    if (a.scope === 'workspace') plannedThisRun.add(a.summary);
 
     /*
      * The guardrail decides whether this waits for a person.
@@ -380,10 +448,10 @@ async function planFor(env: Env, run: RunRow, report: AutopilotReport): Promise<
     const rowId = rid();
     await env.DB.prepare(
       `INSERT INTO crm_autopilot_actions
-       (id, account_id, kind, status, summary, because, counts, effect, due_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+       (id, account_id, project_id, kind, status, summary, because, counts, effect, due_at, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     ).bind(
-      rowId, accountId, a.kind, status, a.summary, a.because,
+      rowId, accountId, run.id, a.kind, status, a.summary, a.because,
       JSON.stringify(a.counts ?? {}),
       /* Its own column, not `detail`. `detail` is what happened, written at the
          end; putting both in one place meant approving an action erased what it
@@ -402,8 +470,8 @@ async function planFor(env: Env, run: RunRow, report: AutopilotReport): Promise<
     if (status === 'awaiting') report.awaiting++;
   }
 
-  await env.DB.prepare('UPDATE crm_autopilot SET last_planned_at = ?, status = ?, updated_at = ? WHERE account_id = ?')
-    .bind(now, run.status === 'learning' ? 'running' : run.status, now, accountId).run();
+  await env.DB.prepare('UPDATE crm_projects SET last_planned_at = ?, status = ?, updated_at = ? WHERE id = ?')
+    .bind(now, run.status === 'learning' ? 'running' : run.status, now, run.id).run();
 }
 
 /** Carry out one action. Returns what to record against it. */
@@ -411,6 +479,9 @@ async function carryOut(
   env: Env,
   accountId: string,
   effect: PlannedAction['effect'],
+  /* The project this is being done for. Everything written is stamped with it,
+     so a board can group the work and a link can come back to the right one. */
+  run: RunRow,
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
   if (effect.type === 'enrol') {
     const seqs = parse<Sequence[]>(await dataGet(env.DB, accountId, SEQ_KEY), []);
@@ -467,11 +538,11 @@ async function carryOut(
   }
 
   if (effect.type === 'pool_step') {
-    return carryOutPoolStep(env, accountId, effect);
+    return carryOutPoolStep(env, accountId, effect, run);
   }
 
   if (effect.type === 'write') {
-    return carryOutWrite(env, accountId, effect.what);
+    return carryOutWrite(env, accountId, effect.what, run);
   }
 
   if (effect.type === 'thank_buyers' || effect.type === 'chase_payment') {
@@ -755,11 +826,12 @@ async function carryOutPoolStep(
   env: Env,
   accountId: string,
   effect: { type: 'pool_step'; step: string; detail: string },
+  run: RunRow,
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
   const step = parse<{ count?: number; domain?: string; domains?: string[]; addresses?: number }>(effect.detail, {});
-  const run = await env.DB.prepare('SELECT purchase_mode FROM crm_autopilot WHERE account_id = ?')
-    .bind(accountId).first<{ purchase_mode: string }>();
-  const mode = run?.purchase_mode === 'managed' ? 'managed' : 'byo';
+  /* The project's own buying mode. Two projects in a workspace can legitimately
+     differ — one on the customer's registrar, one on ours. */
+  const mode = run.purchase_mode === 'managed' ? 'managed' : 'byo';
 
   if (effect.step === 'register_domain') {
     const reg = await credsForMode(env, accountId, 'registrar', mode);
@@ -901,15 +973,22 @@ async function carryOutWrite(
   env: Env,
   accountId: string,
   what: 'landing' | 'blog' | 'social' | 'short' | 'sequence',
+  run: RunRow,
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
   const apiKey = await loadAiKey(env, accountId);
   if (!apiKey) return { ok: false, detail: 'No AI key is set up, so nothing could be written. Add one in Settings → AI Engine.' };
-  const brand = await brandFor(env, accountId);
+  const brand = await brandFor(env, accountId, run);
   const now = nowIso();
 
   /* The stamp every generated record carries, so a list full of them can still
      be traced back to the run that made it. Matches src/types/provenance.ts. */
-  const source = { origin: 'autopilot', title: 'Autopilot', route: '/autopilot', at: now };
+  /* Stamped with the project, so a record can be traced back to the run that
+     made it *and* to the client it was written for — two projects in one
+     workspace produce work that otherwise looks identical in a list. */
+  const source = {
+    origin: 'autopilot', title: 'AI Autopilot', route: '/autopilot',
+    projectId: run.id, projectName: run.name, at: now,
+  };
 
   const push = async (key: string, row: Record<string, unknown>) => {
     const list = parse<Record<string, unknown>[]>(await dataGet(env.DB, accountId, key), []);
@@ -1034,19 +1113,22 @@ async function carryOutWrite(
 }
 
 /** Do what is due, oldest first, within the per-tick ceiling. */
-async function executeFor(env: Env, accountId: string, report: AutopilotReport): Promise<void> {
+async function executeFor(env: Env, run: RunRow, report: AutopilotReport): Promise<void> {
+  const accountId = run.account_id;
+  /* This project's queue only. The per-tick ceiling is per project too, so one
+     busy project cannot starve the others in the same workspace. */
   const rows = await env.DB.prepare(
     `SELECT id, effect FROM crm_autopilot_actions
-     WHERE account_id = ? AND status = 'pending'
+     WHERE account_id = ? AND project_id = ? AND status = 'pending'
        AND (due_at IS NULL OR due_at <= ?)
      ORDER BY created_at ASC LIMIT ?`,
-  ).bind(accountId, nowIso(), MAX_ACTIONS_PER_TICK).all<{ id: string; effect: string }>();
+  ).bind(accountId, run.id, nowIso(), MAX_ACTIONS_PER_TICK).all<{ id: string; effect: string }>();
 
   for (const row of rows.results ?? []) {
     const effect = parse<PlannedAction['effect']>(row.effect, { type: 'none' });
     let result: Awaited<ReturnType<typeof carryOut>>;
     try {
-      result = await carryOut(env, accountId, effect);
+      result = await carryOut(env, accountId, effect, run);
     } catch (e) {
       result = { ok: false, detail: e instanceof Error ? e.message : String(e) };
     }
@@ -1070,8 +1152,8 @@ async function executeFor(env: Env, accountId: string, report: AutopilotReport):
   }
 
   if ((rows.results ?? []).length) {
-    await env.DB.prepare('UPDATE crm_autopilot SET last_acted_at = ?, updated_at = ? WHERE account_id = ?')
-      .bind(nowIso(), nowIso(), accountId).run();
+    await env.DB.prepare('UPDATE crm_projects SET last_acted_at = ?, updated_at = ? WHERE id = ?')
+      .bind(nowIso(), nowIso(), run.id).run();
   }
 }
 
@@ -1081,30 +1163,78 @@ async function executeFor(env: Env, accountId: string, report: AutopilotReport):
  * Paused and off are both skipped, and the difference matters elsewhere: paused
  * keeps its plan and its queue so resuming picks up where it stopped.
  */
+/**
+ * Every project that is switched on, across every workspace.
+ *
+ * This used to be one row per workspace. A project is the unit now: an agency's
+ * sub-account can run "dental client acquisition" and "gym membership drive"
+ * side by side, each writing from its own client's portfolio and each with its
+ * own guardrails — somebody may let a long-standing client's project send
+ * without asking while a new one still waits for approval on everything.
+ */
 export async function runAutopilot(env: Env): Promise<AutopilotReport> {
   const report: AutopilotReport = { planned: 0, carried: 0, awaiting: 0, failed: 0, notes: [] };
 
   const { results } = await env.DB.prepare(
-    `SELECT account_id, status, guardrails, last_planned_at, purchase_mode, pool_target
-     FROM crm_autopilot WHERE status IN ('learning','running') LIMIT 200`,
+    `SELECT id, account_id, portfolio_id, name, objective, status, guardrails,
+            last_planned_at, purchase_mode, pool_target
+     FROM crm_projects WHERE status IN ('learning','running') LIMIT 400`,
   ).all<RunRow>();
+
+  /* One per workspace, for the length of this run. See planFor. */
+  const plannedThisRun = new Map<string, Set<string>>();
 
   for (const run of results ?? []) {
     try {
+      /*
+       * Nothing to write from.
+       *
+       * A project names the client it speaks for, and without one every writer
+       * would invent a business. Said once, as a held action, rather than
+       * producing copy about a company that does not exist.
+       */
+      if (!run.portfolio_id) {
+        await noteMissingPortfolio(env, run, report);
+        continue;
+      }
       const due = !run.last_planned_at
         || (Date.now() - new Date(run.last_planned_at).getTime()) >= PLAN_EVERY_MS;
-      if (due) await planFor(env, run, report);
-      await executeFor(env, run.account_id, report);
+      if (due) {
+        let seen = plannedThisRun.get(run.account_id);
+        if (!seen) { seen = new Set<string>(); plannedThisRun.set(run.account_id, seen); }
+        await planFor(env, run, report, seen);
+      }
+      await executeFor(env, run, report);
     } catch (e) {
-      /* One workspace's bad data must not stop Autopilot for everyone else —
+      /* One project's bad data must not stop Autopilot for everyone else —
          the same rule the send pass follows. */
       const msg = e instanceof Error ? e.message : String(e);
       report.failed++;
-      report.notes.push(`${run.account_id}: Autopilot's turn failed — ${msg.slice(0, 140)}`);
-      await env.DB.prepare('UPDATE crm_autopilot SET last_error = ?, updated_at = ? WHERE account_id = ?')
-        .bind(msg.slice(0, 400), nowIso(), run.account_id).run();
+      report.notes.push(`${run.account_id}/${run.name}: Autopilot's turn failed — ${msg.slice(0, 120)}`);
+      await env.DB.prepare('UPDATE crm_projects SET last_error = ?, updated_at = ? WHERE id = ?')
+        .bind(msg.slice(0, 400), nowIso(), run.id).run();
     }
   }
 
   return report;
+}
+
+/** Say it once, not once per tick. */
+async function noteMissingPortfolio(env: Env, run: RunRow, report: AutopilotReport): Promise<void> {
+  const summary = `"${run.name}" has no client portfolio, so there is nothing to write from`;
+  const open = await env.DB.prepare(
+    "SELECT 1 AS n FROM crm_autopilot_actions WHERE account_id = ? AND project_id = ? AND summary = ? AND status IN ('pending','awaiting','done')",
+  ).bind(run.account_id, run.id, summary).first();
+  if (open) return;
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT INTO crm_autopilot_actions
+     (id, account_id, project_id, kind, status, summary, because, counts, effect, due_at, created_at, acted_at)
+     VALUES (?,?,?,'error','done',?,?,'{}','{"type":"none"}',NULL,?,?)`,
+  ).bind(
+    rid(), run.account_id, run.id, summary,
+    'a project writes in the voice of one client, and none is attached to this one — pick or add a portfolio on the project',
+    now, now,
+  ).run();
+  report.planned++;
 }

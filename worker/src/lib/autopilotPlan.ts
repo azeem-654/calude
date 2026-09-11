@@ -110,6 +110,25 @@ export interface Pipeline { id: string; name: string; stages: { id: string; name
 export interface PlannedAction {
   /** Stable within a plan, so re-planning does not duplicate an open action. */
   key: string;
+  /**
+   * Whose fact this is about.
+   *
+   * `project` — true of one client's work: the blog post, the landing page, the
+   *   follow-up sequence written in their voice. Two projects in a workspace
+   *   should each get their own, and deduping across them would silence the
+   *   second.
+   *
+   * `workspace` — true of the workspace itself: its orders, its contacts, its
+   *   deals, its diary, its mailbox. There is one set of those however many
+   *   projects are running, so exactly one project plans them and the rest
+   *   leave them alone.
+   *
+   * Getting this wrong is not cosmetic. When every play ran per project, a
+   * workspace with two projects planned "send 3 paid orders to the supplier"
+   * twice — and the only thing standing between that and two parcels was a
+   * marker check further down. Scope is the fix; the markers are the net.
+   */
+  scope: 'project' | 'workspace';
   kind: 'create' | 'enrol' | 'send' | 'observe' | 'advance' | 'book' | 'error';
   summary: string;
   because: string;
@@ -193,6 +212,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (!canSend) {
     out.push({
       key: 'no-sender',
+      scope: 'workspace',
       kind: 'error',
       /* Only claims what is true. It used to say "cannot do anything yet",
          which stopped being true the moment it also queued the writing. */
@@ -212,6 +232,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (spends && !ws.pool.canBuy) {
       out.push({
         key: 'pool-cannot-buy',
+        scope: 'workspace',
         kind: 'error',
         summary: 'Autopilot cannot build your sending pool yet',
         because: ws.pool.mode === 'managed'
@@ -222,6 +243,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     } else {
       out.push({
         key: `pool:${step.type}`,
+        scope: 'workspace',
         /* Everything that spends money asks first, whichever mode is on. In
            bring-your-own it is the customer's registrar; in managed it is a
            line on their bill. Neither is something to do because a plan said
@@ -245,6 +267,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (c.funnels === 0 && c.websites === 0) {
       out.push({
         key: 'write-landing',
+        scope: 'project',
         kind: 'create',
         summary: 'Write a landing page for what you do',
         because: 'there is no website or funnel in this workspace, so every campaign would send people nowhere',
@@ -255,6 +278,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (c.blogPosts === 0) {
       out.push({
         key: 'write-blog',
+        scope: 'project',
         kind: 'create',
         summary: 'Write your first blog post',
         because: 'nothing has been published, and the pages that bring people in from a search are the ones that answer a question before they buy',
@@ -265,6 +289,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (c.socialPosts < 3) {
       out.push({
         key: 'write-social',
+        scope: 'project',
         kind: 'create',
         summary: 'Write a week of social posts',
         because: c.socialPosts === 0
@@ -277,6 +302,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (c.shorts === 0) {
       out.push({
         key: 'write-short',
+        scope: 'project',
         kind: 'create',
         summary: 'Write a script for a 30-second video',
         because: 'no short has been made, and a phone video is the cheapest thing this business can put in front of people',
@@ -301,6 +327,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = active[0];
       out.push({
         key: `enrol-new:${seq.id}`,
+        scope: 'workspace',
         kind: 'enrol',
         summary: `Start ${fresh.length} new contact${fresh.length === 1 ? '' : 's'} on "${seq.name}"`,
         because: `${fresh.length} contact${fresh.length === 1 ? ' was' : 's were'} added in the last two weeks and ${fresh.length === 1 ? 'has' : 'have'} never been contacted`,
@@ -325,6 +352,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (ws.content?.canWrite) {
       out.push({
         key: 'write-sequence',
+        scope: 'project',
         kind: 'create',
         summary: 'Write a follow-up sequence for new enquiries',
         because: `this workspace has ${ws.contacts.length} contact${ws.contacts.length === 1 ? '' : 's'} and no sequence with any steps in it, so nothing can be followed up`,
@@ -335,6 +363,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     } else {
       out.push({
         key: 'no-sequence',
+        scope: 'workspace',
         kind: 'observe',
         summary: 'There are contacts but no email sequence to put them in',
         because: `this workspace has ${ws.contacts.length} contact${ws.contacts.length === 1 ? '' : 's'} and no sequence with any steps in it, and no AI key to write one with`,
@@ -360,6 +389,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = textable[0];
       out.push({
         key: `enrol-sms:${seq.id}`,
+        scope: 'workspace',
         kind: 'enrol',
         summary: `Text ${phoneOnly.length} new lead${phoneOnly.length === 1 ? '' : 's'} on "${seq.name}"`,
         because: phoneOnly.length === 1
@@ -376,6 +406,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
          them, and without anywhere to put them it is. */
       out.push({
         key: 'no-sms-sequence',
+        scope: 'workspace',
         kind: 'observe',
         summary: `${phoneOnly.length} leads left a phone number and there is no text sequence to put them in`,
         because: 'they have no email address, so an email sequence cannot reach them — a sequence with a text step can',
@@ -394,6 +425,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (remindable.length) {
     out.push({
       key: 'remind-bookings',
+      scope: 'workspace',
       kind: 'send',
       summary: `Remind ${remindable.length} ${remindable.length === 1 ? 'person' : 'people'} about tomorrow's appointment`,
       because: remindable.length === 1
@@ -418,6 +450,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
        the outside this is indistinguishable from Autopilot not bothering. */
     out.push({
       key: 'cannot-remind',
+      scope: 'workspace',
       kind: 'observe',
       summary: `${due.length} appointment${due.length === 1 ? ' is' : 's are'} booked for tomorrow and cannot be reminded`,
       because: 'none of those guests has a contactable address on a channel this workspace has set up',
@@ -452,6 +485,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     const worth = stalled.reduce((n, d) => n + (Number(d.value) || 0), 0);
     out.push({
       key: 'stalled-deals',
+      scope: 'workspace',
       kind: 'observe',
       summary: `${stalled.length} deal${stalled.length === 1 ? '' : 's'} ${stalled.length === 1 ? 'has' : 'have'} not moved in two weeks`,
       because: worth > 0
@@ -476,6 +510,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (won.length && canSend) {
     out.push({
       key: 'ask-reviews',
+      scope: 'workspace',
       kind: 'create',
       summary: `Ask ${won.length} recent customer${won.length === 1 ? '' : 's'} for a review`,
       because: `${won.length} deal${won.length === 1 ? '' : 's'} closed as won in the last month and no review has been requested for ${won.length === 1 ? 'it' : 'any of them'}`,
@@ -496,6 +531,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = active[active.length - 1];
       out.push({
         key: `re-engage:${seq.id}`,
+        scope: 'workspace',
         kind: 'enrol',
         summary: `Re-engage ${quiet.length} contacts who have not heard from you in two months`,
         because: `${quiet.length} contacts were last contacted more than 60 days ago and are not in any sequence`,
@@ -520,6 +556,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unthanked.length;
       out.push({
         key: 'thank-buyers',
+        scope: 'workspace',
         kind: 'send',
         summary: `Tell ${n} buyer${n === 1 ? '' : 's'} their order came through`,
         because: n === 1
@@ -540,6 +577,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unpaid.length;
       out.push({
         key: 'chase-payment',
+        scope: 'workspace',
         kind: 'send',
         summary: `Send ${n} unpaid order${n === 1 ? '' : 's'} a fresh payment link`,
         because: n === 1
@@ -559,6 +597,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unfulfilled.length;
       out.push({
         key: 'draft-at-supplier',
+        scope: 'workspace',
         kind: 'create',
         summary: `Send ${n} paid order${n === 1 ? '' : 's'} to the supplier as ${n === 1 ? 'a draft' : 'drafts'}`,
         because: n === 1
@@ -576,6 +615,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (com.draftProducts > 0) {
       out.push({
         key: 'draft-products',
+        scope: 'workspace',
         kind: 'observe',
         summary: `${com.draftProducts} product${com.draftProducts === 1 ? ' is' : 's are'} still a draft`,
         because: com.draftProducts === 1

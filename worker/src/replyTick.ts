@@ -292,8 +292,12 @@ export async function runReplies(env: Env): Promise<ReplyReport> {
   const report: ReplyReport = { read: 0, replied: 0, drafted: 0, refused: 0, failed: 0, notes: [] };
 
   const { results } = await env.DB.prepare(
-    `SELECT a.account_id FROM crm_ai_config a
-     JOIN crm_autopilot p ON p.account_id = a.account_id
+    /* DISTINCT because the join is now one row per running *project*, and a
+       workspace with three of them would otherwise have its inbox polled three
+       times a tick — three times the IMAP connections and, worse, three
+       chances to answer the same message. */
+    `SELECT DISTINCT a.account_id FROM crm_ai_config a
+     JOIN crm_projects p ON p.account_id = a.account_id
      WHERE a.api_key != '' AND p.status = 'running' LIMIT 200`,
   ).all<{ account_id: string }>();
 
