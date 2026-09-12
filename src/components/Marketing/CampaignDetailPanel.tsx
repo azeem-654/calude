@@ -82,8 +82,27 @@ export default function CampaignDetailPanel({
    * actually addressed.
    */
   const STATUS_MAP: Record<string, string> = { leads: 'lead', customers: 'customer', prospects: 'prospect' };
+
+  /*
+   * Who it went to.
+   *
+   * A campaign launched since recipients were recorded knows, and says so. One
+   * launched before that has to be reconstructed from the segment name against
+   * today's contacts — which is a guess, and the panel labels it as one rather
+   * than presenting last month's send as though these were the people who got
+   * it.
+   *
+   * 'manual' has no status to match, so reconstruction would have returned the
+   * whole CRM. An empty list with an honest caption beats a wrong one.
+   */
+  const recorded = campaign.recipients ?? null;
   const targetStatus = STATUS_MAP[campaign.audience || 'all'];
-  const inAudience = targetStatus ? contacts.filter(c => c.status === targetStatus) : contacts;
+  const reconstructed = campaign.audience === 'manual'
+    ? []
+    : targetStatus ? contacts.filter(c => c.status === targetStatus) : contacts;
+  const inAudience: { id: string; name: string; email: string; status?: string }[] =
+    recorded ?? reconstructed;
+  const recipientTotal = campaign.recipientCount ?? inAudience.length;
 
   /* A campaign with a linked sequence is genuinely being tracked per contact
      by the enrollment engine — real status, not a guess. One that sent
@@ -234,7 +253,17 @@ export default function CampaignDetailPanel({
 
           {activeTab === 'steps' && (
             <div style={{ padding: '20px 22px' }}>
-              {campaign.type === 'sequence' && campaign.steps && campaign.steps.length > 0 ? (
+              {/*
+                Steps, not type.
+
+                This asked `campaign.type === 'sequence'`, so a campaign of type
+                'email' carrying three steps fell through to the single-body
+                branch below and showed only the first one — the customer opened
+                a three-email flow and saw one email with no sign the other two
+                existed. What decides whether there is a flow to draw is whether
+                there are steps.
+              */}
+              {campaign.steps && campaign.steps.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {campaign.steps.map((step, idx) => {
                     const isExpanded = expandedStep === step.id;
@@ -322,8 +351,14 @@ export default function CampaignDetailPanel({
           {activeTab === 'contacts' && (
             <div style={{ padding: '20px 22px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>Enrolled contacts</h3>
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>{audienceContacts.length} shown of {contacts.length}</span>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                  {recorded ? 'Who this went to' : 'Who is in this segment now'}
+                </h3>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  {audienceContacts.length === recipientTotal
+                    ? `${recipientTotal}`
+                    : `${audienceContacts.length} shown of ${recipientTotal}`}
+                </span>
               </div>
               <div style={{ backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', padding: '9px 14px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
@@ -337,7 +372,14 @@ export default function CampaignDetailPanel({
                     <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', padding: '10px 14px', borderBottom: '1px solid #f9fafb', alignItems: 'center' }}>
                       <div>
                         <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>{c.name}</p>
-                        <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{c.phone}</p>
+                        {/* A recorded recipient stores only what identifies
+                            them; anything else comes from the live contact if
+                            they are still in the CRM, and is simply absent if
+                            they are not. A campaign's record must not depend on
+                            the contact still existing. */}
+                        <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>
+                          {contacts.find(x => x.id === c.id)?.phone ?? ''}
+                        </p>
                       </div>
                       <p style={{ fontSize: 12, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</p>
                       <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, fontWeight: 600, backgroundColor: cs.bg, color: cs.color, justifySelf: 'start', textTransform: 'capitalize' }}>

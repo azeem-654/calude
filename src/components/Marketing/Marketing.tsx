@@ -141,7 +141,7 @@ function CampaignsTab() {
           const sc = campaignStatusColors[campaign.status] || campaignStatusColors.draft;
           const tc = typeColors[campaign.type];
           return (
-            <div key={campaign.id} onClick={() => setSelectedCampaign(campaign)}
+            <div key={campaign.id} data-campaign-card onClick={() => setSelectedCampaign(campaign)}
               style={{ backgroundColor: 'white', borderRadius: '18px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#d5d8dd'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
@@ -318,11 +318,36 @@ export default function Marketing() {
    * localStorage, where every other credential in this app is encrypted on the
    * server and never returned to a browser.
    */
-  const tabs: { id: TabId; label: string; icon: React.ReactElement; badge?: number }[] = [
-    { id: 'campaigns',   label: 'Campaigns',  icon: <Mail size={15} /> },
-    { id: 'sequences',   label: 'Sequences',  icon: <Zap size={15} />, badge: activeSeqCount || undefined },
-    { id: 'automations', label: 'Automations', icon: <GitBranch size={15} />, badge: activeAutoCount || undefined },
-    { id: 'import',      label: 'Import a list', icon: <Upload size={15} /> },
+  /**
+   * What each tab actually is.
+   *
+   * "Campaigns", "Sequences" and "Automations" are three words for things that
+   * all send email, and nothing on the screen said which to reach for — so the
+   * honest answer is to put the difference where somebody looking at the words
+   * will find it, rather than expecting them to work it out by opening all
+   * three.
+   *
+   * The distinction that matters is *what starts it*: a campaign is sent to a
+   * list you choose, a sequence starts when somebody is put into it, an
+   * automation starts when something happens.
+   */
+  const tabs: { id: TabId; label: string; icon: React.ReactElement; badge?: number; hint: string }[] = [
+    {
+      id: 'campaigns', label: 'Campaigns', icon: <Mail size={15} />,
+      hint: 'One send, to a list you pick. “Everyone who is a lead, this Tuesday.” You choose who and when.',
+    },
+    {
+      id: 'sequences', label: 'Sequences', icon: <Zap size={15} />, badge: activeSeqCount || undefined,
+      hint: 'A run of emails spaced over days, starting whenever somebody is put into it — so two people who join a week apart each get email one first.',
+    },
+    {
+      id: 'automations', label: 'Automations', icon: <GitBranch size={15} />, badge: activeAutoCount || undefined,
+      hint: 'A rule that waits for something to happen — a form filled in, a tag added — and then acts. It can branch, wait, tag and assign, not only send.',
+    },
+    {
+      id: 'import', label: 'Import a list', icon: <Upload size={15} />,
+      hint: 'Bring contacts in from a spreadsheet. They become real contacts you can use anywhere, not just here.',
+    },
   ];
 
   return (
@@ -335,6 +360,7 @@ export default function Marketing() {
           const isActive = activeTab === tab.id;
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id}
+              className="mkt-tab" data-hint={tab.hint}
               style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 16px', border: 'none', borderBottom: `2px solid ${isActive ? '#17191c' : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: isActive ? 600 : 500, color: isActive ? '#0f172a' : '#64748b', transition: 'all 0.15s', whiteSpace: 'nowrap', marginBottom: '-1px' }}
               onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#0f172a'; }}
               onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = '#64748b'; }}>

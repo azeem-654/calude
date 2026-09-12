@@ -78,6 +78,17 @@ interface WizardState {
   steps: WizardStep[];
 }
 
+/**
+ * How many recipients a campaign record keeps by name.
+ *
+ * Every campaign lives in localStorage, which is a few megabytes for the whole
+ * workspace — so a 40,000-address send cannot store its list, and the panel
+ * showing 500 of them is no less useful than showing 40,000 nobody will
+ * scroll. `recipientCount` carries the real total, so the number is never the
+ * truncated one.
+ */
+const RECIPIENT_CAP = 500;
+
 /* ─── Constants ─── */
 const GOALS = [
   { id: 'announce', label: 'Product Launch', icon: '🚀', desc: 'Announce a new product or feature' },
@@ -1837,6 +1848,19 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
   useEscapeKey(true, onClose);
   const { addSequence, updateCampaign } = useApp();
   const [step, setStep] = useState(1);
+  /**
+   * How this campaign is being written.
+   *
+   * The wizard went straight to the brief and then, on step 2, called the AI
+   * whether or not that was what somebody wanted — so "start from a template"
+   * was not an option at the point where a person decides, only a button buried
+   * inside the editor afterwards. Asked once, at the front.
+   *
+   * `null` is "not asked yet". Editing an existing campaign skips it: the
+   * content is already there and the question is meaningless.
+   */
+  const [mode, setMode] = useState<'ai' | 'template' | null>(editCampaign ? 'ai' : null);
+  const [pickingTemplate, setPickingTemplate] = useState(false);
   const [state, setState] = useState<WizardState>(() => {
     if (editCampaign) {
       const steps = editCampaign.steps?.length
@@ -1911,6 +1935,19 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     return '';
   };
 
+  /** Turn a chosen template's HTML into the campaign's first email. */
+  const startFromTemplate = (html: string) => {
+    update({
+      steps: [{
+        id: `step-${Date.now()}-0`,
+        day: 0, waitUnit: 'days', subject: state.subject || '', subjectB: '',
+        abTest: false, body: html, condition: 'Always',
+      }],
+    });
+    setPickingTemplate(false);
+    setMode('template');
+  };
+
   const renderStep = () => {
     if (step === 1) return <StepBrief state={state} onChange={update} />;
     if (step === 2) return <StepAIWorkflow state={state} onChange={update} />;
@@ -1939,6 +1976,10 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       opened: 0, clicked: 0, replied: 0, bounced: 0, unsubscribed: 0,
       createdAt: new Date().toISOString().split('T')[0],
       scheduledAt: scheduledAt || undefined,
+      /* Who it actually went to, recorded now rather than worked out later
+         from a segment name against contacts that will have changed. */
+      recipients: audience.slice(0, RECIPIENT_CAP).map(c => ({ id: c.id, name: c.name, email: c.email })),
+      recipientCount: audience.length,
     });
 
     /**
@@ -2026,6 +2067,55 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}><X size={20} color="#94a3b8" /></button>
         </div>
 
+        {/* ── The first question: who writes it ── */}
+        {mode === null ? (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '34px 26px', display: 'grid', placeContent: 'center' }}>
+            <div style={{ maxWidth: 620, margin: '0 auto', textAlign: 'center' }}>
+              <h2 style={{ fontSize: 21, fontWeight: 800, color: '#0f172a', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+                How would you like to write it?
+              </h2>
+              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 26px', lineHeight: 1.6 }}>
+                Either way you can edit every word before it goes anywhere.
+              </p>
+
+              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))' }}>
+                <button onClick={() => setMode('ai')} className="press"
+                  style={{ textAlign: 'left', padding: 20, borderRadius: 16, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#4f46e5,#9333ea)', color: '#fff', marginBottom: 12 }}>
+                    <Sparkles size={17} />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 5 }}>Write it with AI</div>
+                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
+                    Say what the campaign is about and it writes the emails from your business, in your
+                    voice. Best when you know the message but not the words.
+                  </div>
+                </button>
+
+                <button onClick={() => setPickingTemplate(true)} className="press"
+                  style={{ textAlign: 'left', padding: 20, borderRadius: 16, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: '#17191c', color: '#fff', marginBottom: 12 }}>
+                    <LayoutTemplate size={17} />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 5 }}>Start from a template</div>
+                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
+                    A designed layout you fill in yourself. Best when you know exactly what you want to
+                    say and want it to look right.
+                  </div>
+                </button>
+              </div>
+
+              <button onClick={() => setMode('template')}
+                style={{ marginTop: 20, border: 'none', background: 'none', color: '#64748b', fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
+                Start from a blank email instead
+              </button>
+            </div>
+
+            {pickingTemplate && (
+              <EmailTemplateGallery onApply={startFromTemplate} onClose={() => setPickingTemplate(false)} />
+            )}
+          </div>
+        ) : (
+        <>
         {/* Body */}
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
           <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
@@ -2118,6 +2208,8 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

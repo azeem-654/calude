@@ -11,30 +11,6 @@ export interface EmailTemplate {
   html: string;
 }
 
-const btn = (text: string, color = '#6366f1') =>
-  `<div style="text-align:center;margin:28px 0"><a href="#" style="display:inline-block;padding:14px 36px;background:${color};color:#ffffff;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.3px">${text} →</a></div>`;
-
-const wrap = (inner: string, bg = '#f8fafc') =>
-  `<div style="background:${bg};padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-  <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,0.08)">
-    ${inner}
-  </div>
-</div>`;
-
-const header = (title: string, sub: string, bg: string, color = '#fff') =>
-  `<div style="background:${bg};padding:40px 40px 32px;text-align:center">
-    <h1 style="color:${color};font-size:28px;font-weight:800;margin:0 0 8px;line-height:1.2">${title}</h1>
-    <p style="color:${color === '#fff' ? 'rgba(255,255,255,0.85)' : '#64748b'};font-size:15px;margin:0;line-height:1.5">${sub}</p>
-  </div>`;
-
-const body = (content: string) =>
-  `<div style="padding:32px 40px;font-size:14px;line-height:1.8;color:#374151">${content}</div>`;
-
-const footer = (unsubColor = '#94a3b8') =>
-  `<div style="padding:20px 40px;border-top:1px solid #f1f5f9;text-align:center">
-    <p style="color:${unsubColor};font-size:11px;margin:0">You received this because you're subscribed · <a href="{{unsubscribe}}" style="color:${unsubColor}">Unsubscribe</a></p>
-  </div>`;
-
 
 /* ── A second set, built differently ────────────────────────────────────────
  *
@@ -246,207 +222,258 @@ const MODERN_TEMPLATES: EmailTemplate[] = [
   },
 ];
 
-export const CLASSIC_TEMPLATES: EmailTemplate[] = [
-  /* ── Welcome ── */
+/*
+ * The original twelve templates stood here and have been removed.
+ *
+ * They were all one email — a gradient banner, a white card on grey, a centred
+ * pill button, bullets opening with a tick emoji — and, more to the point, they
+ * shipped with thirty-nine bracketed placeholders in them: "[Product Name]",
+ * "[Describe the key benefit, not the feature]", "[Your Name]". A draft that
+ * goes out with the brackets still in is the single most common way these are
+ * sent wrong, and it is not hypothetical — the campaign wizard's old string
+ * templates did exactly that, which is what started this work.
+ *
+ * The Modern set and the occasion library above replace them: twenty-four
+ * templates, every one written through, none containing a placeholder.
+ */
+
+/* ── A working library ──────────────────────────────────────────────────────
+ *
+ * Twenty was thin. The sets people expect — ActiveCampaign, Mailchimp, Klaviyo,
+ * Campaign Monitor — are not thin because they have a hundred *designs*; they
+ * have a hundred **occasions**. Somebody opening a template picker is not
+ * asking "which layout?", they are asking "what do I send when a customer has
+ * not ordered in six months?" — and the layout is the least of it.
+ *
+ * So these are grouped by the moment they are for, and every one is written
+ * through rather than left as a shell. Two rules held throughout:
+ *
+ *  - **No bracketed placeholders.** A draft that ships with "[Your Name]" in it
+ *    is the most common way these go out wrong, and it is not a hypothetical:
+ *    the campaign wizard's old string templates did exactly that.
+ *  - **Nothing invented that a business would have to stand behind.** No
+ *    fabricated statistics, no "trusted by 10,000 companies", no awards. Where
+ *    a specific belongs, the sentence is written so the gap is obvious and
+ *    natural to fill.
+ */
+
+const LIBRARY: EmailTemplate[] = [
+  /* ── Getting started ── */
   {
-    id: 'welcome-warm',
-    name: 'Warm Welcome',
-    category: 'Welcome',
-    preview: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-    html: wrap(
-      header('Welcome, {{firstName}}! 🎉', "We're so glad you're here.", 'linear-gradient(135deg,#6366f1,#8b5cf6)') +
-      body(`<p>Hi {{firstName}},</p><p>Thank you for joining us! We're thrilled to have you on board and can't wait to show you everything we've built for you.</p><p>Here's what to expect:</p><ul style="padding-left:20px"><li style="margin-bottom:8px">✅ <strong>Personalized experience</strong> — tailored just for you</li><li style="margin-bottom:8px">✅ <strong>Expert support</strong> — we're here whenever you need us</li><li style="margin-bottom:8px">✅ <strong>Exclusive updates</strong> — you'll be first to know</li></ul>` +
-        btn('Get Started →', '#6366f1') +
-        `<p style="color:#64748b;font-size:13px">Questions? Just reply to this email — a real human reads every message.</p><p>Warmly,<br/><strong>The Team</strong></p>`) +
-      footer(),
+    id: 'lib-onboard-1', name: 'First steps', category: 'Onboarding', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('You are set up. Here is the shortest path to getting something useful out of this today.') +
+      `<ol style="margin:0 0 18px;padding-left:20px">
+         <li style="font-size:15px;line-height:1.7;color:#2b2b2b;margin-bottom:9px"><strong>Add what you sell.</strong> Two minutes. Nothing else works properly until this is in.</li>
+         <li style="font-size:15px;line-height:1.7;color:#2b2b2b;margin-bottom:9px"><strong>Bring in your contacts.</strong> A spreadsheet is fine.</li>
+         <li style="font-size:15px;line-height:1.7;color:#2b2b2b"><strong>Send one thing.</strong> Anything. The first send is the hard one.</li>
+       </ol>` +
+      textLink('Pick up where you left off') +
+      signoff('Reply to this if you get stuck — it comes straight to us.'),
     ),
   },
   {
-    id: 'welcome-minimal',
-    name: 'Clean Welcome',
-    category: 'Welcome',
-    preview: '#0f172a',
-    html: wrap(
-      `<div style="padding:40px 40px 24px;text-align:center"><div style="width:56px;height:56px;border-radius:14px;background:#0f172a;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px"><span style="font-size:28px">👋</span></div><h1 style="color:#0f172a;font-size:26px;font-weight:800;margin:0 0 6px">Hi, {{firstName}}</h1><p style="color:#64748b;font-size:15px;margin:0">Your account is ready.</p></div>` +
-      body(`<p>We've been expecting you.</p><p>Your account is all set up and ready to go. Here's your quick-start checklist:</p><div style="background:#f8fafc;border-radius:10px;padding:20px 24px;margin:20px 0"><p style="margin:0 0 10px;font-weight:700;font-size:13px;color:#0f172a;text-transform:uppercase;letter-spacing:0.04em">Getting started</p><div style="display:flex;gap:10px;margin-bottom:10px;align-items:center"><div style="width:20px;height:20px;border-radius:50%;background:#6366f1;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div><span style="font-size:13px;color:#374151">Complete your profile</span></div><div style="display:flex;gap:10px;margin-bottom:10px;align-items:center"><div style="width:20px;height:20px;border-radius:50%;background:#6366f1;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</div><span style="font-size:13px;color:#374151">Explore the dashboard</span></div><div style="display:flex;gap:10px;align-items:center"><div style="width:20px;height:20px;border-radius:50%;background:#6366f1;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</div><span style="font-size:13px;color:#374151">Invite your team</span></div></div>` +
-        btn('Open Dashboard', '#0f172a') +
-        `<p>Talk soon,<br/><strong>The Team</strong></p>`) +
-      footer(),
+    id: 'lib-onboard-2', name: 'One feature', category: 'Onboarding', preview: '#f7f7f5',
+    html: letter(
+      `<p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8a8a8a">Day three</p>
+       <h1 style="margin:0 0 18px;font-size:24px;font-weight:800;line-height:1.25;color:#17191c">The one thing most people miss</h1>` +
+      para('Hi {{firstName}},') +
+      para('You can set a follow-up to send itself. Most people never find it, and it is the difference between a list you own and a list you occasionally remember to write to.') +
+      para('It takes about a minute to set up and then runs without you.') +
+      textLink('Set up a follow-up') +
+      signoff('That is the whole email.'),
+      '#f7f7f5',
     ),
   },
 
-  /* ── Promotional ── */
+  /* ── Winning the work ── */
   {
-    id: 'promo-flash',
-    name: 'Flash Sale',
-    category: 'Promotional',
-    preview: 'linear-gradient(135deg,#ef4444,#f97316)',
-    html: wrap(
-      `<div style="background:linear-gradient(135deg,#ef4444,#f97316);padding:36px 40px;text-align:center"><p style="color:rgba(255,255,255,0.9);font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 10px">Limited time offer</p><h1 style="color:#fff;font-size:48px;font-weight:900;margin:0;line-height:1">50% OFF</h1><p style="color:rgba(255,255,255,0.9);font-size:18px;margin:8px 0 0">Ends in 24 hours, {{firstName}}</p></div>` +
-      body(`<p style="text-align:center;font-size:16px;color:#0f172a">This is the deal you've been waiting for.</p><div style="background:#fff9f0;border:2px dashed #f97316;border-radius:12px;padding:20px;text-align:center;margin:20px 0"><p style="font-size:13px;color:#64748b;margin:0 0 8px">Use code at checkout</p><p style="font-size:28px;font-weight:900;color:#ea580c;letter-spacing:0.1em;margin:0">SAVE50</p></div><p>Don't let this slip by — here's what you get:</p><ul style="padding-left:20px"><li style="margin-bottom:8px">Everything included, nothing held back</li><li style="margin-bottom:8px">Cancel anytime, zero risk</li><li style="margin-bottom:8px">Priority support included</li></ul>` +
-        btn('Claim Your 50% Off', '#ef4444') +
-        `<p style="text-align:center;color:#94a3b8;font-size:12px">Offer expires in 24 hours. No extensions.</p>`) +
-      footer(),
+    id: 'lib-quote', name: 'After a quote', category: 'Sales', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('I sent a price over last week and have not heard back, which is completely normal — most people are getting two or three quotes and it takes time.') +
+      para('Two things worth knowing while you decide. The price holds for thirty days. And if the timing is the problem rather than the number, say so — we can usually work around a date.') +
+      textLink('Ask me anything about it') +
+      signoff('No rush either way.'),
     ),
   },
   {
-    id: 'promo-launch',
-    name: 'Product Launch',
-    category: 'Promotional',
-    preview: 'linear-gradient(135deg,#0ea5e9,#6366f1)',
-    html: wrap(
-      header('🚀 Introducing [Product Name]', 'The solution you\'ve been waiting for is finally here.', 'linear-gradient(135deg,#0ea5e9,#6366f1)') +
-      body(`<p>Hi {{firstName}},</p><p>Today is the day. After months of building, testing, and refining — we're ready to share <strong>[Product Name]</strong> with the world.</p><div style="background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 10px 10px 0;padding:16px 20px;margin:20px 0"><p style="margin:0;font-size:14px;font-weight:600;color:#0c4a6e">"[A compelling quote about the product from a beta user or key insight]"</p></div><p><strong>What makes this different:</strong></p><ul style="padding-left:20px"><li style="margin-bottom:8px"><strong>Feature 1</strong> — [Describe the key benefit, not the feature]</li><li style="margin-bottom:8px"><strong>Feature 2</strong> — [How this saves time / money / frustration]</li><li style="margin-bottom:8px"><strong>Feature 3</strong> — [The thing competitors can't do]</li></ul>` +
-        btn('See it in Action', '#0ea5e9') +
-        `<p>We're launching with early-bird pricing — don't wait.<br/><br/>Best,<br/><strong>[Your Name]</strong></p>`) +
-      footer(),
-    ),
-  },
-
-  /* ── Newsletter ── */
-  {
-    id: 'newsletter-digest',
-    name: 'Weekly Digest',
-    category: 'Newsletter',
-    preview: '#1e293b',
-    html: wrap(
-      `<div style="background:#1e293b;padding:24px 40px;display:flex;justify-content:space-between;align-items:center"><span style="color:#fff;font-size:18px;font-weight:800">[Your Brand]</span><span style="color:#94a3b8;font-size:12px">Week of [Date]</span></div>` +
-      body(`<h2 style="color:#0f172a;font-size:22px;font-weight:700;margin:0 0 4px">This Week's Highlights</h2><p style="color:#64748b;font-size:13px;margin:0 0 24px">The best of [your niche], curated for you.</p>` +
-        ['📌 Story 1 Title', '📌 Story 2 Title', '📌 Story 3 Title'].map(title =>
-          `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:18px 20px;margin-bottom:14px"><h3 style="color:#0f172a;font-size:15px;font-weight:700;margin:0 0 6px">${title}</h3><p style="color:#64748b;font-size:13px;margin:0 0 10px">A short description of the story and why it matters to your audience. Keep it to 2-3 sentences max.</p><a href="#" style="color:#6366f1;font-size:12px;font-weight:600;text-decoration:none">Read more →</a></div>`
-        ).join('') +
-        `<div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:10px;padding:20px 24px;text-align:center;margin:20px 0"><p style="color:rgba(255,255,255,0.9);font-size:13px;margin:0 0 6px">Know someone who'd love this?</p><p style="color:#fff;font-size:15px;font-weight:700;margin:0">Share the newsletter →</p></div>`) +
-      footer(),
-      '#f1f5f9',
+    id: 'lib-close', name: 'Closing the file', category: 'Sales', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('Last one from me about this, and then I will leave you alone.') +
+      para('If it is still something you want, reply with a word and I will pick it back up. If not, that is a perfectly good answer and I will close the file.') +
+      signoff('Either way, thanks for considering us.'),
     ),
   },
   {
-    id: 'newsletter-tips',
-    name: 'Tips & Insights',
-    category: 'Newsletter',
-    preview: 'linear-gradient(135deg,#10b981,#0ea5e9)',
-    html: wrap(
-      header('💡 3 Things Worth Knowing This Week', 'Quick insights to help you grow.', 'linear-gradient(135deg,#10b981,#0ea5e9)') +
-      body(`<p>Hi {{firstName}},</p><p>Here are this week's three most useful things I found:</p>` +
-        [
-          { num: '01', title: 'Tip #1 Title', content: 'Describe your first insight here. Keep it practical and actionable — one thing they can do right now.' },
-          { num: '02', title: 'Tip #2 Title', content: 'Your second insight. Use data, examples, or a story to make it concrete.' },
-          { num: '03', title: 'Tip #3 Title', content: 'Your third insight. End with why this matters for your reader specifically.' },
-        ].map(t =>
-          `<div style="display:flex;gap:16px;margin-bottom:24px;align-items:flex-start"><div style="font-size:28px;font-weight:900;color:#e2e8f0;min-width:40px;line-height:1">${t.num}</div><div><h3 style="margin:0 0 4px;font-size:15px;font-weight:700;color:#0f172a">${t.title}</h3><p style="margin:0;font-size:13px;color:#64748b;line-height:1.7">${t.content}</p></div></div>`
-        ).join('') +
-        btn('See All Tips', '#10b981') +
-        `<p>Until next week,<br/><strong>[Your Name]</strong></p>`) +
-      footer(),
+    id: 'lib-referral', name: 'Asking for a referral', category: 'Sales', preview: '#faf8f4',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('You said something kind when we finished the work, and I have been meaning to ask a favour on the back of it.') +
+      para('Most of our work comes from people passing our name on. If anybody you know is about to need what we did for you, sending them this email is genuinely the most useful thing you could do for us.') +
+      para('And if not, no awkwardness — this is the only time I will ask.') +
+      signoff('Thank you either way.'),
+      '#faf8f4',
     ),
   },
 
-  /* ── Follow-up ── */
+  /* ── Keeping them ── */
   {
-    id: 'followup-gentle',
-    name: 'Gentle Follow-up',
-    category: 'Follow-up',
-    preview: '#f59e0b',
-    html: wrap(
-      `<div style="padding:32px 40px 0"><h2 style="color:#0f172a;font-size:22px;font-weight:700;margin:0">Just checking in, {{firstName}}</h2></div>` +
-      body(`<p>I wanted to follow up on my last message about <strong>[Topic]</strong>.</p><p>Life gets busy — totally get it. I just wanted to make sure this didn't get buried.</p><div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;padding:16px 20px;margin:20px 0"><p style="margin:0;font-size:14px;color:#78350f"><strong>Quick reminder:</strong> [One sentence on the value or opportunity]</p></div><p>If now's not the right time, just let me know and I'll check back in later. No pressure.</p>` +
-        btn('Pick Up Where We Left Off', '#f59e0b') +
-        `<p>Talk soon,<br/><strong>[Your Name]</strong></p>`) +
-      footer(),
+    id: 'lib-winback', name: 'It has been a while', category: 'Re-engagement', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('It has been about six months since we last did anything for you, which is usually when things start needing looking at again.') +
+      para('No pitch. If everything is fine, ignore this and I will check in again next year. If something has started making a noise, you know where we are.') +
+      textLink('Book something in') +
+      signoff('Hope you are well.'),
     ),
   },
   {
-    id: 'followup-demo',
-    name: 'Demo / Call Request',
-    category: 'Follow-up',
-    preview: '#6366f1',
-    html: wrap(
-      `<div style="padding:32px 40px 0"><h2 style="color:#0f172a;font-size:22px;font-weight:700;margin:0 0 4px">Ready for a quick call, {{firstName}}?</h2><p style="color:#64748b;font-size:14px;margin:0">15 minutes. No pressure. Huge value.</p></div>` +
-      body(`<p>Hi {{firstName}},</p><p>I'd love to show you exactly how <strong>[Product/Service]</strong> could help with [specific challenge].</p><p>Here's what we'll cover in 15 minutes:</p><ul style="padding-left:20px"><li style="margin-bottom:8px">Your current process and where the gaps are</li><li style="margin-bottom:8px">How [Product] solves [specific problem]</li><li style="margin-bottom:8px">Real results from companies like yours</li></ul><div style="background:#f5f3ff;border-radius:12px;padding:20px 24px;text-align:center;margin:20px 0"><p style="color:#6d28d9;font-size:14px;font-weight:600;margin:0 0 4px">Book a 15-minute call</p><p style="color:#8b5cf6;font-size:12px;margin:0">Choose a time that works for you</p></div>` +
-        btn('Book My Spot', '#6366f1') +
-        `<p>Or just reply with a day and time that works — I'll make it happen.<br/><br/>Best,<br/><strong>[Your Name]</strong></p>`) +
-      footer(),
+    id: 'lib-lastchance', name: 'Before we stop emailing', category: 'Re-engagement', preview: '#fffaf0',
+    html: letter(
+      `<h1 style="margin:0 0 18px;font-size:22px;font-weight:700;line-height:1.3;color:#17191c">Shall we stop emailing you?</h1>` +
+      para('Hi {{firstName}} — you have not opened anything from us in a long while, and there is no point cluttering your inbox.') +
+      para('If you would like to keep hearing from us, click below and nothing changes. If you do nothing, we will take you off the list next month and that will be that.') +
+      textLink('Keep me on the list', '#b45309') +
+      signoff('No hard feelings whichever way.'),
+      '#fffaf0',
     ),
   },
 
-  /* ── Re-engagement ── */
+  /* ── Selling something ── */
   {
-    id: 'reengagement-miss',
-    name: 'We Miss You',
-    category: 'Re-engagement',
-    preview: 'linear-gradient(135deg,#ec4899,#8b5cf6)',
-    html: wrap(
-      header('We miss you, {{firstName}} 💌', "It's been a while. Let's catch up.", 'linear-gradient(135deg,#ec4899,#8b5cf6)') +
-      body(`<p>Hi {{firstName}},</p><p>We noticed you haven't been around lately, and we genuinely miss you.</p><p>A lot has changed since you last visited:</p><ul style="padding-left:20px"><li style="margin-bottom:8px">🆕 [New Feature 1] — [Brief description]</li><li style="margin-bottom:8px">🆕 [New Feature 2] — [Brief description]</li><li style="margin-bottom:8px">📈 [Improvement] — [Result or benefit]</li></ul><div style="background:#fdf2f8;border-radius:12px;padding:20px 24px;text-align:center;margin:20px 0"><p style="font-size:15px;font-weight:700;color:#be185d;margin:0 0 4px">We've prepared something special for your return</p><p style="font-size:13px;color:#9d174d;margin:0">[Describe the offer or incentive]</p></div>` +
-        btn('Come Back →', '#ec4899') +
-        `<p>We hope to see you soon.<br/><br/>Warmly,<br/><strong>[Your Name]</strong></p>`) +
-      footer(),
+    id: 'lib-launch', name: 'Something new', category: 'Announcement', preview: '#0f1115',
+    html: letter(
+      `<p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#e8eaee">Hi {{firstName}},</p>
+       <h1 style="margin:0 0 18px;font-size:30px;font-weight:800;line-height:1.15;letter-spacing:-0.03em;color:#ffffff">We are doing Saturdays now</h1>
+       <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#c3c9d4">Eight until one, every Saturday from the fourth. Same rate as a weekday, no callout charge.</p>
+       <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#c3c9d4">We have been asked for this for years and have finally got the staff for it. Weekday slots are unchanged.</p>
+       <p style="margin:28px 0"><a href="#" style="display:inline-block;padding:13px 26px;background:#ffffff;color:#0f1115;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px">Book a Saturday</a></p>
+       <div style="margin-top:34px;padding-top:18px;border-top:1px solid #2a303a">
+         <p style="margin:0;font-size:12px;line-height:1.6;color:#7b8494"><a href="{{unsubscribe}}" style="color:#7b8494">Unsubscribe</a> and you will not hear from us again.</p>
+       </div>`,
+      '#0f1115',
     ),
   },
   {
-    id: 'reengagement-offer',
-    name: 'Win-Back Offer',
-    category: 'Re-engagement',
-    preview: '#0f172a',
-    html: wrap(
-      `<div style="background:#0f172a;padding:40px;text-align:center"><h1 style="color:#fff;font-size:28px;font-weight:800;margin:0 0 8px">We want you back, {{firstName}}</h1><p style="color:#94a3b8;font-size:14px;margin:0">Here's a little something to make it worth your while.</p></div>` +
-      body(`<p style="text-align:center;font-size:16px;color:#0f172a">As a valued member, we're offering you:</p><div style="border:2px solid #0f172a;border-radius:16px;padding:24px;text-align:center;margin:20px 0"><p style="font-size:36px;font-weight:900;color:#0f172a;margin:0">30% OFF</p><p style="color:#64748b;font-size:13px;margin:6px 0 0">your next [purchase/subscription/order]</p></div><p style="text-align:center;color:#64748b;font-size:13px">Use code <strong style="color:#0f172a">COMEBACK30</strong> at checkout. Valid for 7 days only.</p>` +
-        btn('Claim My 30% Off', '#0f172a') +
-        `<p style="text-align:center;color:#94a3b8;font-size:12px">Offer expires in 7 days. Cannot be combined with other offers.</p>`) +
-      footer('#64748b'),
-    ),
-  },
-
-  /* ── Announcement ── */
-  {
-    id: 'announce-feature',
-    name: 'New Feature',
-    category: 'Announcement',
-    preview: 'linear-gradient(135deg,#10b981,#0ea5e9)',
-    html: wrap(
-      header('⚡ New: [Feature Name]', 'The update you\'ve been asking for.', 'linear-gradient(135deg,#10b981,#0ea5e9)') +
-      body(`<p>Hi {{firstName}},</p><p>Your feedback has been heard. Today we're rolling out <strong>[Feature Name]</strong> — and it's exactly what you asked for.</p><div style="display:grid;gap:12px;margin:20px 0">` +
-        [['⚡ Faster', 'Describe the speed improvement'], ['🎯 Smarter', 'Describe the intelligence upgrade'], ['🔒 Safer', 'Describe the security improvement']].map(([icon, desc]) =>
-          `<div style="background:#f0fdf4;border-radius:10px;padding:14px 18px;display:flex;gap:12px;align-items:center"><span style="font-size:20px">${icon.split(' ')[0]}</span><div><strong style="color:#0f172a;font-size:13px">${icon}</strong><p style="color:#64748b;font-size:12px;margin:2px 0 0">${desc}</p></div></div>`
-        ).join('') +
-        `</div>` +
-        btn('Try [Feature Name] Now', '#10b981') +
-        `<p>As always, let us know what you think.<br/><br/>The Team</p>`) +
-      footer(),
+    id: 'lib-cart', name: 'Left in the basket', category: 'Ecommerce', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('You left something in your basket. It is still there and still in stock — nothing has been taken.') +
+      `<div style="margin:0 0 20px;padding:16px 18px;border:1px solid #eceef2;border-radius:10px">
+         <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#17191c">Bronze cleat, 150mm</p>
+         <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#5b6472">Cast, not pressed. The one that outlives the boat.</p>
+         <p style="margin:0;font-size:16px;font-weight:700;color:#17191c">£28.00</p>
+       </div>` +
+      textLink('Finish the order') +
+      signoff('If you changed your mind, that is fine too.'),
     ),
   },
   {
-    id: 'announce-event',
-    name: 'Event Invitation',
-    category: 'Announcement',
-    preview: 'linear-gradient(135deg,#f59e0b,#ef4444)',
-    html: wrap(
-      `<div style="background:linear-gradient(135deg,#f59e0b,#ef4444);padding:40px;text-align:center"><p style="color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin:0 0 10px">You're invited</p><h1 style="color:#fff;font-size:30px;font-weight:800;margin:0 0 12px">[Event Name]</h1><p style="color:rgba(255,255,255,0.9);font-size:16px;margin:0">📅 [Date] &nbsp;·&nbsp; 🕐 [Time] &nbsp;·&nbsp; 📍 [Location / Online]</p></div>` +
-      body(`<p>Hi {{firstName}},</p><p>We'd love to have you join us for <strong>[Event Name]</strong>.</p><p>Here's what you can expect:</p><ul style="padding-left:20px"><li style="margin-bottom:8px">[Session or agenda item 1]</li><li style="margin-bottom:8px">[Session or agenda item 2]</li><li style="margin-bottom:8px">[Networking / bonus activity]</li></ul><div style="background:#fffbeb;border-radius:10px;padding:16px 20px;text-align:center;margin:20px 0"><p style="color:#92400e;font-size:13px;font-weight:600;margin:0">⚠️ Spots are limited — reserve yours today</p></div>` +
-        btn('Reserve My Spot', '#f59e0b') +
-        `<p>Can't make it? Reply and we'll send you the recording.<br/><br/>Hope to see you there,<br/><strong>[Your Name]</strong></p>`) +
-      footer(),
+    id: 'lib-thanks', name: 'Thanks for the order', category: 'Ecommerce', preview: '#f6f7f9',
+    html: letter(
+      `<h1 style="margin:0 0 6px;font-size:20px;font-weight:700;color:#17191c">That is on its way, {{firstName}}</h1>
+       <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#5b6472">Posted this afternoon. You will have a tracking number by tomorrow morning.</p>` +
+      para('One thing worth saying: if anything about it is not right when it arrives, reply to this email rather than going through a form. It comes to a person.') +
+      signoff('Thanks for buying from us.'),
+      '#ffffff',
+    ),
+  },
+  {
+    id: 'lib-review', name: 'Asking for a review', category: 'Ecommerce', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('Your order landed a couple of weeks ago, so you will know by now whether it was any good.') +
+      para('If it was, a line or two somewhere public helps us more than almost anything else. It takes a minute.') +
+      para('And if it was not, please tell us instead of them — we would much rather fix it.') +
+      textLink('Leave a review') +
+      signoff('Either way, thank you.'),
     ),
   },
 
-  /* ── Transactional ── */
+  /* ── Keeping in touch ── */
   {
-    id: 'transactional-confirm',
-    name: 'Order Confirmed',
-    category: 'Transactional',
-    preview: '#22c55e',
-    html: wrap(
-      `<div style="padding:36px 40px;text-align:center;border-bottom:1px solid #f1f5f9"><div style="width:60px;height:60px;border-radius:50%;background:#dcfce7;display:inline-flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:16px">✅</div><h1 style="color:#0f172a;font-size:24px;font-weight:800;margin:0 0 4px">Order Confirmed!</h1><p style="color:#64748b;font-size:14px;margin:0">Thanks, {{firstName}}. Here are your details.</p></div>` +
-      body(`<div style="background:#f8fafc;border-radius:10px;padding:20px 24px;margin-bottom:20px"><h3 style="color:#0f172a;font-size:14px;font-weight:700;margin:0 0 14px;text-transform:uppercase;letter-spacing:0.04em">Order Summary</h3><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#64748b;font-size:13px">Product / Service</span><span style="color:#0f172a;font-size:13px;font-weight:600">[Item Name]</span></div><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#64748b;font-size:13px">Order #</span><span style="color:#0f172a;font-size:13px;font-weight:600">#[OrderID]</span></div><div style="border-top:1px solid #e2e8f0;margin:12px 0"></div><div style="display:flex;justify-content:space-between"><span style="color:#0f172a;font-size:14px;font-weight:700">Total</span><span style="color:#0f172a;font-size:16px;font-weight:800">$[Amount]</span></div></div>` +
-        btn('View Your Order', '#22c55e') +
-        `<p style="text-align:center;color:#94a3b8;font-size:12px">Questions? Contact support at [email] or reply to this message.</p>`) +
-      footer(),
+    id: 'lib-newsletter', name: 'Monthly note', category: 'Newsletter', preview: '#faf8f4',
+    html: letter(
+      `<p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8a8578">This month</p>
+       <h1 style="margin:0 0 20px;font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:400;line-height:1.25;color:#1b1a17">What we have been working on</h1>` +
+      `<p style="margin:0 0 22px;font-size:15px;line-height:1.75;color:#3a382f">Hi {{firstName}} — three short things, and none of them is a sales pitch.</p>
+       <div style="margin:0 0 20px;padding-left:18px;border-left:2px solid #ddd8cd">
+         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1b1a17">A job we are quietly pleased with</p>
+         <p style="margin:0;font-size:14.5px;line-height:1.7;color:#3a382f">Photographs below. It took three weeks longer than it should have and was worth it.</p>
+       </div>
+       <div style="margin:0 0 20px;padding-left:18px;border-left:2px solid #ddd8cd">
+         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1b1a17">Something we changed our minds about</p>
+         <p style="margin:0;font-size:14.5px;line-height:1.7;color:#3a382f">We used to recommend the cheaper fitting. We have stopped.</p>
+       </div>
+       <div style="margin:0 0 20px;padding-left:18px;border-left:2px solid #ddd8cd">
+         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1b1a17">What is coming</p>
+         <p style="margin:0;font-size:14.5px;line-height:1.7;color:#3a382f">The diary for next month opens on the first.</p>
+       </div>` +
+      signoff('See you next month.'),
+      '#faf8f4',
+    ),
+  },
+  {
+    id: 'lib-event', name: 'You are invited', category: 'Announcement', preview: '#f4f2ee',
+    html: letter(
+      `<p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8a8578">Thursday the 14th, 6pm</p>
+       <h1 style="margin:0 0 18px;font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:400;line-height:1.2;color:#1b1a17">Come and see the new workshop</h1>` +
+      `<p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:#3a382f">Hi {{firstName}} — we have moved, and we would rather show you than describe it.</p>
+       <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:#3a382f">There will be food, a proper look round, and no presentation of any kind. Bring somebody if you like.</p>` +
+      textLink('Let us know you are coming', '#8a5a2b') +
+      signoff('It would be good to see you.'),
+      '#f4f2ee',
+    ),
+  },
+  {
+    id: 'lib-apology', name: 'When something went wrong', category: 'Transactional', preview: '#fffaf0',
+    html: letter(
+      `<h1 style="margin:0 0 18px;font-size:22px;font-weight:700;line-height:1.3;color:#17191c">We got that wrong, and here is what we are doing</h1>` +
+      para('Hi {{firstName}},') +
+      para('Your order was three days late and nobody told you. That is our fault and there is no good excuse for the silence, which is the part that actually matters.') +
+      para('It went out this morning by the fastest service, and we have refunded the delivery charge without you having to ask.') +
+      para('If that is not enough, reply and say so.') +
+      signoff('Sorry. Genuinely.'),
+      '#fffaf0',
+    ),
+  },
+  {
+    id: 'lib-price', name: 'Prices are changing', category: 'Transactional', preview: '#ffffff',
+    html: letter(
+      `<h1 style="margin:0 0 18px;font-size:22px;font-weight:700;line-height:1.3;color:#17191c">Our prices go up on the first</h1>` +
+      para('Hi {{firstName}} — nobody enjoys this email, so it will be short.') +
+      para('Our rate goes up from the first of next month. It has not moved in two years and the cost of everything we buy has.') +
+      para('Anything quoted before that date is honoured at the old rate however long the job takes to start, and nothing changes on work already booked.') +
+      signoff('Thanks for bearing with us.'),
+    ),
+  },
+  {
+    id: 'lib-webinar', name: 'Free session', category: 'Announcement', preview: '#ffffff',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('We are running a half-hour session next Wednesday on the three mistakes we see most often, and how to avoid paying for them twice.') +
+      para('It is free, it is not a sales pitch, and there will be time for questions at the end. If you cannot make it live, sign up anyway and we will send the recording.') +
+      textLink('Save me a place') +
+      signoff('Hope to see you there.'),
+    ),
+  },
+  {
+    id: 'lib-survey', name: 'One question', category: 'Newsletter', preview: '#f7f7f5',
+    html: letter(
+      para('Hi {{firstName}},') +
+      para('One question, and it genuinely takes ten seconds: what is the one thing you wish we did that we do not?') +
+      para('Reply with a sentence. Every answer gets read by a person here, and the last round of these changed what we offer.') +
+      signoff('Thank you.'),
+      '#f7f7f5',
     ),
   },
 ];
 
 /* Modern first: it is what most people should be starting from. */
-export const EMAIL_TEMPLATES: EmailTemplate[] = [...MODERN_TEMPLATES, ...CLASSIC_TEMPLATES];
+export const EMAIL_TEMPLATES: EmailTemplate[] = [...MODERN_TEMPLATES, ...LIBRARY];
 
 export const TEMPLATE_CATEGORIES = ['All', ...new Set(EMAIL_TEMPLATES.map(t => t.category))];
 

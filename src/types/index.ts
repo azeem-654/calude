@@ -430,6 +430,21 @@ export interface Campaign {
    *  or a multi-step flow's follow-ups — a proper reference, not a name match,
    *  so the detail view can show what really happened rather than a guess. */
   sequenceId?: string;
+  /**
+   * Who it actually went to, recorded at launch.
+   *
+   * The detail view used to *recompute* this from the segment name — "leads"
+   * against today's contacts. So a campaign sent last month to three leads
+   * showed whichever fifty people are leads now, none of whom received it, and
+   * a campaign sent to a typed list showed the entire CRM because 'manual'
+   * matches no status at all. A list of recipients is a fact about the past and
+   * has to be stored as one.
+   *
+   * Capped — see RECIPIENT_CAP in the wizard. `recipientCount` is the true
+   * total either way, so a big send still reports its real size.
+   */
+  recipients?: { id: string; name: string; email: string }[];
+  recipientCount?: number;
 }
 
 export interface Funnel {

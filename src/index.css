@@ -1085,3 +1085,61 @@ main section { min-width: 0; }
   font-size: 12.5px;
   font-weight: 800;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Explaining the email tabs.
+
+   "Campaigns", "Sequences" and "Automations" are three words for things that
+   all send email, and nothing on the screen said which to reach for. The
+   difference goes where somebody reading the words will find it.
+
+   A title attribute would have been simpler and is the wrong tool: it waits a
+   second or so, cannot be styled, does not wrap, and never appears on a touch
+   screen at all. This is the same pattern the icon rail already uses.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.mkt-tab { position: relative; }
+
+.mkt-tab::after {
+  content: attr(data-hint);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  max-width: min(320px, 78vw);
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #17191c;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  transform: translateY(-3px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  z-index: 60;
+  box-shadow: 0 12px 28px -10px rgba(16, 24, 40, 0.45);
+}
+
+.mkt-tab:hover::after,
+/* Keyboard users get it too — a hint only a mouse can reach is a hint half the
+   people who need it never see. */
+.mkt-tab:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* The last tabs would push their own tooltip off the right edge. */
+.mkt-tab:nth-last-child(-n+2)::after {
+  left: auto;
+  right: 0;
+}
+
+/* No hover on a touch screen, so it would never show and would only ever be in
+   the way. The tab labels have to carry it there. */
+@media (hover: none) {
+  .mkt-tab::after { display: none; }
+}
