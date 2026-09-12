@@ -36,17 +36,57 @@ const INK = '#17191c';
 const MUTED = '#6b7280';
 const ACCENT = '#5b46e5';
 
-/* What Autopilot does, in the words somebody would use for it. Shown once at
-   the top of the panel for the customer who has not started anything yet and
-   does not know what they are being offered. */
+/**
+ * What Autopilot does, in the words somebody would use for it.
+ *
+ * Shown to every workspace, not only the empty one. A customer running three
+ * projects still mostly does not know it will write their blog — the board only
+ * shows what it has already done, which for a new project is nothing, and a
+ * capability nobody knows about is a capability nobody paid for.
+ *
+ * `module` is the part of the app it drives, because "it automates the whole
+ * thing" means nothing until you can see which screens it reaches into.
+ */
 const DOES = [
-  { icon: Search, label: 'Finds people', sub: 'who plausibly need what this client sells' },
-  { icon: Mail, label: 'Writes and sends', sub: 'sequences, follow-ups, campaigns' },
-  { icon: FileText, label: 'Publishes', sub: 'landing pages, blog posts, social' },
-  { icon: MessageSquare, label: 'Answers replies', sub: 'and knows when to stop' },
-  { icon: CalendarCheck, label: 'Books the call', sub: 'straight into the diary' },
-  { icon: ShoppingBag, label: 'Runs the shop', sub: 'chases unpaid, thanks buyers' },
+  { icon: Search, label: 'Finds the people', sub: 'Searches out businesses that fit, and files them as leads', module: 'Contacts' },
+  { icon: Mail, label: 'Writes and sends', sub: 'Sequences, follow-ups and campaigns, in the client\u2019s own voice', module: 'Email campaigns' },
+  { icon: MessageSquare, label: 'Answers the replies', sub: 'Reads what came back, answers it, and knows when to stop', module: 'Unified Inbox' },
+  { icon: FileText, label: 'Publishes the content', sub: 'Landing pages, blog posts and social, written from the portfolio', module: 'Websites · Blog · Social' },
+  { icon: CalendarCheck, label: 'Books the call', sub: 'Turns a yes into a slot in the diary without the email chain', module: 'Calendar' },
+  { icon: ShoppingBag, label: 'Runs the shop', sub: 'Chases what is unpaid, thanks the people who bought', module: 'Sell' },
 ];
+
+/**
+ * The capability strip.
+ *
+ * Every card carries a sweep that never stops — the module never stops either:
+ * the cron fires every five minutes whether or not anybody has the tab open.
+ * The cards are staggered so the strip reads as something continuously working
+ * rather than as six things flashing in time, which is what a shared delay
+ * looks like and why it reads as decoration.
+ *
+ * It is deliberately not tied to live state. This is a description of what the
+ * module is for; the numbers and the per-project bars below it are the part
+ * that reports what is true right now, and conflating the two would mean the
+ * explanation went quiet exactly when somebody had no projects and most needed
+ * reading it.
+ */
+function DoesStrip() {
+  return (
+    <div className="ap-does">
+      {DOES.map((d, i) => (
+        <div key={d.label} className="ap-does-item" style={{ animationDelay: `${i * 0.9}s` }}>
+          <span className="ap-does-icon" aria-hidden="true"><d.icon size={15} /></span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>{d.label}</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{d.sub}</span>
+            <span className="ap-does-module">{d.module}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* An observe or error card is Autopilot *saying* something; the tick marks it
    done because there is nothing to carry out. Counting those as work carried
@@ -223,11 +263,17 @@ export default function AutopilotPanel() {
   const shell = (children: React.ReactNode) => (
     <section aria-label="AI Autopilot" className="ap-panel slide-up">
       <div className="ap-panel-head">
-        <span className="ap-panel-badge" aria-hidden="true"><Zap size={16} /></span>
+        {/* The same core as the nav pill, so the two read as one module. */}
+        <span className="ap-panel-badge" aria-hidden="true">
+          <span className="ap-badge-ring" />
+          <span className="ap-badge-ring" />
+          <Zap size={15} />
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>AI Autopilot</h2>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: MUTED }}>
-            The part that does the work. Everything else here is a report on what it did.
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+            It runs the rest of this app for you — finding people, writing and sending, publishing,
+            answering, booking. Everything else on this screen is a report on what it did.
           </p>
         </div>
         <button type="button" className="dash-chip press" onClick={() => navigate('/autopilot')}>
@@ -253,17 +299,7 @@ export default function AutopilotPanel() {
   if (pulse.projects.length === 0) {
     return shell(
       <>
-        <div className="ap-does">
-          {DOES.map(d => (
-            <div key={d.label} className="ap-does-item">
-              <span className="ap-does-icon" aria-hidden="true"><d.icon size={14} /></span>
-              <span>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>{d.label}</span>
-                <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>{d.sub}</span>
-              </span>
-            </div>
-          ))}
-        </div>
+        <DoesStrip />
         <button type="button" onClick={() => navigate('/autopilot')} className="ap-cta press">
           <Zap size={15} /> Put one thing on Autopilot
         </button>
@@ -293,6 +329,8 @@ export default function AutopilotPanel() {
           </span>
         )}
       </div>
+
+      <DoesStrip />
 
       <div style={{ display: 'grid', gap: 11 }}>
         {ordered.map(p => (

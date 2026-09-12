@@ -1001,6 +1001,33 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
   const profiles: SenderProfile[] = [...settingsProfiles, ...customAsSenderProfiles];
   const selectedProfile = profiles.find(p => p.email === state.fromEmail) ?? null;
 
+  /**
+   * Does the mail server own this "from" address?
+   *
+   * Nearly every mail host refuses to send as an address other than the one
+   * that logged in — Postfix calls it reject_sender_login_mismatch — and the
+   * rejection comes back as `553 5.7.1 … Sender address rejected: not owned by
+   * user`, which names two addresses and explains neither. It arrives at the
+   * end, after the campaign is written, from a screen that says nothing about
+   * sender addresses; people reasonably spend an hour re-entering a password
+   * that was never wrong.
+   *
+   * The mismatch is visible here, before any of that, so it is said here.
+   * A warning rather than a block: aliases and permitted senders are real, the
+   * app cannot know which the provider has granted, and refusing a setup that
+   * works would be worse than mentioning one that might not.
+   */
+  const senderLogin = (() => {
+    if (!state.fromEmail) return '';
+    const mb = cachedMailboxes().find(m => m.fromEmail === state.fromEmail);
+    const user = mb?.smtpUsername?.trim() ?? '';
+    /* Only a real address is worth comparing. Plenty of hosts use a short
+       login name, and "support" vs "support@wildwestcorp.com" is not the
+       mismatch this is looking for. */
+    if (!user.includes('@')) return '';
+    return user.toLowerCase() === state.fromEmail.toLowerCase() ? '' : user;
+  })();
+
   const selectProfile = (p: SenderProfile) => {
     onChange({ fromName: p.name, fromEmail: p.email, replyTo: state.replyTo || p.replyTo });
   };
@@ -1221,6 +1248,22 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
                 <div style={{ padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0', marginBottom: 12, fontSize: 12, color: '#166534' }}>
                   ✅ Sending as <strong>{selectedProfile.name}</strong> &lt;{selectedProfile.email}&gt; via {selectedProfile.provider}
                 </div>
+
+                {senderLogin && (
+                  <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 13px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, marginBottom: 12 }}>
+                    <AlertTriangle size={15} color="#b45309" style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div>
+                      <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 700, color: '#92400e' }}>
+                        This mailbox signs in as a different address
+                      </p>
+                      <p style={{ margin: 0, fontSize: 11.5, color: '#78350f', lineHeight: 1.6 }}>
+                        It logs in as <strong>{senderLogin}</strong> but would send as <strong>{selectedProfile.email}</strong>.
+                        Most mail servers refuse that and reply <em>“sender address rejected: not owned by user”</em>.
+                        If your provider has not granted this alias, send as the login address and put the other one in reply-to.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Reply-to email <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
                 <div style={{ position: 'relative' }}>
                   <input
@@ -1464,6 +1507,10 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   const [testAddr, setTestAddr] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'ok' | 'fail'>('idle');
   const [testMsg, setTestMsg] = useState('');
+  /* What the server said to do about it, and its own words. A raw SMTP line
+     tells somebody that something went wrong and nothing about which thing. */
+  const [testSteps, setTestSteps] = useState<string[]>([]);
+  const [testRaw, setTestRaw] = useState('');
   const { addNotification } = useApp();
   const [launching, setLaunching] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -1492,17 +1539,28 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   };
 
   const sendTestEmail = async () => {
-    if (!testAddr.trim()) return;
+    const to = testAddr.trim();
+    setTestSteps([]); setTestRaw('');
+    /* Checked here rather than discovered at the mail server. A malformed
+       address came back as an SMTP rejection, which reads like a fault with
+       the mailbox rather than with what was typed two inches above it. */
+    if (!parseAddressList(to).valid.length) {
+      setTestStatus('fail');
+      setTestMsg(`"${to}" is not a valid email address.`);
+      return;
+    }
     setTestStatus('sending'); setTestMsg('');
     const cfg = loadEmailConfig();
     const subject = state.steps[0]?.subject || state.subject || `Test: ${state.name}`;
     const html = state.steps[0]?.body || state.emailBody || '<p>Test email from your CRM.</p>';
     const result = await sendEmail(cfg, {
-      to: testAddr.trim(), toName: 'Test', subject, html,
-      merge: { name: 'Test User', email: testAddr.trim(), company: 'Acme Corp', jobTitle: 'Manager' },
+      to, toName: 'Test', subject, html,
+      merge: { name: 'Test User', email: to, company: 'Acme Corp', jobTitle: 'Manager' },
     });
     setTestStatus(result.success ? 'ok' : 'fail');
     setTestMsg(result.success ? `Delivered! ${result.id ? `ID: ${result.id}` : ''}` : result.error || 'Send failed');
+    setTestSteps(result.steps ?? []);
+    setTestRaw(result.raw ?? '');
   };
 
   /* An immediate email send goes through the deliverability checklist first.
@@ -1683,9 +1741,28 @@ function StepReview({ state, counts, contacts, onLaunch }: {
                 </button>
               </div>
               {testMsg && (
-                <div style={{ marginTop: 7, display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', backgroundColor: testStatus === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: 6 }}>
-                  {testStatus === 'ok' ? <CheckCircle size={13} color="#16a34a" style={{ marginTop: 1 }} /> : <XCircle size={13} color="#dc2626" style={{ marginTop: 1 }} />}
-                  <span style={{ fontSize: 11, color: testStatus === 'ok' ? '#166534' : '#991b1b', lineHeight: 1.5, wordBreak: 'break-word' }}>{testMsg}</span>
+                <div style={{ marginTop: 7, padding: '8px 10px', backgroundColor: testStatus === 'ok' ? '#ecfdf5' : '#fef2f2', borderRadius: 7 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    {testStatus === 'ok' ? <CheckCircle size={13} color="#16a34a" style={{ marginTop: 1, flexShrink: 0 }} /> : <XCircle size={13} color="#dc2626" style={{ marginTop: 1, flexShrink: 0 }} />}
+                    <span style={{ fontSize: 12, fontWeight: 600, color: testStatus === 'ok' ? '#166534' : '#991b1b', lineHeight: 1.5, wordBreak: 'break-word' }}>{testMsg}</span>
+                  </div>
+                  {/* What to do about it. Ordered, because the first one is
+                      right far more often than the rest. */}
+                  {testSteps.length > 0 && (
+                    <ol style={{ margin: '8px 0 0', paddingLeft: 22 }}>
+                      {testSteps.map(step => (
+                        <li key={step} style={{ fontSize: 11.5, color: '#7f1d1d', lineHeight: 1.6, marginBottom: 3 }}>{step}</li>
+                      ))}
+                    </ol>
+                  )}
+                  {/* The server's own words, kept — it is the only thing worth
+                      pasting to a mail host's support desk. */}
+                  {testRaw && (
+                    <details style={{ marginTop: 7 }}>
+                      <summary style={{ fontSize: 11, color: '#991b1b', cursor: 'pointer', fontWeight: 600 }}>What the mail server said</summary>
+                      <code style={{ display: 'block', marginTop: 5, fontSize: 10.5, color: '#7f1d1d', lineHeight: 1.5, wordBreak: 'break-all', background: 'rgba(0,0,0,0.04)', padding: '6px 8px', borderRadius: 5 }}>{testRaw}</code>
+                    </details>
+                  )}
                 </div>
               )}
             </div>

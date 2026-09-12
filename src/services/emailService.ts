@@ -67,7 +67,12 @@ export interface EmailPayload {
 export interface SendResult {
   success: boolean;
   id?: string;
+  /** One sentence on what the server objected to. */
   error?: string;
+  /** What to do about it, in the order worth trying. */
+  steps?: string[];
+  /** The server's own words. Shown as well, never instead. */
+  raw?: string;
 }
 
 const LS_KEY = 'crm_email_provider';
@@ -150,8 +155,12 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
           subject: payload.subject, html: payload.html,
         }),
       });
-      const data = await resp.json() as { success: boolean; message: string };
-      return data.success ? { success: true, id: 'smtp-sent' } : { success: false, error: data.message };
+      const data = await resp.json() as { success: boolean; message: string; steps?: string[]; raw?: string };
+      /* The server's diagnosis travels with the failure. A raw SMTP line tells
+         somebody that something went wrong and nothing about which thing. */
+      return data.success
+        ? { success: true, id: 'smtp-sent' }
+        : { success: false, error: data.message, steps: data.steps, raw: data.raw };
     }
 
     /**

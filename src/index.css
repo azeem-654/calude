@@ -274,39 +274,81 @@ button:focus-visible, a:focus-visible {
     0 0 0 1px rgba(255, 255, 255, 0.2) inset;
 }
 
-/* ── The lane the flow diagram is drawn in ──
+/* ── The core on the pill ──
  *
- * The traces run under the pills, so the row keeps a strip of empty space below
- * them for the bus. NavFlow measures this rather than assuming it — take the
- * padding away and the diagram stops drawing rather than drawing wrong.
+ * Three rings turning at different rates around a pulsing centre. It never
+ * stops, because the module never does: the cron fires every five minutes
+ * whether or not anybody has the tab open, and a light that goes out when you
+ * look away says the opposite of what is true.
  *
- * Only at the width where the row is one line. Below 1280px it wraps to two or
- * three, and a bus along the bottom would pass under the wrong pills.
+ * The rate is the honest part. `.nav-hero-live` — set when a project would act
+ * on the next tick — turns it faster and brighter; idle, it keeps a slow
+ * heartbeat rather than freezing, because a frozen light reads as broken.
  */
-@media (min-width: 1281px) {
-  .nav-pills {
-    padding-bottom: 20px !important;
-  }
+.nav-core {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: inline-block;
 }
 
-.nav-flow {
-  /* Behind every pill. The links are the navigation; this is a picture of what
-     connects them. */
-  z-index: 0;
+.nav-core-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1.25px solid rgba(255, 255, 255, 0.55);
+  /* Each ring is a broken circle, so rotation is visible at all — a complete
+     ring turning looks identical to one standing still. */
+  border-right-color: transparent;
+  border-bottom-color: transparent;
 }
 
-/* ── The node on the pill ──
- *
- * Turns over while a project would act on the next tick, and sits still when
- * none would. A light that blinks whatever is happening tells nobody anything.
- */
-.nav-hero-dot {
-  width: 7px;
-  height: 7px;
+/* Concentric, each a little smaller and a little dimmer. */
+.nav-core-ring:nth-child(2) {
+  inset: 3px;
+  border-color: rgba(255, 255, 255, 0.42);
+  border-left-color: transparent;
+  border-top-color: transparent;
+}
+
+.nav-core-ring:nth-child(3) {
+  inset: 5.5px;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.32);
+  border-right-color: transparent;
+  border-top-color: transparent;
+}
+
+.nav-core-dot {
+  position: absolute;
+  inset: 5.5px;
   border-radius: 999px;
   background: #fff;
-  flex-shrink: 0;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.7);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Opposite directions, unrelated periods — so the three never line back up
+     into a pattern the eye can lock onto and start ignoring. */
+  .nav-core-ring:nth-child(1) { animation: core-spin 3.4s linear infinite; }
+  .nav-core-ring:nth-child(2) { animation: core-spin 2.3s linear infinite reverse; }
+  .nav-core-ring:nth-child(3) { animation: core-spin 4.9s linear infinite; }
+  .nav-core-dot { animation: core-beat 2.6s ease-in-out infinite; }
+
+  .nav-hero-live .nav-core-ring:nth-child(1) { animation-duration: 1.5s; }
+  .nav-hero-live .nav-core-ring:nth-child(2) { animation-duration: 1.05s; }
+  .nav-hero-live .nav-core-ring:nth-child(3) { animation-duration: 2.1s; }
+  .nav-hero-live .nav-core-dot { animation-duration: 1.2s; }
+}
+
+@keyframes core-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes core-beat {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 4px rgba(255, 255, 255, 0.55); }
+  50%      { transform: scale(1.32); box-shadow: 0 0 9px rgba(255, 255, 255, 0.95); }
 }
 
 /* How many things are waiting on a person, on the tab itself. A number, not a
@@ -328,8 +370,6 @@ button:focus-visible, a:focus-visible {
 
 @media (prefers-reduced-motion: no-preference) {
   .nav-hero { animation: hero-breathe 3.6s ease-in-out infinite; }
-  /* Only the running state animates — see above. */
-  .nav-hero-live .nav-hero-dot { animation: hero-dot 1.9s ease-in-out infinite; }
 }
 
 @keyframes hero-breathe {
@@ -343,11 +383,6 @@ button:focus-visible, a:focus-visible {
       0 6px 22px 0 rgba(99, 62, 241, 0.62),
       0 0 0 1px rgba(255, 255, 255, 0.22) inset;
   }
-}
-
-@keyframes hero-dot {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2); }
-  50%      { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.45); }
 }
 
 /* Icon rail buttons with custom tooltip */

@@ -50,6 +50,44 @@ interface Rule {
  */
 const RULES: Rule[] = [
   {
+    /*
+     * The address being written *to* does not exist.
+     *
+     * Sits above the sender rule on purpose: both are 5xx and both mention an
+     * address, and telling somebody to change their "from" when the problem is
+     * a typo in the "to" sends them to the wrong screen entirely.
+     */
+    only: 'outgoing',
+    match: /(no such user|user unknown|recipient address rejected|does not exist|unrouteable address|mailbox unavailable|5\.1\.1)/i,
+    summary: 'The mail server accepted everything about the message except the address it was being sent to — no such mailbox.',
+    steps: [
+      'Check the recipient address for a typo. This is a fault with who it was addressed to, not with your mailbox or your password.',
+      'If the address is right, it may have been closed. Ask the person for a current one.',
+      'Test with an address you control — your own inbox — to prove the rest of the setup works.',
+    ],
+  },
+  {
+    /*
+     * The mail server will only let you send as the address you logged in as.
+     *
+     * Almost every shared host and most business providers enforce this
+     * (Postfix calls it reject_sender_login_mismatch), and the wording is
+     * consistently unhelpful: "Sender address rejected: not owned by user"
+     * names both addresses and explains neither. It is not an authentication
+     * failure — the login worked — so it is easy to spend an hour re-entering
+     * a password that was never wrong.
+     */
+    only: 'outgoing',
+    match: /not owned by user|sender address rejected|sender not allowed|not authorized to send as|does not match authentication|5\.7\.1.*sender|553/i,
+    summary: 'The login worked, but the mail server will not let this mailbox send as the "from" address it was given.',
+    steps: [
+      'Make the "from" address exactly the address you sign in to the mailbox with. Most servers allow no other.',
+      'Check Settings → Email & SMS → Mailboxes: if the username and the from address are different, that difference is the whole problem.',
+      'If you need to send as a different address — an alias, or a shared team address — add it as a permitted sender in your mail provider first. The provider has to grant it; this app cannot.',
+      'Sending as a free address (gmail.com, outlook.com) through your own domain\u2019s server is refused by nearly every host. Use the domain mailbox as the sender and put the free address in reply-to instead.',
+    ],
+  },
+  {
     match: /application[- ]specific password|app password|AppPasswordRequired|5\.7\.9/i,
     summary: 'The server accepted the connection but wants an app password, not the normal account password.',
     steps: [

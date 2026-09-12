@@ -20,7 +20,6 @@ import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilit
 import { runWarmup } from '../../services/warmup';
 import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import SetupChecklist from '../Onboarding/SetupChecklist';
-import FlowLauncher from '../Onboarding/FlowLauncher';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
@@ -542,7 +541,6 @@ export default function Dashboard() {
 
   /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [flowOpen, setFlowOpen] = useState(false);
   const [obRefresh, setObRefresh] = useState(0);
   useEffect(() => {
     /*
@@ -866,7 +864,6 @@ export default function Dashboard() {
             removes itself once every step is done. */}
         <SetupChecklist
           onOpenAiWizard={() => setWizardOpen(true)}
-          onOpenFlow={() => setFlowOpen(true)}
           refreshKey={obRefresh}
         />
 
@@ -877,27 +874,16 @@ export default function Dashboard() {
             line. */}
         <AutopilotPanel />
 
-        {/* ── The chain, with a door on it ──
-            The checklist removes itself once setup is done, and this is the one
-            thing on the dashboard somebody comes back to weekly: pick an
-            outcome, get the whole campaign written across every module. So it
-            stays after the checklist has gone. */}
-        <button
-          type="button"
-          onClick={() => setFlowOpen(true)}
-          className="flow-strip press"
-          aria-label="Build a campaign from your portfolio"
-        >
-          <span className="flow-strip-icon" aria-hidden="true"><Wand2 size={17} /></span>
-          <span className="flow-strip-text">
-            <span className="flow-strip-title">Build a campaign from your portfolio</span>
-            <span className="flow-strip-sub">
-              Pick an outcome — the emails, texts, posts, blog and landing page are written from what you sell, and
-              shown to you before anything is created.
-            </span>
-          </span>
-          <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, opacity: 0.5 }} />
-        </button>
+        {/*
+          The "Build a campaign from your portfolio" strip stood here.
+
+          It opened FlowLauncher, which is the AI Sales Agent's one-shot fan-out
+          — the module that folded into AI Autopilot. Leaving it on the dashboard
+          meant two front doors to the same job, one of them belonging to a
+          module that no longer exists in the menu, so a customer could start a
+          campaign from a screen that Autopilot knows nothing about and then
+          wonder why the board never mentioned it.
+        */}
 
         {/* ── The four numbers this week turned on ──
             Ahead of everything else on purpose: a sales lead opening the CRM
@@ -1064,12 +1050,6 @@ export default function Dashboard() {
       </div>
 
       <OnboardingWizard open={wizardOpen} onClose={() => { setWizardOpen(false); setObRefresh(k => k + 1); }} />
-      {flowOpen && (
-        <FlowLauncher
-          onClose={() => setFlowOpen(false)}
-          onDone={() => setObRefresh(k => k + 1)}
-        />
-      )}
     </div>
   );
 }

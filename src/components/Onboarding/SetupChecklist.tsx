@@ -107,7 +107,11 @@ export default function SetupChecklist({ onOpenAiWizard, onOpenFlow, refreshKey 
        written for them. That is the flow launcher, not a module screen — and
        the launcher needs the portfolio the first step collected, which is why
        it is last. */
-    if (s.id === 'campaign' && onOpenFlow) { onOpenFlow(); return; }
+    /* The 'campaign' step used to open FlowLauncher — the AI Sales Agent's
+       one-shot fan-out. That module folded into AI Autopilot, so the step now
+       follows its own `route`, which points at the board. Two front doors to
+       one job, one of them belonging to a retired module, is how somebody
+       starts a campaign Autopilot has never heard of. */
     navigate(s.route);
   };
 

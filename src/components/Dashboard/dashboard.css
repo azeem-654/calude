@@ -369,3 +369,92 @@ button.dash-chip[aria-pressed='true'] { background: #17191c; color: #ffffff; bor
 @media (max-width: 560px) {
   .ap-panel { padding: 14px; border-radius: 20px; }
 }
+
+/* ── The badge, turning ──────────────────────────────────────────────────────
+   Two rings around the bolt, matching the core on the nav pill so the module
+   reads as one thing in both places. It never stops because the cron never
+   does — it fires every five minutes whether or not this tab is open. */
+
+.ap-panel-badge { position: relative; overflow: hidden; }
+
+.ap-badge-ring {
+  position: absolute;
+  inset: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  /* Broken, so the rotation is visible — a complete ring turning looks
+     identical to one standing still. */
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.ap-badge-ring:nth-child(2) {
+  inset: 6px;
+  border-color: rgba(255, 255, 255, 0.3);
+  border-left-color: transparent;
+  border-top-color: transparent;
+}
+
+/* ── The capability cards ──
+   Each carries a sweep of light that crosses it and comes back, staggered so
+   the strip reads as something continuously working rather than six things
+   flashing on the same beat. */
+
+.ap-does-item {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.ap-does-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgba(124, 58, 237, 0.11) 50%,
+    transparent 62%
+  );
+  background-size: 300% 100%;
+  background-position: 140% 0;
+}
+
+.ap-does-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(91, 70, 229, 0.3) !important;
+}
+
+/* Which module it drives. "It automates the whole thing" means nothing until
+   you can see which screens it actually reaches into. */
+.ap-does-module {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(91, 70, 229, 0.09);
+  color: #5b46e5;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ap-badge-ring:nth-child(1) { animation: ap-spin 3.1s linear infinite; }
+  .ap-badge-ring:nth-child(2) { animation: ap-spin 2.2s linear infinite reverse; }
+  /* 7.2s with a 0.9s stagger across six cards: one is always mid-sweep and no
+     two are ever in step. */
+  .ap-does-item::after { animation: ap-sweep 7.2s linear infinite; }
+}
+
+@keyframes ap-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ap-sweep {
+  0%        { background-position: 140% 0; }
+  /* The sweep itself takes a fifth of the cycle; the rest is the pause that
+     stops six cards looking like a loading bar. */
+  22%, 100% { background-position: -60% 0; }
+}

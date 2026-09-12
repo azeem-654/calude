@@ -223,6 +223,15 @@ export interface MailboxSnapshot {
   label: string;
   isPrimary: boolean;
   smtpHost: string;
+  /**
+   * The address this mailbox signs in as.
+   *
+   * Not a secret — the password is, and that never leaves the server. This is
+   * here because nearly every mail host refuses to send as anything other than
+   * the login, and a screen that lets somebody pick a different "from" needs to
+   * be able to say so before the send fails with a 553 nobody can read.
+   */
+  smtpUsername: string;
   fromEmail: string;
   fromName: string;
   imapHost: string;
@@ -234,6 +243,7 @@ function toSnapshot(m: MailboxRecord): MailboxSnapshot {
   return {
     id: m.id, label: m.label, isPrimary: m.isPrimary,
     smtpHost: m.smtp.host,
+    smtpUsername: m.smtp.username,
     fromEmail: m.from.email || m.smtp.username,
     fromName: m.from.name,
     imapHost: m.imap.host,

@@ -10,6 +10,7 @@
  * PHP — each of them was a real bug there before it was a rule.
  */
 import { addr, body, fail, headerSafe, json } from '../lib/http';
+import { diagnose } from '../lib/mailDiagnosis';
 import { requireSessionForSocket, type Env } from '../lib/db';
 import { smtpSend, smtpVerify, type Encryption } from '../lib/smtp';
 import { buildMime } from '../lib/mime';
@@ -135,5 +136,22 @@ export async function handleSmtpSend(
     });
   }
 
-  return json({ success: false, transport: 'smtp', attempts: r.attempts, message: r.error, error: r.error });
+  /*
+   * A send failure gets the same treatment a validation failure already got.
+   *
+   * This returned the raw SMTP line and nothing else, so the screen showed
+   * "553 5.7.1 <x@y>: Sender address rejected: not owned by user x@y" and left
+   * the customer to work out that it is a from-address problem and not a
+   * password one. The raw line is still returned — it is the server's own
+   * words and the only thing worth pasting to a host's support desk — with a
+   * sentence and the steps in front of it.
+   */
+  const why = diagnose('outgoing', r.error);
+  return json({
+    success: false, transport: 'smtp', attempts: r.attempts,
+    message: why.summary,
+    error: r.error,
+    steps: why.steps,
+    raw: why.raw,
+  });
 }

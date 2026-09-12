@@ -9,7 +9,6 @@ import {
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
 import { NAV_GROUPS, activeGroupId, isItemActive } from './navModel';
-import NavFlow from './NavFlow';
 import { watchPulse, type Pulse } from '../../services/autopilotPulse';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
@@ -214,11 +213,19 @@ export default function TopNav() {
           backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(23,25,28,0.07)',
         }}
       >
-        {/* The wiring from Autopilot into every other module. Decoration in the
-            accessibility tree — the links themselves are the navigation — but
-            what it draws is real: it only carries traffic when something is
-            actually running. */}
-        <NavFlow row={pillRow} heroId="autopilot" live={autopilotLive} />
+        {/*
+          The traces to every other module used to be drawn here.
+
+          They were accurate — a bus with a branch to each pill, carrying
+          traffic only when something was actually running — and they still read
+          as a mess: seven thin lines under a row of words, ending in mid-air
+          wherever a pill happened to sit, competing with the nav they were
+          describing. A diagram that needs explaining is not doing its job in
+          40px of chrome.
+
+          The idea it was carrying now lives on the pill itself, where it costs
+          nothing and cannot collide with anything.
+        */}
 
         {NAV_GROUPS.map((group, gi) => {
           const items = group.items.filter(i => !(i.agencyOnly && isClient));
@@ -268,10 +275,22 @@ export default function TopNav() {
                   gap: 7,
                 }}
               >
-                {/* The node. It turns over while work is in flight and sits
-                    still when nothing is, so the pill reports a real state
-                    rather than animating for decoration. */}
-                <span className="nav-hero-dot" aria-hidden="true" />
+                {/*
+                  The core: three rings turning at different rates around a
+                  centre that pulses.
+
+                  It never stops, because the module never does — the cron runs
+                  every five minutes whether or not anybody is looking, and a
+                  light that goes out when the tab is idle says the opposite.
+                  The *rate* still carries the real state: it turns faster and
+                  brighter when a project would act on the next tick.
+                */}
+                <span className="nav-core" aria-hidden="true">
+                  <span className="nav-core-ring" />
+                  <span className="nav-core-ring" />
+                  <span className="nav-core-ring" />
+                  <span className="nav-core-dot" />
+                </span>
                 {group.label}
                 {autopilotWaiting > 0 && (
                   <span className="nav-hero-count" aria-label={`${autopilotWaiting} waiting for you`}>
