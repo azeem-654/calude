@@ -1976,7 +1976,15 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ backgroundColor: 'white', borderRadius: 20, width: '100%', maxWidth: 1000, maxHeight: '94vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 80px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
+      {/* A modal that does not say it is one is not announced as one, and the
+          nav behind it keeps buttons whose names collide with these — "Reviews"
+          in the rail against "Review" in here. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={editCampaign ? 'Edit campaign' : 'Create campaign'}
+        style={{ backgroundColor: 'white', borderRadius: 20, width: '100%', maxWidth: 1000, maxHeight: '94vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 80px rgba(0,0,0,0.28)', overflow: 'hidden' }}
+      >
 
         {/* Header */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, backgroundColor: 'white' }}>
@@ -1989,12 +1997,26 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
                 const active = step === n;
                 return (
                   <React.Fragment key={label}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {/* A ticked step reads as "done — click to go back to it",
+                        so it does. Only backwards: skipping forward past a step
+                        that is not finished lands on a screen missing what the
+                        one before it was meant to supply. */}
+                    <button
+                      type="button"
+                      onClick={() => { if (done) setStep(n); }}
+                      disabled={!done}
+                      aria-current={active ? 'step' : undefined}
+                      title={done ? `Go back to ${label}` : undefined}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4, border: 'none',
+                        background: 'none', padding: 0, fontFamily: 'inherit',
+                        cursor: done ? 'pointer' : 'default',
+                      }}>
                       <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: done || active ? '#17191c' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: done || active ? 'white' : '#94a3b8', flexShrink: 0 }}>
                         {done ? '✓' : n}
                       </div>
                       <span style={{ fontSize: 10, fontWeight: active ? 600 : 400, color: active ? '#17191c' : done ? '#64748b' : '#94a3b8', whiteSpace: 'nowrap' }}>{label}</span>
-                    </div>
+                    </button>
                     {i < STEP_LABELS.length - 1 && <div style={{ width: 12, height: 1, backgroundColor: done ? '#17191c' : '#e2e8f0', flexShrink: 0, margin: '0 1px' }} />}
                   </React.Fragment>
                 );
@@ -2063,14 +2085,28 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
           )}
         </div>
 
-        {/* Footer nav */}
-        {!isLastStep && (
-          <div style={{ padding: '12px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0 }}>
-            <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', cursor: step === 1 ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 500, color: step === 1 ? '#cbd5e1' : '#374151' }}>
-              <ChevronLeft size={14} /> Back
-            </button>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>Step {step} of {TOTAL_STEPS}</span>
+        {/*
+          Footer nav.
+
+          This was wrapped in `!isLastStep`, which hid the Back button along
+          with the Next button on Review — so the last screen of a five-step
+          wizard had no way back at all. The only control left was the X, which
+          discards the whole campaign. Somebody who noticed a wrong sender
+          address on the summary had to rebuild everything to change it.
+
+          Next is the thing that does not belong on the last step, because the
+          step's own body carries Launch and Schedule. Back always belongs.
+        */}
+        <div style={{ padding: '12px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0, gap: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', cursor: step === 1 ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 500, color: step === 1 ? '#cbd5e1' : '#374151' }}>
+            <ChevronLeft size={14} /> {isLastStep ? 'Back to audience' : 'Back'}
+          </button>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>Step {step} of {TOTAL_STEPS}</span>
+          {isLastStep ? (
+            /* Keeps the row three-across so Back does not jump to the middle. */
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Launch below when you are ready</span>
+          ) : (
             <div style={{ display: 'flex', flex: 'column', alignItems: 'flex-end', gap: 4 }}>
               {!canNext() && canNextTooltip() && (
                 <span style={{ fontSize: 11, color: '#f59e0b', marginRight: 8 }}>⚠️ {canNextTooltip()}</span>
@@ -2080,8 +2116,8 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
                 {step === TOTAL_STEPS - 1 ? 'Review' : 'Next'} <ChevronRight size={14} />
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

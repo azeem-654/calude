@@ -26,6 +26,8 @@
 export type MailDirection = 'outgoing' | 'incoming';
 
 export interface Diagnosis {
+  /** Which rule matched, so a caller can add what only it knows. */
+  id: string;
   /** What the server objected to, in one sentence, in plain words. */
   summary: string;
   /** What to do, in the order worth trying. */
@@ -35,6 +37,7 @@ export interface Diagnosis {
 }
 
 interface Rule {
+  id: string;
   /** Which direction this applies to; omitted means both. */
   only?: MailDirection;
   match: RegExp;
@@ -50,6 +53,7 @@ interface Rule {
  */
 const RULES: Rule[] = [
   {
+    id: 'unknown-recipient',
     /*
      * The address being written *to* does not exist.
      *
@@ -67,6 +71,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'sender-not-owned',
     /*
      * The mail server will only let you send as the address you logged in as.
      *
@@ -88,6 +93,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r3',
     match: /application[- ]specific password|app password|AppPasswordRequired|5\.7\.9/i,
     summary: 'The server accepted the connection but wants an app password, not the normal account password.',
     steps: [
@@ -99,6 +105,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r4',
     match: /account.*(disabled|locked|suspended)|too many login|rate.?limit.*login/i,
     summary: 'The provider has locked or throttled this mailbox, so the password could not be checked.',
     steps: [
@@ -109,6 +116,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r5',
     match: /auth.*(fail|denied|invalid|unsuccessful)|535|5\.7\.8|AUTHENTICATIONFAILED|rejected the login|not sign in/i,
     summary: 'The server was reached, but it rejected the username or password.',
     steps: [
@@ -123,6 +131,7 @@ const RULES: Rule[] = [
   /* Reachability. Distinguishing "wrong name" from "blocked port" matters,
      because the second one is not fixed by editing any field on this form. */
   {
+    id: 'r6',
     match: /ENOTFOUND|getaddrinfo|could not resolve|name or service not known|no such host/i,
     summary: 'That host name does not exist in DNS, so nothing could be connected to.',
     steps: [
@@ -133,6 +142,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r7',
     match: /ECONNREFUSED|connection refused/i,
     summary: 'The host exists but refused a connection on that port — usually the wrong port for this server.',
     steps: [
@@ -144,6 +154,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r8',
     match: /ETIMEDOUT|timed? out|timeout|cannot reach/i,
     summary: 'The connection was opened and never answered, which usually means a firewall between us and the server.',
     steps: [
@@ -158,6 +169,7 @@ const RULES: Rule[] = [
   /* TLS. The certificate case is worth its own rule: the fix is a different
      host name, which is not obvious from any error a TLS stack produces. */
   {
+    id: 'r9',
     match: /refused STARTTLS/i,
     summary: 'The server would not start an encrypted session, so nothing was sent to it.',
     steps: [
@@ -167,6 +179,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r10',
     match: /certificate|self.?signed|SSL|TLS|handshake|wrong version number/i,
     summary: 'The encrypted connection could not be established, usually a mismatch between the port and the encryption setting.',
     steps: [
@@ -179,6 +192,7 @@ const RULES: Rule[] = [
   /* Direction-specific. A folder that does not exist is meaningless outgoing,
      and a rejected from-address is meaningless incoming. */
   {
+    id: 'r11',
     only: 'incoming',
     match: /could not open|\[NONEXISTENT\]|no such (mailbox|folder)|TRYCREATE/i,
     summary: 'The sign-in worked, but the folder asked for does not exist on this mailbox.',
@@ -189,6 +203,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r12',
     only: 'outgoing',
     match: /MAIL FROM|sender.*(reject|denied|not allowed)|5\.7\.1.*sender|not authori[sz]ed to send/i,
     summary: 'The sign-in worked, but the server will not let this account send as that from address.',
@@ -200,6 +215,7 @@ const RULES: Rule[] = [
     ],
   },
   {
+    id: 'r13',
     only: 'outgoing',
     match: /RCPT TO|recipient.*(reject|denied)|relay(ing)? (denied|not permitted)|5\.7\.[0-9]*.*relay/i,
     summary: 'The server accepted the sign-in but refused to relay to the test recipient.',
@@ -212,6 +228,7 @@ const RULES: Rule[] = [
   },
 
   {
+    id: 'r14',
     match: /quota|over.?limit|550 5\.7\.0|daily limit|sending limit/i,
     summary: 'The credentials are right; the account has hit a sending limit.',
     steps: [
@@ -227,6 +244,7 @@ const RULES: Rule[] = [
 function fallback(direction: MailDirection, raw: string): Diagnosis {
   const port = direction === 'outgoing' ? '587 with STARTTLS, or 465 with SSL/TLS' : '993 with SSL/TLS, or 143 with STARTTLS';
   return {
+    id: 'unknown',
     summary: 'The server refused the connection, and its reply does not match a fault we recognise.',
     steps: [
       `Check the host, port and encryption together. For ${direction} mail that is normally ${port}.`,
@@ -251,7 +269,7 @@ export function diagnose(direction: MailDirection, raw: string): Diagnosis {
   if (!text) return fallback(direction, '');
   for (const rule of RULES) {
     if (rule.only && rule.only !== direction) continue;
-    if (rule.match.test(text)) return { summary: rule.summary, steps: rule.steps, raw: text };
+    if (rule.match.test(text)) return { id: rule.id, summary: rule.summary, steps: rule.steps, raw: text };
   }
   return fallback(direction, text);
 }

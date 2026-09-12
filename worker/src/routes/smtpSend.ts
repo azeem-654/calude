@@ -147,9 +147,22 @@ export async function handleSmtpSend(
    * sentence and the steps in front of it.
    */
   const why = diagnose('outgoing', r.error);
+
+  /*
+   * Name the two addresses.
+   *
+   * "The mail server will not let this mailbox send as the from address it was
+   * given" is true and still leaves somebody hunting through Settings for the
+   * two values it is talking about — which this endpoint is holding in local
+   * variables while it says so. Naming them turns the sentence into the fix.
+   */
+  const message = why.id === 'sender-not-owned' && username && username !== fromEmail
+    ? `This mailbox signs in as ${username} but tried to send as ${fromEmail}, and the server will not allow that. Change the "from" address to ${username}, or ask your provider to permit ${fromEmail} as a sender.`
+    : why.summary;
+
   return json({
     success: false, transport: 'smtp', attempts: r.attempts,
-    message: why.summary,
+    message,
     error: r.error,
     steps: why.steps,
     raw: why.raw,

@@ -128,10 +128,21 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
 
   try {
     if (config.provider === 'smtp') {
+      /*
+       * Not a gate.
+       *
+       * This used to refuse the send outright when `cachedPrimary()` came back
+       * empty — but that is a *browser* cache of the mailbox list, and it is
+       * empty on any tab that has not visited Settings yet, on a second device,
+       * and after anybody clears site data. The mailbox itself lives on the
+       * server, which checks for one anyway and says so in almost the same
+       * words. So an absent cache stopped a send that would have worked, and
+       * told the customer their mailbox was not connected when it was.
+       *
+       * The cache is still read, because it supplies the from-address when the
+       * caller has not set one. It just no longer gets a veto.
+       */
       const primary = cachedPrimary();
-      if (!primary?.smtpHost) {
-        return { success: false, error: 'No mailbox is connected. Go to Settings → Email & SMS → Mailboxes.' };
-      }
       /*
        * The workspace is named; the credentials are not sent.
        *
@@ -147,8 +158,8 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
         body: JSON.stringify({
           token: sessionToken(),
           accountId: getActiveAccountId(),
-          fromName: config.fromName || primary.fromName,
-          fromEmail: config.fromEmail || primary.fromEmail,
+          fromName: config.fromName || (primary?.fromName ?? ''),
+          fromEmail: config.fromEmail || (primary?.fromEmail ?? ''),
           to: payload.to, toName: payload.toName,
           replyTo: payload.replyTo || '',
           unsubscribeUrl: payload.unsubscribeUrl || '',
