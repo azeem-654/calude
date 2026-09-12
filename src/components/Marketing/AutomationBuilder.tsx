@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Plus, Trash2, Play, Pause, Zap, GitBranch, Mail, MessageSquare, Tag, Clock, User, Edit2, Check, X, ChevronDown, Loader, AlertTriangle, Calendar } from 'lucide-react';
 import type { Automation, AutomationNode, AutomationNodeType } from '../../types/marketing';
 import { normaliseAutomations } from '../../services/marketingShape';
+import { writeAutomation } from '../../services/aiWrite';
 
 /* ─── Node config ─── */
 
@@ -31,58 +32,23 @@ const TRIGGER_OPTIONS = [
 
 const ACTION_STEPS: AutomationNodeType[] = ['wait', 'condition', 'send_email', 'send_sms', 'add_tag', 'remove_tag', 'create_task', 'assign_to', 'update_field'];
 
-/* ─── AI helpers ─── */
+/* ─── AI helpers ───
+ *
+ * `generateAutomationFromPrompt` used to POST to api.anthropic.com **from this
+ * component**, with a key read from `localStorage.crm_anthropic_key`. Three
+ * things wrong with that, in increasing order of seriousness: the product's AI
+ * key is Gemini, not Anthropic; nothing in the app has ever written that
+ * localStorage entry, so the key was always empty and every single "Build with
+ * AI" fell through to the canned fallback below; and a third-party API call
+ * from the bundle puts a billable credential in the page.
+ *
+ * It goes through the Worker now — `services/aiWrite.ts` → /api/aiwrite.php —
+ * on the same encrypted Gemini key everything else uses. The fallback stays,
+ * because a workspace with no key should still be able to start an automation;
+ * it is just no longer described as AI.
+ */
 
-async function generateAutomationFromPrompt(prompt: string, apiKey: string): Promise<Omit<AutomationNode, 'nextId'>[]> {
-  if (!apiKey) return fallbackAutomation(prompt);
-
-  const systemPrompt = `Convert this marketing automation description into JSON steps.
-
-User request: "${prompt}"
-
-Return ONLY a valid JSON array with this structure:
-[
-  {
-    "type": "trigger|wait|condition|send_email|send_sms|add_tag|remove_tag|create_task|assign_to|update_field|end",
-    "label": "human-readable label",
-    "config": { "key": "value pairs describing the step" }
-  }
-]
-
-Rules:
-- First item must be type "trigger"
-- Last item must be type "end"
-- Include realistic config values
-- 4-8 steps total
-- For wait: config = { "days": "3" }
-- For send_email: config = { "subject": "...", "preview": "..." }
-- For condition: config = { "field": "...", "operator": "equals", "value": "..." }
-- For add_tag/remove_tag: config = { "tag": "..." }
-- For create_task: config = { "title": "...", "dueInDays": "1" }`;
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 1500, messages: [{ role: 'user', content: systemPrompt }] }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}`);
-    const data = await res.json() as { content: { text: string }[] };
-    const match = data.content[0].text.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('no JSON');
-    const steps = JSON.parse(match[0]) as { type: string; label: string; config: Record<string, string> }[];
-    return steps.map((s, idx) => ({
-      id: `node-${idx}-${Date.now()}`,
-      type: (s.type as AutomationNodeType) || 'send_email',
-      label: String(s.label),
-      config: s.config || {},
-    }));
-  } catch {
-    return fallbackAutomation(prompt);
-  }
-}
-
-function fallbackAutomation(desc: string): Omit<AutomationNode, 'nextId'>[] {
+function skeletonAutomation(desc: string): Omit<AutomationNode, 'nextId'>[] {
   const isEmail = /email/i.test(desc);
   const isTag = /tag/i.test(desc);
   const isDownload = /download|form|pricing/i.test(desc);
@@ -359,15 +325,31 @@ export default function AutomationBuilder({ automations: storedAutomations, onAd
   const [aiPrompt, setAiPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [editingNode, setEditingNode] = useState<AutomationNode | null>(null);
-  const apiKey = localStorage.getItem('crm_anthropic_key') || '';
-
   const handleCreate = async () => {
     if (!newName.trim()) { onNotify('Please enter an automation name', 'error'); return; }
     setGenerating(true);
     let nodes: AutomationNode[];
     if (aiPrompt.trim()) {
-      const raw = await generateAutomationFromPrompt(aiPrompt, apiKey);
-      nodes = buildNodes(raw);
+      const r = await writeAutomation(aiPrompt.trim());
+      if (r.ok && r.nodes.length) {
+        nodes = buildNodes(r.nodes.map((n, i) => ({
+          id: `n${i}`,
+          type: n.type as AutomationNodeType,
+          label: n.label,
+          config: n.config,
+        })));
+      } else {
+        /* Said, not swallowed. The old code silently produced the same four
+           canned steps for everybody and called them AI, which is how somebody
+           concludes the AI is useless when it was never asked. */
+        onNotify(
+          r.needsKey
+            ? 'No AI key is connected, so this was started from a skeleton instead. Add one under Settings → AI Engine.'
+            : `${r.error || 'The AI could not build that.'} Started from a skeleton instead — edit it on the canvas.`,
+          'error',
+        );
+        nodes = buildNodes(skeletonAutomation(aiPrompt));
+      }
     } else {
       nodes = buildNodes([
         { id: 'n0', type: 'trigger', label: 'Contact created', config: { event: 'contact_created' } },
@@ -490,8 +472,10 @@ export default function AutomationBuilder({ automations: storedAutomations, onAd
               <div>
                 <label style={{ ...labelStyle, marginBottom: '5px' }}>
                   Describe what this automation should do
-                  {apiKey ? <span style={{ color: '#16a34a', fontSize: '11px', marginLeft: '6px' }}>· AI will build it</span>
-                    : <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '6px' }}>· Smart templates will be used</span>}
+                  {/* Whether a key is connected is the server's answer, not the
+                      browser's — so the promise is made when it is kept, not
+                      guessed here from a localStorage entry. */}
+                  <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '6px' }}>· the AI builds it from this</span>
                 </label>
                 <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={3}
                   placeholder='e.g. "When a contact downloads a pricing guide, wait 1 day, then send an email with a discount code, and create a task for the sales team"'
@@ -501,7 +485,7 @@ export default function AutomationBuilder({ automations: storedAutomations, onAd
                 <button onClick={() => setCreating(false)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
                 <button onClick={handleCreate} disabled={generating}
                   style={{ padding: '9px 20px', backgroundColor: generating ? '#c4b5fd' : '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {generating ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Building…</> : <><GitBranch size={14} /> {aiPrompt ? (apiKey ? 'Build with AI' : 'Build Automation') : 'Create Empty'}</>}
+                  {generating ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Building…</> : <><GitBranch size={14} /> {aiPrompt ? 'Build it' : 'Create empty'}</>}
                 </button>
               </div>
             </div>

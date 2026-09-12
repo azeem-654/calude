@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Inbox, Shield, Check, ToggleLeft, ToggleRight, Grid3x3, Settings } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Shield, Settings } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
@@ -9,7 +9,6 @@ import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
 import CampaignWizard from './CampaignWizard';
 import CampaignDetailPanel from './CampaignDetailPanel';
-import EmailApps from './EmailApps';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
 import SourceTag from '../shared/SourceTag';
@@ -234,194 +233,30 @@ function CampaignsTab() {
 
 /* ─── Deliverability Tab ─── */
 
-type WarmupType = 'progressive' | 'flat' | 'randomize';
-
-function DeliverabilityTab() {
-  const [mailboxes] = useState([
-    { email: 'you@yourdomain.com', type: 'Gmail', warmup: true, warmupOn: true, dailyLimit: 40, sent: 12, deliverability: 94, lastSync: 'Just now' },
-  ]);
-  const [showWarmupModal, setShowWarmupModal] = useState(false);
-  const [warmupType, setWarmupType] = useState<WarmupType>('progressive');
-  const [minEmails, setMinEmails] = useState(10);
-  const [maxEmails, setMaxEmails] = useState(40);
-  const [replyPct, setReplyPct] = useState(30);
-  const [continuous, setContinuous] = useState(true);
-  const [endDate, setEndDate] = useState('');
-
-  const warmupDescriptions: Record<WarmupType, { label: string; desc: string }> = {
-    progressive: { label: 'Progressive', desc: 'The number of emails sent per day will gradually increase.' },
-    flat:        { label: 'Flat',        desc: 'The number of emails sent each day will be exactly the same.' },
-    randomize:   { label: 'Randomize',   desc: 'The number of emails and each day will not be determined.' },
-  };
-
-  return (
-    <div style={{ padding: '28px', maxWidth: 820 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 4px', letterSpacing: '-0.02em' }}>Deliverability Suite</h2>
-        <p style={{ fontSize: 13, color: '#475569', margin: 0 }}>Warm up your mailboxes to improve deliverability and avoid the spam folder.</p>
-      </div>
-
-      {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
-        {[
-          { label: 'Connected Mailboxes', value: mailboxes.length, color: '#17191c', icon: <Inbox size={18} color="#17191c" /> },
-          { label: 'Warming Up', value: mailboxes.filter(m => m.warmupOn).length, color: '#f59e0b', icon: <Zap size={18} color="#f59e0b" /> },
-          { label: 'Avg Deliverability', value: `${mailboxes.reduce((s, m) => s + m.deliverability, 0) / (mailboxes.length || 1)}%`, color: '#22c55e', icon: <Shield size={18} color="#22c55e" /> },
-          { label: 'Emails Today', value: mailboxes.reduce((s, m) => s + m.sent, 0), color: '#3b82f6', icon: <Mail size={18} color="#3b82f6" /> },
-        ].map(item => (
-          <div key={item.label}
-            style={{ backgroundColor: 'white', borderRadius: 18, padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', alignItems: 'center', gap: 12, transition: 'box-shadow 0.15s' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
-            <div>
-              <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{item.label}</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{item.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Mailbox list */}
-      <div style={{ backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e6e9f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>My mailboxes</span>
-          <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
-            <Plus size={13} /> Link mailbox
-          </button>
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#f8fafc' }}>
-              {['Mailbox', 'Type', 'Setup', 'Warmup', 'Daily limit', 'Sent today', 'Deliverability', 'Last sync'].map(h => (
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #e6e9f0' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {mailboxes.map(m => (
-              <tr key={m.email} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{m.email}</td>
-                <td style={{ padding: '12px 14px' }}><span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 9999, backgroundColor: '#eceef1', color: '#17191c', fontWeight: 600 }}>{m.type}</span></td>
-                <td style={{ padding: '12px 14px' }}><span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#16a34a' }}><Check size={12} /> Connected</span></td>
-                <td style={{ padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button onClick={() => setShowWarmupModal(true)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', border: '1px solid #e2e8f0', borderRadius: 9999, backgroundColor: m.warmupOn ? '#fffbeb' : 'white', color: m.warmupOn ? '#d97706' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                      {m.warmupOn ? <ToggleRight size={13} color="#f59e0b" /> : <ToggleLeft size={13} />}
-                      {m.warmupOn ? 'On' : 'Off'}
-                    </button>
-                    {m.warmupOn && <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>✓ Active</span>}
-                  </div>
-                </td>
-                <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>{m.dailyLimit}</td>
-                <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>{m.sent} / {m.dailyLimit}</td>
-                <td style={{ padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 50, height: 6, backgroundColor: '#f1f5f9', borderRadius: 9999, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${m.deliverability}%`, background: m.deliverability >= 90 ? '#22c55e' : m.deliverability >= 70 ? '#f59e0b' : '#ef4444', borderRadius: 9999 }} />
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: m.deliverability >= 90 ? '#16a34a' : '#d97706' }}>{m.deliverability}%</span>
-                  </div>
-                </td>
-                <td style={{ padding: '12px 14px', fontSize: 12, color: '#94a3b8' }}>{m.lastSync}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Tips */}
-      <div style={{ backgroundColor: '#fffbeb', borderRadius: 18, border: '1px solid #fde68a', padding: '18px 22px' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 10 }}>💡 Deliverability Tips</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {[
-            'Start slow — under 20 emails/day for the first week.',
-            'Keep reply rate above 25% during warmup.',
-            'Avoid spam trigger words in subject lines.',
-            'Set up SPF, DKIM, and DMARC on your domain.',
-          ].map(tip => (
-            <div key={tip} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-              <Check size={13} color="#d97706" style={{ marginTop: 2, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: '#78350f' }}>{tip}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Warmup settings modal */}
-      {showWarmupModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowWarmupModal(false)}>
-          <div style={{ backgroundColor: 'white', borderRadius: 16, width: '100%', maxWidth: 580, boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e6e9f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Mailbox Warmup Settings</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Inbox Warmup improves email deliverability by gradually increasing outbound volume over time to build sender reputation.</div>
-              </div>
-              <button onClick={() => setShowWarmupModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><Shield size={18} /></button>
-            </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {/* Warmup type */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Select your warmup options</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-                  {(['progressive', 'flat', 'randomize'] as WarmupType[]).map(t => (
-                    <button key={t} onClick={() => setWarmupType(t)}
-                      style={{ padding: '12px 10px', border: `2px solid ${warmupType === t ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: warmupType === t ? '#eceef1' : 'white', cursor: 'pointer', textAlign: 'center' }}>
-                      {warmupType === t && <Check size={14} color="#17191c" style={{ display: 'block', margin: '0 auto 4px' }} />}
-                      <div style={{ fontSize: 12, fontWeight: 700, color: warmupType === t ? '#17191c' : '#374151', textTransform: 'capitalize' }}>{warmupDescriptions[t].label}</div>
-                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, lineHeight: 1.3 }}>{warmupDescriptions[t].desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {/* Settings grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-                {[
-                  { label: 'Warm up to (end)', value: endDate, isDate: true, onChange: (v: string) => setEndDate(v) },
-                  { label: 'Min emails/day', value: minEmails, min: 1, max: 20, onChange: (v: string) => setMinEmails(parseInt(v)) },
-                  { label: 'Max emails/day', value: maxEmails, min: 10, max: 100, onChange: (v: string) => setMaxEmails(parseInt(v)) },
-                  { label: 'Reply rate %', value: replyPct, min: 10, max: 80, onChange: (v: string) => setReplyPct(parseInt(v)) },
-                ].map(f => (
-                  <div key={f.label}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{f.label}</label>
-                    <input type={f.isDate ? 'date' : 'number'} value={f.value} min={(f as { min?: number }).min} max={(f as { max?: number }).max}
-                      onChange={e => f.onChange(e.target.value)}
-                      style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-                    {!f.isDate && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>{(f as { min?: number }).min ? `Recommended: ${(f as { min?: number }).min}–${(f as { max?: number }).max}` : ''}</div>}
-                  </div>
-                ))}
-              </div>
-              {/* Continuous warmup */}
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={continuous} onChange={e => setContinuous(e.target.checked)} style={{ marginTop: 3, accentColor: '#17191c', cursor: 'pointer' }} />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Continuous warmup</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Continuous warmup keeps sending warmup emails after your scheduled end date to maintain deliverability.</div>
-                </div>
-              </label>
-            </div>
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #e6e9f0', display: 'flex', justifyContent: 'flex-end', gap: 10, backgroundColor: '#f8fafc' }}>
-              <button onClick={() => setShowWarmupModal(false)} style={{ padding: '9px 16px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, fontWeight: 500, color: '#374151', cursor: 'pointer', backgroundColor: 'white' }}>Skip step</button>
-              <button onClick={() => setShowWarmupModal(false)}
-                style={{ padding: '9px 16px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(23,25,28,0.3)' }}>
-                Warm up mailbox
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+/*
+ * The "Deliverability Suite" tab used to live here, and every number on it was
+ * invented: one hardcoded mailbox called you@yourdomain.com, 94% deliverability,
+ * 12 sent today, "Last sync: Just now". The "Link mailbox" button had no
+ * handler at all, and the warm-up modal wrote its settings nowhere.
+ *
+ * All of it already exists for real elsewhere — Settings → Email & SMS connects
+ * mailboxes, Settings → Deliverability runs the actual SPF/DKIM/DMARC and
+ * blacklist checks and holds the suppression list, and WarmupPanel runs a real
+ * warm-up against real sends. A second copy made of stage scenery, sitting in
+ * front of the module a customer is about to send from, is the most damaging
+ * possible place to put a fake number: it says deliverability is fine when
+ * nothing has been checked.
+ *
+ * So it is gone rather than rebuilt. The tab bar links across instead.
+ */
 
 /* ─── Tab definitions ─── */
 
-type TabId = 'campaigns' | 'import' | 'sequences' | 'automations' | 'deliverability' | 'emailapps';
+type TabId = 'campaigns' | 'sequences' | 'automations' | 'import';
 
 /* The set an address is checked against, so an unknown ?tab= falls back to the
    default rather than rendering nothing at all. */
-const TAB_IDS: TabId[] = ['campaigns', 'import', 'sequences', 'automations', 'deliverability', 'emailapps'];
+const TAB_IDS: TabId[] = ['campaigns', 'sequences', 'automations', 'import'];
 
 /* ─── Root component ─── */
 
@@ -474,18 +309,25 @@ export default function Marketing() {
   const activeSeqCount = sequences.filter(s => s.status === 'active').length;
   const activeAutoCount = automations.filter(a => a.status === 'active').length;
 
+  /*
+   * Four tabs, and each one is a thing this module owns.
+   *
+   * It was six. "Deliverability" was scenery over a real panel in Settings, and
+   * "Email Apps" connected ActiveCampaign and Mailchimp — a competitor sync
+   * nobody asked for, which stored their API keys in plain text in
+   * localStorage, where every other credential in this app is encrypted on the
+   * server and never returned to a browser.
+   */
   const tabs: { id: TabId; label: string; icon: React.ReactElement; badge?: number }[] = [
-    { id: 'campaigns',      label: 'Campaigns',      icon: <Mail size={15} /> },
-    { id: 'sequences',      label: 'Sequences',       icon: <Zap size={15} />, badge: activeSeqCount || undefined },
-    { id: 'automations',    label: 'Automations',     icon: <GitBranch size={15} />, badge: activeAutoCount || undefined },
-    { id: 'deliverability', label: 'Deliverability',  icon: <Shield size={15} /> },
-    { id: 'emailapps',      label: 'Email Apps',      icon: <Grid3x3 size={15} /> },
-    { id: 'import',         label: 'Import Contacts', icon: <Upload size={15} /> },
+    { id: 'campaigns',   label: 'Campaigns',  icon: <Mail size={15} /> },
+    { id: 'sequences',   label: 'Sequences',  icon: <Zap size={15} />, badge: activeSeqCount || undefined },
+    { id: 'automations', label: 'Automations', icon: <GitBranch size={15} />, badge: activeAutoCount || undefined },
+    { id: 'import',      label: 'Import a list', icon: <Upload size={15} /> },
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <Header title="Email campaigns" subtitle="Campaigns · Sequences · Automations · Deliverability" />
+      <Header title="Email campaigns" subtitle="Campaigns · Sequences · Automations" />
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '4px', padding: '0 28px', borderBottom: '1px solid #e6e9f0', backgroundColor: 'white', flexShrink: 0 }}>
@@ -526,14 +368,6 @@ export default function Marketing() {
             onActivateSequence={handleActivateSequence}
             onNotify={addNotification}
           />
-        )}
-        {activeTab === 'deliverability' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}><DeliverabilityTab /></div>
-        )}
-        {activeTab === 'emailapps' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
-            <EmailApps contacts={contacts} />
-          </div>
         )}
         {activeTab === 'automations' && (
           <AutomationBuilder

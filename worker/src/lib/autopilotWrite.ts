@@ -231,3 +231,154 @@ Return ONLY valid JSON, no fences:
   ]
 }`, 0.7);
 }
+
+/* ── A campaign somebody briefed ─────────────────────────────────────────────
+ *
+ * The difference between this and `writeSequence` is who decided what it says.
+ * A sequence is Autopilot's own first follow-up, written from the brand alone.
+ * A campaign is a person sitting at the wizard saying "we are launching X, the
+ * angle is Y, the call to action is Z" — so the brief leads and the brand only
+ * supplies the voice.
+ *
+ * It exists because the wizard did not have this. It assembled the emails from
+ * string templates full of `[describe key value]` and labelled the result
+ * "AI-generated", which is both the dullest possible copy and a claim the app
+ * could not back. Every prompt rule below is aimed at the specific ways that
+ * copy was bad: no placeholder brackets, no invented benefits, no filler.
+ */
+
+export interface WrittenCampaign {
+  steps: { day: number; subject: string; preheader: string; body: string; purpose: string }[];
+}
+
+export interface CampaignBrief {
+  /** announce | promote | nurture | welcome | reengage | custom */
+  goal: string;
+  /** What the customer typed about the campaign. The most important input. */
+  concept: string;
+  cta: string;
+  tone: string;
+  channel: 'email' | 'sms';
+  steps: number;
+}
+
+const GOAL_JOB: Record<string, string> = {
+  announce: 'tell people about something new and get them to look at it',
+  promote: 'get people to take up a specific offer before it ends',
+  nurture: 'be useful enough that the reader trusts them when they are ready to buy',
+  welcome: 'get somebody who just signed up to their first result quickly',
+  reengage: 'restart a conversation with somebody who has gone quiet, without guilt-tripping them',
+  custom: 'achieve what the brief below says',
+};
+
+export function writeCampaign(apiKey: string, b: Brand, brief: CampaignBrief): Promise<Written<WrittenCampaign>> {
+  const n = Math.min(Math.max(brief.steps || 3, 1), 6);
+  const job = GOAL_JOB[brief.goal] ?? GOAL_JOB.custom;
+
+  if (brief.channel === 'sms') {
+    return ask<WrittenCampaign>(apiKey, `Write a ${n}-message SMS campaign for this business.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+
+=== THE BRIEF ===
+The job of this campaign: ${job}.
+What it is about (the customer wrote this — it leads, the brand above is only the voice): ${brief.concept || '(they did not say — write something honest and general rather than inventing specifics)'}
+What they want people to do: ${brief.cta || '(unstated)'}
+Tone: ${brief.tone || 'plain and direct'}
+
+Rules:
+- ${NO_INVENTING}
+- Under 300 characters each including the opt-out. SMS is charged per segment and read in a queue of messages from real people.
+- Every message ends with "Reply STOP to opt out." That is a legal requirement, not a style choice.
+- {{firstName}} is the only merge tag. Never invent others.
+- Never write a placeholder in brackets. If you do not know a specific, write a sentence that does not need it.
+- Later messages reference the first without repeating it word for word.
+
+Return ONLY valid JSON, no fences:
+{"steps":[${Array.from({ length: n }, (_, i) =>
+      `{"day":${i * 3},"subject":"","preheader":"","body":"","purpose":"one short line on what this message is for"}`).join(',')}]}`, 0.75);
+  }
+
+  return ask<WrittenCampaign>(apiKey, `Write a ${n}-email campaign for this business.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+
+=== THE BRIEF ===
+The job of this campaign: ${job}.
+What it is about (the customer wrote this — it leads, the brand above is only the voice): ${brief.concept || '(they did not say — write something honest and general rather than inventing specifics)'}
+What they want people to do: ${brief.cta || '(unstated)'}
+Tone: ${brief.tone || 'plain and direct'}
+
+Rules:
+- ${NO_INVENTING}
+- **Never write a placeholder.** No "[describe key value]", no "[Your Name]", no "[Benefit 1]". If you do not know a specific, write a sentence that does not need one. A draft full of brackets is worse than a shorter draft without them, because the customer sends it with the brackets still in.
+- Under 160 words each. These are read on a phone. Short paragraphs, one idea each.
+- Banned openings: "I hope this email finds you well", "just circling back", "touching base", "quick question", "I wanted to reach out".
+- No exclamation marks in subject lines, and no emoji unless the tone is explicitly playful.
+- Subject lines under 55 characters so they are not cut off. Each one different in shape — do not write five variations of the same sentence.
+- The preheader is the line shown after the subject in an inbox. It must add something, not repeat the subject.
+- Each email does a different job and says so in "purpose". Later emails refer back without repeating.
+- The last one accepts no for an answer and says how to stop hearing about it.
+- Plain HTML only: <p>, <strong>, <em>, <ul>, <li>, <a>. No <style>, no tables, no inline CSS, no images. The app styles it.
+- {{firstName}} is the only merge tag. It must work if the name is missing, so never start a sentence with it alone.
+- Sign off with the company name, not "[Your Name]".
+
+Return ONLY valid JSON, no fences:
+{"steps":[${Array.from({ length: n }, (_, i) =>
+    `{"day":${[0, 3, 7, 14, 21, 28][i] ?? i * 7},"subject":"","preheader":"","body":"","purpose":"one short line on what this email is for"}`).join(',')}]}`, 0.75);
+}
+
+/* ── An automation somebody described ───────────────────────────────────────
+ *
+ * This used to call Anthropic's API **from the browser**, with a key read from
+ * `localStorage.crm_anthropic_key` that nothing in the app ever sets. So it was
+ * a third-party call from the bundle (which this codebase does not do), against
+ * a provider the product does not use, with a key that was always empty — which
+ * means it always fell through to a canned four-step fallback. Everybody who
+ * pressed "Build with AI" got the same automation.
+ */
+
+export interface WrittenAutomation {
+  name: string;
+  nodes: { type: string; label: string; config: Record<string, string> }[];
+}
+
+/** What the builder can actually execute. A model inventing a step type outside
+ *  this list produces a node the canvas cannot render or run. */
+export const AUTOMATION_NODE_TYPES = [
+  'trigger', 'wait', 'condition', 'send_email', 'send_sms',
+  'add_tag', 'remove_tag', 'create_task', 'assign_to', 'update_field', 'end',
+] as const;
+
+export function writeAutomation(apiKey: string, b: Brand, prompt: string): Promise<Written<WrittenAutomation>> {
+  return ask<WrittenAutomation>(apiKey, `Turn this description into a marketing automation for the business below.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+
+=== WHAT THEY ASKED FOR ===
+${prompt}
+
+Rules:
+- ${NO_INVENTING}
+- Between 4 and 8 steps. The first is "trigger", the last is "end".
+- Only these step types: ${AUTOMATION_NODE_TYPES.join(', ')}. Anything else cannot be run.
+- Config by type:
+  trigger: {"event":"..."} — what starts it, e.g. "form_submitted", "tag_added", "deal_stage_changed"
+  wait: {"days":"3"}
+  condition: {"field":"...","operator":"equals|not_equals|contains|greater_than","value":"..."}
+  send_email: {"subject":"...","preview":"..."} — a real subject line for this business, not "Follow up email"
+  send_sms: {"body":"... Reply STOP to opt out."}
+  add_tag / remove_tag: {"tag":"..."}
+  create_task: {"title":"...","dueInDays":"1"}
+  assign_to: {"who":"..."}
+  update_field: {"field":"...","value":"..."}
+  end: {}
+- Labels are what a person reads on the canvas: "Wait 3 days", not "wait_node_2".
+- Never write a placeholder in brackets.
+
+Return ONLY valid JSON, no fences:
+{"name":"short name for this automation","nodes":[{"type":"trigger","label":"","config":{}}]}`, 0.5);
+}

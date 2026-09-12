@@ -384,6 +384,13 @@ export interface CampaignStep {
   abTest: boolean;
   body: string;
   condition: string;
+  /** The line an inbox shows after the subject. Optional: steps written before
+   *  this existed have none, and falling back to the body's first words is what
+   *  every mail client does anyway. */
+  preheader?: string;
+  /** What this email is for, in the writer's own words. A note to whoever is
+   *  editing — never sent, never rendered into the message. */
+  purpose?: string;
 }
 
 export interface Campaign {

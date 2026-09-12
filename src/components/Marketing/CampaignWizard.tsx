@@ -9,7 +9,7 @@ import {
   Smartphone, Monitor, CheckCircle, ChevronRight, ChevronLeft,
   Sparkles, RotateCcw, Plus, Trash2, Send, Eye,
   Clock, Calendar, Users, Settings, ChevronDown, ChevronUp,
-  Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target,
+  Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target, AlertTriangle,
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 import { enrollInSequence, campaignAsSequence } from '../../services/contactEmail';
@@ -19,6 +19,7 @@ import { findSuppression, localCheck, loadSettings as loadDeliverability } from 
 import { suppress } from '../../services/deliverability';
 import EmailTemplateGallery from './EmailTemplates';
 import { useApp } from '../../context/AppContext';
+import { writeCampaign, rewriteEmail } from '../../services/aiWrite';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -39,7 +40,11 @@ function saveSenderProfileRecords(list: SenderProfileRecord[]) {
 
 /* ─── Types ─── */
 type CampaignGoal = 'announce' | 'promote' | 'nurture' | 'welcome' | 'reengage' | 'custom';
-type AudienceSegment = 'all' | 'leads' | 'customers' | 'prospects';
+/* 'manual' is a list typed into the wizard rather than a slice of the CRM. It
+   exists because the only other options were four fixed segments, so somebody
+   with twelve addresses on a bit of paper had no way to send to them without
+   first importing them as contacts they did not want to keep. */
+type AudienceSegment = 'all' | 'leads' | 'customers' | 'prospects' | 'manual';
 type ToneType = 'professional' | 'friendly' | 'urgent' | 'educational';
 
 interface WizardStep extends CampaignStep {}
@@ -64,6 +69,8 @@ interface WizardState {
   sendHoursFrom: string;
   sendHoursTo: string;
   audience: AudienceSegment;
+  /** Addresses typed or pasted straight into the wizard. */
+  manualList: string;
   subject: string;
   previewText: string;
   emailBody: string;
@@ -491,14 +498,19 @@ function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Part
   );
 }
 
-/* ─── Step 2: AI Campaign Flow ─── */
-const LOADING_MSGS = [
-  'Analyzing your campaign brief…',
-  'Generating personalized subject lines…',
-  'Writing tailored email copy…',
-  'Building your multi-step flow…',
-  'Optimizing send timing…',
-];
+/* ─── Step 2: the flow ───
+ *
+ * This step used to run a 1.8-second timer behind five rotating status
+ * messages — "Analyzing your campaign brief…", "Writing tailored email copy…" —
+ * and then paste in a string template. No request was made. The theatre was the
+ * only part of it that resembled AI, and the copy that came out the other end
+ * was full of `[describe key value]`, which is what the customer was looking at
+ * when they said it did not feel like AI had made it.
+ *
+ * It calls the model now. The status line says the one true thing, the errors
+ * are the model's own, and the template is still here — offered under its own
+ * name, for a workspace with no key, rather than dressed up as generation.
+ */
 
 const CONDITION_COLORS: Record<string, { bg: string; color: string }> = {
   'Always':         { bg: '#ecfdf5', color: '#16a34a' },
@@ -511,45 +523,94 @@ const CONDITION_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(() => state.steps.length === 0);
-  const [msgIdx, setMsgIdx] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  /* Timers live in a ref so a remount cancels them cleanly and a fresh run can
-     always be started. Anything that survives a cancel — a "we already ran this"
-     flag, say — wedges the step on its loading screen with no way forward. */
-  const timers = useRef<{ msg?: ReturnType<typeof setInterval>; gen?: ReturnType<typeof setTimeout> }>({});
+  /** The model's own words when it refuses, shown rather than swallowed. */
+  const [problem, setProblem] = useState('');
+  /** True when the workspace has no AI key — an offer, not an error. */
+  const [needsKey, setNeedsKey] = useState(false);
+  /** Set when it wrote from a business profile too thin to be specific. */
+  const [thin, setThin] = useState('');
+  /** Which step is being rewritten, and what was asked for. */
+  const [rewriting, setRewriting] = useState<string | null>(null);
+
   const latest = useRef({ state, onChange });
   useEffect(() => { latest.current = { state, onChange }; });
+  /** Guards a reply from a run the user has already moved on from. */
+  const runId = useRef(0);
 
-  const cancelTimers = () => {
-    if (timers.current.msg !== undefined) clearInterval(timers.current.msg);
-    if (timers.current.gen !== undefined) clearTimeout(timers.current.gen);
-    timers.current = {};
-  };
+  const conditionFor = (i: number) =>
+    ['Always', 'If not opened', 'If not replied', 'If not clicked'][Math.min(i, 3)];
 
-  const build = useCallback((delay: number) => {
-    cancelTimers();
+  const build = useCallback(async () => {
+    const mine = ++runId.current;
     setLoading(true);
-    setMsgIdx(0);
-    timers.current.msg = setInterval(() => setMsgIdx(i => (i + 1) % LOADING_MSGS.length), 420);
-    timers.current.gen = setTimeout(() => {
-      cancelTimers();
-      const { state: s, onChange: change } = latest.current;
-      change({ steps: generateWorkflow(s.type, s.goal, s.concept, s.cta, s.tone) });
-      setLoading(false);
-      setExpandedId(null);
-    }, delay);
+    setProblem('');
+    setNeedsKey(false);
+    setThin('');
+
+    const { state: st, onChange: change } = latest.current;
+    const r = await writeCampaign({
+      goal: st.goal || 'custom',
+      concept: st.concept,
+      cta: st.cta,
+      tone: st.tone,
+      channel: st.type === 'sms' ? 'sms' : 'email',
+      steps: st.type === 'sequence' ? 4 : 3,
+    });
+    if (mine !== runId.current) return;
+
+    setLoading(false);
+    if (!r.ok) {
+      setNeedsKey(r.needsKey);
+      setProblem(r.error);
+      return;
+    }
+    setThin(r.thin);
+    change({
+      steps: r.steps.map((w, i) => ({
+        id: `step-${Date.now()}-${i}`,
+        day: w.day,
+        waitUnit: 'days' as const,
+        subject: w.subject,
+        subjectB: '',
+        abTest: false,
+        body: w.body,
+        condition: conditionFor(i),
+        /* Carried on the step so the timeline can say what each email is for.
+           Not sent — it is a note to the person editing. */
+        purpose: w.purpose,
+        preheader: w.preheader,
+      })),
+    });
+    setExpandedId(null);
   }, []);
 
+  /** The old string template, offered honestly as one. */
+  const useTemplate = () => {
+    const { state: st, onChange: change } = latest.current;
+    change({ steps: generateWorkflow(st.type, st.goal, st.concept, st.cta, st.tone) });
+    setProblem('');
+    setNeedsKey(false);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    if (latest.current.state.steps.length === 0) build(1800);
+    if (latest.current.state.steps.length === 0) void build();
     else setLoading(false);
-    return cancelTimers;
   }, [build]);
 
-  const regenerate = () => {
-    onChange({ steps: [] });
-    build(1600);
+  const regenerate = () => { onChange({ steps: [] }); void build(); };
+
+  /** Change one email rather than throwing the whole flow away. */
+  const rewriteStep = async (step: WizardStep, instruction: string) => {
+    setRewriting(step.id);
+    const r = await rewriteEmail(step.subject, step.body, instruction);
+    setRewriting(null);
+    if (!r.ok) { setProblem(r.error); setNeedsKey(r.needsKey); return; }
+    const { state: st, onChange: change } = latest.current;
+    change({ steps: st.steps.map(x => x.id === step.id ? { ...x, subject: r.subject || x.subject, body: r.body } : x) });
   };
 
   const updateStep = (id: string, updates: Partial<WizardStep>) =>
@@ -585,16 +646,56 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
         <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: '0 0 30px rgba(23,25,28,0.3)' }}>
-          <Sparkles size={28} color="white" />
+          <Loader size={26} color="white" className="spin" />
         </div>
-        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Building your campaign flow</h3>
-        <p style={{ fontSize: 13, color: '#17191c', fontWeight: 500, marginBottom: 24, minHeight: 20, transition: 'opacity 0.3s' }}>{LOADING_MSGS[msgIdx]}</p>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#17191c', opacity: msgIdx % 3 === i ? 1 : 0.3, transition: 'opacity 0.3s' }} />
-          ))}
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Writing your campaign</h3>
+        {/* One line, and it is true. The five rotating status messages that used
+            to be here described stages that never happened. */}
+        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>
+          Asking the AI to write {state.type === 'sequence' ? 'four' : 'three'} {isSMS ? 'messages' : 'emails'} from your brief. This takes a few seconds.
+        </p>
+        {state.concept.trim() && (
+          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 12, maxWidth: 420, lineHeight: 1.55 }}>
+            From: <em>"{state.concept.slice(0, 90)}{state.concept.length > 90 ? '…' : ''}"</em>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  /* ── It could not write ──
+     Two different situations and they need different offers: no key at all is
+     something to go and connect, and everything else is the model's own
+     complaint. Both leave the template as a way forward, named as a template. */
+  if (problem && state.steps.length === 0) {
+    return (
+      <div style={{ padding: '32px 20px', maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: needsKey ? '#fff7ed' : '#fef2f2', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <XCircle size={24} color={needsKey ? '#c2410c' : '#dc2626'} />
         </div>
-        <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 16 }}>Personalized for: <em>"{state.concept.slice(0, 60) || 'your campaign'}{state.concept.length > 60 ? '…' : ''}"</em></p>
+        <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>
+          {needsKey ? 'No AI key connected' : 'The AI could not write this'}
+        </h3>
+        <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, marginBottom: 22 }}>{problem}</p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {needsKey && (
+            <button onClick={() => navigate('/settings?tab=ai')}
+              style={{ padding: '10px 18px', border: 'none', borderRadius: 9, background: '#17191c', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              Connect an AI key
+            </button>
+          )}
+          <button onClick={() => void build()}
+            style={{ padding: '10px 18px', border: '1px solid #e2e8f0', borderRadius: 9, background: 'white', color: '#17191c', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            Try again
+          </button>
+          <button onClick={useTemplate}
+            style={{ padding: '10px 18px', border: '1px solid #e2e8f0', borderRadius: 9, background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Start from a template instead
+          </button>
+        </div>
+        <p style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
+          The template is a skeleton with gaps for you to fill in — it is not written for your business.
+        </p>
       </div>
     );
   }
@@ -604,8 +705,8 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Your AI-generated campaign flow</h2>
-          <p style={{ color: '#64748b', fontSize: 13 }}>Review, edit, and approve your campaign before it goes live.</p>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Your campaign</h2>
+          <p style={{ color: '#64748b', fontSize: 13 }}>Written from your brief. Read it before it goes anywhere — it is a first draft, not a finished one.</p>
         </div>
         <button onClick={regenerate}
           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px', border: '1px solid #e2e8f0', borderRadius: 8, backgroundColor: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#17191c', flexShrink: 0 }}>
@@ -620,8 +721,27 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
         {!isSMS && <><span style={{ fontSize: 11, color: '#3b3f45' }}>·</span><span style={{ fontSize: 12, color: '#3b3f45' }}>Spans {totalDays} days</span></>}
         {state.stopOnReply && <><span style={{ fontSize: 11, color: '#3b3f45' }}>·</span><span style={{ fontSize: 12, color: '#3b3f45' }}>Stops on reply</span></>}
         <span style={{ fontSize: 11, color: '#3b3f45' }}>·</span>
-        <span style={{ fontSize: 11, color: '#3b3f45', padding: '1px 7px', backgroundColor: '#eceef1', borderRadius: 20, fontWeight: 600 }}>AI-generated · Review before launch</span>
+        <span style={{ fontSize: 11, color: '#3b3f45', padding: '1px 7px', backgroundColor: '#eceef1', borderRadius: 20, fontWeight: 600 }}>First draft · read before launch</span>
       </div>
+
+      {/* Written, but from a profile with almost nothing in it. Said plainly:
+          the copy will be generic and that is why, not the model's fault. */}
+      {thin && (
+        <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 13px', marginBottom: 16, backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10 }}>
+          <AlertTriangle size={15} color="#c2410c" style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ margin: 0, fontSize: 12.5, color: '#7c2d12', lineHeight: 1.55 }}>{thin}</p>
+        </div>
+      )}
+
+      {/* A failure after there is already a draft — usually a rewrite that did
+          not come back. It must not wipe what is on screen. */}
+      {problem && state.steps.length > 0 && (
+        <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 13px', marginBottom: 16, backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10 }}>
+          <XCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ margin: 0, fontSize: 12.5, color: '#7f1d1d', lineHeight: 1.55, flex: 1 }}>{problem}</p>
+          <button onClick={() => setProblem('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#7f1d1d', padding: 0, display: 'flex' }} aria-label="Dismiss"><X size={14} /></button>
+        </div>
+      )}
 
       {/* Step timeline */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -671,6 +791,34 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
                 {/* Expanded editor */}
                 {isExpanded && (
                   <div style={{ padding: '14px 14px 16px', borderTop: '1px solid #f1f5f9', backgroundColor: '#fafafa' }}>
+                    {/* Why this email exists, in the model's own words. It is a
+                        note to whoever is editing, never sent. */}
+                    {step.purpose && (
+                      <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#64748b', lineHeight: 1.55, fontStyle: 'italic' }}>
+                        {step.purpose}
+                      </p>
+                    )}
+
+                    {/* Changing one email rather than regenerating the flow.
+                        Regenerating throws away every edit made so far, which is
+                        why nobody presses it twice. */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Ask the AI to</span>
+                      {['make it shorter', 'make it warmer', 'make it more direct', 'write a different subject line'].map(what => (
+                        <button key={what} disabled={rewriting === step.id}
+                          onClick={() => void rewriteStep(step, what)}
+                          style={{
+                            padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: 999,
+                            background: 'white', color: '#17191c', fontSize: 11, fontWeight: 600,
+                            cursor: rewriting === step.id ? 'default' : 'pointer',
+                            opacity: rewriting === step.id ? 0.5 : 1, fontFamily: 'inherit',
+                          }}>
+                          {what}
+                        </button>
+                      ))}
+                      {rewriting === step.id && <Loader size={12} className="spin" color="#64748b" />}
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: !isFirst ? '90px 1fr' : '1fr', gap: 8, marginBottom: 12 }}>
                       {!isFirst && (
                         <div>
@@ -704,6 +852,13 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
                         </div>
                         <input value={step.subject} onChange={e => updateStep(step.id, { subject: e.target.value })} placeholder="Subject line..."
                           style={{ width: '100%', padding: '7px 9px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, outline: 'none', boxSizing: 'border-box', marginBottom: step.abTest ? 5 : 0 }} />
+                        {/* The line an inbox shows after the subject. It is the
+                            second most-read thing in an email and the wizard had
+                            no field for it, so every send used whatever happened
+                            to be the first words of the body. */}
+                        <input value={step.preheader ?? ''} onChange={e => updateStep(step.id, { preheader: e.target.value })}
+                          placeholder="Preview text — the line shown after the subject"
+                          style={{ width: '100%', padding: '7px 9px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12, outline: 'none', boxSizing: 'border-box', marginTop: 5, color: '#475569' }} />
                         {step.abTest && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontSize: 10, padding: '1px 6px', backgroundColor: '#fef3c7', color: '#d97706', borderRadius: 10, fontWeight: 700, flexShrink: 0 }}>B</span>
@@ -1129,31 +1284,78 @@ function StepSenderSettings({ state, onChange }: { state: WizardState; onChange:
   );
 }
 
+/**
+ * Addresses out of whatever somebody pasted.
+ *
+ * People paste from a spreadsheet column, a mail client's To: field, or a list
+ * they typed — so commas, semicolons, newlines, tabs and `Name <a@b.com>` all
+ * turn up, usually mixed. Splitting on one of those and calling it done means
+ * a customer pastes twelve addresses, the wizard finds one, and the other
+ * eleven never hear from them.
+ *
+ * Invalid entries come back separately rather than being dropped: silently
+ * discarding a typo is how somebody swears they sent to an address that never
+ * received anything.
+ */
+export function parseAddressList(raw: string): { valid: string[]; invalid: string[] } {
+  const seen = new Set<string>();
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  for (const piece of String(raw ?? '').split(/[,;\n\r\t]+/)) {
+    const t = piece.trim();
+    if (!t) continue;
+    /* "Ada Lovelace <ada@example.com>" — take what is in the angle brackets. */
+    const m = t.match(/<([^>]+)>/);
+    const addr = (m ? m[1] : t).trim().replace(/^mailto:/i, '');
+    const lower = addr.toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(addr)) { invalid.push(t); continue; }
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    valid.push(addr);
+  }
+  return { valid, invalid };
+}
+
+/** A typed address as a contact the sender can use, without storing it. */
+export function manualContacts(raw: string): Contact[] {
+  return parseAddressList(raw).valid.map((email, i) => ({
+    id: `manual-${i}-${email}`,
+    name: email.split('@')[0],
+    firstName: email.split('@')[0],
+    lastName: '',
+    email,
+    phone: '',
+    company: '',
+    status: 'lead',
+    tags: [],
+    createdAt: new Date().toISOString(),
+  } as unknown as Contact));
+}
+
 /* ─── Step 4: Audience ─── */
 function StepAudience({ state, onChange, counts }: { state: WizardState; onChange: (u: Partial<WizardState>) => void; counts: Record<AudienceSegment, number> }) {
   const audiences = [
-    { id: 'all' as const,       label: 'All Contacts', desc: 'Everyone in your CRM', count: counts.all },
+    { id: 'all' as const,       label: 'All contacts', desc: 'Everyone in your CRM', count: counts.all },
     { id: 'leads' as const,     label: 'Leads',        desc: 'Status = lead',        count: counts.leads },
     { id: 'customers' as const, label: 'Customers',    desc: 'Status = customer',    count: counts.customers },
     { id: 'prospects' as const, label: 'Prospects',    desc: 'Status = prospect',    count: counts.prospects },
   ];
+  const parsed = parseAddressList(state.manualList);
+  const manual = state.audience === 'manual';
+
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Target audience</h2>
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>Choose who will receive this campaign.</p>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>Who gets this?</h2>
+      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>A slice of your contacts, or a list you type in here.</p>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Users size={13} color="#17191c" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Segment</span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: 8, marginBottom: 16 }}>
         {audiences.map(a => (
           <button key={a.id} onClick={() => onChange({ audience: a.id })}
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: `2px solid ${state.audience === a.id ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: state.audience === a.id ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'left' }}>
             <div style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: state.audience === a.id ? '#eceef1' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Users size={15} color={state.audience === a.id ? '#17191c' : '#94a3b8'} />
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{a.label}</div>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>{a.count.toLocaleString()} contacts · {a.desc}</div>
             </div>
@@ -1161,9 +1363,65 @@ function StepAudience({ state, onChange, counts }: { state: WizardState; onChang
         ))}
       </div>
 
-      {counts[state.audience] === 0 && (
-        <div style={{ padding: '14px 16px', backgroundColor: '#fef9c3', borderRadius: 10, border: '1px solid #fde68a' }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#92400e', fontWeight: 500 }}>⚠️ No contacts in this segment yet. Add contacts in the <strong>Contacts</strong> module first, or choose "All Contacts" once you've imported your list.</p>
+      {/*
+        Typing a list in.
+
+        The four segments above were the only options, so somebody with a dozen
+        addresses on a bit of paper had to import them as contacts they did not
+        want to keep — or give up. This sends to them without storing them:
+        nothing typed here becomes a CRM record.
+      */}
+      <button onClick={() => onChange({ audience: 'manual' })}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 14px', border: `2px solid ${manual ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: manual ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'left', marginBottom: manual ? 12 : 0 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: manual ? '#eceef1' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Plus size={15} color={manual ? '#17191c' : '#94a3b8'} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Type or paste addresses</div>
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+            {manual && parsed.valid.length > 0
+              ? `${parsed.valid.length} address${parsed.valid.length === 1 ? '' : 'es'} · not saved as contacts`
+              : 'For a one-off list — they are not added to your CRM'}
+          </div>
+        </div>
+      </button>
+
+      {manual && (
+        <div>
+          <textarea
+            value={state.manualList}
+            onChange={e => onChange({ manualList: e.target.value })}
+            rows={6}
+            placeholder={'ada@example.com, grace@example.com\nAlan Turing <alan@example.com>\n\nOne per line, or separated by commas — paste straight from a spreadsheet.'}
+            style={{ width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.6, fontFamily: 'inherit' }}
+          />
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }}>
+            <span style={{ color: '#16a34a', fontWeight: 600 }}>
+              <CheckCircle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+              {parsed.valid.length} will be sent to
+            </span>
+            {parsed.invalid.length > 0 && (
+              /* Named, not dropped. Silently discarding a typo is how somebody
+                 swears they sent to an address that never got anything. */
+              <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                <XCircle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                {parsed.invalid.length} not a valid address: {parsed.invalid.slice(0, 3).join(', ')}{parsed.invalid.length > 3 ? '…' : ''}
+              </span>
+            )}
+          </div>
+          <p style={{ margin: '10px 0 0', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.55 }}>
+            Duplicates are removed. Anyone on your suppression list is still skipped at send —
+            typing an address here does not override an unsubscribe.
+          </p>
+        </div>
+      )}
+
+      {!manual && counts[state.audience] === 0 && (
+        <div style={{ padding: '14px 16px', backgroundColor: '#fef9c3', borderRadius: 10, border: '1px solid #fde68a', marginTop: 14 }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#92400e', fontWeight: 500, lineHeight: 1.55 }}>
+            Nobody is in this segment yet. Add them in <strong>Contacts</strong>, or type the addresses
+            in above for a one-off send.
+          </p>
         </div>
       )}
     </div>
@@ -1223,6 +1481,10 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   const dayLabels: Record<string, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
 
   const getAudienceContacts = (): Contact[] => {
+    /* A typed list is not a slice of the CRM, so it is built rather than
+       filtered. These never become contacts — they exist for the length of
+       this send. */
+    if (state.audience === 'manual') return manualContacts(state.manualList);
     if (state.audience === 'all') return contacts;
     const statusMap: Record<string, string> = { leads: 'lead', customers: 'customer', prospects: 'prospect' };
     const status = statusMap[state.audience];
@@ -1515,6 +1777,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
         sendDays: editCampaign.sendDays || ['mon', 'tue', 'wed', 'thu', 'fri'],
         sendHoursFrom: editCampaign.sendHoursFrom || '09:00', sendHoursTo: editCampaign.sendHoursTo || '17:00',
         audience: (editCampaign.audience as AudienceSegment) || 'all',
+        manualList: '',
         subject: editCampaign.subject || '', previewText: editCampaign.previewText || '',
         emailBody: editCampaign.emailBody || '', smsBody: editCampaign.smsBody || '',
         steps,
@@ -1526,7 +1789,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       fromName: '', fromEmail: '', replyTo: '',
       openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
       sendDays: ['mon', 'tue', 'wed', 'thu', 'fri'], sendHoursFrom: '09:00', sendHoursTo: '17:00',
-      audience: 'all', subject: '', previewText: '', emailBody: '', smsBody: '', steps: [],
+      audience: 'all', manualList: '', subject: '', previewText: '', emailBody: '', smsBody: '', steps: [],
     };
   });
 
@@ -1539,6 +1802,9 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     leads:     contacts.filter(c => c.status === 'lead').length,
     customers: contacts.filter(c => c.status === 'customer').length,
     prospects: contacts.filter(c => c.status === 'prospect').length,
+    /* Counted from what is typed, live, so the review step and the launch
+       button agree with what the person can see in the box. */
+    manual:    parseAddressList(state.manualList).valid.length,
   };
 
   const STEP_LABELS = ['Brief', 'Campaign Flow', 'Sender & Settings', 'Audience', 'Review'];

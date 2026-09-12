@@ -10,6 +10,7 @@ import type { EmailSequence, EmailStep, StepType, SequenceStats, SequenceActivit
 import { normaliseSequences } from '../../services/marketingShape';
 import type { Contact } from '../../types';
 import SourceTag from '../shared/SourceTag';
+import { writeCampaign } from '../../services/aiWrite';
 
 // ── Step type config ──────────────────────────────────────────────────────────
 const STEP_TYPES: { id: StepType; label: string; icon: React.ReactElement; color: string; bg: string }[] = [
@@ -108,7 +109,7 @@ function CreateModal({ onSelect, onClose }: {
   onClose: () => void;
 }) {
   const options = [
-    { id: 'ai' as const, label: 'AI-assisted', desc: 'Create a simply outbound sequence with one click', icon: '✨', color: '#8b5cf6' },
+    { id: 'ai' as const, label: 'Written by AI', desc: 'Answer a few questions and it writes the emails for you', icon: '✨', color: '#8b5cf6' },
     { id: 'template' as const, label: 'Templates', desc: 'Start with one of our sequence templates', icon: '📋', color: '#3b82f6' },
     { id: 'scratch' as const, label: 'From scratch', desc: 'Create a new sequence from scratch', icon: '📝', color: '#64748b' },
   ];
@@ -221,8 +222,8 @@ function AIGeneratorForm({ onGenerate, onClose }: {
           {/* Left panel */}
           <div style={{ width: 160, flexShrink: 0, background: 'linear-gradient(160deg,#6366f1,#8b5cf6)', padding: '28px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Sparkles size={28} color="rgba(255,255,255,0.9)" />
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'white', lineHeight: 1.3 }}>Let AI assist with your sequences</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>Use AI to generate a complete campaign with sequential contact points to engage target audiences at scale.</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'white', lineHeight: 1.3 }}>Tell it about the business</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>The more you put here, the less generic the emails. Anything you leave blank, it writes around rather than filling with a placeholder.</div>
           </div>
           {/* Right form */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 20px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -590,19 +591,72 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
     onNotify(`Template "${tpl?.name}" applied!`);
   };
 
-  const handleAIGenerate = (name: string, fields: Record<string, string>) => {
+  /**
+   * Write the sequence.
+   *
+   * This used to be a 900ms `setTimeout` around `templateFallback`, followed by
+   * "AI sequence created!" — a template, a delay to make the template feel
+   * earned, and a claim. The form's six fields were dropped into string slots;
+   * anything the person left blank became `[Your value proposition here]` and
+   * went out in the email.
+   *
+   * The fields are now the brief, and the model writes from them. The template
+   * is still the fallback, and the message says which one you got.
+   */
+  const handleAIGenerate = async (name: string, fields: Record<string, string>) => {
     setShowAIForm(false);
     setGenerating(true);
-    setTimeout(() => {
-      const steps = templateFallback(name, fields);
-      const seq: Omit<EmailSequence, 'id'> = {
-        name: name || 'AI Sequence', goal: fields.pain || fields.value || '', steps,
-        status: 'draft', createdAt: new Date().toISOString().split('T')[0], enrolledCount: 0,
-      };
-      onAddSequence(seq);
-      setGenerating(false);
-      onNotify(`AI sequence "${name}" created!`);
-    }, 900);
+
+    /* Everything the person typed, as one brief. The writer is told the brand
+       separately by the server, so this carries only what is specific to this
+       sequence. */
+    const concept = [
+      fields.company && `This is for ${fields.company}.`,
+      fields.context,
+      fields.pain && `The problem they solve: ${fields.pain}`,
+      fields.value && `What they offer: ${fields.value}`,
+      fields.proof && `Customers they can mention: ${fields.proof}`,
+    ].filter(Boolean).join('\n');
+
+    const r = await writeCampaign({
+      goal: 'nurture',
+      concept,
+      cta: fields.cta,
+      tone: 'plain and direct',
+      channel: 'email',
+      steps: 3,
+    });
+
+    const steps: EmailStep[] = r.ok && r.steps.length
+      ? r.steps.map((w, i) => ({
+        id: `ai-${i}-${Date.now()}`,
+        day: w.day,
+        waitUnit: 'days' as const,
+        type: 'auto_email' as const,
+        subject: w.subject,
+        body: w.body,
+        followUpRule: i === r.steps.length - 1 ? 'End of sequence' : `Send next step after ${(r.steps[i + 1]?.day ?? w.day + 3) - w.day} days`,
+        abEnabled: false,
+      }))
+      : templateFallback(name, fields);
+
+    const seq: Omit<EmailSequence, 'id'> = {
+      name: name || 'New sequence', goal: fields.pain || fields.value || '', steps,
+      status: 'draft', createdAt: new Date().toISOString().split('T')[0], enrolledCount: 0,
+    };
+    onAddSequence(seq);
+    setGenerating(false);
+
+    if (r.ok && r.steps.length) {
+      onNotify(`"${name}" written. Read it before you switch it on — it is a first draft.`);
+    } else {
+      onNotify(
+        r.needsKey
+          ? 'No AI key connected, so this is a skeleton with gaps to fill in. Add one under Settings → AI Engine.'
+          : `${r.error || 'The AI could not write that.'} Started from a skeleton instead.`,
+        'error',
+      );
+    }
   };
 
   const toggleStatus = () => {

@@ -28,6 +28,7 @@ import { handleSupplier } from './routes/supplier';
 import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
 import { handleShop } from './routes/shop';
+import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleValidateKey } from './routes/validateKey';
@@ -70,6 +71,9 @@ const ROUTES: Record<string, Handler> = {
   /* The public shop. Half of this answers to nobody signed in — see
      routes/shop.ts for what that changes. */
   '/api/shop.php': handleShop,
+  /* Marketing copy written by the AI, on the server, on the workspace's own
+     key. The module used to call this "AI-generated" over string templates. */
+  '/api/aiwrite.php': handleAiWrite,
   /* Business ideas, products and orders. */
   '/api/commerce.php': handleCommerce,
   /* Checkout for the customer's own products, on the customer's own Stripe
