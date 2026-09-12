@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { Store, Plus, Trash2, ExternalLink, Copy, Check, Loader, AlertCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { listShops, saveShop, deleteShop, shopUrl, type Shop } from '../../services/shop';
+import { THEME_LIST, themeFor } from '../Shop/themes';
 import { fetchBoard, type Project } from '../../services/projects';
 
 const INK = '#0f172a';
@@ -102,7 +103,7 @@ export default function Shops() {
           <strong>Sell</strong>.
         </p>
         <button
-          onClick={() => setDraft({ accent: '#0f172a', status: 'draft' })}
+          onClick={() => setDraft({ accent: '#0f172a', status: 'draft', template: 'classic' })}
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
         >
           <Plus size={18} /> New Shop
@@ -153,6 +154,69 @@ export default function Shops() {
               rows={3} placeholder="Who you are and what you sell." style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} />
           </div>
 
+          {/*
+            Pick a look.
+
+            The storefront was one hardcoded layout, so every shop on the
+            install looked identical — which is fine for proving a stranger can
+            pay and wrong for anybody actually opening a shop. Five deliberately
+            different shapes rather than a wall of near-identical ones, each
+            previewed with this shop's own accent so the choice is about layout
+            rather than about colour.
+          */}
+          <div>
+            <label style={lbl}>Look</label>
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(min(140px, 100%), 1fr))' }}>
+              {THEME_LIST.map(th => {
+                const on = (draft.template ?? 'classic') === th.id;
+                const accent = draft.accent || '#0f172a';
+                return (
+                  <button key={th.id} type="button" onClick={() => setDraft({ ...draft, template: th.id })}
+                    title={th.blurb}
+                    style={{
+                      textAlign: 'left', padding: 0, borderRadius: 12, cursor: 'pointer', overflow: 'hidden',
+                      border: `1.5px solid ${on ? INK : LINE}`, background: '#fff', fontFamily: 'inherit',
+                      boxShadow: on ? '0 0 0 3px rgba(15,23,42,0.07)' : 'none',
+                    }}>
+                    {/* A sketch of the layout, not a screenshot: the hero band,
+                        then the grid shape that theme actually uses. */}
+                    <div style={{ background: th.pageBg, padding: 7 }} aria-hidden="true">
+                      <div style={{
+                        height: th.hero === 'full' ? 26 : th.hero === 'quiet' ? 10 : 17,
+                        borderRadius: Math.min(th.radius, 6),
+                        background: th.heroFilled && th.hero !== 'quiet' ? accent : th.line,
+                        marginBottom: 6,
+                      }} />
+                      <div style={{
+                        display: 'grid', gap: Math.max(3, Math.round(th.gap / 6)),
+                        gridTemplateColumns: `repeat(${th.cardMin < 200 ? 4 : th.cardMin < 280 ? 3 : 2}, 1fr)`,
+                      }}>
+                        {Array.from({ length: th.cardMin < 200 ? 8 : th.cardMin < 280 ? 6 : 4 }).map((_, i) => (
+                          <div key={i} style={{
+                            aspectRatio: th.ratio,
+                            borderRadius: Math.min(th.radius, 5),
+                            background: th.cardBg === th.pageBg ? th.line : th.cardBg,
+                            border: th.cardBorder ? `1px solid ${th.line}` : 'none',
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ padding: '7px 9px 9px', borderTop: `1px solid ${LINE}` }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{th.name}</div>
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.4 }}>{th.blurb}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label style={lbl}>Picture across the top (optional)</label>
+            <input value={draft.heroImage ?? ''} onChange={e => setDraft({ ...draft, heroImage: e.target.value })}
+              placeholder="Link to an image" style={inp} />
+          </div>
+
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 150 }}>
               <label style={lbl}>Colour</label>
@@ -171,6 +235,30 @@ export default function Shops() {
                 {projects.length === 0
                   ? 'No “Sell products” project yet — add one under AI Autopilot to keep one client’s catalogue apart from another’s.'
                   : 'Pick one to show only that project’s products.'}
+              </p>
+            </div>
+          </div>
+
+          {/* The three things a buyer looks for before handing over money.
+              Left empty they are not shown at all — a "Returns" heading over
+              lorem ipsum is worse than no heading. */}
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))' }}>
+            <div>
+              <label style={lbl}>Delivery</label>
+              <textarea value={draft.shippingNote ?? ''} onChange={e => setDraft({ ...draft, shippingNote: e.target.value })}
+                rows={3} placeholder="Next day across the UK, £4.95." style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+            </div>
+            <div>
+              <label style={lbl}>Returns</label>
+              <textarea value={draft.returnsNote ?? ''} onChange={e => setDraft({ ...draft, returnsNote: e.target.value })}
+                rows={3} placeholder="30 days, unused and in its packaging." style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+            </div>
+            <div>
+              <label style={lbl}>Questions to</label>
+              <input value={draft.contactEmail ?? ''} onChange={e => setDraft({ ...draft, contactEmail: e.target.value })}
+                placeholder="hello@yourshop.com" style={inp} />
+              <p style={{ margin: '5px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                Shown at the bottom of the shop.
               </p>
             </div>
           </div>
@@ -221,6 +309,7 @@ export default function Shops() {
 
               <div style={{ fontSize: 12.5, color: MUTED }}>
                 {s.products} {s.products === 1 ? 'product' : 'products'} · {s.orders} {s.orders === 1 ? 'order' : 'orders'}
+                {' · '}{themeFor(s.template).name}
                 {s.projectName && ` · ${s.projectName}`}
               </div>
 

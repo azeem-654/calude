@@ -29,6 +29,7 @@ import { payLink } from '../../services/storefront';
 import { fulfilOrder } from '../../services/supplier';
 import GettingPaid from './GettingPaid';
 import SupplierPanel from './SupplierPanel';
+import ProductEditor from './ProductEditor';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -56,7 +57,10 @@ export default function Commerce() {
   const [budget, setBudget] = useState('');
   const [reload, setReload] = useState(0);
 
-  const [draft, setDraft] = useState<Partial<Product> | null>(null);
+  /* `{ product: null }` opens the editor on a new one; a product opens it on
+     that one. Null closes it. A bare `Product | null` could not tell "add" from
+     "closed". */
+  const [editing, setEditing] = useState<{ product: Product | null } | null>(null);
   const [order, setOrder] = useState<{ email: string; productId: string; qty: string } | null>(null);
   /* Kept per order rather than one at a time: somebody chasing three unpaid
      orders should not lose the first link by making the second. */
@@ -87,21 +91,6 @@ export default function Commerce() {
   const decide = async (id: string, status: BusinessIdea['status']) => {
     const r = await setIdeaStatus(id, status);
     if (r.ideas) setIdeas(r.ideas);
-  };
-
-  const doSaveProduct = async () => {
-    if (!draft?.name?.trim()) return;
-    setBusy(true);
-    const r = await saveProduct({
-      ...draft,
-      priceCents: Math.round(Number(draft.priceCents ?? 0) * 100),
-      costCents: Math.round(Number(draft.costCents ?? 0) * 100),
-    });
-    setBusy(false);
-    if (!r.success) { addNotification(r.error ?? 'Could not save.', 'error'); return; }
-    if (r.products) setProducts(r.products);
-    setDraft(null);
-    addNotification('Product saved.', 'success');
   };
 
   const doPayLink = async (id: string) => {
@@ -224,46 +213,74 @@ export default function Commerce() {
           <div style={head}>
             <Package size={15} color={INK} />
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Products</h3>
-            <button onClick={() => setDraft({ name: '', status: 'draft', source: 'own' })} style={{ ...btn(), marginLeft: 'auto' }}>
-              <Plus size={13} /> Add
+            {products.length > 0 && (
+              <span style={{ fontSize: 11.5, color: MUTED }}>
+                {products.filter(p => p.status === 'active').length} for sale · {products.length} total
+              </span>
+            )}
+            <button onClick={() => setEditing({ product: null })} style={{ ...btn(true), marginLeft: 'auto' }}>
+              <Plus size={13} /> Add product
             </button>
           </div>
-          <div style={{ padding: products.length || draft ? 15 : 0, display: 'grid', gap: 10 }}>
-            {!products.length && !draft && (
-              <p style={{ margin: 0, padding: '18px 15px', fontSize: 13, color: MUTED }}>Nothing to sell yet.</p>
-            )}
-            {products.map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${LINE}`, borderRadius: 10, flexWrap: 'wrap' }}>
-                <span style={{ flex: 1, minWidth: 160, fontSize: 13.5, fontWeight: 700, color: INK }}>{p.name}</span>
-                <span style={{ fontSize: 13, color: INK, fontWeight: 700 }}>{money(p.priceCents, p.currency)}</span>
-                <span style={{ fontSize: 11.5, color: MUTED }}>cost {money(p.costCents, p.currency)}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: p.status === 'active' ? '#e8f5e9' : '#f1f5f9', color: p.status === 'active' ? '#1e6b32' : MUTED }}>
-                  {p.status}
-                </span>
-                <button onClick={() => void deleteProduct(p.id).then(r => r.products && setProducts(r.products))}
-                  aria-label={`Delete ${p.name}`} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#a02216', display: 'flex' }}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
 
-            {draft && (
-              <div style={{ padding: 13, border: `1px solid ${LINE}`, borderRadius: 12, background: '#f7f8fa', display: 'grid', gap: 10 }}>
-                <div><label style={lbl}>Name</label>
-                  <input value={draft.name ?? ''} onChange={e => setDraft({ ...draft, name: e.target.value })} style={inp} /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div><label style={lbl}>Price</label>
-                    <input value={String(draft.priceCents ?? '')} onChange={e => setDraft({ ...draft, priceCents: Number(e.target.value) })} placeholder="85.00" style={inp} /></div>
-                  <div><label style={lbl}>What it costs you</label>
-                    <input value={String(draft.costCents ?? '')} onChange={e => setDraft({ ...draft, costCents: Number(e.target.value) })} placeholder="32.00" style={inp} /></div>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => void doSaveProduct()} disabled={busy || !draft.name?.trim()} style={btn(true)}>Save</button>
-                  <button onClick={() => setDraft(null)} style={btn()}>Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
+          {!products.length ? (
+            <div style={{ padding: '28px 18px', textAlign: 'center' }}>
+              <Package size={24} color="#c4c8cf" />
+              <p style={{ margin: '10px 0 4px', fontSize: 13.5, fontWeight: 700, color: INK }}>Nothing to sell yet</p>
+              <p style={{ margin: '0 0 14px', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+                Add what you sell — a picture, a price, a line about it. Set one to “For sale” and it
+                appears in your shop.
+              </p>
+              <button onClick={() => setEditing({ product: null })} style={btn(true)}>
+                <Plus size={13} /> Add your first product
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: 12, display: 'grid', gap: 8 }}>
+              {products.map(p => {
+                const out = p.trackInventory === 1 && p.inventory <= 0;
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 11, padding: 9,
+                    border: `1px solid ${LINE}`, borderRadius: 11, flexWrap: 'wrap',
+                  }}>
+                    {/* The picture, because a catalogue of names is a spreadsheet. */}
+                    {p.imageUrl
+                      ? <img src={p.imageUrl} alt="" style={{ width: 46, height: 46, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+                      : <div style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 8, background: '#f4f5f7', display: 'grid', placeItems: 'center', color: '#c4c8cf' }}><Package size={16} /></div>}
+
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{p.name}</div>
+                      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>
+                        {money(p.priceCents, p.currency)}
+                        {p.compareAtCents > p.priceCents && (
+                          <span style={{ textDecoration: 'line-through', marginLeft: 6 }}>{money(p.compareAtCents, p.currency)}</span>
+                        )}
+                        {p.costCents > 0 && <> · costs you {money(p.costCents, p.currency)}</>}
+                        {p.trackInventory === 1 && <> · {p.inventory} in stock</>}
+                        {p.category && <> · {p.category}</>}
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                      background: out ? '#fef2f2' : p.status === 'active' ? '#e8f5e9' : '#f1f5f9',
+                      color: out ? '#b91c1c' : p.status === 'active' ? '#1e6b32' : MUTED,
+                    }}>
+                      {out ? 'out of stock' : p.status === 'active' ? 'for sale' : p.status}
+                    </span>
+
+                    <button onClick={() => setEditing({ product: p })}
+                      style={{ ...btn(), padding: '6px 11px', fontSize: 12 }}>Edit</button>
+                    <button onClick={() => void deleteProduct(p.id).then(r => r.products && setProducts(r.products))}
+                      aria-label={`Delete ${p.name}`} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#a02216', display: 'flex' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* ── Getting paid ── */}
@@ -375,6 +392,17 @@ export default function Commerce() {
 
         <button onClick={again} style={{ ...btn(), alignSelf: 'flex-start' }}>Refresh</button>
       </div>
+
+      {editing && (
+        <ProductEditor
+          product={editing.product}
+          /* The currency the storefront will actually charge in, so the price
+             field shows the symbol somebody is really typing. */
+          currency={products[0]?.currency || 'USD'}
+          onClose={() => setEditing(null)}
+          onSaved={setProducts}
+        />
+      )}
     </div>
   );
 }

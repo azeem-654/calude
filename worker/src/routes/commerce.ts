@@ -35,6 +35,13 @@ interface Req {
   costCents?: number;
   source?: string;
   supplierRef?: string;
+  imageUrl?: string;
+  compareAtCents?: number;
+  inventory?: number;
+  trackInventory?: boolean;
+  category?: string;
+  sortOrder?: number;
+  projectId?: string;
   /* Orders */
   contactId?: string;
   email?: string;
@@ -108,8 +115,14 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
   const listProducts = async () => {
     const { results } = await env.DB.prepare(
       `SELECT id, name, description, sku, price_cents AS priceCents, cost_cents AS costCents,
-              currency, source, supplier_ref AS supplierRef, status, created_at AS createdAt
-       FROM crm_products WHERE account_id = ? ORDER BY created_at DESC LIMIT 200`,
+              compare_at_cents AS compareAtCents, currency, source, supplier_ref AS supplierRef,
+              image_url AS imageUrl, inventory, track_inventory AS trackInventory,
+              category, sort_order AS sortOrder, project_id AS projectId,
+              status, created_at AS createdAt
+       FROM crm_products WHERE account_id = ?
+       /* The shopkeeper's own order first — a shop shows what they chose to put
+          at the front, not what they happened to type most recently. */
+       ORDER BY sort_order ASC, created_at DESC LIMIT 200`,
     ).bind(accountId).all();
     return results ?? [];
   };
@@ -237,16 +250,26 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     const existing = await env.DB.prepare('SELECT created_at FROM crm_products WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string }>();
 
+    /* Refused rather than shown struck through. A "was £120" that was never
+       charged is the oldest trick in retail and unlawful in a good many
+       places, so the shop will not display one it cannot stand behind. */
+    const compareAt = clampInt(d.compareAtCents, 0, 100_000_000);
+
     await env.DB.prepare(
       `INSERT INTO crm_products
        (id, account_id, name, description, sku, price_cents, cost_cents, currency,
-        source, supplier_ref, status, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        source, supplier_ref, status, created_at, updated_at,
+        image_url, compare_at_cents, inventory, track_inventory, category, sort_order, project_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, description=excluded.description, sku=excluded.sku,
          price_cents=excluded.price_cents, cost_cents=excluded.cost_cents,
          source=excluded.source, supplier_ref=excluded.supplier_ref,
-         status=excluded.status, updated_at=excluded.updated_at`,
+         status=excluded.status, updated_at=excluded.updated_at,
+         image_url=excluded.image_url, compare_at_cents=excluded.compare_at_cents,
+         inventory=excluded.inventory, track_inventory=excluded.track_inventory,
+         category=excluded.category, sort_order=excluded.sort_order,
+         project_id=excluded.project_id`,
     ).bind(
       id, accountId, name.slice(0, 200), String(d.description ?? '').slice(0, 4000),
       String(d.sku ?? '').slice(0, 80), price, cost,
@@ -257,6 +280,16 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       String(d.source ?? 'own').slice(0, 40), String(d.supplierRef ?? '').slice(0, 200),
       ['draft', 'active', 'archived'].includes(String(d.status)) ? String(d.status) : 'draft',
       existing?.created_at ?? now, now,
+      /* Capped rather than rejected: a data: URI for a photo is legitimate and
+         large, and a row that will not fit is better trimmed than refused with
+         a message about bytes. */
+      String(d.imageUrl ?? '').slice(0, 800_000),
+      compareAt > price ? compareAt : 0,
+      clampInt(d.inventory, 0, 10_000_000),
+      d.trackInventory ? 1 : 0,
+      String(d.category ?? '').slice(0, 80),
+      clampInt(d.sortOrder, 0, 100_000),
+      String(d.projectId ?? '').slice(0, 80),
     ).run();
     return json({ success: true, id, products: await listProducts() });
   }

@@ -18,6 +18,14 @@ export interface Shop {
   headline: string;
   about: string;
   accent: string;
+  /** Which look. See src/components/Shop/themes.ts. */
+  template: string;
+  heroImage: string;
+  /** What a buyer asks before paying, and after. Empty hides the section
+   *  entirely rather than showing placeholder text nobody wrote. */
+  shippingNote: string;
+  returnsNote: string;
+  contactEmail: string;
   status: 'draft' | 'published';
   /** How many active products this shop would show, and how many orders it took. */
   products: number;
@@ -48,6 +56,9 @@ export const saveShop = (s: Partial<Shop>) => call({
   id: s.id, projectId: s.projectId ?? '', slug: s.slug, name: s.name,
   headline: s.headline ?? '', about: s.about ?? '', accent: s.accent ?? '#17191c',
   status: s.status ?? 'draft',
+  template: s.template ?? 'classic', heroImage: s.heroImage ?? '',
+  shippingNote: s.shippingNote ?? '', returnsNote: s.returnsNote ?? '',
+  contactEmail: s.contactEmail ?? '',
 });
 
 export const deleteShop = (id: string) => call({ action: 'delete', id });

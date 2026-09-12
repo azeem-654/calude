@@ -33,11 +33,25 @@ export interface Product {
   /** Minor units. A float price eventually shows 19.989999999999998. */
   priceCents: number;
   costCents: number;
+  /** What it used to be. Shown struck through, and only when above the price. */
+  compareAtCents: number;
   currency: string;
   source: string;
   supplierRef: string;
   status: 'draft' | 'active' | 'archived';
   createdAt: string;
+  /** A URL or a data: URI. Images do not live in D1 rows. */
+  imageUrl: string;
+  category: string;
+  inventory: number;
+  /** 0 or 1 from SQLite. Off by default: most of what this app sells is a
+   *  service with no stock, and "out of stock" because nobody typed a number
+   *  is worse than never mentioning stock at all. */
+  trackInventory: number;
+  /** Which project's catalogue this belongs to. Empty means the workspace's. */
+  projectId: string;
+  /** Lowest first in the shop, so the thing worth selling can go at the top. */
+  sortOrder: number;
 }
 
 export interface OrderLine { productId: string; name: string; qty: number; priceCents: number }

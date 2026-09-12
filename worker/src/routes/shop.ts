@@ -43,12 +43,22 @@ interface Req {
   accent?: string;
   status?: string;
   productIds?: string[];
+  template?: string;
+  heroImage?: string;
+  shippingNote?: string;
+  returnsNote?: string;
+  contactEmail?: string;
 }
 
 interface ShopRow {
   id: string; account_id: string; project_id: string; slug: string;
   name: string; headline: string; about: string; accent: string; status: string;
+  template: string; hero_image: string;
+  shipping_note: string; returns_note: string; contact_email: string;
 }
+
+/** The looks a shop can wear. Must match src/components/Shop/themes.ts. */
+const TEMPLATES = new Set(['classic', 'bold', 'editorial', 'minimal', 'market']);
 
 const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -87,11 +97,13 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
     if (!shop) return fail('There is no shop at this address.', 404, { notFound: true });
 
     const { results } = await env.DB.prepare(
-      `SELECT id, name, description, price_cents AS priceCents, currency, sku
+      `SELECT id, name, description, price_cents AS priceCents, currency, sku,
+              image_url AS imageUrl, compare_at_cents AS compareAtCents,
+              category, inventory, track_inventory AS trackInventory
        FROM crm_products
        WHERE account_id = ? AND status = 'active'
          AND (project_id = ? OR project_id = '')
-       ORDER BY created_at DESC LIMIT 100`,
+       ORDER BY sort_order ASC, created_at DESC LIMIT 200`,
     ).bind(shop.account_id, shop.project_id).all();
 
     /* The storefront's own currency decides, because that is what the checkout
@@ -104,6 +116,11 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
       shop: {
         slug: shop.slug, name: shop.name, headline: shop.headline,
         about: shop.about, accent: shop.accent,
+        template: TEMPLATES.has(shop.template) ? shop.template : 'classic',
+        heroImage: shop.hero_image,
+        shippingNote: shop.shipping_note,
+        returnsNote: shop.returns_note,
+        contactEmail: shop.contact_email,
       },
       products: results ?? [],
       currency: sf?.currency ?? 'USD',
@@ -136,9 +153,10 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
 
     /* The price comes from the row, never from the request. */
     const product = await env.DB.prepare(
-      "SELECT id, name, price_cents, currency FROM crm_products WHERE id = ? AND account_id = ? AND status = 'active'",
+      `SELECT id, name, price_cents, currency, inventory, track_inventory
+       FROM crm_products WHERE id = ? AND account_id = ? AND status = 'active'`,
     ).bind(String(d.productId ?? ''), shop.account_id)
-      .first<{ id: string; name: string; price_cents: number; currency: string }>();
+      .first<{ id: string; name: string; price_cents: number; currency: string; inventory: number; track_inventory: number }>();
     if (!product) return fail('That item is not for sale.');
     if (product.price_cents <= 0) return fail('That item has no price set, so it cannot be bought yet.');
 
@@ -152,6 +170,20 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
     const currency = (sf?.currency || product.currency || 'USD').toUpperCase();
 
     const qty = Math.min(Math.max(Math.round(Number(d.qty) || 1), 1), 50);
+
+    /* Checked at the buy, not only hidden in the listing: two people can have
+       the last one on screen at the same moment, and the second should be told
+       rather than charged for something that has gone. Only when the shopkeeper
+       asked for stock to be tracked — most of what this app's customers sell
+       is a service with none, and "out of stock" on a boiler service because
+       nobody typed a number is worse than never mentioning stock. */
+    if (product.track_inventory) {
+      if (product.inventory <= 0) return fail(`${product.name} is out of stock.`);
+      if (qty > product.inventory) {
+        return fail(`Only ${product.inventory} left of ${product.name} — reduce the quantity.`);
+      }
+    }
+
     const items = [{ productId: product.id, name: product.name, qty, priceCents: product.price_cents }];
     const total = qty * product.price_cents;
 
@@ -191,6 +223,10 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
     const { results } = await env.DB.prepare(
       `SELECT s.id, s.project_id AS projectId, s.slug, s.name, s.headline, s.about,
               s.accent, s.status, s.created_at AS createdAt,
+              s.template, s.hero_image AS heroImage, s.shipping_note AS shippingNote,
+              s.returns_note AS returnsNote, s.contact_email AS contactEmail,
+              s.template, s.hero_image AS heroImage, s.shipping_note AS shippingNote,
+              s.returns_note AS returnsNote, s.contact_email AS contactEmail,
               COALESCE(j.name, '') AS projectName,
               (SELECT count(*) FROM crm_products p
                 WHERE p.account_id = s.account_id AND p.status = 'active'
@@ -234,17 +270,26 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
       .bind(id, accountId).first<{ created_at: string }>();
 
     await env.DB.prepare(
-      `INSERT INTO crm_shops (id, account_id, project_id, slug, name, headline, about, accent, status, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO crm_shops (id, account_id, project_id, slug, name, headline, about, accent, status,
+        created_at, updated_at, template, hero_image, shipping_note, returns_note, contact_email)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          project_id=excluded.project_id, slug=excluded.slug, name=excluded.name,
          headline=excluded.headline, about=excluded.about, accent=excluded.accent,
-         status=excluded.status, updated_at=excluded.updated_at`,
+         status=excluded.status, updated_at=excluded.updated_at,
+         template=excluded.template, hero_image=excluded.hero_image,
+         shipping_note=excluded.shipping_note, returns_note=excluded.returns_note,
+         contact_email=excluded.contact_email`,
     ).bind(
       id, accountId, String(d.projectId ?? '').slice(0, 80), slug, name.slice(0, 120),
       String(d.headline ?? '').slice(0, 200), String(d.about ?? '').slice(0, 2000),
       String(d.accent ?? '#17191c').slice(0, 16), status,
       existing?.created_at ?? now, now,
+      TEMPLATES.has(String(d.template)) ? String(d.template) : 'classic',
+      String(d.heroImage ?? '').slice(0, 800_000),
+      String(d.shippingNote ?? '').slice(0, 1000),
+      String(d.returnsNote ?? '').slice(0, 1000),
+      addr(d.contactEmail) ?? '',
     ).run();
 
     return json({ success: true, id, slug, shops: await list() });
