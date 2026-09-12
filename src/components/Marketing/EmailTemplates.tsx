@@ -35,7 +35,218 @@ const footer = (unsubColor = '#94a3b8') =>
     <p style="color:${unsubColor};font-size:11px;margin:0">You received this because you're subscribed · <a href="{{unsubscribe}}" style="color:${unsubColor}">Unsubscribe</a></p>
   </div>`;
 
-export const EMAIL_TEMPLATES: EmailTemplate[] = [
+
+/* ── A second set, built differently ────────────────────────────────────────
+ *
+ * The templates above are all the same email: a coloured gradient banner, a
+ * white card floating on grey, a centred pill button, bullets that open with a
+ * green tick emoji. That was the house style of about 2018 and it is now the
+ * shape a reader's eye skips, because every automated email they have ever
+ * ignored looked like it.
+ *
+ * These are built on the opposite assumptions, which are also what actually
+ * lands in a primary inbox:
+ *
+ *  - **Left-aligned, one column, no card.** A letter, not a poster. Centred
+ *    marketing copy reads as a broadcast; left-aligned text reads as a message.
+ *  - **Type does the work.** Size and weight make the hierarchy, not colour
+ *    blocks — which also means they survive a client that strips backgrounds.
+ *  - **One accent, used once.** Usually on the link.
+ *  - **No emoji as furniture**, no gradients, no shadows. Gmail's dark mode
+ *    inverts light backgrounds and leaves images alone, so a design that leans
+ *    on a coloured banner inverts into something nobody designed.
+ *  - **Real links, not pill buttons**, where a link is what a person would
+ *    actually click. A "CTA button" in a one-to-one email reads as an advert.
+ *
+ * Every one keeps {{firstName}} and {{unsubscribe}}, and none of them contains
+ * a placeholder in brackets — a draft that ships with "[Your Name]" in it is
+ * the single most common way these get sent wrong.
+ */
+
+/** A plain letter: no card, no banner, generous margins. */
+const letter = (inner: string, bg = '#ffffff') =>
+  `<div style="background:${bg};padding:40px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+  <div style="max-width:520px;margin:0 auto">
+    ${inner}
+  </div>
+</div>`;
+
+/** The thing to click, as a link with a rule under it rather than a pill. */
+const textLink = (text: string, color = '#1a1a1a') =>
+  `<p style="margin:26px 0"><a href="#" style="color:${color};font-size:15px;font-weight:600;text-decoration:none;border-bottom:2px solid ${color};padding-bottom:2px">${text}</a></p>`;
+
+/** A quiet sign-off and the unsubscribe, which is a legal requirement. */
+const signoff = (line: string) =>
+  `<p style="margin:26px 0 0;font-size:15px;line-height:1.7;color:#1a1a1a">${line}</p>
+   <div style="margin-top:34px;padding-top:18px;border-top:1px solid #e8e8e8">
+     <p style="margin:0;font-size:12px;line-height:1.6;color:#8a8a8a">
+       <a href="{{unsubscribe}}" style="color:#8a8a8a">Unsubscribe</a> and you will not hear from us again.
+     </p>
+   </div>`;
+
+const para = (t: string) =>
+  `<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#2b2b2b">${t}</p>`;
+
+const MODERN_TEMPLATES: EmailTemplate[] = [
+  {
+    id: 'm-plain-note',
+    name: 'Plain note',
+    category: 'Modern',
+    preview: '#1a1a1a',
+    html: letter(
+      `<p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#2b2b2b">Hi {{firstName}},</p>` +
+      para('I run the workshop here and I wanted to write to you myself rather than send something that looks like an advert.') +
+      para('We have space in the diary over the next fortnight. If the job you mentioned is still on your list, I can come and look at it and tell you what it would cost, with no obligation either way.') +
+      textLink('Pick a time that suits you') +
+      signoff('Either way, thanks for thinking of us.'),
+    ),
+  },
+  {
+    id: 'm-editorial',
+    name: 'Editorial',
+    category: 'Modern',
+    preview: '#faf8f4',
+    html: letter(
+      `<p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8a8578">This month</p>
+       <h1 style="margin:0 0 20px;font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:400;line-height:1.25;color:#1b1a17">The three jobs worth doing before the weather turns</h1>` +
+      `<p style="margin:0 0 22px;font-size:15px;line-height:1.75;color:#3a382f">Hi {{firstName}} — a short one this month, and all of it is the sort of thing you can do yourself in an afternoon.</p>` +
+      `<div style="margin:0 0 20px;padding-left:18px;border-left:2px solid #ddd8cd">
+         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1b1a17">Clear the gutters properly</p>
+         <p style="margin:0;font-size:14.5px;line-height:1.7;color:#3a382f">Not just the leaves you can see — the compacted silt at the outlet is what actually causes the overflow.</p>
+       </div>
+       <div style="margin:0 0 20px;padding-left:18px;border-left:2px solid #ddd8cd">
+         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1b1a17">Bleed the radiators before you need them</p>
+         <p style="margin:0;font-size:14.5px;line-height:1.7;color:#3a382f">Cold at the top and warm at the bottom means air, and five minutes now saves a cold week in November.</p>
+       </div>
+       <div style="margin:0 0 20px;padding-left:18px;border-left:2px solid #ddd8cd">
+         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1b1a17">Check the seals on the back door</p>
+         <p style="margin:0;font-size:14.5px;line-height:1.7;color:#3a382f">If you can see daylight, you are heating the garden.</p>
+       </div>` +
+      textLink('Read the longer version', '#8a5a2b') +
+      signoff('See you next month.'),
+      '#faf8f4',
+    ),
+  },
+  {
+    id: 'm-offer-quiet',
+    name: 'Quiet offer',
+    category: 'Modern',
+    preview: '#0f1115',
+    html: letter(
+      `<p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#e8eaee">Hi {{firstName}},</p>` +
+      `<p style="margin:0 0 8px;font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#8a93a3">Until the end of the month</p>
+       <h1 style="margin:0 0 18px;font-size:32px;font-weight:800;line-height:1.15;letter-spacing:-0.03em;color:#ffffff">A full service, £85 instead of £120</h1>` +
+      `<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#c3c9d4">Same work, same engineer, same certificate at the end. We do this every autumn because the diary is quiet before the first cold snap, and it is easier for everybody if the boiler gets looked at before it stops.</p>
+       <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#c3c9d4">Twelve slots left. When they are gone the price goes back.</p>` +
+      `<p style="margin:28px 0"><a href="#" style="display:inline-block;padding:13px 26px;background:#ffffff;color:#0f1115;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px">Book a slot</a></p>` +
+      `<p style="margin:26px 0 0;font-size:15px;line-height:1.7;color:#c3c9d4">If the timing is wrong, ignore this — there will be another one.</p>
+       <div style="margin-top:34px;padding-top:18px;border-top:1px solid #2a303a">
+         <p style="margin:0;font-size:12px;line-height:1.6;color:#7b8494">
+           <a href="{{unsubscribe}}" style="color:#7b8494">Unsubscribe</a> and you will not hear from us again.
+         </p>
+       </div>`,
+      '#0f1115',
+    ),
+  },
+  {
+    id: 'm-receipt',
+    name: 'Receipt',
+    category: 'Modern',
+    preview: '#f6f7f9',
+    html: letter(
+      `<h1 style="margin:0 0 6px;font-size:20px;font-weight:700;color:#17191c">Thanks, {{firstName}} — that is booked in</h1>
+       <p style="margin:0 0 26px;font-size:15px;line-height:1.7;color:#5b6472">You will get a reminder the day before. If anything changes, just reply to this email.</p>` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:26px">
+         <tr><td style="padding:11px 0;border-bottom:1px solid #e6e9ee;font-size:14px;color:#5b6472">What</td><td style="padding:11px 0;border-bottom:1px solid #e6e9ee;font-size:14px;color:#17191c;text-align:right;font-weight:600">Annual boiler service</td></tr>
+         <tr><td style="padding:11px 0;border-bottom:1px solid #e6e9ee;font-size:14px;color:#5b6472">When</td><td style="padding:11px 0;border-bottom:1px solid #e6e9ee;font-size:14px;color:#17191c;text-align:right;font-weight:600">Tuesday, between 9am and 11am</td></tr>
+         <tr><td style="padding:11px 0;border-bottom:1px solid #e6e9ee;font-size:14px;color:#5b6472">Who is coming</td><td style="padding:11px 0;border-bottom:1px solid #e6e9ee;font-size:14px;color:#17191c;text-align:right;font-weight:600">One of our engineers, in a marked van</td></tr>
+         <tr><td style="padding:13px 0;font-size:15px;color:#17191c;font-weight:700">Total</td><td style="padding:13px 0;font-size:15px;color:#17191c;text-align:right;font-weight:700">£85.00</td></tr>
+       </table>` +
+      `<p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#17191c">Before we arrive</p>
+       <p style="margin:0 0 22px;font-size:14.5px;line-height:1.7;color:#5b6472">Clear a little space around the boiler and make sure we can get to the gas meter. That is all.</p>` +
+      signoff('See you Tuesday.'),
+      '#ffffff',
+    ),
+  },
+  {
+    id: 'm-one-question',
+    name: 'One question',
+    category: 'Modern',
+    preview: '#ffffff',
+    html: letter(
+      `<p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#2b2b2b">Hi {{firstName}},</p>` +
+      para('You got a quote from us a few weeks ago and I never heard back, which is completely fine — most people are getting two or three.') +
+      para('One question, and you can answer it in a word: is it still something you are thinking about, or shall I close the file?') +
+      `<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#2b2b2b"><strong>Still thinking</strong> — I will leave it open and check back in a month.<br/>
+         <strong>No thanks</strong> — I will take you off the list and stop emailing.</p>` +
+      signoff('Either is a good answer. Thanks for your time.'),
+    ),
+  },
+  {
+    id: 'm-product-grid',
+    name: 'Product row',
+    category: 'Modern',
+    preview: '#ffffff',
+    html: letter(
+      `<h1 style="margin:0 0 8px;font-size:24px;font-weight:800;letter-spacing:-0.02em;color:#17191c">New in this week</h1>
+       <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#5b6472">Three things, {{firstName}}. All in stock, all posted next day.</p>` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+         <tr>
+           <td style="padding:0 0 22px" valign="top">
+             <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#17191c">Bronze cleat, 150mm</p>
+             <p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#5b6472">Cast, not pressed. The one that outlives the boat.</p>
+             <p style="margin:0;font-size:15px;font-weight:700;color:#17191c">£28.00</p>
+           </td>
+         </tr>
+         <tr><td style="border-top:1px solid #eceef2;padding:22px 0" valign="top">
+             <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#17191c">Teak grating</p>
+             <p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#5b6472">Made to size. Tell us the opening and we will cut it.</p>
+             <p style="margin:0;font-size:15px;font-weight:700;color:#17191c">£129.99</p>
+           </td></tr>
+         <tr><td style="border-top:1px solid #eceef2;padding:22px 0 0" valign="top">
+             <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#17191c">Stainless shackle set</p>
+             <p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#5b6472">Six sizes, one box. Cheaper than buying them one at a time.</p>
+             <p style="margin:0;font-size:15px;font-weight:700;color:#17191c">£42.50</p>
+           </td></tr>
+       </table>` +
+      textLink('See everything in the shop') +
+      signoff('Thanks for reading.'),
+    ),
+  },
+  {
+    id: 'm-welcome-quiet',
+    name: 'Quiet welcome',
+    category: 'Modern',
+    preview: '#f7f7f5',
+    html: letter(
+      `<p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#2b2b2b">Hi {{firstName}},</p>` +
+      para('Thanks for signing up. This is the only email you will get that is about signing up.') +
+      para('From here you will hear from us roughly once a month, and only when there is something worth saying — a job we have finished that might be useful to see, or a price change worth knowing about before it happens.') +
+      para('If that turns out to be one email too many, the unsubscribe link at the bottom works immediately and I will not chase you.') +
+      signoff('Good to have you.'),
+      '#f7f7f5',
+    ),
+  },
+  {
+    id: 'm-notice',
+    name: 'Short notice',
+    category: 'Modern',
+    preview: '#fffaf0',
+    html: letter(
+      `<div style="border-left:3px solid #b45309;padding:2px 0 2px 16px;margin-bottom:24px">
+         <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#b45309">Please read</p>
+       </div>` +
+      `<h1 style="margin:0 0 18px;font-size:22px;font-weight:700;line-height:1.3;color:#17191c">We are changing our prices on 1 November</h1>` +
+      para('Hi {{firstName}} — this is the sort of email nobody enjoys sending, so I will keep it short.') +
+      para('Our labour rate goes up by £6 an hour from 1 November. It has not moved in two years and the cost of everything we buy has. Anything quoted before that date is honoured at the old rate, however long the job takes to start.') +
+      para('That is the whole of it. No action needed, and nothing changes on work already booked.') +
+      signoff('Thanks for bearing with us.'),
+      '#fffaf0',
+    ),
+  },
+];
+
+export const CLASSIC_TEMPLATES: EmailTemplate[] = [
   /* ── Welcome ── */
   {
     id: 'welcome-warm',
@@ -233,6 +444,9 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     ),
   },
 ];
+
+/* Modern first: it is what most people should be starting from. */
+export const EMAIL_TEMPLATES: EmailTemplate[] = [...MODERN_TEMPLATES, ...CLASSIC_TEMPLATES];
 
 export const TEMPLATE_CATEGORIES = ['All', ...new Set(EMAIL_TEMPLATES.map(t => t.category))];
 

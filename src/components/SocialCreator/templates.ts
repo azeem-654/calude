@@ -1,4 +1,4 @@
-import type { DesignTemplate, CanvasBackground } from './types';
+import type { DesignTemplate, CanvasBackground, CanvasElement, TextElement } from './types';
 import { API_BASE } from '../../services/apiBase';
 
 const solidBg = (color: string): CanvasBackground => ({
@@ -1120,5 +1120,233 @@ export const TEMPLATES: DesignTemplate[] = [
     ],
   },
 ];
+
+
+/* ── A newer set ────────────────────────────────────────────────────────────
+ *
+ * The designs above lean on what social graphics looked like a few years ago:
+ * a purple-to-pink gradient, Impact in white caps across the middle, a thin
+ * rule underneath. They still have their place — a gradient quote card is not
+ * wrong — but every one of them is the same idea in a different hue, and a
+ * gallery where forty options are one option makes the choice feel pointless.
+ *
+ * These go the other way, and each is a genuinely different shape rather than a
+ * recolour:
+ *
+ *  - Type at a size that assumes a thumb-sized preview, not a desktop canvas.
+ *  - Off-white and near-black grounds rather than saturated gradients, because
+ *    a feed is already loud and the quiet post is the one that stops the scroll.
+ *  - Asymmetric layouts — text pinned to a corner, not centred in the middle.
+ *  - Real editorial devices: an oversized numeral, a rule that means something,
+ *    a caption set small against a very large heading.
+ *
+ * Every string in them is written to be replaced. None of them contains a
+ * bracketed placeholder, because a placeholder is what gets published by
+ * accident.
+ */
+
+/** A text element, with the boilerplate every one of them repeats. */
+const txt = (
+  x: number, y: number, width: number, height: number, z: number,
+  text: string,
+  o: Partial<Omit<TextElement, 'kind' | 'text'>> & { uppercase?: boolean } = {},
+): Omit<CanvasElement, 'id'> => ({
+  type: 'text', x, y, width, height, rotation: 0, zIndex: z, locked: false, visible: true,
+  data: {
+    kind: 'text', text,
+    fontSize: 24,
+    fontFamily: 'Inter',
+    color: '#111111',
+    fontWeight: '700',
+    fontStyle: 'normal',
+    textAlign: 'left',
+    lineHeight: 1.2,
+    letterSpacing: 0,
+    textDecoration: 'none',
+    ...o,
+  },
+});
+
+/** A rule or a block of colour. */
+const bar = (
+  x: number, y: number, width: number, height: number, z: number, fill: string,
+): Omit<CanvasElement, 'id'> => ({
+  type: 'shape', x, y, width, height, rotation: 0, zIndex: z, locked: false, visible: true,
+  data: { kind: 'shape', shapeType: 'rect', fill, stroke: 'transparent', strokeWidth: 0, opacity: 1 },
+});
+
+const MODERN_TEMPLATES: DesignTemplate[] = [
+  {
+    id: 'nu-statement', name: 'Statement', category: 'Modern', platform: 'all',
+    aspectRatio: '1:1', canvasWidth: 540, canvasHeight: 540,
+    thumbnail: 'solid:#0f1115',
+    tags: ['bold', 'minimal', 'dark', 'quote'],
+    background: solidBg('#0f1115'),
+    elements: [
+      txt(52, 96, 436, 240, 1, 'Most of it is just turning up on the day you said you would.', {
+        fontSize: 46, color: '#ffffff', fontWeight: '800', lineHeight: 1.08, letterSpacing: -1.5,
+      }),
+      bar(52, 372, 56, 3, 2, '#c8f24d'),
+      txt(52, 396, 436, 30, 3, 'Harbour Supply', {
+        fontSize: 14, color: '#8a93a3', fontWeight: '600', letterSpacing: 1.4, uppercase: true,
+      }),
+    ],
+  },
+  {
+    id: 'nu-numeral', name: 'Big number', category: 'Modern', platform: 'all',
+    aspectRatio: '1:1', canvasWidth: 540, canvasHeight: 540,
+    thumbnail: 'solid:#faf8f4',
+    tags: ['stat', 'editorial', 'light'],
+    background: solidBg('#faf8f4'),
+    elements: [
+      txt(48, 70, 444, 200, 1, '94%', {
+        fontSize: 150, color: '#1b1a17', fontWeight: '800', lineHeight: 1, letterSpacing: -7,
+      }),
+      bar(48, 268, 444, 1, 2, '#ddd8cd'),
+      txt(48, 292, 400, 120, 3, 'of the boilers we serviced last winter never needed a second visit.', {
+        fontSize: 24, color: '#3a382f', fontWeight: 'normal', lineHeight: 1.35,
+      }),
+      txt(48, 452, 444, 28, 4, 'Source: our own job records, 2025', {
+        fontSize: 12.5, color: '#8a8578', fontWeight: '500',
+      }),
+    ],
+  },
+  {
+    id: 'nu-caption', name: 'Photo caption', category: 'Modern', platform: 'all',
+    aspectRatio: '4:5', canvasWidth: 540, canvasHeight: 675,
+    thumbnail: 'solid:#111111',
+    tags: ['photo', 'caption', 'portrait'],
+    background: { type: 'image', color: '#111111', gradientStart: '#111111', gradientEnd: '#333333', gradientAngle: 135, imageFit: 'cover', imageUrl: IMG('workshop', 41) },
+    elements: [
+      /* A scrim, so the words stay readable whatever photo replaces the one
+         behind them — a caption that only works on the sample image is a
+         caption that breaks the first time somebody uses it. */
+      bar(0, 372, 540, 303, 1, 'rgba(10,10,12,0.62)'),
+      txt(44, 424, 452, 150, 2, 'Forty years in the same workshop', {
+        fontSize: 40, color: '#ffffff', fontWeight: '800', lineHeight: 1.1, letterSpacing: -1.2,
+      }),
+      txt(44, 566, 452, 70, 3, 'Same bench, same tools, mostly the same customers.', {
+        fontSize: 17, color: 'rgba(255,255,255,0.8)', fontWeight: 'normal', lineHeight: 1.45,
+      }),
+    ],
+  },
+  {
+    id: 'nu-list', name: 'Three things', category: 'Modern', platform: 'all',
+    aspectRatio: '4:5', canvasWidth: 540, canvasHeight: 675,
+    thumbnail: 'solid:#ffffff',
+    tags: ['list', 'educational', 'carousel'],
+    background: solidBg('#ffffff'),
+    elements: [
+      txt(48, 62, 444, 40, 1, 'Before the weather turns', {
+        fontSize: 13, color: '#8a8a8a', fontWeight: '700', letterSpacing: 1.6, uppercase: true,
+      }),
+      txt(48, 100, 444, 110, 2, 'Three jobs worth an afternoon', {
+        fontSize: 38, color: '#111111', fontWeight: '800', lineHeight: 1.12, letterSpacing: -1.2,
+      }),
+      bar(48, 240, 444, 1, 3, '#ededed'),
+      txt(48, 264, 30, 40, 4, '1', { fontSize: 26, color: '#c4c4c4', fontWeight: '800' }),
+      txt(90, 264, 402, 70, 5, 'Clear the silt at the gutter outlet, not just the leaves you can see.', { fontSize: 19, color: '#2b2b2b', fontWeight: '500', lineHeight: 1.4 }),
+      bar(48, 360, 444, 1, 6, '#ededed'),
+      txt(48, 384, 30, 40, 7, '2', { fontSize: 26, color: '#c4c4c4', fontWeight: '800' }),
+      txt(90, 384, 402, 70, 8, 'Bleed the radiators now — cold at the top means air.', { fontSize: 19, color: '#2b2b2b', fontWeight: '500', lineHeight: 1.4 }),
+      bar(48, 480, 444, 1, 9, '#ededed'),
+      txt(48, 504, 30, 40, 10, '3', { fontSize: 26, color: '#c4c4c4', fontWeight: '800' }),
+      txt(90, 504, 402, 70, 11, 'Check the back door seals. Daylight means you are heating the garden.', { fontSize: 19, color: '#2b2b2b', fontWeight: '500', lineHeight: 1.4 }),
+    ],
+  },
+  {
+    id: 'nu-offer', name: 'Price drop', category: 'Modern', platform: 'all',
+    aspectRatio: '1:1', canvasWidth: 540, canvasHeight: 540,
+    thumbnail: 'solid:#17321f',
+    tags: ['offer', 'sale', 'price'],
+    background: solidBg('#17321f'),
+    elements: [
+      txt(48, 74, 444, 34, 1, 'Until the end of the month', {
+        fontSize: 14, color: '#8fd9a8', fontWeight: '700', letterSpacing: 1.4, uppercase: true,
+      }),
+      txt(48, 124, 444, 110, 2, 'Full service', {
+        fontSize: 52, color: '#ffffff', fontWeight: '800', lineHeight: 1.05, letterSpacing: -2,
+      }),
+      txt(48, 240, 200, 96, 3, '£85', {
+        fontSize: 84, color: '#ffffff', fontWeight: '800', lineHeight: 1, letterSpacing: -4,
+      }),
+      txt(250, 274, 160, 50, 4, 'was £120', {
+        fontSize: 24, color: 'rgba(255,255,255,0.5)', fontWeight: '500',
+      }),
+      bar(250, 296, 96, 2, 5, 'rgba(255,255,255,0.5)'),
+      txt(48, 372, 444, 70, 6, 'Same work, same engineer, same certificate. Twelve slots left.', {
+        fontSize: 18, color: 'rgba(255,255,255,0.78)', fontWeight: 'normal', lineHeight: 1.45,
+      }),
+      bar(48, 460, 444, 1, 7, 'rgba(255,255,255,0.2)'),
+      txt(48, 480, 444, 30, 8, 'Book at harboursupply.co.uk', {
+        fontSize: 15, color: '#ffffff', fontWeight: '600',
+      }),
+    ],
+  },
+  {
+    id: 'nu-testimonial', name: 'In their words', category: 'Modern', platform: 'all',
+    aspectRatio: '1:1', canvasWidth: 540, canvasHeight: 540,
+    thumbnail: 'solid:#f4f2ee',
+    tags: ['testimonial', 'review', 'quiet'],
+    background: solidBg('#f4f2ee'),
+    elements: [
+      txt(48, 78, 100, 100, 1, '\u201C', {
+        fontSize: 110, fontFamily: 'Georgia', color: '#c9c3b6', fontWeight: 'normal', lineHeight: 1,
+      }),
+      txt(48, 168, 444, 210, 2, 'Turned up when he said he would, did the job, cleared up after himself. I do not know why that is remarkable but it is.', {
+        fontSize: 27, fontFamily: 'Georgia', color: '#1b1a17', fontWeight: 'normal', lineHeight: 1.38,
+      }),
+      bar(48, 412, 40, 2, 3, '#1b1a17'),
+      txt(48, 434, 444, 30, 4, 'Margaret H., Leeds', {
+        fontSize: 15, color: '#5d594f', fontWeight: '600',
+      }),
+      txt(48, 462, 444, 28, 5, 'Verified review', {
+        fontSize: 12.5, color: '#8a8578', fontWeight: '500',
+      }),
+    ],
+  },
+  {
+    id: 'nu-split', name: 'Split', category: 'Modern', platform: 'all',
+    aspectRatio: '1:1', canvasWidth: 540, canvasHeight: 540,
+    thumbnail: 'solid:#ffffff',
+    tags: ['bold', 'announcement', 'contrast'],
+    background: solidBg('#ffffff'),
+    elements: [
+      bar(0, 0, 540, 270, 1, '#111111'),
+      txt(44, 78, 452, 130, 2, 'We are open on Saturdays now', {
+        fontSize: 42, color: '#ffffff', fontWeight: '800', lineHeight: 1.08, letterSpacing: -1.5,
+      }),
+      txt(44, 310, 452, 100, 3, '8am to 1pm, every Saturday from the 4th.', {
+        fontSize: 26, color: '#111111', fontWeight: '600', lineHeight: 1.32,
+      }),
+      txt(44, 430, 452, 70, 4, 'Same rate as a weekday. No callout charge.', {
+        fontSize: 17, color: '#6b6b6b', fontWeight: 'normal', lineHeight: 1.45,
+      }),
+    ],
+  },
+  {
+    id: 'nu-story', name: 'Story ask', category: 'Modern', platform: 'instagram',
+    aspectRatio: '9:16', canvasWidth: 432, canvasHeight: 768,
+    thumbnail: 'solid:#1a1430',
+    tags: ['story', 'question', 'engagement'],
+    background: gradBg('#1a1430', '#3a2168', 160),
+    elements: [
+      txt(40, 210, 352, 60, 1, 'Quick one', {
+        fontSize: 15, color: 'rgba(255,255,255,0.55)', fontWeight: '700', letterSpacing: 2, uppercase: true, textAlign: 'center',
+      }),
+      txt(40, 258, 352, 220, 2, 'What is the one job in your house you keep putting off?', {
+        fontSize: 40, color: '#ffffff', fontWeight: '800', lineHeight: 1.15, letterSpacing: -1, textAlign: 'center',
+      }),
+      bar(136, 508, 160, 52, 3, 'rgba(255,255,255,0.12)'),
+      txt(136, 522, 160, 30, 4, 'Tell us below', {
+        fontSize: 17, color: '#ffffff', fontWeight: '600', textAlign: 'center',
+      }),
+    ],
+  },
+];
+
+/* Modern first, so the gallery opens on the newer work rather than on the
+   gradient quote cards. */
+TEMPLATES.unshift(...MODERN_TEMPLATES);
 
 export const TEMPLATE_CATEGORIES = [...new Set(TEMPLATES.map(t => t.category))];

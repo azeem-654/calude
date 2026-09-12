@@ -549,6 +549,7 @@ export default function SocialCreator() {
         <div style={{ display: 'flex', gap: 26, justifyContent: 'center', flexWrap: 'wrap' }}>
           {[
             { label: 'For you', emoji: '✨', act: () => openTemplates() },
+            { label: 'Modern', emoji: '◼️', act: () => openTemplates({ category: 'Modern' }) },
             { label: 'Trending', emoji: '🔥', act: () => openTemplates({ category: 'Trending' }) },
             { label: 'Fashion', emoji: '🛍️', act: () => openTemplates({ category: 'Fashion' }) },
             { label: 'Promotion', emoji: '💸', act: () => openTemplates({ category: 'Promotion' }) },
@@ -576,7 +577,14 @@ export default function SocialCreator() {
           <Sparkles size={17} color="#7c3aed" /> You might want to try…
         </h2>
         <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8 }}>
-          {[...TEMPLATES.filter(t => t.category === 'Trending'), ...TEMPLATES.filter(t => t.category === 'Fashion')].slice(0, 9).map(t => (
+          {/* Modern first: it is the newest work and the set most people should
+              be starting from. Trending and Fashion follow, so the strip still
+              has the variety it had. */}
+          {[
+            ...TEMPLATES.filter(t => t.category === 'Modern'),
+            ...TEMPLATES.filter(t => t.category === 'Trending'),
+            ...TEMPLATES.filter(t => t.category === 'Fashion'),
+          ].slice(0, 10).map(t => (
             <div key={t.id} onClick={() => quickCreate(t)}
               style={{ cursor: 'pointer', borderRadius: 12, overflow: 'hidden', border: '1px solid #eceef2', background: '#fff', flexShrink: 0, transition: 'transform 0.15s, box-shadow 0.15s' }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 28px -8px rgba(16,24,40,0.22)'; }}
