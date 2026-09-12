@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Search, Eye, LayoutGrid } from 'lucide-react';
 import { sanitizeEmailHtml } from '../../services/emailHtml';
 import { useApp } from '../../context/AppContext';
+import type { Campaign } from '../../types';
 
 /* ─── Template definitions ─── */
 export interface EmailTemplate {
@@ -630,15 +631,35 @@ export default function EmailTemplateGallery({
    * words in it. Only ones that actually have a body — a draft with nothing in
    * it is not a template.
    */
+  /*
+   * Every campaign, not a slice of them.
+   *
+   * This took the first 24 and dropped anything whose first email was under
+   * forty characters — so a workspace with thirty campaigns silently lost six,
+   * with nothing on screen to say so, and a campaign whose first step is a
+   * one-line SMS vanished even though its other steps were full emails. A
+   * library that quietly hides some of your work is worse than one that shows
+   * you an awkward row.
+   *
+   * The only thing still excluded is a campaign with no written content
+   * anywhere — an empty draft is not something to start from, and the section's
+   * own filter and "show all" handle the volume.
+   */
+  const bodyOf = (c: Campaign) =>
+    (c.steps ?? []).map(st => st.body).find(b => (b ?? '').trim().length > 20)
+    ?? c.emailBody ?? c.smsBody ?? '';
+
   const sent: Card[] = campaigns
-    .filter(c => (c.steps?.[0]?.body || c.emailBody || '').trim().length > 40)
-    .slice(0, 24)
-    .map(c => ({
-      id: `sent-${c.id}`,
-      name: c.name,
-      sub: `${c.steps?.length ?? 1} ${(c.steps?.length ?? 1) === 1 ? 'email' : 'emails'} · ${c.status}`,
-      html: c.steps?.[0]?.body || c.emailBody || '',
-    }));
+    .filter(c => bodyOf(c).trim().length > 20)
+    .map(c => {
+      const n = c.steps?.length ?? 1;
+      return {
+        id: `sent-${c.id}`,
+        name: c.name,
+        sub: `${n} ${n === 1 ? 'email' : 'emails'} · ${c.status}${c.createdAt ? ` · ${c.createdAt}` : ''}`,
+        html: bodyOf(c),
+      };
+    });
 
   /** The ready-made ones, grouped by the occasion they are for. */
   const byCategory = new Map<string, Card[]>();

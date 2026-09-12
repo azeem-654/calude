@@ -87,13 +87,33 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     const slug = String(d.slug ?? '').trim().toLowerCase();
     const accountId = String(d.accountId ?? '').trim();
 
-    const row = slug
-      ? await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE slug = ?').bind(slug).first<{ account_id: string; public: string }>()
-      : accountId
-        ? await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ account_id: string; public: string }>()
-        /* No slug and no account: on a single-workspace install there is only
-           one page, so serving it is the helpful answer rather than an error. */
-        : await env.DB.prepare('SELECT account_id, public FROM crm_booking_config ORDER BY updated_at LIMIT 1').first<{ account_id: string; public: string }>();
+    /*
+     * No slug and no account used to fall through to
+     * `ORDER BY updated_at LIMIT 1` — "on a single-workspace install there is
+     * only one page". This install is not single-workspace: it is a white-label
+     * product whose whole point is sub-accounts. So a bare /book served
+     * whichever workspace had gone longest without an edit — a stranger's
+     * booking page, under this deployment's name, and any booking taken on it
+     * landed in that stranger's account.
+     *
+     * The fallback survives only where the premise actually holds: exactly one
+     * config on the install. Two or more and there is no honest answer to
+     * "whose page is this?", so it says there is none.
+     */
+    let row: { account_id: string; public: string } | null = null;
+    if (slug) {
+      row = await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE slug = ?')
+        .bind(slug).first<{ account_id: string; public: string }>();
+    } else if (accountId) {
+      row = await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE account_id = ?')
+        .bind(accountId).first<{ account_id: string; public: string }>();
+    } else {
+      const n = await env.DB.prepare('SELECT count(*) AS n FROM crm_booking_config').first<{ n: number }>();
+      if ((n?.n ?? 0) === 1) {
+        row = await env.DB.prepare('SELECT account_id, public FROM crm_booking_config LIMIT 1')
+          .first<{ account_id: string; public: string }>();
+      }
+    }
 
     if (!row) {
       return json({ success: false, notFound: true, error: 'There is no booking page at that address.', message: 'There is no booking page at that address.' });

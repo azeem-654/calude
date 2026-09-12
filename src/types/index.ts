@@ -196,6 +196,15 @@ export interface ScheduleAvailability {
   windowDays?: number;
   /** Optional short YouTube intro video shown on the booking page. */
   videoUrl?: string;
+  /**
+   * A picture across the top of the booking page — a photo of the person, the
+   * premises, the work. A URL or a data: URI.
+   *
+   * Shown above the video when both are set: a still loads instantly and a
+   * visitor decides whether to stay in about a second, which is less time than
+   * an embed takes to appear.
+   */
+  imageUrl?: string;
   /** Bookable meeting types; when present visitors pick one first. */
   eventTypes?: EventType[];
   automations?: SchedulingAutomations;

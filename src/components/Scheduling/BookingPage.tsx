@@ -460,6 +460,26 @@ export default function BookingPage() {
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px', letterSpacing: '-0.02em' }}>{rescheduling ? `Reschedule: ${manage?.booking?.eventTypeName ?? activeTitle}` : activeTitle}</h1>
           <p style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.65)', margin: '0 0 18px', lineHeight: 1.55 }}>{eventType?.description || cfg.description}</p>
 
+          {/*
+            A picture, above the video.
+
+            A still loads instantly where an embed takes a second or two, and a
+            visitor decides whether to stay in about that long — so if a page
+            has both, the photo is what greets them. Hidden on the form step for
+            the same reason the video is: once somebody is typing their name,
+            the pitch is over and the screen should be about the task.
+          */}
+          {cfg.imageUrl && step !== 'form' && (
+            <img
+              src={cfg.imageUrl}
+              alt=""
+              style={{
+                width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block',
+                borderRadius: 14, marginBottom: 18, boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+              }}
+            />
+          )}
+
           {/* Short intro video */}
           {ytIdFrom(cfg.videoUrl) && step !== 'form' && (
             <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', marginBottom: 18, boxShadow: '0 12px 32px rgba(0,0,0,0.4)', aspectRatio: '16/9', background: '#000' }}>

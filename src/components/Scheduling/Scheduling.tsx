@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Calendar, Clock, Link, Settings, Check, Copy, Trash2,
-  Globe, Plus, Zap, Layers, CloudUpload, Mail, MessageSquare,
+  Globe, Plus, Zap, Layers, CloudUpload, Mail, MessageSquare, Upload,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -105,7 +105,21 @@ export default function Scheduling() {
   const removeEventType = (id: string) =>
     updateSchedule({ eventTypes: eventTypes.filter(e => e.id !== id) });
 
-  const publicUrl = `${window.location.origin}${import.meta.env.BASE_URL}book`;
+  /**
+   * The address to give people — with the slug on it.
+   *
+   * This was `…/book` with nothing after it, so every "Copy Link", "Open Page"
+   * and "Copy Booking Link" on this screen handed out a slug-less URL. That
+   * only ever resolved because the server fell back to "there is one booking
+   * page on this install, serve that" — which on a white-label product with
+   * sub-accounts meant a bare /book served whichever workspace had gone longest
+   * without an edit, and took bookings into that stranger's account.
+   *
+   * The two faults propped each other up: fixing the server alone would have
+   * broken every link already copied from here, and fixing this alone would
+   * have left the cross-tenant fallback in place. Both go together.
+   */
+  const publicUrl = `${window.location.origin}${import.meta.env.BASE_URL}book/${schedule.slug}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(publicUrl).then(() => {
@@ -502,12 +516,39 @@ export default function Scheduling() {
               </div>
 
               <div>
-                <label style={LABEL}>Booking URL Slug</label>
+                <label style={LABEL}>Your booking link</label>
                 <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #e2e8f0', borderRadius: 9, overflow: 'hidden', backgroundColor: 'white' }}>
                   <span style={{ padding: '9px 10px', backgroundColor: '#f8fafc', fontSize: 12, color: '#94a3b8', borderRight: '1px solid #e2e8f0', whiteSpace: 'nowrap', fontWeight: 500 }}>/book/</span>
-                  <input value={schedule.slug} onChange={e => updateSchedule({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+                  <input
+                    value={schedule.slug}
+                    /* Only what a URL can carry, and only while typing — the
+                       tidy-up happens on blur so a hyphen you are halfway
+                       through typing is not eaten under the cursor. */
+                    onChange={e => updateSchedule({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+                    onBlur={e => {
+                      const clean = e.target.value.replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+                      /* Never empty. An empty slug is /book/ with nothing after
+                         it, which is not this page — it is whatever the bare
+                         address resolves to. */
+                      updateSchedule({ slug: clean || 'meeting' });
+                    }}
+                    placeholder="meeting"
                     style={{ flex: 1, padding: '9px 12px', border: 'none', fontSize: 13, outline: 'none', color: '#0f172a', fontFamily: 'inherit' }} />
+                  <button
+                    onClick={() => {
+                      const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+                      void navigator.clipboard?.writeText(`${window.location.origin}${base}/book/${schedule.slug}`).catch(() => {});
+                      addNotification('Booking link copied.', 'success');
+                    }}
+                    title="Copy the whole link"
+                    style={{ padding: '9px 11px', border: 'none', borderLeft: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', color: '#64748b', display: 'flex' }}>
+                    <Copy size={14} />
+                  </button>
                 </div>
+                <p style={{ margin: '5px 0 0', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>
+                  Anything you like — <strong>/book/{schedule.slug || 'meeting'}</strong>. Change it whenever
+                  you want, but links you have already sent out will stop working.
+                </p>
               </div>
 
               <div>
@@ -568,6 +609,50 @@ export default function Scheduling() {
                 <label style={LABEL}>Meeting Location / Link</label>
                 <input value={schedule.location} onChange={e => updateSchedule({ location: e.target.value })} placeholder="Zoom link, Google Meet, or address..."
                   style={INPUT} />
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={LABEL}>Picture (shown across the top of the booking page)</label>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <input value={(schedule.imageUrl ?? '').startsWith('data:') ? '' : (schedule.imageUrl ?? '')}
+                      onChange={e => updateSchedule({ imageUrl: e.target.value })}
+                      placeholder="Link to a photo — of you, the premises, or the work"
+                      style={INPUT} />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', fontSize: 12.5, fontWeight: 600, color: '#17191c', cursor: 'pointer' }}>
+                        <Upload size={13} /> Upload
+                        <input type="file" accept="image/*" hidden
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            e.target.value = '';
+                            if (!f) return;
+                            /* Capped, and said with the number. The whole config
+                               travels as one JSON blob to the public endpoint, so
+                               a four-megabyte photo makes the booking page slow
+                               for every visitor rather than just this one. */
+                            if (f.size > 520_000) {
+                              addNotification(`That image is ${Math.round(f.size / 1024)}KB. Keep it under 500KB, or paste a link to it instead — every visitor downloads it.`, 'error');
+                              return;
+                            }
+                            const r = new FileReader();
+                            r.onload = () => updateSchedule({ imageUrl: String(r.result ?? '') });
+                            r.onerror = () => addNotification('That image could not be read.', 'error');
+                            r.readAsDataURL(f);
+                          }} />
+                      </label>
+                      {schedule.imageUrl && (
+                        <button onClick={() => updateSchedule({ imageUrl: '' })}
+                          style={{ padding: '7px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', fontSize: 12.5, fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {schedule.imageUrl && (
+                    <img src={schedule.imageUrl} alt="" style={{ width: 132, height: 84, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0', flexShrink: 0 }} />
+                  )}
+                </div>
               </div>
 
               <div style={{ gridColumn: '1 / -1' }}>

@@ -36,6 +36,10 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       minNoticeMin: schedule.minNoticeMin ?? 120,
       windowDays: schedule.windowDays ?? 60,
       videoUrl: schedule.videoUrl ?? '',
+      /* Sent with the rest of the public config. A field the editor saves and
+         publish forgets is one the visitor never sees, which reads as the
+         setting not working. */
+      imageUrl: schedule.imageUrl ?? '',
       eventTypes: schedule.eventTypes ?? [],
     },
     private: {
