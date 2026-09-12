@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ReactElement } from 'react';
 import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users, ShieldCheck, Server, Activity } from 'lucide-react';
 import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
@@ -11,7 +11,7 @@ import { getSession } from '../../services/auth';
 import { activeAccount, planById } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
 import { fetchSmsStatus, saveSmsConfig, testSmsConfig } from '../../services/smsStore';
-import { saveAiKey } from '../../services/replies';
+import { fetchReplies, saveAiKey, testAiKey, type AiStatus } from '../../services/replies';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -793,6 +793,48 @@ function AIEngineTab() {
   const savedKey = getGeminiKey();
 
   /*
+   * The server's copy, asked for rather than assumed.
+   *
+   * This panel used to report "AI is connected" from localStorage alone, and
+   * localStorage is the copy that matters least: it is per-browser, so the same
+   * account said "no API key — AI features are disabled" on a phone while the
+   * server held a working one, and said "connected" when the browser had a key
+   * the server had failed to store — in which case Autopilot still could not
+   * write a word. Both readings were confidently wrong.
+   *
+   * `null` is its own state: not "no key", but "not asked yet". Rendering a red
+   * "not connected" while the request is still in flight is the same lie in a
+   * shorter timeframe.
+   */
+  const [server, setServer] = useState<AiStatus | null>(null);
+  const [askedServer, setAskedServer] = useState(false);
+  const [checking, setChecking] = useState(false);
+  /* Verified, and not refused since. `verified_at` is cleared on a failed
+     check, so the two together are the whole answer. */
+  const serverWorks = !!server?.hasKey && !server.lastError && !!server.verifiedAt;
+
+  const readServer = useCallback(async () => {
+    const r = await fetchReplies();
+    setServer(r.ai);
+    setAskedServer(true);
+  }, []);
+
+  useEffect(() => { void readServer(); }, [readServer]);
+
+  /* Asks Google about the key on the record, and writes down what it said — so
+     the answer survives a refresh instead of being a toast nobody kept. */
+  const handleCheckServer = async () => {
+    setChecking(true);
+    const r = await testAiKey();
+    await readServer();
+    setChecking(false);
+    addNotification(
+      r.success ? (r.message ?? 'Google accepted the stored key.') : (r.error ?? 'Google refused the stored key.'),
+      r.success ? 'success' : 'error',
+    );
+  };
+
+  /*
    * Saved twice, on purpose, and they are not the same copy.
    *
    * The browser keeps one because AI Shorts analyses video *from the page* —
@@ -819,6 +861,7 @@ function AIEngineTab() {
     setTesting(false);
 
     if (stored.success) {
+      void readServer();
       setResult({ ok: true, msg: 'Key verified and saved. Autopilot can now answer replies even when you are signed out.' });
       addNotification('Gemini key verified and stored on the server.', 'success');
     } else {
@@ -848,10 +891,58 @@ function AIEngineTab() {
           watch your video, so the clips won't match its content. Powers AI Shorts, content generation and design AI.
         </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 14px', borderRadius: 10, backgroundColor: savedKey ? '#ecfdf5' : '#fff7ed', border: `1px solid ${savedKey ? '#a7f3d0' : '#fed7aa'}` }}>
-          {savedKey
-            ? <><CheckCircle size={15} color="#059669" /><span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>AI is connected — real video analysis enabled</span></>
-            : <><XCircle size={15} color="#c2410c" /><span style={{ fontSize: 13, fontWeight: 600, color: '#9a3412' }}>No API key — AI features are disabled</span></>}
+        {/* Two copies, two answers. Shown apart because they fail apart: the
+            browser one going missing costs you AI Shorts on this device, and
+            the server one going missing costs every customer their replies and
+            their campaign copy, silently, at three in the morning. */}
+        <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, backgroundColor: savedKey ? '#ecfdf5' : '#fff7ed', border: `1px solid ${savedKey ? '#a7f3d0' : '#fed7aa'}` }}>
+            {savedKey
+              ? <><CheckCircle size={15} color="#059669" /><span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>This browser has a key — AI Shorts can analyse video here</span></>
+              : <><XCircle size={15} color="#c2410c" /><span style={{ fontSize: 13, fontWeight: 600, color: '#9a3412' }}>This browser has no key — AI Shorts cannot analyse video on this device</span></>}
+          </div>
+
+          {/* Holding a key and having a working key are different states, and
+              the green tick belongs only to the second. A stored key Google has
+              refused is the worst one to paint green: everything downstream of
+              it fails, and the screen would be saying it is fine. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, backgroundColor: !askedServer ? '#f8fafc' : serverWorks ? '#ecfdf5' : '#fff7ed', border: `1px solid ${!askedServer ? '#e2e8f0' : serverWorks ? '#a7f3d0' : '#fed7aa'}` }}>
+            {!askedServer
+              ? <><Loader size={15} color="#94a3b8" style={{ animation: 'spin 0.8s linear infinite' }} /><span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Checking what Autopilot has…</span></>
+              : serverWorks
+                ? <>
+                    <CheckCircle size={15} color="#059669" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46', flex: 1, minWidth: 180 }}>
+                      Autopilot has a working key{server?.verifiedAt ? ` — Google accepted it on ${new Date(server.verifiedAt).toLocaleString()}` : ''}
+                    </span>
+                  </>
+                : <>
+                    <XCircle size={15} color="#c2410c" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#9a3412', flex: 1, minWidth: 180 }}>
+                      {!server?.hasKey
+                        ? 'Autopilot has no key — it cannot write campaigns or answer replies while you are signed out'
+                        : server.lastError
+                          ? 'Autopilot has a key that Google refused — campaigns and replies will fail until it is replaced'
+                          : 'Autopilot has a key, not yet checked against Google — press Check now to find out before a customer does'}
+                    </span>
+                  </>}
+            {askedServer && server?.hasKey && (
+              <button onClick={handleCheckServer} disabled={checking}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: checking ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                {checking ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={12} />}
+                {checking ? 'Asking Google…' : 'Check now'}
+              </button>
+            )}
+          </div>
+
+          {askedServer && server?.lastError && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', borderRadius: 10, backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+              <XCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: 12.5, color: '#991b1b', lineHeight: 1.5 }}>
+                Google last refused the stored key: {server.lastError}
+              </span>
+            </div>
+          )}
         </div>
 
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>API Key</label>
@@ -896,7 +987,9 @@ function AIEngineTab() {
             <li>Copy the key (starts with <code>AIza</code>) and paste it above, then Verify &amp; Save</li>
           </ol>
           <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
-            The key is stored only in this browser and sent directly to Google — never to our servers.
+            Verify &amp; Save keeps two copies: one in this browser, which talks to Google directly so a
+            video never passes through us, and one encrypted on the server, which is what lets Autopilot
+            write and reply on a schedule with nobody signed in. Neither is ever shown back to a browser.
           </p>
         </div>
       </div>

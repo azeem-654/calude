@@ -18,7 +18,7 @@
  * tables, and neither falls back to the other — that fallback is exactly how a
  * purchase ends up on the wrong card.
  */
-import { installSecret, nowIso, type Env } from './db';
+import { agencyBucketFor, dataGet, installSecret, nowIso, type Env } from './db';
 import { decryptSecret } from './crypto';
 
 const SECRET_KEY = 'mailbox_key';
@@ -113,6 +113,60 @@ export async function credsForMode(
   }
   const c = await workspaceCreds(env, accountId, kind);
   return c ? { ...c, managed: false } : null;
+}
+
+/* ── Spending the operator's money ───────────────────────────────────────── */
+
+/**
+ * Whether this workspace has paid for what it is about to be bought.
+ *
+ * ── Why a gate exists at all ──
+ *
+ * In managed mode the purchase lands on the *operator's* registrar account and
+ * the cost is recorded against the workspace in `crm_managed_purchases`. That
+ * ledger is a record of a debt, not a payment: nothing in this app turns a row
+ * in it into money arriving. So without this, a stranger could sign up, start a
+ * project, set it to "buy them for me" and have real domains registered on the
+ * operator's card before paying a penny — and the only trace would be a line
+ * item nobody had agreed to settle.
+ *
+ * So managed buying follows the payment rather than leading it: a domain is
+ * registered on an order, not on a hope. The subscription webhook is the only
+ * thing that writes `active`, and it only does so on a payment the processor
+ * confirmed.
+ *
+ * ── What it deliberately does not do ──
+ *
+ * Bring-your-own is untouched. A customer spending on their own registrar
+ * account has already agreed with their registrar what it costs, and standing
+ * between them and their own provider would be officious.
+ */
+export async function managedSpendAllowed(
+  env: Env, accountId: string,
+): Promise<{ ok: boolean; reason: string }> {
+  const bucket = await agencyBucketFor(env.DB, accountId);
+  const raw = await dataGet(env.DB, bucket, `crm_billing_status_${accountId}`);
+  if (!raw) {
+    return {
+      ok: false,
+      reason: 'This workspace has not paid for a subscription yet, and managed buying spends real money on the operator\'s account. It will go ahead on its own once a payment comes in — or switch this project to your own registrar to buy it yourself.',
+    };
+  }
+  let status = '';
+  try { status = String((JSON.parse(raw) as { status?: string }).status ?? ''); } catch { status = ''; }
+  if (status === 'active') return { ok: true, reason: '' };
+
+  /* Named rather than lumped together: "your card was declined" and "you
+     cancelled" are different problems with different fixes, and a customer told
+     the wrong one goes looking in the wrong place. */
+  return {
+    ok: false,
+    reason: status === 'past_due'
+      ? 'The last subscription payment for this workspace failed, so nothing is being bought on its behalf until it clears.'
+      : status === 'cancelled'
+        ? 'This workspace\'s subscription has ended, so nothing further is bought on its behalf.'
+        : `This workspace's subscription is "${status || 'unknown'}", so managed buying is held until it is active.`,
+  };
 }
 
 /* ── Audit ───────────────────────────────────────────────────────────────── */

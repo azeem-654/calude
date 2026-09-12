@@ -127,7 +127,7 @@ export default function ProjectInfra({ project, onSaved }: {
               <div style={{ display: 'grid', gap: 7 }}>
                 {([
                   ['byo', 'I have my own registrar', 'Autopilot uses the accounts you connected under Settings → Infrastructure. You pay your provider directly and nothing goes through us.'],
-                  ['managed', 'Buy them for me', 'We buy on your behalf and bill it on. Only available when this installation has a registrar connected.'],
+                  ['managed', 'Buy them for me', 'We buy on your behalf and bill it on — after this workspace\'s subscription payment has cleared, never before. Only available when this installation has a registrar connected.'],
                 ] as const).map(([id, label, sub]) => (
                   <button key={id} onClick={() => setMode(id)} aria-pressed={mode === id}
                     style={{
@@ -176,6 +176,7 @@ export default function ProjectInfra({ project, onSaved }: {
               <p style={{ margin: 0, fontSize: 11.5, color: '#78350f', lineHeight: 1.6 }}>
                 Every step that costs money appears on the board and waits for you to approve it. Autopilot
                 never buys a domain on its own, whichever option you pick above.
+                {mode === 'managed' && ' A managed purchase also waits for this workspace to be paid up — it is bought on the order, not in advance.'}
               </p>
             </div>
           </>

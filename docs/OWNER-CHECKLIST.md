@@ -118,7 +118,33 @@ Autopilot needs both, and says so rather than failing quietly:
 
 Settings → Email & SMS for the mailbox; Settings → AI Engine for the key.
 
-### 9. Open a shop, if a workspace sells things
+### 9. Connect Porkbun and Migadu, if Autopilot is to buy domains for people
+
+**Settings → Infrastructure → the operator's own accounts.** Only the install
+owner sees this, because these are the accounts the money comes off.
+
+- **Porkbun** — the only registrar with a public buying API, so it is the only
+  one Autopilot can register a domain through. Account → API Access, switch it
+  on, and copy the API key and the secret key. Porkbun charges **per domain
+  registered**; there is no monthly fee for having an account or using the API.
+- **Migadu** — the only mailbox host the app can create addresses on. Admin →
+  the account's API key. Migadu is a **plan**, not a per-mailbox charge: every
+  tier allows unlimited domains and unlimited mailboxes and meters daily message
+  volume instead, so one modest plan covers every customer's sending pool rather
+  than one plan per customer.
+
+Until both are here, "Buy them for me" on a project is refused by name rather
+than accepted and then failing, and bring-your-own keeps working as it always
+did.
+
+**Nothing is bought before it is paid for.** A managed purchase runs only for a
+workspace whose subscription is active — the same status the Creem webhook in
+item 4 writes. Until that payment lands the step sits on the board saying so and
+retries on its own when it clears. The check lives in `managedSpendAllowed()` in
+`worker/src/lib/provisioning.ts`; it is the one thing standing between a
+stranger signing up and real domains appearing on the operator's card.
+
+### 10. Open a shop, if a workspace sells things
 
 **Websites → Shops.** A shop is a page at `/shop/<name>` that anybody can open
 without signing in, listing that workspace's active products and taking payment

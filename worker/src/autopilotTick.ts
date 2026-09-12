@@ -26,7 +26,7 @@ import { encryptSecret } from './lib/crypto';
 import { loadSmsConfig, sendSms } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
 import {
-  createMailbox, credsForMode, poolDomainCandidates, priceDomain,
+  createMailbox, credsForMode, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
 } from './lib/provisioning';
 import { loadAiKey } from './lib/ai';
@@ -865,6 +865,21 @@ async function carryOutPoolStep(
   /* The project's own buying mode. Two projects in a workspace can legitimately
      differ — one on the customer's registrar, one on ours. */
   const mode = run.purchase_mode === 'managed' ? 'managed' : 'byo';
+
+  /*
+   * Managed buying follows the money.
+   *
+   * Checked once here rather than inside each step, because both of the steps
+   * below spend on the operator's account and neither is safe to run for a
+   * workspace that has not paid. Reported as a failure the customer can read
+   * and act on — the action stays on the board and the next tick tries again,
+   * which is what should happen when the only thing missing is a payment that
+   * may arrive tomorrow.
+   */
+  if (mode === 'managed' && (effect.step === 'register_domain' || effect.step === 'create_mailboxes')) {
+    const allowed = await managedSpendAllowed(env, accountId);
+    if (!allowed.ok) return { ok: false, detail: allowed.reason };
+  }
 
   if (effect.step === 'register_domain') {
     const reg = await credsForMode(env, accountId, 'registrar', mode);
