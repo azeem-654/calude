@@ -260,6 +260,28 @@ export interface CampaignBrief {
   tone: string;
   channel: 'email' | 'sms';
   steps: number;
+  /**
+   * A link to the sender's own diary, when they chose to offer one.
+   *
+   * Passed in rather than invented. A model asked to "include a booking link"
+   * with no link writes `https://calendly.com/your-name`, which is somebody
+   * else's domain and a dead link in a real customer's email.
+   */
+  bookingUrl?: string;
+}
+
+/**
+ * When email number `i` goes out.
+ *
+ * Close together at the start while the reason for writing is still fresh, then
+ * spreading out — which is how a person would actually follow something up, and
+ * it stops a fifteen-email run landing inside three weeks.
+ */
+function dayFor(i: number): number {
+  const early = [0, 3, 7, 14, 21, 28];
+  if (i < early.length) return early[i];
+  /* Fortnightly after the first month. */
+  return 28 + (i - early.length + 1) * 14;
 }
 
 const GOAL_JOB: Record<string, string> = {
@@ -272,7 +294,9 @@ const GOAL_JOB: Record<string, string> = {
 };
 
 export function writeCampaign(apiKey: string, b: Brand, brief: CampaignBrief): Promise<Written<WrittenCampaign>> {
-  const n = Math.min(Math.max(brief.steps || 3, 1), 6);
+  /* Fifteen, because that is what the wizard offers. More than that is not a
+     sequence, it is a grievance — and a model asked for thirty will pad. */
+  const n = Math.min(Math.max(brief.steps || 3, 1), 15);
   const job = GOAL_JOB[brief.goal] ?? GOAL_JOB.custom;
 
   if (brief.channel === 'sms') {
@@ -310,6 +334,10 @@ The job of this campaign: ${job}.
 What it is about (the customer wrote this — it leads, the brand above is only the voice): ${brief.concept || '(they did not say — write something honest and general rather than inventing specifics)'}
 What they want people to do: ${brief.cta || '(unstated)'}
 Tone: ${brief.tone || 'plain and direct'}
+${brief.bookingUrl
+    ? `Where to send people: ${brief.bookingUrl}
+This is the sender's own booking page. At least two of the emails must link to it as the call to action, written as an ordinary sentence with the link in it — "pick a time that suits you" — not a bare URL on its own line. Use this exact address and never invent another.`
+    : 'There is no booking link. Ask people to reply to the email; do not invent a scheduling URL of any kind.'}
 
 Rules:
 - ${NO_INVENTING}
@@ -327,7 +355,7 @@ Rules:
 
 Return ONLY valid JSON, no fences:
 {"steps":[${Array.from({ length: n }, (_, i) =>
-    `{"day":${[0, 3, 7, 14, 21, 28][i] ?? i * 7},"subject":"","preheader":"","body":"","purpose":"one short line on what this email is for"}`).join(',')}]}`, 0.75);
+    `{"day":${dayFor(i)},"subject":"","preheader":"","body":"","purpose":"one short line on what this email is for"}`).join(',')}]}`, 0.75);
 }
 
 /* ── An automation somebody described ───────────────────────────────────────

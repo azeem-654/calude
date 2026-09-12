@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { X, Search, Eye } from 'lucide-react';
+import { X, Search, Eye, LayoutGrid } from 'lucide-react';
 import { sanitizeEmailHtml } from '../../services/emailHtml';
+import { useApp } from '../../context/AppContext';
 
 /* ─── Template definitions ─── */
 export interface EmailTemplate {
@@ -478,6 +479,139 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [...MODERN_TEMPLATES, ...LIBRARY
 export const TEMPLATE_CATEGORIES = ['All', ...new Set(EMAIL_TEMPLATES.map(t => t.category))];
 
 /* ─── EmailTemplateGallery component ─── */
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The library screen.
+ *
+ * It used to be a sidebar of names with a preview pane: a list of twenty
+ * strings, and you had to click each one to find out what it looked like.
+ * Nobody picks a design that way — every tool people are used to (FeedBlitz,
+ * ActiveCampaign, Mailchimp) shows the thing itself, at a size you can judge
+ * from, in rows you can scan.
+ *
+ * So: real thumbnails, rendered from the template's own HTML rather than from
+ * a screenshot that would drift out of date the moment a template changed.
+ *
+ * Three sections, in the order somebody actually reaches for them:
+ *
+ *   1. **Start again from one you sent.** The most likely thing anybody wants
+ *      is last month's newsletter with new words in it.
+ *   2. **Your saved templates.** Designs this workspace made its own.
+ *   3. **Ready to use**, grouped by occasion — which is what a person is
+ *      actually searching for. Nobody wants "a two-column layout"; they want
+ *      "the email you send when somebody has not ordered in six months".
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A real preview of the email, shrunk.
+ *
+ * A 600px email inside a 220px card, scaled with a transform rather than by
+ * restyling it — the point is to show what will actually arrive, and anything
+ * that re-lays-it-out to fit is showing something else. `pointer-events: none`
+ * because a link inside a thumbnail is a trap: it looks like it selects the
+ * template and it navigates away instead.
+ */
+function Thumb({ html, height = 150 }: { html: string; height?: number }) {
+  const WIDTH = 600;
+  const scale = 220 / WIDTH;
+  return (
+    <div style={{
+      height, overflow: 'hidden', background: '#fff', position: 'relative',
+      borderBottom: '1px solid #eef0f4',
+    }}>
+      <div
+        style={{
+          width: WIDTH, transform: `scale(${scale})`, transformOrigin: 'top left',
+          pointerEvents: 'none',
+        }}
+        dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(html) }}
+      />
+      {/* Fades the cut-off bottom edge, so a thumbnail ends rather than stops. */}
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 34, background: 'linear-gradient(transparent, #fff)' }} />
+    </div>
+  );
+}
+
+interface Card {
+  id: string;
+  name: string;
+  sub: string;
+  html: string;
+}
+
+function Section({
+  title, blurb, items, onPick, onPreview, defaultShown = 8,
+}: {
+  title: string;
+  blurb: string;
+  items: Card[];
+  onPick: (html: string) => void;
+  onPreview: (c: Card) => void;
+  /** How many before "Show all". A wall of forty is its own kind of useless. */
+  defaultShown?: number;
+}) {
+  const [all, setAll] = useState(false);
+  const [q, setQ] = useState('');
+
+  const matching = q.trim()
+    ? items.filter(i => `${i.name} ${i.sub}`.toLowerCase().includes(q.trim().toLowerCase()))
+    : items;
+  const shown = all || q.trim() ? matching : matching.slice(0, defaultShown);
+  if (items.length === 0) return null;
+
+  return (
+    <section style={{ marginBottom: 30 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.015em' }}>{title}</h3>
+          <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>{blurb}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+          {items.length > 6 && (
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Filter ${title.toLowerCase()}`}
+                style={{ width: 178, padding: '6px 10px 6px 27px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          )}
+          {matching.length > defaultShown && !q.trim() && (
+            <button onClick={() => setAll(v => !v)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', fontSize: 12, fontWeight: 700, color: '#17191c', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <LayoutGrid size={12} /> {all ? 'Show fewer' : `Show all ${matching.length}`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Nothing matches that.</p>
+      ) : (
+        <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fill, minmax(min(210px, 100%), 1fr))' }}>
+          {shown.map(c => (
+            <div key={c.id} className="tpl-card"
+              style={{ border: '1px solid #e6e9f0', borderRadius: 12, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+              <Thumb html={c.html} />
+              <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>{c.name}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{c.sub}</span>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <button onClick={() => onPick(c.html)}
+                    style={{ flex: 1, padding: '7px 10px', border: 'none', borderRadius: 8, background: '#17191c', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    Use this
+                  </button>
+                  <button onClick={() => onPreview(c)} aria-label={`Preview ${c.name}`}
+                    style={{ padding: '7px 9px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer', display: 'flex' }}>
+                    <Eye size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function EmailTemplateGallery({
   onApply,
   onClose,
@@ -485,116 +619,107 @@ export default function EmailTemplateGallery({
   onApply: (html: string) => void;
   onClose: () => void;
 }) {
-  const [category, setCategory] = useState('All');
-  const [search, setSearch] = useState('');
-  const [preview, setPreview] = useState<EmailTemplate | null>(null);
+  const [preview, setPreview] = useState<Card | null>(null);
+  const { campaigns } = useApp();
 
-  const filtered = EMAIL_TEMPLATES.filter(t => {
-    if (category !== 'All' && t.category !== category) return false;
-    if (search && !t.name.toLowerCase().includes(search.toLowerCase()) && !t.category.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  /**
+   * Campaigns already sent, offered back as starting points.
+   *
+   * This is the section people reach for first and the one the app did not
+   * have: the most likely thing anybody wants is last month's email with new
+   * words in it. Only ones that actually have a body — a draft with nothing in
+   * it is not a template.
+   */
+  const sent: Card[] = campaigns
+    .filter(c => (c.steps?.[0]?.body || c.emailBody || '').trim().length > 40)
+    .slice(0, 24)
+    .map(c => ({
+      id: `sent-${c.id}`,
+      name: c.name,
+      sub: `${c.steps?.length ?? 1} ${(c.steps?.length ?? 1) === 1 ? 'email' : 'emails'} · ${c.status}`,
+      html: c.steps?.[0]?.body || c.emailBody || '',
+    }));
+
+  /** The ready-made ones, grouped by the occasion they are for. */
+  const byCategory = new Map<string, Card[]>();
+  for (const t of EMAIL_TEMPLATES) {
+    const list = byCategory.get(t.category) ?? [];
+    list.push({ id: t.id, name: t.name, sub: t.category, html: t.html });
+    byCategory.set(t.category, list);
+  }
+
+  const BLURBS: Record<string, string> = {
+    Modern: 'Plain, typographic and built to land in a primary inbox. Start here if you are not sure.',
+    Onboarding: 'The first few days, when somebody has just arrived and has not done anything yet.',
+    Sales: 'After a quote, chasing a decision, and asking for the referral once the work is done.',
+    'Re-engagement': 'Somebody who has gone quiet — and the one that asks permission before you stop emailing.',
+    Announcement: 'Something new, something changing, or an invitation.',
+    Ecommerce: 'Baskets left behind, orders on their way, and asking how it was.',
+    Newsletter: 'The regular one, for people who want to hear from you but are not buying today.',
+    Transactional: 'Bookings, price changes, and the email you send when something went wrong.',
+  };
 
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.7)', zIndex: 500,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(8px, 2vw, 16px)',
     }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 980, height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ background: '#fafbfc', borderRadius: 16, width: '100%', maxWidth: 1120, height: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #e6e9f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Email Templates</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>Pick a ready-made design and customize it to fit your campaign</p>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>Template library</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12.5, color: '#64748b' }}>
+              Pick one to start from. Everything in it is yours to change.
+            </p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}><X size={20} /></button>
+          <button onClick={onClose} aria-label="Close"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}><X size={20} /></button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: preview ? '300px 1fr' : '1fr', flex: 1, overflow: 'hidden' }}>
-          {/* Left: gallery */}
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: preview ? '1px solid #e2e8f0' : 'none' }}>
-            {/* Search + filter */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates…"
-                  style={{ width: '100%', padding: '7px 12px 7px 30px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                {TEMPLATE_CATEGORIES.map(c => (
-                  <button key={c} onClick={() => setCategory(c)}
-                    style={{ padding: '4px 10px', borderRadius: 20, border: '1px solid', fontSize: 11, fontWeight: 600, cursor: 'pointer', borderColor: category === c ? '#6366f1' : '#e2e8f0', background: category === c ? '#6366f1' : '#fff', color: category === c ? '#fff' : '#64748b' }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 'clamp(16px, 3vw, 24px)' }}>
+          <Section
+            title="Start again from one you sent"
+            blurb="Your own campaigns, ready to reuse. The words come across; change what needs changing."
+            items={sent} onPick={onApply} onPreview={setPreview} defaultShown={4}
+          />
 
-            {/* Template grid */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: preview ? '1fr' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                {filtered.map(t => {
-                  const isSelected = preview?.id === t.id;
-                  return (
-                    <div key={t.id} onClick={() => setPreview(t === preview ? null : t)}
-                      style={{ borderRadius: 10, border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`, overflow: 'hidden', cursor: 'pointer', transition: 'all 0.12s', boxShadow: isSelected ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none' }}
-                      onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = '#c4b5fd'; }}
-                      onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.borderColor = '#e2e8f0'; }}
-                    >
-                      {/* Preview swatch */}
-                      <div style={{ height: 90, background: t.preview, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 32 }}>{t.category === 'Welcome' ? '👋' : t.category === 'Promotional' ? '🎯' : t.category === 'Newsletter' ? '📰' : t.category === 'Follow-up' ? '📩' : t.category === 'Re-engagement' ? '💌' : t.category === 'Announcement' ? '📣' : '✅'}</span>
-                        {isSelected && (
-                          <div style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: '50%', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="10" height="8" viewBox="0 0 10 8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          </div>
-                        )}
-                        <div style={{ position: 'absolute', bottom: 6, left: 8, background: '#fff', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 600, color: '#374151' }}>
-                          {t.category}
-                        </div>
-                      </div>
-                      <div style={{ padding: '8px 10px', background: '#fff' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{t.name}</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
-                          <button onClick={e => { e.stopPropagation(); setPreview(t); }}
-                            style={{ padding: '3px 8px', background: '#f1f5f9', border: 'none', borderRadius: 5, fontSize: 10, color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Eye size={10} /> Preview
-                          </button>
-                          <button onClick={e => { e.stopPropagation(); onApply(t.html); }}
-                            style={{ padding: '3px 8px', background: '#6366f1', border: 'none', borderRadius: 5, fontSize: 10, color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
-                            Use
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: preview panel */}
-          {preview && (
-            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{preview.name}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{preview.category} template</div>
-                </div>
-                <button onClick={() => { onApply(preview.html); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  Use This Template →
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', background: '#f1f5f9', padding: '20px 16px' }}>
-                <div style={{ maxWidth: 620, margin: '0 auto', background: '#fff', borderRadius: 10, boxShadow: '0 2px 16px rgba(0,0,0,0.08)', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(preview.html.replace(/{{firstName}}/g, 'John').replace(/{{email}}/g, 'john@example.com')) }} />
-              </div>
-            </div>
-          )}
+          {[...byCategory.entries()].map(([cat, items]) => (
+            <Section
+              key={cat}
+              title={cat === 'Modern' ? 'Ready to use' : cat}
+              blurb={BLURBS[cat] ?? 'Ready to use.'}
+              items={items} onPick={onApply} onPreview={setPreview}
+              defaultShown={cat === 'Modern' ? 8 : 6}
+            />
+          ))}
         </div>
       </div>
+
+      {/* ── Full-size preview ── */}
+      {preview && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setPreview(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.8)', zIndex: 520, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 660, height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '13px 18px', borderBottom: '1px solid #e6e9f0', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', flex: 1 }}>{preview.name}</span>
+              <button onClick={() => { onApply(preview.html); setPreview(null); }}
+                style={{ padding: '8px 16px', border: 'none', borderRadius: 8, background: '#17191c', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                Use this
+              </button>
+              <button onClick={() => setPreview(null)} aria-label="Close preview"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4, display: 'flex' }}><X size={18} /></button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', background: '#f4f5f7', padding: 16 }}>
+              <div style={{ maxWidth: 600, margin: '0 auto', background: '#fff' }}
+                dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(preview.html) }} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

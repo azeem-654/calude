@@ -47,6 +47,7 @@ interface Req {
   channel?: string;
   steps?: number;
   prompt?: string;
+  bookingUrl?: string;
   /** For 'rewrite': the one email being worked on. */
   subject?: string;
   html?: string;
@@ -104,6 +105,27 @@ function thinBrand(b: Brand): string {
   return 'There is almost nothing on file about this business, so anything written from it would be generic. Fill in what you do and who buys it — under Settings, or on the client’s portfolio in AI Autopilot — and it will write from that.';
 }
 
+/**
+ * A booking link we are willing to put in somebody's outgoing mail.
+ *
+ * The caller names it, and the caller is a browser — so this refuses anything
+ * that is not a /book/ address on this deployment. Passing a URL straight
+ * through would let a crafted request have the app write somebody else's
+ * domain into a real customer's campaign, under the customer's own from
+ * address. Empty means "no link", which the prompt handles explicitly.
+ */
+function safeBookingUrl(req: Request, raw: string): string {
+  const given = raw.trim();
+  if (!given) return '';
+  try {
+    const u = new URL(given);
+    const here = new URL(req.url);
+    if (u.origin !== here.origin) return '';
+    if (!/^\/[A-Za-z0-9/_-]*\/?book\//.test(u.pathname) && !u.pathname.startsWith('/book/')) return '';
+    return u.toString();
+  } catch { return ''; }
+}
+
 export async function handleAiWrite(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
   const user = await userFromToken(env.DB, d.token);
@@ -149,6 +171,10 @@ export async function handleAiWrite(req: Request, env: Env): Promise<Response> {
       tone: String(d.tone ?? '').slice(0, 80),
       channel,
       steps: Number(d.steps) || 3,
+      /* Only an address on this deployment. A booking link is put in a real
+         customer's email, and a caller-supplied URL would be an open redirect
+         with our reputation on it. */
+      bookingUrl: safeBookingUrl(req, String(d.bookingUrl ?? '')),
     });
     if (!r.ok || !r.value) return fail(r.error || 'The AI could not write that.');
 

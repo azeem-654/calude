@@ -9,7 +9,7 @@ import {
   Smartphone, Monitor, CheckCircle, ChevronRight, ChevronLeft,
   Sparkles, RotateCcw, Plus, Trash2, Send, Eye,
   Clock, Calendar, Users, Settings, ChevronDown, ChevronUp,
-  Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target, AlertTriangle,
+  Loader, XCircle, RefreshCw, Wand2, LayoutTemplate, PaintBucket, Type, Palette, Target, AlertTriangle, Copy, Edit3,
 } from 'lucide-react';
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 import { enrollInSequence, campaignAsSequence } from '../../services/contactEmail';
@@ -20,6 +20,7 @@ import { suppress } from '../../services/deliverability';
 import EmailTemplateGallery from './EmailTemplates';
 import { useApp } from '../../context/AppContext';
 import { writeCampaign, rewriteEmail } from '../../services/aiWrite';
+import AiCampaignSetup, { type AiSetup } from './AiCampaignSetup';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -533,7 +534,12 @@ const CONDITION_COLORS: Record<string, { bg: string; color: string }> = {
   'If clicked':     { bg: '#eff6ff', color: '#2563eb' },
 };
 
-function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
+function StepAIWorkflow({ state, onChange, setup }: {
+  state: WizardState;
+  onChange: (u: Partial<WizardState>) => void;
+  /** What was chosen before generation. Null when editing an old campaign. */
+  setup: AiSetup | null;
+}) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(() => state.steps.length === 0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -550,6 +556,8 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
   useEffect(() => { latest.current = { state, onChange }; });
   /** Guards a reply from a run the user has already moved on from. */
   const runId = useRef(0);
+  const setupRef = useRef(setup);
+  useEffect(() => { setupRef.current = setup; });
 
   const conditionFor = (i: number) =>
     ['Always', 'If not opened', 'If not replied', 'If not clicked'][Math.min(i, 3)];
@@ -562,13 +570,19 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
     setThin('');
 
     const { state: st, onChange: change } = latest.current;
+    const setup = setupRef.current;
     const r = await writeCampaign({
       goal: st.goal || 'custom',
       concept: st.concept,
       cta: st.cta,
       tone: st.tone,
       channel: st.type === 'sms' ? 'sms' : 'email',
-      steps: st.type === 'sequence' ? 4 : 3,
+      /* What was actually asked for. It used to be hardcoded to three (four for
+         a sequence), so the count on the setup screen would have been a
+         question the app ignored. */
+      steps: setup?.steps ?? (st.type === 'sequence' ? 4 : 3),
+      portfolioId: setup?.portfolioId,
+      bookingUrl: setup?.bookingUrl,
     });
     if (mine !== runId.current) return;
 
@@ -1861,6 +1875,41 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
    */
   const [mode, setMode] = useState<'ai' | 'template' | null>(editCampaign ? 'ai' : null);
   const [pickingTemplate, setPickingTemplate] = useState(false);
+  /** Whose voice, how many, and where to book — asked before the AI writes. */
+  const [aiSetup, setAiSetup] = useState<AiSetup | null>(null);
+  const [askingSetup, setAskingSetup] = useState(false);
+  const [cloning, setCloning] = useState(false);
+
+  /**
+   * What there is to copy.
+   *
+   * Drafts included on purpose — a draft somebody spent an afternoon on is
+   * exactly the thing worth starting a second campaign from.
+   */
+  const { campaigns: existingCampaigns } = useApp();
+
+  /** Bring a whole campaign across, minus anything that is about its own past. */
+  const cloneFrom = (c: Campaign) => {
+    update({
+      type: c.type,
+      name: `${c.name} (copy)`,
+      description: c.description ?? '',
+      goal: (c.goal as CampaignGoal) || '',
+      fromName: c.fromName ?? '', fromEmail: c.fromEmail ?? '', replyTo: c.replyTo ?? '',
+      openTracking: c.openTracking ?? true, clickTracking: c.clickTracking ?? true,
+      stopOnReply: c.stopOnReply ?? true, stopOnBounce: c.stopOnBounce ?? true,
+      sendDays: c.sendDays ?? ['mon', 'tue', 'wed', 'thu', 'fri'],
+      sendHoursFrom: c.sendHoursFrom ?? '09:00', sendHoursTo: c.sendHoursTo ?? '17:00',
+      audience: (c.audience as AudienceSegment) ?? 'all',
+      subject: c.subject ?? '', previewText: c.previewText ?? '',
+      emailBody: c.emailBody ?? '', smsBody: c.smsBody ?? '',
+      /* Fresh ids: two campaigns sharing a step id means editing one edits both. */
+      steps: (c.steps ?? []).map((st, i) => ({ ...st, id: `step-${Date.now()}-${i}` })),
+    });
+    setCloning(false);
+    /* Straight past generation — the emails are already here. */
+    setMode('template');
+  };
   const [state, setState] = useState<WizardState>(() => {
     if (editCampaign) {
       const steps = editCampaign.steps?.length
@@ -1950,7 +1999,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
 
   const renderStep = () => {
     if (step === 1) return <StepBrief state={state} onChange={update} />;
-    if (step === 2) return <StepAIWorkflow state={state} onChange={update} />;
+    if (step === 2) return <StepAIWorkflow state={state} onChange={update} setup={aiSetup} />;
     if (step === 3) return <StepSenderSettings state={state} onChange={update} />;
     if (step === 4) return <StepAudience state={state} onChange={update} counts={counts} />;
     return <StepReview state={state} counts={counts} contacts={contacts} onLaunch={handleLaunch} />;
@@ -2069,46 +2118,95 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
 
         {/* ── The first question: who writes it ── */}
         {mode === null ? (
-          <div style={{ flex: 1, overflowY: 'auto', padding: '34px 26px', display: 'grid', placeContent: 'center' }}>
-            <div style={{ maxWidth: 620, margin: '0 auto', textAlign: 'center' }}>
-              <h2 style={{ fontSize: 21, fontWeight: 800, color: '#0f172a', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
-                How would you like to write it?
-              </h2>
-              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 26px', lineHeight: 1.6 }}>
-                Either way you can edit every word before it goes anywhere.
-              </p>
-
-              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))' }}>
-                <button onClick={() => setMode('ai')} className="press"
-                  style={{ textAlign: 'left', padding: 20, borderRadius: 16, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#4f46e5,#9333ea)', color: '#fff', marginBottom: 12 }}>
-                    <Sparkles size={17} />
+          <div style={{ flex: 1, overflowY: 'auto', padding: 'clamp(20px, 4vw, 34px) 26px' }}>
+            {askingSetup ? (
+              <AiCampaignSetup
+                onBack={() => setAskingSetup(false)}
+                onReady={s => { setAiSetup(s); setAskingSetup(false); setMode('ai'); }}
+              />
+            ) : cloning ? (
+              <div style={{ maxWidth: 620, margin: '0 auto' }}>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 5px', letterSpacing: '-0.02em' }}>Copy an existing campaign</h2>
+                <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 20px', lineHeight: 1.6 }}>
+                  Everything comes across — the emails, the timing, the sender and the settings. Nothing
+                  is sent until you launch it.
+                </p>
+                {existingCampaigns.length === 0 ? (
+                  <p style={{ fontSize: 13.5, color: '#64748b' }}>
+                    There is nothing to copy yet. Write one with AI or start from a template.
+                  </p>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {existingCampaigns.map(c => (
+                      <button key={c.id} onClick={() => cloneFrom(c)}
+                        style={{ display: 'flex', gap: 11, alignItems: 'center', textAlign: 'left', padding: '12px 14px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <span style={{ width: 32, height: 32, borderRadius: 9, background: '#f1f3f7', display: 'grid', placeItems: 'center', color: '#64748b', flexShrink: 0 }}>
+                          <Mail size={15} />
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#0f172a' }}>{c.name}</span>
+                          <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
+                            {c.type} · {(c.steps?.length ?? 1)} {(c.steps?.length ?? 1) === 1 ? 'email' : 'emails'} · {c.status}
+                          </span>
+                        </span>
+                        <ChevronRight size={15} color="#b6bcc8" />
+                      </button>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 5 }}>Write it with AI</div>
-                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
-                    Say what the campaign is about and it writes the emails from your business, in your
-                    voice. Best when you know the message but not the words.
-                  </div>
-                </button>
-
-                <button onClick={() => setPickingTemplate(true)} className="press"
-                  style={{ textAlign: 'left', padding: 20, borderRadius: 16, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: '#17191c', color: '#fff', marginBottom: 12 }}>
-                    <LayoutTemplate size={17} />
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 5 }}>Start from a template</div>
-                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
-                    A designed layout you fill in yourself. Best when you know exactly what you want to
-                    say and want it to look right.
-                  </div>
+                )}
+                <button onClick={() => setCloning(false)}
+                  style={{ marginTop: 18, padding: '10px 15px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', fontSize: 13, fontWeight: 700, color: '#17191c', cursor: 'pointer' }}>
+                  Back
                 </button>
               </div>
+            ) : (
+            <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
+              <h2 style={{ fontSize: 21, fontWeight: 800, color: '#0f172a', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+                How would you like to start?
+              </h2>
+              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 26px', lineHeight: 1.6 }}>
+                Whichever you pick, you can edit every word before it goes anywhere.
+              </p>
 
-              <button onClick={() => setMode('template')}
-                style={{ marginTop: 20, border: 'none', background: 'none', color: '#64748b', fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit' }}>
-                Start from a blank email instead
-              </button>
+              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))' }}>
+                {([
+                  {
+                    id: 'ai', icon: Sparkles, tint: 'linear-gradient(135deg,#4f46e5,#9333ea)',
+                    title: 'Write it with AI',
+                    blurb: 'Pick the client, how many emails, and whether to offer a time in your diary. It writes the rest.',
+                    act: () => setAskingSetup(true),
+                  },
+                  {
+                    id: 'template', icon: LayoutTemplate, tint: '#f59e0b',
+                    title: 'From a template',
+                    blurb: 'A designed layout for the occasion — onboarding, a price change, a win-back — that you fill in.',
+                    act: () => setPickingTemplate(true),
+                  },
+                  {
+                    id: 'clone', icon: Copy, tint: '#3b82f6',
+                    title: 'Copy an existing one',
+                    blurb: 'Start from a campaign you have already sent, and change what needs changing.',
+                    act: () => setCloning(true),
+                  },
+                  {
+                    id: 'scratch', icon: Edit3, tint: '#64748b',
+                    title: 'From scratch',
+                    blurb: 'A blank email and nothing in your way.',
+                    act: () => setMode('template'),
+                  },
+                ] as const).map(o => (
+                  <button key={o.id} onClick={o.act} className="press"
+                    style={{ textAlign: 'left', padding: 20, borderRadius: 16, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: o.tint, color: '#fff', marginBottom: 12 }}>
+                      <o.icon size={17} />
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 5 }}>{o.title}</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>{o.blurb}</div>
+                  </button>
+                ))}
+              </div>
             </div>
+            )}
 
             {pickingTemplate && (
               <EmailTemplateGallery onApply={startFromTemplate} onClose={() => setPickingTemplate(false)} />

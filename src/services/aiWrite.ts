@@ -79,6 +79,8 @@ export interface CampaignBrief {
   channel: 'email' | 'sms';
   steps: number;
   portfolioId?: string;
+  /** The sender's own booking page, when they chose to offer one. */
+  bookingUrl?: string;
 }
 
 export const writeCampaign = (brief: CampaignBrief) => call({ action: 'campaign', ...brief });
