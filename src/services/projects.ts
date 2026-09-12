@@ -34,6 +34,10 @@ export interface Project {
   lastActedAt: string | null;
   lastError: string;
   createdAt: string;
+  /** 'byo' — the customer's own registrar — or 'managed', bought for them. */
+  purchaseMode: string;
+  /** JSON: {domains, mailboxesPerDomain}. '{}' means build nothing. */
+  poolTarget: string;
   /** What the board's column header counts. */
   awaiting: number;
   done: number;
@@ -116,6 +120,26 @@ export const saveProject = (p: {
   guardrails?: Record<string, string>;
 }) => call('save_project', p);
 export const setProjectStatus = (id: string, status: Project['status']) => call('set_status', { id, status });
+
+/**
+ * What Autopilot should build for this project before it starts sending.
+ *
+ * `domains: 0` means build nothing, which has to be expressible — otherwise
+ * turning it back off is impossible. Everything above zero is a real
+ * instruction to register domains, authenticate them, make mailboxes on them
+ * and warm those up, on the customer's own registrar or on the operator's.
+ */
+export const setProjectInfra = (p: {
+  id: string; purchaseMode: 'byo' | 'managed'; domains: number; mailboxesPerDomain: number;
+}) => call('set_infra', p);
+
+/** What a project's stored pool target actually asks for. */
+export function poolTargetOf(project: Project): { domains: number; mailboxesPerDomain: number } {
+  try {
+    const t = JSON.parse(project.poolTarget || '{}') as { domains?: number; mailboxesPerDomain?: number };
+    return { domains: Number(t.domains) || 0, mailboxesPerDomain: Number(t.mailboxesPerDomain) || 3 };
+  } catch { return { domains: 0, mailboxesPerDomain: 3 }; }
+}
 export const deleteProject = (id: string) => call('delete_project', { id });
 
 /** What each kind is for, in the words the picker shows. */

@@ -406,12 +406,40 @@ async function planFor(
   ).bind(accountId, run.id).all<{ summary: string }>();
   const openInProject = new Set((mine.results ?? []).map(r => r.summary));
 
+  /*
+   * A notice is never "open", so it deduped against nothing.
+   *
+   * `observe` and `error` actions are written straight to `done` — noticing is
+   * the whole action — which put them outside the pending/awaiting query above.
+   * A standing condition ("no mailbox is connected") was therefore raised again
+   * on every daily plan, and since a column shows the 60 most recent cards, two
+   * months of that buried every real card under the same red one. They dedupe
+   * against every notice still on the board instead: if the condition is still
+   * true the card is still there saying so, and if it has scrolled off,
+   * repeating it is right.
+   */
+  const notices = await env.DB.prepare(
+    `SELECT summary FROM crm_autopilot_actions
+     WHERE account_id = ? AND project_id = ? AND kind IN ('observe','error')
+     ORDER BY created_at DESC LIMIT 60`,
+  ).bind(accountId, run.id).all<{ summary: string }>();
+  for (const r of notices.results ?? []) openInProject.add(r.summary);
+
   const theirs = await env.DB.prepare(
     `SELECT summary FROM crm_autopilot_actions
      WHERE account_id = ? AND status IN ('pending','awaiting')`,
   ).bind(accountId).all<{ summary: string }>();
+  /* The same blind spot at workspace scope: "no mailbox is connected" is one
+     fact about the workspace, and without this every project raised its own
+     copy of it on every plan. */
+  const wsNotices = await env.DB.prepare(
+    `SELECT summary FROM crm_autopilot_actions
+     WHERE account_id = ? AND kind IN ('observe','error')
+     ORDER BY created_at DESC LIMIT 120`,
+  ).bind(accountId).all<{ summary: string }>();
   const openInWorkspace = new Set([
     ...(theirs.results ?? []).map(r => r.summary),
+    ...(wsNotices.results ?? []).map(r => r.summary),
     ...plannedThisRun,
   ]);
 

@@ -35,6 +35,10 @@ interface Req {
   status?: string;
   kind?: string;
   guardrails?: Record<string, string>;
+  /* Infrastructure, per project */
+  purchaseMode?: string;
+  domains?: number;
+  mailboxesPerDomain?: number;
   /* Portfolios */
   profile?: Record<string, unknown>;
   source?: string;
@@ -367,6 +371,59 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     ).run();
 
     return json({ success: true, id, projects: await listProjects() });
+  }
+
+  /**
+   * What this project should have built for it, and who pays for it.
+   *
+   * ── The wire this reconnects ──
+   *
+   * The sending pool — buy domains, write SPF/DKIM/DMARC, create mailboxes,
+   * warm them up — has been built and working for a long time. The tick reads
+   * its target from `crm_projects.pool_target` and does nothing when that is
+   * empty, on the deliberate principle that inventing a default would have
+   * Autopilot proposing to spend a customer's money on domains nobody asked
+   * for.
+   *
+   * But `crm_projects.pool_target` was written once, as '{}', when the project
+   * was created, and nothing ever updated it. The one endpoint that set a pool
+   * target — infra.ts `set_pool_target` — writes `crm_autopilot`, which is the
+   * old one-Autopilot-per-workspace row that the per-project tick stopped
+   * reading when projects arrived. Two tables, and the wire between the screen
+   * and the machinery ran to the wrong one.
+   *
+   * So every project returned `undefined` from `poolFor()`, no infrastructure
+   * step was ever planned, and the whole capability was unreachable while
+   * looking present in the schema.
+   */
+  if (act === 'set_infra') {
+    const id = String(d.id ?? '').trim();
+    const mode = String(d.purchaseMode ?? '') === 'managed' ? 'managed' : 'byo';
+
+    if (mode === 'managed') {
+      /* Refused rather than accepted-and-broken, the same way infra.ts does it.
+         A project set to managed on an install with nothing to buy through
+         would look configured and quietly do nothing. */
+      const reg = await env.DB.prepare(
+        "SELECT 1 AS n FROM crm_install_providers WHERE kind = 'registrar' AND credentials != ''",
+      ).first();
+      if (!reg) {
+        return fail('This installation cannot buy domains on your behalf yet. Connect your own registrar under Settings → Infrastructure and choose “I already have these”.');
+      }
+    }
+
+    /* Zero domains is how a project says "build nothing" — and it has to be
+       expressible, because turning this off again is otherwise impossible. */
+    const domains = Math.min(Math.max(Math.round(Number(d.domains) || 0), 0), 20);
+    const per = Math.min(Math.max(Math.round(Number(d.mailboxesPerDomain) || 3), 1), 10);
+    const target = domains > 0 ? JSON.stringify({ domains, mailboxesPerDomain: per }) : '{}';
+
+    const res = await env.DB.prepare(
+      'UPDATE crm_projects SET purchase_mode = ?, pool_target = ?, updated_at = ? WHERE id = ? AND account_id = ?',
+    ).bind(mode, target, nowIso(), id, accountId).run();
+    if (!res.meta.changes) return fail('That project is not in this workspace.');
+
+    return json({ success: true, projects: await listProjects() });
   }
 
   if (act === 'set_status') {

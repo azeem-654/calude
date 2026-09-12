@@ -19,14 +19,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Check, Clock, AlertTriangle, ExternalLink, Pause, Play, MoreHorizontal, Trash2,
+  Plus, Check, Clock, AlertTriangle, ExternalLink, Pause, Play, MoreHorizontal, Trash2, Globe,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  fetchBoard, setProjectStatus, deleteProject, KIND_LABEL,
+  fetchBoard, setProjectStatus, deleteProject, poolTargetOf, KIND_LABEL,
   type Project, type Card, type Portfolio,
 } from '../../services/projects';
 import { approveAction, rejectAction } from '../../services/autopilot';
+import ProjectInfra from './ProjectInfra';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -45,13 +46,28 @@ const STATUS_TONE: Record<Card['status'], { bg: string; fg: string; label: strin
   skipped:  { bg: '#f2f3f5', fg: '#6b7280', label: 'Skipped' },
 };
 
+/**
+ * A notice is not a completed job.
+ *
+ * `observe` and `error` actions have nothing to carry out — noticing is the
+ * whole action — so the tick records them as `done` the moment it writes them.
+ * Reading that status straight off the row put a green tick and the word
+ * "Done" on "Autopilot cannot build your sending pool yet", which says the
+ * opposite of what the card is for. They get their own tone.
+ */
+const NOTICE_TONE: Record<string, { bg: string; fg: string; label: string }> = {
+  error: { bg: '#fdf3f3', fg: '#b42318', label: 'Needs you' },
+  observe: { bg: '#eef2f8', fg: '#3a4a63', label: 'Noticed' },
+};
+
 function CardTile({ card, onOpen, onDecide, busy }: {
   card: Card;
   onOpen: (route: string) => void;
   onDecide: (id: string, approve: boolean) => void;
   busy: boolean;
 }) {
-  const tone = STATUS_TONE[card.status] ?? STATUS_TONE.pending;
+  const notice = card.status === 'done' ? NOTICE_TONE[card.kind] : undefined;
+  const tone = notice ?? STATUS_TONE[card.status] ?? STATUS_TONE.pending;
   const why = card.detail?.trim() || card.because?.trim() || '';
   return (
     <div style={{
@@ -63,9 +79,10 @@ function CardTile({ card, onOpen, onDecide, busy }: {
           display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700,
           padding: '3px 8px', borderRadius: 999, background: tone.bg, color: tone.fg,
         }}>
-          {card.status === 'done' ? <Check size={10} />
-            : card.status === 'failed' ? <AlertTriangle size={10} />
-              : <Clock size={10} />}
+          {notice ? <AlertTriangle size={10} />
+            : card.status === 'done' ? <Check size={10} />
+              : card.status === 'failed' ? <AlertTriangle size={10} />
+                : <Clock size={10} />}
           {tone.label}
         </span>
         {Object.entries(card.counts ?? {}).slice(0, 1).map(([k, v]) => (
@@ -79,7 +96,7 @@ function CardTile({ card, onOpen, onDecide, busy }: {
       {why && (
         <p style={{
           margin: 0, fontSize: 11.5, lineHeight: 1.5,
-          color: card.status === 'failed' ? '#b42318' : MUTED,
+          color: card.status === 'failed' || card.kind === 'error' ? '#b42318' : MUTED,
         }}>
           {why.length > 160 ? why.slice(0, 160) + '…' : why}
         </p>
@@ -123,6 +140,9 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   const [board, setBoard] = useState<Record<string, Card[]>>({});
   const [loading, setLoading] = useState(true);
   const [menu, setMenu] = useState<string | null>(null);
+  /* Open for one project at a time. Two of these expanded in adjacent columns
+     is a wall of numbers, and only one of them is the one being changed. */
+  const [infra, setInfra] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
 
   const load = async () => {
@@ -212,6 +232,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, alignItems: 'flex-start' }}>
       {projects.map((p, i) => {
         const cards = board[p.id] ?? [];
+        const pool = poolTargetOf(p);
         const dot = DOTS[i % DOTS.length];
         const live = p.status === 'running' || p.status === 'learning';
         return (
@@ -253,7 +274,28 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                     {p.awaiting} waiting
                   </span>
                 )}
+                {/* What this project sends from, on the column itself. Without
+                    it the answer is three clicks away and the usual conclusion
+                    is that the feature does not exist. */}
+                <button onClick={() => setInfra(infra === p.id ? null : p.id)}
+                  title={pool.domains > 0
+                    ? `${pool.domains} sending ${pool.domains === 1 ? 'domain' : 'domains'}, ${pool.mailboxesPerDomain} mailboxes on each`
+                    : 'Autopilot buys and builds no domains for this project'}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px',
+                    borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700,
+                    border: `1px solid ${infra === p.id ? '#c7bdf7' : LINE}`,
+                    background: pool.domains > 0 ? '#eef2ff' : '#fff',
+                    color: pool.domains > 0 ? '#4338ca' : MUTED,
+                  }}>
+                  <Globe size={10} />
+                  {pool.domains > 0 ? `${pool.domains} × ${pool.mailboxesPerDomain}` : 'No domains'}
+                </button>
               </div>
+
+              {infra === p.id && (
+                <ProjectInfra project={p} onSaved={next => setProjects(next)} />
+              )}
 
               {menu === p.id && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '6px 0 2px' }}>
