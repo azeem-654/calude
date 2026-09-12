@@ -679,7 +679,7 @@ function StepAIWorkflow({ state, onChange }: { state: WizardState; onChange: (u:
         <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, marginBottom: 22 }}>{problem}</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
           {needsKey && (
-            <button onClick={() => navigate('/settings?tab=ai')}
+            <button onClick={() => navigate('/settings?tab=ai-engine')}
               style={{ padding: '10px 18px', border: 'none', borderRadius: 9, background: '#17191c', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               Connect an AI key
             </button>
