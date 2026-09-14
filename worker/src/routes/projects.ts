@@ -22,6 +22,7 @@ import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { readSite } from '../lib/readSite';
+import { ensureProjectPipeline } from '../lib/projectPipeline';
 
 interface Req {
   token?: string;
@@ -369,6 +370,22 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       kind, existing?.status ?? 'learning', JSON.stringify(guardrails),
       existing?.created_at ?? now, now,
     ).run();
+
+    /*
+     * A board for it, straight away.
+     *
+     * Done here rather than left to the tick because somebody who has just
+     * created a project goes looking for it, and "your board arrives within the
+     * hour" is not an answer. Failure is swallowed on purpose: a project that
+     * exists without a board is a project, and refusing to create one because
+     * the AI was slow would be the wrong trade.
+     */
+    try {
+      const row = await env.DB.prepare(
+        'SELECT id, account_id, name, kind, objective, portfolio_id FROM crm_projects WHERE id = ?',
+      ).bind(id).first<{ id: string; account_id: string; name: string; kind: string; objective: string; portfolio_id: string }>();
+      if (row) await ensureProjectPipeline(env, row);
+    } catch { /* the project stands on its own */ }
 
     return json({ success: true, id, projects: await listProjects() });
   }

@@ -25,6 +25,7 @@ import { loadMailbox, loadMailboxes } from './routes/mailbox';
 import { encryptSecret } from './lib/crypto';
 import { loadSmsConfig, sendSms } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
+import { ensureProjectPipeline } from './lib/projectPipeline';
 import {
   createMailbox, credsForMode, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
@@ -1257,6 +1258,18 @@ export async function runAutopilot(env: Env): Promise<AutopilotReport> {
 
   for (const run of results ?? []) {
     try {
+      /*
+       * A board for any project that has not got one.
+       *
+       * Creation makes one, so this only catches projects that predate the
+       * feature and the handful whose creation-time attempt failed. Cheap when
+       * there is nothing to do — one read of the workspace's pipelines — and it
+       * means nobody has to be told to go and press something.
+       */
+      await ensureProjectPipeline(env, {
+        id: run.id, account_id: run.account_id, name: run.name,
+        kind: run.kind, objective: run.objective, portfolio_id: run.portfolio_id,
+      }).catch(() => undefined);
       /*
        * Nothing to write from.
        *
