@@ -389,6 +389,19 @@ export const openprovider: Provider = {
     };
   },
 
+  async balance(creds) {
+    const r = await call<{ balance?: unknown }>(creds, 'GET', '/v1/resellers');
+    if (!r.ok) return null;
+    const n = Number(r.data?.balance);
+    if (!Number.isFinite(n)) return null;
+    /* Their figure is a decimal in the account's own currency. The currency is
+       not on this response, and guessing one to print next to a number is how a
+       euro balance gets read as dollars — so it is reported as the account's,
+       unnamed, and the screen says "on your provider account" rather than
+       putting a symbol on it. */
+    return { cents: Math.round(n * 100), currency: '' };
+  },
+
   /**
    * The four things that have to be true, asked one at a time.
    *

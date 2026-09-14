@@ -291,6 +291,41 @@ export async function savePriceRow(input: {
   return { prices: (r.prices as PriceRow[]) ?? [], error: r.success ? '' : (r.error ?? 'Could not save that price.') };
 }
 
+export interface SoldItem {
+  id: string;
+  accountId: string;
+  orderId: string;
+  kind: string;
+  item: string;
+  /** What it cost us. Owner-only. */
+  costCents: number;
+  retailCents: number;
+  currency: string;
+  period: string;
+  provider: string;
+  companyName: string;
+  createdAt: string;
+}
+
+export interface EarningsTotal {
+  kind: string;
+  period: string;
+  count: number;
+  costCents: number;
+  retailCents: number;
+}
+
+export async function adminEarnings(): Promise<{
+  items: SoldItem[]; totals: EarningsTotal[]; supplierBalanceCents: number | null;
+}> {
+  const r = await call('admin_earnings');
+  return {
+    items: (r.items as SoldItem[]) ?? [],
+    totals: (r.totals as EarningsTotal[]) ?? [],
+    supplierBalanceCents: (r.supplierBalanceCents as number | null) ?? null,
+  };
+}
+
 export async function adminJobs(): Promise<{ orders: AdminOrder[]; steps: AdminStep[]; domains: AdminDomain[] }> {
   const r = await call('admin_jobs');
   return {

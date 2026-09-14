@@ -92,6 +92,51 @@ export interface SetupOptions {
 
 const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+/**
+ * Write down one sale, once.
+ *
+ * `INSERT OR IGNORE` against the unique index rather than a read-then-write:
+ * every step here is built to survive running twice, and the earnings report
+ * must not double because a Worker was killed and the step ran again. The
+ * database decides, so there is no window between the check and the write.
+ *
+ * Cost is what the supplier actually charged — the quote is not consulted.
+ * Retail comes from the order's frozen lines, which is what the customer really
+ * agreed to pay whatever the price list says today.
+ */
+async function recordSale(
+  env: Env, order: OrderRow, kind: string, item: string,
+  costCents: number, retailCents: number, period: 'year' | 'month' | 'once', provider: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO crm_sold_items
+     (id, account_id, order_id, kind, item, cost_cents, retail_cents, currency, period, provider, created_at)
+     VALUES (?,?,?,?,?,?,?, 'USD', ?,?,?)`,
+  ).bind(
+    rid('si'), order.account_id, order.id, kind, item.slice(0, 200),
+    Math.max(Math.round(costCents), 0), Math.max(Math.round(retailCents), 0),
+    period, provider, nowIso(),
+  ).run();
+}
+
+/** What the customer agreed to pay for one kind of line, from the frozen quote. */
+async function retailFor(env: Env, orderId: string, kind: string): Promise<number> {
+  const row = await env.DB.prepare('SELECT lines FROM crm_setup_orders WHERE id = ?')
+    .bind(orderId).first<{ lines: string }>();
+  const lines = parse<Array<{ kind?: string; totalCents?: number; unitCents?: number }>>(row?.lines ?? '[]', []);
+  const line = lines.find(l => l.kind === kind);
+  return Math.round(Number(line?.totalCents) || 0);
+}
+
+/** The same, per unit — a mailbox is priced one at a time. */
+async function unitRetailFor(env: Env, orderId: string, kind: string): Promise<number> {
+  const row = await env.DB.prepare('SELECT lines FROM crm_setup_orders WHERE id = ?')
+    .bind(orderId).first<{ lines: string }>();
+  const lines = parse<Array<{ kind?: string; unitCents?: number }>>(row?.lines ?? '[]', []);
+  const line = lines.find(l => l.kind === kind);
+  return Math.round(Number(line?.unitCents) || 0);
+}
+
 function parse<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try { return JSON.parse(raw) as T; } catch { return fallback; }
@@ -154,9 +199,22 @@ function plannedRecords(appHost: string, mailHost: string): DnsRecord[] {
 
 async function runDomain(env: Env, order: OrderRow): Promise<{ ok: boolean; detail: string; error: string }> {
   /* The guard that matters most: evidence of the purchase before making it. */
-  const owned = await env.DB.prepare('SELECT status FROM crm_owned_domains WHERE domain = ?')
-    .bind(order.domain).first<{ status: string }>();
+  const owned = await env.DB.prepare('SELECT status, cost_cents AS cost, provider FROM crm_owned_domains WHERE domain = ?')
+    .bind(order.domain).first<{ status: string; cost: number; provider: string }>();
   if (owned?.status === 'active') {
+    /*
+     * Record the sale on this path too, not only after a fresh registration.
+     *
+     * The gap it closes: a Worker killed between the registration succeeding —
+     * which writes the row above — and the sale being written. The retry then
+     * takes this early return, and without this line the domain would be
+     * bought, provisioned, charged for, and permanently invisible to the
+     * earnings report. Safe to call twice; the unique index decides.
+     */
+    await recordSale(
+      env, order, 'domain', order.domain,
+      Number(owned.cost) || 0, await retailFor(env, order.id, 'domain'), 'year', owned.provider || '',
+    );
     return { ok: true, detail: `${order.domain} is registered and yours.`, error: '' };
   }
 
@@ -213,6 +271,11 @@ async function runDomain(env: Env, order: OrderRow): Promise<{ ok: boolean; deta
   if (!r.ok) {
     return { ok: false, detail: 'We could not register that domain. Our team is on it and will be in touch.', error: r.error };
   }
+
+  await recordSale(
+    env, order, 'domain', order.domain,
+    r.cost?.cents ?? 0, await retailFor(env, order.id, 'domain'), 'year', conn.provider.id,
+  );
   return { ok: true, detail: `${order.domain} is registered and yours.`, error: '' };
 }
 
@@ -294,6 +357,17 @@ async function runMailboxes(env: Env, order: OrderRow): Promise<{ ok: boolean; d
 
     have.add(address);
     made.push(address);
+
+    /*
+     * A mailbox costs nothing per unit to us.
+     *
+     * Openprovider's business email is a plan with unlimited mailboxes, so the
+     * marginal cost of one more address is genuinely zero and recording a made-
+     * up share of the plan fee would be a cost of goods that does not exist.
+     * The plan itself is an overhead, and overheads do not belong in a per-sale
+     * ledger.
+     */
+    await recordSale(env, order, 'mailbox', address, 0, await unitRetailFor(env, order.id, 'email'), 'month', conn.provider.id);
   }
 
   if (!made.length) {
@@ -375,6 +449,12 @@ async function runWebsite(env: Env, order: OrderRow): Promise<{ ok: boolean; det
 
   sites.push(site);
   await dataPut(env.DB, order.account_id, 'crm_websites', JSON.stringify(sites));
+
+  /* Served by the same Worker that serves the app, so it costs nothing per
+     site. Recorded anyway, because it was sold and the report should say so. */
+  const hostingRetail = await retailFor(env, order.id, 'hosting');
+  if (hostingRetail > 0) await recordSale(env, order, 'hosting', order.domain, 0, hostingRetail, 'month', '');
+
   return { ok: true, detail: 'Your starter website is published and ready to edit.', error: '' };
 }
 
@@ -402,6 +482,16 @@ async function runWorkspace(env: Env, order: OrderRow): Promise<{ ok: boolean; d
   await env.DB.prepare(
     'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?,?,?)',
   ).bind(order.account_id, order.contact_email, nowIso()).run();
+
+  for (const kind of ['crm', 'content'] as const) {
+    const retail = await retailFor(env, order.id, kind);
+    /* Content ships at zero by default and is still recorded: a line worth
+       nothing today is worth something the day it is priced, and a report that
+       only counts what was charged cannot show how many were given away. */
+    if (retail > 0 || kind === 'content') {
+      await recordSale(env, order, kind, order.domain, 0, retail, 'month', '');
+    }
+  }
 
   return { ok: true, detail: 'Your CRM workspace is ready.', error: '' };
 }

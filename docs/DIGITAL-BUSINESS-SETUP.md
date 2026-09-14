@@ -118,6 +118,32 @@ whose Worker was killed mid-run finishes itself.
 
 ---
 
+## Keeping the supplier balance funded
+
+Openprovider is **prepaid**: a registration is charged to your balance the
+instant it happens. A balance that will not cover it fails *after* the customer
+has paid, which is a refund and an apology rather than a sale.
+
+Two things handle this, and only one of them is in the app.
+
+**In the app** — checkout refuses a new domain order while your balance will not
+cover its wholesale cost. The customer is told it is temporarily unavailable and
+nothing is charged. The effect of an empty balance is therefore lost sales, not
+angry customers. A balance the app cannot *read* is not treated as zero: an
+order goes through, because the registration itself would have worked.
+
+**At Openprovider — do this before you go live.** Their control panel has
+recurring payments: set a balance to maintain and an amount to add, and they
+charge your card automatically whenever it drops below the threshold. That is
+what lets a hundred-domain order succeed on a ten-dollar balance, and there is
+no way to do it from this end — a customer's payment goes to *your* processor,
+not to your supplier, and no software can route it there directly.
+
+**Settings → Domains & Email → Your supplier balance** shows what is left, and
+roughly how many more domains it buys at what you have been paying.
+
+---
+
 ## When something breaks
 
 **Settings → Domains & Email → Provisioning jobs** (owner only). Every order,

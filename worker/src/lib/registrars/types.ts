@@ -173,6 +173,17 @@ export interface Provider {
   mailSettings(creds: ProviderCreds): { smtpHost: string; smtpPort: number; imapHost: string; imapPort: number };
 
   /**
+   * What is left to spend on the supplier's account.
+   *
+   * Its own call rather than a field on `diagnose`, because it is asked at a
+   * different moment and for a different reason: the diagnosis is a person
+   * pressing Test, this is the app deciding whether it may take somebody's
+   * money. Null when it could not be read — which is not zero, and must not be
+   * treated as zero.
+   */
+  balance(creds: ProviderCreds): Promise<{ cents: number; currency: string } | null>;
+
+  /**
    * Everything that has to be true before a customer can buy anything, checked
    * in one go and reported as separate answers.
    *

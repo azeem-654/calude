@@ -191,6 +191,53 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
     return json({ success: true, orders: orders ?? [], steps: steps ?? [], domains: domains ?? [] });
   }
 
+  /* ── Owner-only: what was sold, what it cost, what it made ────────────── */
+
+  if (act === 'admin_earnings') {
+    if (!isOwner(user)) return fail('Only the installation owner can see this.', 403);
+
+    const { results: items } = await env.DB.prepare(
+      `SELECT i.id, i.account_id AS accountId, i.order_id AS orderId, i.kind, i.item,
+              i.cost_cents AS costCents, i.retail_cents AS retailCents, i.currency,
+              i.period, i.provider, i.created_at AS createdAt,
+              COALESCE(o.company_name, '') AS companyName
+       FROM crm_sold_items i
+       LEFT JOIN crm_setup_orders o ON o.id = i.order_id
+       ORDER BY i.created_at DESC LIMIT 500`,
+    ).all();
+
+    /*
+     * Totalled per period, never across them.
+     *
+     * A yearly domain and a monthly mailbox cannot be added: the sum is a
+     * number that is true of no month and no year, and it is the number
+     * somebody would put in a spreadsheet. So the report answers two questions
+     * — what came in once, and what comes in every month — and leaves the
+     * annualising to whoever wants it.
+     */
+    const totals: Record<string, { kind: string; period: string; count: number; costCents: number; retailCents: number }> = {};
+    for (const raw of items ?? []) {
+      const r = raw as { kind: string; period: string; costCents: number; retailCents: number };
+      const key = `${r.kind}:${r.period}`;
+      const t = totals[key] ?? (totals[key] = { kind: r.kind, period: r.period, count: 0, costCents: 0, retailCents: 0 });
+      t.count++;
+      t.costCents += Number(r.costCents) || 0;
+      t.retailCents += Number(r.retailCents) || 0;
+    }
+
+    /* The supplier's own balance, so the one number the owner needs before
+       taking more orders is on the same screen as the earnings. */
+    const conn = await connectedProvider(env);
+    const bal = conn ? await conn.provider.balance(conn.creds) : null;
+
+    return json({
+      success: true,
+      items: items ?? [],
+      totals: Object.values(totals),
+      supplierBalanceCents: bal ? bal.cents : null,
+    });
+  }
+
   if (act === 'admin_retry') {
     if (!isOwner(user)) return fail('Only the installation owner can do that.', 403);
     const orderId = String(d.orderId ?? '').trim();
@@ -305,6 +352,21 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
     return { quote: costed.quote, domain };
   };
 
+  /**
+   * What this order would cost *us*, for the guard above and nothing else.
+   *
+   * Deliberately not part of `quoteFor`, which returns the shape that goes to a
+   * browser. Keeping the two apart is what stops a cost being added to that
+   * shape by accident later.
+   */
+  const wholesaleOf = async (domain: string): Promise<number | null> => {
+    const conn = await connectedProvider(env);
+    if (!conn) return null;
+    const checked = await conn.provider.check(conn.creds, [domain]);
+    const cost = checked.results[0]?.cost;
+    return cost ? cost.cents : null;
+  };
+
   if (act === 'quote') {
     const q = await quoteFor();
     if ('error' in q) return fail(q.error);
@@ -316,6 +378,42 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
   if (act === 'checkout') {
     const q = await quoteFor();
     if ('error' in q) return fail(q.error);
+
+    /*
+     * Do not take money for something that cannot be delivered.
+     *
+     * The supplier is prepaid: a registration is charged to the operator's
+     * balance the instant it happens, and a balance that will not cover it
+     * fails *after* the customer has paid. Provisioning would retry four times
+     * and give up, and the customer would be sitting on a progress list that
+     * never finishes with their money already gone.
+     *
+     * So the balance is read before the checkout link is made. Refusing here is
+     * a customer who tries again tomorrow; refusing later is a refund, an
+     * apology and a support ticket.
+     *
+     * The wholesale cost is compared, never shown — the message says the app is
+     * not ready, which is true, and not what anything cost.
+     */
+    const conn = await connectedProvider(env);
+    if (conn) {
+      const bal = await conn.provider.balance(conn.creds);
+      const costed = await wholesaleOf(q.domain);
+      /*
+       * A balance we could not read is not a balance of zero.
+       *
+       * Blocking every sale because the supplier's account endpoint had a bad
+       * minute would be worse than the problem — the registration itself would
+       * have worked. Unknown lets it through; known-and-short does not.
+       */
+      if (bal && costed !== null && bal.cents < costed) {
+        return fail(
+          'This is temporarily unavailable — we cannot set up new domains right now. Nothing has been charged. Please try again shortly.',
+          200,
+          { code: 'supplier_balance' },
+        );
+      }
+    }
 
     const processor = await billingProcessor(env);
     if (!processor) return fail('This app cannot take payments yet — its owner has not connected a payment processor.');

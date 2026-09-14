@@ -23,6 +23,7 @@ import {
   XCircle, MinusCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import EarningsPanel from './EarningsPanel';
 import {
   adminJobs, listPrices, money, providerState, retryJob, savePriceRow, saveProvider, testProvider,
   type AdminDomain, type AdminOrder, type AdminStep, type PriceRow, type ProviderCheck, type ProviderState,
@@ -490,6 +491,9 @@ export default function SetupAdmin() {
     <div style={{ display: 'grid', gap: 16 }}>
       <ProviderPanel />
       <PricePanel />
+      {/* Between prices and jobs on purpose: it is the answer to "did that
+          price work", and it is the screen somebody opens before changing one. */}
+      <EarningsPanel />
       <JobsPanel />
     </div>
   );
