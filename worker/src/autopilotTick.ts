@@ -425,6 +425,29 @@ async function planFor(
   ).bind(accountId, run.id).all<{ summary: string }>();
   for (const r of notices.results ?? []) openInProject.add(r.summary);
 
+  /*
+   * A failed action deduped against nothing either, and that one stacks.
+   *
+   * Execution never retries a failed row — it is terminal, and re-planning is
+   * the only thing that tries again. But the dedupe query above asks for
+   * pending or awaiting, so a project whose AI key is rejected planned "write
+   * your first blog post", failed it, and planned an identical one on the next
+   * pass. Observed on a test board: five copies each of six tasks, burying the
+   * one card that needed a decision. A month of it would have been a hundred
+   * and fifty.
+   *
+   * The window is what keeps this from being the opposite mistake. Blocking on
+   * every failure ever would mean a genuinely transient failure — a provider
+   * having a bad afternoon — was never tried again. A day means it retries
+   * tomorrow, which is the planner's own cadence, and never accumulates.
+   */
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const recentlyFailed = await env.DB.prepare(
+    `SELECT summary FROM crm_autopilot_actions
+     WHERE account_id = ? AND project_id = ? AND status = 'failed' AND created_at > ?`,
+  ).bind(accountId, run.id, dayAgo).all<{ summary: string }>();
+  for (const r of recentlyFailed.results ?? []) openInProject.add(r.summary);
+
   const theirs = await env.DB.prepare(
     `SELECT summary FROM crm_autopilot_actions
      WHERE account_id = ? AND status IN ('pending','awaiting')`,

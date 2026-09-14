@@ -144,7 +144,27 @@ retries on its own when it clears. The check lives in `managedSpendAllowed()` in
 `worker/src/lib/provisioning.ts`; it is the one thing standing between a
 stranger signing up and real domains appearing on the operator's card.
 
-### 10. Open a shop, if a workspace sells things
+### 10. Connect Openprovider, for Digital Business Setup
+
+**Settings → Domains & Email** (owner only). This is the reseller account that
+lets the project wizard sell a customer a domain, mailboxes, a website and a
+workspace in one payment — and set all of it up without them ever seeing who it
+came from.
+
+`docs/DIGITAL-BUSINESS-SETUP.md` is the whole procedure. The three things most
+likely to catch you out:
+
+- **Do not set an IP allow-list on the Openprovider API.** Workers have no fixed
+  outbound IP, so an allow-list refuses every call.
+- **Start in the sandbox**, and run one complete purchase through it before
+  untucking that checkbox. It costs nothing and registers nothing.
+- **The billing webhook from item 4 is what starts provisioning.** Without it a
+  payment succeeds and nothing is built, because the app is never told.
+
+Prices are set in the same place and can be changed at any time; an order
+already placed keeps the price it was sold at.
+
+### 11. Open a shop, if a workspace sells things
 
 **Websites → Shops.** A shop is a page at `/shop/<name>` that anybody can open
 without signing in, listing that workspace's active products and taking payment

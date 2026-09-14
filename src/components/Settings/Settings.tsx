@@ -12,6 +12,9 @@ import { activeAccount, planById } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
 import { fetchSmsStatus, saveSmsConfig, testSmsConfig } from '../../services/smsStore';
 import { fetchReplies, saveAiKey, testAiKey, type AiStatus } from '../../services/replies';
+import DnsManager from '../Setup/DnsManager';
+import MailboxManager from '../Setup/MailboxManager';
+import SetupAdmin from '../Setup/SetupAdmin';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -997,6 +1000,55 @@ function AIEngineTab() {
   );
 }
 
+/**
+ * Domains, their DNS, their mailboxes — and, for the owner alone, the machinery.
+ *
+ * One tab rather than two because a customer thinks of "my domain and my email"
+ * as one thing. The owner's half is appended rather than hidden behind another
+ * click: it is the screen they go to when a customer says nothing arrived, and
+ * it belongs next to what the customer is looking at.
+ *
+ * The check here is a courtesy that keeps the screen tidy. The server refuses
+ * every owner action on its own account, so a customer who forced this to
+ * render would see three panels that answer 403.
+ */
+function DigitalSetupTab() {
+  const owner = getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency';
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      <div style={{ background: 'white', borderRadius: 18, border: '1px solid #e6e9f0', padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Your mailboxes</h3>
+        <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
+          Business email on the domains in this workspace.
+        </p>
+        <MailboxManager />
+      </div>
+
+      <div style={{ background: 'white', borderRadius: 18, border: '1px solid #e6e9f0', padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>DNS records</h3>
+        <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
+          Where your domain points. Change these only if you know what they do — getting the MX record
+          wrong stops your email arriving.
+        </p>
+        <DnsManager />
+      </div>
+
+      {owner && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ height: 1, flex: 1, background: '#e6e9f0' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em' }}>
+              OWNER ONLY
+            </span>
+            <span style={{ height: 1, flex: 1, background: '#e6e9f0' }} />
+          </div>
+          <SetupAdmin />
+        </>
+      )}
+    </div>
+  );
+}
+
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'ai-engine', label: 'AI Engine', icon: Sparkles },
@@ -1011,6 +1063,10 @@ const tabs = [
   /* Domains, DNS and mailbox provisioning — the accounts that let the app set a
      client up rather than hand them instructions. */
   { id: 'infrastructure', label: 'Infrastructure', icon: Server },
+  /* Domains bought through the project wizard: their DNS, their mailboxes, and
+     — for the install owner alone — the provider account, the prices and every
+     provisioning job. One tab because they are one subject. */
+  { id: 'digital-setup', label: 'Domains & Email', icon: Globe },
   /* What the schedule did while nobody was watching — the only place that can
      answer it, because it runs on the server. */
   { id: 'automation', label: 'Automation', icon: Activity },
@@ -1256,6 +1312,7 @@ export default function Settings() {
           {activeTab === 'security' && <SecurityPanel />}
           {activeTab === 'branding' && <BrandingPanel />}
           {activeTab === 'infrastructure' && <InfrastructurePanel />}
+          {activeTab === 'digital-setup' && <DigitalSetupTab />}
           {activeTab === 'automation' && <AutomationPanel />}
         </div>
       </div>

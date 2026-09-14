@@ -31,6 +31,7 @@
  * asking each time has to be arguable, or it is merely opaque.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ReplyQueue from './ReplyQueue';
@@ -38,6 +39,7 @@ import ProjectBoard from './ProjectBoard';
 import NewProject from './NewProject';
 import { fetchBoard, type Portfolio } from '../../services/projects';
 import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
+import SetupProgress from '../Setup/SetupProgress';
 
 const MUTED = '#6b7280';
 
@@ -52,6 +54,17 @@ export default function Autopilot() {
      a new column appears without the whole screen reloading. */
   const [boardKey, setBoardKey] = useState(0);
   const [creating, setCreating] = useState(false);
+
+  /*
+   * Where somebody lands coming back from paying.
+   *
+   * The checkout sends them to /autopilot?setup=<order>, so this screen is the
+   * first thing after a payment and the progress list has to be the first thing
+   * on it — a customer who has just been charged and sees an ordinary board
+   * with no acknowledgement assumes something went wrong.
+   */
+  const [params] = useSearchParams();
+  const setupOrder = params.get('setup') ?? '';
 
   const load = useCallback(async () => {
     /* Together, so the page cannot show a reply queue beside a board that has
@@ -94,6 +107,21 @@ export default function Autopilot() {
 
       <div style={{ padding: '18px clamp(16px, 3vw, 32px) 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loading && <p style={{ fontSize: 13, color: MUTED }}>Loading…</p>}
+
+        {setupOrder && setupOrder !== 'cancelled' && (
+          <SetupProgress
+            orderId={setupOrder}
+            /* The last provisioning step starts the content engine, so the
+               board has a new column's worth of work to show by the time this
+               fires. */
+            onDone={() => { setBoardKey(k => k + 1); void load(); }}
+          />
+        )}
+        {setupOrder === 'cancelled' && (
+          <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>
+            That payment was cancelled, so nothing was bought. Your project is running either way.
+          </p>
+        )}
 
         {/* A customer is waiting at the other end of one of these. */}
         <ReplyQueue

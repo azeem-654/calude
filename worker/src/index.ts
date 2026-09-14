@@ -27,6 +27,7 @@ import { handleStorefront, handleStorefrontWebhook } from './routes/storefront';
 import { handleSupplier } from './routes/supplier';
 import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
+import { handleSetup } from './routes/setup';
 import { handleShop } from './routes/shop';
 import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
@@ -44,6 +45,7 @@ import {
 } from './routes/misc';
 import { runScheduledSends, recordTick } from './scheduled';
 import { runAutopilot } from './autopilotTick';
+import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
 
@@ -68,6 +70,7 @@ const ROUTES: Record<string, Handler> = {
   /* Projects and the client portfolios they write from — what AI Autopilot
      actually runs. See routes/projects.ts for why the Sales Agent folded in. */
   '/api/projects.php': handleProjects,
+  '/api/setup.php': handleSetup,
   /* The public shop. Half of this answers to nobody signed in — see
      routes/shop.ts for what that changes. */
   '/api/shop.php': handleShop,
@@ -175,6 +178,17 @@ export default {
        * below picks them up as it goes — the same argument runDueSchedules
        * settled for scheduled campaign starts.
        */
+      /*
+       * Provisioning first, before anything else on the tick.
+       *
+       * A customer who has just paid is watching a progress list right now, and
+       * every other pass here is measured in hours rather than seconds. It also
+       * has to come before Autopilot: an order's last step hands a project to
+       * the planner, and running the planner first would make that project wait
+       * a full tick for a plan it could have had immediately.
+       */
+      const setups = await runPendingSetups(env);
+
       const auto = await runAutopilot(env);
       /*
        * Replies before sends, for the same reason planning comes before both:
@@ -207,6 +221,7 @@ export default {
         cron: event.cron, ms,
         accounts: report.accounts, sent: report.sent, failed: report.failed,
         started: report.started,
+        setups,
         autopilot: {
           planned: auto.planned, carried: auto.carried,
           awaiting: auto.awaiting, failed: auto.failed,

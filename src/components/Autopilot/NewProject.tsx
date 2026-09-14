@@ -36,6 +36,8 @@ import {
   FileText, CalendarCheck, ShoppingBag, Zap,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getSession } from '../../services/auth';
+import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import {
   saveProject, savePortfolio, readPortfolioFromUrl, readPortfolioFromText,
   CAPABILITIES, ALL_CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
@@ -66,7 +68,16 @@ const PRESETS: { id: string; label: string; caps: Capability[]; blurb: string }[
   { id: 'shop', label: 'Run a shop', caps: ['shop', 'email', 'content'], blurb: 'Catalogue, checkout and the follow-up' },
 ];
 
-type Step = 1 | 2 | 3;
+/**
+ * Four, and the fourth is different from the other three.
+ *
+ * Steps 1–3 collect answers and commit nothing. Step 4 happens *after* the
+ * project exists, because the thing it offers is bought for a project and a
+ * purchase cannot name something that has not been created yet. That is also
+ * why there is no way back to step 3 from it: the project is already saved, and
+ * a Back button that appeared to let somebody edit it would be a lie.
+ */
+type Step = 1 | 2 | 3 | 4;
 type Way = 'site' | 'paste' | 'hand';
 
 export default function NewProject({
@@ -78,6 +89,8 @@ export default function NewProject({
 }) {
   const { addNotification } = useApp();
   const [step, setStep] = useState<Step>(1);
+  /* The project, once it is real. Empty on steps 1–3. */
+  const [createdId, setCreatedId] = useState('');
   const [busy, setBusy] = useState(false);
 
   /* 1 — what it may do */
@@ -176,15 +189,23 @@ export default function NewProject({
       kind: kindFor(caps), guardrails: guardrailsFor(caps),
     });
     setBusy(false);
-    if (!r.success) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
+    if (!r.success || !r.id) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
     addNotification(`"${name.trim()}" started. Autopilot plans it within a day.`, 'success');
-    onCreated();
+    /*
+     * Straight on to the setup offer rather than closing.
+     *
+     * The project is saved either way — somebody who closes here has lost
+     * nothing, which is what makes it safe to ask the question at all.
+     */
+    setCreatedId(r.id);
+    setStep(4);
   };
 
   const TITLES: Record<Step, string> = {
     1: 'What should it do?',
     2: 'Who is it for?',
     3: 'What should it achieve?',
+    4: 'One more thing',
   };
 
   return (
@@ -214,7 +235,7 @@ export default function NewProject({
             <Zap size={17} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.72, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                New project · step {step} of 3
+                {step === 4 ? 'Project created' : `New project · step ${step} of 3`}
               </div>
               <h2 style={{ margin: '2px 0 0', fontSize: 17.5, fontWeight: 800, letterSpacing: '-0.02em' }}>
                 {TITLES[step]}
@@ -528,6 +549,28 @@ export default function NewProject({
               </div>
             </>
           )}
+
+          {step === 4 && (
+            <>
+              <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 11, background: '#e8f6ee', border: '1px solid #b7e4c7' }}>
+                <Check size={15} color="#0f7b3d" style={{ flexShrink: 0, marginTop: 1 }} />
+                <p style={{ margin: 0, fontSize: 12.5, color: '#14532d', lineHeight: 1.6 }}>
+                  <strong>{name.trim()}</strong> is running. Autopilot plans it within a day — you can close
+                  this now and nothing is lost.
+                </p>
+              </div>
+
+              <DigitalSetupStep
+                companyName={clientName || name.trim()}
+                contactEmail={getSession()?.user?.email ?? ''}
+                projectId={createdId}
+                /* The wizard's job ends when they leave for the processor. The
+                   progress view lives on the board, which is where they land
+                   coming back from a payment page. */
+                onOrder={() => onCreated()}
+              />
+            </>
+          )}
         </div>
 
         {/* ── Footer ── */}
@@ -536,7 +579,7 @@ export default function NewProject({
           padding: 'clamp(12px, 2.5vw, 16px) clamp(16px, 3vw, 22px)',
           borderTop: `1px solid ${LINE}`, background: '#fcfcfd',
         }}>
-          {step > 1 ? (
+          {step > 1 && step < 4 ? (
             <button onClick={() => setStep(s => (s - 1) as Step)} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '10px 14px', borderRadius: 11, border: `1px solid ${LINE}`,
@@ -557,7 +600,13 @@ export default function NewProject({
             <span style={{ fontSize: 11.5, color: MUTED, order: 3, width: '100%', textAlign: 'right' }}>{blocked}</span>
           )}
 
-          {step < 3 ? (
+          {step === 4 ? (
+            <button onClick={onCreated} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '10px 18px', borderRadius: 11, border: 'none',
+              background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>Done <ArrowRight size={14} /></button>
+          ) : step < 3 ? (
             <button onClick={() => setStep(s => (s + 1) as Step)} disabled={!!blocked} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '10px 18px', borderRadius: 11, border: 'none',

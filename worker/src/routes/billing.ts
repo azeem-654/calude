@@ -290,6 +290,21 @@ export async function handleBillingWebhook(req: Request, env: Env): Promise<Resp
   const event = provider.readEvent(payload);
   if (!event) return new Response('bad-json', { status: 400 });
 
+  /*
+   * Two different things arrive on this endpoint.
+   *
+   * A subscription payment names a workspace; a Digital Business Setup payment
+   * names an order. They are told apart by asking the setup table first, which
+   * answers definitively — an order id is only ever an order id — rather than
+   * by guessing from the shape of the reference. Only one of the two can be
+   * true, so a matched setup order returns here and never falls through to be
+   * written as a workspace's billing status.
+   */
+  if (event.kind === 'paid' && event.reference) {
+    const { markSetupPaid } = await import('./setup');
+    if (await markSetupPaid(env, event.reference)) return new Response('ok', { status: 200 });
+  }
+
   const accountId = event.reference;
   if (accountId) {
     const status = event.kind === 'paid' ? 'active'
