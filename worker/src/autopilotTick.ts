@@ -87,6 +87,10 @@ interface RunRow {
   last_planned_at: string | null;
   purchase_mode: string;
   pool_target: string;
+  /** Optional numbers the starter tasks are planned against. 0 means not said. */
+  revenue_target: number;
+  volume_target: number;
+  goals: string;
 }
 
 const rid = () => `ap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1249,7 +1253,8 @@ export async function runAutopilot(env: Env): Promise<AutopilotReport> {
 
   const { results } = await env.DB.prepare(
     `SELECT id, account_id, portfolio_id, name, objective, kind, status, guardrails,
-            last_planned_at, purchase_mode, pool_target
+            last_planned_at, purchase_mode, pool_target,
+            revenue_target, volume_target, goals
      FROM crm_projects WHERE status IN ('learning','running') LIMIT 400`,
   ).all<RunRow>();
 
@@ -1269,6 +1274,7 @@ export async function runAutopilot(env: Env): Promise<AutopilotReport> {
       await ensureProjectPipeline(env, {
         id: run.id, account_id: run.account_id, name: run.name,
         kind: run.kind, objective: run.objective, portfolio_id: run.portfolio_id,
+        revenueTarget: run.revenue_target, volumeTarget: run.volume_target, goals: run.goals,
       }).catch(() => undefined);
       /*
        * Nothing to write from.

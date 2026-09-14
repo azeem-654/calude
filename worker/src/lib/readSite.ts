@@ -168,12 +168,25 @@ export async function readSite(raw: string): Promise<SiteText> {
     const html = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(buf);
 
     const { title, text } = readable(html);
-    if (text.length < 60) {
-      /* Almost always a page that renders itself in the browser. Saying so is
-         more use than handing a language model forty words and letting it
-         invent the rest. */
+    /*
+     * Forty words, counted the same way the paste path counts them.
+     *
+     * The bar here used to be sixty *characters* — about ten words — while
+     * pasting the same content by hand demanded forty. So a page that rendered
+     * a nav and a tagline server-side and everything else in the browser sailed
+     * through the URL route and was refused through the paste route, and the
+     * model was handed fifteen words and asked for seven fields about a
+     * business. It answered, of course. That is the failure this whole file
+     * exists to avoid, and the looser of two thresholds for the same job was
+     * where it got in.
+     *
+     * Modern marketing sites built in the browser land here often. Saying so,
+     * with somewhere else to go, is worth more than a confident profile of a
+     * company nobody read anything about.
+     */
+    if (text.split(/\s+/).filter(Boolean).length < 40) {
       return no(
-        'There were almost no words on that page — it is probably built in the browser rather than sent as text. Describe the client by hand, or try a page like /about.',
+        'There were almost no words on that page — it is probably built in the browser rather than sent as text. Try their /about page, paste the text in by hand, or describe the client yourself.',
         url,
       );
     }

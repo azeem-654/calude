@@ -21,7 +21,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Globe, Mail, Monitor, Filter, ExternalLink, Pencil, Plus, Loader, Clock,
+  Globe, Mail, Monitor, Filter, ExternalLink, Pencil, Plus, Loader, Clock, X,
 } from 'lucide-react';
 import { projectAssets, type ProjectAssets as Assets } from '../../services/digitalSetup';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
@@ -158,27 +158,71 @@ export default function ProjectAssets({ projectId, projectName, companyName, con
           </p>
         )}
 
-        {/* ── Buy more, from here ── */}
-        {buying ? (
-          <div style={{ marginTop: 10 }}>
-            <DigitalSetupStep
-              companyName={companyName || projectName}
-              contactEmail={contactEmail}
-              projectId={projectId}
-              onOrder={() => setBuying(false)}
-            />
-            <button onClick={() => setBuying(false)} style={{ ...link, marginTop: 8 }}>Cancel</button>
-          </div>
-        ) : (
-          <button onClick={() => setBuying(true)} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6,
-            padding: '8px 13px', borderRadius: 9, border: `1px solid ${LINE}`,
-            background: '#fff', color: INK, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-          }}>
-            <Plus size={12} /> {has ? 'Add a domain or mailboxes' : 'Buy a domain, email and website'}
-          </button>
-        )}
+        {/* ── Buy more ── */}
+        <button onClick={() => setBuying(true)} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6,
+          padding: '8px 13px', borderRadius: 9, border: `1px solid ${LINE}`,
+          background: '#fff', color: INK, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          <Plus size={12} /> {has ? 'Add a domain or mailboxes' : 'Buy a domain, email and website'}
+        </button>
       </div>
+
+      {/*
+        A dialog, not the column.
+        
+        A board column is 320px wide. Choosing a domain means reading eight
+        names with prices, then five mailbox toggles, then a bill — which in
+        that width is a scroll inside a scroll, and the total ends up below the
+        fold on the screen where somebody is about to spend money. A purchase
+        deserves the whole window.
+
+        Kept on this screen rather than sending them to a separate section,
+        because the thing being bought belongs to *this* project: navigating
+        away loses which project it was for, and coming back is a second
+        decision nobody asked for.
+      */}
+      {buying && (
+        <div
+          role="dialog" aria-modal="true" aria-label="Buy a domain and email"
+          onClick={e => { if (e.target === e.currentTarget) setBuying(false); }}
+          onKeyDown={e => { if (e.key === 'Escape') setBuying(false); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(15,17,20,0.45)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            padding: 'clamp(12px, 4vh, 44px) clamp(12px, 4vw, 32px)', overflowY: 'auto',
+          }}>
+          <div style={{
+            background: '#fff', borderRadius: 18, width: '100%', maxWidth: 560,
+            boxShadow: '0 24px 60px rgba(16,24,40,0.24)', overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '14px 18px', borderBottom: `1px solid ${LINE}`, background: '#fcfcfd',
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: INK }}>Set up {companyName || projectName}</div>
+                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>
+                  Domain, business email and a starter website — bought for this project.
+                </div>
+              </div>
+              <button onClick={() => setBuying(false)} aria-label="Close"
+                style={{ border: 'none', background: 'none', cursor: 'pointer', color: MUTED, padding: 4, display: 'flex' }}>
+                <X size={17} />
+              </button>
+            </div>
+
+            <div style={{ padding: 16 }}>
+              <DigitalSetupStep
+                companyName={companyName || projectName}
+                contactEmail={contactEmail}
+                projectId={projectId}
+                onOrder={() => setBuying(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

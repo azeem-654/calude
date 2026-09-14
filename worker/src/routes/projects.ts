@@ -32,6 +32,10 @@ interface Req {
   /* Projects */
   name?: string;
   objective?: string;
+  /** Optional numbers the starter tasks are planned against. 0 means not said. */
+  revenueTarget?: number;
+  volumeTarget?: number;
+  goals?: unknown;
   portfolioId?: string;
   status?: string;
   kind?: string;
@@ -109,6 +113,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const { results } = await env.DB.prepare(
       `SELECT j.id, j.portfolio_id AS portfolioId, j.name, j.objective, j.kind, j.status,
               j.guardrails, j.purchase_mode AS purchaseMode, j.pool_target AS poolTarget,
+              j.revenue_target AS revenueTarget, j.volume_target AS volumeTarget, j.goals,
               j.last_planned_at AS lastPlannedAt, j.last_acted_at AS lastActedAt,
               j.last_error AS lastError, j.created_at AS createdAt,
               COALESCE(p.name, '') AS portfolioName,
@@ -343,6 +348,21 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const kind = String(d.kind ?? '') || 'general';
     if (!KINDS.has(kind)) return fail(`"${d.kind}" is not a kind of project this app runs.`);
 
+    /*
+     * The numbers, clamped rather than trusted.
+     *
+     * Both optional: somebody who does not know their numbers yet must not be
+     * blocked from starting, and a zero is stored as "not said" rather than as
+     * a target of nothing. The ceiling is there because a typo in a revenue box
+     * would otherwise reach a prompt as a billion-pound goal and produce advice
+     * for a business that does not exist.
+     */
+    const revenueTarget = Math.min(Math.max(Math.round(Number(d.revenueTarget) || 0), 0), 100_000_000);
+    const volumeTarget = Math.min(Math.max(Math.round(Number(d.volumeTarget) || 0), 0), 1_000_000);
+    const goals = Array.isArray(d.goals)
+      ? JSON.stringify((d.goals as unknown[]).map(g => String(g).slice(0, 40)).slice(0, 6))
+      : '[]';
+
     const now = nowIso();
     const existing = await env.DB.prepare('SELECT created_at, guardrails, status FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string }>();
@@ -359,15 +379,19 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     await env.DB.prepare(
       `INSERT INTO crm_projects
        (id, account_id, portfolio_id, name, objective, kind, status, guardrails,
-        purchase_mode, pool_target, last_error, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', '', ?,?)
+        purchase_mode, pool_target, revenue_target, volume_target, goals,
+        last_error, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, '', ?,?)
        ON CONFLICT(id) DO UPDATE SET
          portfolio_id=excluded.portfolio_id, name=excluded.name,
          objective=excluded.objective, kind=excluded.kind, status=excluded.status,
-         guardrails=excluded.guardrails, last_error='', updated_at=excluded.updated_at`,
+         guardrails=excluded.guardrails, revenue_target=excluded.revenue_target,
+         volume_target=excluded.volume_target, goals=excluded.goals,
+         last_error='', updated_at=excluded.updated_at`,
     ).bind(
       id, accountId, portfolioId, name.slice(0, 160), objective.slice(0, 2000),
       kind, existing?.status ?? 'learning', JSON.stringify(guardrails),
+      revenueTarget, volumeTarget, goals,
       existing?.created_at ?? now, now,
     ).run();
 
@@ -382,8 +406,13 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
      */
     try {
       const row = await env.DB.prepare(
-        'SELECT id, account_id, name, kind, objective, portfolio_id FROM crm_projects WHERE id = ?',
-      ).bind(id).first<{ id: string; account_id: string; name: string; kind: string; objective: string; portfolio_id: string }>();
+        `SELECT id, account_id, name, kind, objective, portfolio_id,
+                revenue_target AS revenueTarget, volume_target AS volumeTarget, goals
+         FROM crm_projects WHERE id = ?`,
+      ).bind(id).first<{
+        id: string; account_id: string; name: string; kind: string; objective: string;
+        portfolio_id: string; revenueTarget: number; volumeTarget: number; goals: string;
+      }>();
       if (row) await ensureProjectPipeline(env, row);
     } catch { /* the project stands on its own */ }
 

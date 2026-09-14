@@ -38,6 +38,11 @@ export interface Project {
   purchaseMode: string;
   /** JSON: {domains, mailboxesPerDomain}. '{}' means build nothing. */
   poolTarget: string;
+  /** What it is meant to achieve, in numbers. 0 means nobody said. */
+  revenueTarget: number;
+  volumeTarget: number;
+  /** JSON array of the named goals somebody picked. */
+  goals: string;
   /** What the board's column header counts. */
   awaiting: number;
   done: number;
@@ -118,6 +123,10 @@ export const saveProject = (p: {
   id?: string; name: string; objective: string; portfolioId: string; kind: ProjectKind;
   /** Omitted on an edit: the server keeps whatever the project already had. */
   guardrails?: Record<string, string>;
+  /** Optional. Both zero means nobody said, which the task writer is told. */
+  revenueTarget?: number;
+  volumeTarget?: number;
+  goals?: string[];
 }) => call('save_project', p);
 export const setProjectStatus = (id: string, status: Project['status']) => call('set_status', { id, status });
 

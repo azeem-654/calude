@@ -9,6 +9,26 @@ none — it trains the owner to ignore it.
 
 ---
 
+## ⚠ DO THESE — nobody else can
+
+Everything below needs the owner's own hands: a password, somebody else's
+control panel, or money. An assistant cannot do any of it, and has tried.
+
+| # | What | Where | Blocks |
+|---|---|---|---|
+| 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
+| 2 | **Attach a wildcard Worker route** for `*.protectedcentral.com` | Cloudflare → Workers → Routes | Reseller subdomains resolve |
+| 3 | **Revoke the Creem key pasted into a chat** and reissue | creem.io → Developers | Security |
+| 4 | **Confirm the billing webhook is set** | Settings → Billing | Payments succeed and nothing is provisioned without it |
+| 5 | **Change the master password** | Settings → Security | Security |
+
+Item 2 was attempted from a session on 2026-09-14 and could not be done: the
+Cloudflare token available to an assistant is a reference, not a working
+credential, and `user/tokens/verify` refuses it. It needs a browser and the
+owner's login.
+
+---
+
 ## The one master account
 
 The install owner is **azeem@protectedcentral.com**, and there is exactly one.

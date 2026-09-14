@@ -77,6 +77,23 @@ const PRESETS: { id: string; label: string; caps: Capability[]; blurb: string }[
  * why there is no way back to step 3 from it: the project is already saved, and
  * a Back button that appeared to let somebody edit it would be a lie.
  */
+/**
+ * The named goals, kept short and few.
+ *
+ * Six options somebody can pick two of, rather than a free-text box that
+ * produces "growth" for everybody. They are what the starter tasks are planned
+ * against, so they have to be things a plan can differ on — "more leads" and
+ * "keep the customers we have" want genuinely different first weeks.
+ */
+const GOALS = [
+  { id: 'more-leads', label: 'More enquiries' },
+  { id: 'higher-value', label: 'Bigger jobs' },
+  { id: 'retention', label: 'Keep customers longer' },
+  { id: 'launch', label: 'Launch something new' },
+  { id: 'reputation', label: 'Reviews and reputation' },
+  { id: 'fill-diary', label: 'Fill the diary' },
+] as const;
+
 type Step = 1 | 2 | 3 | 4;
 type Way = 'site' | 'paste' | 'hand';
 
@@ -91,6 +108,16 @@ export default function NewProject({
   const [step, setStep] = useState<Step>(1);
   /* The project, once it is real. Empty on steps 1–3. */
   const [createdId, setCreatedId] = useState('');
+  /*
+   * The numbers, asked for once and used everywhere after.
+   *
+   * Both optional. Somebody who does not know their revenue target yet should
+   * not be stopped from starting a project — and the task writer is told they
+   * were not given, rather than being left to invent one and plan against it.
+   */
+  const [goals, setGoals] = useState<string[]>([]);
+  const [revenueTarget, setRevenueTarget] = useState('');
+  const [volumeTarget, setVolumeTarget] = useState('');
   const [busy, setBusy] = useState(false);
 
   /* 1 — what it may do */
@@ -187,6 +214,9 @@ export default function NewProject({
     const r = await saveProject({
       name: name.trim(), objective: objective.trim(), portfolioId: pid,
       kind: kindFor(caps), guardrails: guardrailsFor(caps),
+      goals,
+      revenueTarget: Math.round(Number(revenueTarget) || 0),
+      volumeTarget: Math.round(Number(volumeTarget) || 0),
     });
     setBusy(false);
     if (!r.success || !r.id) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
@@ -495,6 +525,47 @@ export default function NewProject({
           {/* ══════════ 3 — name and objective ══════════ */}
           {step === 3 && (
             <>
+              {/* ── What good looks like, in numbers ── */}
+              <div>
+                <label style={lbl}>What would make this a success?</label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {GOALS.map(g => {
+                    const on = goals.includes(g.id);
+                    return (
+                      <button key={g.id} type="button" aria-pressed={on}
+                        onClick={() => setGoals(prev => on ? prev.filter(x => x !== g.id) : [...prev, g.id].slice(0, 3))}
+                        style={{
+                          padding: '7px 12px', borderRadius: 999, fontFamily: 'inherit', cursor: 'pointer',
+                          border: `1.5px solid ${on ? ACCENT : LINE}`,
+                          background: on ? 'rgba(91,70,229,0.06)' : '#fff',
+                          color: on ? ACCENT : MUTED, fontSize: 12.5, fontWeight: 700,
+                        }}>
+                        {g.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label style={{ ...lbl, fontSize: 12 }} htmlFor="pj-rev">Revenue a month</label>
+                    <input id="pj-rev" value={revenueTarget} inputMode="numeric" placeholder="optional"
+                      onChange={e => setRevenueTarget(e.target.value.replace(/[^\d]/g, ''))} style={inp} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label style={{ ...lbl, fontSize: 12 }} htmlFor="pj-vol">Customers or jobs a month</label>
+                    <input id="pj-vol" value={volumeTarget} inputMode="numeric" placeholder="optional"
+                      onChange={e => setVolumeTarget(e.target.value.replace(/[^\d]/g, ''))} style={inp} />
+                  </div>
+                </div>
+                {/* Said plainly, because a blank box that silently changes the
+                    plan is worse than one that explains itself. */}
+                <p style={{ margin: '7px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
+                  Both optional. Given, they shape the first tasks on your board — fifteen jobs a month
+                  is a reach problem and three big ones is a trust problem, and they need different weeks.
+                </p>
+              </div>
+
               <div>
                 <label style={lbl} htmlFor="pj-name">Call it something you will recognise</label>
                 <input id="pj-name" value={name} onChange={e => setName(e.target.value)} style={inp}

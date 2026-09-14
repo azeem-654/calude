@@ -133,7 +133,11 @@ function fallbackTasks(stages: Array<{ name: string }>): string[][] {
  */
 async function writeTasks(
   env: Env, accountId: string,
-  brief: { company: string; industry: string; offer: string; audience: string; objective: string; kind: string },
+  brief: {
+    company: string; industry: string; offer: string; audience: string;
+    objective: string; kind: string;
+    revenueTarget: number; volumeTarget: number; goals: string[];
+  },
   stages: Array<{ name: string }>,
 ): Promise<{ tasks: string[][]; generated: boolean }> {
   const key = await loadAiKey(env, accountId);
@@ -146,8 +150,16 @@ Industry: ${brief.industry || 'unknown'}
 What they sell: ${brief.offer || 'unknown'}
 Who they sell to: ${brief.audience || 'unknown'}
 What this project must achieve: ${brief.objective || 'grow the business'}
+${brief.goals.length ? `Goals picked: ${brief.goals.join(', ')}` : ''}
+${brief.revenueTarget > 0 ? `Revenue target: ${brief.revenueTarget} a month` : 'Revenue target: not given — do not invent one'}
+${brief.volumeTarget > 0 ? `Volume target: ${brief.volumeTarget} customers or jobs a month` : 'Volume target: not given — do not invent one'}
 
 The board has these stages, in order: ${stages.map(s => s.name).join(', ')}.
+
+Plan for the numbers above where they are given. Fifteen jobs a month is a
+volume problem and needs tasks about reach; three jobs at a high price is a
+trust problem and needs tasks about proof and referrals. Where a number is not
+given, write tasks that work at any size rather than assuming one.
 
 For each stage, write 2 to 4 tasks a person at the agency should actually do
 while work sits in that stage. Concrete and specific to this client — name their
@@ -187,7 +199,11 @@ Reply with only JSON, in this exact shape:
  */
 export async function ensureProjectPipeline(
   env: Env,
-  project: { id: string; account_id: string; name: string; kind: string; objective: string; portfolio_id: string },
+  project: {
+    id: string; account_id: string; name: string; kind: string; objective: string;
+    portfolio_id: string;
+    revenueTarget?: number; volumeTarget?: number; goals?: string;
+  },
 ): Promise<{ created: boolean; generated: boolean; pipelineId: string }> {
   const accountId = project.account_id;
   const pipelines = parse<PipelineShape[]>(await dataGet(env.DB, accountId, 'crm_pipelines'), []);
@@ -219,6 +235,9 @@ export async function ensureProjectPipeline(
     audience: pf.audience,
     objective: project.objective,
     kind: project.kind,
+    revenueTarget: Number(project.revenueTarget) || 0,
+    volumeTarget: Number(project.volumeTarget) || 0,
+    goals: parse<string[]>(project.goals ?? '[]', []),
   }, shape);
 
   const stages: StageShape[] = shape.map((s, i) => ({
