@@ -184,6 +184,26 @@ export async function createMailbox(domain: string, localPart: string, displayNa
   return { address: String(r.address ?? ''), error: r.success ? '' : (r.error ?? 'Could not create that mailbox.') };
 }
 
+/** What one project already has, and what is still on its way. */
+export interface ProjectAssets {
+  domains: string[];
+  mailboxes: Array<{ address: string; label: string }>;
+  sites: Array<{ id: string; name: string; domain: string; status: string; slug: string }>;
+  funnels: Array<{ id: string; name: string; status: string }>;
+  pending: Array<{ id: string; domain: string; status: string }>;
+}
+
+export async function projectAssets(projectId: string): Promise<ProjectAssets> {
+  const r = await call('project_assets', { projectId });
+  return {
+    domains: (r.domains as string[]) ?? [],
+    mailboxes: (r.mailboxes as ProjectAssets['mailboxes']) ?? [],
+    sites: (r.sites as ProjectAssets['sites']) ?? [],
+    funnels: (r.funnels as ProjectAssets['funnels']) ?? [],
+    pending: (r.pending as ProjectAssets['pending']) ?? [],
+  };
+}
+
 /* ── The owner's own ─────────────────────────────────────────────────────── */
 
 /** One thing that has to be true, and what to do when it is not. */

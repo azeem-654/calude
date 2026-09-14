@@ -545,7 +545,7 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
   const subscribe = async () => {
     if (!account) return;
     setBusy(true); setErr(''); setCheckoutUrl('');
-    const res = await createCheckout({ accountId: account.id, productName: `${planById(account.plan).name} — ${account.name}`, amount: account.price, customerEmail: account.contactEmail });
+    const res = await createCheckout({ accountId: account.id, planId: account.plan, productName: `${planById(account.plan).name} — ${account.name}`, customerEmail: account.contactEmail });
     setBusy(false);
     if (res.ok && res.url) setCheckoutUrl(res.url);
     else setErr(res.error || 'Could not create checkout.');

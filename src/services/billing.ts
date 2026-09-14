@@ -64,20 +64,28 @@ export function updateBilling(accountId: string, patch: Partial<BillingRecord>) 
  * now, and the caller does not have to know who the processor is.
  */
 export async function createCheckout(opts: {
-  accountId: string; productName: string; amount: number; customerEmail: string; priceId?: string;
+  accountId: string; planId: string; productName: string; customerEmail: string; priceId?: string;
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   return startSubscription({ ...opts, token: sessionToken() });
 }
 
 /** Client self-service checkout. Same path, authorised by their own session. */
 export async function createClientCheckout(opts: {
-  accountId: string; token: string; productName: string; amount: number; customerEmail: string; priceId?: string;
+  accountId: string; token: string; planId: string; productName: string; customerEmail: string; priceId?: string;
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   return startSubscription(opts);
 }
 
+/*
+ * The plan id goes up; the price does not.
+ *
+ * It used to send `amount`, which the server then charged. Anybody who could
+ * open dev tools could subscribe to the top plan for a penny. The server now
+ * looks the price up from the plan and ignores anything the browser says about
+ * money.
+ */
 async function startSubscription(opts: {
-  accountId: string; token: string; productName: string; amount: number; customerEmail: string; priceId?: string;
+  accountId: string; token: string; planId: string; productName: string; customerEmail: string; priceId?: string;
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   const base = window.location.origin + (import.meta.env.BASE_URL || '/');
   try {
@@ -85,7 +93,7 @@ async function startSubscription(opts: {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: opts.token, action: 'checkout',
-        priceId: opts.priceId || '', amount: opts.amount, currency: 'USD',
+        priceId: opts.priceId || '', planId: opts.planId, currency: 'USD',
         planName: opts.productName, customerEmail: opts.customerEmail,
         successUrl: `${base}?billing=success`, cancelUrl: `${base}?billing=cancel`,
         accountId: opts.accountId,

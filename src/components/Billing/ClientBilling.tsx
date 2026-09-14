@@ -71,8 +71,9 @@ export default function ClientBilling() {
     setBusy('checkout'); setError('');
     const res = await createClientCheckout({
       accountId, token: session.token,
+      planId: account.plan,
       productName: `${plan?.name || 'Subscription'} plan — ${account.name}`,
-      amount: price, customerEmail: account.contactEmail || session.user.email,
+      customerEmail: account.contactEmail || session.user.email,
     });
     setBusy('');
     if (res.ok && res.url) window.location.href = res.url;

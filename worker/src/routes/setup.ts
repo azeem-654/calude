@@ -24,7 +24,7 @@
  */
 import { addr, body, fail, json } from '../lib/http';
 import {
-  installSecret, nowIso, userFromToken, workspaceAccess,
+  dataGet, installSecret, nowIso, userFromToken, workspaceAccess,
   type Env, type SessionUser,
 } from '../lib/db';
 import { decryptSecret } from '../lib/crypto';
@@ -536,6 +536,68 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
   }
 
   /* ── Domains this workspace owns ──────────────────────────────────────── */
+
+  /* ── What one project already has ─────────────────────────────────────── */
+
+  if (act === 'project_assets') {
+    const projectId = String(d.projectId ?? '').trim();
+    if (!projectId) return fail('Which project?');
+
+    /*
+     * Everything bought for this project, found through its orders.
+     *
+     * A domain does not carry a project id — it belongs to the workspace, and
+     * it outlives the project that paid for it. The order is the link between
+     * the two, which is also the honest answer: this project is why that
+     * domain exists, not its owner.
+     */
+    const { results: orders } = await env.DB.prepare(
+      `SELECT id, domain, status FROM crm_setup_orders
+       WHERE account_id = ? AND project_id = ? ORDER BY created_at DESC`,
+    ).bind(accountId, projectId).all<{ id: string; domain: string; status: string }>();
+
+    const domains = (orders ?? []).map(o => o.domain).filter(Boolean);
+
+    /* Mailboxes on those domains. Addresses only — never a password, and never
+       a hint of one. */
+    let mailboxes: Array<{ address: string; label: string }> = [];
+    if (domains.length) {
+      const { results } = await env.DB.prepare(
+        `SELECT from_email AS address, label FROM crm_mailbox_accounts
+         WHERE account_id = ? ORDER BY is_primary DESC, created_at`,
+      ).bind(accountId).all<{ address: string; label: string }>();
+      mailboxes = (results ?? []).filter(m => domains.some(dm => m.address.endsWith(`@${dm}`)));
+    }
+
+    /*
+     * Websites and funnels live in the workspace's own synced storage rather
+     * than tables of their own, so they are read from there. Matched on the
+     * domain, because that is the only thing the two records genuinely share —
+     * a site built by hand for the same domain counts, and should.
+     */
+    const sites = parse<Array<Record<string, unknown>>>(
+      await dataGet(env.DB, accountId, 'crm_websites'), [],
+    ).filter(w => domains.includes(String(w.domain ?? '')) || (domains.length === 0 && false))
+      .map(w => ({
+        id: String(w.id ?? ''),
+        name: String(w.name ?? 'Website'),
+        domain: String(w.domain ?? ''),
+        status: String(w.status ?? 'draft'),
+        slug: String(w.slug ?? ''),
+      }));
+
+    const funnels = parse<Array<Record<string, unknown>>>(
+      await dataGet(env.DB, accountId, 'crm_funnels'), [],
+    ).filter(f => domains.includes(String(f.domain ?? '')))
+      .map(f => ({ id: String(f.id ?? ''), name: String(f.name ?? 'Funnel'), status: String(f.status ?? 'draft') }));
+
+    /* An order still being provisioned, so the panel can say "on its way"
+       rather than "nothing here" while the customer waits. */
+    const pending = (orders ?? []).filter(o => o.status !== 'done' && o.status !== 'failed')
+      .map(o => ({ id: o.id, domain: o.domain, status: o.status }));
+
+    return json({ success: true, domains, mailboxes, sites, funnels, pending });
+  }
 
   if (act === 'domains') {
     const { results } = await env.DB.prepare(

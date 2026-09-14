@@ -28,6 +28,8 @@ import {
 } from '../../services/projects';
 import { approveAction, rejectAction } from '../../services/autopilot';
 import ProjectInfra from './ProjectInfra';
+import ProjectAssets from './ProjectAssets';
+import { getSession } from '../../services/auth';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -294,7 +296,18 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
               </div>
 
               {infra === p.id && (
-                <ProjectInfra project={p} onSaved={next => setProjects(next)} />
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {/* What it has comes first. Somebody opening this panel is
+                      more often checking than changing, and the sending-pool
+                      settings below are the rarer, more dangerous half. */}
+                  <ProjectAssets
+                    projectId={p.id}
+                    projectName={p.name}
+                    companyName={p.portfolioName || p.name}
+                    contactEmail={getSession()?.user?.email ?? ''}
+                  />
+                  <ProjectInfra project={p} onSaved={next => setProjects(next)} />
+                </div>
               )}
 
               {menu === p.id && (

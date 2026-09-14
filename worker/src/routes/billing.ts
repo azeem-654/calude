@@ -58,10 +58,31 @@ interface Req {
   customerEmail?: string;
   successUrl?: string;
   cancelUrl?: string;
+  /** Which published plan. The price comes from the plan, never the request. */
+  planId?: string;
 }
 
 /** The install owner, and nobody else. */
 const isOwner = (user: SessionUser) => user.accountId === null && user.role === 'agency';
+
+/**
+ * What a subscription costs, decided here and nowhere else.
+ *
+ * The price used to come out of the request body. Every signed-in sub-account
+ * could therefore post `amount: 0.01` and subscribe itself to the top plan for
+ * a penny — the browser was being trusted with the one number it has the
+ * strongest possible reason to lie about. A plan id is a choice; a price is
+ * not, and the two must not travel together.
+ *
+ * Mirrors `PLANS` in `src/services/tenancy.ts`, which is what the screens
+ * render. If the two ever disagree, this one wins and the customer is charged
+ * what it says — so a stale client cannot overcharge either.
+ */
+const PLAN_CENTS: Record<string, { name: string; cents: number }> = {
+  starter: { name: 'Studio', cents: 4900 },
+  pro: { name: 'Agency', cents: 9700 },
+  agency: { name: 'Network', cents: 14900 },
+};
 
 async function loadRow(env: Env): Promise<Row | null> {
   return env.DB.prepare('SELECT provider, credentials, provider_ref, status, last_error FROM crm_install_providers WHERE kind = ?')
@@ -145,7 +166,24 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
     };
   };
 
-  if (act === 'config') return json({ success: true, billing: await state() });
+  if (act === 'config') {
+    /*
+     * A sub-account is told whether they can pay, and nothing else.
+     *
+     * The full answer names the processor, its live-or-test mode, the operator's
+     * last error and the webhook address. None of that is a credential, and all
+     * of it is the operator's business — the processor's *name* most of all: a
+     * reseller running this under their own brand should not have their
+     * customers learn whose rails it sits on. That is the whole point of a
+     * white label, and it was leaking from an endpoint nobody thought of as
+     * sensitive because it holds no keys.
+     */
+    if (!isOwner(user)) {
+      const current = await billingProcessor(env);
+      return json({ success: true, billing: { connected: !!current } });
+    }
+    return json({ success: true, billing: await state() });
+  }
 
   /* ── Connecting it: the owner's decision alone ── */
   if (act === 'connect' || act === 'disconnect' || act === 'test') {
@@ -229,8 +267,14 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
     const accountId = String(d.accountId ?? '').trim();
     if (!accountId) return fail('Which workspace is being subscribed?');
 
-    const amount = Number(d.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return fail('A subscription needs a price above zero.');
+    /* The plan names the price. `amount` in the request is ignored entirely —
+       it is not validated and then used, it is never read. */
+    const planId = String(d.planId ?? '').trim();
+    const plan = PLAN_CENTS[planId];
+    if (!plan) {
+      return fail('Choose one of the published plans. Prices are set by this app, not by the browser.');
+    }
+    const amountCents = plan.cents;
     const currency = (String(d.currency ?? 'USD') || 'USD').toUpperCase();
     if (provider.currencies.length && !provider.currencies.includes(currency)) {
       return fail(`${provider.label} cannot bill in ${currency} — it accepts ${provider.currencies.join(' and ')}.`);
@@ -248,8 +292,10 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
 
     const r = await provider.subscribe(current.key, {
       reference: accountId,
-      planName: String(d.planName ?? 'Subscription').slice(0, 200),
-      amountCents: Math.round(amount * 100),
+      /* The label may come from the caller — it is cosmetic and appears on the
+         receipt. The figure beside it may not. */
+      planName: String(d.planName ?? plan.name).slice(0, 200),
+      amountCents,
       currency,
       email: addr(d.customerEmail) ?? '',
       successUrl: safe(d.successUrl, '/billing?checkout=success'),
