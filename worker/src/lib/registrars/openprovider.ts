@@ -416,9 +416,20 @@ export const openprovider: Provider = {
         label: 'Signing in to your provider account',
         state: 'failed',
         detail: auth.error,
-        fix: refused
-          ? 'Two things give this same answer. First: in your provider control panel open Account → Account Overview and check that API access shows a green dot — it is off by default and has to be switched on. Second: the password here must be your control-panel password, retyped (a saved one is never shown back, so an empty box keeps the old one).'
-          : 'The provider could not be reached at all. If this keeps happening it is on their side, not yours.',
+        /*
+         * Sandbox first, when sandbox is on.
+         *
+         * The test environment is a *separate account* — signing up for the
+         * live one creates no login there, and the provider refuses it with the
+         * same code as a wrong password. Somebody who has just ticked the box on
+         * working live credentials will otherwise spend the afternoon retyping a
+         * password that was right all along.
+         */
+        fix: !refused
+          ? 'The provider could not be reached at all. If this keeps happening it is on their side, not yours.'
+          : creds.sandbox
+            ? 'Most likely: the sandbox is a completely separate account from your live one, with its own username and password. Your live details will never work against it. Either untick "Use the sandbox" and test with your real account, or sign up for a sandbox account and put those details here instead. If you are sure these are sandbox details: check API access is switched on in the sandbox control panel, under Account → Account Overview.'
+            : 'Two things give this same answer. First: in your provider control panel open Account → Account Overview and check that API access shows a green dot — it is off by default and has to be switched on. Second: the password here must be your control-panel password, retyped (a saved one is never shown back, so an empty box keeps the old one).',
         blocking: true,
       });
       /* Nothing below can be answered without a session, and reporting them as

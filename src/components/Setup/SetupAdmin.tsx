@@ -165,6 +165,16 @@ function ProviderPanel() {
           <input type="checkbox" checked={sandbox} onChange={e => setSandbox(e.target.checked)} style={{ width: 15, height: 15 }} />
           Use the sandbox — searches and registrations are simulated and cost nothing
         </label>
+        {/* Said on the control, not in a doc nobody opens. The sandbox is a
+            separate account, and its credentials are not the live ones — which
+            reads as a wrong password to anybody who does not already know. */}
+        {sandbox && (
+          <p style={{ margin: '-6px 0 0 23px', fontSize: 11.5, color: '#b45309', lineHeight: 1.6 }}>
+            The sandbox is a <strong>separate account</strong> with its own username and password. Your
+            live details will not sign in to it — sign up for a sandbox account and use those details
+            here, or untick this and test against your real one.
+          </p>
+        )}
 
         {checks.length > 0 && (
           <div style={{ border: `1px solid ${LINE}`, borderRadius: 12, overflow: 'hidden' }}>

@@ -46,9 +46,15 @@ Press **Save**, then **Test**. Test performs a domain availability check, which
 creates nothing and costs nothing; a green "Working" means the credentials and
 the network path are both good.
 
-**Start in the sandbox.** Run one whole purchase through it — search, pay,
-watch the progress list finish — before you untick it. The sandbox is
-`api.sandbox.openprovider.nl`; live is `api.openprovider.eu`, and the app
+**The sandbox is a separate account.** This catches everybody: signing up for
+your live Openprovider account does not create a sandbox login, and the sandbox
+refuses live credentials with the *same* error as a wrong password. Register
+separately at `cp.sandbox.openprovider.nl/signup` and put those details in the
+form, or leave the box unticked and test against your real account.
+
+**Start in the sandbox if you have one.** Run one whole purchase through it —
+search, pay, watch the progress list finish — before you untick it. The sandbox
+is `api.sandbox.openprovider.nl`; live is `api.openprovider.eu`, and the app
 switches between them from that one checkbox.
 
 ## 3. Set your prices
