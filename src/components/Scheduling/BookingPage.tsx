@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { usePageTitle } from '../../services/pageTitle';
 import { useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Check, Calendar, Globe, Download, X, CalendarPlus } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -130,6 +131,10 @@ export default function BookingPage() {
   const activeLocation = eventType?.location || cfg.location;
   const activeTitle = eventType?.name ?? cfg.title;
   const minNoticeMin = cfg.minNoticeMin ?? 0;
+
+  /* The meeting's own name in the tab. Same reason as the shop and the client
+     report: this page belongs to whoever published it, not to the platform. */
+  usePageTitle(activeTitle || 'Book a time');
   const windowDays = cfg.windowDays ?? 365;
   const usingServer = !!(remoteCfg && remoteCfg !== 'loading');
 

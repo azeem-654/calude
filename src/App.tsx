@@ -38,12 +38,16 @@ import SiteHome from './components/Site/SiteHome';
 import Autopilot from './components/Autopilot/Autopilot';
 import Commerce from './components/Commerce/Commerce';
 import ShopPage from './components/Shop/ShopPage';
+import ClientReport from './components/Portal/ClientReport';
 import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
   const isBooking = location.pathname.startsWith('/book');
   const isShop = location.pathname.startsWith('/shop');
+  /* A reseller's client, opening a report link. Never a login form — they have
+     no account here and are never going to have one. */
+  const isReport = location.pathname.startsWith('/p/');
   const isPreview = location.pathname.startsWith('/preview');
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
@@ -60,6 +64,14 @@ function AppLayout({ isClient }: { isClient: boolean }) {
     return (
       <Routes>
         <Route path="/shop/:slug" element={<ShopPage />} />
+      </Routes>
+    );
+  }
+
+  if (isReport) {
+    return (
+      <Routes>
+        <Route path="/p/:token" element={<ClientReport />} />
       </Routes>
     );
   }
@@ -242,6 +254,17 @@ export default function App() {
      no account and must never meet a login form. */
   const isPublicBooking = window.location.pathname.startsWith(`${base}/book`);
   const isPublicShop = window.location.pathname.startsWith(`${base}/shop`);
+  /* The third anonymous visitor: somebody's client reading their own report. */
+  const isPublicReport = window.location.pathname.startsWith(`${base}/p/`);
+  if (!session && isPublicReport) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="/p/:token" element={<ClientReport />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
   if (!session && isPublicShop) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>

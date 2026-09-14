@@ -29,6 +29,7 @@ import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
+import { handlePortal } from './routes/portal';
 import { handleShop } from './routes/shop';
 import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
@@ -73,6 +74,9 @@ const ROUTES: Record<string, Handler> = {
   '/api/projects.php': handleProjects,
   '/api/setup.php': handleSetup,
   '/api/whitelabel.php': handleWhitelabel,
+  /* The client report. `view` answers to nobody signed in — see routes/portal.ts
+     for what that changes. */
+  '/api/portal.php': handlePortal,
   /* The public shop. Half of this answers to nobody signed in — see
      routes/shop.ts for what that changes. */
   '/api/shop.php': handleShop,
@@ -131,6 +135,52 @@ const ROUTES: Record<string, Handler> = {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+
+    /*
+     * A client report's link preview.
+     *
+     * The page itself already titles its own tab, but a messenger drawing a
+     * preview card runs no JavaScript — it reads the og: tags out of the served
+     * HTML, which name this platform. On a link whose whole purpose is being
+     * pasted to somebody else's client, that preview is the white label falling
+     * over at the last step.
+     *
+     * So the asset is fetched and rewritten on the way out. The client's name
+     * comes from the token, which means a pasted link previews as their own
+     * business rather than as anything of ours.
+     */
+    if (url.pathname.startsWith('/p/')) {
+      const res = await env.ASSETS.fetch(req);
+      const token = url.pathname.slice(3).split('/')[0].toLowerCase();
+      let client = '';
+      if (token.length >= 24) {
+        const row = await env.DB.prepare(
+          `SELECT COALESCE(f.name, '') AS name FROM crm_client_portals p
+           LEFT JOIN crm_portfolios f ON f.id = p.portfolio_id
+           WHERE p.token = ? AND p.enabled = 1`,
+        ).bind(token).first<{ name: string }>().catch(() => null);
+        client = row?.name ?? '';
+      }
+      /* A dead or unknown link gets a neutral title rather than ours — it still
+         must not advertise the platform, and it must not confirm that the token
+         was ever real. */
+      const title = client ? `${client} — progress` : 'Progress report';
+      return new HTMLRewriter()
+        .on('title', { element(el) { el.setInnerContent(title); } })
+        .on('meta[property^="og:"], meta[name^="twitter:"]', {
+          element(el) {
+            const key = el.getAttribute('property') ?? el.getAttribute('name') ?? '';
+            if (key.endsWith(':title')) el.setAttribute('content', title);
+            else if (key.endsWith(':site_name')) el.setAttribute('content', client || 'Progress report');
+            else if (key.endsWith(':description')) el.setAttribute('content', 'A read-only summary of work in progress.');
+            /* Images and URLs are ours and are removed rather than replaced:
+               there is no per-client image to put there, and our logo in a
+               preview card is the same leak in a different shape. */
+            else if (key.endsWith(':image') || key.endsWith(':url')) el.remove();
+          },
+        })
+        .transform(res);
+    }
 
     if (!url.pathname.startsWith('/api/')) {
       /* Not ours: static assets and the SPA fallback are the platform's job. */

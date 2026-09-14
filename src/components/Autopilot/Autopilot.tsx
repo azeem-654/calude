@@ -40,6 +40,7 @@ import NewProject from './NewProject';
 import { fetchBoard, type Portfolio } from '../../services/projects';
 import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
 import SetupProgress from '../Setup/SetupProgress';
+import ClientLinks from './ClientLinks';
 
 const MUTED = '#6b7280';
 
@@ -132,6 +133,11 @@ export default function Autopilot() {
         />
 
         <ProjectBoard key={boardKey} onNewProject={() => setCreating(true)} />
+
+        {/* Below the board, because it is what somebody does *after* looking at
+            the work rather than instead of it. Collapsed by default so it costs
+            nothing to the people who never share anything. */}
+        {portfolios.length > 0 && <ClientLinks portfolios={portfolios} />}
 
         {creating && (
           <NewProject

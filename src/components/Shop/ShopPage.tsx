@@ -24,6 +24,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { usePageTitle } from '../../services/pageTitle';
 import {
   ShoppingBag, Loader, AlertCircle, Plus, Minus, X, ArrowRight, Check, Search,
 } from 'lucide-react';
@@ -114,6 +115,11 @@ export default function ShopPage() {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  /* The shop's own name in the tab. `index.html` names this platform, which is
+     right for the product and wrong for a page belonging to somebody else's
+     business. */
+  usePageTitle(typeof state === 'object' ? state.shop.name : 'Shop');
 
   useEffect(() => {
     let live = true;
