@@ -112,6 +112,31 @@ export interface Outcome {
   error: string;
 }
 
+/**
+ * What is actually wrong with the operator's provider account.
+ *
+ * One `ok: false` from a connection test tells somebody there is a problem and
+ * nothing about which of four unrelated things it is — a password, a switch
+ * that is off by default, an IP restriction, or an empty balance. Each has a
+ * different fix in a different corner of somebody else's control panel, and
+ * guessing between them is where an evening goes.
+ *
+ * So a test returns a list of checks, each with the instruction for its own
+ * failure. `blocking` separates "this will not work at all" from "this will
+ * work until the moment somebody pays you".
+ */
+export interface Check {
+  id: string;
+  label: string;
+  state: 'ok' | 'failed' | 'warning' | 'skipped';
+  /** What it found, in plain words. */
+  detail: string;
+  /** What to do about it. Empty when there is nothing to do. */
+  fix: string;
+  /** True when nothing works until this is fixed. */
+  blocking: boolean;
+}
+
 export interface Provider {
   readonly id: string;
   /** For the owner's own screens. Never rendered to a customer. */
@@ -146,4 +171,13 @@ export interface Provider {
 
   /** SMTP and IMAP settings for a mailbox this provider made. */
   mailSettings(creds: ProviderCreds): { smtpHost: string; smtpPort: number; imapHost: string; imapPort: number };
+
+  /**
+   * Everything that has to be true before a customer can buy anything, checked
+   * in one go and reported as separate answers.
+   *
+   * Buys nothing and changes nothing — pressing it twice must leave no trace in
+   * the operator's account.
+   */
+  diagnose(creds: ProviderCreds): Promise<Check[]>;
 }

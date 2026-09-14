@@ -27,7 +27,7 @@
  * every result is documented as owner-only: it goes in the admin view and the
  * step's `last_error`, never into anything the customer reads.
  */
-import type { CheckResult, DnsRecord, Provider, ProviderCreds } from './types';
+import type { Check, CheckResult, DnsRecord, Provider, ProviderCreds } from './types';
 
 const LIVE = 'https://api.openprovider.eu';
 const SANDBOX = 'https://api.sandbox.openprovider.nl';
@@ -387,6 +387,112 @@ export const openprovider: Provider = {
       },
       error: '',
     };
+  },
+
+  /**
+   * The four things that have to be true, asked one at a time.
+   *
+   * Openprovider answers a wrong password and a disabled API switch with the
+   * same code 196 — their own documentation calls it "Authentication/
+   * Authorization Failed" for both. There is no way to tell them apart from
+   * outside, so this does not pretend to: it names both, in the order they are
+   * most often the cause, with where each one lives. That is more useful than
+   * picking one and being wrong half the time.
+   *
+   * The balance check is the one that matters most and is the easiest to miss.
+   * A zero balance passes every other test — credentials work, searches work,
+   * prices come back — and then fails at the exact moment a customer has paid.
+   */
+  async diagnose(creds) {
+    const checks: Check[] = [];
+
+    /* 1. Can we sign in at all? */
+    tokens.delete(tokenKey(creds));
+    const auth = await login(creds);
+    if (!auth.ok) {
+      const refused = /196|authentication|authorization/i.test(auth.error);
+      checks.push({
+        id: 'auth',
+        label: 'Signing in to your provider account',
+        state: 'failed',
+        detail: auth.error,
+        fix: refused
+          ? 'Two things give this same answer. First: in your provider control panel open Account → Account Overview and check that API access shows a green dot — it is off by default and has to be switched on. Second: the password here must be your control-panel password, retyped (a saved one is never shown back, so an empty box keeps the old one).'
+          : 'The provider could not be reached at all. If this keeps happening it is on their side, not yours.',
+        blocking: true,
+      });
+      /* Nothing below can be answered without a session, and reporting them as
+         failures too would be four alarms for one fault. */
+      for (const [id, label] of [['ip', 'IP restrictions'], ['balance', 'Account balance'], ['search', 'Searching for domains']] as const) {
+        checks.push({ id, label, state: 'skipped', detail: 'Not checked — sign-in failed first.', fix: '', blocking: false });
+      }
+      return checks;
+    }
+    checks.push({ id: 'auth', label: 'Signing in to your provider account', state: 'ok', detail: 'Accepted.', fix: '', blocking: false });
+
+    /*
+     * 2. An IP restriction cannot be read, only inferred.
+     *
+     * The allow-list lives on the contact record and applies to the caller, so
+     * a call made from a blocked address never gets far enough to read it. What
+     * we can say is that this call arrived — which means whatever list exists
+     * does not exclude this Worker *today*. Cloudflare's addresses are not
+     * fixed, so a list that happens to contain today's is not a list that will
+     * contain tomorrow's, and saying so is the whole point of the check.
+     */
+    checks.push({
+      id: 'ip',
+      label: 'IP restrictions',
+      state: 'warning',
+      detail: 'This call was accepted, so no restriction is blocking it right now.',
+      fix: 'Worth confirming once: in your provider control panel, on your contact details page, the API access IP whitelist and blacklist should both be completely empty. This app runs on Cloudflare Workers, which have no fixed outbound address — a list that allows today\'s will refuse next week\'s.',
+      blocking: false,
+    });
+
+    /* 3. The balance. */
+    const acct = await call<{ balance?: unknown; reserved_balance?: unknown; status?: unknown; company_name?: unknown }>(
+      creds, 'GET', '/v1/resellers',
+    );
+    if (!acct.ok) {
+      checks.push({
+        id: 'balance', label: 'Account balance', state: 'warning',
+        detail: `Could not read it: ${acct.error}`,
+        fix: 'Check the balance in your provider control panel by hand before taking a live order.',
+        blocking: false,
+      });
+    } else {
+      const balance = Number(acct.data?.balance) || 0;
+      const enough = balance > 0;
+      checks.push({
+        id: 'balance',
+        label: 'Account balance',
+        state: enough ? 'ok' : 'failed',
+        detail: enough
+          ? `${balance.toFixed(2)} available.`
+          : 'Zero. Domain registration is charged to this the moment it happens.',
+        fix: enough
+          ? ''
+          : 'Top the balance up in your provider control panel before going live. Everything else will keep working until a customer pays you — and then the registration will fail with their money already taken. Sandbox mode needs no balance, so you can test the whole flow today.',
+        /* Blocking for live, not for testing — which is why the fix says so
+           rather than the flag pretending sandbox is broken too. */
+        blocking: !enough && !creds.sandbox,
+      });
+    }
+
+    /* 4. The thing customers actually do. */
+    const probe = await this.check(creds, ['protectedcentral-connection-test.com']);
+    checks.push({
+      id: 'search',
+      label: 'Searching for domains',
+      state: probe.ok ? 'ok' : 'failed',
+      detail: probe.ok
+        ? `Working${creds.sandbox ? ' — in sandbox mode, so results are simulated and nothing can be bought for real.' : '.'}`
+        : probe.error,
+      fix: probe.ok ? '' : 'Sign-in worked but searching did not, which usually means the account is not finished — the provider may need you to complete reseller onboarding before the domain API answers.',
+      blocking: !probe.ok,
+    });
+
+    return checks;
   },
 
   mailSettings(creds) {

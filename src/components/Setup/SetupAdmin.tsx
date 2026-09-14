@@ -20,11 +20,12 @@
 import { useEffect, useState } from 'react';
 import {
   Server, KeyRound, Loader, Check, AlertCircle, RefreshCw, Tag, ListChecks, ChevronDown, ChevronRight,
+  XCircle, MinusCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
   adminJobs, listPrices, money, providerState, retryJob, savePriceRow, saveProvider, testProvider,
-  type AdminDomain, type AdminOrder, type AdminStep, type PriceRow, type ProviderState,
+  type AdminDomain, type AdminOrder, type AdminStep, type PriceRow, type ProviderCheck, type ProviderState,
 } from '../../services/digitalSetup';
 
 const INK = '#17191c';
@@ -60,10 +61,19 @@ function ProviderPanel() {
   const [mailHost, setMailHost] = useState('');
   const [sandbox, setSandbox] = useState(false);
   const [busy, setBusy] = useState('');
+  /*
+   * Kept apart from `state` on purpose.
+   *
+   * A plain read returns no checks, and clearing them on every refresh would
+   * wipe the answer the moment the panel reloaded. These are the result of the
+   * last Test somebody actually ran, and they stay until the next one.
+   */
+  const [checks, setChecks] = useState<ProviderCheck[]>([]);
 
   const apply = (s: ProviderState | null) => {
     if (!s) return;
     setState(s);
+    if (s.checks?.length) setChecks(s.checks);
     setUsername(s.username);
     setResellerId('');
     setMailHost(s.mailHost);
@@ -90,11 +100,21 @@ function ProviderPanel() {
 
   const test = async () => {
     setBusy('test');
+    setChecks([]);
     const r = await testProvider();
     setBusy('');
     if (r.error) { addNotification(r.error, 'error'); const s = await providerState(); apply(s); return; }
     apply(r.state);
-    addNotification('Connected. Domains can be searched and registered.', 'success');
+    const found = r.state?.checks ?? [];
+    const bad = found.filter(c => c.state === 'failed');
+    /* Named rather than counted. "2 problems" sends somebody hunting; the name
+       of the first one is the thing they can act on. */
+    addNotification(
+      bad.length
+        ? `${bad[0].label} — ${bad.length > 1 ? `and ${bad.length - 1} more below` : 'see below'}.`
+        : 'All checks passed. Domains can be searched and registered.',
+      bad.length ? 'error' : 'success',
+    );
   };
 
   const connected = !!state?.connected;
@@ -145,6 +165,45 @@ function ProviderPanel() {
           <input type="checkbox" checked={sandbox} onChange={e => setSandbox(e.target.checked)} style={{ width: 15, height: 15 }} />
           Use the sandbox — searches and registrations are simulated and cost nothing
         </label>
+
+        {checks.length > 0 && (
+          <div style={{ border: `1px solid ${LINE}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '9px 13px', background: '#fafbfc', borderBottom: `1px solid ${LINE}`, fontSize: 11.5, fontWeight: 800, color: INK }}>
+              What we checked
+            </div>
+            <div style={{ display: 'grid' }}>
+              {checks.map(c => {
+                const tone = c.state === 'ok' ? { fg: '#0f7b3d', Icon: Check }
+                  : c.state === 'failed' ? { fg: '#b42318', Icon: XCircle }
+                    : c.state === 'warning' ? { fg: '#b45309', Icon: AlertCircle }
+                      : { fg: MUTED, Icon: MinusCircle };
+                return (
+                  <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 13px', borderTop: `1px solid ${LINE}` }}>
+                    <tone.Icon size={15} color={tone.fg} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{c.label}</span>
+                        {c.blocking && c.state === 'failed' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#b42318', background: '#fdf3f3', padding: '2px 7px', borderRadius: 999 }}>
+                            Blocks everything
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2, lineHeight: 1.55, wordBreak: 'break-word' }}>{c.detail}</div>
+                      {/* The instruction, not just the verdict. This is the
+                          whole reason the panel exists. */}
+                      {c.fix && (
+                        <div style={{ fontSize: 11.5, color: '#1e3a5f', marginTop: 5, lineHeight: 1.6, padding: '8px 10px', background: '#f4f7fb', borderRadius: 8 }}>
+                          {c.fix}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {state?.lastError && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: '#fdf3f3', border: '1px solid #fecaca' }}>

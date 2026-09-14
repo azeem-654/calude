@@ -186,6 +186,16 @@ export async function createMailbox(domain: string, localPart: string, displayNa
 
 /* ── The owner's own ─────────────────────────────────────────────────────── */
 
+/** One thing that has to be true, and what to do when it is not. */
+export interface ProviderCheck {
+  id: string;
+  label: string;
+  state: 'ok' | 'failed' | 'warning' | 'skipped';
+  detail: string;
+  fix: string;
+  blocking: boolean;
+}
+
 export interface ProviderState {
   provider: string;
   connected: boolean;
@@ -197,6 +207,8 @@ export interface ProviderState {
   lastError: string;
   updatedAt: string;
   choices: Array<{ id: string; label: string }>;
+  /** Only populated by a Test. Empty on a plain read. */
+  checks: ProviderCheck[];
 }
 
 export interface PriceRow {

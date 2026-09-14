@@ -30,7 +30,7 @@ import {
 import { decryptSecret } from '../lib/crypto';
 import {
   connectedProvider, providerChoices, recordProviderStatus, saveProviderCreds,
-  SETUP_KIND, type DnsRecord,
+  SETUP_KIND, type Check, type DnsRecord,
 } from '../lib/registrars';
 import {
   loadPrices, quoteBasket, RETAIL_CURRENCY, retailForDomain, savePrice,
@@ -97,14 +97,17 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
       if (!r.ok) return fail(r.error);
     }
 
+    let checks: Check[] = [];
     if (act === 'provider_test') {
       const conn = await connectedProvider(env);
       if (!conn) return fail('Nothing is connected yet.');
-      /* A check rather than a purchase: pressing Test must leave no trace in
-         the operator's registrar account. */
-      const probe = await conn.provider.check(conn.creds, ['protectedcentral-connection-test.com']);
-      await recordProviderStatus(env, probe.ok, probe.error);
-      if (!probe.ok) return fail(probe.error);
+      /* Every check at once, and each one answerable on its own. A single
+         pass/fail here told the owner there was a problem and nothing about
+         which of four unrelated things it was. Nothing is bought: pressing Test
+         twice leaves no trace in the operator's account. */
+      checks = await conn.provider.diagnose(conn.creds);
+      const blocked = checks.find(c => c.blocking && c.state === 'failed');
+      await recordProviderStatus(env, !blocked, blocked ? `${blocked.label}: ${blocked.detail}` : '');
     }
 
     const row = await env.DB.prepare(
@@ -138,6 +141,10 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
         lastError: row?.last_error ?? '',
         updatedAt: row?.updated_at ?? '',
         choices: providerChoices(),
+        /* Empty on a plain read. Only a Test produces them, so the screen shows
+           the last thing that was actually checked rather than a stale verdict
+           redrawn as though it were fresh. */
+        checks,
       },
     });
   }
