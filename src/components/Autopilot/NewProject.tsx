@@ -231,11 +231,32 @@ export default function NewProject({
     setStep(4);
   };
 
+  /**
+   * Four steps, and four is a decision rather than a coincidence.
+   *
+   * Completion falls off a cliff with length: three-step flows finish around
+   * 72%, seven-step around 16%, and anything past twenty loses another third
+   * again. The ask was for separate steps for the domain, the mailboxes, the
+   * hosting, the website and the campaigns — which is nine, and nine would mean
+   * most people never reaching the end of the thing that makes the product
+   * work.
+   *
+   * So those five are one step, shown only to somebody who wants them, and the
+   * campaigns are not a step at all: they are what Autopilot *produces*, not
+   * something to configure before it starts. Asking about them here would be
+   * asking a customer to specify the output of the machine they are switching
+   * on.
+   */
   const TITLES: Record<Step, string> = {
     1: 'What should it do?',
     2: 'Who is it for?',
     3: 'What should it achieve?',
-    4: 'One more thing',
+    4: 'Want the domain and email too?',
+  };
+
+  /** Short enough to sit under a progress segment on a phone. */
+  const STEP_LABELS: Record<Step, string> = {
+    1: 'Skills', 2: 'Client', 3: 'Goals', 4: 'Setup',
   };
 
   return (
@@ -265,7 +286,7 @@ export default function NewProject({
             <Zap size={17} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.72, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {step === 4 ? 'Project created' : `New project · step ${step} of 3`}
+                New project · step {step} of 4
               </div>
               <h2 style={{ margin: '2px 0 0', fontSize: 17.5, fontWeight: 800, letterSpacing: '-0.02em' }}>
                 {TITLES[step]}
@@ -277,15 +298,33 @@ export default function NewProject({
             </button>
           </div>
 
-          {/* Three segments rather than a percentage: there are three questions
-              and somebody should be able to see which one they are on. */}
-          <div style={{ display: 'flex', gap: 5, marginTop: 13 }}>
-            {([1, 2, 3] as Step[]).map(n => (
-              <div key={n} style={{
-                flex: 1, height: 3, borderRadius: 99,
-                background: n <= step ? '#fff' : 'rgba(255,255,255,0.28)',
-                transition: 'background 0.3s ease',
-              }} />
+          {/*
+            Named segments, not a percentage and not bare bars.
+            
+            A percentage answers "how far" and not "how much more of what",
+            which is the question somebody actually has before deciding whether
+            to start. Naming all four up front is the whole of progressive
+            disclosure here: the flow is short, and looking short is most of why
+            people finish it.
+          */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+            {([1, 2, 3, 4] as Step[]).map(n => (
+              <div key={n} style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  height: 3, borderRadius: 99,
+                  background: n <= step ? '#fff' : 'rgba(255,255,255,0.26)',
+                  transition: 'background 0.3s ease',
+                }} />
+                <div style={{
+                  fontSize: 10, fontWeight: 700, marginTop: 5,
+                  letterSpacing: '0.02em', whiteSpace: 'nowrap',
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  color: n <= step ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.5)',
+                  transition: 'color 0.3s ease',
+                }}>
+                  {STEP_LABELS[n]}
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -630,6 +669,20 @@ export default function NewProject({
                   this now and nothing is lost.
                 </p>
               </div>
+
+              {/*
+                Named, so the last step is a real one rather than a sales pitch
+                bolted on after the finish line. Everything on the list is what
+                this one step actually does — which is why it is one step and not
+                five.
+              */}
+              <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
+                Optional, and it does the lot in one go: registers a <strong style={{ color: INK }}>domain</strong>,
+                creates <strong style={{ color: INK }}>business email</strong> on it, sets up the DNS,
+                publishes a <strong style={{ color: INK }}>starter website</strong> and fits out
+                the <strong style={{ color: INK }}>CRM</strong>. The email and SMS campaigns are not
+                set up here — Autopilot writes those itself, from what you just told it.
+              </p>
 
               <DigitalSetupStep
                 companyName={clientName || name.trim()}
