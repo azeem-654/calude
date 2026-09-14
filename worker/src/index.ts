@@ -28,6 +28,7 @@ import { handleSupplier } from './routes/supplier';
 import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
 import { handleSetup } from './routes/setup';
+import { handleWhitelabel } from './routes/whitelabel';
 import { handleShop } from './routes/shop';
 import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
@@ -71,6 +72,7 @@ const ROUTES: Record<string, Handler> = {
      actually runs. See routes/projects.ts for why the Sales Agent folded in. */
   '/api/projects.php': handleProjects,
   '/api/setup.php': handleSetup,
+  '/api/whitelabel.php': handleWhitelabel,
   /* The public shop. Half of this answers to nobody signed in — see
      routes/shop.ts for what that changes. */
   '/api/shop.php': handleShop,

@@ -15,6 +15,7 @@ import { fetchReplies, saveAiKey, testAiKey, type AiStatus } from '../../service
 import DnsManager from '../Setup/DnsManager';
 import MailboxManager from '../Setup/MailboxManager';
 import SetupAdmin from '../Setup/SetupAdmin';
+import WhiteLabelPanel from './WhiteLabelPanel';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -1310,7 +1311,21 @@ export default function Settings() {
           {activeTab === 'deliverability' && <Deliverability />}
 
           {activeTab === 'security' && <SecurityPanel />}
-          {activeTab === 'branding' && <BrandingPanel />}
+          {activeTab === 'branding' && (
+            <>
+              <BrandingPanel />
+              {/* Where the branding is *seen*. Beside it rather than in a tab of
+                  its own, because "what is it called" and "where do my clients
+                  find it" are one decision made in one sitting. */}
+              <div style={{ background: 'white', borderRadius: 18, border: '1px solid #e6e9f0', padding: 24, marginTop: 20 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Your own address</h3>
+                <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
+                  Where your clients sign in. Your name, your logo, your web address.
+                </p>
+                <WhiteLabelPanel />
+              </div>
+            </>
+          )}
           {activeTab === 'infrastructure' && <InfrastructurePanel />}
           {activeTab === 'digital-setup' && <DigitalSetupTab />}
           {activeTab === 'automation' && <AutomationPanel />}

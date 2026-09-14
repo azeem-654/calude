@@ -164,7 +164,26 @@ likely to catch you out:
 Prices are set in the same place and can be changed at any time; an order
 already placed keeps the price it was sold at.
 
-### 11. Open a shop, if a workspace sells things
+### 11. White label: let resellers use their own address
+
+**Settings → Branding → Your own address.** Two tiers, and only one needs you.
+
+**Free subdomains work now.** A reseller claims `theiragency.protectedcentral.com`
+and it is live immediately — Cloudflare's universal certificate already covers
+one level of subdomain. For this to serve, attach a **wildcard Worker custom
+domain** for `*.protectedcentral.com` once (`npm run domains`, or the Cloudflare
+dashboard). Without it the row exists and the address does not resolve.
+
+**Their own domain needs Cloudflare for SaaS.** A paid product. Once you have
+it, put the zone id, an API token with *Zone → SSL and Certificates → Edit*, and
+your CNAME target into **Settings → Domains & Email** (owner only). Until then
+the option shows as unavailable rather than accepting a hostname that would
+never work.
+
+`app`, `www`, the marketing apex and the product's own hostname cannot be
+claimed by anybody — checked on the server, not just hidden.
+
+### 12. Open a shop, if a workspace sells things
 
 **Websites → Shops.** A shop is a page at `/shop/<name>` that anybody can open
 without signing in, listing that workspace's active products and taking payment

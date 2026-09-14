@@ -30,11 +30,29 @@ const APP_HOSTS = new Set(['app.protectedcentral.com']);
 const host = (): string =>
   (typeof window === 'undefined' ? '' : window.location.hostname).toLowerCase();
 
-/** True on protectedcentral.com (or www), where only the marketing site exists. */
-export const isMarketingHost = (): boolean => MARKETING_HOSTS.has(host());
+/**
+ * A reseller's own address, resolved before this module is asked anything.
+ *
+ * `resolveHost()` fills this in at boot. It is a plain module variable rather
+ * than state because every function here is called synchronously from render —
+ * `isAppHost()` decides what the root route shows, and it cannot await.
+ */
+let whiteLabelled = false;
 
-/** True on app.protectedcentral.com, where the marketing site is somebody else's URL. */
-export const isAppHost = (): boolean => APP_HOSTS.has(host());
+/** Called once at boot, by the resolver. */
+export function markWhiteLabelHost(on: boolean): void { whiteLabelled = on; }
+
+/** True on protectedcentral.com (or www), where only the marketing site exists. */
+export const isMarketingHost = (): boolean => !whiteLabelled && MARKETING_HOSTS.has(host());
+
+/**
+ * True where the product lives.
+ *
+ * A reseller's own hostname counts. Their clients arrive expecting a login, not
+ * a page advertising the platform their agency resells — showing them the
+ * marketing site would undo the white label at the first click.
+ */
+export const isAppHost = (): boolean => whiteLabelled || APP_HOSTS.has(host());
 
 /**
  * A link into the product.

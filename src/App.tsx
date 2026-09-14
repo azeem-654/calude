@@ -5,7 +5,8 @@ import TopNav, { IconRail } from './components/Layout/TopNav';
 import LoginScreen from './components/Auth/LoginScreen';
 import { getSession } from './services/auth';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
-import { isAppHost, isMarketingHost } from './services/hosts';
+import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
+import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync } from './services/serverData';
 import { Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
@@ -144,10 +145,45 @@ function AppLayout({ isClient }: { isClient: boolean }) {
 
 function SyncGate({ children }: { children: React.ReactNode }) {
   const [syncing, setSyncing] = useState(true);
-  const brand = activeBranding();
+  const [resolved, setResolved] = useState<ResolvedHost | null>(() => cachedHost());
+  const local = activeBranding();
+
+  /*
+   * A reseller's branding wins over this browser's.
+   *
+   * Their client arrives at the reseller's address having never seen this
+   * workspace, so there is nothing local worth preferring — and on a shared
+   * computer the local copy belongs to whoever logged in last, which is exactly
+   * the wrong logo to paint.
+   */
+  const brand = resolved
+    ? {
+        ...local,
+        appName: resolved.appName || local.appName,
+        logoUrl: resolved.logoUrl || local.logoUrl,
+        loginHeadline: resolved.loginHeadline || local.loginHeadline,
+      }
+    : local;
+
   useEffect(() => {
     let alive = true;
-    initCloudSync().finally(() => { if (alive) setSyncing(false); });
+    /*
+     * Resolved before sync, not beside it.
+     *
+     * The hostname decides which workspace a visitor is even looking at, and
+     * starting the data sync before that is settled means syncing the wrong one
+     * and then correcting it on screen.
+     */
+    void (async () => {
+      const match = await resolveHost();
+      if (!alive) return;
+      if (match) {
+        setResolved(match);
+        markWhiteLabelHost(true);
+      }
+      await initCloudSync();
+      if (alive) setSyncing(false);
+    })();
     return () => { alive = false; };
   }, []);
   if (!syncing) return <>{children}</>;
