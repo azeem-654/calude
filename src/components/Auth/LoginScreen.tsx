@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader, UserPlus, AlertTriangle } from 'lucide-react';
-import { login, bootstrap, register, hasAnyUser, authStatus } from '../../services/auth';
+import { login, bootstrap, register, hasAnyUser, authStatus, requestLoginCode, verifyLoginCode } from '../../services/auth';
 import { activeBranding } from '../../services/tenancy';
 import { passwordProblem, passwordStrength } from '../../services/password';
 import { LogoMark } from '../shared/Logo';
@@ -59,6 +59,38 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const [notice, setNotice] = useState('');
   const [checking, setChecking] = useState(true);
   const [testLogin, setTestLogin] = useState<{ username: string } | null>(null);
+
+  /*
+   * Signing in with a code, as a state rather than a fourth mode.
+   *
+   * It shares the email field with the password form — somebody who typed
+   * their address and then decided not to remember a password should not have
+   * to type it again, which is the whole reason this path exists.
+   */
+  const [codeStep, setCodeStep] = useState<'off' | 'sent'>('off');
+  const [code, setCode] = useState('');
+  /** Ask the server to post a code to whatever is in the email box. */
+  const sendCode = async () => {
+    const to = email.trim();
+    /* Checked here so somebody who pressed the button with an empty box is told
+       why, rather than watching a request fail for a reason they cannot see. */
+    if (!to.includes('@')) { setError('Enter your email address first.'); return; }
+    setBusy(true); setError(''); setNotice('');
+    const r = await requestLoginCode(to);
+    setBusy(false);
+    if (!r.ok) { setError(r.error); return; }
+    setCodeStep('sent');
+    setNotice(r.message);
+  };
+
+  const enterCode = async () => {
+    setBusy(true); setError('');
+    const r = await verifyLoginCode(email.trim(), code);
+    setBusy(false);
+    if (!r.ok) { setError(r.error); return; }
+    onAuthed();
+  };
+
   const strength = passwordStrength(password);
 
   /* The server is the only thing that knows whether setup already happened.
@@ -217,6 +249,53 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               {busy || checking ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} /></>}
             </button>
           </form>
+
+          {/* ── Or: a code, and no password at all ──
+              Offered on both sign-in and sign-up, because the code proves the
+              same thing either way — that they hold the mailbox — and a new
+              address becomes an account on the spot. */}
+          {mode !== 'setup' && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 13 }}>
+                <span style={{ flex: 1, height: 1, background: '#e6e9f0' }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>OR</span>
+                <span style={{ flex: 1, height: 1, background: '#e6e9f0' }} />
+              </div>
+
+              {codeStep === 'off' ? (
+                <button type="button" disabled={busy} onClick={() => void sendCode()} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',
+                  padding: '12px', background: '#fff', color: INK, border: '1px solid #e6e9f0',
+                  borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: busy ? 'default' : 'pointer',
+                  fontFamily: 'inherit',
+                }}>
+                  <Mail size={15} /> Email me a sign-in code
+                </button>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <input
+                    style={{ ...inp, paddingLeft: 13, textAlign: 'center', fontSize: 22, fontWeight: 700, letterSpacing: '0.28em' }}
+                    value={code} inputMode="numeric" autoComplete="one-time-code" autoFocus
+                    maxLength={6} placeholder="000000"
+                    onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onKeyDown={e => { if (e.key === 'Enter' && code.length === 6) { e.preventDefault(); void enterCode(); } }}
+                  />
+                  <button type="button" disabled={busy || code.length !== 6} onClick={() => void enterCode()} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '13px', background: busy || code.length !== 6 ? '#c7c9d3' : INK, color: '#fff',
+                    border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700,
+                    cursor: busy || code.length !== 6 ? 'default' : 'pointer', fontFamily: 'inherit',
+                  }}>
+                    {busy ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>Sign in <ArrowRight size={15} /></>}
+                  </button>
+                  <button type="button" onClick={() => { setCodeStep('off'); setCode(''); setError(''); setNotice(''); }}
+                    style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontSize: 12, color: MUTED, cursor: 'pointer', textDecoration: 'underline' }}>
+                    Use a password instead
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Whichever form is showing, the other one is a click away. Arriving

@@ -158,9 +158,12 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
 
   if (act === 'save_price') {
     if (!isOwner(user)) return fail('Only the installation owner can change prices.', 403);
+    /* Converted but not defended here — `|| 0` would turn "abc" into a price of
+       nothing before savePrice ever saw it, which is the bug this pair of
+       changes fixes. The validation belongs where the rule lives. */
     const r = await savePrice(env, String(d.kind ?? ''), String(d.code ?? ''), {
-      retailCents: Math.round(Number(d.retailCents) || 0),
-      markupPct: Math.round(Number(d.markupPct) || 0),
+      retailCents: d.retailCents === undefined ? undefined : Number(d.retailCents),
+      markupPct: d.markupPct === undefined ? undefined : Number(d.markupPct),
       label: String(d.label ?? ''),
     });
     if (!r.ok) return fail(r.error);
@@ -326,7 +329,16 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
 
   /* ── What a basket costs ──────────────────────────────────────────────── */
 
-  const quoteFor = async (): Promise<{ quote: Quote; domain: string } | { error: string }> => {
+  /*
+   * `wholesaleCents` is on this internal shape and on nothing that is returned.
+   *
+   * The balance guard used to ask the registrar a second time for a price the
+   * quote had just fetched — two calls to a paid, rate-limited API for every
+   * checkout, and two chances for the second answer to differ from the one the
+   * customer was shown. It is carried through instead. The route below returns
+   * `q.quote` and never `q`, so the cost still cannot reach a browser.
+   */
+  const quoteFor = async (): Promise<{ quote: Quote; domain: string; wholesaleCents: number } | { error: string }> => {
     const domain = String(d.domain ?? '').trim().toLowerCase();
     if (!domain.includes('.')) return { error: 'Choose a domain first.' };
 
@@ -348,23 +360,7 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
       crm: !!d.crm,
     });
     if (!costed) return { error: 'We could not price that domain just now.' };
-    /* `costed.wholesaleCents` stops here. Only `quote` is returned. */
-    return { quote: costed.quote, domain };
-  };
-
-  /**
-   * What this order would cost *us*, for the guard above and nothing else.
-   *
-   * Deliberately not part of `quoteFor`, which returns the shape that goes to a
-   * browser. Keeping the two apart is what stops a cost being added to that
-   * shape by accident later.
-   */
-  const wholesaleOf = async (domain: string): Promise<number | null> => {
-    const conn = await connectedProvider(env);
-    if (!conn) return null;
-    const checked = await conn.provider.check(conn.creds, [domain]);
-    const cost = checked.results[0]?.cost;
-    return cost ? cost.cents : null;
+    return { quote: costed.quote, domain, wholesaleCents: costed.wholesaleCents };
   };
 
   if (act === 'quote') {
@@ -398,13 +394,15 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
     const conn = await connectedProvider(env);
     if (conn) {
       const bal = await conn.provider.balance(conn.creds);
-      const costed = await wholesaleOf(q.domain);
+      const costed = q.wholesaleCents > 0 ? q.wholesaleCents : null;
       /*
        * A balance we could not read is not a balance of zero.
        *
        * Blocking every sale because the supplier's account endpoint had a bad
        * minute would be worse than the problem — the registration itself would
-       * have worked. Unknown lets it through; known-and-short does not.
+       * have worked. Unknown lets it through; known-and-short does not. A
+       * wholesale of zero is the same kind of unknown: the registrar quoted
+       * nothing, so there is no figure to compare a balance against.
        */
       if (bal && costed !== null && bal.cents < costed) {
         return fail(

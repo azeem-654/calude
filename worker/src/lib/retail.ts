@@ -81,11 +81,30 @@ export async function savePrice(
   if (k !== 'domain' && k !== 'service') return { ok: false, error: 'A price is either for a domain extension or for a service.' };
   if (!/^[a-z0-9.-]{1,32}$/.test(c)) return { ok: false, error: 'That is not an extension or service this can price.' };
 
+  /*
+   * Rejected, not coerced.
+   *
+   * This used to be `Math.round(patch.retailCents ?? 0)`, and `Number("abc")`
+   * is NaN, and `Math.round(NaN)` clamps to 0. So a price that arrived as
+   * anything non-numeric silently *wiped* the one that was configured, and the
+   * screen said "saved". Zero is a legitimate price — the content engine ships
+   * at it — so it cannot be used as the sentinel for "nothing sensible
+   * arrived"; the only honest check is whether the number is a number.
+   */
+  const rawRetail = patch.retailCents;
+  const rawMarkup = patch.markupPct;
+  if (rawRetail !== undefined && !Number.isFinite(rawRetail)) {
+    return { ok: false, error: 'That is not a price. Enter an amount in numbers.' };
+  }
+  if (rawMarkup !== undefined && !Number.isFinite(rawMarkup)) {
+    return { ok: false, error: 'That is not a percentage. Enter a number.' };
+  }
+
   /* Clamped rather than trusted. A negative price is a refund on every sale and
      a markup in the thousands is a typo somebody would only find in a support
      ticket. */
-  const retail = Math.min(Math.max(Math.round(patch.retailCents ?? 0), 0), 10_000_00);
-  const markup = Math.min(Math.max(Math.round(patch.markupPct ?? 100), 0), 1000);
+  const retail = Math.min(Math.max(Math.round(rawRetail ?? 0), 0), 10_000_00);
+  const markup = Math.min(Math.max(Math.round(rawMarkup ?? 100), 0), 1000);
 
   await env.DB.prepare(
     `INSERT INTO crm_retail_prices (kind, code, retail_cents, currency, markup_pct, label, updated_at)

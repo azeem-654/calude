@@ -222,6 +222,53 @@ export async function login(email: string, password: string): Promise<{ ok: bool
   return { ok: true };
 }
 
+/**
+ * Adopt a session the server just issued, and point the browser at the right
+ * workspace.
+ *
+ * Lifted out of `login` unchanged rather than copied, because the two paths
+ * ending up with different workspace-selection rules is exactly how the install
+ * owner once landed in an invented workspace. One rule, two callers.
+ */
+function adoptSession(data: Record<string, unknown>): void {
+  const user = data.user as AuthUser;
+  setSession({ token: data.token as string, user, backend: 'php' });
+
+  if (user.accountId) {
+    setActiveWorkspace(user.accountId);
+    return;
+  }
+  const owned = (data.workspaces as { accountId?: string }[] | undefined) ?? [];
+  const ids = owned.map(w => String(w.accountId ?? '')).filter(Boolean);
+  if (!ids.length) return;
+  let current = '';
+  try { current = window.localStorage.getItem('crm_active_account') ?? ''; } catch { current = ''; }
+  if (!current || !ids.includes(current)) setActiveWorkspace(ids[0]);
+}
+
+/**
+ * Ask for a sign-in code.
+ *
+ * Deliberately says the same thing whether or not the address has an account —
+ * a form that answers differently is a way to find out who is registered.
+ */
+export async function requestLoginCode(email: string): Promise<{ ok: boolean; message: string; error: string }> {
+  const res = await php('request_code', { email });
+  if (!res) return { ok: false, message: '', error: 'Could not reach the server.' };
+  return res.ok
+    ? { ok: true, message: String(res.data.message ?? 'Check your email.'), error: '' }
+    : { ok: false, message: '', error: String(res.data.error ?? 'Could not send a code.') };
+}
+
+/** Exchange the six digits for a session. Creates the account if it is new. */
+export async function verifyLoginCode(email: string, code: string): Promise<{ ok: boolean; error: string }> {
+  const res = await php('verify_code', { email, code });
+  if (!res) return { ok: false, error: 'Could not reach the server.' };
+  if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That code did not work.') };
+  adoptSession(res.data);
+  return { ok: true, error: '' };
+}
+
 export async function logout() {
   const s = getSession();
   if (s?.backend === 'php') await php('logout', { token: s.token });

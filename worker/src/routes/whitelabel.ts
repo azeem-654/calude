@@ -66,7 +66,10 @@ const SUBDOMAIN_SUFFIX = 'protectedcentral.com';
 
 /** Lower-case, no port, no trailing dot, no scheme. Applied to everything. */
 function cleanHost(raw: unknown): string {
-  return String(raw ?? '')
+  /* Capped before anything else touches it. A hostname is at most 253
+     characters by the standard, and an unbounded string from an unauthenticated
+     caller should not become a database parameter. */
+  return String(raw ?? '').slice(0, 253)
     .trim().toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')
