@@ -28,6 +28,7 @@ import TeamFeed from './TeamFeed';
 import type { Contact } from '../../types';
 import ContactProfile from './ContactProfile';
 import ImportWizard from './ImportWizard';
+import FindProspects from './FindProspects';
 
 const statusColors: Record<string, { bg: string; color: string }> = {
   lead: { bg: '#eff6ff', color: '#2563eb' },
@@ -160,6 +161,7 @@ export default function Contacts() {
   const [profileContact, setProfileContact] = useState<Contact | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showImport, setShowImport] = useState(false);
+  const [showFind, setShowFind] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
   const [sortField, setSortField] = useState<string>('lastActivity');
@@ -459,6 +461,11 @@ export default function Contacts() {
               title={can('export', actor) ? 'Export the current view to CSV' : denyReason('export', actor)}
               style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Download size={14} color="#64748b" /> Export
+            </button>
+            {/* Next to Import, because it is the same job from the other end:
+                Import is "I have a list", this is "I need one". */}
+            <button onClick={() => setShowFind(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+              <Search size={14} color="#64748b" /> Find businesses
             </button>
             <button onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Upload size={14} color="#64748b" /> Import
@@ -761,6 +768,7 @@ export default function Contacts() {
         </div>
       </div>
 
+      {showFind && <FindProspects onClose={() => setShowFind(false)} />}
       {showModal && <ContactModal onClose={() => setShowModal(false)} onSave={addContact} />}
       {editContact && <ContactModal initial={editContact} onClose={() => setEditContact(null)} onSave={(updates) => { updateContact(editContact.id, updates); setEditContact(null); }} />}
       {showImport && (

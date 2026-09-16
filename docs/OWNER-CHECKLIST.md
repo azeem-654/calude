@@ -214,7 +214,44 @@ It will not publish until a processor is connected and tested under *Getting
 paid* (item 5) — a live shop that cannot be paid takes email addresses and gives
 nothing back. Products come from **Sell**, and only ones marked *active* appear.
 
-### 13. Sign in with Google, if you want the button — optional
+### 13. Content review — check it weekly
+
+**Workspace → Content review** (you only; sub-accounts cannot see it or reach
+it). Anything the filter stopped on its way out is listed there with the text,
+what matched, and whose account it was. Nothing in that list has been sent.
+
+Two things worth knowing:
+
+- **The AI second pass needs an AI key on the workspace that wrote the
+  content.** Without one, the filter's suspicion stands and the item is held
+  rather than cleared. That is deliberate — holding costs you a click, sending
+  does not come back — but it means a busy queue on installs where customers
+  have not connected a key.
+- **Suspending an account does not lock it.** They can still sign in, read and
+  export; they cannot send or publish. That is clause 6.2 of the policy and it
+  is a promise, not an oversight.
+
+`npm run test:moderation` argues with every rule in the filter, in both
+directions. Run it if you change the word list — the half that matters is the
+seventeen pieces of ordinary trade copy that must *not* be flagged.
+
+### 14. Prospect search is free now — the Places key can go
+
+**Contacts → Find businesses** searches OpenStreetMap. No key, no account, no
+bill, and the results may be kept, which is the part that matters.
+
+The old Google Places search is still wired up for installs that configured a
+key, but nothing reaches for it any more and you can delete the key. Two reasons
+it had to go: Places charges $32 per thousand searches past a 5,000/month
+allowance, and its terms forbid storing what comes back beyond a place id — so a
+saved prospect list could never legally have been built on it.
+
+What to expect: OSM is strong on town centres and high-street trades and thin on
+a sole trader working from home, and it carries a phone number far more often
+than an email. The screen says so before the search rather than after an empty
+result.
+
+### 15. Sign in with Google, if you want the button — optional
 
 Customers can already sign in without a password: **Email me a sign-in code**
 works today, for any address, with nothing to set up. This adds the Google

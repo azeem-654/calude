@@ -30,6 +30,7 @@ import { handleProjects } from './routes/projects';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
 import { handleModeration } from './routes/moderation';
+import { handleProspects } from './routes/prospects';
 import { handlePortal } from './routes/portal';
 import { handleShop } from './routes/shop';
 import { handleAiWrite } from './routes/aiwrite';
@@ -128,6 +129,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/stripe-portal.php': handleStripePortal,
   '/api/stripe-webhook.php': handleStripeWebhook,
 
+  /* Businesses from OpenStreetMap, free and with no key. The Google Places
+     route below it is kept for installs that configured one, but it is no
+     longer what the app reaches for. */
+  '/api/prospects.php': handleProspects,
   '/api/places-search.php': handlePlacesSearch,
   '/api/reviews-fetch.php': handleReviewsFetch,
   '/api/yt-thumb.php': (req) => handleYtThumb(req),
