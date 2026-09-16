@@ -1,90 +1,84 @@
 /**
  * Starting a project.
  *
- * ── Why this is three steps and not one form ──
+ * ── What changed, and why ──
  *
- * It used to be one screen with three questions, on the argument that a wizard
- * is only right when later steps depend on earlier answers. That argument was
- * correct and the premise was wrong: they do depend on each other now. What
- * this project is allowed to do decides which objectives are worth suggesting,
- * and the client decides what those objectives say. Asking all of it at once
- * meant the objective box was a blank rectangle, and a blank rectangle is where
- * people write "more leads".
+ * It used to open on six capabilities — "Find people worth contacting", "Write
+ * and send the emails", "Text them as well" — and ask a plumber to tick the
+ * right ones. That is the implementation asking to be configured. Nobody
+ * arrives at a marketing tool having decided they want capability three and
+ * five; they arrive because the phone is not ringing, or because they are
+ * launching something, or because they have four hundred old customers and no
+ * reason to email them.
  *
- * ── The three questions ──
+ * So it opens on the job now, and the capabilities are derived from it —
+ * `services/projectJobs.ts` holds the catalogue and `kindFor` already worked
+ * this way round. Each job carries the first fortnight in plain sentences,
+ * which is the teaching part: choosing between six abstract options is
+ * guessing, and reading "week one it writes the emails and shows them to you"
+ * is a decision. Each also says who it is *not* for, because that is what makes
+ * the rest credible.
  *
- *  1. **What should it do?** As many capabilities as apply, not one of three
- *     categories. Each is a real guardrail on the server, and anything not
- *     chosen is switched off rather than left at a default nobody saw.
- *  2. **Whose is it?** A portfolio — a client described once and reused by
- *     every project that speaks for them. Three ways in, because the fastest
- *     one depends on what the person happens to have: their website, something
- *     written about them, or their own words.
- *  3. **What should it achieve?** Suggestions built from the first two answers,
- *     and a box. The suggestions are a starting sentence to edit, not a menu —
- *     Autopilot reads this every time it decides what to do next, so the
- *     difference between it and "more leads" is the difference between a plan
- *     and a shrug.
+ * ── The step that was missing ──
  *
- * You can go back. Nothing is saved until the last press, including the
- * portfolio — so abandoning this halfway leaves no half-client behind.
+ * Nothing used to tell somebody that the job they picked needs a mailbox, or an
+ * AI key, until it quietly failed to do anything. Step three names what this
+ * particular job cannot run without, reports whether it is actually there —
+ * asking the server, with `unknown` as its own state — and offers both ways to
+ * fix it: connect a mailbox they own, or buy a domain and business email.
+ *
+ * The buying happens after the project is saved, because a purchase has to name
+ * something that exists. That is not a step nobody warned them about: step
+ * three is where the choice is made, and the last screen is where it completes.
+ *
+ * ── Why it looks like this ──
+ *
+ * One question per screen, a large title, and a single full-width button at the
+ * bottom. Six things on a screen is a form; one thing is a conversation, and a
+ * conversation is what somebody setting up their first project needs. Nothing
+ * is saved until the create press, so abandoning halfway leaves no half-client
+ * behind.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  X, Loader, Globe, Check, ArrowLeft, ArrowRight, Sparkles,
-  ClipboardPaste, PenLine, Building2, Search, Mail, MessageSquare,
-  FileText, CalendarCheck, ShoppingBag, Zap,
+  Loader, Globe, Check, ArrowLeft, ArrowRight, Sparkles,
+  ClipboardPaste, PenLine, Building2, Search, Mail, MessageSquare, HelpCircle,
+  FileText, CalendarCheck, ShoppingBag, ChevronRight, ShieldCheck, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import {
   saveProject, savePortfolio, readPortfolioFromUrl, readPortfolioFromText,
-  CAPABILITIES, ALL_CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
+  CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
   type Portfolio, type Capability,
 } from '../../services/projects';
+import {
+  ADVANCED_JOB, EVERYTHING, JOBS, REQUIREMENTS, jobById, requirementsFor,
+  type Job,
+} from '../../services/projectJobs';
+import { checkReadiness, type Readiness, type ReadyState } from '../../services/projectReadiness';
 
-const INK = '#17191c';
+const INK = '#0b0c0e';
 const MUTED = '#6b7280';
 const LINE = '#e6e9f0';
 const ACCENT = '#5b46e5';
+const GREEN = '#0f7b3d';
 
-const inp: React.CSSProperties = {
-  width: '100%', padding: '11px 13px', border: `1px solid ${LINE}`, borderRadius: 11,
-  fontSize: 13.5, color: INK, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+const JOB_ICON: Record<string, typeof Search> = {
+  'new-customers': Search,
+  'existing-customers': Mail,
+  launch: Sparkles,
+  shop: ShoppingBag,
+  'be-found': FileText,
+  advanced: PenLine,
 };
-const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 };
 
 const CAP_ICON: Record<Capability, typeof Search> = {
   find: Search, email: Mail, sms: MessageSquare,
   content: FileText, book: CalendarCheck, shop: ShoppingBag,
 };
 
-/** A ready-made set, for somebody who does not want to think about six switches. */
-const PRESETS: { id: string; label: string; caps: Capability[]; blurb: string }[] = [
-  { id: 'all', label: 'Run the whole thing', caps: ALL_CAPABILITIES, blurb: 'Everything below, hands off' },
-  { id: 'outreach', label: 'Find and contact people', caps: ['find', 'email', 'content', 'book'], blurb: 'The usual lead-generation push' },
-  { id: 'write', label: 'Write, I press send', caps: ['content', 'email'], blurb: 'Nothing leaves without you' },
-  { id: 'shop', label: 'Run a shop', caps: ['shop', 'email', 'content'], blurb: 'Catalogue, checkout and the follow-up' },
-];
-
-/**
- * Four, and the fourth is different from the other three.
- *
- * Steps 1–3 collect answers and commit nothing. Step 4 happens *after* the
- * project exists, because the thing it offers is bought for a project and a
- * purchase cannot name something that has not been created yet. That is also
- * why there is no way back to step 3 from it: the project is already saved, and
- * a Back button that appeared to let somebody edit it would be a lie.
- */
-/**
- * The named goals, kept short and few.
- *
- * Six options somebody can pick two of, rather than a free-text box that
- * produces "growth" for everybody. They are what the starter tasks are planned
- * against, so they have to be things a plan can differ on — "more leads" and
- * "keep the customers we have" want genuinely different first weeks.
- */
 const GOALS = [
   { id: 'more-leads', label: 'More enquiries' },
   { id: 'higher-value', label: 'Bigger jobs' },
@@ -94,8 +88,32 @@ const GOALS = [
   { id: 'fill-diary', label: 'Fill the diary' },
 ] as const;
 
-type Step = 1 | 2 | 3 | 4;
+/* Five before anything is saved, then the purchase. Completion falls off a
+   cliff with length — three-step flows finish around 72%, seven-step around
+   16% — so each of these earns its place, and the sixth is optional and
+   after the fact. */
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type Way = 'site' | 'paste' | 'hand';
+/** How this project will get an address to send from. */
+type MailPlan = 'have' | 'buy' | 'later';
+
+const TITLES: Record<Step, string> = {
+  1: 'What are you trying to do?',
+  2: 'Who is it for?',
+  3: 'What it needs to work',
+  4: 'What would make this a success?',
+  5: 'Ready when you are',
+  6: 'Your domain and email',
+};
+
+const SUBTITLES: Record<Step, string> = {
+  1: 'Pick the closest one. It decides what Autopilot does first, and you can change any of it later.',
+  2: 'Everything it writes comes from here — what they sell, who buys it, how they talk.',
+  3: 'This job cannot start without these. Here is where they stand.',
+  4: 'Autopilot reads this every time it decides what to do next.',
+  5: 'Nothing has been saved yet. Here is exactly what happens when you press start.',
+  6: 'Bought for this project. Skip it if you would rather not.',
+};
 
 export default function NewProject({
   portfolios, onClose, onCreated,
@@ -106,24 +124,14 @@ export default function NewProject({
 }) {
   const { addNotification } = useApp();
   const [step, setStep] = useState<Step>(1);
-  /* The project, once it is real. Empty on steps 1–3. */
   const [createdId, setCreatedId] = useState('');
-  /*
-   * The numbers, asked for once and used everywhere after.
-   *
-   * Both optional. Somebody who does not know their revenue target yet should
-   * not be stopped from starting a project — and the task writer is told they
-   * were not given, rather than being left to invent one and plan against it.
-   */
-  const [goals, setGoals] = useState<string[]>([]);
-  const [revenueTarget, setRevenueTarget] = useState('');
-  const [volumeTarget, setVolumeTarget] = useState('');
   const [busy, setBusy] = useState(false);
 
-  /* 1 — what it may do */
-  const [caps, setCaps] = useState<Capability[]>(['find', 'email', 'content', 'book']);
+  /* 1 — the job */
+  const [jobId, setJobId] = useState('');
+  const [caps, setCaps] = useState<Capability[]>([]);
 
-  /* 2 — whose it is */
+  /* 2 — the client */
   const [portfolioId, setPortfolioId] = useState(portfolios[0]?.id ?? '');
   const [adding, setAdding] = useState(!portfolios.length);
   const [way, setWay] = useState<Way>('site');
@@ -135,12 +143,19 @@ export default function NewProject({
     industry: '', tone: '', locations: '', website: '',
   });
 
-  /* 3 — what it should achieve */
+  /* 3 — what it needs */
+  const [ready, setReady] = useState<Readiness | null>(null);
+  const [mailPlan, setMailPlan] = useState<MailPlan>('later');
+
+  /* 4 — what good looks like */
   const [name, setName] = useState('');
   const [objective, setObjective] = useState('');
+  const [goals, setGoals] = useState<string[]>([]);
+  const [revenueTarget, setRevenueTarget] = useState('');
 
+  const job = jobById(jobId);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-  const toggle = (c: Capability) =>
+  const toggleCap = (c: Capability) =>
     setCaps(cs => (cs.includes(c) ? cs.filter(x => x !== c) : [...cs, c]));
 
   const clientName = adding
@@ -148,8 +163,25 @@ export default function NewProject({
     : (portfolios.find(p => p.id === portfolioId)?.name ?? '');
 
   const ideas = useMemo(() => objectiveIdeas(caps, clientName), [caps, clientName]);
+  const needs = useMemo(() => requirementsFor(caps), [caps]);
 
-  /** Fill the form from a source, without overwriting anything typed by hand. */
+  /* Asked when the step is reached, not at mount: a wizard that fires four
+     requests before anybody has chosen anything is four requests most people
+     never needed. */
+  useEffect(() => {
+    if (step !== 3 || ready) return;
+    let alive = true;
+    void checkReadiness().then(r => { if (alive) setReady(r); });
+    return () => { alive = false; };
+  }, [step, ready]);
+
+  const pickJob = (j: Job) => {
+    setJobId(j.id);
+    /* The advanced path starts from the commonest set rather than nothing, so
+       the first thing somebody sees is a sensible project they can trim. */
+    setCaps(j.id === ADVANCED_JOB.id ? ['find', 'email', 'content', 'book'] : j.caps);
+  };
+
   const absorb = (p: Record<string, string>, from: string) => {
     setForm(f => {
       const next = { ...f };
@@ -184,15 +216,16 @@ export default function NewProject({
     absorb(r.profile, r.readFrom ?? 'what you pasted');
   };
 
-  /* What each step will not let you leave without. Said on the button rather
-     than as an error after the press. */
+  /* Said on the button rather than as an error after the press. */
   const blocked =
-    step === 1 ? (caps.length === 0 ? 'Pick at least one thing for it to do' : '')
+    step === 1 ? (!jobId ? 'Pick what you are trying to do'
+      : caps.length === 0 ? 'Choose at least one thing for it to do' : '')
       : step === 2 ? (adding
         ? (form.companyName.trim() ? '' : 'Give the client a name')
         : (portfolioId ? '' : 'Choose a client'))
-        : (!name.trim() ? 'Name the project'
-          : objective.trim().length < 8 ? 'Say what it should achieve' : '');
+        : step === 4 ? (!name.trim() ? 'Name the project'
+          : objective.trim().length < 8 ? 'Say what it should achieve' : '')
+          : '';
 
   const create = async () => {
     setBusy(true);
@@ -202,9 +235,6 @@ export default function NewProject({
       const p = await savePortfolio({
         name: form.companyName.trim(),
         profile: { ...form, companyName: form.companyName.trim() },
-        /* Stamped so the portfolio says where it came from. A description a
-           person wrote and one read off a page are worth different amounts of
-           trust when something it writes reads oddly. */
         source: readFrom ? 'url' : 'manual',
       });
       if (!p.success || !p.id) { setBusy(false); addNotification(p.error ?? 'Could not save the client.', 'error'); return; }
@@ -216,47 +246,57 @@ export default function NewProject({
       kind: kindFor(caps), guardrails: guardrailsFor(caps),
       goals,
       revenueTarget: Math.round(Number(revenueTarget) || 0),
-      volumeTarget: Math.round(Number(volumeTarget) || 0),
+      volumeTarget: 0,
     });
     setBusy(false);
     if (!r.success || !r.id) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
     addNotification(`"${name.trim()}" started. Autopilot plans it within a day.`, 'success');
-    /*
-     * Straight on to the setup offer rather than closing.
-     *
-     * The project is saved either way — somebody who closes here has lost
-     * nothing, which is what makes it safe to ask the question at all.
-     */
     setCreatedId(r.id);
-    setStep(4);
+    /* Straight to the purchase only if they asked for one on step three.
+       Otherwise there is nothing left to do and another screen would be a
+       toll booth on the way out. */
+    if (mailPlan === 'buy') setStep(6);
+    else onCreated();
   };
 
-  /**
-   * Four steps, and four is a decision rather than a coincidence.
-   *
-   * Completion falls off a cliff with length: three-step flows finish around
-   * 72%, seven-step around 16%, and anything past twenty loses another third
-   * again. The ask was for separate steps for the domain, the mailboxes, the
-   * hosting, the website and the campaigns — which is nine, and nine would mean
-   * most people never reaching the end of the thing that makes the product
-   * work.
-   *
-   * So those five are one step, shown only to somebody who wants them, and the
-   * campaigns are not a step at all: they are what Autopilot *produces*, not
-   * something to configure before it starts. Asking about them here would be
-   * asking a customer to specify the output of the machine they are switching
-   * on.
-   */
-  const TITLES: Record<Step, string> = {
-    1: 'What should it do?',
-    2: 'Who is it for?',
-    3: 'What should it achieve?',
-    4: 'Want the domain and email too?',
+  const next = () => {
+    if (blocked) return;
+    if (step === 5) { void create(); return; }
+    setStep(s => (Math.min(s + 1, 5) as Step));
   };
 
-  /** Short enough to sit under a progress segment on a phone. */
-  const STEP_LABELS: Record<Step, string> = {
-    1: 'Skills', 2: 'Client', 3: 'Goals', 4: 'Setup',
+  /* ── Small shared pieces, in the one visual language ── */
+
+  const sheet: React.CSSProperties = {
+    width: '100%', maxWidth: 560, background: '#fff',
+    borderRadius: 'clamp(20px, 4vw, 26px)',
+    display: 'flex', flexDirection: 'column',
+    maxHeight: 'min(92vh, 860px)', overflow: 'hidden',
+    boxShadow: '0 30px 80px -20px rgba(11,12,14,0.45)',
+  };
+
+  const row = (on: boolean): React.CSSProperties => ({
+    display: 'flex', gap: 13, alignItems: 'flex-start', textAlign: 'left', width: '100%',
+    padding: '15px 16px', borderRadius: 16, cursor: 'pointer', fontFamily: 'inherit',
+    border: `1.5px solid ${on ? ACCENT : LINE}`,
+    background: on ? 'rgba(91,70,229,0.045)' : '#fff',
+    transition: 'border-color 0.15s ease, background 0.15s ease',
+  });
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '13px 14px', border: `1px solid ${LINE}`, borderRadius: 13,
+    fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', background: '#fff',
+  };
+  const lbl: React.CSSProperties = {
+    display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 7,
+  };
+
+  const STATE_TONE: Record<ReadyState, { bg: string; fg: string; label: string }> = {
+    ready: { bg: '#e8f6ee', fg: GREEN, label: 'Ready' },
+    missing: { bg: '#fff4ed', fg: '#9a3412', label: 'Not set up' },
+    /* Its own state on purpose: "we could not ask" is not "it is missing", and
+       reporting the second sends somebody to reconnect a working mailbox. */
+    unknown: { bg: '#f1f5f9', fg: '#475569', label: 'Could not check' },
   };
 
   return (
@@ -265,168 +305,154 @@ export default function NewProject({
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(12,14,17,0.55)',
-        backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: 'clamp(12px, 3vw, 24px)', overflowY: 'auto',
-      }}
-    >
-      <div className="np-card" style={{
-        background: '#fff', borderRadius: 22, width: '100%', maxWidth: 620,
-        marginTop: 'clamp(16px, 4vh, 44px)', marginBottom: 24, overflow: 'hidden',
-        boxShadow: '0 28px 70px -14px rgba(12,14,17,0.45)',
+        position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(11,12,14,0.5)',
+        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'clamp(10px, 3vw, 28px)',
       }}>
-        {/* ── Header: the module's own colour, so this reads as Autopilot's
-            door rather than a generic dialog ── */}
-        <div style={{
-          background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 52%, #9333ea 100%)',
-          color: '#fff', padding: '17px 20px 15px',
+      <div style={sheet}>
+
+        {/* ── Chrome: cancel, progress, nothing else ── */}
+        <header style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 16px 10px', flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Zap size={17} style={{ flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.72, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                New project · step {step} of 4
-              </div>
-              <h2 style={{ margin: '2px 0 0', fontSize: 17.5, fontWeight: 800, letterSpacing: '-0.02em' }}>
-                {TITLES[step]}
-              </h2>
-            </div>
-            <button onClick={onClose} aria-label="Close"
-              style={{ border: 'none', background: 'rgba(255,255,255,0.16)', borderRadius: 9, cursor: 'pointer', color: '#fff', display: 'flex', padding: 6 }}>
-              <X size={16} />
-            </button>
-          </div>
-
-          {/*
-            Named segments, not a percentage and not bare bars.
-            
-            A percentage answers "how far" and not "how much more of what",
-            which is the question somebody actually has before deciding whether
-            to start. Naming all four up front is the whole of progressive
-            disclosure here: the flow is short, and looking short is most of why
-            people finish it.
-          */}
-          <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-            {([1, 2, 3, 4] as Step[]).map(n => (
-              <div key={n} style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  height: 3, borderRadius: 99,
-                  background: n <= step ? '#fff' : 'rgba(255,255,255,0.26)',
-                  transition: 'background 0.3s ease',
-                }} />
-                <div style={{
-                  fontSize: 10, fontWeight: 700, marginTop: 5,
-                  letterSpacing: '0.02em', whiteSpace: 'nowrap',
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                  color: n <= step ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.5)',
-                  transition: 'color 0.3s ease',
-                }}>
-                  {STEP_LABELS[n]}
-                </div>
-              </div>
+          <button onClick={onClose} style={{
+            background: 'none', border: 0, padding: '4px 2px', cursor: 'pointer',
+            color: MUTED, fontSize: 15, fontFamily: 'inherit', fontWeight: 500,
+          }}>
+            {step === 6 ? 'Done' : 'Cancel'}
+          </button>
+          <span style={{ flex: 1, display: 'flex', gap: 6, justifyContent: 'center' }}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <span key={n} style={{
+                width: step === n ? 20 : 6, height: 6, borderRadius: 99,
+                background: step >= n ? ACCENT : '#e2e6ee',
+                transition: 'width 0.25s ease, background 0.25s ease',
+              }} />
             ))}
+          </span>
+          {/* Balances the cancel button so the dots sit centred. */}
+          <span style={{ width: 46 }} aria-hidden="true" />
+        </header>
+
+        <div style={{ overflowY: 'auto', padding: '4px 20px 20px', display: 'grid', gap: 18 }}>
+          <div>
+            <h2 style={{
+              margin: 0, fontSize: 'clamp(21px, 4.4vw, 27px)', fontWeight: 800,
+              color: INK, letterSpacing: '-0.03em', lineHeight: 1.18,
+            }}>
+              {TITLES[step]}
+            </h2>
+            <p style={{ margin: '7px 0 0', fontSize: 14.5, color: MUTED, lineHeight: 1.55 }}>
+              {SUBTITLES[step]}
+            </p>
           </div>
-        </div>
 
-        <div style={{ padding: 'clamp(16px, 3vw, 22px)', display: 'grid', gap: 16 }}>
-
-          {/* ══════════ 1 — capabilities ══════════ */}
+          {/* ── 1 · The job ── */}
           {step === 1 && (
-            <>
-              <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-                Pick as many as apply. Each one is a real permission — anything you leave off, this
-                project cannot do, and anything that reaches a stranger still waits for your yes the
-                first time.
-              </p>
-
-              <div>
-                <label style={lbl}>Start from one of these</label>
-                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                  {PRESETS.map(pr => {
-                    const on = pr.caps.length === caps.length && pr.caps.every(c => caps.includes(c));
-                    return (
-                      <button key={pr.id} type="button" onClick={() => setCaps(pr.caps)} title={pr.blurb}
-                        style={{
-                          padding: '8px 13px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
-                          border: `1.5px solid ${on ? ACCENT : LINE}`,
-                          background: on ? 'rgba(91,70,229,0.07)' : '#fff',
-                          color: on ? ACCENT : INK, fontSize: 12.5, fontWeight: 700,
-                        }}>
-                        {pr.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gap: 8 }}>
-                {CAPABILITIES.map(c => {
-                  const on = caps.includes(c.id);
-                  const Icon = CAP_ICON[c.id];
-                  return (
-                    <button key={c.id} type="button" onClick={() => toggle(c.id)} aria-pressed={on}
-                      className="np-cap"
-                      style={{
-                        display: 'flex', gap: 11, alignItems: 'flex-start', textAlign: 'left',
-                        padding: '12px 13px', borderRadius: 13, cursor: 'pointer', fontFamily: 'inherit',
-                        border: `1.5px solid ${on ? ACCENT : LINE}`,
-                        background: on ? 'rgba(91,70,229,0.05)' : '#fff',
-                        transition: 'border-color 0.15s ease, background 0.15s ease',
-                      }}>
+            <div style={{ display: 'grid', gap: 9 }}>
+              {[...JOBS, ADVANCED_JOB].map(j => {
+                const on = jobId === j.id;
+                const Icon = JOB_ICON[j.id] ?? Sparkles;
+                return (
+                  <div key={j.id}>
+                    <button type="button" onClick={() => pickJob(j)} aria-pressed={on} style={row(on)}>
                       <span style={{
-                        flexShrink: 0, width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center',
+                        flexShrink: 0, width: 34, height: 34, borderRadius: 11, display: 'grid', placeItems: 'center',
                         background: on ? ACCENT : '#f1f3f7', color: on ? '#fff' : '#8b93a3',
-                        transition: 'background 0.15s ease, color 0.15s ease',
                       }}>
-                        <Icon size={15} />
+                        <Icon size={17} />
                       </span>
                       <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{c.label}</span>
-                        <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
-                          {c.blurb}
-                          {c.needs && (
-                            /* Said here rather than found out when nothing sends. */
-                            <span style={{ color: '#94a3b8' }}> · needs {c.needs}</span>
-                          )}
+                        <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: INK, letterSpacing: '-0.01em' }}>
+                          {j.label}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 13, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>
+                          {j.blurb}
                         </span>
                       </span>
-                      <span style={{
-                        flexShrink: 0, width: 19, height: 19, borderRadius: 6, marginTop: 5,
-                        border: `1.5px solid ${on ? ACCENT : '#cbd2df'}`, background: on ? ACCENT : '#fff',
-                        display: 'grid', placeItems: 'center', color: '#fff',
-                      }}>
-                        {on && <Check size={12} strokeWidth={3} />}
-                      </span>
+                      {on
+                        ? <Check size={17} color={ACCENT} style={{ flexShrink: 0, marginTop: 8 }} />
+                        : <ChevronRight size={16} color="#c3c9d4" style={{ flexShrink: 0, marginTop: 9 }} />}
                     </button>
-                  );
-                })}
-              </div>
-            </>
+
+                    {/* The teaching part, and only for the one they chose — six
+                        expanded explanations is a wall nobody reads. */}
+                    {on && j.firstFortnight.length > 0 && (
+                      <div style={{ margin: '9px 0 2px', padding: '13px 15px', borderRadius: 14, background: '#f7f8fb' }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: '#475569', letterSpacing: '0.03em', marginBottom: 8 }}>
+                          THE FIRST FORTNIGHT
+                        </div>
+                        {j.firstFortnight.map((line, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: i ? 7 : 0 }}>
+                            <span style={{
+                              flexShrink: 0, width: 17, height: 17, borderRadius: 99, marginTop: 1,
+                              display: 'grid', placeItems: 'center', background: '#fff',
+                              border: `1px solid ${LINE}`, fontSize: 9.5, fontWeight: 800, color: ACCENT,
+                            }}>{i + 1}</span>
+                            <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.55 }}>{line}</span>
+                          </div>
+                        ))}
+                        {j.notFor && (
+                          <p style={{ margin: '11px 0 0', paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+                            <strong style={{ color: '#475569' }}>Not this one if:</strong> {j.notFor}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* The advanced path opens the six switches in place. */}
+                    {on && j.id === ADVANCED_JOB.id && (
+                      <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
+                        {CAPABILITIES.map(c => {
+                          const picked = caps.includes(c.id);
+                          const Ic = CAP_ICON[c.id];
+                          return (
+                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} aria-pressed={picked}
+                              style={{ ...row(picked), padding: '12px 14px' }}>
+                              <span style={{
+                                flexShrink: 0, width: 28, height: 28, borderRadius: 9, display: 'grid', placeItems: 'center',
+                                background: picked ? ACCENT : '#f1f3f7', color: picked ? '#fff' : '#8b93a3',
+                              }}>
+                                <Ic size={14} />
+                              </span>
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: INK }}>{c.label}</span>
+                                <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
+                                  {c.blurb}{c.needs ? ` · needs ${c.needs}` : ''}
+                                </span>
+                              </span>
+                              {picked && <Check size={15} color={ACCENT} style={{ flexShrink: 0, marginTop: 5 }} />}
+                            </button>
+                          );
+                        })}
+                        <button type="button" onClick={() => setCaps(EVERYTHING)} style={{
+                          background: 'none', border: 0, padding: '4px 2px', textAlign: 'left',
+                          fontSize: 12.5, fontWeight: 700, color: ACCENT, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>
+                          Turn all six on
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
-          {/* ══════════ 2 — the portfolio ══════════ */}
+          {/* ── 2 · The client ── */}
           {step === 2 && (
-            <>
-              <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-                A portfolio is everything Autopilot knows about one business — what they sell, who
-                buys it, how they talk. Every word it writes for this project comes from here, and
-                other projects for the same client share it.
-              </p>
-
+            <div style={{ display: 'grid', gap: 14 }}>
               {portfolios.length > 0 && (
-                <div style={{ display: 'flex', gap: 5, padding: 4, borderRadius: 12, background: '#f4f5f8' }}>
-                  {([[false, 'Use one I have'], [true, 'Add a new one']] as const).map(([v, label]) => (
-                    <button key={label} type="button" onClick={() => setAdding(v)}
-                      style={{
-                        flex: 1, padding: '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
-                        background: adding === v ? '#fff' : 'transparent',
-                        color: adding === v ? INK : MUTED, fontSize: 12.5, fontWeight: 700,
-                        fontFamily: 'inherit',
-                        boxShadow: adding === v ? '0 1px 3px rgba(16,24,40,0.1)' : 'none',
-                      }}>
-                      {label}
-                    </button>
+                <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 13, background: '#f1f3f7' }}>
+                  {([[false, 'One I have'], [true, 'Someone new']] as const).map(([v, label]) => (
+                    <button key={label} type="button" onClick={() => setAdding(v)} style={{
+                      flex: 1, padding: '9px 10px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                      background: adding === v ? '#fff' : 'transparent',
+                      color: adding === v ? INK : MUTED, fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit',
+                      boxShadow: adding === v ? '0 1px 3px rgba(16,24,40,0.12)' : 'none',
+                    }}>{label}</button>
                   ))}
                 </div>
               )}
@@ -437,317 +463,318 @@ export default function NewProject({
                     const on = p.id === portfolioId;
                     const desc = String(p.profile?.description ?? '');
                     return (
-                      <button key={p.id} type="button" onClick={() => setPortfolioId(p.id)} aria-pressed={on}
-                        style={{
-                          display: 'flex', gap: 11, alignItems: 'flex-start', textAlign: 'left',
-                          padding: '12px 13px', borderRadius: 13, cursor: 'pointer', fontFamily: 'inherit',
-                          border: `1.5px solid ${on ? ACCENT : LINE}`,
-                          background: on ? 'rgba(91,70,229,0.05)' : '#fff',
-                        }}>
+                      <button key={p.id} type="button" onClick={() => setPortfolioId(p.id)} aria-pressed={on} style={row(on)}>
                         <span style={{
-                          flexShrink: 0, width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center',
+                          flexShrink: 0, width: 32, height: 32, borderRadius: 10, display: 'grid', placeItems: 'center',
                           background: on ? ACCENT : '#f1f3f7', color: on ? '#fff' : '#8b93a3',
                         }}>
                           <Building2 size={15} />
                         </span>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{p.name}</span>
+                          <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: INK }}>{p.name}</span>
                           <span style={{
-                            display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5,
+                            display: 'block', fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.5,
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>
                             {desc || (p.source === 'url' ? 'Read from their website' : 'No description yet')}
                           </span>
                         </span>
+                        {on && <Check size={16} color={ACCENT} style={{ flexShrink: 0, marginTop: 7 }} />}
                       </button>
                     );
                   })}
                 </div>
               ) : (
                 <>
-                  <div>
-                    <label style={lbl}>How would you like to fill it in?</label>
-                    <div style={{ display: 'grid', gap: 7, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-                      {([
-                        ['site', Globe, 'From their website', 'Fastest, if they have one'],
-                        ['paste', ClipboardPaste, 'From something written', 'An about page, a brochure, an article'],
-                        ['hand', PenLine, 'I will type it', 'Or correct what was read in'],
-                      ] as const).map(([id, Icon, label, sub]) => {
-                        const on = way === id;
-                        return (
-                          <button key={id} type="button" onClick={() => setWay(id)}
-                            style={{
-                              textAlign: 'left', padding: '11px 12px', borderRadius: 12, cursor: 'pointer',
-                              border: `1.5px solid ${on ? ACCENT : LINE}`, fontFamily: 'inherit',
-                              background: on ? 'rgba(91,70,229,0.05)' : '#fff',
-                            }}>
-                            <Icon size={15} color={on ? ACCENT : '#8b93a3'} />
-                            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK, marginTop: 6 }}>{label}</span>
-                            <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{sub}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 13, background: '#f1f3f7' }}>
+                    {([['site', 'Their website', Globe], ['paste', 'Paste something', ClipboardPaste], ['hand', 'Type it', PenLine]] as const).map(([v, label, Ic]) => (
+                      <button key={v} type="button" onClick={() => setWay(v)} style={{
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                        padding: '9px 6px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                        background: way === v ? '#fff' : 'transparent',
+                        color: way === v ? INK : MUTED, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
+                        boxShadow: way === v ? '0 1px 3px rgba(16,24,40,0.12)' : 'none',
+                      }}><Ic size={13} /> {label}</button>
+                    ))}
                   </div>
 
                   {way === 'site' && (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <input value={form.website} onChange={e => set('website', e.target.value)} style={inp}
-                        placeholder="brightsmile.co.uk" aria-label="Their website" />
-                      <button onClick={() => void readSite()} disabled={reading} type="button" style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        padding: '11px 15px', borderRadius: 11, border: 'none', background: INK, color: '#fff',
-                        fontSize: 13, fontWeight: 700, cursor: reading ? 'default' : 'pointer', opacity: reading ? 0.65 : 1,
+                    <div style={{ display: 'grid', gap: 9 }}>
+                      <input style={inp} value={form.website} onChange={e => set('website', e.target.value)}
+                        placeholder="https://theircompany.com"
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void readSite(); } }} />
+                      <button type="button" onClick={() => void readSite()} disabled={reading} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        padding: '13px', borderRadius: 13, border: 'none', cursor: reading ? 'default' : 'pointer',
+                        background: reading ? '#c7c9d3' : INK, color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'inherit',
                       }}>
-                        {reading ? <Loader size={14} className="spin" /> : <Sparkles size={14} />}
-                        {reading ? 'Reading their site…' : 'Read their site'}
+                        {reading ? <Loader size={15} className="spin" /> : <Globe size={15} />} Read their site
                       </button>
                     </div>
                   )}
 
                   {way === 'paste' && (
-                    <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'grid', gap: 9 }}>
                       <textarea value={pasted} onChange={e => setPasted(e.target.value)} rows={5}
-                        style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }}
-                        placeholder="Paste their about page, a brochure, a press piece — anything that says who they are and what they sell." />
-                      <button onClick={() => void readPasted()} disabled={reading} type="button" style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        padding: '11px 15px', borderRadius: 11, border: 'none', background: INK, color: '#fff',
-                        fontSize: 13, fontWeight: 700, cursor: reading ? 'default' : 'pointer', opacity: reading ? 0.65 : 1,
+                        placeholder="Their about page, a brochure, an old proposal — anything that describes them."
+                        style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} />
+                      <button type="button" onClick={() => void readPasted()} disabled={reading} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        padding: '13px', borderRadius: 13, border: 'none', cursor: reading ? 'default' : 'pointer',
+                        background: reading ? '#c7c9d3' : INK, color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'inherit',
                       }}>
-                        {reading ? <Loader size={14} className="spin" /> : <Sparkles size={14} />}
-                        {reading ? 'Reading it…' : 'Read what I pasted'}
+                        {reading ? <Loader size={15} className="spin" /> : <Sparkles size={15} />} Read it in
                       </button>
                     </div>
                   )}
 
                   {way === 'hand' && (
-                    <div style={{ display: 'grid', gap: 9 }}>
+                    <div style={{ display: 'grid', gap: 12 }}>
                       {readFrom && (
-                        <p style={{
-                          margin: 0, fontSize: 12, color: '#166534', lineHeight: 1.5,
-                          display: 'flex', gap: 6, alignItems: 'flex-start',
-                          background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '9px 11px',
-                        }}>
-                          <Check size={13} style={{ flexShrink: 0, marginTop: 2 }} />
-                          <span>Filled in from <strong>{readFrom}</strong>. Correct anything it got wrong — nothing is saved until you start the project.</span>
+                        <p style={{ margin: 0, fontSize: 12.5, color: GREEN, fontWeight: 600 }}>
+                          Filled in from {readFrom}. Correct anything that reads wrong.
                         </p>
                       )}
-                      {([
-                        ['companyName', 'Client name', 'Bright Smile Dental', false],
-                        ['description', 'What do they do?', 'Family dentistry — check-ups, whitening, implants.', true],
-                        ['audience', 'Who buys it?', 'Families and professionals within about 20 miles', false],
-                        ['offer', 'What exactly do they sell?', 'Implants, Invisalign, hygiene plans', false],
-                        ['industry', 'Industry', 'Dentistry', false],
-                        ['tone', 'How do they talk?', 'Warm and plain — no jargon', false],
-                        ['locations', 'Where do they work?', 'Leeds and Harrogate', false],
-                        ['website', 'Website', 'brightsmile.co.uk', false],
-                      ] as const).map(([k, label, ph, multi]) => (
-                        <div key={k}>
-                          <label style={lbl} htmlFor={`pf-${k}`}>{label}</label>
-                          {multi
-                            ? <textarea id={`pf-${k}`} value={form[k]} onChange={e => set(k, e.target.value)} rows={2} style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} placeholder={ph} />
-                            : <input id={`pf-${k}`} value={form[k]} onChange={e => set(k, e.target.value)} style={inp} placeholder={ph} />}
-                        </div>
-                      ))}
-                      <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                        Only the name is required. The rest makes what it writes sound like them rather
-                        than like a template — you can fill it in properly later.
-                      </p>
+                      <div><label style={lbl}>Their name</label>
+                        <input style={inp} value={form.companyName} onChange={e => set('companyName', e.target.value)} placeholder="Bob’s Plumbing" /></div>
+                      <div><label style={lbl}>What they do</label>
+                        <textarea style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} rows={3} value={form.description}
+                          onChange={e => set('description', e.target.value)} placeholder="Emergency plumbing and boiler work across Greater Manchester." /></div>
+                      <div><label style={lbl}>Who buys it</label>
+                        <input style={inp} value={form.audience} onChange={e => set('audience', e.target.value)} placeholder="Homeowners and small landlords" /></div>
+                      <div><label style={lbl}>What you want to put in front of them</label>
+                        <input style={inp} value={form.offer} onChange={e => set('offer', e.target.value)} placeholder="Free boiler health check" /></div>
                     </div>
                   )}
                 </>
               )}
-            </>
+            </div>
           )}
 
-          {/* ══════════ 3 — name and objective ══════════ */}
+          {/* ── 3 · What it needs ── */}
           {step === 3 && (
-            <>
-              {/* ── What good looks like, in numbers ── */}
+            <div style={{ display: 'grid', gap: 12 }}>
+              {needs.length === 0 && (
+                <p style={{ margin: 0, fontSize: 14, color: '#334155', lineHeight: 1.6 }}>
+                  Nothing. What you picked runs on what is already here.
+                </p>
+              )}
+
+              {needs.map(req => {
+                const info = REQUIREMENTS[req];
+                const state: ReadyState = ready ? ready[req] : 'unknown';
+                const tone = STATE_TONE[state];
+                return (
+                  <div key={req} style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
+                    <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, flex: 1, minWidth: 140 }}>
+                        {info.label}
+                      </span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
+                        background: ready ? tone.bg : '#f1f5f9', color: ready ? tone.fg : '#94a3b8',
+                      }}>
+                        {ready ? tone.label : 'Checking…'}
+                      </span>
+                    </div>
+                    <p style={{ margin: '6px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.55 }}>{info.why}</p>
+
+                    {/* The mailbox is the one with a real choice to make here. */}
+                    {req === 'mailbox' && state !== 'ready' && (
+                      <div style={{ display: 'grid', gap: 7, marginTop: 11 }}>
+                        {([
+                          ['have', 'I have a mailbox to use', 'Connect it in Settings — takes a minute, and replies come back to you.'],
+                          ['buy', 'Buy a domain and business email', 'Chosen and paid for on the next screen, once the project exists.'],
+                          ['later', 'Decide later', 'The project still starts. Nothing will send until this is sorted.'],
+                        ] as const).map(([id, label, hint]) => (
+                          <button key={id} type="button" onClick={() => setMailPlan(id)} aria-pressed={mailPlan === id}
+                            style={{ ...row(mailPlan === id), padding: '11px 13px' }}>
+                            <span style={{
+                              flexShrink: 0, width: 17, height: 17, borderRadius: 99, marginTop: 2, display: 'grid', placeItems: 'center',
+                              border: `1.5px solid ${mailPlan === id ? ACCENT : '#cbd2df'}`, background: mailPlan === id ? ACCENT : '#fff',
+                            }}>
+                              {mailPlan === id && <Check size={10} color="#fff" />}
+                            </span>
+                            <span style={{ minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{label}</span>
+                              <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{hint}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {req !== 'mailbox' && state !== 'ready' && (
+                      <a href={`/settings?tab=${info.settingsTab}`} target="_blank" rel="noopener noreferrer" style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10,
+                        fontSize: 13, fontWeight: 700, color: ACCENT, textDecoration: 'none',
+                      }}>
+                        Set this up <ExternalLink size={12} />
+                      </a>
+                    )}
+
+                    {state === 'unknown' && ready && (
+                      <p style={{ margin: '8px 0 0', display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                        <HelpCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                        We could not reach the setting to check. That is not the same as it being missing —
+                        it may well be fine.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              <p style={{
+                margin: 0, display: 'flex', gap: 8, alignItems: 'flex-start',
+                padding: '12px 13px', borderRadius: 14, background: '#f4f7fb',
+                fontSize: 12.5, color: '#1e3a5f', lineHeight: 1.6,
+              }}>
+                <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                You can start the project with any of these missing. Autopilot plans either way and simply
+                reports that a step was skipped, rather than pretending it ran.
+              </p>
+            </div>
+          )}
+
+          {/* ── 4 · What success is ── */}
+          {step === 4 && (
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div><label style={lbl}>Call the project</label>
+                <input style={inp} value={name} onChange={e => setName(e.target.value)}
+                  placeholder={clientName ? `${clientName} — ${job?.label.toLowerCase() ?? 'growth'}` : 'Spring push'} /></div>
+
               <div>
-                <label style={lbl}>What would make this a success?</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                <label style={lbl}>What should it achieve?</label>
+                {ideas.length > 0 && (
+                  <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+                    {ideas.slice(0, 3).map(idea => (
+                      <button key={idea} type="button" onClick={() => setObjective(idea)} style={{
+                        textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+                        border: `1px solid ${objective === idea ? ACCENT : LINE}`,
+                        background: objective === idea ? 'rgba(91,70,229,0.05)' : '#fff',
+                        fontSize: 13, color: '#334155', fontFamily: 'inherit', lineHeight: 1.5,
+                      }}>{idea}</button>
+                    ))}
+                  </div>
+                )}
+                <textarea style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} rows={3} value={objective}
+                  onChange={e => setObjective(e.target.value)}
+                  placeholder="Pick one above to edit, or write your own." />
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                  The difference between this and “more leads” is the difference between a plan and a shrug.
+                </p>
+              </div>
+
+              <div>
+                <label style={lbl}>Which of these matter? (optional)</label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {GOALS.map(g => {
                     const on = goals.includes(g.id);
                     return (
-                      <button key={g.id} type="button" aria-pressed={on}
-                        onClick={() => setGoals(prev => on ? prev.filter(x => x !== g.id) : [...prev, g.id].slice(0, 3))}
+                      <button key={g.id} type="button"
+                        onClick={() => setGoals(gs => on ? gs.filter(x => x !== g.id) : [...gs, g.id])}
                         style={{
-                          padding: '7px 12px', borderRadius: 999, fontFamily: 'inherit', cursor: 'pointer',
+                          padding: '8px 13px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
                           border: `1.5px solid ${on ? ACCENT : LINE}`,
                           background: on ? 'rgba(91,70,229,0.06)' : '#fff',
-                          color: on ? ACCENT : MUTED, fontSize: 12.5, fontWeight: 700,
-                        }}>
-                        {g.label}
-                      </button>
+                          color: on ? ACCENT : '#475569', fontSize: 13, fontWeight: 600,
+                        }}>{g.label}</button>
                     );
                   })}
                 </div>
-
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 140 }}>
-                    <label style={{ ...lbl, fontSize: 12 }} htmlFor="pj-rev">Revenue a month</label>
-                    <input id="pj-rev" value={revenueTarget} inputMode="numeric" placeholder="optional"
-                      onChange={e => setRevenueTarget(e.target.value.replace(/[^\d]/g, ''))} style={inp} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 140 }}>
-                    <label style={{ ...lbl, fontSize: 12 }} htmlFor="pj-vol">Customers or jobs a month</label>
-                    <input id="pj-vol" value={volumeTarget} inputMode="numeric" placeholder="optional"
-                      onChange={e => setVolumeTarget(e.target.value.replace(/[^\d]/g, ''))} style={inp} />
-                  </div>
-                </div>
-                {/* Said plainly, because a blank box that silently changes the
-                    plan is worse than one that explains itself. */}
-                <p style={{ margin: '7px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-                  Both optional. Given, they shape the first tasks on your board — fifteen jobs a month
-                  is a reach problem and three big ones is a trust problem, and they need different weeks.
-                </p>
               </div>
 
-              <div>
-                <label style={lbl} htmlFor="pj-name">Call it something you will recognise</label>
-                <input id="pj-name" value={name} onChange={e => setName(e.target.value)} style={inp}
-                  placeholder={caps.includes('shop') ? 'Supplement range launch' : 'Dental client acquisition'} />
-              </div>
-
-              <div>
-                <label style={lbl} htmlFor="pj-obj">What should it achieve?</label>
-                <textarea id="pj-obj" value={objective} onChange={e => setObjective(e.target.value)} rows={3}
-                  style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }}
-                  placeholder="In your own words — a sentence is enough." />
-                <p style={{ margin: '6px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                  Autopilot reads this every time it decides what to do next, so a number and a place
-                  plan very differently from "more leads".
-                </p>
-              </div>
-
-              <div>
-                <label style={lbl}>Or start from one of these and edit it</label>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {ideas.map(idea => (
-                    <button key={idea} type="button" onClick={() => setObjective(idea)}
-                      style={{
-                        textAlign: 'left', padding: '10px 12px', borderRadius: 11, cursor: 'pointer',
-                        border: `1px solid ${objective === idea ? ACCENT : LINE}`, fontFamily: 'inherit',
-                        background: objective === idea ? 'rgba(91,70,229,0.05)' : '#fbfbfd',
-                        fontSize: 12.5, color: INK, lineHeight: 1.5,
-                      }}>
-                      {idea}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* What is about to be created, before it is. */}
-              <div style={{ padding: '12px 13px', borderRadius: 13, background: '#f7f8fa', border: `1px solid ${LINE}` }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569', marginBottom: 7 }}>This project will be allowed to</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {caps.map(c => (
-                    <span key={c} style={{
-                      padding: '4px 10px', borderRadius: 999, background: '#fff',
-                      border: `1px solid ${LINE}`, fontSize: 11.5, fontWeight: 600, color: INK,
-                    }}>
-                      {CAPABILITIES.find(x => x.id === c)?.label}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 9, lineHeight: 1.5 }}>
-                  for <strong style={{ color: INK }}>{clientName || 'this client'}</strong>. Nothing that
-                  reaches a person goes out until you approve the first one.
-                </div>
-              </div>
-            </>
+              <div><label style={lbl}>Revenue you want from it, per month (optional)</label>
+                <input style={inp} inputMode="numeric" value={revenueTarget}
+                  onChange={e => setRevenueTarget(e.target.value.replace(/[^0-9]/g, ''))} placeholder="5000" />
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                  Left blank, the planner is told it was not given rather than inventing one.
+                </p></div>
+            </div>
           )}
 
-          {step === 4 && (
-            <>
-              <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 11, background: '#e8f6ee', border: '1px solid #b7e4c7' }}>
-                <Check size={15} color="#0f7b3d" style={{ flexShrink: 0, marginTop: 1 }} />
-                <p style={{ margin: 0, fontSize: 12.5, color: '#14532d', lineHeight: 1.6 }}>
-                  <strong>{name.trim()}</strong> is running. Autopilot plans it within a day — you can close
-                  this now and nothing is lost.
+          {/* ── 5 · Review ── */}
+          {step === 5 && (
+            <div style={{ display: 'grid', gap: 11 }}>
+              {([
+                ['Doing', job?.label ?? '—'],
+                ['For', clientName || '—'],
+                ['To achieve', objective || '—'],
+              ] as const).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderRadius: 14, background: '#f7f8fb' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', width: 78, flexShrink: 0, letterSpacing: '0.02em' }}>
+                    {k.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: 14, color: INK, lineHeight: 1.5, minWidth: 0 }}>{v}</span>
+                </div>
+              ))}
+
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginBottom: 9 }}>
+                  What it will be allowed to do
+                </div>
+                {caps.map(c => {
+                  const info = CAPABILITIES.find(x => x.id === c);
+                  const Ic = CAP_ICON[c];
+                  return (
+                    <div key={c} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 8 }}>
+                      <Ic size={14} color={ACCENT} style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>{info?.label ?? c}</span>
+                    </div>
+                  );
+                })}
+                <p style={{ margin: '11px 0 0', paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
+                  Everything not on this list is switched off, not left at a default. Anything that reaches
+                  a stranger waits for your yes the first time.
                 </p>
               </div>
 
-              {/*
-                Named, so the last step is a real one rather than a sales pitch
-                bolted on after the finish line. Everything on the list is what
-                this one step actually does — which is why it is one step and not
-                five.
-              */}
-              <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
-                Optional, and it does the lot in one go: registers a <strong style={{ color: INK }}>domain</strong>,
-                creates <strong style={{ color: INK }}>business email</strong> on it, sets up the DNS,
-                publishes a <strong style={{ color: INK }}>starter website</strong> and fits out
-                the <strong style={{ color: INK }}>CRM</strong>. The email and SMS campaigns are not
-                set up here — Autopilot writes those itself, from what you just told it.
-              </p>
+              {mailPlan === 'buy' && (
+                <p style={{ margin: 0, display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: '#1e3a5f', background: '#f4f7fb', borderRadius: 14, padding: '12px 13px', lineHeight: 1.6 }}>
+                  <Mail size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                  Next: choosing the domain and the mailboxes. Nothing is charged until you press buy.
+                </p>
+              )}
+            </div>
+          )}
 
-              <DigitalSetupStep
-                companyName={clientName || name.trim()}
-                contactEmail={getSession()?.user?.email ?? ''}
-                projectId={createdId}
-                /* The wizard's job ends when they leave for the processor. The
-                   progress view lives on the board, which is where they land
-                   coming back from a payment page. */
-                onOrder={() => onCreated()}
-              />
-            </>
+          {/* ── 6 · The purchase, once the project is real ── */}
+          {step === 6 && createdId && (
+            <DigitalSetupStep
+              companyName={clientName}
+              contactEmail={getSession()?.user?.email ?? ''}
+              projectId={createdId}
+              onOrder={() => { addNotification('Order placed. Watch it build on the project.', 'success'); onCreated(); }}
+            />
           )}
         </div>
 
-        {/* ── Footer ── */}
-        <div style={{
-          display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-          padding: 'clamp(12px, 2.5vw, 16px) clamp(16px, 3vw, 22px)',
-          borderTop: `1px solid ${LINE}`, background: '#fcfcfd',
-        }}>
-          {step > 1 && step < 4 ? (
-            <button onClick={() => setStep(s => (s - 1) as Step)} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '10px 14px', borderRadius: 11, border: `1px solid ${LINE}`,
-              background: '#fff', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer',
-            }}><ArrowLeft size={14} /> Back</button>
-          ) : (
-            <button onClick={onClose} style={{
-              padding: '10px 14px', borderRadius: 11, border: `1px solid ${LINE}`,
-              background: '#fff', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer',
-            }}>Cancel</button>
-          )}
-
-          <div style={{ flex: 1, minWidth: 8 }} />
-
-          {/* The reason a step will not advance, before the press rather than
-              after it. */}
-          {blocked && (
-            <span style={{ fontSize: 11.5, color: MUTED, order: 3, width: '100%', textAlign: 'right' }}>{blocked}</span>
-          )}
-
-          {step === 4 ? (
-            <button onClick={onCreated} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '10px 18px', borderRadius: 11, border: 'none',
-              background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}>Done <ArrowRight size={14} /></button>
-          ) : step < 3 ? (
-            <button onClick={() => setStep(s => (s + 1) as Step)} disabled={!!blocked} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '10px 18px', borderRadius: 11, border: 'none',
-              background: blocked ? '#c7c9d3' : ACCENT, color: '#fff',
-              fontSize: 13, fontWeight: 700, cursor: blocked ? 'not-allowed' : 'pointer',
-            }}>Next <ArrowRight size={14} /></button>
-          ) : (
-            <button onClick={() => void create()} disabled={busy || !!blocked} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '10px 18px', borderRadius: 11, border: 'none',
-              background: busy || blocked ? '#c7c9d3' : ACCENT, color: '#fff',
-              fontSize: 13, fontWeight: 700, cursor: busy || blocked ? 'not-allowed' : 'pointer',
+        {/* ── One button, at the bottom, always ── */}
+        {step !== 6 && (
+          <footer style={{ padding: '12px 20px 18px', borderTop: `1px solid ${LINE}`, flexShrink: 0, display: 'flex', gap: 10 }}>
+            {step > 1 && (
+              <button onClick={() => setStep(s => (Math.max(s - 1, 1) as Step))} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '14px 18px', borderRadius: 999,
+                border: `1px solid ${LINE}`, background: '#fff', color: INK,
+                fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+              }}>
+                <ArrowLeft size={15} /> Back
+              </button>
+            )}
+            <button onClick={next} disabled={!!blocked || busy} title={blocked || undefined} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '14px', borderRadius: 999, border: 'none',
+              background: blocked || busy ? '#dcdfe6' : ACCENT,
+              color: blocked || busy ? '#8b93a3' : '#fff',
+              fontSize: 16, fontWeight: 600, cursor: blocked || busy ? 'default' : 'pointer', fontFamily: 'inherit',
             }}>
-              {busy ? <Loader size={14} className="spin" /> : <Zap size={14} />} Start project
+              {busy ? <Loader size={16} className="spin" />
+                : blocked ? blocked
+                  : step === 5 ? <>Start the project <Sparkles size={15} /></>
+                    : <>Continue <ArrowRight size={15} /></>}
             </button>
-          )}
-        </div>
+          </footer>
+        )}
       </div>
     </div>
   );
