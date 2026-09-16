@@ -31,6 +31,16 @@ import {
 import { API_BASE } from '../../services/apiBase';
 import { themeFor, inkOn, usableAccent, type Theme } from './themes';
 
+interface Variant {
+  id: string;
+  title: string;
+  priceCents: number;
+  compareAtCents: number;
+  inventory: number;
+  imageUrl: string;
+  sku: string;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -43,7 +53,44 @@ interface Product {
   category: string;
   inventory: number;
   trackInventory: number;
+  variants?: Variant[];
 }
+
+interface ShippingRate {
+  id: string;
+  name: string;
+  countries: string;
+  kind: string;
+  amountCents: number;
+  thresholdCents: number;
+}
+
+/**
+ * What the shop says this basket costs.
+ *
+ * Asked of the server rather than worked out here. The browser never does
+ * money arithmetic: `buy` recomputes from the same module, so a total shown on
+ * the page can only ever agree with the one that gets charged — and a total
+ * assembled in a browser is a total somebody can edit.
+ */
+interface Totals {
+  goodsCents: number;
+  discountCents: number;
+  shippingCents: number;
+  totalCents: number;
+  shippingLabel: string;
+  discountCode: string;
+  discountProblem: string;
+}
+
+/**
+ * A basket line's identity.
+ *
+ * The product alone is not enough once a t-shirt has sizes: a Large and a
+ * Small are two lines with two prices and two stock counts, and keying by
+ * product id would silently merge them into whichever was added last.
+ */
+const lineKey = (productId: string, variantId: string) => `${productId}|${variantId}`;
 
 interface Shop {
   slug: string;
@@ -63,6 +110,8 @@ interface Loaded {
   products: Product[];
   currency: string;
   canBuy: boolean;
+  /* The rules, not a price. The page has no country until the buyer says. */
+  rates: ShippingRate[];
 }
 
 function money(cents: number, currency: string): string {
@@ -89,7 +138,15 @@ async function call(payload: Record<string, unknown>): Promise<Record<string, un
 }
 
 /** How many of this can still be bought. Infinity when nobody is counting. */
-const stockOf = (p: Product) => (p.trackInventory ? p.inventory : Number.POSITIVE_INFINITY);
+/**
+ * What is left of a thing.
+ *
+ * A variant's own count when one is chosen — the product's number is the total
+ * across every size, and using it lets somebody order six Larges when there
+ * are two, because there are six shirts.
+ */
+const stockOf = (p: Product, v?: Variant) =>
+  (p.trackInventory ? (v ? v.inventory : p.inventory) : Number.POSITIVE_INFINITY);
 
 function Placeholder({ t, ratio }: { t: Theme; ratio: string }) {
   return (
@@ -112,6 +169,12 @@ export default function ShopPage() {
   /** productId → quantity. Lives only as long as the page is open. */
   const [basket, setBasket] = useState<Record<string, number>>({});
   const [basketOpen, setBasketOpen] = useState(false);
+  /* Which option is showing on each card, before anything is added. */
+  const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [discountCode, setDiscountCode] = useState('');
+  const [country, setCountry] = useState('');
+  const [totals, setTotals] = useState<Totals | null>(null);
+  const [quoting, setQuoting] = useState(false);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -134,7 +197,14 @@ export default function ShopPage() {
           compareAtCents: Number(p.compareAtCents ?? 0),
           inventory: Number(p.inventory ?? 0),
           trackInventory: Number(p.trackInventory ?? 0),
+          variants: ((p.variants as Variant[]) ?? []).map(v => ({
+            ...v,
+            priceCents: Number(v.priceCents ?? 0),
+            compareAtCents: Number(v.compareAtCents ?? 0),
+            inventory: Number(v.inventory ?? 0),
+          })),
         })),
+        rates: (res.shippingRates as ShippingRate[]) ?? [],
         currency: String(res.currency ?? 'USD'),
         canBuy: !!res.canBuy,
       });
@@ -143,6 +213,73 @@ export default function ShopPage() {
   }, [slug]);
 
   const products = state !== 'loading' && state !== 'missing' ? state.products : [];
+
+  const lines = useMemo(
+    () => Object.entries(basket)
+      .map(([key, qty]) => {
+        const [productId, variantId = ''] = key.split('|');
+        const product = products.find(p => p.id === productId);
+        const variant = variantId ? product?.variants?.find(v => v.id === variantId) : undefined;
+        return { key, product, variant, qty };
+      })
+      .filter((l): l is { key: string; product: Product; variant: Variant | undefined; qty: number } =>
+        !!l.product && l.qty > 0
+        /* A variant that has since been removed leaves a stale basket line. It
+           is dropped rather than priced at the product's price, which would
+           charge for something the shop no longer sells. */
+        && (!l.key.split('|')[1] || !!l.variant)),
+    [basket, products],
+  );
+  const basketCount = lines.reduce((n, l) => n + l.qty, 0);
+
+  /** What one line costs each — the variant's price when there is one. */
+  const unitOf = (l: { product: Product; variant?: Variant }) =>
+    l.variant ? l.variant.priceCents : l.product.priceCents;
+
+  /* What goes to the server, both for the quote and the purchase: what and how
+     many, never a price. */
+  const orderItems = lines.map(l => ({
+    productId: l.product.id, variantId: l.variant?.id ?? '', qty: l.qty,
+  }));
+
+  /*
+   * Ask the shop what this costs, whenever the basket, the code or the country
+   * changes.
+   *
+   * The browser never works it out. `buy` recomputes from the same module, so
+   * what is shown here can only ever agree with what is charged — and a total
+   * assembled in a browser is a total somebody can edit.
+   *
+   * Debounced, because this fires on every keystroke in the code box.
+   *
+   * It lives up here with the other hooks rather than beside the checkout it
+   * belongs to: below the `loading` and `missing` early returns it would be a
+   * conditional hook, which React refuses the moment the shop finishes
+   * loading. Caught by the linter, and it would have been a white screen.
+   */
+  useEffect(() => {
+    let live = true;
+    /* Everything inside the timer, including the state changes: a setState in
+       an effect body is a cascading render, and the debounce is here anyway. */
+    const timer = window.setTimeout(() => {
+      if (!lines.length) { setTotals(null); return; }
+      setQuoting(true);
+      void call({
+        action: 'quote', slug: slug ?? '', items: orderItems,
+        discountCode: discountCode.trim(), shipCountry: country,
+      }).then(res => {
+        if (!live) return;
+        setQuoting(false);
+        setTotals(res.success ? (res.totals as Totals) : null);
+      });
+    }, 350);
+    return () => { live = false; window.clearTimeout(timer); };
+    /* `orderItems` is rebuilt every render, so the basket itself is the
+       dependency — otherwise this loops forever. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basket, discountCode, country, slug]);
+
+
 
   const categories = useMemo(() => {
     const set = new Set(products.map(p => p.category).filter(Boolean));
@@ -158,13 +295,6 @@ export default function ShopPage() {
     });
   }, [products, query, category]);
 
-  const lines = useMemo(
-    () => Object.entries(basket)
-      .map(([id, qty]) => ({ product: products.find(p => p.id === id), qty }))
-      .filter((l): l is { product: Product; qty: number } => !!l.product && l.qty > 0),
-    [basket, products],
-  );
-  const basketCount = lines.reduce((n, l) => n + l.qty, 0);
 
   if (state === 'loading') {
     return (
@@ -188,7 +318,7 @@ export default function ShopPage() {
     );
   }
 
-  const { shop, currency, canBuy } = state;
+  const { shop, currency, canBuy, rates } = state;
   const t = themeFor(shop.template);
   /* Lifted off the theme's own ground only if it would otherwise vanish into
      it — a near-black brand colour on the dark theme gave a black button on a
@@ -196,31 +326,42 @@ export default function ShopPage() {
   const accent = usableAccent(shop.accent || '#17191c', t.cardBg);
   const onAccent = inkOn(accent);
 
-  const add = (p: Product, by = 1) => {
+  const add = (p: Product, by = 1, variant?: Variant) => {
     setError('');
+    const key = lineKey(p.id, variant?.id ?? '');
     setBasket(b => {
-      const next = Math.max(0, (b[p.id] ?? 0) + by);
+      const next = Math.max(0, (b[key] ?? 0) + by);
       /* Capped at what is left, so the basket can never ask for more than the
-         shop can send and the buyer finds out here rather than at the card. */
-      const cap = Math.min(next, stockOf(p), 50);
+         shop can send and the buyer finds out here rather than at the card.
+         A variant's own stock, because one number across sizes is the bug that
+         oversells the large. */
+      const cap = Math.min(next, stockOf(p, variant), 50);
       const out = { ...b };
-      if (cap <= 0) delete out[p.id]; else out[p.id] = cap;
+      if (cap <= 0) delete out[key]; else out[key] = cap;
       return out;
     });
   };
 
-  const total = lines.reduce((n, l) => n + l.product.priceCents * l.qty, 0);
+  /* What the items are worth before anything is taken off or added on. Shown
+     while a quote is in flight so the panel is never blank. */
+  const goods = lines.reduce((n, l) => n + unitOf(l) * l.qty, 0);
+  const total = totals ? totals.totalCents : goods;
 
   const checkout = async () => {
     setError('');
     if (!lines.length) return;
     setBusy(true);
-    /* One order per line, because the server creates an order from one product
-       id — and `createPayLink` charges one order. Sending them in sequence
-       rather than at once means a refusal names the item it refused. */
-    const first = lines[0];
+    /*
+     * The whole basket, in one order.
+     *
+     * This used to send only the first line while the page showed a total for
+     * all of them — survivable when the total was a sum anybody could check,
+     * and not survivable beside a discount code, because the page would show
+     * 20% off three items and the card would be debited for one.
+     */
     const res = await call({
-      action: 'buy', slug: shop.slug, productId: first.product.id, qty: first.qty, email,
+      action: 'buy', slug: shop.slug, items: orderItems, email,
+      discountCode: discountCode.trim(), shipCountry: country,
       /* Deliberately no price. */
     });
     setBusy(false);
@@ -374,10 +515,21 @@ export default function ShopPage() {
             gridTemplateColumns: `repeat(auto-fill, minmax(min(${t.cardMin}px, 100%), 1fr))`,
           }}>
             {shown.map(p => {
-              const left = stockOf(p);
+              const variants = p.variants ?? [];
+              /* The one showing on this card. Defaults to the first that is
+                 actually in stock, so a shirt whose Small sold out opens on the
+                 Large rather than on a disabled button. */
+              const pick = variants.length
+                ? (variants.find(v => v.id === chosen[p.id])
+                  ?? variants.find(v => stockOf(p, v) > 0)
+                  ?? variants[0])
+                : undefined;
+              const left = stockOf(p, pick);
               const out = left <= 0;
-              const inBasket = basket[p.id] ?? 0;
-              const onSale = p.compareAtCents > p.priceCents;
+              const inBasket = basket[lineKey(p.id, pick?.id ?? '')] ?? 0;
+              const unit = pick ? pick.priceCents : p.priceCents;
+              const wasPrice = pick ? pick.compareAtCents : p.compareAtCents;
+              const onSale = wasPrice > unit;
               return (
                 <article key={p.id} style={{
                   background: t.cardBg,
@@ -388,8 +540,10 @@ export default function ShopPage() {
                   display: 'flex', flexDirection: 'column',
                   opacity: out ? 0.58 : 1,
                 }}>
-                  {p.imageUrl
-                    ? <img src={p.imageUrl} alt="" style={{ width: '100%', aspectRatio: t.ratio, objectFit: 'cover', display: 'block' }} />
+                  {/* The chosen option's own picture when it has one — a blue
+                      shirt should not be illustrated by the red one. */}
+                  {(pick?.imageUrl || p.imageUrl)
+                    ? <img src={pick?.imageUrl || p.imageUrl} alt="" style={{ width: '100%', aspectRatio: t.ratio, objectFit: 'cover', display: 'block' }} />
                     : <Placeholder t={t} ratio={t.ratio} />}
 
                   <div style={{ padding: t.cardBorder || t.cardShadow !== 'none' ? 15 : '14px 0 0', display: 'flex', flexDirection: 'column', gap: 7, flex: 1 }}>
@@ -398,13 +552,45 @@ export default function ShopPage() {
                       <p style={{ fontSize: 13.5, color: t.muted, margin: 0, lineHeight: 1.6 }}>{p.description}</p>
                     )}
 
+                    {/* ── The options, when there are any ── */}
+                    {variants.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
+                        {variants.map(v => {
+                          const vLeft = stockOf(p, v);
+                          const gone = vLeft <= 0;
+                          const on = v.id === pick?.id;
+                          return (
+                            <button key={v.id} type="button"
+                              onClick={() => setChosen(c => ({ ...c, [p.id]: v.id }))}
+                              disabled={gone} aria-pressed={on}
+                              title={gone ? `${v.title} — out of stock` : v.title}
+                              style={{
+                                padding: '6px 11px', borderRadius: Math.min(t.radius, 999),
+                                border: `1px solid ${on ? accent : t.line}`,
+                                background: on ? accent : 'transparent',
+                                color: on ? onAccent : gone ? t.muted : t.ink,
+                                fontSize: 12.5, fontWeight: 600, cursor: gone ? 'not-allowed' : 'pointer',
+                                fontFamily: 'inherit',
+                                /* Struck through rather than hidden: a buyer
+                                   should see the size exists and has gone, not
+                                   wonder whether the shop stocks it. */
+                                textDecoration: gone ? 'line-through' : 'none',
+                                opacity: gone ? 0.5 : 1,
+                              }}>
+                              {v.title}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', paddingTop: 6 }}>
-                      <span style={{ fontSize: 17, fontWeight: 700 }}>{money(p.priceCents, currency)}</span>
+                      <span style={{ fontSize: 17, fontWeight: 700 }}>{money(unit, currency)}</span>
                       {onSale && (
                         /* Only ever shown when it is genuinely higher — the
                            server refuses to store a "was" below the price. */
                         <span style={{ fontSize: 13.5, color: t.muted, textDecoration: 'line-through' }}>
-                          {money(p.compareAtCents, currency)}
+                          {money(wasPrice, currency)}
                         </span>
                       )}
                     </div>
@@ -418,14 +604,14 @@ export default function ShopPage() {
                     {canBuy && !out && (
                       inBasket > 0 ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                          <button onClick={() => add(p, -1)} aria-label={`One fewer ${p.name}`}
+                          <button onClick={() => add(p, -1, pick)} aria-label={`One fewer ${p.name}`}
                             style={{ ...btn(false), padding: 8, borderRadius: Math.min(t.radius, 8) }}><Minus size={14} /></button>
                           <span style={{ fontSize: 15, fontWeight: 700, minWidth: 22, textAlign: 'center' }}>{inBasket}</span>
-                          <button onClick={() => add(p, 1)} disabled={inBasket >= left} aria-label={`One more ${p.name}`}
+                          <button onClick={() => add(p, 1, pick)} disabled={inBasket >= left} aria-label={`One more ${p.name}`}
                             style={{ ...btn(false), padding: 8, borderRadius: Math.min(t.radius, 8), opacity: inBasket >= left ? 0.4 : 1 }}><Plus size={14} /></button>
                         </div>
                       ) : (
-                        <button onClick={() => add(p, 1)} style={{ ...btn(true), marginTop: 4 }}>
+                        <button onClick={() => add(p, 1, pick)} style={{ ...btn(true), marginTop: 4 }}>
                           Add to basket
                         </button>
                       )
@@ -494,17 +680,19 @@ export default function ShopPage() {
                     ? <img src={l.product.imageUrl} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: Math.min(t.radius, 8), flexShrink: 0 }} />
                     : <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: Math.min(t.radius, 8), background: t.pageBg === '#ffffff' ? '#f4f5f7' : 'rgba(255,255,255,0.06)', display: 'grid', placeItems: 'center', color: t.muted }}><ShoppingBag size={16} /></div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{l.product.name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>
+                      {l.product.name}{l.variant ? ` — ${l.variant.title}` : ''}
+                    </div>
                     <div style={{ fontSize: 13, color: t.muted, marginTop: 2 }}>{money(l.product.priceCents, currency)} each</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 7 }}>
                       <button onClick={() => add(l.product, -1)} aria-label="One fewer"
                         style={{ ...btn(false), padding: 6, borderRadius: 6 }}><Minus size={12} /></button>
                       <span style={{ fontSize: 14, fontWeight: 700, minWidth: 18, textAlign: 'center' }}>{l.qty}</span>
-                      <button onClick={() => add(l.product, 1)} disabled={l.qty >= stockOf(l.product)} aria-label="One more"
-                        style={{ ...btn(false), padding: 6, borderRadius: 6, opacity: l.qty >= stockOf(l.product) ? 0.4 : 1 }}><Plus size={12} /></button>
+                      <button onClick={() => add(l.product, 1, l.variant)} disabled={l.qty >= stockOf(l.product, l.variant)} aria-label="One more"
+                        style={{ ...btn(false), padding: 6, borderRadius: 6, opacity: l.qty >= stockOf(l.product, l.variant) ? 0.4 : 1 }}><Plus size={12} /></button>
                     </div>
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>{money(l.product.priceCents * l.qty, currency)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{money(unitOf(l) * l.qty, currency)}</div>
                 </div>
               ))}
             </div>
@@ -514,16 +702,65 @@ export default function ShopPage() {
                 onSubmit={e => { e.preventDefault(); if (!busy) void checkout(); }}
                 style={{ padding: 18, borderTop: `1px solid ${t.line}`, display: 'grid', gap: 10 }}
               >
-                {/* Honest about what the next press actually does. The order is
-                    created one product at a time server-side, so a basket with
-                    more than one line pays for the first and keeps the rest. */}
-                {lines.length > 1 && (
-                  <p style={{ margin: 0, fontSize: 12, color: t.muted, lineHeight: 1.55 }}>
-                    You will be taken to a checkout for <strong>{lines[0].product.name}</strong> first.
-                    The rest stay in your basket.
-                  </p>
+                {/* ── The code ── */}
+                <label style={{ display: 'grid', gap: 5 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: t.muted }}>Discount code</span>
+                  <input value={discountCode} onChange={e => setDiscountCode(e.target.value.toUpperCase())}
+                    placeholder="If you have one" aria-label="Discount code"
+                    style={{
+                      width: '100%', padding: '10px 13px', boxSizing: 'border-box', letterSpacing: '0.06em',
+                      border: `1px solid ${totals?.discountProblem ? '#b91c1c' : t.line}`,
+                      borderRadius: Math.max(t.radius, 8),
+                      background: t.pageBg, color: t.ink, fontSize: 14, outline: 'none', fontFamily: 'inherit',
+                    }} />
+                </label>
+                {/* Why it did not apply, rather than a total that quietly did
+                    not move. */}
+                {totals?.discountProblem && (
+                  <p style={{ margin: 0, fontSize: 12.5, color: '#b91c1c', lineHeight: 1.5 }}>{totals.discountProblem}</p>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700 }}>
+
+                {/* ── Where it is going, so delivery can be priced ── */}
+                {rates.length > 0 && (
+                  <label style={{ display: 'grid', gap: 5 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: t.muted }}>Delivering to</span>
+                    <input value={country} onChange={e => setCountry(e.target.value.toUpperCase().slice(0, 2))}
+                      placeholder="GB" aria-label="Country code"
+                      style={{
+                        width: '100%', padding: '10px 13px', boxSizing: 'border-box',
+                        border: `1px solid ${t.line}`, borderRadius: Math.max(t.radius, 8),
+                        background: t.pageBg, color: t.ink, fontSize: 14, outline: 'none', fontFamily: 'inherit',
+                      }} />
+                  </label>
+                )}
+
+                {/* ── The sum, itemised ──
+                    Every line is the shop's own arithmetic, asked for rather
+                    than worked out here. `buy` recomputes from the same code,
+                    so this can only ever agree with what gets charged. */}
+                <div style={{ display: 'grid', gap: 5, fontSize: 13.5, color: t.muted }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Items</span><span>{money(totals ? totals.goodsCents : goods, currency)}</span>
+                  </div>
+                  {!!totals?.discountCents && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f7b3d' }}>
+                      <span>{totals.discountCode}</span><span>−{money(totals.discountCents, currency)}</span>
+                    </div>
+                  )}
+                  {!!totals && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{totals.shippingLabel || 'Delivery'}</span>
+                      <span>{totals.shippingCents ? money(totals.shippingCents, currency) : 'Free'}</span>
+                    </div>
+                  )}
+                </div>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700,
+                  paddingTop: 8, borderTop: `1px solid ${t.line}`,
+                  /* Faded while the shop is re-checking, so a number that is
+                     about to change does not look settled. */
+                  opacity: quoting ? 0.55 : 1,
+                }}>
                   <span>Total</span><span>{money(total, currency)}</span>
                 </div>
                 <input type="email" required value={email} onChange={e => setEmail(e.target.value)}

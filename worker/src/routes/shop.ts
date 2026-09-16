@@ -35,6 +35,8 @@ interface Req {
   productId?: string;
   /** Which option the buyer chose. Looked up, never trusted for its price. */
   variantId?: string;
+  /** The whole basket. Prices are never taken from it — only what and how many. */
+  items?: Array<{ productId?: string; variantId?: string; qty?: number }>;
   qty?: number;
   email?: string;
   discountCode?: string;
@@ -86,6 +88,46 @@ const RESERVED = new Set(['api', 'app', 'admin', 'shop', 'book', 'preview', 'log
  * rows are the thing being protected.
  */
 const MAX_ORDERS_PER_HOUR = 30;
+
+
+/**
+ * What a basket costs, from the rules this shop actually has.
+ *
+ * Shared by `quote` and `buy` so the number on the page and the number on the
+ * card cannot disagree. The browser never does this arithmetic — a total
+ * assembled in a browser is a total somebody can edit.
+ */
+async function priceFor(
+  env: Env,
+  accountId: string,
+  items: Array<{ name: string; qty: number; priceCents: number }>,
+  d: Req,
+) {
+  const { results: rateRows } = await env.DB.prepare(
+    `SELECT id, name, countries, kind, amount_cents AS amountCents,
+            threshold_cents AS thresholdCents, position, status
+     FROM crm_shipping_rates WHERE account_id = ? LIMIT 50`,
+  ).bind(accountId).all<ShippingRate>();
+
+  const typedCode = String(d.discountCode ?? '').trim().toUpperCase().slice(0, 40);
+  let discountRow: Discount | null = null;
+  if (typedCode) {
+    discountRow = await env.DB.prepare(
+      `SELECT code, kind, value, min_spend_cents AS minSpendCents,
+              starts_at AS startsAt, ends_at AS endsAt,
+              usage_limit AS usageLimit, used_count AS usedCount, status
+       FROM crm_discounts WHERE account_id = ? AND code = ?`,
+    ).bind(accountId, typedCode).first<Discount>();
+  }
+
+  return priceBasket({
+    lines: items.map(i => ({ name: i.name, qty: i.qty, priceCents: i.priceCents })),
+    discount: discountRow,
+    codeTyped: typedCode,
+    rates: rateRows ?? [],
+    country: String(d.shipCountry ?? d.country ?? '').trim(),
+  });
+}
 
 export async function handleShop(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
@@ -176,6 +218,55 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
   }
 
   /* ── Public: buy one thing ── */
+  /*
+   * ── What this basket would cost ───────────────────────────────────────────
+   *
+   * A preview, so the page can show a discount landing and a delivery price
+   * before somebody commits — and so the browser never has to do the
+   * arithmetic itself. `buy` recomputes from the same helper, so the quote can
+   * never be the number that gets charged; it can only ever agree with it.
+   */
+  if (act === 'quote') {
+    const shop = await env.DB.prepare(
+      "SELECT id, account_id, project_id FROM crm_shops WHERE slug = ? AND status = 'published'",
+    ).bind(cleanSlug(d.slug)).first<{ id: string; account_id: string; project_id: string }>();
+    if (!shop) return fail('There is no shop at this address.', 404, { notFound: true });
+
+    const raw = (Array.isArray(d.items) ? d.items : []).slice(0, 20);
+    if (!raw.length) return fail('Nothing in the basket.');
+
+    const lines: Array<{ name: string; qty: number; priceCents: number }> = [];
+    for (const entry of raw) {
+      const qty = Math.min(Math.max(Math.round(Number(entry.qty) || 1), 1), 50);
+      const product = await env.DB.prepare(
+        `SELECT id, name, price_cents FROM crm_products
+         WHERE id = ? AND account_id = ? AND status = 'active'`,
+      ).bind(String(entry.productId ?? ''), shop.account_id)
+        .first<{ id: string; name: string; price_cents: number }>();
+      if (!product) continue;
+
+      let unit = product.price_cents;
+      let name = product.name;
+      const variantId = String(entry.variantId ?? '').trim();
+      if (variantId) {
+        const v = await env.DB.prepare(
+          'SELECT title, price_cents FROM crm_product_variants WHERE id = ? AND product_id = ? AND account_id = ?',
+        ).bind(variantId, product.id, shop.account_id).first<{ title: string; price_cents: number }>();
+        if (!v) continue;
+        unit = v.price_cents;
+        name = `${product.name} — ${v.title}`;
+      }
+      lines.push({ name, qty, priceCents: unit });
+    }
+    if (!lines.length) return fail('Nothing in the basket is for sale.');
+
+    const sf = await env.DB.prepare('SELECT currency FROM crm_storefront WHERE account_id = ?')
+      .bind(shop.account_id).first<{ currency: string }>();
+
+    const totals = await priceFor(env, shop.account_id, lines, d);
+    return json({ success: true, totals, currency: (sf?.currency || 'USD').toUpperCase() });
+  }
+
   if (act === 'buy') {
     const slug = cleanSlug(d.slug);
     const shop = await env.DB.prepare(
@@ -195,14 +286,23 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
       return fail('Too many orders from this connection in the last hour. Try again shortly.', 429);
     }
 
-    /* The price comes from the row, never from the request. */
-    const product = await env.DB.prepare(
-      `SELECT id, name, price_cents, currency, inventory, track_inventory
-       FROM crm_products WHERE id = ? AND account_id = ? AND status = 'active'`,
-    ).bind(String(d.productId ?? ''), shop.account_id)
-      .first<{ id: string; name: string; price_cents: number; currency: string; inventory: number; track_inventory: number }>();
-    if (!product) return fail('That item is not for sale.');
-    if (product.price_cents <= 0) return fail('That item has no price set, so it cannot be bought yet.');
+    /*
+     * Every line in the basket, priced from the rows.
+     *
+     * This used to take one product id and charge for that alone, while the
+     * page showed a total for the whole basket — survivable when the total was
+     * just a sum the buyer could check, and not survivable next to a discount
+     * code, because the page would show 20% off three items and the card would
+     * be debited for one.
+     *
+     * `items` is the basket. The older single-product shape is still accepted
+     * so a cached page mid-session does not start failing.
+     */
+    const raw = Array.isArray(d.items) && d.items.length
+      ? d.items
+      : [{ productId: String(d.productId ?? ''), variantId: String(d.variantId ?? ''), qty: Number(d.qty) || 1 }];
+
+    if (raw.length > 20) return fail('That is too many different items for one order.');
 
     /* One currency for the workspace, and it is the storefront's — the same one
        `get` puts on the page and the one createPayLink will actually charge in.
@@ -211,89 +311,75 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
        and the card was debited in the other. */
     const sf = await env.DB.prepare('SELECT currency FROM crm_storefront WHERE account_id = ?')
       .bind(shop.account_id).first<{ currency: string }>();
-    const currency = (sf?.currency || product.currency || 'USD').toUpperCase();
 
-    const qty = Math.min(Math.max(Math.round(Number(d.qty) || 1), 1), 50);
+    const items: Array<{ productId: string; variantId: string; name: string; qty: number; priceCents: number }> = [];
+    let fallbackCurrency = '';
 
-    /* Checked at the buy, not only hidden in the listing: two people can have
-       the last one on screen at the same moment, and the second should be told
-       rather than charged for something that has gone. Only when the shopkeeper
-       asked for stock to be tracked — most of what this app's customers sell
-       is a service with none, and "out of stock" on a boiler service because
-       nobody typed a number is worse than never mentioning stock. */
-    if (product.track_inventory) {
-      if (product.inventory <= 0) return fail(`${product.name} is out of stock.`);
-      if (qty > product.inventory) {
-        return fail(`Only ${product.inventory} left of ${product.name} — reduce the quantity.`);
+    for (const entry of raw) {
+      const qty = Math.min(Math.max(Math.round(Number(entry.qty) || 1), 1), 50);
+
+      /* The price comes from the row, never from the request. */
+      const product = await env.DB.prepare(
+        `SELECT id, name, price_cents, currency, inventory, track_inventory
+         FROM crm_products WHERE id = ? AND account_id = ? AND status = 'active'`,
+      ).bind(String(entry.productId ?? ''), shop.account_id)
+        .first<{ id: string; name: string; price_cents: number; currency: string; inventory: number; track_inventory: number }>();
+      if (!product) return fail('One of those items is not for sale.');
+      fallbackCurrency = fallbackCurrency || product.currency;
+
+      /*
+       * A variant, when one was chosen — and its price, not the product's.
+       *
+       * Looked up rather than trusted, exactly like the price: the whole point
+       * of reading from the row is defeated if *which row* comes from the
+       * request unchecked. It must belong to this product and this account, or
+       * it is not a variant of anything the buyer is looking at.
+       */
+      const variantId = String(entry.variantId ?? '').trim();
+      let variant: { id: string; title: string; price_cents: number; inventory: number } | null = null;
+      if (variantId) {
+        variant = await env.DB.prepare(
+          `SELECT id, title, price_cents, inventory FROM crm_product_variants
+           WHERE id = ? AND product_id = ? AND account_id = ?`,
+        ).bind(variantId, product.id, shop.account_id)
+          .first<{ id: string; title: string; price_cents: number; inventory: number }>();
+        if (!variant) return fail('That option is not available.');
+        if (variant.price_cents <= 0) return fail('That option has no price set, so it cannot be bought yet.');
       }
-    }
 
-    /*
-     * A variant, when one was chosen — and its price, not the product's.
-     *
-     * Looked up rather than trusted, exactly like the product price: the whole
-     * point of reading from the row is defeated if the *which row* comes from
-     * the request unchecked. It must belong to this product and this account,
-     * or it is not a variant of anything the buyer is looking at.
-     */
-    const variantId = String(d.variantId ?? '').trim();
-    let variant: { id: string; title: string; price_cents: number; inventory: number } | null = null;
-    if (variantId) {
-      variant = await env.DB.prepare(
-        `SELECT id, title, price_cents, inventory FROM crm_product_variants
-         WHERE id = ? AND product_id = ? AND account_id = ?`,
-      ).bind(variantId, product.id, shop.account_id)
-        .first<{ id: string; title: string; price_cents: number; inventory: number }>();
-      if (!variant) return fail('That option is not available.');
-      if (variant.price_cents <= 0) return fail('That option has no price set, so it cannot be bought yet.');
-      if (product.track_inventory && qty > variant.inventory) {
-        return variant.inventory <= 0
-          ? fail(`${product.name} — ${variant.title} is out of stock.`)
-          : fail(`Only ${variant.inventory} left of ${product.name} — ${variant.title}.`);
+      const unitCents = variant ? variant.price_cents : product.price_cents;
+      if (unitCents <= 0) return fail(`${product.name} has no price set, so it cannot be bought yet.`);
+
+      /* Checked at the buy, not only hidden in the listing: two people can have
+         the last one on screen at the same moment, and the second should be
+         told rather than charged for something that has gone. Only when the
+         shopkeeper asked for stock to be tracked — most of what this app's
+         customers sell is a service with none, and "out of stock" on a boiler
+         service because nobody typed a number is worse than never mentioning
+         stock. */
+      if (product.track_inventory) {
+        const left = variant ? variant.inventory : product.inventory;
+        const label = variant ? `${product.name} — ${variant.title}` : product.name;
+        if (left <= 0) return fail(`${label} is out of stock.`);
+        if (qty > left) return fail(`Only ${left} left of ${label} — reduce the quantity.`);
       }
+
+      items.push({
+        productId: product.id,
+        variantId: variant?.id ?? '',
+        name: variant ? `${product.name} — ${variant.title}` : product.name,
+        qty,
+        priceCents: unitCents,
+      });
     }
 
-    const unitCents = variant ? variant.price_cents : product.price_cents;
-    const lineName = variant ? `${product.name} — ${variant.title}` : product.name;
-    const items = [{
-      productId: product.id, variantId: variant?.id ?? '',
-      name: lineName, qty, priceCents: unitCents,
-    }];
+    const currency = (sf?.currency || fallbackCurrency || 'USD').toUpperCase();
 
-    /* The rules this shop actually has, read here rather than taken from the
-       page — a basket total assembled in a browser is a total somebody can
-       edit. */
-    const { results: rateRows } = await env.DB.prepare(
-      `SELECT id, name, countries, kind, amount_cents AS amountCents,
-              threshold_cents AS thresholdCents, position, status
-       FROM crm_shipping_rates WHERE account_id = ? LIMIT 50`,
-    ).bind(shop.account_id).all<ShippingRate>();
-
-    const typedCode = String(d.discountCode ?? '').trim().toUpperCase().slice(0, 40);
-    let discountRow: Discount | null = null;
-    if (typedCode) {
-      const row = await env.DB.prepare(
-        `SELECT code, kind, value, min_spend_cents AS minSpendCents,
-                starts_at AS startsAt, ends_at AS endsAt,
-                usage_limit AS usageLimit, used_count AS usedCount, status
-         FROM crm_discounts WHERE account_id = ? AND code = ?`,
-      ).bind(shop.account_id, typedCode).first<Discount>();
-      discountRow = row ?? null;
-    }
-
-    const totals = priceBasket({
-      lines: [{ name: lineName, qty, priceCents: unitCents }],
-      discount: discountRow,
-      codeTyped: typedCode,
-      rates: rateRows ?? [],
-      country: String(d.shipCountry ?? d.country ?? '').trim(),
-    });
-
+    const totals = await priceFor(env, shop.account_id, items, d);
     /* A code that does not apply stops the order rather than quietly charging
        the full price. Somebody who typed one and was billed without it would
        find out on the receipt, which is the worst moment. */
     if (totals.discountProblem) return fail(totals.discountProblem, 200, { code: 'discount' });
-
     const total = totals.totalCents;
 
     const now = nowIso();
