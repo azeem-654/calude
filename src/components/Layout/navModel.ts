@@ -18,7 +18,7 @@
 import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
-  Scissors, Send, Settings as SettingsIcon, Star, TrendingUp, Users,
+  Scissors, Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
   type LucideIcon, Package } from 'lucide-react';
 
 export interface NavItem {
@@ -31,6 +31,12 @@ export interface NavItem {
   aka?: string[];
   /** Kept out of a client login, which must not see the agency's own screens. */
   agencyOnly?: boolean;
+  /**
+   * The install owner only — not "an agency", which every customer of this
+   * product is. Moderating other people's content is the operator's job, and a
+   * sub-account must not even see that the screen exists.
+   */
+  ownerOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -118,6 +124,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/settings?tab=email-sms', label: 'Email & SMS setup', desc: 'Connect SMTP, Resend, Mailtrap or Twilio', icon: Send, aka: ['smtp', 'sending', 'provider', 'twilio', 'resend'] },
       { path: '/billing', label: 'Plan & billing', desc: 'Your subscription, invoices and usage', icon: CreditCard, aka: ['invoice', 'subscription', 'payment'] },
       { path: '/agency', label: 'Agency & clients', desc: 'Every sub-account you run, in one place', icon: Building2, aka: ['sub-accounts', 'white label', 'clients'], agencyOnly: true },
+      { path: '/moderation', label: 'Content review', desc: 'Anything held before it went out, and what became of the account', icon: ShieldAlert, aka: ['moderation', 'review', 'held', 'approve', 'suspend', 'abuse', 'policy'], ownerOnly: true },
     ],
   },
 ];
@@ -128,9 +135,18 @@ function basePath(path: string): string {
   return q === -1 ? path : path.slice(0, q);
 }
 
-/** Every module a given login is allowed to see, in menu order. */
-export function allModules(isClient: boolean): NavItem[] {
-  return NAV_GROUPS.flatMap(g => g.items).filter(i => !(i.agencyOnly && isClient));
+/**
+ * Every module a given login is allowed to see, in menu order.
+ *
+ * `isOwner` defaults to false, so an owner-only module is hidden unless a
+ * caller has actually established that it should not be. That is the right way
+ * round for a default: forgetting to pass it hides a screen, rather than
+ * showing every customer the one that moderates them.
+ */
+export function allModules(isClient: boolean, isOwner = false): NavItem[] {
+  return NAV_GROUPS.flatMap(g => g.items)
+    .filter(i => !(i.agencyOnly && isClient))
+    .filter(i => !(i.ownerOnly && !isOwner));
 }
 
 /** Which group the current address belongs to, so its pill can look chosen. */
@@ -161,9 +177,9 @@ export function isItemActive(pathname: string, item: NavItem): boolean {
  * the label — searching "calendly" has to find Booking pages or the palette is
  * only useful to somebody who already knows where everything is.
  */
-export function searchModules(query: string, isClient: boolean): NavItem[] {
+export function searchModules(query: string, isClient: boolean, isOwner = false): NavItem[] {
   const q = query.trim().toLowerCase();
-  const all = allModules(isClient);
+  const all = allModules(isClient, isOwner);
   if (!q) return all;
 
   const scored: { item: NavItem; score: number }[] = [];

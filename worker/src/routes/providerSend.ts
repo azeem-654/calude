@@ -15,6 +15,7 @@
 import { addr, body, fail, headerSafe, json } from '../lib/http';
 import { requireSessionForSocket, type Env } from '../lib/db';
 import { loadMailbox } from './mailbox';
+import { gate as contentGate } from '../lib/contentGate';
 
 interface ProviderBody {
   token?: string;
@@ -130,6 +131,16 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
   const fromName = headerSafe(d.fromName ?? 'CRM', 120);
   const subject = headerSafe(d.subject ?? '', 300) || '(no subject)';
   const html = String(d.html ?? '');
+
+  /* The other email exit. A workspace that sends through Resend or Brevo rather
+     than its own SMTP is on the same terms — an exit guarded on one route and
+     not its twin is not guarded. */
+  if (d.accountId) {
+    const verdict = await contentGate(env, String(d.accountId), 'email', `${subject}\n\n${html}`);
+    if (!verdict.ok) {
+      return json({ success: false, held: verdict.verdict === 'review', message: verdict.message, error: verdict.message });
+    }
+  }
   const reply = replyRaw || fromEmail;
   const fromHeader = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 

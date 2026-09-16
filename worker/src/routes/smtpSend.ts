@@ -15,6 +15,7 @@ import { requireSessionForSocket, type Env } from '../lib/db';
 import { smtpSend, smtpVerify, type Encryption } from '../lib/smtp';
 import { buildMime } from '../lib/mime';
 import { loadMailbox } from './mailbox';
+import { gate as contentGate } from '../lib/contentGate';
 
 interface SendBody {
   token?: string;
@@ -58,6 +59,42 @@ export async function handleSmtpSend(
   let port = Number(d.port) || 587;
   let encryption = encryptionOf(d.encryption);
   let storedFrom: { name: string; email: string; replyTo: string } | null = null;
+
+  /*
+   * ── The content gate, and why it is here ──
+   *
+   * This is the doorway. Campaigns, sequences, Autopilot's own sends, AI
+   * replies and the digest all end up on this line, so one check here covers
+   * every one of them — including the ones added next year by somebody who
+   * never reads this comment.
+   *
+   * Subject *and* body together. Screening the body alone leaves the subject
+   * line as an unguarded place to put anything, and it is the part that gets
+   * read.
+   *
+   * Only when a workspace is named. A send with explicit credentials is the
+   * setup wizard proving a password against a server, before any workspace
+   * exists to hold it to account.
+   *
+   * ── Why it is this high up ──
+   *
+   * It was below the mailbox lookup, which meant a suspended account with no
+   * mail server configured was told to go and configure one. The suspension is
+   * the thing they need to know, and it is true whatever else is missing.
+   */
+  if (d.accountId && !opts.forceVerify && !d.verifyOnly) {
+    const verdict = await contentGate(env, String(d.accountId), 'email', `${d.subject ?? ''}\n\n${d.html ?? ''}`);
+    if (!verdict.ok) {
+      /* Reported as *not sent*, with the reason. The tempting alternative —
+         swallow it and answer success — is how a customer finds out weeks
+         later that a campaign they watched "send" never left the building. */
+      return json({
+        success: false, transport: 'smtp', held: verdict.verdict === 'review',
+        message: verdict.message, error: verdict.message, reviewId: verdict.reviewId,
+      });
+    }
+  }
+
 
   if (!host && d.accountId) {
     const mb = await loadMailbox(env, String(d.accountId));

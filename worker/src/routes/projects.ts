@@ -20,6 +20,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { readSite } from '../lib/readSite';
 import { ensureProjectPipeline } from '../lib/projectPipeline';
@@ -170,6 +171,22 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const id = String(d.id ?? '').trim() || rid('pf');
     const name = String(d.name ?? '').trim();
     if (!name) return fail('A portfolio needs the client’s name.');
+
+    /*
+     * The one entry point worth judging on its own.
+     *
+     * Everywhere else the question is "is this piece of writing acceptable".
+     * Here it is "is this business". An adult site does not have to write
+     * anything explicit for the answer to be no, and catching it once, at the
+     * moment somebody describes what they do, is worth more than catching
+     * every campaign it would go on to produce.
+     *
+     * Saved either way. Refusing to store it would lose the customer's work
+     * and tell them nothing; what it does not get is a project that sends.
+     */
+    const profileText = `${name}\n${JSON.stringify(d.profile ?? {})}`;
+    const verdict = await contentGate(env, accountId, 'portfolio', profileText);
+
     const now = nowIso();
     const existing = await env.DB.prepare('SELECT created_at FROM crm_portfolios WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string }>();
@@ -185,7 +202,14 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       ['manual', 'url'].includes(String(d.source)) ? String(d.source) : 'manual',
       existing?.created_at ?? now, now,
     ).run();
-    return json({ success: true, id, portfolios: await listPortfolios() });
+    return json({
+      success: true, id, portfolios: await listPortfolios(),
+      /* Not an error — the portfolio saved. It is a warning that Autopilot will
+         not run from it until somebody has looked, which is the thing they
+         would otherwise discover by waiting for nothing to happen. */
+      held: !verdict.ok,
+      heldMessage: verdict.ok ? '' : verdict.message,
+    });
   }
 
   /**

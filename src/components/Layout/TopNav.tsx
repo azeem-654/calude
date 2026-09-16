@@ -53,6 +53,9 @@ export default function TopNav() {
   const openPanel = (id: string | null) => setOpenGroup(id ? { id, where: here } : null);
   const session = getSession();
   const isClient = session?.user.role === 'client';
+  /* The install owner, not merely an agency — every customer of this product
+     is an agency. */
+  const isInstallOwner = session?.user.accountId == null && session?.user.role === 'agency';
   const accounts = loadSubAccounts();
   const active = activeAccount();
   const brand = activeBranding();
@@ -228,7 +231,12 @@ export default function TopNav() {
         */}
 
         {NAV_GROUPS.map((group, gi) => {
-          const items = group.items.filter(i => !(i.agencyOnly && isClient));
+          /* Two rules, and they are different: `agencyOnly` keeps a client login
+             out of the agency's screens, `ownerOnly` keeps every customer —
+             agencies included — out of the operator's. */
+          const items = group.items
+            .filter(i => !(i.agencyOnly && isClient))
+            .filter(i => !(i.ownerOnly && !isInstallOwner));
           if (items.length === 0) return null;
           const on = currentGroup === group.id;
           const open = openId === group.id;

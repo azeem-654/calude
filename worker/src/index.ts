@@ -29,6 +29,7 @@ import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
+import { handleModeration } from './routes/moderation';
 import { handlePortal } from './routes/portal';
 import { handleShop } from './routes/shop';
 import { handleAiWrite } from './routes/aiwrite';
@@ -55,6 +56,10 @@ type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Respon
 
 const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
+  /* Content held for review, and what became of the accounts that produced it.
+     Owner-only but for one action, which tells a customer why they cannot
+     send. */
+  '/api/moderation.php': handleModeration,
   '/api/data.php': handleData,
   '/api/mailbox.php': handleMailbox,
   /* Domains, DNS and mailbox provisioning. Every provider credential lives on

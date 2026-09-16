@@ -40,6 +40,8 @@ import Commerce from './components/Commerce/Commerce';
 import ShopPage from './components/Shop/ShopPage';
 import ClientReport from './components/Portal/ClientReport';
 import GoogleCallback from './components/Auth/GoogleCallback';
+import ReviewQueue from './components/Moderation/ReviewQueue';
+import StandingBanner from './components/shared/StandingBanner';
 import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
@@ -97,6 +99,9 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#e9ebee' }}>
       <TopNav />
+      {/* Above everything, because it is the explanation for anything that
+          refuses lower down the page. */}
+      <StandingBanner />
       <IconRail />
       <DueWorkRunner />
       {/* The 62px is the floating icon rail's width. The rail is hidden below
@@ -137,6 +142,10 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/autopilot" element={<Autopilot />} />
           <Route path="/sell" element={<Commerce />} />
           <Route path="/settings" element={<Settings />} />
+          {/* The screen itself checks who is asking, and so does every action
+              behind it — a client login that guesses the address gets a
+              sentence, not a queue. */}
+          <Route path="/moderation" element={<ReviewQueue />} />
           {/*
            * Every other Routes block in this file has a catch-all; this one did
            * not, and the result was a screen that looked broken rather than

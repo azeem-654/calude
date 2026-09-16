@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CornerDownLeft, Search, X } from 'lucide-react';
 import { searchModules } from './navModel';
+import { getSession } from '../../services/auth';
 
 /* Mounted only while it is open, so every opening starts from a fresh box and
    a fresh highlight without an effect having to reset them. */
@@ -25,7 +26,11 @@ export default function CommandPalette({ onClose, isClient }: {
   const input = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const results = useMemo(() => searchModules(query, isClient), [query, isClient]);
+  /* The palette is a way into every screen, so it has to honour the same rule
+     the menu does — otherwise typing "moderation" is a back door into an
+     owner-only screen from any account. */
+  const isOwner = getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency';
+  const results = useMemo(() => searchModules(query, isClient, isOwner), [query, isClient, isOwner]);
   /* Clamp rather than reset: the arrow keys move this, and a query that shrinks
      the list must not leave the highlight pointing past the end. */
   const at = Math.min(cursor, Math.max(0, results.length - 1));

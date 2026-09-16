@@ -18,6 +18,7 @@ import { smtpVerify } from '../lib/smtp';
 import { encryptSecret } from '../lib/crypto';
 import { installSecret, nowIso } from '../lib/db';
 import { E164, buyNumber, isStopMessage, loadSmsConfig, recordOptOut, searchNumbers, sendSms, verifySmsCredentials } from '../lib/sms';
+import { gate as contentGate } from '../lib/contentGate';
 
 /* ── Inbox ───────────────────────────────────────────────────────────────── */
 
@@ -306,6 +307,16 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
 
   if (!creds) return fail('Add your Twilio SID, auth token and sending number in Settings → Email & SMS.');
 
+  /* The same gate the email path passes through. A text message is short, which
+     makes it a worse place to hide something and a better one to send a link
+     to it — so the body is screened on exactly the same terms. */
+  if (accountId && !explicit) {
+    const verdict = await contentGate(env, accountId, 'sms', text);
+    if (!verdict.ok) {
+      return json({ success: false, held: verdict.verdict === 'review', message: verdict.message, error: verdict.message });
+    }
+  }
+
   const r = await sendSms(env, creds, to, text, explicit ? undefined : accountId || undefined);
 
   /* Remember what a real attempt found, so the settings screen shows a state
@@ -444,11 +455,27 @@ export async function handleDeliverability(req: Request, env: Env): Promise<Resp
 
 export async function handleBlogPublish(req: Request, env: Env): Promise<Response> {
   const d = await body<{
-    token?: string; siteUrl?: string; username?: string; appPassword?: string;
+    token?: string; accountId?: string; siteUrl?: string; username?: string; appPassword?: string;
     title?: string; content?: string; status?: string; excerpt?: string;
   }>(req);
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
+
+  /*
+   * Screened before it reaches WordPress, not after.
+   *
+   * It is the customer's own site, which is exactly why this matters: a post
+   * published there carries a domain this platform sold them, mail this
+   * platform sends, and in the managed case an address on our registrar
+   * account. "It is their site" stops being a defence at that point.
+   */
+  const acct = String(d.accountId ?? '').trim();
+  if (acct) {
+    const verdict = await contentGate(env, acct, 'blog', `${d.title ?? ''}\n\n${d.excerpt ?? ''}\n\n${d.content ?? ''}`);
+    if (!verdict.ok) {
+      return json({ success: false, held: verdict.verdict === 'review', message: verdict.message, error: verdict.message });
+    }
+  }
 
   const site = String(d.siteUrl ?? '').trim().replace(/\/$/, '');
   const username = String(d.username ?? '').trim();

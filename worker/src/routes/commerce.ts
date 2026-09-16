@@ -14,6 +14,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { storefrontCurrency, storefrontLabel, storefrontReady } from './storefront';
 import { supplierReady } from './supplier';
@@ -255,6 +256,22 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
        places, so the shop will not display one it cannot stand behind. */
     const compareAt = clampInt(d.compareAtCents, 0, 100_000_000);
 
+    /*
+     * A product is a public listing, so it is screened as one.
+     *
+     * Held means it saves as a draft rather than being refused. A draft does
+     * not appear on `/shop/<slug>`, which is the only place it could reach
+     * anybody — so the customer keeps their work, the shop stays clean, and the
+     * one thing they cannot do is publish it past a review.
+     */
+    const wanted = ['draft', 'active', 'archived'].includes(String(d.status)) ? String(d.status) : 'draft';
+    let status = wanted;
+    let held = '';
+    if (wanted === 'active') {
+      const verdict = await contentGate(env, accountId, 'product', `${name}\n\n${String(d.description ?? '')}`);
+      if (!verdict.ok) { status = 'draft'; held = verdict.message; }
+    }
+
     await env.DB.prepare(
       `INSERT INTO crm_products
        (id, account_id, name, description, sku, price_cents, cost_cents, currency,
@@ -278,7 +295,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
          it in dollars too. */
       await storefrontCurrency(env, accountId),
       String(d.source ?? 'own').slice(0, 40), String(d.supplierRef ?? '').slice(0, 200),
-      ['draft', 'active', 'archived'].includes(String(d.status)) ? String(d.status) : 'draft',
+      status,
       existing?.created_at ?? now, now,
       /* Capped rather than rejected: a data: URI for a photo is legitimate and
          large, and a row that will not fit is better trimmed than refused with
@@ -291,7 +308,10 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       clampInt(d.sortOrder, 0, 100_000),
       String(d.projectId ?? '').slice(0, 80),
     ).run();
-    return json({ success: true, id, products: await listProducts() });
+    /* Told, not silently demoted. A product that says "active" on the form and
+       is a draft in the database is the exact shape of lie this codebase is
+       written to avoid. */
+    return json({ success: true, id, products: await listProducts(), held: !!held, heldMessage: held });
   }
 
   if (act === 'delete_product') {

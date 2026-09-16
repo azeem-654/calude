@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "domains": "node scripts/attach-domains.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "test:moderation": "npx --yes tsx worker/test/moderation.test.mts"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
