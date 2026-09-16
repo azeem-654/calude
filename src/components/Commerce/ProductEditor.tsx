@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   X, Loader, ImagePlus, Trash2, AlertCircle, Package,
 } from 'lucide-react';
-import { saveProduct, type Product } from '../../services/commerce';
+import { money, saveProduct, saveVariants, type Product, type Variant } from '../../services/commerce';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -136,6 +136,26 @@ export default function ProductEditor({
   const [trackInventory, setTrackInventory] = useState(!!product?.trackInventory);
   const [inventory, setInventory] = useState(String(product?.inventory ?? 0));
   const [status, setStatus] = useState<Product['status']>(product?.status ?? 'draft');
+
+  /*
+   * The options this product sells as.
+   *
+   * Held as the whole list and saved as the whole list — adding a colour
+   * re-titles every row, so merging server-side would mean guessing which old
+   * variant each new one meant, and guessing wrong on a rename.
+   */
+  const [variants, setVariants] = useState<Partial<Variant>[]>(product?.variants ?? []);
+  const [optionName, setOptionName] = useState('Size');
+
+  const addVariant = () => setVariants(v => [...v, {
+    title: '', sku: '',
+    /* Starts at the product's price rather than zero: most options cost the
+       same, and a row that saves at zero is a row that cannot be bought. */
+    priceCents: price ?? 0, compareAtCents: 0, inventory: 0, imageUrl: '',
+  }]);
+  const setVariant = (i: number, patch: Partial<Variant>) =>
+    setVariants(v => v.map((row, n) => (n === i ? { ...row, ...patch } : row)));
+  const dropVariant = (i: number) => setVariants(v => v.filter((_, n) => n !== i));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -184,9 +204,30 @@ export default function ProductEditor({
       status,
       projectId: product?.projectId ?? projectId ?? '',
     } as Partial<Product>);
+    if (!r.success) { setBusy(false); setError(r.error ?? 'Could not save that.'); return; }
+
+    /*
+     * The options, after the product exists.
+     *
+     * Second rather than in the same call because a variant belongs to a
+     * product id, and a new product has none until the line above returns. A
+     * failure here is reported without losing the product — it saved.
+     */
+    const named = variants.filter(v => (v.title ?? '').trim());
+    let products = (r.products ?? []) as Product[];
+    if (named.length || (product?.variants?.length ?? 0) > 0) {
+      const id = r.id ?? product?.id ?? '';
+      const vr = await saveVariants(id, named, named.length ? [{ name: optionName, values: named.map(v => v.title ?? '') }] : []);
+      if (!vr.success) {
+        setBusy(false);
+        setError(`The product saved, but its options did not: ${vr.error ?? 'unknown error'}`);
+        return;
+      }
+      products = (vr.products ?? products) as Product[];
+    }
+
     setBusy(false);
-    if (!r.success) { setError(r.error ?? 'Could not save that.'); return; }
-    onSaved((r.products ?? []) as Product[]);
+    onSaved(products);
     onClose();
   };
 
@@ -276,6 +317,64 @@ export default function ProductEditor({
                   style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} />
               </div>
             </div>
+          </div>
+
+          {/* ── Options ──
+              Only for things that come in more than one. The default — no
+              variants — is what most of this app's customers sell, and a size
+              table on a boiler service is noise. */}
+          <div style={{ border: `1px solid ${LINE}`, borderRadius: 13, padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: INK, flex: 1, minWidth: 120 }}>
+                Does it come in options?
+              </span>
+              {variants.length > 0 && (
+                <input value={optionName} onChange={e => setOptionName(e.target.value)}
+                  aria-label="What the options are called"
+                  style={{ ...inp, width: 110, padding: '6px 9px', fontSize: 12.5 }} placeholder="Size" />
+              )}
+              <button type="button" onClick={addVariant} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px',
+                border: `1px solid ${LINE}`, borderRadius: 8, background: '#fff', color: INK,
+                fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}>+ Add one</button>
+            </div>
+
+            {variants.length === 0 ? (
+              <p style={{ margin: '8px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
+                Leave this empty and it sells as itself at the price below. Add options — sizes, colours —
+                and each carries its own price and its own stock.
+              </p>
+            ) : (
+              <div style={{ display: 'grid', gap: 8, marginTop: 11 }}>
+                {variants.map((v, i) => (
+                  <div key={i} style={{ display: 'grid', gap: 7, gridTemplateColumns: 'minmax(80px, 1.4fr) minmax(70px, 1fr) minmax(60px, 0.8fr) auto', alignItems: 'end' }}>
+                    <label><span style={{ ...lbl, fontSize: 10.5 }}>{optionName || 'Option'}</span>
+                      <input value={v.title ?? ''} onChange={e => setVariant(i, { title: e.target.value })}
+                        placeholder="Large" style={{ ...inp, padding: '8px 10px', fontSize: 13 }} /></label>
+                    <label><span style={{ ...lbl, fontSize: 10.5 }}>Price</span>
+                      <input inputMode="numeric" value={String(v.priceCents ?? 0)}
+                        onChange={e => setVariant(i, { priceCents: Math.max(0, Number(e.target.value.replace(/[^0-9]/g, '')) || 0) })}
+                        style={{ ...inp, padding: '8px 10px', fontSize: 13 }} />
+                      <span style={{ display: 'block', fontSize: 10, color: MUTED, marginTop: 2 }}>
+                        {money(v.priceCents ?? 0, currency)}
+                      </span></label>
+                    <label><span style={{ ...lbl, fontSize: 10.5 }}>Stock</span>
+                      <input inputMode="numeric" value={String(v.inventory ?? 0)}
+                        onChange={e => setVariant(i, { inventory: Math.max(0, Number(e.target.value.replace(/[^0-9]/g, '')) || 0) })}
+                        style={{ ...inp, padding: '8px 10px', fontSize: 13 }} /></label>
+                    <button type="button" onClick={() => dropVariant(i)} aria-label={`Remove ${v.title || 'option'}`}
+                      style={{ border: `1px solid ${LINE}`, borderRadius: 8, background: '#fff', padding: 8, cursor: 'pointer', color: '#b42318' }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
+                  Stock here is per option, and it is the number the shop checks. One count across every
+                  size is what lets somebody order six Larges when there are two.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* ── Money ── */}

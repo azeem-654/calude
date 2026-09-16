@@ -25,6 +25,59 @@ export interface BusinessIdea {
   createdAt: string;
 }
 
+export interface Variant {
+  id: string;
+  title: string;
+  sku: string;
+  priceCents: number;
+  compareAtCents: number;
+  inventory: number;
+  imageUrl: string;
+  position: number;
+}
+
+/**
+ * A code a buyer types at the checkout.
+ *
+ * `usedCount` is incremented when an order is *paid*, not when the code is
+ * typed — otherwise ten abandoned payment pages exhaust a ten-use code and the
+ * eleventh person, the one who actually paid, is refused.
+ */
+export interface Discount {
+  id: string;
+  code: string;
+  kind: 'percent' | 'fixed';
+  /** Whole percentage points, or minor units. */
+  value: number;
+  minSpendCents: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  /** 0 means unlimited, which has to be expressible. */
+  usageLimit: number;
+  usedCount: number;
+  status: 'active' | 'off';
+}
+
+/**
+ * What delivery costs, and where.
+ *
+ * Deliberately not live carrier rates: those need weights, dimensions and a
+ * carrier contract, and getting one wrong charges a real buyer the wrong
+ * amount. This is what a small shop actually uses.
+ */
+export interface ShippingRate {
+  id: string;
+  name: string;
+  /** Comma-separated ISO codes. Empty is the catch-all, so every country has
+   *  an answer rather than shipping free by accident. */
+  countries: string;
+  kind: 'flat' | 'free_over';
+  amountCents: number;
+  thresholdCents: number;
+  position: number;
+  status: 'active' | 'off';
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -52,6 +105,10 @@ export interface Product {
   projectId: string;
   /** Lowest first in the shop, so the thing worth selling can go at the top. */
   sortOrder: number;
+  /** Empty when this product sells as itself, which is most of them. */
+  variants?: Variant[];
+  /** Extra pictures beyond `imageUrl`, as a JSON array of URLs. */
+  images?: string;
 }
 
 export interface OrderLine { productId: string; name: string; qty: number; priceCents: number }
@@ -89,6 +146,8 @@ interface Reply {
   orders?: Order[];
   storefront?: { available: boolean; note: string };
   supplierConnected?: boolean;
+  discounts?: Discount[];
+  shipping?: ShippingRate[];
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -114,8 +173,28 @@ export async function fetchCommerce() {
     orders: r.orders ?? [],
     storefront: r.storefront ?? { available: false, note: '' },
     supplierConnected: !!r.supplierConnected,
+    discounts: (r.discounts ?? []) as Discount[],
+    shipping: (r.shipping ?? []) as ShippingRate[],
   };
 }
+
+/**
+ * Replace a product's whole set of options at once.
+ *
+ * Wholesale rather than merged: the form edits them together — adding a colour
+ * re-titles every variant — so a merge would have to guess which old row each
+ * new one meant, and guess wrong on a rename.
+ */
+export async function saveVariants(
+  productId: string, variants: Partial<Variant>[], options: { name: string; values: string[] }[],
+): Promise<Reply> {
+  return call('save_variants', { id: productId, variants, options });
+}
+
+export async function saveDiscount(d: Partial<Discount>): Promise<Reply> { return call('save_discount', d); }
+export async function deleteDiscount(id: string): Promise<Reply> { return call('delete_discount', { id }); }
+export async function saveShipping(r: Partial<ShippingRate>): Promise<Reply> { return call('save_shipping', r); }
+export async function deleteShipping(id: string): Promise<Reply> { return call('delete_shipping', { id }); }
 
 export async function suggestIdeas(about: string, budget: number): Promise<Reply> {
   return call('suggest_ideas', { about, budget });

@@ -23,8 +23,11 @@ import { useApp } from '../../context/AppContext';
 import {
   fetchCommerce, suggestIdeas, setIdeaStatus, saveProduct, deleteProduct,
   recordOrder, setOrderStatus, money,
-  type BusinessIdea, type Product, type Order,
+  type BusinessIdea, type Product, type Order, type Discount, type ShippingRate,
 } from '../../services/commerce';
+import DiscountsPanel from './DiscountsPanel';
+import ShopFeatures from './ShopFeatures';
+import ShippingPanel from './ShippingPanel';
 import { payLink } from '../../services/storefront';
 import { fulfilOrder } from '../../services/supplier';
 import GettingPaid from './GettingPaid';
@@ -51,6 +54,8 @@ export default function Commerce() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [storefront, setStorefront] = useState({ available: false, note: '' });
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [shipping, setShipping] = useState<ShippingRate[]>([]);
   const [supplierConnected, setSupplierConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [about, setAbout] = useState('');
@@ -72,6 +77,7 @@ export default function Commerce() {
       const r = await fetchCommerce();
       if (!live) return;
       setIdeas(r.ideas); setProducts(r.products); setOrders(r.orders); setStorefront(r.storefront);
+      setDiscounts(r.discounts); setShipping(r.shipping);
       setSupplierConnected(r.supplierConnected);
     })();
     return () => { live = false; };
@@ -282,6 +288,15 @@ export default function Commerce() {
             </div>
           )}
         </div>
+
+        {/* ── What the shop can do, including what it cannot ── */}
+        <ShopFeatures />
+
+        {/* ── What a buyer can take off, and what delivery adds on ──
+            Beside the catalogue rather than in Settings: these are decisions
+            about what the shop sells for, not about how the app is wired. */}
+        <DiscountsPanel discounts={discounts} currency={products[0]?.currency || 'USD'} onChange={again} />
+        <ShippingPanel rates={shipping} currency={products[0]?.currency || 'USD'} onChange={again} />
 
         {/* ── Getting paid ── */}
         <GettingPaid onChange={again} />
