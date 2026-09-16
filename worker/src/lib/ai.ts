@@ -31,13 +31,55 @@ export interface AiResult {
 }
 
 /** A workspace's AI key, decrypted. Null when none is set up. */
+/**
+ * The key this workspace writes with.
+ *
+ * ── Three places, in this order, and the order is the policy ──
+ *
+ * 1. The workspace's own key. A customer who brings one keeps their own quota,
+ *    their own billing relationship and their own rate limits, and nothing the
+ *    operator does can exhaust it.
+ * 2. The operator's key, held once for the whole install. This is what makes
+ *    "no AI key needed" a true statement rather than a marketing one: without
+ *    it, every workspace that had not connected a key could plan and produce
+ *    nothing, and the product would have been advertising a capability it did
+ *    not have.
+ * 3. `env.AI_API_KEY`, for a deployment that would rather keep the key in
+ *    Cloudflare's secret store than in its own database.
+ *
+ * The fallback is deliberately *below* the workspace key rather than above it.
+ * A customer who went to the trouble of connecting their own expects it to be
+ * the one used, and silently spending the operator's instead would be both a
+ * surprise and a bill nobody agreed to.
+ */
 export async function loadAiKey(env: Env, accountId: string): Promise<string | null> {
+  const key = await installSecret(env.DB, 'mailbox_key');
+
   const row = await env.DB.prepare('SELECT api_key FROM crm_ai_config WHERE account_id = ?')
     .bind(accountId).first<{ api_key: string }>();
-  if (!row?.api_key) return null;
-  const key = await installSecret(env.DB, 'mailbox_key');
-  const plain = await decryptSecret(key, row.api_key);
-  return plain || null;
+  if (row?.api_key) {
+    try {
+      const plain = await decryptSecret(key, row.api_key);
+      if (plain) return plain;
+    } catch { /* unreadable blob: fall through rather than fail the whole tick */ }
+  }
+
+  return installAiKey(env);
+}
+
+/** The operator's own key, shared by every workspace that has not brought one. */
+export async function installAiKey(env: Env): Promise<string | null> {
+  const row = await env.DB.prepare(
+    "SELECT credentials FROM crm_install_providers WHERE kind = 'ai' AND credentials != ''",
+  ).first<{ credentials: string }>();
+  if (row?.credentials) {
+    try {
+      const key = await installSecret(env.DB, 'mailbox_key');
+      const parsed = JSON.parse(await decryptSecret(key, row.credentials)) as { apiKey?: string };
+      if (parsed.apiKey) return parsed.apiKey;
+    } catch { /* unreadable; the env var below is the next chance */ }
+  }
+  return (env.AI_API_KEY ?? '').trim() || null;
 }
 
 /**

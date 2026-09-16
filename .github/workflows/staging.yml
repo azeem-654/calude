@@ -101,6 +101,12 @@ jobs:
       - name: Test the host rules
         run: npm run test:hosts
 
+      # The arithmetic behind a recommendation that costs real money: too few
+      # mailboxes and a domain gets filtered, too many and somebody has paid
+      # for infrastructure they will never fill.
+      - name: Test the sending plan
+        run: npm run test:plan
+
       - name: Build
         run: npm run build
         env:

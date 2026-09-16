@@ -20,6 +20,12 @@ export interface Env {
    * Stripe will not take a relative return address. Set in wrangler.jsonc.
    */
   APP_ORIGIN?: string;
+  /**
+   * The operator's AI key, when they would rather keep it in Cloudflare's
+   * secret store than in the database. Last of the three places `loadAiKey`
+   * looks; a workspace's own key always wins.
+   */
+  AI_API_KEY?: string;
 }
 
 export interface SessionUser {

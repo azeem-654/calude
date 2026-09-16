@@ -41,7 +41,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Loader, Globe, Check, ArrowLeft, ArrowRight, Sparkles,
+  Loader, Globe, Check, ArrowLeft, ArrowRight, Sparkles, Minus, Plus,
   ClipboardPaste, PenLine, Building2, Search, Mail, MessageSquare, HelpCircle,
   FileText, CalendarCheck, ShoppingBag, ChevronRight, ShieldCheck, ExternalLink,
 } from 'lucide-react';
@@ -58,6 +58,10 @@ import {
   type Job,
 } from '../../services/projectJobs';
 import { checkReadiness, type Readiness, type ReadyState } from '../../services/projectReadiness';
+import {
+  BEGINNER, DEFAULTS, INDUSTRIES, capacityOf, industryById, packageFor, project,
+  type Industry, type StarterPackage,
+} from '../../services/sendingPlan';
 
 const INK = '#0b0c0e';
 const MUTED = '#6b7280';
@@ -100,7 +104,7 @@ type MailPlan = 'have' | 'buy' | 'later';
 const TITLES: Record<Step, string> = {
   1: 'What are you trying to do?',
   2: 'Who is it for?',
-  3: 'What it needs to work',
+  3: 'Your sending setup',
   4: 'What would make this a success?',
   5: 'Ready when you are',
   6: 'Your domain and email',
@@ -109,7 +113,7 @@ const TITLES: Record<Step, string> = {
 const SUBTITLES: Record<Step, string> = {
   1: 'Pick the closest one. It decides what Autopilot does first, and you can change any of it later.',
   2: 'Everything it writes comes from here — what they sell, who buys it, how they talk.',
-  3: 'This job cannot start without these. Here is where they stand.',
+  3: 'Sized from what you want to send, and adjustable. The arithmetic is shown so you can check it.',
   4: 'Autopilot reads this every time it decides what to do next.',
   5: 'Nothing has been saved yet. Here is exactly what happens when you press start.',
   6: 'Bought for this project. Skip it if you would rather not.',
@@ -143,9 +147,16 @@ export default function NewProject({
     industry: '', tone: '', locations: '', website: '',
   });
 
-  /* 3 — what it needs */
+  /* 2b — the trade, which decides the shape of everything after it */
+  const [industryId, setIndustryId] = useState('');
+
+  /* 3 — the sending setup */
   const [ready, setReady] = useState<Readiness | null>(null);
   const [mailPlan, setMailPlan] = useState<MailPlan>('later');
+  /* The pool, as domains × mailboxes. Edited directly by the steppers, or
+     recomputed when somebody types a monthly target. */
+  const [pool, setPool] = useState<StarterPackage>(BEGINNER);
+  const [targetMonth, setTargetMonth] = useState('');
 
   /* 4 — what good looks like */
   const [name, setName] = useState('');
@@ -216,13 +227,45 @@ export default function NewProject({
     absorb(r.profile, r.readFrom ?? 'what you pasted');
   };
 
+  const industry: Industry | null = industryById(industryId);
+  /* An owned list needs one address on the domain people recognise, not a pool.
+     The trade decides which of the two this is; nothing else in the step
+     changes shape as much as that does. */
+  const listKind = industry?.listKind ?? 'cold';
+  const capacity = listKind === 'owned' ? Number(targetMonth) || 0 : capacityOf(pool);
+  const forecast = industry ? project(industry, capacity) : null;
+
+  /** Resize the pool from a monthly number somebody typed. */
+  const sizeFromTarget = (raw: string) => {
+    setTargetMonth(raw);
+    const n = Number(raw);
+    if (!raw.trim() || !Number.isFinite(n) || n <= 0) return;
+    setPool(packageFor(n, listKind, { perMailboxPerDay: pool.perMailboxPerDay }));
+  };
+
+  /** Nudge one dimension of the pool, keeping the derived total honest. */
+  const nudge = (field: 'domains' | 'mailboxesPerDomain' | 'perMailboxPerDay', by: number) => {
+    setPool(p => {
+      const limits = { domains: [1, 50], mailboxesPerDomain: [1, 10], perMailboxPerDay: [1, 50] } as const;
+      const [lo, hi] = limits[field];
+      const next = { ...p, [field]: Math.min(Math.max(p[field] + by, lo), hi) };
+      next.mailboxes = next.domains * next.mailboxesPerDomain;
+      next.emailsPerMonth = capacityOf(next);
+      /* The typed target stops being the source of truth the moment somebody
+         edits the pool by hand — leaving it would show two different answers. */
+      setTargetMonth('');
+      return next;
+    });
+  };
+
   /* Said on the button rather than as an error after the press. */
   const blocked =
     step === 1 ? (!jobId ? 'Pick what you are trying to do'
       : caps.length === 0 ? 'Choose at least one thing for it to do' : '')
-      : step === 2 ? (adding
-        ? (form.companyName.trim() ? '' : 'Give the client a name')
-        : (portfolioId ? '' : 'Choose a client'))
+      : step === 2 ? (!industryId ? 'Say what kind of business it is'
+        : adding
+          ? (form.companyName.trim() ? '' : 'Give the client a name')
+          : (portfolioId ? '' : 'Choose a client'))
         : step === 4 ? (!name.trim() ? 'Name the project'
           : objective.trim().length < 8 ? 'Say what it should achieve' : '')
           : '';
@@ -289,6 +332,12 @@ export default function NewProject({
   };
   const lbl: React.CSSProperties = {
     display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 7,
+  };
+
+  const stepBtn: React.CSSProperties = {
+    width: 30, height: 30, borderRadius: 999, border: 'none', background: '#fff',
+    display: 'grid', placeItems: 'center', cursor: 'pointer', color: INK,
+    boxShadow: '0 1px 2px rgba(16,24,40,0.12)',
   };
 
   const STATE_TONE: Record<ReadyState, { bg: string; fg: string; label: string }> = {
@@ -444,6 +493,30 @@ export default function NewProject({
           {/* ── 2 · The client ── */}
           {step === 2 && (
             <div style={{ display: 'grid', gap: 14 }}>
+              {/* Asked here rather than in a step of its own: it is a fact about
+                  the client, it lives on the portfolio, and it is what decides
+                  the shape of the next screen. */}
+              <div>
+                <label style={lbl}>What kind of business is it?</label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {INDUSTRIES.map(i => {
+                    const on = industryId === i.id;
+                    return (
+                      <button key={i.id} type="button" onClick={() => { setIndustryId(i.id); set('industry', i.label); }}
+                        aria-pressed={on} style={{
+                          padding: '9px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
+                          border: `1.5px solid ${on ? ACCENT : LINE}`,
+                          background: on ? 'rgba(91,70,229,0.06)' : '#fff',
+                          color: on ? ACCENT : '#475569', fontSize: 13.5, fontWeight: 600,
+                        }}>{i.label}</button>
+                    );
+                  })}
+                </div>
+                {industry && (
+                  <p style={{ margin: '9px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>{industry.note}</p>
+                )}
+              </div>
+
               {portfolios.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 13, background: '#f1f3f7' }}>
                   {([[false, 'One I have'], [true, 'Someone new']] as const).map(([v, label]) => (
@@ -551,73 +624,194 @@ export default function NewProject({
             </div>
           )}
 
-          {/* ── 3 · What it needs ── */}
+          {/* ── 3 · The sending setup, sized from the target ── */}
           {step === 3 && (
-            <div style={{ display: 'grid', gap: 12 }}>
-              {needs.length === 0 && (
-                <p style={{ margin: 0, fontSize: 14, color: '#334155', lineHeight: 1.6 }}>
-                  Nothing. What you picked runs on what is already here.
-                </p>
+            <div style={{ display: 'grid', gap: 14 }}>
+
+              {/* An owned list is a different machine, and says so instead of
+                  being quietly sold a pool it does not need. */}
+              {listKind === 'owned' ? (
+                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '15px 16px' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: INK }}>One address, on your own domain</div>
+                  <p style={{ margin: '7px 0 0', fontSize: 13.5, color: MUTED, lineHeight: 1.6 }}>
+                    You are writing to people who already know you. That needs the domain they recognise —
+                    not a pool of lookalikes. Spreading it across nine new domains would make the mail
+                    <em> less</em> likely to arrive, not more.
+                  </p>
+                  <label style={{ ...lbl, marginTop: 14 }}>Roughly how many a month?</label>
+                  <input style={inp} inputMode="numeric" value={targetMonth}
+                    onChange={e => sizeFromTarget(e.target.value.replace(/[^0-9]/g, ''))} placeholder="4000" />
+                </div>
+              ) : (<>
+                <div>
+                  <label style={lbl}>How many emails a month do you want to send?</label>
+                  <input style={inp} inputMode="numeric" value={targetMonth}
+                    onChange={e => sizeFromTarget(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder={`Leave blank for the starter — ${BEGINNER.emailsPerMonth.toLocaleString()} a month`} />
+                  <p style={{ margin: '7px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+                    Type a number and the setup below resizes itself. Or adjust it by hand — the total
+                    follows either way.
+                  </p>
+                </div>
+
+                {/* ── The pool, adjustable ── */}
+                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 15px', background: '#f7f8fb', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 800, color: INK }}>
+                    What gets bought
+                  </div>
+                  <div style={{ padding: '6px 15px 14px' }}>
+                    {([
+                      ['domains', 'Domains', pool.domains, 'Lookalikes of the client\u2019s name, never their real one — a filtered domain you paid \u00a39 for is an inconvenience.'],
+                      ['mailboxesPerDomain', 'Mailboxes on each', pool.mailboxesPerDomain, 'Three spreads the risk: a domain that gets filtered takes all of its mailboxes with it.'],
+                      ['perMailboxPerDay', 'Emails per mailbox, per day', pool.perMailboxPerDay, 'What gets somebody blocked is the daily rate from one address, not the monthly total.'],
+                    ] as const).map(([field, label, value, why]) => (
+                      <div key={field} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: `1px solid ${LINE}` }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: INK }}>{label}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{why}</span>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, background: '#f1f3f7', borderRadius: 999, padding: 3 }}>
+                          <button type="button" aria-label={`Fewer ${label}`} onClick={() => nudge(field, -1)} style={stepBtn}>
+                            <Minus size={14} />
+                          </button>
+                          <span style={{ minWidth: 30, textAlign: 'center', fontSize: 15, fontWeight: 800, color: INK }}>{value}</span>
+                          <button type="button" aria-label={`More ${label}`} onClick={() => nudge(field, 1)} style={stepBtn}>
+                            <Plus size={14} />
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', paddingTop: 13, borderTop: `1px solid ${LINE}`, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>
+                        {pool.mailboxes} mailboxes across {pool.domains} domain{pool.domains === 1 ? '' : 's'}
+                      </span>
+                      <span style={{ fontSize: 13, color: MUTED }}>
+                        · {capacity.toLocaleString()} emails a month
+                      </span>
+                    </div>
+                    <p style={{ margin: '9px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
+                      {pool.domains} × {pool.mailboxesPerDomain} × {pool.perMailboxPerDay} a day ×{' '}
+                      {DEFAULTS.sendingDaysPerMonth} weekdays. The first three weeks run slower while the
+                      domains warm up — sending a new domain\u2019s full volume on day one is the surest way
+                      to be filtered.
+                    </p>
+                  </div>
+                </div>
+              </>)}
+
+              {/* ── What it might come back as ── */}
+              {forecast && capacity > 0 && (
+                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 15px', background: '#f7f8fb', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 800, color: INK }}>
+                    What that could come back as, per month
+                  </div>
+                  <div style={{ padding: '4px 15px 13px' }}>
+                    {(forecast.funnelApplies
+                      ? ([
+                        ['Delivered', forecast.delivered],
+                        ['Replies', forecast.replies],
+                        ['Interested', forecast.interested],
+                        ['Conversations booked', forecast.meetings],
+                        ['New customers', forecast.customers],
+                      ] as const)
+                      : ([
+                        ['Delivered', forecast.delivered],
+                        ['Orders', forecast.customers],
+                      ] as const)
+                    ).map(([label, range]) => (
+                      <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderTop: `1px solid ${LINE}` }}>
+                        <span style={{ flex: 1, fontSize: 13.5, color: '#334155' }}>{label}</span>
+                        <span style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>
+                          {range.low.toLocaleString()}–{range.high.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0 0', borderTop: `1.5px solid ${LINE}` }}>
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: INK }}>Revenue</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: GREEN }}>
+                        {forecast.revenue.low.toLocaleString()}–{forecast.revenue.high.toLocaleString()}
+                      </span>
+                    </div>
+                    {/* The honesty clause, and it is not small print. */}
+                    <p style={{ margin: '11px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                      Ranges, not a forecast. They come from ordinary published rates for{' '}
+                      {industry?.label.toLowerCase()} — a {(industry!.replyRate[0] * 100).toFixed(0)}–
+                      {(industry!.replyRate[1] * 100).toFixed(0)}% reply rate and a typical first order of{' '}
+                      {industry!.dealValue[0].toLocaleString()}–{industry!.dealValue[1].toLocaleString()}.
+                      The gap between a good list and a bad one is wider than any of this, so treat the low
+                      end as the one to plan against.
+                    </p>
+                  </div>
+                </div>
               )}
 
-              {needs.map(req => {
+              {/* ── How the addresses get here ── */}
+              {needs.includes('mailbox') && (
+                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
+                  <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, flex: 1, minWidth: 140 }}>
+                      {REQUIREMENTS.mailbox.label}
+                    </span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
+                      background: ready ? STATE_TONE[ready.mailbox].bg : '#f1f5f9',
+                      color: ready ? STATE_TONE[ready.mailbox].fg : '#94a3b8',
+                    }}>
+                      {ready ? STATE_TONE[ready.mailbox].label : 'Checking\u2026'}
+                    </span>
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.55 }}>
+                    {REQUIREMENTS.mailbox.why}
+                  </p>
+                  <div style={{ display: 'grid', gap: 7, marginTop: 11 }}>
+                    {([
+                      ['buy', `Buy the ${pool.domains} domain${pool.domains === 1 ? '' : 's'} and ${pool.mailboxes} mailbox${pool.mailboxes === 1 ? '' : 'es'}`, 'Chosen and paid for on the next screen, once the project exists.'],
+                      ['have', 'I have a mailbox to use', 'Connect it in Settings. Fine for your own list; not enough on its own for cold outreach at this volume.'],
+                      ['later', 'Decide later', 'The project still starts. Nothing will send until this is sorted.'],
+                    ] as const).map(([id, label, hint]) => (
+                      <button key={id} type="button" onClick={() => setMailPlan(id)} aria-pressed={mailPlan === id}
+                        style={{ ...row(mailPlan === id), padding: '11px 13px' }}>
+                        <span style={{
+                          flexShrink: 0, width: 17, height: 17, borderRadius: 99, marginTop: 2, display: 'grid', placeItems: 'center',
+                          border: `1.5px solid ${mailPlan === id ? ACCENT : '#cbd2df'}`, background: mailPlan === id ? ACCENT : '#fff',
+                        }}>
+                          {mailPlan === id && <Check size={10} color="#fff" />}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{label}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{hint}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* The other two, when the job needs them. */}
+              {needs.filter(n => n !== 'mailbox').map(req => {
                 const info = REQUIREMENTS[req];
                 const state: ReadyState = ready ? ready[req] : 'unknown';
-                const tone = STATE_TONE[state];
                 return (
                   <div key={req} style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
                     <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, flex: 1, minWidth: 140 }}>
-                        {info.label}
-                      </span>
+                      <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, flex: 1, minWidth: 140 }}>{info.label}</span>
                       <span style={{
                         fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
-                        background: ready ? tone.bg : '#f1f5f9', color: ready ? tone.fg : '#94a3b8',
-                      }}>
-                        {ready ? tone.label : 'Checking…'}
-                      </span>
+                        background: ready ? STATE_TONE[state].bg : '#f1f5f9',
+                        color: ready ? STATE_TONE[state].fg : '#94a3b8',
+                      }}>{ready ? STATE_TONE[state].label : 'Checking\u2026'}</span>
                     </div>
                     <p style={{ margin: '6px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.55 }}>{info.why}</p>
-
-                    {/* The mailbox is the one with a real choice to make here. */}
-                    {req === 'mailbox' && state !== 'ready' && (
-                      <div style={{ display: 'grid', gap: 7, marginTop: 11 }}>
-                        {([
-                          ['have', 'I have a mailbox to use', 'Connect it in Settings — takes a minute, and replies come back to you.'],
-                          ['buy', 'Buy a domain and business email', 'Chosen and paid for on the next screen, once the project exists.'],
-                          ['later', 'Decide later', 'The project still starts. Nothing will send until this is sorted.'],
-                        ] as const).map(([id, label, hint]) => (
-                          <button key={id} type="button" onClick={() => setMailPlan(id)} aria-pressed={mailPlan === id}
-                            style={{ ...row(mailPlan === id), padding: '11px 13px' }}>
-                            <span style={{
-                              flexShrink: 0, width: 17, height: 17, borderRadius: 99, marginTop: 2, display: 'grid', placeItems: 'center',
-                              border: `1.5px solid ${mailPlan === id ? ACCENT : '#cbd2df'}`, background: mailPlan === id ? ACCENT : '#fff',
-                            }}>
-                              {mailPlan === id && <Check size={10} color="#fff" />}
-                            </span>
-                            <span style={{ minWidth: 0 }}>
-                              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{label}</span>
-                              <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{hint}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {req !== 'mailbox' && state !== 'ready' && (
+                    {state !== 'ready' && (
                       <a href={`/settings?tab=${info.settingsTab}`} target="_blank" rel="noopener noreferrer" style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10,
                         fontSize: 13, fontWeight: 700, color: ACCENT, textDecoration: 'none',
-                      }}>
-                        Set this up <ExternalLink size={12} />
-                      </a>
+                      }}>Set this up <ExternalLink size={12} /></a>
                     )}
-
                     {state === 'unknown' && ready && (
                       <p style={{ margin: '8px 0 0', display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
                         <HelpCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                        We could not reach the setting to check. That is not the same as it being missing —
-                        it may well be fine.
+                        We could not reach the setting to check — that is not the same as it being missing.
                       </p>
                     )}
                   </div>
@@ -630,8 +824,9 @@ export default function NewProject({
                 fontSize: 12.5, color: '#1e3a5f', lineHeight: 1.6,
               }}>
                 <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                You can start the project with any of these missing. Autopilot plans either way and simply
-                reports that a step was skipped, rather than pretending it ran.
+                The writing is included — you do not need an AI key of your own. You can start with any of
+                the above missing: Autopilot plans either way and reports that a step was skipped, rather
+                than pretending it ran.
               </p>
             </div>
           )}

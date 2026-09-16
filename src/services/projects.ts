@@ -190,15 +190,28 @@ export interface CapabilityInfo {
 }
 
 export const CAPABILITIES: CapabilityInfo[] = [
+  /*
+   * `needs` no longer mentions an AI key anywhere.
+   *
+   * It used to, on three of these, and it was true: `loadAiKey` read only the
+   * workspace's own row, so a customer without one could plan and produce
+   * nothing. The operator now holds a key for the whole install — see
+   * `installAiKey` in worker/src/lib/ai.ts — and a workspace's own still wins
+   * when it has one, so nobody who brought a key starts spending somebody
+   * else's.
+   *
+   * The strings changed at the same time as the fallback, deliberately. Asking
+   * for something the product supplies is a step nobody needed; removing the
+   * ask before supplying it would have been the other thing entirely.
+   */
   {
     id: 'find', label: 'Find people worth contacting',
     blurb: 'Searches for businesses and people who fit this client, and files them as leads.',
-    needs: 'an AI key',
   },
   {
     id: 'email', label: 'Write and send the emails',
     blurb: 'Sequences, follow-ups and campaigns, written from the portfolio and shown to you first.',
-    needs: 'a mailbox and an AI key',
+    needs: 'an address to send from',
   },
   {
     id: 'sms', label: 'Text them as well',
@@ -208,7 +221,6 @@ export const CAPABILITIES: CapabilityInfo[] = [
   {
     id: 'content', label: 'Write the content',
     blurb: 'Landing pages, blog posts and social posts that give the outreach somewhere to point.',
-    needs: 'an AI key',
   },
   {
     id: 'book', label: 'Book the meetings',

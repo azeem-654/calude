@@ -17,7 +17,6 @@
  * screen was confident about it. Every answer here comes from the endpoint that
  * would actually be used.
  */
-import { fetchReplies } from './replies';
 import { loadMailboxes } from './mailboxService';
 import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
@@ -28,18 +27,7 @@ export type ReadyState = 'ready' | 'missing' | 'unknown';
 
 export type Readiness = Record<Requirement, ReadyState>;
 
-const UNKNOWN: Readiness = { ai: 'unknown', mailbox: 'unknown', sms: 'unknown', payments: 'unknown' };
-
-async function aiState(): Promise<ReadyState> {
-  try {
-    const r = await fetchReplies();
-    if (!r.ai) return 'unknown';
-    /* Verified and not refused since. A key on record that last failed is not
-       a key that works, and saying so here saves somebody discovering it when
-       their first campaign produces nothing. */
-    return r.ai.hasKey && !r.ai.lastError ? 'ready' : 'missing';
-  } catch { return 'unknown'; }
-}
+const UNKNOWN: Readiness = { mailbox: 'unknown', sms: 'unknown', payments: 'unknown' };
 
 async function mailboxState(): Promise<ReadyState> {
   try {
@@ -85,10 +73,10 @@ async function paymentsState(): Promise<ReadyState> {
  */
 export async function checkReadiness(): Promise<Readiness> {
   try {
-    const [ai, mailbox, sms, payments] = await Promise.all([
-      aiState(), mailboxState(), smsState(), paymentsState(),
+    const [mailbox, sms, payments] = await Promise.all([
+      mailboxState(), smsState(), paymentsState(),
     ]);
-    return { ai, mailbox, sms, payments };
+    return { mailbox, sms, payments };
   } catch {
     return UNKNOWN;
   }

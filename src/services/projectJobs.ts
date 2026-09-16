@@ -129,7 +129,15 @@ export const jobById = (id: string): Job | null =>
 
 /* ── What a set of capabilities cannot run without ─────────────────────────── */
 
-export type Requirement = 'ai' | 'mailbox' | 'sms' | 'payments';
+/*
+ * No `ai` here.
+ *
+ * The operator holds an AI key for the whole install, so writing is something
+ * the product supplies rather than something a customer has to go and arrange.
+ * A workspace that brings its own still uses it — `loadAiKey` prefers it — but
+ * nobody is stopped for the want of one, and so nobody is asked.
+ */
+export type Requirement = 'mailbox' | 'sms' | 'payments';
 
 export interface RequirementInfo {
   id: Requirement;
@@ -141,11 +149,6 @@ export interface RequirementInfo {
 }
 
 export const REQUIREMENTS: Record<Requirement, RequirementInfo> = {
-  ai: {
-    id: 'ai', label: 'An AI key',
-    why: 'Every word it writes comes from this. Without one it can plan, and produce nothing.',
-    settingsTab: 'ai-engine',
-  },
   mailbox: {
     id: 'mailbox', label: 'An address to send from',
     why: 'Email goes out through a real mailbox, not ours — so replies come back to you and the sending reputation is yours.',
@@ -175,8 +178,7 @@ export function requirementsFor(caps: Capability[]): Requirement[] {
   for (const cap of caps) {
     const info = CAPABILITIES.find(c => c.id === cap);
     const needs = info?.needs ?? '';
-    if (needs.includes('AI key')) out.add('ai');
-    if (needs.includes('mailbox')) out.add('mailbox');
+    if (needs.includes('address to send from')) out.add('mailbox');
     if (needs.includes('SMS')) out.add('sms');
     if (needs.includes('payment')) out.add('payments');
   }

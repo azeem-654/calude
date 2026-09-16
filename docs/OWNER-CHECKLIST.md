@@ -259,7 +259,26 @@ Two things worth knowing:
   straight to `main`, the promote workflow stops and tells you to merge `main`
   into `staging` first. It will not throw the hotfix away.
 
-### 14. Content review — check it weekly
+### 14. Connect the AI key once, for everybody
+
+**Customers are no longer asked for one.** `loadAiKey` now falls back to a key
+you hold for the whole install, so the writing is part of the product rather
+than homework. Three places, in order: the workspace's own key (a customer who
+brings one keeps their own quota and bill), then yours, then `AI_API_KEY` as a
+Cloudflare secret.
+
+Until you set one, a workspace with no key of its own can plan and produce
+nothing — and the wizard now promises it can. So this one is worth doing
+promptly:
+
+```bash
+npx wrangler secret put AI_API_KEY        # production
+npx wrangler secret put AI_API_KEY --env staging
+```
+
+That is the quickest route and keeps the key out of the database entirely.
+
+### 15. Content review — check it weekly
 
 **Workspace → Content review** (you only; sub-accounts cannot see it or reach
 it). Anything the filter stopped on its way out is listed there with the text,
@@ -280,7 +299,7 @@ Two things worth knowing:
 directions. Run it if you change the word list — the half that matters is the
 seventeen pieces of ordinary trade copy that must *not* be flagged.
 
-### 15. Prospect search — built, and held back on the live app
+### 16. Prospect search — built, and held back on the live app
 
 **Contacts → Find businesses** searches OpenStreetMap. No key, no account, no
 bill, and the results may be kept, which is the part that matters.
@@ -304,7 +323,7 @@ a sole trader working from home, and it carries a phone number far more often
 than an email. The screen says so before the search rather than after an empty
 result.
 
-### 16. Sign in with Google, if you want the button — optional
+### 17. Sign in with Google, if you want the button — optional
 
 Customers can already sign in without a password: **Email me a sign-in code**
 works today, for any address, with nothing to set up. This adds the Google
