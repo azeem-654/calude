@@ -96,6 +96,11 @@ jobs:
       - name: Test the domain search
         run: npm run test:domains
 
+      # Which hostname means which site. Cheap, and the one that decides
+      # whether the testing copy is recognisable as one.
+      - name: Test the host rules
+        run: npm run test:hosts
+
       - name: Build
         run: npm run build
         env:

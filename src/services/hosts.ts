@@ -34,6 +34,27 @@ const MARKETING_HOSTS = new Set(['protectedcentral.com', 'www.protectedcentral.c
  */
 const STAGING_HOSTS = new Set(['testing.protectedcentral.com']);
 
+/**
+ * The staging Worker's *other* address.
+ *
+ * Cloudflare gives every Worker a `<name>.<account>.workers.dev` URL and turns
+ * it on by default, with a preview wildcard beside it. Both are public —
+ * "anyone with this URL can visit" — so the rehearsal copy has three front
+ * doors, not one.
+ *
+ * That was a real hole rather than a tidiness complaint. Matching only the
+ * custom domain meant that on the workers.dev address `isStagingHost()` was
+ * false, so no warning bar was drawn, and `isAppHost()` was false too, so the
+ * root rendered the marketing pitch. A publicly reachable copy of the product,
+ * advertising the platform, with nothing saying it was a rehearsal.
+ *
+ * Matched by the Worker's name rather than by `.workers.dev` alone, so that the
+ * *live* Worker's own preview URL is never mislabelled as staging.
+ */
+const STAGING_WORKER = 'crmpro-staging';
+const isStagingWorkerUrl = (h: string): boolean =>
+  h.endsWith('.workers.dev') && h.includes(STAGING_WORKER);
+
 const APP_HOSTS = new Set(['app.protectedcentral.com', ...STAGING_HOSTS]);
 
 const host = (): string =>
@@ -61,7 +82,8 @@ export const isMarketingHost = (): boolean => !whiteLabelled && MARKETING_HOSTS.
  * a page advertising the platform their agency resells — showing them the
  * marketing site would undo the white label at the first click.
  */
-export const isAppHost = (): boolean => whiteLabelled || APP_HOSTS.has(host());
+export const isAppHost = (): boolean =>
+  whiteLabelled || APP_HOSTS.has(host()) || isStagingWorkerUrl(host());
 
 /**
  * True on the rehearsal copy.
@@ -76,7 +98,10 @@ export const isAppHost = (): boolean => whiteLabelled || APP_HOSTS.has(host());
  * for customers can be fully live here and say "coming soon" on the real one,
  * from the same build.
  */
-export const isStagingHost = (): boolean => STAGING_HOSTS.has(host());
+export const isStagingHost = (): boolean => {
+  const h = host();
+  return STAGING_HOSTS.has(h) || isStagingWorkerUrl(h);
+};
 
 /**
  * True where a feature that is not ready for paying customers may run.

@@ -190,7 +190,7 @@ whose assets 404.
 
 Both typecheck, build, apply D1 migrations and then deploy — migrations first,
 so a Worker can never reach a database that lacks a column it expects. Staging
-also runs `test:moderation`, `test:prospects` and `test:domains`; the live deploy does not,
+also runs `test:moderation`, `test:prospects`, `test:domains` and `test:hosts`; the live deploy does not,
 because its job is to publish what has already been rehearsed.
 
 `main` is only ever moved by **Actions → Promote testing to live**, which
@@ -203,6 +203,13 @@ promotion will refuse until you have merged it back into `staging`.
 draws the testing banner and `isRehearsal()` decides which features in
 `src/services/features.ts` are switched on. Nothing is baked in at build time,
 so a production bundle cannot be published believing it is staging.
+
+**A Worker has more addresses than the one you gave it.** Cloudflare turns on
+`<name>.<account>.workers.dev` and a preview wildcard by default, and both are
+public. Matching only the custom domain left the testing copy reachable with no
+warning bar and the marketing pitch at its root, so `isStagingHost()` matches
+the staging Worker's name on `.workers.dev` too — by name, so the live Worker's
+own preview URL is never mislabelled. `npm run test:hosts` covers all of it.
 
 **The two environments must never share a database.** `npm run staging:check`
 asks wrangler what it actually resolved and fails if they do; the staging
