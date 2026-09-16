@@ -44,6 +44,12 @@ export interface StandingRow extends Standing {
 
 export interface Counts { held: number; approved: number; rejected: number }
 
+export interface PolicyState {
+  version: string;
+  /** False when they have never agreed, or agreed to an older version. */
+  accepted: boolean;
+}
+
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   try {
     const r = await fetch(`${API_BASE}/api/moderation.php`, {
@@ -98,8 +104,31 @@ export async function setStanding(
  * This is only so the customer reads a sentence instead of watching a button
  * fail.
  */
-export async function myStanding(): Promise<Standing> {
-  if (!getSession()) return { state: 'ok', reason: '', clause: '' };
+export async function myStanding(): Promise<{ standing: Standing; policy: PolicyState }> {
+  const blank = {
+    standing: { state: 'ok' as const, reason: '', clause: '' },
+    /* `accepted: true` when we could not ask. A bar demanding agreement to a
+       policy the server never confirmed would nag every signed-out or offline
+       session forever, which trains people to click past it. */
+    policy: { version: '', accepted: true },
+  };
+  if (!getSession()) return blank;
   const d = await call('mine');
-  return (d.standing as Standing) ?? { state: 'ok', reason: '', clause: '' };
+  if (d.success !== true) return blank;
+  return {
+    standing: (d.standing as Standing) ?? blank.standing,
+    policy: (d.policy as PolicyState) ?? blank.policy,
+  };
+}
+
+/** Agree to the current version. The server decides which version that is. */
+export async function acceptPolicy(): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/auth.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'policy_accept', token: sessionToken() }),
+    });
+    return ((await r.json()) as { success?: boolean }).success === true;
+  } catch { return false; }
 }

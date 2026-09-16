@@ -15,6 +15,30 @@ import {
 
 const SESSION_DAYS = 30;
 
+/**
+ * The policy version accounts are held to.
+ *
+ * Kept in step with `src/services/policy.ts` by hand. The client draws the
+ * sentence from its own copy; only this one is ever written down against an
+ * account, so the two drifting means somebody is shown a slightly stale date,
+ * not that the record is wrong.
+ */
+export const POLICY_VERSION = '2026-09-16';
+
+/**
+ * Write down what they agreed to, and from where.
+ *
+ * The address is not identification. It is the one fact that distinguishes
+ * "they agreed" from "somebody agreed on their behalf", which is the only
+ * question this record ever has to answer.
+ */
+async function recordPolicy(env: Env, email: string, ip: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO crm_policy_acceptance (email, version, ip, accepted_at) VALUES (?,?,?,?)
+     ON CONFLICT(email) DO UPDATE SET version = excluded.version, ip = excluded.ip, accepted_at = excluded.accepted_at`,
+  ).bind(email.toLowerCase(), POLICY_VERSION, ip.slice(0, 64), nowIso()).run();
+}
+
 interface AuthBody {
   action?: string;
   /** The six digits from a sign-in email, or Google's authorization code. */
@@ -162,7 +186,7 @@ async function sendLoginCode(env: Env, email: string, code: string): Promise<{ o
  * ordinary workspace-owning account; there is no route from a mailbox to
  * owning the install.
  */
-async function completeSignIn(env: Env, email: string, suggestedName: string): Promise<Response> {
+async function completeSignIn(env: Env, email: string, suggestedName: string, ip = ''): Promise<Response> {
   let user = await env.DB.prepare(
     'SELECT email, name, role, account_id AS accountId FROM crm_users WHERE email = ?',
   ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null }>();
@@ -181,6 +205,16 @@ async function completeSignIn(env: Env, email: string, suggestedName: string): P
       'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
     ).bind(accountId, email, nowIso()).run();
     user = { email, name, role: 'agency', accountId };
+    /*
+     * Recorded on the way in, because these two paths have no checkbox.
+     *
+     * Signing in with a code or with Google is one tap, and bolting a consent
+     * form onto it would undo the reason either exists. So the sign-in screen
+     * says, next to the button, that continuing means accepting the policy —
+     * and this is where that gets written down. A tick nobody was shown would
+     * be worse than no record at all.
+     */
+    await recordPolicy(env, email, ip);
   }
 
   await sweepSessions(env.DB);
@@ -224,7 +258,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     /* `initialised` is what the client has always asked for and `hasOwner` is
        what this has always answered. Both, so neither side has to be the one
        that changes, and an older bundle still in somebody's cache keeps working. */
-    return json({ success: true, hasOwner: owner, initialised: owner, writable: true, google });
+    return json({ success: true, hasOwner: owner, initialised: owner, writable: true, google, policyVersion: POLICY_VERSION });
   }
 
   if (action === 'me') {
@@ -263,6 +297,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
       'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     ).bind(email.toLowerCase(), name, 'agency', null, await hashPassword(String(d.password)), nowIso()).run();
 
+    await recordPolicy(env, email, req.headers.get('CF-Connecting-IP') ?? '');
     const token = await issueSession(env, email.toLowerCase());
     return json({ success: true, token, user: { email: email.toLowerCase(), name, role: 'agency', accountId: null } });
   }
@@ -334,6 +369,8 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     /* Recorded here, where an account actually came into existence. */
     await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
       .bind(ip, Math.floor(Date.now() / 1000)).run();
+
+    await recordPolicy(env, lower, ip);
 
     await sweepSessions(env.DB);
     const token = await issueSession(env, lower);
@@ -477,7 +514,18 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
        the mailbox, which is what a password reset proves and more than a
        password proves on its own. Sending them to a sign-up form to type the
        same address again would be ceremony, not security. */
-    return completeSignIn(env, email, email.split('@')[0]);
+    return completeSignIn(env, email, email.split('@')[0], ip);
+  }
+
+  /* ── Agreeing to a policy that changed ── */
+  if (action === 'policy_accept') {
+    const who = await userFromToken(env.DB, d.token);
+    if (!who) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
+    /* The version is the server's, never the one the browser sent. A client
+       that could name the version it accepted could accept a version that does
+       not exist. */
+    await recordPolicy(env, who.email, req.headers.get('CF-Connecting-IP') ?? '');
+    return json({ success: true, version: POLICY_VERSION });
   }
 
   /* ── Sign in with Google ─────────────────────────────────────────────── */
@@ -542,7 +590,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
       return fail('That Google account has not confirmed its email address, so it cannot be used to sign in.', 403);
     }
 
-    return completeSignIn(env, r.identity.email, r.identity.name);
+    return completeSignIn(env, r.identity.email, r.identity.name, req.headers.get('CF-Connecting-IP') ?? '');
   }
 
   /* ── Sign in ── */

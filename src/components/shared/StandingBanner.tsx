@@ -18,21 +18,67 @@
  * registered the warning.
  */
 import { useEffect, useState } from 'react';
-import { AlertTriangle, ShieldX, X } from 'lucide-react';
-import { myStanding, type Standing } from '../../services/moderation';
+import { AlertTriangle, FileText, ShieldX, X } from 'lucide-react';
+import { acceptPolicy, myStanding, type PolicyState, type Standing } from '../../services/moderation';
 
 export default function StandingBanner() {
   const [standing, setStanding] = useState<Standing | null>(null);
+  const [policy, setPolicy] = useState<PolicyState | null>(null);
   const [closed, setClosed] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const s = await myStanding();
-      if (alive && s.state !== 'ok') setStanding(s);
+      const r = await myStanding();
+      if (!alive) return;
+      if (r.standing.state !== 'ok') setStanding(r.standing);
+      if (!r.policy.accepted && r.policy.version) setPolicy(r.policy);
     })();
     return () => { alive = false; };
   }, []);
+
+  const agree = async () => {
+    setBusy(true);
+    const ok = await acceptPolicy();
+    setBusy(false);
+    if (ok) setPolicy(null);
+  };
+
+  /*
+   * ── Which bar wins ──
+   *
+   * Being in trouble is shown before being asked to read something. Two bars
+   * stacked is two things nobody reads, and somebody who is suspended needs
+   * that sentence more than they need a link to the policy it came from —
+   * which the suspension already cites.
+   */
+  if (!standing && policy) {
+    return (
+      <div role="status" style={{
+        display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+        padding: '10px clamp(14px, 3vw, 22px)',
+        background: '#eef2ff', borderBottom: '1px solid #c7d2fe', color: '#3730a3',
+      }}>
+        <FileText size={15} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 200, fontSize: 12.5, lineHeight: 1.6 }}>
+          The acceptable use policy has been updated. Please read it and confirm you are happy to carry on.{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#3730a3', fontWeight: 700 }}>
+            Read it
+          </a>
+        </span>
+        {/* No dismiss. It is a question with an answer, not a notice — and a
+            bar that can be closed without answering is a bar that is closed
+            without being read. */}
+        <button onClick={() => void agree()} disabled={busy} style={{
+          padding: '7px 14px', borderRadius: 8, border: 'none', background: '#3730a3', color: '#fff',
+          fontSize: 12.5, fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit',
+        }}>
+          {busy ? 'Saving…' : 'I accept'}
+        </button>
+      </div>
+    );
+  }
 
   if (!standing || closed) return null;
   const suspended = standing.state === 'suspended';

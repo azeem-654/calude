@@ -26,6 +26,7 @@
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { standingFor } from '../lib/contentGate';
+import { POLICY_VERSION } from './auth';
 
 interface Req {
   token?: string;
@@ -48,9 +49,14 @@ export async function handleModeration(req: Request, env: Env): Promise<Response
 
   const act = String(d.action ?? '').trim();
 
-  /* ── Anybody: am I in trouble, and what for ── */
+  /* ── Anybody: am I in trouble, and is there a policy I have not read ── */
   if (act === 'mine') {
     const standing = await standingFor(env, user.email);
+
+    /* Asked in the same round trip as standing, because they are drawn by the
+       same bar and asking twice would put two requests behind one banner. */
+    const accepted = await env.DB.prepare('SELECT version FROM crm_policy_acceptance WHERE email = ?')
+      .bind(user.email.toLowerCase()).first<{ version: string }>();
     /* Stamped the first time they are told. A warning nobody ever saw is not a
        warning, and it is the difference between "they were told twice" and
        "we sent it to a screen they had no reason to open". */
@@ -58,7 +64,17 @@ export async function handleModeration(req: Request, env: Env): Promise<Response
       await env.DB.prepare('UPDATE crm_account_standing SET seen_at = COALESCE(seen_at, ?) WHERE email = ?')
         .bind(nowIso(), user.email.toLowerCase()).run();
     }
-    return json({ success: true, standing });
+    return json({
+      success: true,
+      standing,
+      policy: {
+        version: POLICY_VERSION,
+        /* False for an account made before any of this existed, which is the
+           right answer: they have not agreed to it, and being asked once is
+           cheaper than assuming. */
+        accepted: accepted?.version === POLICY_VERSION,
+      },
+    });
   }
 
   if (!isOwner(user)) return fail('Only the installation owner can review content.', 403);

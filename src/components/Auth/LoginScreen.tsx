@@ -271,8 +271,15 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
                   style={{ marginTop: 2, accentColor: INK, cursor: 'pointer' }} />
                 <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
                   {mode === 'register'
-                    ? 'I accept responsibility for the customer data I put in this workspace, and confirm I am allowed to contact the people I load into it.'
-                    : 'I am the owner of this workspace and accept responsibility for the customer data stored in it.'}
+                    ? 'I accept responsibility for the customer data I put in this workspace, confirm I am allowed to contact the people I load into it, and agree to the '
+                    : 'I am the owner of this workspace, accept responsibility for the customer data stored in it, and agree to the '}
+                  {/* A new tab, deliberately. Navigating away from a half-filled
+                      sign-up form to read the terms loses the form, which is how
+                      a terms link becomes a link nobody follows. */}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer"
+                    style={{ color: INK, fontWeight: 700 }} onClick={e => e.stopPropagation()}>
+                    acceptable use policy
+                  </a>.
                 </span>
               </label>
             )}
@@ -315,6 +322,16 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
                       <GoogleG /> Continue with Google
                     </button>
                   )}
+                  {/* The passwordless paths have no checkbox — that is the point of
+                      them — so the agreement is stated here instead, next to the
+                      buttons that act on it. The server writes down the version
+                      when the account is created. */}
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: MUTED, lineHeight: 1.55, textAlign: 'center' }}>
+                    By continuing you agree to the{' '}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>
+                      acceptable use policy
+                    </a>.
+                  </p>
                   <button type="button" disabled={busy} onClick={() => void sendCode()} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',
                     padding: '12px', background: '#fff', color: INK, border: '1px solid #e6e9f0',

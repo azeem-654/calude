@@ -41,6 +41,7 @@ import ShopPage from './components/Shop/ShopPage';
 import ClientReport from './components/Portal/ClientReport';
 import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
+import PolicyPage from './components/Site/PolicyPage';
 import StandingBanner from './components/shared/StandingBanner';
 import { LogoMark } from './components/shared/Logo';
 
@@ -146,6 +147,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
               behind it — a client login that guesses the address gets a
               sentence, not a queue. */}
           <Route path="/moderation" element={<ReviewQueue />} />
+          <Route path="/terms" element={<PolicyPage />} />
           {/*
            * Every other Routes block in this file has a catch-all; this one did
            * not, and the result was a screen that looked broken rather than
@@ -321,6 +323,10 @@ export default function App() {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         <Routes>
+          {/* The one address on the marketing host that is not the pitch. It is
+              linked from the sign-up form, and a policy that opens a login
+              screen is a policy nobody has read. */}
+          <Route path="/terms" element={<PolicyPage />} />
           <Route path="*" element={<SiteHome />} />
         </Routes>
       </BrowserRouter>
@@ -342,6 +348,7 @@ export default function App() {
         <Routes>
           {/* Two doors, because the marketing site has two buttons. What each
               one can actually do is still the server's call. */}
+          <Route path="/terms" element={<PolicyPage />} />
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
           <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
           <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />
