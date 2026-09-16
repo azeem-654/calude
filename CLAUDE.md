@@ -219,6 +219,37 @@ would send real mail to real customers and look completely normal doing it.
 Do not deploy by hand. The repository secrets `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` are set and the pipeline is green.
 
+## What a new project decides, and where
+
+The wizard is `src/components/Autopilot/NewProject.tsx`, and three pure modules
+behind it hold the judgement:
+
+- **`services/projectJobs.ts`** — the job somebody picks, and the capabilities
+  it implies. Capabilities are derived, never asked, the same direction
+  `kindFor` works in.
+- **`services/sendingPlan.ts`** — how much infrastructure a target needs, and
+  what it might return. **`listKind` is the distinction everything turns on:**
+  writing to people who asked to hear from you is one address on the domain they
+  recognise, and writing to strangers is a pool of lookalikes. Recommending a
+  pool to a shop would be selling it twenty-odd domains it does not need.
+  Outcomes are ranges, always, and labelled as assumptions.
+- **`services/launchPlan.ts`** — the order things get built in, per trade. A
+  shop builds the catalogue before it writes about it; a trade gets mail working
+  first. Deterministic on purpose: the AI writes the tasks *inside* a stage,
+  which depend on the client, while the order of operations is the same for
+  every plumber and is what somebody is deciding whether to buy.
+
+The launch plan is **sent** with `saveProject` rather than recomputed on the
+server, and becomes the checklist on the project's first card — so the board
+cannot say something the screen the customer agreed to did not. Two
+implementations of that list would drift the first time either changed.
+
+**The AI key is the operator's.** `loadAiKey` tries the workspace's own key, then
+the install's, then `env.AI_API_KEY`. Customers are not asked for one, and the
+capability `needs` strings stopped mentioning it in the same commit that added
+the fallback — removing the ask before supplying the thing would have been a
+promise the product could not keep.
+
 ## Verifying a change
 
 The app is a single-page product with a lot of state; a typecheck proves very

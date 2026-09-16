@@ -203,6 +203,8 @@ export async function ensureProjectPipeline(
     id: string; account_id: string; name: string; kind: string; objective: string;
     portfolio_id: string;
     revenueTarget?: number; volumeTarget?: number; goals?: string;
+    /** JSON from `launch_steps`: the build order the customer was shown. */
+    launchSteps?: string;
   },
 ): Promise<{ created: boolean; generated: boolean; pipelineId: string }> {
   const accountId = project.account_id;
@@ -255,6 +257,24 @@ export async function ensureProjectPipeline(
    * have to happen before Autopilot's own work is worth anything — and it sits
    * in the first stage, where somebody will see it.
    */
+  /*
+   * The setup card's checklist is the build order the customer agreed to, when
+   * there is one.
+   *
+   * It beats the AI's first stage on purpose. Those tasks are written from the
+   * client and the objective, which is the right job for a model; the order of
+   * operations is not — it is the same for every shop, and it is the list the
+   * wizard put on screen before anybody pressed start. A board that says
+   * something different from the screen they agreed to is a board that costs
+   * trust on the first visit.
+   *
+   * Falls back to the generated tasks for a project made before this existed.
+   */
+  const agreed = parse<Array<{ label?: string }>>(project.launchSteps ?? '[]', [])
+    .map(s => String(s.label ?? '').trim())
+    .filter(Boolean);
+  const setupChecklist = agreed.length ? agreed : (tasks[0] ?? []);
+
   const now = nowIso();
   stages[0].deals.push({
     id: rid('deal'),
@@ -269,7 +289,7 @@ export async function ensureProjectPipeline(
     createdAt: now,
     priority: 'high',
     description: project.objective,
-    checklist: (tasks[0] ?? []).map(text => ({ id: rid('chk'), text, done: false })),
+    checklist: setupChecklist.map(text => ({ id: rid('chk'), text, done: false })),
     status: 'active',
     /* Stamped, so a board full of generated cards can still be traced back to
        what made them. */

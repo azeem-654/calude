@@ -127,6 +127,14 @@ export const saveProject = (p: {
   revenueTarget?: number;
   volumeTarget?: number;
   goals?: string[];
+  /**
+   * The build order shown in the wizard, sent rather than recomputed.
+   *
+   * It becomes the checklist on the project's first card, so the board says
+   * exactly what the screen somebody agreed to said it would. Omitted on an
+   * edit, which leaves the order alone — it was agreed once.
+   */
+  launchSteps?: { label: string; why: string; route: string }[];
 }) => call('save_project', p);
 export const setProjectStatus = (id: string, status: Project['status']) => call('set_status', { id, status });
 

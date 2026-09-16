@@ -107,6 +107,11 @@ jobs:
       - name: Test the sending plan
         run: npm run test:plan
 
+      # The build order per trade. A shop that starts with outreach is starting
+      # at step four, and it looks perfectly sensible doing it.
+      - name: Test the launch plan
+        run: npm run test:launch
+
       - name: Build
         run: npm run build
         env:

@@ -1,0 +1,20 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The build order a project agreed to.
+--
+-- ── Why it is stored rather than derived ──
+--
+-- It is decided in the wizard, from the trade and the capabilities, and shown
+-- on the screen where somebody decides whether to start at all. Recomputing it
+-- on the server would mean two implementations of the same list, and the first
+-- time one of them changed, the board would say something the customer was
+-- never shown.
+--
+-- So the client sends what it displayed and the server keeps it. That also
+-- makes the order stable: editing the catalogue later changes what *new*
+-- projects are offered, and leaves existing boards alone — which is the same
+-- reasoning that freezes a price onto an order at the moment of payment.
+--
+-- JSON, because it is a list read whole and never queried across. '[]' means
+-- the project predates this and its board falls back to what the AI wrote.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE crm_projects ADD COLUMN launch_steps TEXT NOT NULL DEFAULT '[]';

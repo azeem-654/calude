@@ -17,7 +17,8 @@
     "staging:check": "node scripts/staging-check.mjs",
     "test:domains": "npx --yes tsx worker/test/domains.test.mts",
     "test:hosts": "npx --yes tsx test/hosts.test.mts",
-    "test:plan": "npx --yes tsx test/sendingPlan.test.mts"
+    "test:plan": "npx --yes tsx test/sendingPlan.test.mts",
+    "test:launch": "npx --yes tsx test/launchPlan.test.mts"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

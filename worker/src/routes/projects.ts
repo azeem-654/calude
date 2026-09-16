@@ -37,6 +37,8 @@ interface Req {
   revenueTarget?: number;
   volumeTarget?: number;
   goals?: unknown;
+  /** The build order the wizard showed, kept as it was shown. */
+  launchSteps?: unknown;
   portfolioId?: string;
   status?: string;
   kind?: string;
@@ -387,9 +389,33 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       ? JSON.stringify((d.goals as unknown[]).map(g => String(g).slice(0, 40)).slice(0, 6))
       : '[]';
 
+    /*
+     * The build order the wizard displayed, stored as it was shown.
+     *
+     * Capped hard on both count and length: it arrives from a browser, it is
+     * rendered as a checklist, and neither of those is a reason to accept a
+     * megabyte. An edit that omits it keeps whatever the project already had —
+     * the order was agreed once and reordering somebody's board because they
+     * reworded the objective would be a surprise.
+     */
+    const launchSteps = Array.isArray(d.launchSteps)
+      ? JSON.stringify(
+        (d.launchSteps as unknown[]).slice(0, 12).map(raw => {
+          const step = raw as { label?: unknown; why?: unknown; route?: unknown };
+          return {
+            label: String(step.label ?? '').slice(0, 120),
+            why: String(step.why ?? '').slice(0, 400),
+            /* An in-app path only. A step is rendered as a link, and a link
+               somebody else supplied is a link somewhere else. */
+            route: /^\/[A-Za-z0-9/?=&_-]{0,80}$/.test(String(step.route ?? '')) ? String(step.route) : '',
+          };
+        }).filter(s => s.label),
+      )
+      : null;
+
     const now = nowIso();
-    const existing = await env.DB.prepare('SELECT created_at, guardrails, status FROM crm_projects WHERE id = ? AND account_id = ?')
-      .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string }>();
+    const existing = await env.DB.prepare('SELECT created_at, guardrails, status, launch_steps AS launchSteps FROM crm_projects WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string; launchSteps: string }>();
 
     /* Guardrails survive an edit. Somebody who opened sending up once should
        not be asked again because they reworded the objective. */
@@ -404,18 +430,20 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       `INSERT INTO crm_projects
        (id, account_id, portfolio_id, name, objective, kind, status, guardrails,
         purchase_mode, pool_target, revenue_target, volume_target, goals,
-        last_error, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, '', ?,?)
+        launch_steps, last_error, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, ?, '', ?,?)
        ON CONFLICT(id) DO UPDATE SET
          portfolio_id=excluded.portfolio_id, name=excluded.name,
          objective=excluded.objective, kind=excluded.kind, status=excluded.status,
          guardrails=excluded.guardrails, revenue_target=excluded.revenue_target,
          volume_target=excluded.volume_target, goals=excluded.goals,
+         launch_steps=excluded.launch_steps,
          last_error='', updated_at=excluded.updated_at`,
     ).bind(
       id, accountId, portfolioId, name.slice(0, 160), objective.slice(0, 2000),
       kind, existing?.status ?? 'learning', JSON.stringify(guardrails),
       revenueTarget, volumeTarget, goals,
+      launchSteps ?? existing?.launchSteps ?? '[]',
       existing?.created_at ?? now, now,
     ).run();
 
@@ -431,11 +459,13 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     try {
       const row = await env.DB.prepare(
         `SELECT id, account_id, name, kind, objective, portfolio_id,
-                revenue_target AS revenueTarget, volume_target AS volumeTarget, goals
+                revenue_target AS revenueTarget, volume_target AS volumeTarget, goals,
+                launch_steps AS launchSteps
          FROM crm_projects WHERE id = ?`,
       ).bind(id).first<{
         id: string; account_id: string; name: string; kind: string; objective: string;
         portfolio_id: string; revenueTarget: number; volumeTarget: number; goals: string;
+        launchSteps: string;
       }>();
       if (row) await ensureProjectPipeline(env, row);
     } catch { /* the project stands on its own */ }

@@ -62,6 +62,7 @@ import {
   BEGINNER, DEFAULTS, INDUSTRIES, capacityOf, industryById, packageFor, project,
   type Industry, type StarterPackage,
 } from '../../services/sendingPlan';
+import { launchPlan } from '../../services/launchPlan';
 
 const INK = '#0b0c0e';
 const MUTED = '#6b7280';
@@ -234,6 +235,10 @@ export default function NewProject({
   const listKind = industry?.listKind ?? 'cold';
   const capacity = listKind === 'owned' ? Number(targetMonth) || 0 : capacityOf(pool);
   const forecast = industry ? project(industry, capacity) : null;
+  /* The build order, from the trade and what the project may do. Shown on the
+     review screen and sent with the project, so the board cannot disagree with
+     the screen somebody agreed to. */
+  const steps = useMemo(() => launchPlan(industryId, caps), [industryId, caps]);
 
   /** Resize the pool from a monthly number somebody typed. */
   const sizeFromTarget = (raw: string) => {
@@ -290,6 +295,7 @@ export default function NewProject({
       goals,
       revenueTarget: Math.round(Number(revenueTarget) || 0),
       volumeTarget: 0,
+      launchSteps: steps,
     });
     setBusy(false);
     if (!r.success || !r.id) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
@@ -903,6 +909,33 @@ export default function NewProject({
                   <span style={{ fontSize: 14, color: INK, lineHeight: 1.5, minWidth: 0 }}>{v}</span>
                 </div>
               ))}
+
+              {steps.length > 0 && (
+                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 15px', background: '#f7f8fb', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 800, color: INK }}>
+                    The order it builds things in
+                  </div>
+                  <div style={{ padding: '4px 15px 13px' }}>
+                    {steps.map((s, i) => (
+                      <div key={s.label} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '11px 0', borderTop: i ? `1px solid ${LINE}` : 'none' }}>
+                        <span style={{
+                          flexShrink: 0, width: 20, height: 20, borderRadius: 99, marginTop: 1,
+                          display: 'grid', placeItems: 'center', background: '#f1f3f7',
+                          fontSize: 10.5, fontWeight: 800, color: ACCENT,
+                        }}>{i + 1}</span>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{s.label}</span>
+                          <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.55 }}>{s.why}</span>
+                        </span>
+                      </div>
+                    ))}
+                    <p style={{ margin: '11px 0 0', paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
+                      This becomes the first card on the project&rsquo;s board, so you can work down it —
+                      and so the board says the same thing this screen does.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
                 <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginBottom: 9 }}>
