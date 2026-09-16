@@ -25,7 +25,16 @@ export const APP_ORIGIN = 'https://app.protectedcentral.com';
 /** The public site. Both the apex and www serve it. */
 const MARKETING_HOSTS = new Set(['protectedcentral.com', 'www.protectedcentral.com']);
 
-const APP_HOSTS = new Set(['app.protectedcentral.com']);
+/**
+ * The rehearsal copy of the product.
+ *
+ * Its own Worker, its own database, its own cron — nothing it does can reach a
+ * paying customer. Changes land here first and are promoted to the live app
+ * deliberately rather than by being pushed.
+ */
+const STAGING_HOSTS = new Set(['testing.protectedcentral.com']);
+
+const APP_HOSTS = new Set(['app.protectedcentral.com', ...STAGING_HOSTS]);
 
 const host = (): string =>
   (typeof window === 'undefined' ? '' : window.location.hostname).toLowerCase();
@@ -53,6 +62,34 @@ export const isMarketingHost = (): boolean => !whiteLabelled && MARKETING_HOSTS.
  * marketing site would undo the white label at the first click.
  */
 export const isAppHost = (): boolean => whiteLabelled || APP_HOSTS.has(host());
+
+/**
+ * True on the rehearsal copy.
+ *
+ * Note where this sits: `testing.protectedcentral.com` is in `APP_HOSTS`, so it
+ * renders the product rather than the marketing page. Leaving it out was the
+ * trap — a name that is neither an app host nor a marketing host falls through
+ * to the development behaviour, and a visitor to the testing site would have
+ * been shown the pitch instead of the login form.
+ *
+ * It is also what decides which features are rehearsing: something not ready
+ * for customers can be fully live here and say "coming soon" on the real one,
+ * from the same build.
+ */
+export const isStagingHost = (): boolean => STAGING_HOSTS.has(host());
+
+/**
+ * True where a feature that is not ready for paying customers may run.
+ *
+ * Staging and a developer's own machine. Deliberately *not* a white-label host:
+ * a reseller's domain is a real customer's front door, and the fact that it is
+ * not `app.protectedcentral.com` does not make it a rehearsal.
+ */
+export const isRehearsal = (): boolean => {
+  if (isStagingHost()) return true;
+  const h = host();
+  return h === 'localhost' || h === '127.0.0.1' || h.endsWith('.workers.dev');
+};
 
 /**
  * A link into the product.

@@ -36,9 +36,10 @@
  */
 import { useState } from 'react';
 import {
-  AlertTriangle, Globe, Loader, Mail, MapPin, Phone, Search, UserPlus, X,
+  AlertTriangle, Clock, Globe, Loader, Mail, MapPin, Phone, Search, UserPlus, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { featureReady } from '../../services/features';
 import { lookupContacts, searchProspects, type Contactable, type Prospect } from '../../services/prospects';
 import type { Contact } from '../../types';
 
@@ -129,6 +130,65 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
     width: '100%', padding: '11px 12px 11px 36px', border: `1px solid ${LINE}`, borderRadius: 11,
     fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', background: '#fff',
   };
+
+  /*
+   * ── Held back on the live app ──
+   *
+   * Not hidden. Somebody who reads "coming soon" knows the thing is being
+   * worked on; somebody who finds nothing concludes the product cannot do it
+   * and goes looking elsewhere. This says what it will do, which is also the
+   * cheapest way to find out whether anyone wants it.
+   *
+   * On testing.protectedcentral.com this branch is not taken and the whole
+   * thing works, which is the point of having that site.
+   */
+  if (!featureReady('prospects')) {
+    return (
+      <div role="dialog" aria-label="Find businesses" style={{
+        position: 'fixed', inset: 0, background: 'rgba(16,24,40,0.45)', zIndex: 200,
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: 'clamp(12px, 4vw, 44px) clamp(12px, 4vw, 24px)', overflowY: 'auto',
+      }}>
+        <div style={{ width: '100%', maxWidth: 460, background: '#fff', borderRadius: 18, overflow: 'hidden' }}>
+          <header style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '15px 18px', borderBottom: `1px solid ${LINE}` }}>
+            <Clock size={16} color={ACCENT} />
+            <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: INK }}>Find businesses</span>
+            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 0, padding: 4, cursor: 'pointer', color: MUTED }}>
+              <X size={17} />
+            </button>
+          </header>
+          <div style={{ padding: 20 }}>
+            <span style={{
+              display: 'inline-block', fontSize: 11, fontWeight: 800, letterSpacing: '0.04em',
+              padding: '3px 10px', borderRadius: 999, background: '#eef2ff', color: '#3730a3',
+            }}>
+              COMING SOON
+            </span>
+            <p style={{ margin: '12px 0 0', fontSize: 13.5, color: '#374151', lineHeight: 1.7 }}>
+              Search for businesses by trade and town, read the contact details they publish on their own
+              website, and add the ones you pick straight to Contacts as prospects — without connecting
+              an account or paying per search.
+            </p>
+            <p style={{ margin: '11px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.7 }}>
+              It is built and being tested. It is not switched on here yet because how useful it is depends
+              on how thoroughly your own town has been mapped, and that is worth knowing before it becomes a
+              button everybody presses once.
+            </p>
+            <p style={{ margin: '11px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.7 }}>
+              In the meantime, <strong style={{ color: INK }}>Import</strong> takes a CSV of a list you
+              already have.
+            </p>
+            <button onClick={onClose} style={{
+              marginTop: 16, width: '100%', padding: '11px', background: INK, color: '#fff', border: 'none',
+              borderRadius: 11, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div role="dialog" aria-label="Find businesses" style={{

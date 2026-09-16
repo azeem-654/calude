@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Promote testing to live
+#
+# The only thing that moves work from testing.protectedcentral.com to
+# app.protectedcentral.com, and it never runs on its own. Actions → Promote
+# testing to live → Run workflow.
+#
+# It does not deploy anything itself. It fast-forwards `main` to `staging`,
+# which is what deploy.yml already watches — so the live deploy is the same
+# tested path it has always been, rather than a second one that could drift.
+#
+# ── Why the typed confirmation ──
+#
+# Because this is the button that reaches customers, and it sits in a list next
+# to buttons that do not. A dropdown defaults to something; typing the word does
+# not. It is the only irreversible thing in this repository's CI.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Promote testing to live
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type PROMOTE to publish the testing branch to app.protectedcentral.com'
+        required: true
+        default: ''
+
+concurrency:
+  group: promote-to-live
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check the confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "PROMOTE" ]; then
+            echo "::error title=Not confirmed::Type PROMOTE exactly to go ahead. Nothing was changed."
+            exit 1
+          fi
+
+      # Full history: a fast-forward check needs the commits on both sides, and
+      # a shallow clone makes every branch look unrelated to every other.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show what is about to go live
+        run: |
+          git fetch origin main staging
+          echo "### Commits promoting to live" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if git log --oneline origin/main..origin/staging | head -50 > /tmp/ahead && [ -s /tmp/ahead ]; then
+            sed 's/^/- /' /tmp/ahead >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_Nothing — main already has everything on staging._" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ── The check that stops this being a force-push in disguise ───────────
+      #
+      # A fast-forward means every commit on main is already on staging, so
+      # nothing is discarded. If somebody has pushed a hotfix straight to main,
+      # this refuses and says so — merging staging into main by hand is the
+      # right answer there, and quietly overwriting the hotfix is not.
+      - name: Promote, only if nothing would be lost
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git merge-base --is-ancestor origin/main origin/staging; then
+            echo "::error title=main has commits staging does not::Promoting would discard them."
+            echo ""
+            echo "Somebody pushed to main directly. Bring it into staging first:"
+            echo "  git checkout staging && git merge origin/main && git push"
+            echo "then run this again. Nothing was changed."
+            exit 1
+          fi
+          git push origin origin/staging:refs/heads/main
+          echo "### Promoted" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "main now matches staging. **Deploy to Cloudflare** is publishing it to <https://app.protectedcentral.com>." >> $GITHUB_STEP_SUMMARY

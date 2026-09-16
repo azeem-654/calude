@@ -29,6 +29,7 @@ import type { Contact } from '../../types';
 import ContactProfile from './ContactProfile';
 import ImportWizard from './ImportWizard';
 import FindProspects from './FindProspects';
+import { featureComingSoon } from '../../services/features';
 
 const statusColors: Record<string, { bg: string; color: string }> = {
   lead: { bg: '#eff6ff', color: '#2563eb' },
@@ -463,9 +464,17 @@ export default function Contacts() {
               <Download size={14} color="#64748b" /> Export
             </button>
             {/* Next to Import, because it is the same job from the other end:
-                Import is "I have a list", this is "I need one". */}
+                Import is "I have a list", this is "I need one".
+
+                Still shown while it is held back, with the label saying so. A
+                button that quietly disappears teaches somebody the product
+                cannot do the thing; one marked "soon" tells them it is
+                coming. */}
             <button onClick={() => setShowFind(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Search size={14} color="#64748b" /> Find businesses
+              {featureComingSoon('prospects') && (
+                <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.04em', padding: '2px 6px', borderRadius: 999, background: '#eef2ff', color: '#3730a3' }}>SOON</span>
+              )}
             </button>
             <button onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#374151', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
               <Upload size={14} color="#64748b" /> Import

@@ -21,7 +21,8 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 3 | **Revoke the Creem key pasted into a chat** and reissue | creem.io → Developers | Security |
 | 4 | **Confirm the billing webhook is set** | Settings → Billing | Payments succeed and nothing is provisioned without it |
 | 5 | **Change the master password** | Settings → Security | Security |
-| 6 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 13) |
+| 6 | **Create the staging database and attach testing.protectedcentral.com** | one command, then one workflow | The testing site. Until it is done, `staging` deploys fail loudly and say so (see 13) |
+| 7 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
 
 Item 2 was attempted from a session on 2026-09-14 and could not be done: the
 Cloudflare token available to an assistant is a reference, not a working
@@ -214,7 +215,47 @@ It will not publish until a processor is connected and tested under *Getting
 paid* (item 5) — a live shop that cannot be paid takes email addresses and gives
 nothing back. Products come from **Sell**, and only ones marked *active* appear.
 
-### 13. Content review — check it weekly
+### 13. The testing site — set it up once, then use it for everything
+
+**testing.protectedcentral.com** is a second copy of the whole app: its own
+Worker, its own database, its own cron. Nothing it does can reach a paying
+customer. It exists so an update can be used in anger before anyone else meets
+it.
+
+**Three one-off steps, and only the first needs your Cloudflare token:**
+
+```bash
+# 1. Create the staging database and write its id into wrangler.jsonc
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run staging:setup
+git add wrangler.jsonc && git commit -m "Point staging at its own database" && git push
+```
+
+2. Push the `staging` branch once — **Actions → Deploy to testing** runs and
+   publishes the `crmpro-staging` Worker.
+3. **Actions → Attach domains to the Worker**, with `testing` in the box. This
+   points testing.protectedcentral.com at it. It must come *after* step 2 — a
+   hostname cannot be attached to a script that does not exist yet.
+
+**From then on, this is the routine:**
+
+- Work goes to `staging`. It deploys to testing.protectedcentral.com on every
+  push, automatically.
+- Check it there. The whole product is real — sign up, send, buy, publish — but
+  against a database nobody depends on.
+- When you are happy: **Actions → Promote testing to live**, type `PROMOTE`.
+  That fast-forwards `main`, and the existing deploy publishes it to
+  app.protectedcentral.com.
+
+Two things worth knowing:
+
+- **Its data is separate and disposable.** Nothing you do on testing appears on
+  the live app, and the testing database can be wiped whenever it suits. Every
+  screen there carries a purple bar saying so.
+- **Promotion refuses rather than overwrites.** If somebody pushed a hotfix
+  straight to `main`, the promote workflow stops and tells you to merge `main`
+  into `staging` first. It will not throw the hotfix away.
+
+### 14. Content review — check it weekly
 
 **Workspace → Content review** (you only; sub-accounts cannot see it or reach
 it). Anything the filter stopped on its way out is listed there with the text,
@@ -235,10 +276,18 @@ Two things worth knowing:
 directions. Run it if you change the word list — the half that matters is the
 seventeen pieces of ordinary trade copy that must *not* be flagged.
 
-### 14. Prospect search is free now — the Places key can go
+### 15. Prospect search — built, and held back on the live app
 
 **Contacts → Find businesses** searches OpenStreetMap. No key, no account, no
 bill, and the results may be kept, which is the part that matters.
+
+**It is switched off for customers for now.** On app.protectedcentral.com the
+button carries a *SOON* label and opens a short page explaining what it will do;
+on testing.protectedcentral.com it works in full. Turn it on for everyone by
+taking `'prospects'` out of `REHEARSING` in `src/services/features.ts` — one
+line, then promote. Try some real searches for your own customers' towns first:
+how useful it is depends entirely on how well those places are mapped, and that
+is the thing worth knowing before every customer presses it once.
 
 The old Google Places search is still wired up for installs that configured a
 key, but nothing reaches for it any more and you can delete the key. Two reasons
@@ -251,7 +300,7 @@ a sole trader working from home, and it carries a phone number far more often
 than an email. The screen says so before the search rather than after an empty
 result.
 
-### 15. Sign in with Google, if you want the button — optional
+### 16. Sign in with Google, if you want the button — optional
 
 Customers can already sign in without a password: **Email me a sign-in code**
 works today, for any address, with nothing to set up. This adds the Google

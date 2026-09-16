@@ -77,5 +77,60 @@
     "APP_ORIGIN": "https://app.protectedcentral.com"
   },
 
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // The rehearsal copy — testing.protectedcentral.com
+  //
+  // A second Worker, from the same source, so an update can be used in anger
+  // before a paying customer meets it. Pushes to the `staging` branch land
+  // here; nothing reaches the live app until the Promote workflow is run by
+  // hand.
+  //
+  // ── The binding that matters ──
+  //
+  // `d1_databases` is NOT inherited by an environment — but that cuts both
+  // ways, and the dangerous way is a typo. A staging Worker bound to `crmpro`
+  // would send real mail to real customers, charge real cards and write real
+  // rows, all while looking like a test. So the database here is a different
+  // name and a different id, and `npm run staging:check` prints what wrangler
+  // actually resolved so the claim can be verified rather than trusted.
+  //
+  // ── Why the cron stays on ──
+  //
+  // Autopilot *is* the product, and most of it only happens on a tick. A
+  // staging copy with no cron would rehearse the screens and none of the
+  // behaviour. It is safe because it runs against the staging database, which
+  // has no customer mailbox in it — a send with nothing configured reports that
+  // it was skipped, which is exactly what it should do.
+  // ───────────────────────────────────────────────────────────────────────────
+  "env": {
+    "staging": {
+      "name": "crmpro-staging",
+
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "crmpro-staging",
+          // Filled in by `npm run staging:setup`, which creates the database
+          // and writes the id back here. Left as this placeholder, a deploy
+          // fails loudly rather than falling back to anything.
+          "database_id": "STAGING_DATABASE_ID_NOT_SET",
+          "migrations_dir": "worker/migrations"
+        }
+      ],
+
+      // Not inherited either. Unset, the cron would read the live app's own
+      // address and post staging's payment links and digests at production.
+      "vars": {
+        "APP_ORIGIN": "https://testing.protectedcentral.com"
+      },
+
+      "triggers": {
+        "crons": ["*/5 * * * *"]
+      },
+
+      "observability": { "enabled": true }
+    }
+  }
 }

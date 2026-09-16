@@ -29,11 +29,35 @@
 
 const API = 'https://api.cloudflare.com/client/v4';
 
-const SERVICE = 'crmpro';
-const ENVIRONMENT = 'production';
-/** The zone, and every hostname in it that should serve the Worker. */
 const ZONE = 'protectedcentral.com';
-const HOSTNAMES = ['protectedcentral.com', 'www.protectedcentral.com'];
+
+/**
+ * Every hostname in the zone, and which Worker answers it.
+ *
+ * Two scripts, not one. `crmpro` is the live product and the marketing site;
+ * `crmpro-staging` is the rehearsal copy, published from the `staging` branch
+ * with its own database. They are separate deployments on purpose — a testing
+ * site that shares a script with production is not a testing site, it is
+ * production with a second name.
+ *
+ * `environment` is 'production' for both. It is Cloudflare's word for "the
+ * default environment of this script", not ours for "the live site" — the
+ * staging Worker is deployed under its own name rather than as a named
+ * environment of `crmpro`, so its default environment is what serves it.
+ */
+const TARGETS = [
+  { hostname: 'protectedcentral.com', service: 'crmpro', environment: 'production' },
+  { hostname: 'www.protectedcentral.com', service: 'crmpro', environment: 'production' },
+  { hostname: 'testing.protectedcentral.com', service: 'crmpro-staging', environment: 'production' },
+];
+
+/* Attach only some of them: `node scripts/attach-domains.mjs testing` matches
+   on substring, so a name that is not ready yet does not have to block the
+   others. No argument means all three. */
+const only = process.argv.slice(2);
+const WANTED = only.length
+  ? TARGETS.filter(t => only.some(a => t.hostname.includes(a) || t.service.includes(a)))
+  : TARGETS;
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -107,17 +131,23 @@ if (!zones?.length) {
 const zoneId = zones[0].id;
 console.log(`Zone ${ZONE} → ${zoneId}`);
 
+if (!WANTED.length) {
+  console.error(`Nothing matched ${only.join(', ')}. Known names:`);
+  for (const t of TARGETS) console.error(`  ${t.hostname} → ${t.service}`);
+  process.exit(1);
+}
+
 let failed = false;
-for (const hostname of HOSTNAMES) {
+for (const { hostname, service, environment } of WANTED) {
   try {
     await api('/accounts/' + account + '/workers/domains', {
       method: 'PUT',
-      body: JSON.stringify({ environment: ENVIRONMENT, hostname, service: SERVICE, zone_id: zoneId }),
+      body: JSON.stringify({ environment, hostname, service, zone_id: zoneId }),
     });
-    console.log(`  ✓ ${hostname} → ${SERVICE}`);
+    console.log(`  ✓ ${hostname} → ${service}`);
   } catch (e) {
     failed = true;
-    console.error(`  ✗ ${hostname}: ${e.message}`);
+    console.error(`  ✗ ${hostname} → ${service}: ${e.message}`);
   }
 }
 
@@ -132,9 +162,15 @@ if (failed) {
   console.error('');
   console.error('An "Authentication error" instead means the token is missing a permission');
   console.error('rather than the name being taken.');
+  console.error('');
+  console.error('And "workers.api.error.script_not_found" for testing.protectedcentral.com');
+  console.error('means the staging Worker has not been published yet. Push the `staging`');
+  console.error('branch once, then run this again — a hostname cannot be attached to a');
+  console.error('script that does not exist.');
   process.exit(1);
 }
 
-console.log('\nDone. Both names now serve the crmpro Worker, and DNS for them is');
-console.log('managed by Cloudflare — there is no A record to add.');
-console.log('protectedcentral.com is the marketing site; app.protectedcentral.com is the app.');
+console.log('\nDone. DNS for these names is managed by Cloudflare — there is no A record');
+console.log('to add. protectedcentral.com is the marketing site, app.protectedcentral.com');
+console.log('is the live app, and testing.protectedcentral.com is the rehearsal copy on its');
+console.log('own Worker and its own database.');

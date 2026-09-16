@@ -1,0 +1,122 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Deploy the `staging` branch to testing.protectedcentral.com
+#
+# The same steps as the live deploy, against a different Worker and a different
+# database. Pushing here cannot affect a paying customer, which is the whole
+# reason it exists — so the only differences from deploy.yml are the ones that
+# keep that true, and each is commented where it happens.
+#
+# Promoting to live is a separate, manual workflow: .github/workflows/promote.yml
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Deploy to testing
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+# Its own concurrency group. Sharing one with the live deploy would mean a
+# staging push holding up a production fix, which is precisely backwards.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Check the Cloudflare credentials are present
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ]  || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error title=Cloudflare credentials missing::Repository secret(s) not set:$missing"
+            echo "Nothing was deployed and no database was touched."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Refuse before building if staging has no database of its own ───────
+      #
+      # The placeholder is what a fresh checkout carries until `npm run
+      # staging:setup` has been run and committed. Without this the deploy fails
+      # deep inside wrangler with a message about an id that does not parse,
+      # which reads as a wrangler bug rather than a step nobody has done yet.
+      - name: Check staging has its own database
+        run: |
+          if grep -q 'STAGING_DATABASE_ID_NOT_SET' wrangler.jsonc; then
+            echo "::error title=Staging database not created::wrangler.jsonc still has the placeholder id."
+            echo ""
+            echo "Run this once, with the same credentials the deploy uses:"
+            echo "  CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... npm run staging:setup"
+            echo "then commit wrangler.jsonc."
+            exit 1
+          fi
+
+      # ── And that it is not secretly the live one ───────────────────────────
+      #
+      # The failure this guards against is silent: a staging Worker bound to
+      # `crmpro` would send real mail to real customers and look completely
+      # normal doing it. Asking wrangler what it resolved costs two seconds.
+      - name: Check the bindings really are separate
+        run: npm run staging:check
+
+      - name: Typecheck the app
+        run: npm run typecheck
+
+      - name: Typecheck the Worker
+        run: npx tsc --noEmit -p worker/tsconfig.json
+
+      # ── The tests the live deploy does not run ─────────────────────────────
+      #
+      # Both are pure and take a second, and staging is where something ought to
+      # break. Running them here and not in production is deliberate: the live
+      # deploy's job is to publish what has already been rehearsed, as quickly
+      # as it safely can.
+      - name: Test the content policy
+        run: npm run test:moderation
+
+      - name: Test the prospect finder
+        run: npm run test:prospects
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_BASE: /
+
+      # Against the staging database, by name. Not `--env staging`, because the
+      # migrations command takes the database itself.
+      - name: Apply D1 migrations to the staging database
+        run: npx wrangler d1 migrations apply crmpro-staging --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy the staging Worker
+        run: npx wrangler deploy --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Where it went
+        run: |
+          echo "### Deployed to testing" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<https://testing.protectedcentral.com>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The live app at app.protectedcentral.com is untouched." >> $GITHUB_STEP_SUMMARY
+          echo "Run **Promote testing to live** when this has been checked." >> $GITHUB_STEP_SUMMARY

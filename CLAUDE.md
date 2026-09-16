@@ -181,9 +181,33 @@ whose assets 404.
 
 ## Deploying
 
-Push to `main`. `.github/workflows/deploy.yml` typechecks, builds, applies D1
-migrations and deploys — in that order, so a Worker can never reach production
-expecting a column its database does not have.
+**Work lands on `staging`. `main` is what customers are using.**
+
+| Branch | Workflow | Worker | Database | Address |
+|---|---|---|---|---|
+| `staging` | `staging.yml`, on push | `crmpro-staging` | `crmpro-staging` | testing.protectedcentral.com |
+| `main` | `deploy.yml`, on push | `crmpro` | `crmpro` | app.protectedcentral.com, protectedcentral.com |
+
+Both typecheck, build, apply D1 migrations and then deploy — migrations first,
+so a Worker can never reach a database that lacks a column it expects. Staging
+also runs `test:moderation` and `test:prospects`; the live deploy does not,
+because its job is to publish what has already been rehearsed.
+
+`main` is only ever moved by **Actions → Promote testing to live**, which
+fast-forwards it to `staging` after you type `PROMOTE`. It refuses if `main`
+has commits `staging` does not, rather than discarding them. Pushing straight
+to `main` still works and still deploys — it is for a hotfix, and the next
+promotion will refuse until you have merged it back into `staging`.
+
+`src/services/hosts.ts` is what makes one build serve both: `isStagingHost()`
+draws the testing banner and `isRehearsal()` decides which features in
+`src/services/features.ts` are switched on. Nothing is baked in at build time,
+so a production bundle cannot be published believing it is staging.
+
+**The two environments must never share a database.** `npm run staging:check`
+asks wrangler what it actually resolved and fails if they do; the staging
+workflow runs it before it builds anything. A staging Worker bound to `crmpro`
+would send real mail to real customers and look completely normal doing it.
 
 Do not deploy by hand. The repository secrets `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` are set and the pipeline is green.

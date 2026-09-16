@@ -43,6 +43,7 @@ import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
 import PolicyPage from './components/Site/PolicyPage';
 import StandingBanner from './components/shared/StandingBanner';
+import StagingBanner from './components/shared/StagingBanner';
 import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
@@ -99,8 +100,11 @@ function AppLayout({ isClient }: { isClient: boolean }) {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#e9ebee' }}>
+      {/* Above even the nav: "you are not on the live site" outranks everything
+          else on the page, including the nav that makes it look like you are. */}
+      <StagingBanner />
       <TopNav />
-      {/* Above everything, because it is the explanation for anything that
+      {/* Above everything else, because it is the explanation for anything that
           refuses lower down the page. */}
       <StandingBanner />
       <IconRail />
@@ -345,6 +349,9 @@ export default function App() {
   if (!session) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        {/* Before the sign-in form, not only after it. Somebody typing their
+            password into the testing copy has already been misled. */}
+        <StagingBanner />
         <Routes>
           {/* Two doors, because the marketing site has two buttons. What each
               one can actually do is still the server's call. */}
