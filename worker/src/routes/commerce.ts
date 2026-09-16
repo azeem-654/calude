@@ -43,6 +43,22 @@ interface Req {
   category?: string;
   sortOrder?: number;
   projectId?: string;
+  /* Variants, options and extra pictures */
+  options?: unknown;
+  images?: unknown;
+  variants?: unknown;
+  /* Discounts */
+  code?: string;
+  kind?: string;
+  value?: number;
+  minSpendCents?: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  usageLimit?: number;
+  /* Shipping */
+  countries?: string;
+  amountCents?: number;
+  thresholdCents?: number;
   /* Orders */
   contactId?: string;
   email?: string;
@@ -117,13 +133,52 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     const { results } = await env.DB.prepare(
       `SELECT id, name, description, sku, price_cents AS priceCents, cost_cents AS costCents,
               compare_at_cents AS compareAtCents, currency, source, supplier_ref AS supplierRef,
-              image_url AS imageUrl, inventory, track_inventory AS trackInventory,
+              image_url AS imageUrl, images, options, inventory, track_inventory AS trackInventory,
               category, sort_order AS sortOrder, project_id AS projectId,
               status, created_at AS createdAt
        FROM crm_products WHERE account_id = ?
        /* The shopkeeper's own order first — a shop shows what they chose to put
           at the front, not what they happened to type most recently. */
        ORDER BY sort_order ASC, created_at DESC LIMIT 200`,
+    ).bind(accountId).all<Record<string, unknown>>();
+    const products = results ?? [];
+
+    /*
+     * Variants in one query for the whole catalogue, then grouped.
+     *
+     * A query per product is two hundred round trips to draw one screen. D1
+     * charges for each and the page waits for all of them.
+     */
+    const { results: vars } = await env.DB.prepare(
+      `SELECT id, product_id AS productId, title, sku, price_cents AS priceCents,
+              compare_at_cents AS compareAtCents, inventory, image_url AS imageUrl, position
+       FROM crm_product_variants WHERE account_id = ? ORDER BY position ASC LIMIT 2000`,
+    ).bind(accountId).all<{ productId: string }>();
+
+    const byProduct = new Map<string, unknown[]>();
+    for (const v of vars ?? []) {
+      const list = byProduct.get(v.productId) ?? [];
+      list.push(v);
+      byProduct.set(v.productId, list);
+    }
+    return products.map(p => ({ ...p, variants: byProduct.get(String(p.id)) ?? [] }));
+  };
+
+  const listDiscounts = async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT id, code, kind, value, min_spend_cents AS minSpendCents,
+              starts_at AS startsAt, ends_at AS endsAt,
+              usage_limit AS usageLimit, used_count AS usedCount, status
+       FROM crm_discounts WHERE account_id = ? ORDER BY created_at DESC LIMIT 200`,
+    ).bind(accountId).all();
+    return results ?? [];
+  };
+
+  const listShipping = async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT id, name, countries, kind, amount_cents AS amountCents,
+              threshold_cents AS thresholdCents, position, status
+       FROM crm_shipping_rates WHERE account_id = ? ORDER BY position ASC, created_at ASC LIMIT 100`,
     ).bind(accountId).all();
     return results ?? [];
   };
@@ -168,6 +223,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       ideas: await listIdeas(),
       products: await listProducts(),
       orders: await listOrders(),
+      discounts: await listDiscounts(),
+      shipping: await listShipping(),
       /* Said in the payload, not only in a comment. A screen that cannot take
          money can say why instead of showing an empty orders list that looks
          like nobody has bought anything. */
@@ -276,14 +333,15 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       `INSERT INTO crm_products
        (id, account_id, name, description, sku, price_cents, cost_cents, currency,
         source, supplier_ref, status, created_at, updated_at,
-        image_url, compare_at_cents, inventory, track_inventory, category, sort_order, project_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        image_url, images, compare_at_cents, inventory, track_inventory, category, sort_order, project_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, description=excluded.description, sku=excluded.sku,
          price_cents=excluded.price_cents, cost_cents=excluded.cost_cents,
          source=excluded.source, supplier_ref=excluded.supplier_ref,
          status=excluded.status, updated_at=excluded.updated_at,
-         image_url=excluded.image_url, compare_at_cents=excluded.compare_at_cents,
+         image_url=excluded.image_url, images=excluded.images,
+         compare_at_cents=excluded.compare_at_cents,
          inventory=excluded.inventory, track_inventory=excluded.track_inventory,
          category=excluded.category, sort_order=excluded.sort_order,
          project_id=excluded.project_id`,
@@ -301,6 +359,10 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
          large, and a row that will not fit is better trimmed than refused with
          a message about bytes. */
       String(d.imageUrl ?? '').slice(0, 800_000),
+      /* The rest of the pictures. Capped hard: these are often data: URIs and
+         a row that will not fit is worse than a gallery that is four long. */
+      JSON.stringify(Array.isArray(d.images) ? (d.images as unknown[]).slice(0, 5).map(String) : [])
+        .slice(0, 2_000_000),
       compareAt > price ? compareAt : 0,
       clampInt(d.inventory, 0, 10_000_000),
       d.trackInventory ? 1 : 0,
@@ -312,6 +374,166 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
        is a draft in the database is the exact shape of lie this codebase is
        written to avoid. */
     return json({ success: true, id, products: await listProducts(), held: !!held, heldMessage: held });
+  }
+
+  /* ── Variants, discounts and shipping ───────────────────────────────────
+   *
+   * All three are what every shop platform treats as the floor rather than the
+   * advanced tier, and none of them existed here. They are grouped because
+   * they share one rule: the shop page and the checkout read them, so a change
+   * made on these screens is a change a buyer sees, not a note in an admin.
+   */
+
+  if (act === 'save_variants') {
+    const productId = String(d.id ?? '').trim();
+    if (!productId) return fail('Which product?');
+    const owns = await env.DB.prepare('SELECT 1 AS n FROM crm_products WHERE id = ? AND account_id = ?')
+      .bind(productId, accountId).first();
+    if (!owns) return fail('That product is not yours.', 403);
+
+    const rows = (Array.isArray(d.variants) ? d.variants : []).slice(0, 100) as Array<Record<string, unknown>>;
+    const now = nowIso();
+
+    /*
+     * Replaced wholesale rather than merged.
+     *
+     * The form edits the whole set at once — adding a colour re-titles every
+     * variant — so a merge would need to guess which old row each new one
+     * corresponds to, and guess wrong on a rename. Deleting and reinserting is
+     * both simpler and correct; the cost is that variant ids are not stable
+     * across an edit, which nothing depends on.
+     */
+    await env.DB.prepare('DELETE FROM crm_product_variants WHERE product_id = ? AND account_id = ?')
+      .bind(productId, accountId).run();
+
+    let position = 0;
+    for (const raw of rows) {
+      const title = String(raw.title ?? '').trim().slice(0, 120);
+      if (!title) continue;
+      await env.DB.prepare(
+        `INSERT INTO crm_product_variants
+         (id, product_id, account_id, title, sku, price_cents, compare_at_cents,
+          inventory, image_url, position, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ).bind(
+        rid('var'), productId, accountId, title,
+        String(raw.sku ?? '').slice(0, 80),
+        clampInt(raw.priceCents, 0, 100_000_000),
+        clampInt(raw.compareAtCents, 0, 100_000_000),
+        clampInt(raw.inventory, 0, 10_000_000),
+        String(raw.imageUrl ?? '').slice(0, 800_000),
+        position++, now, now,
+      ).run();
+    }
+
+    /* The option names live on the product, so a shop page can draw the
+       pickers without reading every variant to work out what they are. */
+    await env.DB.prepare('UPDATE crm_products SET options = ?, updated_at = ? WHERE id = ? AND account_id = ?')
+      .bind(JSON.stringify(d.options ?? []).slice(0, 4000), now, productId, accountId).run();
+
+    return json({ success: true, products: await listProducts() });
+  }
+
+  if (act === 'list_discounts') {
+    return json({ success: true, discounts: await listDiscounts() });
+  }
+
+  if (act === 'save_discount') {
+    const code = String(d.code ?? '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40);
+    if (code.length < 3) return fail('A code needs at least three letters or numbers.');
+
+    const kind = d.kind === 'fixed' ? 'fixed' : 'percent';
+    const value = kind === 'percent'
+      ? clampInt(d.value, 1, 100)
+      : clampInt(d.value, 1, 100_000_000);
+
+    const now = nowIso();
+    const id = String(d.id ?? '').trim() || rid('disc');
+    const existing = await env.DB.prepare('SELECT created_at, used_count FROM crm_discounts WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ created_at: string; used_count: number }>();
+
+    /* Two workspaces both wanting SAVE10 is the normal case, so the uniqueness
+       is per account — but one workspace with two SAVE10s is a checkout that
+       has to pick, so that is refused with the reason. */
+    const clash = await env.DB.prepare('SELECT id FROM crm_discounts WHERE account_id = ? AND code = ? AND id != ?')
+      .bind(accountId, code, id).first();
+    if (clash) return fail(`You already have a code called ${code}.`);
+
+    await env.DB.prepare(
+      `INSERT INTO crm_discounts
+       (id, account_id, code, kind, value, min_spend_cents, starts_at, ends_at,
+        usage_limit, used_count, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         code=excluded.code, kind=excluded.kind, value=excluded.value,
+         min_spend_cents=excluded.min_spend_cents, starts_at=excluded.starts_at,
+         ends_at=excluded.ends_at, usage_limit=excluded.usage_limit,
+         status=excluded.status, updated_at=excluded.updated_at`,
+    ).bind(
+      id, accountId, code, kind, value,
+      clampInt(d.minSpendCents, 0, 100_000_000),
+      d.startsAt ? String(d.startsAt).slice(0, 40) : null,
+      d.endsAt ? String(d.endsAt).slice(0, 40) : null,
+      clampInt(d.usageLimit, 0, 1_000_000),
+      /* Never reset by an edit. Changing the expiry on a code that has been
+         used fifty times must not hand out fifty more. */
+      existing?.used_count ?? 0,
+      d.status === 'off' ? 'off' : 'active',
+      existing?.created_at ?? now, now,
+    ).run();
+
+    return json({ success: true, id, discounts: await listDiscounts() });
+  }
+
+  if (act === 'delete_discount') {
+    await env.DB.prepare('DELETE FROM crm_discounts WHERE id = ? AND account_id = ?')
+      .bind(String(d.id ?? ''), accountId).run();
+    return json({ success: true, discounts: await listDiscounts() });
+  }
+
+  if (act === 'list_shipping') {
+    return json({ success: true, shipping: await listShipping() });
+  }
+
+  if (act === 'save_shipping') {
+    const name = String(d.name ?? '').trim().slice(0, 80);
+    if (!name) return fail('Give the rate a name — the buyer sees it at the checkout.');
+    const now = nowIso();
+    const id = String(d.id ?? '').trim() || rid('ship');
+    const existing = await env.DB.prepare('SELECT created_at FROM crm_shipping_rates WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ created_at: string }>();
+
+    /* Uppercased two-letter codes only. A country list somebody typed as
+       "UK, Ireland" would silently match nothing at the checkout. */
+    const countries = String(d.countries ?? '')
+      .toUpperCase().split(/[^A-Z]+/).filter(c => c.length === 2).slice(0, 60).join(',');
+
+    await env.DB.prepare(
+      `INSERT INTO crm_shipping_rates
+       (id, account_id, name, countries, kind, amount_cents, threshold_cents,
+        position, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         name=excluded.name, countries=excluded.countries, kind=excluded.kind,
+         amount_cents=excluded.amount_cents, threshold_cents=excluded.threshold_cents,
+         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at`,
+    ).bind(
+      id, accountId, name, countries,
+      d.kind === 'free_over' ? 'free_over' : 'flat',
+      clampInt(d.amountCents, 0, 100_000_000),
+      clampInt(d.thresholdCents, 0, 100_000_000),
+      clampInt(d.sortOrder, 0, 1000),
+      d.status === 'off' ? 'off' : 'active',
+      existing?.created_at ?? now, now,
+    ).run();
+
+    return json({ success: true, id, shipping: await listShipping() });
+  }
+
+  if (act === 'delete_shipping') {
+    await env.DB.prepare('DELETE FROM crm_shipping_rates WHERE id = ? AND account_id = ?')
+      .bind(String(d.id ?? ''), accountId).run();
+    return json({ success: true, shipping: await listShipping() });
   }
 
   if (act === 'delete_product') {

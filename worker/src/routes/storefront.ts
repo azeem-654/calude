@@ -466,10 +466,33 @@ export async function handleStorefrontWebhook(req: Request, env: Env): Promise<R
   if (event.kind === 'paid') {
     /* Only a pending order moves. An order already fulfilled must not be walked
        backwards to 'paid' by a redelivered event, and processors redeliver. */
-    await env.DB.prepare(
+    const moved = await env.DB.prepare(
       `UPDATE crm_orders SET status = 'paid', channel = ?, stripe_session = ?, updated_at = ?
        WHERE ${where.sql} AND status = 'pending'`,
     ).bind(provider.id, event.sessionId, nowIso(), ...where.args).run();
+
+    /*
+     * A discount code is spent when the money arrives, not when it is typed.
+     *
+     * Counting at the checkout would let a code with ten uses be exhausted by
+     * ten people who abandoned the payment page, and the eleventh — the one who
+     * actually paid — would be refused.
+     *
+     * Guarded on `meta.changes`, which is the same load-bearing check that
+     * stops a redelivered webhook crediting an order twice: this only runs on
+     * the delivery that genuinely moved the order out of `pending`, so a
+     * processor replaying the event cannot spend the code a second time.
+     */
+    if (moved.meta.changes) {
+      const used = await env.DB.prepare(
+        `SELECT discount_code AS code FROM crm_orders WHERE ${where.sql} AND discount_code != ''`,
+      ).bind(...where.args).first<{ code: string }>();
+      if (used?.code) {
+        await env.DB.prepare(
+          'UPDATE crm_discounts SET used_count = used_count + 1, updated_at = ? WHERE account_id = ? AND code = ?',
+        ).bind(nowIso(), accountId, used.code).run();
+      }
+    }
 
     /* Written separately, and only when there is something to write. A session
        with no address collected must not blank an address already recorded —

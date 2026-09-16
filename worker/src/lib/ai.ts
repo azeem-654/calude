@@ -67,18 +67,72 @@ export async function loadAiKey(env: Env, accountId: string): Promise<string | n
   return installAiKey(env);
 }
 
-/** The operator's own key, shared by every workspace that has not brought one. */
+/**
+ * The operator's own key, shared by every workspace that has not brought one.
+ *
+ * ── Why it reads the owner's own settings screen ──
+ *
+ * Because that is where they already put it. Settings → AI Engine writes to
+ * `crm_ai_config` for whichever workspace is active, and the install owner has
+ * one like everybody else — so asking them to enter the same key a second time
+ * into a second box, to make it install-wide, would be a chore invented by the
+ * database layout rather than by anything real.
+ *
+ * `hasInstallOwner` defines the owner as the single `crm_users` row with no
+ * account of its own, and `crm_workspaces.owner_email` says which workspaces
+ * are theirs. So: the owner's workspaces, whichever of them holds a key that
+ * has not most recently failed.
+ *
+ * ── What this costs, and why it is still right ──
+ *
+ * Every sub-account that has not brought a key now spends the owner's quota.
+ * That is the deal being made deliberately — the product tells customers the
+ * writing is included — but it is worth knowing that the bill scales with
+ * customers, and that a customer who connects their own key is preferred over
+ * this on purpose.
+ *
+ * `env.AI_API_KEY` is last and is the escape hatch for a deployment that would
+ * rather keep the key in Cloudflare's secret store than in its own database.
+ */
 export async function installAiKey(env: Env): Promise<string | null> {
-  const row = await env.DB.prepare(
+  const key = await installSecret(env.DB, 'mailbox_key');
+
+  /* An explicit install-level key, if one was ever set. Checked first because
+     somebody who went out of their way to set one meant it. */
+  const explicit = await env.DB.prepare(
     "SELECT credentials FROM crm_install_providers WHERE kind = 'ai' AND credentials != ''",
   ).first<{ credentials: string }>();
-  if (row?.credentials) {
+  if (explicit?.credentials) {
     try {
-      const key = await installSecret(env.DB, 'mailbox_key');
-      const parsed = JSON.parse(await decryptSecret(key, row.credentials)) as { apiKey?: string };
+      const parsed = JSON.parse(await decryptSecret(key, explicit.credentials)) as { apiKey?: string };
       if (parsed.apiKey) return parsed.apiKey;
-    } catch { /* unreadable; the env var below is the next chance */ }
+    } catch { /* unreadable; keep looking */ }
   }
+
+  /*
+   * The owner's own AI Engine setting.
+   *
+   * Ordered so a key that last worked beats one that last failed — a row whose
+   * `last_error` is set is a key that has already been refused once, and
+   * handing it to every workspace on the install would multiply that failure
+   * rather than surface it.
+   */
+  const owned = await env.DB.prepare(
+    `SELECT c.api_key AS apiKey
+     FROM crm_ai_config c
+     JOIN crm_workspaces w ON w.account_id = c.account_id
+     JOIN crm_users u ON u.email = w.owner_email
+     WHERE u.account_id IS NULL AND u.role = 'agency' AND c.api_key != ''
+     ORDER BY (c.last_error = '') DESC, (c.verified_at IS NOT NULL) DESC
+     LIMIT 1`,
+  ).first<{ apiKey: string }>();
+  if (owned?.apiKey) {
+    try {
+      const plain = await decryptSecret(key, owned.apiKey);
+      if (plain) return plain;
+    } catch { /* unreadable; the env var below is the last chance */ }
+  }
+
   return (env.AI_API_KEY ?? '').trim() || null;
 }
 

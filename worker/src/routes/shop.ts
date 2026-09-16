@@ -23,6 +23,7 @@
  */
 import { addr, body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { priceBasket, type Discount, type ShippingRate } from '../lib/checkout';
 import { createPayLink } from './storefront';
 
 interface Req {
@@ -32,8 +33,14 @@ interface Req {
   /* Public */
   slug?: string;
   productId?: string;
+  /** Which option the buyer chose. Looked up, never trusted for its price. */
+  variantId?: string;
   qty?: number;
   email?: string;
+  discountCode?: string;
+  /** Two-letter code, to pick a delivery rate. */
+  shipCountry?: string;
+  country?: string;
   /* Owner */
   id?: string;
   projectId?: string;
@@ -98,13 +105,47 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
 
     const { results } = await env.DB.prepare(
       `SELECT id, name, description, price_cents AS priceCents, currency, sku,
-              image_url AS imageUrl, compare_at_cents AS compareAtCents,
+              image_url AS imageUrl, images, options, compare_at_cents AS compareAtCents,
               category, inventory, track_inventory AS trackInventory
        FROM crm_products
        WHERE account_id = ? AND status = 'active'
          AND (project_id = ? OR project_id = '')
        ORDER BY sort_order ASC, created_at DESC LIMIT 200`,
-    ).bind(shop.account_id, shop.project_id).all();
+    ).bind(shop.account_id, shop.project_id).all<Record<string, unknown>>();
+
+    /*
+     * Variants for the whole catalogue in one query, then grouped.
+     *
+     * A query per product is two hundred round trips on a page a stranger is
+     * waiting for. Only the ones on this shop's products, so a workspace with
+     * several shops does not leak another one's range onto this page.
+     */
+    const ids = (results ?? []).map(p => String(p.id));
+    const byProduct = new Map<string, unknown[]>();
+    if (ids.length) {
+      const { results: vars } = await env.DB.prepare(
+        `SELECT id, product_id AS productId, title, price_cents AS priceCents,
+                compare_at_cents AS compareAtCents, inventory, image_url AS imageUrl, sku
+         FROM crm_product_variants
+         WHERE account_id = ? AND product_id IN (${ids.map(() => '?').join(',')})
+         ORDER BY position ASC LIMIT 2000`,
+      ).bind(shop.account_id, ...ids).all<{ productId: string }>();
+      for (const v of vars ?? []) {
+        const list = byProduct.get(v.productId) ?? [];
+        list.push(v);
+        byProduct.set(v.productId, list);
+      }
+    }
+    const products = (results ?? []).map(p => ({ ...p, variants: byProduct.get(String(p.id)) ?? [] }));
+
+    /* What delivery will cost, so the page can say it before the buyer commits
+       rather than at the last screen. */
+    const { results: rates } = await env.DB.prepare(
+      `SELECT id, name, countries, kind, amount_cents AS amountCents,
+              threshold_cents AS thresholdCents, position, status
+       FROM crm_shipping_rates WHERE account_id = ? AND status = 'active'
+       ORDER BY position ASC LIMIT 50`,
+    ).bind(shop.account_id).all();
 
     /* The storefront's own currency decides, because that is what the checkout
        will actually charge in. */
@@ -122,7 +163,10 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
         returnsNote: shop.returns_note,
         contactEmail: shop.contact_email,
       },
-      products: results ?? [],
+      products,
+      /* The rules, not a computed price — the page has no country until the
+         buyer says, and quoting one before they do would be a guess. */
+      shippingRates: rates ?? [],
       currency: sf?.currency ?? 'USD',
       /* Said plainly rather than discovered at the buy button: a shop whose
          owner has not connected a processor cannot take money, and a visitor
@@ -184,19 +228,88 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
       }
     }
 
-    const items = [{ productId: product.id, name: product.name, qty, priceCents: product.price_cents }];
-    const total = qty * product.price_cents;
+    /*
+     * A variant, when one was chosen — and its price, not the product's.
+     *
+     * Looked up rather than trusted, exactly like the product price: the whole
+     * point of reading from the row is defeated if the *which row* comes from
+     * the request unchecked. It must belong to this product and this account,
+     * or it is not a variant of anything the buyer is looking at.
+     */
+    const variantId = String(d.variantId ?? '').trim();
+    let variant: { id: string; title: string; price_cents: number; inventory: number } | null = null;
+    if (variantId) {
+      variant = await env.DB.prepare(
+        `SELECT id, title, price_cents, inventory FROM crm_product_variants
+         WHERE id = ? AND product_id = ? AND account_id = ?`,
+      ).bind(variantId, product.id, shop.account_id)
+        .first<{ id: string; title: string; price_cents: number; inventory: number }>();
+      if (!variant) return fail('That option is not available.');
+      if (variant.price_cents <= 0) return fail('That option has no price set, so it cannot be bought yet.');
+      if (product.track_inventory && qty > variant.inventory) {
+        return variant.inventory <= 0
+          ? fail(`${product.name} — ${variant.title} is out of stock.`)
+          : fail(`Only ${variant.inventory} left of ${product.name} — ${variant.title}.`);
+      }
+    }
+
+    const unitCents = variant ? variant.price_cents : product.price_cents;
+    const lineName = variant ? `${product.name} — ${variant.title}` : product.name;
+    const items = [{
+      productId: product.id, variantId: variant?.id ?? '',
+      name: lineName, qty, priceCents: unitCents,
+    }];
+
+    /* The rules this shop actually has, read here rather than taken from the
+       page — a basket total assembled in a browser is a total somebody can
+       edit. */
+    const { results: rateRows } = await env.DB.prepare(
+      `SELECT id, name, countries, kind, amount_cents AS amountCents,
+              threshold_cents AS thresholdCents, position, status
+       FROM crm_shipping_rates WHERE account_id = ? LIMIT 50`,
+    ).bind(shop.account_id).all<ShippingRate>();
+
+    const typedCode = String(d.discountCode ?? '').trim().toUpperCase().slice(0, 40);
+    let discountRow: Discount | null = null;
+    if (typedCode) {
+      const row = await env.DB.prepare(
+        `SELECT code, kind, value, min_spend_cents AS minSpendCents,
+                starts_at AS startsAt, ends_at AS endsAt,
+                usage_limit AS usageLimit, used_count AS usedCount, status
+         FROM crm_discounts WHERE account_id = ? AND code = ?`,
+      ).bind(shop.account_id, typedCode).first<Discount>();
+      discountRow = row ?? null;
+    }
+
+    const totals = priceBasket({
+      lines: [{ name: lineName, qty, priceCents: unitCents }],
+      discount: discountRow,
+      codeTyped: typedCode,
+      rates: rateRows ?? [],
+      country: String(d.shipCountry ?? d.country ?? '').trim(),
+    });
+
+    /* A code that does not apply stops the order rather than quietly charging
+       the full price. Somebody who typed one and was billed without it would
+       find out on the receipt, which is the worst moment. */
+    if (totals.discountProblem) return fail(totals.discountProblem, 200, { code: 'discount' });
+
+    const total = totals.totalCents;
 
     const now = nowIso();
     const orderId = rid('ord');
     await env.DB.prepare(
       `INSERT INTO crm_orders
        (id, account_id, contact_id, email, items, total_cents, currency, status, channel,
-        shop_id, placed_at, updated_at)
-       VALUES (?,?,?,?,?,?,?, 'pending', 'shop', ?,?,?)`,
+        shop_id, discount_code, discount_cents, shipping_cents, placed_at, updated_at)
+       VALUES (?,?,?,?,?,?,?, 'pending', 'shop', ?,?,?,?,?,?)`,
     ).bind(
       orderId, shop.account_id, `ip:${ip}`, email, JSON.stringify(items), total,
-      currency, shop.id, now, now,
+      currency, shop.id,
+      /* Frozen onto the order. A code edited next week must not change what
+         this receipt says it charged — the same rule as the price. */
+      totals.discountCode, totals.discountCents, totals.shippingCents,
+      now, now,
     ).run();
 
     const origin = new URL(req.url).origin;

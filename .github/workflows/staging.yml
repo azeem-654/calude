@@ -112,6 +112,11 @@ jobs:
       - name: Test the launch plan
         run: npm run test:launch
 
+      # The arithmetic that debits a stranger's card. A discount that quietly
+      # pays part of the courier is a shop selling below cost without noticing.
+      - name: Test the checkout maths
+        run: npm run test:checkout
+
       - name: Build
         run: npm run build
         env:
