@@ -219,11 +219,32 @@ button:focus-visible, a:focus-visible {
 .tick-up { animation: tick-up 0.6s ease-out; }
 .tick-down { animation: tick-down 0.6s ease-out; }
 
+/*
+ * These two were written inline, in the JSX, as `style={{ animation: ... }}`.
+ *
+ * An inline animation is unreachable by a media query — there is no selector to
+ * write — so the "live" dot went on pulsing forever for somebody who had asked
+ * the whole machine to stop moving things, which is precisely what that request
+ * is about. Found by asserting the dashboard is completely still under
+ * `reducedMotion: 'reduce'`, rather than by looking.
+ *
+ * Declared here instead, so the block below can switch them off like everything
+ * else. The colour and size stay inline, because they genuinely differ between
+ * the two places the dot is used.
+ */
+.live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+.insight-card { animation: insight-in 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
 @media (prefers-reduced-motion: reduce) {
   .tick-up,
   .tick-down { animation: none; }
 
   .ticker-track { animation: none; }
+
+  /* The dot stays visible and stops pulsing: it still says "live", it just
+     does not move. Removing it would drop information, not motion. */
+  .live-dot,
+  .insight-card { animation: none; }
 }
 
 /* Insight carousel slide */

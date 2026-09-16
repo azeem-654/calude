@@ -197,7 +197,7 @@ function LiveFeed({ items }: { items: Activity[] }) {
             display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 999,
             backgroundColor: INK, fontSize: 10, fontWeight: 800, color: '#fff', letterSpacing: '0.1em',
           }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: '#6ee76e', animation: 'pulse-dot 1.6s ease-in-out infinite' }} />
+            <span className="live-dot" style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: '#6ee76e' }} />
             LIVE
           </span>
         )}
@@ -399,7 +399,7 @@ function InsightsCarousel({ insights }: { insights: Insight[] }) {
         </span>
       </div>
 
-      <div key={idx} style={{ ...CARD, padding: '20px 20px 16px', flex: 1, display: 'flex', flexDirection: 'column', animation: 'insight-in 0.4s cubic-bezier(0.16,1,0.3,1)' }}>
+      <div key={idx} className="insight-card" style={{ ...CARD, padding: '20px 20px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <div style={{ width: 34, height: 34, borderRadius: 999, backgroundColor: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={15} color={meta.color} strokeWidth={2.2} />

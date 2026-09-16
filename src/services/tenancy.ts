@@ -99,6 +99,10 @@ const GLOBAL_KEYS = new Set([
   // How the dashboard board is displayed, not what it shows — a viewing
   // preference that belongs with the theme, following the user across accounts.
   'crm_market_sim',
+  // Whether the moving parts run. It describes this browser, like the theme,
+  // and somebody moving between their clients' workspaces wants one answer
+  // rather than having to set it again in each.
+  'crm_motion',
   // Server-issued capability matrix: a local cache, never account data to sync.
   'crm_server_caps', 'crm_cloud_status',
   // The signed-in session itself. auth.ts documents this as global, but it was

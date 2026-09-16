@@ -219,7 +219,7 @@ export default function Reputation() {
 
       <div style={{ padding: '10px 28px 0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button onClick={() => setLive(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, padding: '6px 13px', borderRadius: 999, border: 'none', cursor: 'pointer', background: live ? '#e9f4e6' : '#f0f1f3', color: live ? '#3f9142' : '#7c828c' }}>
-          {live ? <span style={{ width: 7, height: 7, borderRadius: 999, background: '#4ade80', animation: 'pulse-dot 1.6s ease-in-out infinite' }} /> : <Radio size={12} />}
+          {live ? <span className="live-dot" style={{ width: 7, height: 7, borderRadius: 999, background: '#4ade80' }} /> : <Radio size={12} />}
           {live ? 'Live monitoring' : 'Paused'}
         </button>
         <button onClick={() => addNotification('Refreshed — checking connected sources.', 'info')} style={btn(false)}><RefreshCw size={13} /> Refresh</button>

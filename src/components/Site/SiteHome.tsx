@@ -37,6 +37,7 @@ import { PLANS } from '../../services/tenancy';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
 import './site.css';
+import { motionReduced } from '../../services/motion';
 
 const ASSET = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/${name}`;
 const SHOT = (name: string) => ASSET(`${name}.webp`);
@@ -257,7 +258,7 @@ function ModuleClip({ name, alt, eager = false }: { name: string; alt: string; e
 
     /* Somebody who asked their system not to animate things does not want
        sixteen looping videos either. They keep the stills. */
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (motionReduced()) return;
 
     const io = new IntersectionObserver(entries => {
       for (const e of entries) {

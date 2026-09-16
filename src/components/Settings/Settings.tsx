@@ -17,6 +17,7 @@ import MailboxManager from '../Setup/MailboxManager';
 import SetupAdmin from '../Setup/SetupAdmin';
 import WhiteLabelPanel from './WhiteLabelPanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
+import MotionPanel from './MotionPanel';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -1185,6 +1186,7 @@ export default function Settings() {
           {activeTab === 'api-validation' && <IntegrationsTab />}
 
           {activeTab === 'profile' && (
+            <>
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Profile Information</h3>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #f1f5f9' }}>
@@ -1212,6 +1214,10 @@ export default function Settings() {
                 <Save size={15} /> Save Changes
               </button>
             </div>
+            {/* Beside the profile because it is a preference about this person's
+                own browser, like light and dark — not a workspace setting. */}
+            <MotionPanel />
+            </>
           )}
 
           {activeTab === 'notifications' && (

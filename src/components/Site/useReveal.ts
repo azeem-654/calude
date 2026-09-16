@@ -11,6 +11,7 @@
  * page and makes the browser's back button feel broken. Once seen, stays seen.
  */
 import { useEffect, useRef } from 'react';
+import { motionReduced } from '../../services/motion';
 
 export function useReveal<T extends HTMLElement = HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -24,7 +25,7 @@ export function useReveal<T extends HTMLElement = HTMLElement>() {
      * a reason — vestibular disorders make parallax and slide-ins genuinely
      * unpleasant. They get the finished state immediately, not a degraded one.
      */
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (motionReduced()) {
       el.classList.add('in');
       return;
     }
@@ -75,7 +76,7 @@ export function useRevealGroup<T extends HTMLElement = HTMLElement>(selector = '
     const kids = Array.from(el.querySelectorAll<HTMLElement>(selector));
     kids.forEach((k, i) => k.style.setProperty('--i', String(i)));
 
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (motionReduced()) {
       el.classList.add('in');
       return;
     }

@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { motionReduced } from '../../services/motion';
 
 /**
  * Pointer-driven 3D tilt for a card.
@@ -17,7 +18,7 @@ export function useTilt(max = 6) {
   const ref = useRef<HTMLElement | null>(null);
 
   const still = typeof window !== 'undefined'
-    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    && motionReduced();
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (still) return;

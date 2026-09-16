@@ -260,6 +260,16 @@ fire the cron with `curl http://127.0.0.1:8787/cdn-cgi/handler/scheduled`. To
 re-plan on demand, null `crm_autopilot.last_planned_at` — the planner is
 otherwise once a day and you will see nothing.
 
+**Motion is a preference, not a constant.** Every moving part is gated on
+`prefers-reduced-motion`, and `src/services/motion.ts` lets somebody overrule
+their system for this browser — it rewrites the media *conditions* through the
+CSSOM rather than unwrapping sixteen `@media` blocks, so specificity and the
+cascade stay exactly as written. A `MutationObserver` re-applies it when Vite
+injects the next component's CSS, which is most of it. `test/motion.e2e.mjs`
+drives a real browser with `reducedMotion: 'reduce'`; asserting the dashboard is
+*completely* still is what found two animations written inline in JSX, which no
+media query could reach.
+
 **Test the failure, not just the success.** Point a mailbox at a local SMTP sink
 and check that a send that fails is reported as failed and leaves its marker
 unset, so it retries. A pass that only proves the happy path proves the one case

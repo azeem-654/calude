@@ -34,6 +34,7 @@
  *     it is invisible to both the mouse and a screen reader.
  */
 import { useEffect, useRef } from 'react';
+import { motionReduced } from '../../services/motion';
 
 /**
  * How many stars, by how far away they are. Nearer means fewer, brighter and
@@ -141,7 +142,7 @@ export default function Starfield() {
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const reduced = motionReduced();
 
     let w = 0;
     let h = 0;
