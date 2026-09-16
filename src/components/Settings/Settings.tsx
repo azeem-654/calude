@@ -16,6 +16,7 @@ import DnsManager from '../Setup/DnsManager';
 import MailboxManager from '../Setup/MailboxManager';
 import SetupAdmin from '../Setup/SetupAdmin';
 import WhiteLabelPanel from './WhiteLabelPanel';
+import GoogleSignInPanel from './GoogleSignInPanel';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -1310,7 +1311,16 @@ export default function Settings() {
 
           {activeTab === 'deliverability' && <Deliverability />}
 
-          {activeTab === 'security' && <SecurityPanel />}
+          {activeTab === 'security' && (
+            <>
+              <SecurityPanel />
+              {/* How everybody *else* gets in, next to how you get in. Owner
+                  only — one Google application per install, on the operator's
+                  brand and the operator's quota. The server refuses the actions
+                  behind it for anybody else, so this is tidiness, not a gate. */}
+              {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <GoogleSignInPanel />}
+            </>
+          )}
           {activeTab === 'branding' && (
             <>
               <BrandingPanel />

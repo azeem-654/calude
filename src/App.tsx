@@ -39,6 +39,7 @@ import Autopilot from './components/Autopilot/Autopilot';
 import Commerce from './components/Commerce/Commerce';
 import ShopPage from './components/Shop/ShopPage';
 import ClientReport from './components/Portal/ClientReport';
+import GoogleCallback from './components/Auth/GoogleCallback';
 import { LogoMark } from './components/shared/Logo';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
@@ -256,6 +257,19 @@ export default function App() {
   const isPublicShop = window.location.pathname.startsWith(`${base}/shop`);
   /* The third anonymous visitor: somebody's client reading their own report. */
   const isPublicReport = window.location.pathname.startsWith(`${base}/p/`);
+
+  /*
+   * Coming back from Google, which is neither signed in nor signed out.
+   *
+   * Checked before either tree, and before the session is consulted. A visitor
+   * with a stale session who signs in as somebody else lands here too, and the
+   * signed-in tree's catch-all would have bounced them to the dashboard —
+   * throwing away the code and leaving them in the account they were trying to
+   * leave.
+   */
+  if (window.location.pathname === `${base}/auth/google`) {
+    return <GoogleCallback onAuthed={signedIn} />;
+  }
   if (!session && isPublicReport) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>

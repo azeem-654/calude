@@ -72,6 +72,13 @@ export interface AuthStatus {
    * anything it returns is public.
    */
   testLogin?: { username: string } | null;
+  /**
+   * Whether "Continue with Google" is worth drawing. The server decides, and it
+   * says yes only when the application is configured *and* this is the host
+   * Google will redirect back to — a button that lands on Google's own error
+   * page is worse than no button.
+   */
+  google: boolean;
 }
 
 /**
@@ -92,15 +99,18 @@ export async function authStatus(): Promise<AuthStatus> {
      * already had an owner. Read both, so the screen is right whichever name
      * the server on the other end happens to use.
      */
-    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown };
+    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown };
     return {
       initialised: !!(data.initialised ?? data.hasOwner),
       writable: data.writable !== false,
       backend: 'php',
       testLogin: (data.testLogin as AuthStatus['testLogin']) ?? null,
+      /* Absent on an older Worker, which means no Google — the right answer, and
+         the reason this is read as a positive rather than defaulted to true. */
+      google: data.google === true,
     };
   }
-  return { initialised: hasAnyUser(), writable: true, backend: 'local', testLogin: null };
+  return { initialised: hasAnyUser(), writable: true, backend: 'local', testLogin: null, google: false };
 }
 
 async function php(action: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: Record<string, unknown> } | null> {
@@ -267,6 +277,72 @@ export async function verifyLoginCode(email: string, code: string): Promise<{ ok
   if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That code did not work.') };
   adoptSession(res.data);
   return { ok: true, error: '' };
+}
+
+/* ── Sign in with Google ─────────────────────────────────────────────────── */
+
+/**
+ * Where to send them. The URL is built server-side because it carries a signed
+ * state the browser must not be able to mint, and the client id, which the
+ * browser has no other reason to hold.
+ */
+export async function googleStart(): Promise<{ ok: boolean; url: string; error: string }> {
+  const res = await php('google_start', {});
+  if (!res) return { ok: false, url: '', error: 'Could not reach the server.' };
+  return res.ok
+    ? { ok: true, url: String(res.data.url ?? ''), error: '' }
+    : { ok: false, url: '', error: String(res.data.error ?? 'Google sign-in is not available.') };
+}
+
+/** Hand Google's code back to the Worker, which swaps it and issues a session. */
+export async function googleFinish(code: string, state: string): Promise<{ ok: boolean; error: string }> {
+  const res = await php('google_finish', { code, state });
+  if (!res) return { ok: false, error: 'Could not reach the server.' };
+  if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That sign-in did not work.') };
+  adoptSession(res.data);
+  return { ok: true, error: '' };
+}
+
+export interface GoogleConfig {
+  connected: boolean;
+  clientId: string;
+  /** The exact string to paste into Google's console. */
+  redirectUri: string;
+  origin: string;
+}
+
+const EMPTY_GOOGLE: GoogleConfig = { connected: false, clientId: '', redirectUri: '', origin: '' };
+
+export async function googleConfig(): Promise<GoogleConfig> {
+  const res = await php('google_get', { token: sessionToken() });
+  if (!res?.ok) return EMPTY_GOOGLE;
+  const d = res.data as Partial<GoogleConfig>;
+  return {
+    connected: d.connected === true,
+    clientId: String(d.clientId ?? ''),
+    redirectUri: String(d.redirectUri ?? ''),
+    origin: String(d.origin ?? ''),
+  };
+}
+
+/** A blank secret keeps the stored one, as everywhere else credentials are saved. */
+export async function saveGoogleConfig(
+  clientId: string, clientSecret: string,
+): Promise<{ ok: boolean; error: string; config: GoogleConfig }> {
+  const res = await php('google_save', { token: sessionToken(), clientId, clientSecret });
+  if (!res) return { ok: false, error: 'Could not reach the server.', config: EMPTY_GOOGLE };
+  if (!res.ok) return { ok: false, error: String(res.data.error ?? 'Could not save.'), config: EMPTY_GOOGLE };
+  const d = res.data as Partial<GoogleConfig>;
+  return {
+    ok: true,
+    error: '',
+    config: {
+      connected: d.connected === true,
+      clientId: String(d.clientId ?? ''),
+      redirectUri: String(d.redirectUri ?? ''),
+      origin: String(d.origin ?? ''),
+    },
+  };
 }
 
 export async function logout() {

@@ -21,6 +21,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 3 | **Revoke the Creem key pasted into a chat** and reissue | creem.io → Developers | Security |
 | 4 | **Confirm the billing webhook is set** | Settings → Billing | Payments succeed and nothing is provisioned without it |
 | 5 | **Change the master password** | Settings → Security | Security |
+| 6 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 13) |
 
 Item 2 was attempted from a session on 2026-09-14 and could not be done: the
 Cloudflare token available to an assistant is a reference, not a working
@@ -212,6 +213,40 @@ on its own processor.
 It will not publish until a processor is connected and tested under *Getting
 paid* (item 5) — a live shop that cannot be paid takes email addresses and gives
 nothing back. Products come from **Sell**, and only ones marked *active* appear.
+
+### 13. Sign in with Google, if you want the button — optional
+
+Customers can already sign in without a password: **Email me a sign-in code**
+works today, for any address, with nothing to set up. This adds the Google
+button beside it, which is one tap for anybody who has a Google account.
+
+**Settings → Security → Sign in with Google.** That screen prints the exact
+redirect address to paste into Google and lists the steps in the console's own
+order. The short version:
+
+1. console.cloud.google.com → new project (customers never see its name).
+2. **APIs & Services → OAuth consent screen** → *External*. Put your business
+   name and logo on it — this is the screen your customers read.
+3. Add **only** the `openid`, `email` and `profile` scopes, then **Publish**.
+   With just those three there is no review, no waiting and no user cap.
+4. **Credentials → Create OAuth client ID → Web application**, and paste in the
+   redirect address the settings screen shows you.
+5. Copy the client ID and client secret back into that screen.
+
+**Do not add a Gmail, Drive or Calendar scope.** Those are the *sensitive and
+restricted* ones: they put the whole app into Google's verification queue, which
+takes weeks, and cap an unverified app at 100 users for good. The three scopes
+above are neither, which is the entire reason this is a ten-minute job. The list
+is a constant in `worker/src/lib/googleAuth.ts` rather than a setting, so it
+cannot be widened by accident from a screen.
+
+Two things worth knowing before you start:
+
+- The button only appears on **app.protectedcentral.com**, because that is the
+  single address Google will redirect back to. Resellers on their own domains
+  keep the emailed code, which works everywhere.
+- The client secret is encrypted before it is stored and never shown again, not
+  even its last characters. Leave the box blank to keep the one already saved.
 
 ---
 

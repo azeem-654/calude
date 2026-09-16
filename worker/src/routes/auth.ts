@@ -9,13 +9,20 @@
 import { addr, body, fail, json, ok } from '../lib/http';
 import { hashPassword, newToken, timingSafeEqual, verifyPassword } from '../lib/crypto';
 import { hasAnyUser, hasInstallOwner, nowIso, sweepSessions, userFromToken, type Env, type SessionUser } from '../lib/db';
+import {
+  authorizeUrl, checkState, exchangeCode, googleCreds, saveGoogleCreds, redirectUri, signInOrigin,
+} from '../lib/googleAuth';
 
 const SESSION_DAYS = 30;
 
 interface AuthBody {
   action?: string;
-  /** The six digits from a sign-in email. */
+  /** The six digits from a sign-in email, or Google's authorization code. */
   code?: string;
+  /** The signed state Google hands back with the code. */
+  state?: string;
+  clientId?: string;
+  clientSecret?: string;
   token?: string;
   email?: string;
   password?: string;
@@ -141,6 +148,53 @@ async function sendLoginCode(env: Env, email: string, code: string): Promise<{ o
     : { ok: false, error: 'We could not send the code just now. Try again in a moment.' };
 }
 
+/**
+ * Turn a proven address into a session — the last step of every passwordless
+ * path, and only ever one implementation of it.
+ *
+ * The code path and the Google path both arrive here having proved the same
+ * thing by different means: that the person holds the mailbox. What happens
+ * next — find the account or make one, start a workspace, pick which workspace
+ * the browser should open — has to be identical, because two copies of it is
+ * how the install owner once ended up in a workspace their browser invented.
+ *
+ * `hasInstallOwner` is untouched by this. Everything created here is an
+ * ordinary workspace-owning account; there is no route from a mailbox to
+ * owning the install.
+ */
+async function completeSignIn(env: Env, email: string, suggestedName: string): Promise<Response> {
+  let user = await env.DB.prepare(
+    'SELECT email, name, role, account_id AS accountId FROM crm_users WHERE email = ?',
+  ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null }>();
+
+  if (!user) {
+    const accountId = crypto.randomUUID();
+    const name = suggestedName.trim().slice(0, 120) || email.split('@')[0];
+    /* An empty hash, not a random one. `verifyPassword` fails against it, so
+       the account simply has no password until somebody sets one — rather than
+       having a password nobody knows, which reads the same to the customer and
+       cannot be told apart in the database. */
+    await env.DB.prepare(
+      'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).bind(email, name, 'agency', accountId, '', nowIso()).run();
+    await env.DB.prepare(
+      'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
+    ).bind(accountId, email, nowIso()).run();
+    user = { email, name, role: 'agency', accountId };
+  }
+
+  await sweepSessions(env.DB);
+  const token = await issueSession(env, user.email);
+
+  const { results: owned } = await env.DB.prepare(
+    `SELECT w.account_id AS accountId,
+            REPLACE(COALESCE((SELECT MAX(dd.updated_at) FROM crm_data dd WHERE dd.account_id = w.account_id), w.created_at), ' ', 'T') AS lastUsed
+     FROM crm_workspaces w WHERE w.owner_email = ? ORDER BY lastUsed DESC LIMIT 50`,
+  ).bind(user.email).all<{ accountId: string; lastUsed: string }>();
+
+  return json({ success: true, token, user: publicUser(user), workspaces: owned ?? [] });
+}
+
 function publicUser(row: { email: string; name: string; role: string; accountId: string | null }): SessionUser {
   return {
     email: row.email,
@@ -158,10 +212,19 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
      "sign in" without leaking whether any particular address is registered. */
   if (action === 'status') {
     const owner = await hasAnyUser(env.DB);
+    /*
+     * Whether to draw the Google button — configured *and* on the host Google
+     * will redirect back to. Both, because either one alone produces a button
+     * that fails: unconfigured is "invalid_client", wrong host is
+     * "redirect_uri_mismatch", and both are Google's error page rather than
+     * ours. A button that cannot work is worse than no button.
+     */
+    const reqOrigin = new URL(req.url).origin;
+    const google = !!(await googleCreds(env)) && signInOrigin(env, reqOrigin) === reqOrigin;
     /* `initialised` is what the client has always asked for and `hasOwner` is
        what this has always answered. Both, so neither side has to be the one
        that changes, and an older bundle still in somebody's cache keeps working. */
-    return json({ success: true, hasOwner: owner, initialised: owner, writable: true });
+    return json({ success: true, hasOwner: owner, initialised: owner, writable: true, google });
   }
 
   if (action === 'me') {
@@ -280,17 +343,22 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
   /* ── Sign in with a code, no password ─────────────────────────────────── */
 
   /*
-   * ── Why this and not "Sign in with Google" ──
+   * ── Why this exists alongside "Sign in with Google" ──
    *
-   * Google's own rule: an app in Production publishing status requires OAuth
-   * verification, and an unverified one carries a permanent hundred-user
-   * lifetime cap that cannot be reset. Review takes weeks. Facebook wants App
-   * Review and business verification; Apple wants a paid developer account.
+   * An earlier note here said Google was impossible without verification and a
+   * hundred-user cap. That is true of **sensitive and restricted** scopes —
+   * Gmail, Drive, Calendar — and not of `openid email profile`, so Google was
+   * added below. This stayed, because it answers a different question.
    *
-   * A code emailed to whatever address somebody typed needs none of that — no
-   * third-party account, no client id, no consent screen, no cap — and it works
-   * for a Gmail address, an Outlook one, or their own domain, which a Google
-   * button does not.
+   * A code needs no third-party account at all: it works for an Outlook address
+   * or somebody's own domain, on an install whose owner has never opened the
+   * Google console, and on a reseller's own domain where Google's redirect
+   * cannot reach. It is the path that is always available; Google is the fast
+   * one for the people who happen to have an account there.
+   *
+   * The two prove exactly the same thing — that the person holds the mailbox —
+   * which is why both end in `completeSignIn` rather than each having its own
+   * idea of what a new account looks like.
    */
   if (action === 'request_code' || action === 'verify_code') {
     const email = addr(d.email) ?? '';
@@ -405,43 +473,76 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     await env.DB.prepare('UPDATE crm_login_codes SET used_at = ? WHERE code_hash = ?')
       .bind(nowIso(), hash).run();
 
-    let user = await env.DB.prepare(
-      'SELECT email, name, role, account_id AS accountId FROM crm_users WHERE email = ?',
-    ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null }>();
+    /* A first-time address becomes an account here: the code proves they hold
+       the mailbox, which is what a password reset proves and more than a
+       password proves on its own. Sending them to a sign-up form to type the
+       same address again would be ceremony, not security. */
+    return completeSignIn(env, email, email.split('@')[0]);
+  }
+
+  /* ── Sign in with Google ─────────────────────────────────────────────── */
+
+  /*
+   * ── Why this is here at all, after the comment above says otherwise ──
+   *
+   * The note on the code path says Google needs verification and carries a
+   * hundred-user cap. That is true of **sensitive and restricted** scopes —
+   * Gmail, Drive, Calendar. Google's own FAQ ties both the cap and the review
+   * to exactly those. `openid email profile` is neither: auto-approved, no
+   * queue, no cap. The emailed code stays because it works for somebody without
+   * a Google account, which this does not.
+   *
+   * ── Two halves, and nothing in between trusts the browser ──
+   *
+   * `google_start` mints a signed state and hands back Google's address.
+   * `google_finish` gets the code back, checks the state it signed, and swaps
+   * the code for an identity server-side. The browser carries an opaque code
+   * and a signature it cannot forge, and never holds a token.
+   */
+  if (action === 'google_start') {
+    const reqOrigin = new URL(req.url).origin;
+    const canonical = signInOrigin(env, reqOrigin);
+    /* Refused rather than redirected. Sending a reseller's visitor to Google
+       would land them back on the operator's own address, signed in under a
+       brand they have never seen — which is the white-label boundary broken by
+       a convenience. */
+    if (canonical !== reqOrigin) {
+      return fail('Google sign-in is not available on this address. Use your email address instead.');
+    }
+    const url = await authorizeUrl(env, canonical);
+    if (!url) return fail('Google sign-in is not set up on this installation.');
+    return json({ success: true, url });
+  }
+
+  if (action === 'google_finish') {
+    const reqOrigin = new URL(req.url).origin;
+    const canonical = signInOrigin(env, reqOrigin);
+
+    /* The state first, before anything is spent. It proves this browser started
+       the sign-in rather than an attacker's page having started one and fed the
+       result to somebody else's session. */
+    if (!(await checkState(env, String(d.state ?? '')))) {
+      return fail('That sign-in took too long or did not start here. Try again.', 401);
+    }
+    const code = String(d.code ?? '').trim();
+    if (!code) return fail('Google did not send a sign-in back. Try again.', 400);
+
+    const r = await exchangeCode(env, canonical, code);
+    if (!r.ok || !r.identity) return fail(r.error || 'Google refused that sign-in.', 401);
 
     /*
-     * A first-time address becomes an account here.
+     * The one check this whole feature rests on.
      *
-     * The code proves they hold the mailbox, which is the same thing a password
-     * reset proves and more than a password proves on its own. Refusing them
-     * and sending them to a sign-up form to type the address again would be
-     * ceremony, not security.
-     *
-     * `hasInstallOwner` still governs who owns the install: this creates an
-     * ordinary workspace-owning account, never a second owner.
+     * Anybody can put any address on a Google account; only a verified one
+     * proves they hold it. Without this, signing in as somebody else is a
+     * sign-up form away — so it refuses outright rather than falling back to
+     * asking for a password, which would be a second chance at the same door.
      */
-    if (!user) {
-      const accountId = crypto.randomUUID();
-      const name = email.split('@')[0];
-      await env.DB.prepare(
-        'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ).bind(email, name, 'agency', accountId, '', nowIso()).run();
-      await env.DB.prepare(
-        'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
-      ).bind(accountId, email, nowIso()).run();
-      user = { email: email, name, role: 'agency', accountId };
+    if (!r.identity.verified) {
+      return fail('That Google account has not confirmed its email address, so it cannot be used to sign in.', 403);
     }
 
-    await sweepSessions(env.DB);
-    const token = await issueSession(env, user.email);
-
-    const { results: owned } = await env.DB.prepare(
-      `SELECT w.account_id AS accountId,
-              REPLACE(COALESCE((SELECT MAX(dd.updated_at) FROM crm_data dd WHERE dd.account_id = w.account_id), w.created_at), ' ', 'T') AS lastUsed
-       FROM crm_workspaces w WHERE w.owner_email = ? ORDER BY lastUsed DESC LIMIT 50`,
-    ).bind(user.email).all<{ accountId: string; lastUsed: string }>();
-
-    return json({ success: true, token, user: publicUser(user), workspaces: owned ?? [] });
+    return completeSignIn(env, r.identity.email, r.identity.name);
   }
 
   /* ── Sign in ── */
@@ -497,6 +598,46 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
 
   /* ── Agency administration ── */
   const actor = await userFromToken(env.DB, d.token);
+
+  /* ── Owner-only: the Google application itself ────────────────────────── */
+
+  /*
+   * One Google application per install, not one per workspace.
+   *
+   * The consent screen carries a name and a logo, and that is the operator's
+   * brand — a sub-account setting up its own would be putting its name on the
+   * screen everybody else's customers see. It is also the operator's quota and
+   * the operator's obligation if it is abused, which is the same reasoning that
+   * keeps the payment processor and the registrar owner-only.
+   */
+  if (action === 'google_get' || action === 'google_save') {
+    if (!actor || actor.accountId !== null || actor.role !== 'agency') {
+      return fail('Only the installation owner can set this up.', 403);
+    }
+
+    if (action === 'google_save') {
+      const r = await saveGoogleCreds(env, {
+        clientId: String(d.clientId ?? ''),
+        clientSecret: String(d.clientSecret ?? ''),
+      });
+      if (!r.ok) return fail(r.error);
+    }
+
+    const creds = await googleCreds(env);
+    const origin = signInOrigin(env, new URL(req.url).origin);
+    return json({
+      success: true,
+      connected: !!creds,
+      /* The client id is public by design — it is in every authorize URL — so
+         showing it back is safe and saves the owner hunting for which of their
+         Google projects this is. The secret never comes back, not even a tail. */
+      clientId: creds?.clientId ?? '',
+      /* The exact string to paste into the console. Typing it from memory is
+         the commonest way this ends up mismatched. */
+      redirectUri: redirectUri(origin),
+      origin,
+    });
+  }
 
   if (action === 'list_users') {
     if (!actor) return fail('Not authorised.', 401);
