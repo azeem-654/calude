@@ -21,7 +21,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 3 | **Revoke the Creem key pasted into a chat** and reissue | creem.io → Developers | Security |
 | 4 | **Confirm the billing webhook is set** | Settings → Billing | Payments succeed and nothing is provisioned without it |
 | 5 | **Change the master password** | Settings → Security | Security |
-| 6 | **Create the staging database and attach testing.protectedcentral.com** | one command, then one workflow | The testing site. Until it is done, `staging` deploys fail loudly and say so (see 13) |
+| 6 | **Attach testing.protectedcentral.com** to the staging Worker | Actions → Attach domains, with `testing` | The testing site having an address. The Worker itself is already deployed (see 13) |
 | 7 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
 
 Item 2 was attempted from a session on 2026-09-14 and could not be done: the
@@ -222,19 +222,23 @@ Worker, its own database, its own cron. Nothing it does can reach a paying
 customer. It exists so an update can be used in anger before anyone else meets
 it.
 
-**Three one-off steps, and only the first needs your Cloudflare token:**
+**Setup — the first two are done:**
 
-```bash
-# 1. Create the staging database and write its id into wrangler.jsonc
-CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npm run staging:setup
-git add wrangler.jsonc && git commit -m "Point staging at its own database" && git push
-```
+1. ~~Create the staging database.~~ **Done 2026-09-16.** `crmpro-staging`
+   exists and `wrangler.jsonc` points at it. (`npm run staging:setup` is the
+   command, if it ever has to be redone.)
+2. ~~Push the `staging` branch.~~ **Done.** Every push to it now runs
+   **Actions → Deploy to testing** and publishes the `crmpro-staging` Worker.
+3. **Still to do — yours:** **Actions → Attach domains to the Worker**, with
+   `testing` in the box. That points testing.protectedcentral.com at the
+   staging Worker. Until it is done the Worker is deployed and running but has
+   no address on your domain.
 
-2. Push the `staging` branch once — **Actions → Deploy to testing** runs and
-   publishes the `crmpro-staging` Worker.
-3. **Actions → Attach domains to the Worker**, with `testing` in the box. This
-   points testing.protectedcentral.com at it. It must come *after* step 2 — a
-   hostname cannot be attached to a script that does not exist yet.
+   The token may need two permissions it does not need for deploying, and the
+   run will say so if it does: **Zone → Zone: Read** and **Zone → Workers
+   Routes: Edit**, added to the existing token at
+   <https://dash.cloudflare.com/profile/api-tokens>. There is no new secret to
+   store.
 
 **From then on, this is the routine:**
 
