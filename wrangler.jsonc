@@ -112,10 +112,11 @@
         {
           "binding": "DB",
           "database_name": "crmpro-staging",
-          // Filled in by `npm run staging:setup`, which creates the database
-          // and writes the id back here. Left as this placeholder, a deploy
-          // fails loudly rather than falling back to anything.
-          "database_id": "STAGING_DATABASE_ID_NOT_SET",
+          // Created 2026-09-16. `npm run staging:setup` makes it and writes the
+          // id here; it is committed because CI reads it from this file and has
+          // no memory of what the script printed. A different id from the one
+          // above is the whole point — see the note at the top of this block.
+          "database_id": "2f123043-500e-47cc-ab35-dd64cde622f7",
           "migrations_dir": "worker/migrations"
         }
       ],

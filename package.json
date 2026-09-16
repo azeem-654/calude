@@ -14,7 +14,8 @@
     "test:moderation": "npx --yes tsx worker/test/moderation.test.mts",
     "test:prospects": "npx --yes tsx worker/test/prospects.test.mts",
     "staging:setup": "node scripts/staging-setup.mjs",
-    "staging:check": "node scripts/staging-check.mjs"
+    "staging:check": "node scripts/staging-check.mjs",
+    "test:domains": "npx --yes tsx worker/test/domains.test.mts"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

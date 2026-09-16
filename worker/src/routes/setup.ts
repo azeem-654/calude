@@ -23,6 +23,7 @@
  * a cost.
  */
 import { addr, body, fail, json } from '../lib/http';
+import { CANDIDATE_ROOM, DEFAULT_TLDS, domainCandidates } from '../lib/domainSearch';
 import {
   dataGet, installSecret, nowIso, userFromToken, workspaceAccess,
   type Env, type SessionUser,
@@ -53,24 +54,6 @@ const isOwner = (u: SessionUser) => u.accountId === null && u.role === 'agency';
 function parse<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-
-/**
- * The extensions offered first, and why these.
- *
- * A small business wants the .com and will take the .co or .net when it has
- * gone. Offering forty extensions turns a two-second decision into a research
- * project, and the long tail is still reachable by typing a name in full.
- */
-const DEFAULT_TLDS = ['com', 'net', 'org', 'co', 'biz', 'online'];
-
-/** "ABC Roofing & Sons Ltd." → "abcroofing". */
-function slugify(company: string): string {
-  return company.toLowerCase()
-    .replace(/&/g, 'and')
-    .replace(/\b(ltd|limited|llc|inc|incorporated|plc|gmbh|pty|co)\b/g, '')
-    .replace(/[^a-z0-9]/g, '')
-    .slice(0, 48);
 }
 
 export async function handleSetup(req: Request, env: Env): Promise<Response> {
@@ -280,19 +263,33 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
 
     const company = String(d.company ?? '').trim();
     const typed = String(d.domain ?? '').trim().toLowerCase();
-    const base = slugify(company);
-    if (!base && !typed) return fail('Tell us the business name and we will find a domain for it.');
 
-    /* The names to ask about: the obvious ones on each extension first, then
-       whatever the registrar suggests to fill the gaps. Asked in one call
-       because a check per extension is six round trips a customer waits for. */
-    const candidates = new Set<string>();
-    if (typed && typed.includes('.')) candidates.add(typed);
-    for (const tld of DEFAULT_TLDS) if (base) candidates.add(`${base}.${tld}`);
+    /*
+     * ── What they typed is the search. ──
+     *
+     * This used to build every candidate from the *company* name and use the
+     * typed text for exactly one entry, and only if it contained a dot. So
+     * somebody who typed `asdfggg.com` into a project called "Your first
+     * project" got `asdfggg.com` followed by six `yourfirstproject.*`, and
+     * somebody who typed `bobsplumbing` with no extension got nothing of theirs
+     * at all — the box looked broken because it was.
+     *
+     * The company name is now the fallback for the automatic search when the
+     * step first opens and the box is still empty. The moment there is
+     * anything in it, it wins outright: nobody types a word in order to be
+     * shown their project name.
+     */
+    const plan = domainCandidates(company, typed);
+    if (!plan.base) return fail('Type a name and we will find a domain for it.');
+    const { base, exact } = plan;
+    const candidates = new Set(plan.candidates);
 
-    if (base && candidates.size < 10) {
+    /* The registrar's own ideas fill whatever is left, on the same stem. It was
+       asked about the company name before, which is how a search for one thing
+       returned suggestions for another. */
+    if (candidates.size < CANDIDATE_ROOM) {
       const s = await conn.provider.suggest(conn.creds, base, DEFAULT_TLDS, 8);
-      for (const dm of s.domains) { if (candidates.size >= 14) break; candidates.add(dm); }
+      for (const dm of s.domains) { if (candidates.size >= CANDIDATE_ROOM) break; candidates.add(dm); }
     }
 
     const checked = await conn.provider.check(conn.creds, [...candidates]);
@@ -322,7 +319,13 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
       /* An available domain nobody can price is worse than no suggestion: it
          renders as free. Dropped rather than shown at zero. */
       .filter(r => !r.available || r.priceCents !== null)
-      .sort((a, b) => (Number(b.available) - Number(a.available)) || (a.priceCents ?? 0) - (b.priceCents ?? 0));
+      /* Available first, then the exact thing they typed, then cheapest. The
+         middle rule is the one that was missing: a name asked for by name
+         belongs at the top even when a suggestion undercuts it by a dollar. */
+      .sort((a, b) =>
+        (Number(b.available) - Number(a.available))
+        || (Number(b.domain === exact) - Number(a.domain === exact))
+        || (a.priceCents ?? 0) - (b.priceCents ?? 0));
 
     return json({ success: true, results });
   }

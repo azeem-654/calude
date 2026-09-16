@@ -93,6 +93,9 @@ jobs:
       - name: Test the prospect finder
         run: npm run test:prospects
 
+      - name: Test the domain search
+        run: npm run test:domains
+
       - name: Build
         run: npm run build
         env:

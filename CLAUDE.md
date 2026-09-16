@@ -190,7 +190,7 @@ whose assets 404.
 
 Both typecheck, build, apply D1 migrations and then deploy — migrations first,
 so a Worker can never reach a database that lacks a column it expects. Staging
-also runs `test:moderation` and `test:prospects`; the live deploy does not,
+also runs `test:moderation`, `test:prospects` and `test:domains`; the live deploy does not,
 because its job is to publish what has already been rehearsed.
 
 `main` is only ever moved by **Actions → Promote testing to live**, which
