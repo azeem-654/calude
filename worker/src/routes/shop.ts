@@ -25,6 +25,7 @@ import { addr, body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { priceBasket, type Discount, type ShippingRate, type TaxRate } from '../lib/checkout';
 import { createPayLink } from './storefront';
+import { rateLimit } from '../lib/rateLimit';
 
 interface Req {
   token?: string;
@@ -42,6 +43,8 @@ interface Req {
   discountCode?: string;
   /** Two-letter code, to pick a delivery rate. */
   shipCountry?: string;
+  /** The reference on the receipt, for looking an order up again. */
+  reference?: string;
   country?: string;
   /* Owner */
   id?: string;
@@ -239,6 +242,126 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
          owner has not connected a processor cannot take money, and a visitor
          should not fill in their email to find that out. */
       canBuy: !!sf?.verified_at,
+    });
+  }
+
+  /*
+   * ── Where is my order? ────────────────────────────────────────────────────
+   *
+   * The commonest email a small shop gets, and until now there was nowhere to
+   * send somebody. Buying here needs no account, so looking up must not need
+   * one either — inventing a password for a shop you used once is the reason
+   * people give up and email instead.
+   *
+   * ── Both halves, and one error ──
+   *
+   * The reference alone is not enough and neither is the email. They are both
+   * on the receipt, so a buyer has both, and an attacker with one of them has
+   * nothing.
+   *
+   * When it does not match, the message never says *which* half was wrong.
+   * "No order with that reference" plus "that is not the email on it" is an
+   * oracle: given one forwarded receipt, somebody could sit and guess who else
+   * bought. One sentence for both is slightly less helpful to the honest buyer
+   * and much less useful to everybody else.
+   *
+   * ── What comes back ──
+   *
+   * Only what the buyer already had or paid: the items, the totals as they
+   * were frozen at the till, the address they typed, the status, and how to
+   * reach the shop. Never the shop's internal notes, never the supplier, never
+   * the margin. The order belongs to the shop; this is the buyer's copy of it.
+   */
+  if (act === 'order') {
+    /* Cloudflare sets this on everything that reaches the edge, so 'unknown'
+       means local development, where one shared budget is the right answer
+       anyway. If it ever went missing in production every buyer would share
+       twenty lookups per ten minutes — degraded, but still open, which is the
+       side to fail on for a page whose whole job is answering a question. */
+    const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const verdict = await rateLimit(env, {
+      what: 'order-lookup', who: ip, max: 20, windowSeconds: 600,
+    });
+    if (!verdict.allowed) {
+      return fail(
+        'Too many lookups from this connection. Try again in a few minutes.',
+        429, { retryAfter: verdict.retryAfter },
+      );
+    }
+
+    const shop = await env.DB.prepare(
+      "SELECT id, account_id, contact_email FROM crm_shops WHERE slug = ? AND status = 'published'",
+    ).bind(cleanSlug(d.slug)).first<{ id: string; account_id: string; contact_email: string }>();
+    if (!shop) return fail('There is no shop at this address.', 404, { notFound: true });
+
+    const reference = String(d.reference ?? '').trim().toLowerCase().slice(0, 64);
+    const email = addr(d.email);
+    /* One sentence, whichever half is missing or wrong — see the note above. */
+    const noMatch = 'We could not find an order with that reference and email address. Both are on your receipt.';
+    if (!reference || !email) return fail(noMatch, 200, { code: 'no-match' });
+
+    /* Scoped to this shop as well as to the pair. A reference from one shop
+       must not resolve on another's page, or the page would be reporting on an
+       order its owner cannot see. */
+    const row = await env.DB.prepare(
+      `SELECT id, email, items, total_cents AS totalCents, currency, status, placed_at AS placedAt,
+              discount_code AS discountCode, discount_cents AS discountCents,
+              shipping_cents AS shippingCents, tax_cents AS taxCents, tax_label AS taxLabel,
+              ship_name AS shipName, ship_address1 AS shipAddress1, ship_address2 AS shipAddress2,
+              ship_city AS shipCity, ship_state AS shipState, ship_zip AS shipZip,
+              ship_country AS shipCountry
+       FROM crm_orders
+       WHERE lower(id) = ? AND account_id = ? AND shop_id = ? AND lower(email) = ?`,
+    ).bind(reference, shop.account_id, shop.id, email.toLowerCase()).first<Record<string, unknown>>();
+    if (!row) return fail(noMatch, 200, { code: 'no-match' });
+
+    let items: Array<{ name?: string; qty?: number; priceCents?: number }> = [];
+    try { items = JSON.parse(String(row.items ?? '[]')) as typeof items; } catch { items = []; }
+
+    /* Every number on this receipt comes from the order row and the lines
+       frozen onto it — never from today's settings. The shop's tax position,
+       its rates and its codes can all have changed since; a receipt that
+       restates itself when they do is a receipt nobody can rely on in an
+       argument, which is the only time anybody reads one.
+       That is also why "was the tax inside the price" is worked out from the
+       frozen figures rather than looked up: if the total already contains the
+       tax, goods − discount + delivery comes to the total on its own. */
+    const goodsCents = items.reduce(
+      (n, i) => n + Math.max(0, Math.round(Number(i.qty) || 0)) * Math.max(0, Math.round(Number(i.priceCents) || 0)),
+      0,
+    );
+    const total = Number(row.totalCents ?? 0);
+    const taxCents = Number(row.taxCents ?? 0);
+    const beforeTax = goodsCents - Number(row.discountCents ?? 0) + Number(row.shippingCents ?? 0);
+    const taxIncluded = taxCents === 0 || total === beforeTax;
+
+    return json({
+      success: true,
+      order: {
+        reference: row.id,
+        status: row.status,
+        placedAt: row.placedAt,
+        items,
+        currency: row.currency,
+        goodsCents,
+        discountCode: row.discountCode,
+        discountCents: row.discountCents,
+        shippingCents: row.shippingCents,
+        taxCents,
+        taxLabel: row.taxLabel,
+        taxIncluded,
+        totalCents: total,
+        shipName: row.shipName,
+        shipAddress1: row.shipAddress1,
+        shipAddress2: row.shipAddress2,
+        shipCity: row.shipCity,
+        shipState: row.shipState,
+        shipZip: row.shipZip,
+        shipCountry: row.shipCountry,
+      },
+      /* So a buyer whose question this page cannot answer is not left guessing
+         where to ask it. */
+      contactEmail: shop.contact_email ?? '',
     });
   }
 
@@ -444,7 +567,7 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
   const accountId = String(d.accountId ?? '').trim();
-  if (!/^[A-Za-z0-9_.\-]{1,64}$/.test(accountId)) return fail('A valid workspace is required.');
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(accountId)) return fail('A valid workspace is required.');
   if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
 
   const list = async () => {
@@ -474,7 +597,7 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
     const name = String(d.name ?? '').trim();
     if (!name) return fail('Give the shop a name.');
 
-    let slug = cleanSlug(d.slug) || cleanSlug(name);
+    const slug = cleanSlug(d.slug) || cleanSlug(name);
     if (!slug) return fail('That name cannot be turned into a web address — use some letters or numbers.');
     if (RESERVED.has(slug)) return fail(`"${slug}" is reserved. Pick another address.`);
 

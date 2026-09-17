@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { API_BASE } from '../../services/apiBase';
 import { themeFor, inkOn, usableAccent, type Theme } from './themes';
+import OrderLookup from './OrderLookup';
 
 interface Variant {
   id: string;
@@ -180,6 +181,18 @@ export default function ShopPage() {
   /** productId → quantity. Lives only as long as the page is open. */
   const [basket, setBasket] = useState<Record<string, number>>({});
   const [basketOpen, setBasketOpen] = useState(false);
+  /* Opened by the footer, or straight from a link on a receipt: the email
+     carries ?order=<reference>, so a buyer arrives with half of it filled in
+     rather than hunting for a page. Read once — a later edit to the box must
+     not be undone by the URL it came from. */
+  const [tracking, setTracking] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('order') ?? ''; }
+    catch { return ''; }
+  });
+  const [trackOpen, setTrackOpen] = useState(() => {
+    try { return !!new URLSearchParams(window.location.search).get('order'); }
+    catch { return false; }
+  });
   /* Which option is showing on each card, before anything is added. */
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [discountCode, setDiscountCode] = useState('');
@@ -634,8 +647,12 @@ export default function ShopPage() {
           </div>
         )}
 
-        {/* ── What a buyer asks before and after paying ── */}
-        {(shop.shippingNote || shop.returnsNote || shop.contactEmail) && (
+        {/* ── What a buyer asks before and after paying ──
+            The tracker is unconditional where the three notes are optional: a
+            shop that has filled none of them in is exactly the shop whose
+            buyers have nowhere to ask, so "where is my order" must not be the
+            thing that disappears with them. */}
+        {(
           <div style={{
             marginTop: 56, paddingTop: 28, borderTop: `1px solid ${t.line}`,
             display: 'grid', gap: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))',
@@ -658,9 +675,24 @@ export default function ShopPage() {
                 <a href={`mailto:${shop.contactEmail}`} style={{ fontSize: 13.5, color: accent, textDecoration: 'none' }}>{shop.contactEmail}</a>
               </div>
             )}
+            <div>
+              <h3 style={{ fontFamily: t.headingFont, fontSize: 13, fontWeight: 700, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Already ordered</h3>
+              <button type="button" onClick={() => setTrackOpen(true)} style={{
+                border: 'none', background: 'transparent', padding: 0, cursor: 'pointer',
+                fontSize: 13.5, color: accent, fontFamily: 'inherit', textAlign: 'left',
+              }}>Track an order</button>
+            </div>
           </div>
         )}
       </main>
+
+      {trackOpen && (
+        <OrderLookup
+          slug={slug ?? ''} t={t} accent={accent} inkOnAccent={onAccent}
+          initialReference={tracking}
+          onClose={() => { setTrackOpen(false); setTracking(''); }}
+        />
+      )}
 
       {/* ── The basket ── */}
       {basketOpen && canBuy && (

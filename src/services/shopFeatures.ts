@@ -80,7 +80,8 @@ export const SHOP_FEATURES: FeatureGroup[] = [
       { label: 'Orders taken by phone', detail: 'Recorded by hand and counted the same as the rest.', state: 'yes', route: '/sell' },
       { label: 'Chasing unpaid orders', detail: 'Autopilot follows up once per order, marked on the order so it cannot nag.', state: 'yes', route: '/autopilot' },
       { label: 'Thanking buyers', detail: 'Once, after payment — not on every tick.', state: 'yes', route: '/autopilot' },
-      { label: 'Customer accounts', detail: 'Not here. Buying needs no login, and there is no order-history page for shoppers.', state: 'no' },
+      { label: 'Order tracking for buyers', detail: 'A buyer looks their order up on your shop page with the reference and email from their receipt — no account to make. They see the status, what they bought and what they paid.', state: 'yes' },
+      { label: 'Customer accounts', detail: 'No login and no saved history. Each order is looked up on its own; there is no page listing everything somebody has ever bought.', state: 'no' },
     ],
   },
   {

@@ -52,6 +52,7 @@ import { runAutopilot } from './autopilotTick';
 import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
+import { pruneRateLimits } from './lib/rateLimit';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -267,6 +268,14 @@ export default {
        * a few milliseconds away.
        */
       const digest = await runDigests(env);
+
+      /* Housekeeping, after everything that matters and never in front of it.
+         Every rate-limit window that ever opened leaves a row; a day is far
+         longer than any window in use, so this can never delete a budget
+         somebody is still inside. It reports nothing because there is nothing
+         a customer could do about it. */
+      await pruneRateLimits(env);
+
       const ms = Date.now() - started;
 
       /* Autopilot's problems belong in the same place a customer already looks
