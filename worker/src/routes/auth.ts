@@ -265,7 +265,14 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     /* `initialised` is what the client has always asked for and `hasOwner` is
        what this has always answered. Both, so neither side has to be the one
        that changes, and an older bundle still in somebody's cache keeps working. */
-    return json({ success: true, hasOwner: owner, initialised: owner, writable: true, google, policyVersion: POLICY_VERSION });
+    /* So the screen does not offer a sign-up link that is going to be refused.
+       A button that cannot work is worse than no button — the same reasoning
+       as the Google one above, and the same shape of fix. */
+    return json({
+      success: true, hasOwner: owner, initialised: owner, writable: true, google,
+      signupsOpen: !signupsClosed(env),
+      policyVersion: POLICY_VERSION,
+    });
   }
 
   if (action === 'me') {

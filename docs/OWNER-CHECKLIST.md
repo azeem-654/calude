@@ -21,13 +21,48 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 3 | **Revoke the Creem key pasted into a chat** and reissue | creem.io → Developers | Security |
 | 4 | **Confirm the billing webhook is set** | Settings → Billing | Payments succeed and nothing is provisioned without it |
 | 5 | **Change the master password** | Settings → Security | Security |
-| 6 | **Attach testing.protectedcentral.com** to the staging Worker | Actions → Attach domains, with `testing` | The testing site having an address. The Worker itself is already deployed (see 13) |
+| 6 | **Create the owner account on the testing site** | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
 | 7 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
+
+**Done since this list was written:** attaching testing.protectedcentral.com to
+the staging Worker (confirmed 2026-09-16 — the Domains tab shows it).
 
 Item 2 was attempted from a session on 2026-09-14 and could not be done: the
 Cloudflare token available to an assistant is a reference, not a working
 credential, and `user/tokens/verify` refuses it. It needs a browser and the
 owner's login.
+
+---
+
+## The testing site has one account
+
+**testing.protectedcentral.com runs against its own database.** `crmpro-staging`
+shares nothing with the live `crmpro` — not the users, not the workspaces, not
+the passwords. An account on the live app does not exist on the testing site,
+and that is the whole point: a staging Worker bound to the live database would
+send real mail to real customers and look completely normal doing it.
+
+So the testing site needs its own owner account, created once:
+
+1. Open **https://testing.protectedcentral.com**.
+2. With no users in that database, the screen is **"Create your owner account"**
+   rather than a sign-in form. That is the first-run path and it is still open
+   on staging; everything else is not.
+3. Use **azeem@protectedcentral.com** and a password you choose. It does not
+   have to match the live one, and it is better that it does not.
+
+After that, `bootstrap` refuses a second owner and every self-serve route is
+shut (`SELF_SERVE_SIGNUP: "off"` in `wrangler.jsonc`): no public sign-up form,
+no Google, no emailed code. The sign-up link is not drawn on that site at all,
+because a link that will be refused is worse than no link.
+
+**Nobody can tell you the password of an existing account, including an
+assistant with the database open.** Passwords are stored as PBKDF2-SHA256
+hashes — the stored value cannot be turned back into the password, which is the
+property that makes storing it safe. If you are locked out of either site, the
+way back in is to clear that user's `hash` column in the matching D1 database
+(`crmpro` for live, `crmpro-staging` for testing) and set a new password, not to
+recover the old one.
 
 ---
 

@@ -66,6 +66,10 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
    * register an ordinary account, which anybody may create
    * login    the form for one that exists
    */
+  /* Open until the server says otherwise — the same fail-towards-working
+     default the Worker itself uses, so a status call that never lands leaves a
+     working sign-up on every deployment but the one that closed it. */
+  const [signupsOpen, setSignupsOpen] = useState(true);
   const [mode, setMode] = useState<'login' | 'setup' | 'register'>(
     hasAnyUser() ? (intent === 'signup' ? 'register' : 'login') : 'setup',
   );
@@ -148,8 +152,16 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
           setNotice('Nobody has set this up yet. The account you create below is the first one, and it is yours.');
         }
       } else {
-        setMode(intent === 'signup' ? 'register' : 'login');
+        /* A deployment with signups closed has one account, so there is
+           nothing for "sign up" to mean — sending somebody to a form that is
+           going to refuse them is worse than not offering it. */
+        const open = st.signupsOpen !== false;
+        setMode(intent === 'signup' && open ? 'register' : 'login');
+        if (intent === 'signup' && !open) {
+          setNotice('This is the testing site and it has one account. The live app is at app.protectedcentral.com.');
+        }
       }
+      setSignupsOpen(st.signupsOpen !== false);
       setTestLogin(st.testLogin ?? null);
       setGoogle(st.google);
       if (!st.writable) {
@@ -370,7 +382,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
 
         {/* Whichever form is showing, the other one is a click away. Arriving
             at the wrong door is the commonest thing that happens here. */}
-        {mode !== 'setup' && (
+        {mode !== 'setup' && (signupsOpen || mode === 'register') && (
           <p style={{ fontSize: 12.5, color: MUTED, textAlign: 'center', marginTop: 18 }}>
             {mode === 'login' ? 'No account yet? ' : 'Already have an account? '}
             <button

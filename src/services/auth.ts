@@ -73,6 +73,15 @@ export interface AuthStatus {
    */
   testLogin?: { username: string } | null;
   /**
+   * Whether a stranger may make themselves an account on this deployment.
+   *
+   * False on the testing site, which has one person on it. The sign-up link is
+   * then not drawn at all rather than drawn and refused — a link that cannot
+   * work is worse than no link, which is the same rule the Google button
+   * below already follows.
+   */
+  signupsOpen?: boolean;
+  /**
    * Whether "Continue with Google" is worth drawing. The server decides, and it
    * says yes only when the application is configured *and* this is the host
    * Google will redirect back to — a button that lands on Google's own error
@@ -99,10 +108,14 @@ export async function authStatus(): Promise<AuthStatus> {
      * already had an owner. Read both, so the screen is right whichever name
      * the server on the other end happens to use.
      */
-    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown };
+    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown; signupsOpen?: unknown };
     return {
       initialised: !!(data.initialised ?? data.hasOwner),
       writable: data.writable !== false,
+      /* Absent on an older Worker means open, which is what every deployment
+         but the testing one is — the same fail-towards-working default the
+         server itself uses. */
+      signupsOpen: data.signupsOpen !== false,
       backend: 'php',
       testLogin: (data.testLogin as AuthStatus['testLogin']) ?? null,
       /* Absent on an older Worker, which means no Google — the right answer, and
