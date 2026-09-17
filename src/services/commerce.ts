@@ -173,6 +173,27 @@ export const percentToBp = (pct: string): number => {
   return Math.min(10_000, Math.max(0, Math.round(n * 100)));
 };
 
+/**
+ * A group a shopkeeper merchandises with.
+ *
+ * Not the same thing as `Product.category`, and deliberately not a replacement
+ * for it. A category files a candle under Candles and nowhere else; a
+ * collection puts the same candle in "New in", "Under £20" and "Gifts" at
+ * once, or in none of them. One is how stock is organised and the other is how
+ * it is sold, and a shop should not have to choose.
+ */
+export interface Collection {
+  id: string;
+  name: string;
+  /** For the address it can be linked at. Derived from the name when not given. */
+  slug: string;
+  description: string;
+  /** In the order the shopkeeper put them in — the point of a hand-built one. */
+  productIds: string[];
+  position: number;
+  status: 'active' | 'off';
+}
+
 interface Reply {
   success: boolean;
   error?: string;
@@ -186,6 +207,7 @@ interface Reply {
   shipping?: ShippingRate[];
   tax?: TaxRate[];
   pricesIncludeTax?: boolean;
+  collections?: Collection[];
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -214,6 +236,7 @@ export async function fetchCommerce() {
     discounts: (r.discounts ?? []) as Discount[],
     shipping: (r.shipping ?? []) as ShippingRate[],
     tax: (r.tax ?? []) as TaxRate[],
+    collections: (r.collections ?? []) as Collection[],
     /* Defaults to true when the server said nothing, matching the column — a
        shop that has never opened the panel is treated as listing tax-inclusive
        prices, which is the norm where most of this install's customers are. */
@@ -243,6 +266,16 @@ export async function deleteTax(id: string): Promise<Reply> { return call('delet
 export async function saveTaxSettings(pricesIncludeTax: boolean): Promise<Reply> {
   return call('save_tax_settings', { pricesIncludeTax });
 }
+
+/**
+ * Save a collection, and optionally what is in it.
+ *
+ * `productIds` absent means "I was not editing the contents" and leaves them
+ * alone; `[]` means "take everything out". Collapsing the two would empty a
+ * collection every time somebody renamed one.
+ */
+export async function saveCollection(c: Partial<Collection>): Promise<Reply> { return call('save_collection', c); }
+export async function deleteCollection(id: string): Promise<Reply> { return call('delete_collection', { id }); }
 
 export async function suggestIdeas(about: string, budget: number): Promise<Reply> {
   return call('suggest_ideas', { about, budget });

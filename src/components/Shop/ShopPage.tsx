@@ -74,6 +74,21 @@ interface ShippingRate {
  * the page can only ever agree with the one that gets charged — and a total
  * assembled in a browser is a total somebody can edit.
  */
+/**
+ * A group the shopkeeper built, in the order they built it.
+ *
+ * Only live, non-empty ones ever arrive here — the server drops the rest,
+ * because a heading with nothing under it reads as a broken shop rather than
+ * as merchandising.
+ */
+interface Collection {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  productIds: string[];
+}
+
 interface Totals {
   goodsCents: number;
   discountCents: number;
@@ -177,6 +192,10 @@ export default function ShopPage() {
   const [state, setState] = useState<Loaded | 'loading' | 'missing'>('loading');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
+  const [collections, setCollections] = useState<Collection[]>([]);
+  /* Which collection is being looked at. Empty is "everything", which is what
+     a shop with none of them always shows. */
+  const [collectionId, setCollectionId] = useState('');
 
   /** productId → quantity. Lives only as long as the page is open. */
   const [basket, setBasket] = useState<Record<string, number>>({});
@@ -214,6 +233,7 @@ export default function ShopPage() {
     call({ action: 'get', slug: slug ?? '' }).then(res => {
       if (!live) return;
       if (!res.success) { setState('missing'); return; }
+      setCollections((res.collections as Collection[]) ?? []);
       setState({
         shop: res.shop as Shop,
         products: ((res.products as Product[]) ?? []).map(p => ({
@@ -312,12 +332,24 @@ export default function ShopPage() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return products.filter(p => {
+    const chosen = collections.find(c => c.id === collectionId);
+
+    const matches = products.filter(p => {
       if (category && p.category !== category) return false;
+      if (chosen && !chosen.productIds.includes(String(p.id))) return false;
       if (!q) return true;
       return `${p.name} ${p.description} ${p.sku}`.toLowerCase().includes(q);
     });
-  }, [products, query, category]);
+
+    /* Inside a collection the shopkeeper's order wins over the catalogue's.
+       Deciding what sits at the top is the whole reason to build one by hand,
+       and a list that quietly re-sorted itself would make that work invisible. */
+    if (!chosen) return matches;
+    const rank = new Map(chosen.productIds.map((id, n) => [id, n]));
+    return [...matches].sort(
+      (a, b) => (rank.get(String(a.id)) ?? 1e9) - (rank.get(String(b.id)) ?? 1e9),
+    );
+  }, [products, query, category, collections, collectionId]);
 
 
   if (state === 'loading') {
@@ -498,19 +530,46 @@ export default function ShopPage() {
           </div>
         )}
 
-        {/* Search and categories, only once there is enough to need them. */}
-        {products.length > 8 && (
+        {/* Search and categories appear only once there is enough to need them
+            — a search box over six products is clutter. Collections are not
+            under that rule: one exists because the shopkeeper sat down and
+            built it, and hiding it until the ninth product would bury work
+            somebody did deliberately. */}
+        {(products.length > 8 || collections.length > 0) && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 24 }}>
-            <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
-              <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: t.muted }} />
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
-                style={{
-                  width: '100%', padding: '9px 12px 9px 34px', boxSizing: 'border-box',
-                  border: `1px solid ${t.line}`, borderRadius: Math.max(t.radius, 8),
-                  background: t.cardBg, color: t.ink, fontSize: 14, outline: 'none', fontFamily: 'inherit',
-                }} />
-            </div>
-            {categories.length > 0 && (
+            {products.length > 8 && (
+              <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
+                <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: t.muted }} />
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
+                  style={{
+                    width: '100%', padding: '9px 12px 9px 34px', boxSizing: 'border-box',
+                    border: `1px solid ${t.line}`, borderRadius: Math.max(t.radius, 8),
+                    background: t.cardBg, color: t.ink, fontSize: 14, outline: 'none', fontFamily: 'inherit',
+                  }} />
+              </div>
+            )}
+            {/* Collections first, because they are what the shopkeeper chose to
+                lead with. Categories stay underneath: one files the range and
+                the other sells it, and a shop may well use both. */}
+            {collections.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[{ id: '', name: 'Everything', description: '' }, ...collections].map(c => (
+                  <button key={c.id || 'all'} onClick={() => setCollectionId(c.id)}
+                    title={c.description || undefined}
+                    aria-pressed={collectionId === c.id}
+                    style={{
+                      padding: '7px 13px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
+                      border: `1px solid ${collectionId === c.id ? accent : t.line}`,
+                      background: collectionId === c.id ? accent : 'transparent',
+                      color: collectionId === c.id ? onAccent : t.ink,
+                      fontSize: 12.5, fontWeight: 700,
+                    }}>
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {products.length > 8 && categories.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {['', ...categories].map(c => (
                   <button key={c || 'all'} onClick={() => setCategory(c)}
@@ -528,6 +587,18 @@ export default function ShopPage() {
             )}
           </div>
         )}
+
+        {/* The line the shopkeeper wrote for this collection, shown where they
+            were told it would be. A field the form asks for and the shop never
+            prints is a promise the product does not keep. */}
+        {(() => {
+          const chosen = collections.find(c => c.id === collectionId);
+          return chosen?.description ? (
+            <p style={{ margin: '0 0 18px', fontSize: 14, color: t.muted, lineHeight: 1.65 }}>
+              {chosen.description}
+            </p>
+          ) : null;
+        })()}
 
         {products.length === 0 ? (
           <p style={{ fontSize: 14, color: t.muted }}>Nothing is listed for sale yet.</p>

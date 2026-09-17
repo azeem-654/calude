@@ -18,6 +18,7 @@ import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { storefrontCurrency, storefrontLabel, storefrontReady } from './storefront';
 import { supplierReady } from './supplier';
+import { cleanSlug } from './shop';
 
 interface Req {
   token?: string;
@@ -62,6 +63,10 @@ interface Req {
   /* Tax */
   percentBp?: number;
   pricesIncludeTax?: boolean;
+  /* Collections */
+  slug?: string;
+  collectionIds?: string[];
+  productIds?: string[];
   /* Orders */
   contactId?: string;
   email?: string;
@@ -204,6 +209,36 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     return row ? row.inc !== 0 : true;
   };
 
+  /**
+   * Collections, each with the ids it holds in the order the shopkeeper put
+   * them in.
+   *
+   * Two queries and a join in memory rather than one query with a GROUP_BY:
+   * a shop with forty collections and four hundred products is small, and the
+   * alternative is a comma-joined string that has to be split and trusted.
+   */
+  const listCollections = async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT id, name, slug, description, position, status
+       FROM crm_collections WHERE account_id = ? ORDER BY position ASC, created_at ASC LIMIT 200`,
+    ).bind(accountId).all();
+    const { results: links } = await env.DB.prepare(
+      `SELECT collection_id AS collectionId, product_id AS productId
+       FROM crm_collection_products WHERE account_id = ? ORDER BY position ASC`,
+    ).bind(accountId).all<{ collectionId: string; productId: string }>();
+
+    const held = new Map<string, string[]>();
+    for (const l of links ?? []) {
+      const list = held.get(l.collectionId) ?? [];
+      list.push(l.productId);
+      held.set(l.collectionId, list);
+    }
+    return (results ?? []).map(r => {
+      const row = r as Record<string, unknown>;
+      return { ...row, productIds: held.get(String(row.id)) ?? [] };
+    });
+  };
+
   const listOrders = async () => {
     const { results } = await env.DB.prepare(
       `SELECT id, contact_id AS contactId, email, items, total_cents AS totalCents,
@@ -249,6 +284,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       shipping: await listShipping(),
       tax: await listTax(),
       pricesIncludeTax: await pricesIncludeTax(),
+      collections: await listCollections(),
       /* Said in the payload, not only in a comment. A screen that cannot take
          money can say why instead of showing an empty orders list that looks
          like nobody has bought anything. */
@@ -612,6 +648,90 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     return json({ success: true, tax: await listTax() });
   }
 
+  /* ── Collections ──────────────────────────────────────────────────────────
+     A category files a product; a collection sells it. See migration 0037 for
+     why both exist rather than one replacing the other. */
+
+  if (act === 'list_collections') {
+    return json({ success: true, collections: await listCollections() });
+  }
+
+  if (act === 'save_collection') {
+    const name = String(d.name ?? '').trim().slice(0, 80);
+    if (!name) return fail('Give the collection a name — buyers see it as a heading on your shop.');
+
+    const now = nowIso();
+    const id = String(d.id ?? '').trim() || rid('col');
+    const existing = await env.DB.prepare('SELECT created_at FROM crm_collections WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ created_at: string }>();
+
+    /* Derived from the name when none is given, because a shopkeeper should
+       not have to know what a slug is to make a collection. */
+    let slug = cleanSlug(d.slug) || cleanSlug(name);
+    if (!slug) return fail('That name cannot be turned into a web address — use some letters or numbers.');
+    /* Suffixed rather than refused: two collections called "Gifts" in
+       different years is an ordinary thing to want, and a unique index would
+       otherwise turn it into an error the shopkeeper cannot act on. */
+    const clash = await env.DB.prepare(
+      'SELECT id FROM crm_collections WHERE account_id = ? AND slug = ? AND id != ?',
+    ).bind(accountId, slug, id).first<{ id: string }>();
+    if (clash) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+
+    await env.DB.prepare(
+      `INSERT INTO crm_collections
+       (id, account_id, name, slug, description, position, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         name=excluded.name, slug=excluded.slug, description=excluded.description,
+         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at`,
+    ).bind(
+      id, accountId, name, slug, String(d.description ?? '').slice(0, 500),
+      clampInt(d.sortOrder, 0, 1000),
+      d.status === 'off' ? 'off' : 'active',
+      existing?.created_at ?? now, now,
+    ).run();
+
+    /* Membership is replaced wholesale when it is sent, and left alone when it
+       is not. The screen edits the whole list at once — dragging one product
+       above another changes every position after it — so merging would mean
+       guessing which of the old rows each new one meant.
+       Absent is different from empty: `undefined` means "I was not editing
+       that", and `[]` means "take everything out". Treating them the same
+       would empty a collection every time somebody renamed it. */
+    if (Array.isArray(d.productIds)) {
+      await env.DB.prepare('DELETE FROM crm_collection_products WHERE collection_id = ? AND account_id = ?')
+        .bind(id, accountId).run();
+
+      /* Scoped to this workspace, so an id from somebody else's shop cannot be
+         posted in and quietly given a home here. */
+      const wanted = d.productIds.map(x => String(x)).filter(Boolean).slice(0, 500);
+      for (const [n, productId] of wanted.entries()) {
+        const mine = await env.DB.prepare('SELECT id FROM crm_products WHERE id = ? AND account_id = ?')
+          .bind(productId, accountId).first<{ id: string }>();
+        if (!mine) continue;
+        await env.DB.prepare(
+          `INSERT INTO crm_collection_products (collection_id, product_id, account_id, position)
+           VALUES (?,?,?,?)
+           ON CONFLICT(collection_id, product_id) DO UPDATE SET position = excluded.position`,
+        ).bind(id, productId, accountId, n).run();
+      }
+    }
+
+    return json({ success: true, id, collections: await listCollections() });
+  }
+
+  if (act === 'delete_collection') {
+    const id = String(d.id ?? '').trim();
+    /* The memberships go, the products stay. Deleting a collection is a
+       merchandising decision, not a decision to stop selling the things in
+       it — and a shop that lost its stock to a tidy-up would be unforgivable. */
+    await env.DB.prepare('DELETE FROM crm_collection_products WHERE collection_id = ? AND account_id = ?')
+      .bind(id, accountId).run();
+    await env.DB.prepare('DELETE FROM crm_collections WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).run();
+    return json({ success: true, collections: await listCollections() });
+  }
+
   if (act === 'save_tax_settings') {
     /* Upserts the storefront row. A shop can be setting its VAT position before
        it has connected a processor, and refusing to remember that until it has
@@ -629,8 +749,13 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
 
   if (act === 'delete_product') {
     const id = String(d.id ?? '').trim();
+    /* Memberships first. A row pointing at a product that no longer exists
+       would make every collection holding it one shorter than it counts, and
+       the shop page would render a gap nobody could explain or remove. */
+    await env.DB.prepare('DELETE FROM crm_collection_products WHERE product_id = ? AND account_id = ?')
+      .bind(id, accountId).run();
     await env.DB.prepare('DELETE FROM crm_products WHERE id = ? AND account_id = ?').bind(id, accountId).run();
-    return json({ success: true, products: await listProducts() });
+    return json({ success: true, products: await listProducts(), collections: await listCollections() });
   }
 
   /* ── Orders ── */

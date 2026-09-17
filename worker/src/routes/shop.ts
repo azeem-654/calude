@@ -212,6 +212,36 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
       'SELECT currency, verified_at, prices_include_tax AS inc FROM crm_storefront WHERE account_id = ?',
     ).bind(shop.account_id).first<{ currency: string; verified_at: string | null; inc: number }>();
 
+    /* Only the live ones, and only the ones that still hold something a buyer
+       can see. An empty collection is a heading with nothing under it — a shop
+       that looks broken rather than one that is merchandising. Draft and
+       sold-through products are already excluded from `products`, so the
+       filtering happens against that same list rather than the table. */
+    const { results: cols } = await env.DB.prepare(
+      `SELECT c.id, c.name, c.slug, c.description, c.position,
+              cp.product_id AS productId, cp.position AS productPosition
+       FROM crm_collections c
+       LEFT JOIN crm_collection_products cp ON cp.collection_id = c.id
+       WHERE c.account_id = ? AND c.status = 'active'
+       ORDER BY c.position ASC, cp.position ASC
+       LIMIT 2000`,
+    ).bind(shop.account_id).all<{
+      id: string; name: string; slug: string; description: string;
+      position: number; productId: string | null; productPosition: number | null;
+    }>();
+
+    const sellable = new Set(ids);   // the ids of exactly what this page will list
+    const byId = new Map<string, { id: string; name: string; slug: string; description: string; productIds: string[] }>();
+    for (const r of cols ?? []) {
+      let c = byId.get(r.id);
+      if (!c) {
+        c = { id: r.id, name: r.name, slug: r.slug, description: r.description, productIds: [] };
+        byId.set(r.id, c);
+      }
+      if (r.productId && sellable.has(r.productId)) c.productIds.push(r.productId);
+    }
+    const collections = [...byId.values()].filter(c => c.productIds.length > 0);
+
     /* Only worth saying when there is a rate that could apply. A shop with no
        tax set up printing "prices include tax" would be claiming a VAT
        position it does not have. */
@@ -234,6 +264,7 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
       /* The rules, not a computed price — the page has no country until the
          buyer says, and quoting one before they do would be a guess. */
       shippingRates: rates ?? [],
+      collections,
       currency: sf?.currency ?? 'USD',
       /* Null when the shop charges no tax, so the page prints nothing rather
          than a reassurance nobody is entitled to. */

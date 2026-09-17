@@ -44,7 +44,7 @@ export const SHOP_FEATURES: FeatureGroup[] = [
       { label: 'Several pictures per product', detail: 'Up to five, and an option can have its own — a blue shirt is not illustrated by the red one.', state: 'yes', route: '/sell' },
       { label: 'Stock tracking', detail: 'Per option, checked again at the moment somebody buys rather than only hidden in the listing.', state: 'yes', route: '/sell' },
       { label: 'Draft and live', detail: 'Nothing reaches the shop page until you make it active, and anything held for review stays a draft.', state: 'yes', route: '/sell' },
-      { label: 'Collections', detail: 'Products carry one category, which the shop filters by. Nested collections and rules are not here.', state: 'partly', route: '/sell' },
+      { label: 'Collections', detail: 'Group products any way you sell them — "New in", "Gifts", "Under £20" — and a product can be in as many as you like, in the order you put them in. Built by hand: there are no rules that fill one automatically, and no collections inside collections.', state: 'partly', route: '/sell' },
     ],
   },
   {
