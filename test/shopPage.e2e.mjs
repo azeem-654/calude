@@ -2,8 +2,9 @@
  * The shop a stranger buys from, driven for real.
  *
  * Needs a built bundle, `npx wrangler dev --local`, and a published shop at
- * /shop/tees with a variant in stock, one sold out, a SAVE20 code and a UK
- * rate. Then: node test/shopPage.e2e.mjs
+ * /shop/tees with a variant in stock, one sold out, a SAVE20 code, a UK
+ * delivery rate and a 20% GB VAT rate with the storefront set to
+ * tax-inclusive. Then: node test/shopPage.e2e.mjs
  *
  * The assertions that matter are the arithmetic ones. Everything else can look
  * right while the total is wrong, and the total is what gets charged.
@@ -57,6 +58,18 @@ for (const width of [390, 1280]) {
   ok(`${width}px · delivery is named and priced`, /UK standard/.test(priced ?? '') && /£4\.99/.test(priced ?? ''));
   ok(`${width}px · and the total is goods − code + delivery`, /£24\.99/.test(priced ?? ''),
     (priced ?? '').match(/Total[^£]*£[\d.]+/)?.[0] ?? 'no total');
+
+  /* The assertion this whole tax feature turns on: a shop whose prices already
+     include VAT charges exactly the number it showed. If the total moves here,
+     every buyer has been overcharged by the rate and the page still looks
+     right — which is why it is asserted rather than eyeballed. */
+  ok(`${width}px · an included tax does not move the total`,
+    /£24\.99/.test(priced ?? '') && !/£29\.99/.test(priced ?? ''),
+    (priced ?? '').match(/Total[^£]*£[\d.]+/)?.[0] ?? 'no total');
+  ok(`${width}px · and is shown as contained, not as an addition`,
+    /Includes VAT/.test(priced ?? ''), (priced ?? '').match(/Includes[^£]*/)?.[0] ?? 'no tax line');
+  ok(`${width}px · the VAT inside £24.99 at 20% is £4.16`,
+    /£4\.16/.test(priced ?? ''), (priced ?? '').match(/Includes VAT[^£]*£[\d.]+/)?.[0] ?? 'not shown');
 
   const over = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(`${width}px · no horizontal overflow`, over <= 0, `${over}px`);

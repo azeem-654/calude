@@ -23,7 +23,7 @@
  */
 import { addr, body, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
-import { priceBasket, type Discount, type ShippingRate } from '../lib/checkout';
+import { priceBasket, type Discount, type ShippingRate, type TaxRate } from '../lib/checkout';
 import { createPayLink } from './storefront';
 
 interface Req {
@@ -120,12 +120,26 @@ async function priceFor(
     ).bind(accountId, typedCode).first<Discount>();
   }
 
+  const { results: taxRows } = await env.DB.prepare(
+    `SELECT id, name, countries, percent_bp AS percentBp, position, status
+     FROM crm_tax_rates WHERE account_id = ? LIMIT 50`,
+  ).bind(accountId).all<TaxRate>();
+
+  /* Missing row means the shop has never opened the panel, and the column
+     default is "included" — so a shop that has set no tax at all is unaffected
+     either way, because there is no rate to apply. */
+  const sf = await env.DB.prepare(
+    'SELECT prices_include_tax AS inc FROM crm_storefront WHERE account_id = ?',
+  ).bind(accountId).first<{ inc: number }>();
+
   return priceBasket({
     lines: items.map(i => ({ name: i.name, qty: i.qty, priceCents: i.priceCents })),
     discount: discountRow,
     codeTyped: typedCode,
     rates: rateRows ?? [],
     country: String(d.shipCountry ?? d.country ?? '').trim(),
+    taxRates: taxRows ?? [],
+    pricesIncludeTax: sf ? sf.inc !== 0 : true,
   });
 }
 
@@ -191,8 +205,16 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
 
     /* The storefront's own currency decides, because that is what the checkout
        will actually charge in. */
-    const sf = await env.DB.prepare('SELECT currency, verified_at FROM crm_storefront WHERE account_id = ?')
-      .bind(shop.account_id).first<{ currency: string; verified_at: string | null }>();
+    const sf = await env.DB.prepare(
+      'SELECT currency, verified_at, prices_include_tax AS inc FROM crm_storefront WHERE account_id = ?',
+    ).bind(shop.account_id).first<{ currency: string; verified_at: string | null; inc: number }>();
+
+    /* Only worth saying when there is a rate that could apply. A shop with no
+       tax set up printing "prices include tax" would be claiming a VAT
+       position it does not have. */
+    const anyTax = await env.DB.prepare(
+      "SELECT count(*) AS n FROM crm_tax_rates WHERE account_id = ? AND status = 'active' AND percent_bp > 0",
+    ).bind(shop.account_id).first<{ n: number }>();
 
     return json({
       success: true,
@@ -210,6 +232,9 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
          buyer says, and quoting one before they do would be a guess. */
       shippingRates: rates ?? [],
       currency: sf?.currency ?? 'USD',
+      /* Null when the shop charges no tax, so the page prints nothing rather
+         than a reassurance nobody is entitled to. */
+      pricesIncludeTax: (anyTax?.n ?? 0) > 0 ? (sf ? sf.inc !== 0 : true) : null,
       /* Said plainly rather than discovered at the buy button: a shop whose
          owner has not connected a processor cannot take money, and a visitor
          should not fill in their email to find that out. */
@@ -387,14 +412,18 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
     await env.DB.prepare(
       `INSERT INTO crm_orders
        (id, account_id, contact_id, email, items, total_cents, currency, status, channel,
-        shop_id, discount_code, discount_cents, shipping_cents, placed_at, updated_at)
-       VALUES (?,?,?,?,?,?,?, 'pending', 'shop', ?,?,?,?,?,?)`,
+        shop_id, discount_code, discount_cents, shipping_cents, tax_cents, tax_label,
+        placed_at, updated_at)
+       VALUES (?,?,?,?,?,?,?, 'pending', 'shop', ?,?,?,?,?,?,?,?)`,
     ).bind(
       orderId, shop.account_id, `ip:${ip}`, email, JSON.stringify(items), total,
       currency, shop.id,
       /* Frozen onto the order. A code edited next week must not change what
-         this receipt says it charged — the same rule as the price. */
+         this receipt says it charged — the same rule as the price. The tax is
+         frozen for a harder reason: a rate changed next April must not restate
+         what was filed for last year. */
       totals.discountCode, totals.discountCents, totals.shippingCents,
+      totals.taxCents, totals.taxLabel,
       now, now,
     ).run();
 

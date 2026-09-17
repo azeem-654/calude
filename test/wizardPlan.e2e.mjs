@@ -38,6 +38,12 @@ const toStep3 = async (d, p, industry) => {
   await d.getByRole('button', { name: /^Continue/ }).click();
   await p.waitForTimeout(300);
   await d.getByRole('button', { name: industry }).click();
+  /* A workspace that already has portfolios opens on the picker, not on the
+     three ways to describe a new one. The test used to assume an empty
+     workspace, which is true exactly once — the second run of it was testing
+     a screen the wizard no longer shows. */
+  const someoneNew = d.getByRole('button', { name: 'Someone new' });
+  if (await someoneNew.count()) await someoneNew.click();
   await d.getByRole('button', { name: /Type it/ }).click();
   await d.getByPlaceholder(/Bob/).first().fill('Bobs Plumbing');
   await d.getByRole('button', { name: /^Continue/ }).click();

@@ -23,11 +23,12 @@ import { useApp } from '../../context/AppContext';
 import {
   fetchCommerce, suggestIdeas, setIdeaStatus, saveProduct, deleteProduct,
   recordOrder, setOrderStatus, money,
-  type BusinessIdea, type Product, type Order, type Discount, type ShippingRate,
+  type BusinessIdea, type Product, type Order, type Discount, type ShippingRate, type TaxRate,
 } from '../../services/commerce';
 import DiscountsPanel from './DiscountsPanel';
 import ShopFeatures from './ShopFeatures';
 import ShippingPanel from './ShippingPanel';
+import TaxPanel from './TaxPanel';
 import { payLink } from '../../services/storefront';
 import { fulfilOrder } from '../../services/supplier';
 import GettingPaid from './GettingPaid';
@@ -56,6 +57,8 @@ export default function Commerce() {
   const [storefront, setStorefront] = useState({ available: false, note: '' });
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [shipping, setShipping] = useState<ShippingRate[]>([]);
+  const [tax, setTax] = useState<TaxRate[]>([]);
+  const [pricesIncludeTax, setPricesIncludeTax] = useState(true);
   const [supplierConnected, setSupplierConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [about, setAbout] = useState('');
@@ -78,6 +81,7 @@ export default function Commerce() {
       if (!live) return;
       setIdeas(r.ideas); setProducts(r.products); setOrders(r.orders); setStorefront(r.storefront);
       setDiscounts(r.discounts); setShipping(r.shipping);
+      setTax(r.tax); setPricesIncludeTax(r.pricesIncludeTax);
       setSupplierConnected(r.supplierConnected);
     })();
     return () => { live = false; };
@@ -297,6 +301,7 @@ export default function Commerce() {
             about what the shop sells for, not about how the app is wired. */}
         <DiscountsPanel discounts={discounts} currency={products[0]?.currency || 'USD'} onChange={again} />
         <ShippingPanel rates={shipping} currency={products[0]?.currency || 'USD'} onChange={again} />
+        <TaxPanel rates={tax} pricesIncludeTax={pricesIncludeTax} onChange={again} />
 
         {/* ── Getting paid ── */}
         <GettingPaid onChange={again} />

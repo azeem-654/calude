@@ -66,7 +66,7 @@ export const SHOP_FEATURES: FeatureGroup[] = [
       { label: 'Discount codes', detail: 'Percentage or fixed, with a minimum basket, dates and a usage limit. Taken off the items, never the delivery.', state: 'yes', route: '/sell' },
       { label: 'Delivery rates', detail: 'A flat price or free over a total, different per country, with a catch-all so nowhere ships free by accident.', state: 'yes', route: '/sell' },
       { label: 'Live carrier rates', detail: 'Not here. They need weights, dimensions and a carrier contract, and a wrong one charges a real buyer the wrong amount.', state: 'no' },
-      { label: 'Tax and VAT', detail: 'Not calculated. Prices are what the buyer pays; if you are registered, build it into the price for now.', state: 'no' },
+      { label: 'Tax and VAT', detail: 'A rate per country, on the goods after any discount and on the delivery too, either inside your listed prices or added at checkout. Not a tax engine: no US nexus, no EU OSS thresholds — take advice if you are more complicated than that.', state: 'partly', route: '/sell' },
       { label: 'Several currencies', detail: 'One per workspace, and it is the one the checkout charges in — so the page and the card can never disagree.', state: 'partly', route: '/sell' },
     ],
   },

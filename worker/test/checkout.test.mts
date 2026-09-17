@@ -12,7 +12,8 @@
  */
 import {
   discountAmount, discountProblem, goodsTotal, priceBasket, rateFor, shippingCost,
-  type Discount, type ShippingRate,
+  taxOn, taxRateFor,
+  type Discount, type ShippingRate, type TaxRate,
 } from '../src/lib/checkout';
 
 const out: string[] = [];
@@ -25,6 +26,9 @@ const code = (over: Partial<Discount> = {}): Discount => ({
 const rate = (over: Partial<ShippingRate> = {}): ShippingRate => ({
   id: 'r1', name: 'Standard', countries: '', kind: 'flat',
   amountCents: 500, thresholdCents: 0, status: 'active', position: 0, ...over,
+});
+const tax = (over: Partial<TaxRate> = {}): TaxRate => ({
+  id: 't1', name: 'VAT', countries: 'GB', percentBp: 2000, status: 'active', position: 0, ...over,
 });
 
 /* ── Goods ── */
@@ -121,6 +125,91 @@ const rate = (over: Partial<ShippingRate> = {}): ShippingRate => ({
   ok('the country is matched case-insensitively', rateFor(rates, 'gb')?.id === 'uk');
   ok('a shop with no rates ships free rather than failing',
     shippingCost(rateFor([], 'GB'), 5000) === 0);
+}
+
+
+/* ── Tax: included is bookkeeping, excluded is a charge ── */
+{
+  /* The case that decides whether a UK shop can use this at all. £120 on the
+     shelf is £120 at the till, of which £20 is VAT. If the total moves, every
+     buyer has been overcharged by the rate and the page still looks right. */
+  const inc = priceBasket({
+    lines: [{ name: 'a', qty: 1, priceCents: 12000 }],
+    discount: null, codeTyped: '', rates: [], country: 'GB',
+    taxRates: [tax()], pricesIncludeTax: true,
+  });
+  ok('an inclusive price does not move the total', inc.totalCents === 12000, String(inc.totalCents));
+  ok('and the VAT inside £120 at 20% is £20', inc.taxCents === 2000, String(inc.taxCents));
+  ok('the net plus the tax adds back to exactly the shelf price',
+    (inc.totalCents - inc.taxCents) + inc.taxCents === 12000);
+  ok('an inclusive receipt says it is inclusive', inc.taxIncluded === true);
+  ok('and names the tax so a receipt can print it', inc.taxLabel === 'VAT', inc.taxLabel);
+
+  const exc = priceBasket({
+    lines: [{ name: 'a', qty: 1, priceCents: 10000 }],
+    discount: null, codeTyped: '', rates: [], country: 'GB',
+    taxRates: [tax()], pricesIncludeTax: false,
+  });
+  ok('an exclusive price adds the tax on top', exc.totalCents === 12000, String(exc.totalCents));
+  ok('and the tax on £100 at 20% is £20', exc.taxCents === 2000, String(exc.taxCents));
+  ok('the two modes are not the same sum',
+    inc.totalCents !== exc.totalCents || inc.goodsCents !== exc.goodsCents);
+
+  /* Applying the rate to the gross instead of deriving it would give £24 here
+     — the tax on the tax — and a VAT return £4 out on every order. */
+  ok('inclusive tax is derived from the gross, not applied to it',
+    taxOn(tax(), 12000, true) === 2000 && taxOn(tax(), 12000, false) === 2400,
+    `${taxOn(tax(), 12000, true)} / ${taxOn(tax(), 12000, false)}`);
+}
+
+/* ── Tax follows the delivery and the discount ── */
+{
+  const t = priceBasket({
+    lines: [{ name: 'a', qty: 1, priceCents: 10000 }],
+    discount: null, codeTyped: '',
+    rates: [rate({ amountCents: 1000 })], country: 'GB',
+    taxRates: [tax()], pricesIncludeTax: false,
+  });
+  ok('the carriage takes the rate of what is carried',
+    t.taxCents === 2200, String(t.taxCents));
+
+  const d = priceBasket({
+    lines: [{ name: 'a', qty: 1, priceCents: 10000 }],
+    discount: code({ value: 50 }), codeTyped: 'HALF',
+    rates: [], country: 'GB',
+    taxRates: [tax()], pricesIncludeTax: false,
+  });
+  ok('a discount reduces the tax with the price', d.taxCents === 1000, String(d.taxCents));
+}
+
+/* ── Which tax rate, and when there is none ── */
+{
+  const rates = [
+    tax({ id: 'gb', name: 'VAT', countries: 'GB', percentBp: 2000, position: 1 }),
+    tax({ id: 'ny', name: 'Sales tax', countries: 'US', percentBp: 888, position: 2 }),
+  ];
+  ok('a country with a rate gets it', taxRateFor(rates, 'US')?.id === 'ny', taxRateFor(rates, 'US')?.id);
+  ok('a country with no rate and no catch-all is untaxed', taxRateFor(rates, 'JP') === null);
+
+  /* 8.875% is why the column is basis points. Rounded to 888bp on storage, it
+     is still 8.88% of $100 — a whole-percent column could only say 9%. */
+  ok('a fractional rate is expressible', taxOn(tax({ percentBp: 888 }), 10000, false) === 888,
+    String(taxOn(tax({ percentBp: 888 }), 10000, false)));
+
+  const none = priceBasket({
+    lines: [{ name: 'a', qty: 1, priceCents: 5000 }],
+    discount: null, codeTyped: '', rates: [], country: 'JP',
+    taxRates: rates, pricesIncludeTax: true,
+  });
+  ok('a shop that has set no rate for a country charges no tax rather than guessing',
+    none.taxCents === 0 && none.totalCents === 5000, JSON.stringify(none));
+  ok('and does not name a tax it did not charge', none.taxLabel === '', none.taxLabel);
+
+  ok('a shop with no tax rates at all is unaffected',
+    priceBasket({ lines: [{ name: 'a', qty: 1, priceCents: 5000 }], discount: null,
+      codeTyped: '', rates: [], country: 'GB' }).totalCents === 5000);
+  ok('a zero rate is not a tax line', taxOn(tax({ percentBp: 0 }), 10000, false) === 0);
+  ok('a switched-off rate is never chosen', taxRateFor([tax({ status: 'off' })], 'GB') === null);
 }
 
 console.log(out.join('\n'));

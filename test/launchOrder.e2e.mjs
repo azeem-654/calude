@@ -35,6 +35,11 @@ await d.getByRole('button', { name: /Sell products online/ }).click();
 await d.getByRole('button', { name: /^Continue/ }).click();
 await p.waitForTimeout(300);
 await d.getByRole('button', { name: /Online shop/ }).click();
+/* A workspace that already has portfolios opens on the picker rather than on
+   the three ways to describe a new one — so this run must ask for a new one
+   first, the way somebody adding their second client would. */
+const someoneNew = d.getByRole('button', { name: 'Someone new' });
+if (await someoneNew.count()) await someoneNew.click();
 await d.getByRole('button', { name: /Type it/ }).click();
 await d.getByPlaceholder(/Bob/).first().fill('Northgate Candles');
 await d.getByRole('button', { name: /^Continue/ }).click();

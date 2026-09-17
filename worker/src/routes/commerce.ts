@@ -59,6 +59,9 @@ interface Req {
   countries?: string;
   amountCents?: number;
   thresholdCents?: number;
+  /* Tax */
+  percentBp?: number;
+  pricesIncludeTax?: boolean;
   /* Orders */
   contactId?: string;
   email?: string;
@@ -182,6 +185,25 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     ).bind(accountId).all();
     return results ?? [];
   };
+  const listTax = async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT id, name, countries, percent_bp AS percentBp, position, status
+       FROM crm_tax_rates WHERE account_id = ? ORDER BY position ASC, created_at ASC LIMIT 100`,
+    ).bind(accountId).all();
+    return results ?? [];
+  };
+
+  /* Whether the listed prices already contain the tax. Defaults to true for a
+     shop that has never opened the panel, matching the column default and the
+     norm where most of this install's customers are — and the mistake it can
+     cause (a total that does not move) is one somebody sees. */
+  const pricesIncludeTax = async () => {
+    const row = await env.DB.prepare(
+      'SELECT prices_include_tax AS inc FROM crm_storefront WHERE account_id = ?',
+    ).bind(accountId).first<{ inc: number }>();
+    return row ? row.inc !== 0 : true;
+  };
+
   const listOrders = async () => {
     const { results } = await env.DB.prepare(
       `SELECT id, contact_id AS contactId, email, items, total_cents AS totalCents,
@@ -225,6 +247,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
       orders: await listOrders(),
       discounts: await listDiscounts(),
       shipping: await listShipping(),
+      tax: await listTax(),
+      pricesIncludeTax: await pricesIncludeTax(),
       /* Said in the payload, not only in a comment. A screen that cannot take
          money can say why instead of showing an empty orders list that looks
          like nobody has bought anything. */
@@ -244,7 +268,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
   if (act === 'suggest_ideas') {
     const apiKey = await loadAiKey(env, accountId);
     if (!apiKey) {
-      return fail('Add your AI key in Settings → AI Engine first — the ideas are written by the model, not picked from a list.');
+      return fail('Writing is unavailable on this installation at the moment, so the ideas cannot be written. This is not something you need a key for.');
     }
     const about = String(d.about ?? '').trim().slice(0, 4000);
     const budget = clampInt(d.budget, 0, 10_000_000);
@@ -534,6 +558,73 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     await env.DB.prepare('DELETE FROM crm_shipping_rates WHERE id = ? AND account_id = ?')
       .bind(String(d.id ?? ''), accountId).run();
     return json({ success: true, shipping: await listShipping() });
+  }
+
+  /* ── Tax ──────────────────────────────────────────────────────────────────
+     A rate per country, not a tax engine. See the note on migration 0035: no
+     US nexus, no EU OSS thresholds, no digital place-of-supply. The screen
+     says as much, because under-collecting quietly for a year is a bill with
+     interest on it and nothing on screen would have prompted a second look. */
+
+  if (act === 'list_tax') {
+    return json({ success: true, tax: await listTax(), pricesIncludeTax: await pricesIncludeTax() });
+  }
+
+  if (act === 'save_tax') {
+    const name = String(d.name ?? '').trim().slice(0, 40);
+    if (!name) return fail('Give the tax a name — it is what the buyer sees on the receipt. “VAT”, “Sales tax”, “GST”.');
+    const now = nowIso();
+    const id = String(d.id ?? '').trim() || rid('tax');
+    const existing = await env.DB.prepare('SELECT created_at FROM crm_tax_rates WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ created_at: string }>();
+
+    /* Same parsing as the shipping rates, deliberately — "UK, Ireland" matches
+       nothing at a checkout and does so silently. */
+    const countries = String(d.countries ?? '')
+      .toUpperCase().split(/[^A-Z]+/).filter(c => c.length === 2).slice(0, 60).join(',');
+
+    /* Taken as basis points from the client, which sends whatever the person
+       typed as a percentage multiplied by 100. Capped at 100% — a rate above
+       that is a typo, and charging it would be a card debited several times
+       the price of the goods. */
+    const percentBp = clampInt(d.percentBp, 0, 10_000);
+
+    await env.DB.prepare(
+      `INSERT INTO crm_tax_rates
+       (id, account_id, name, countries, percent_bp, position, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         name=excluded.name, countries=excluded.countries, percent_bp=excluded.percent_bp,
+         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at`,
+    ).bind(
+      id, accountId, name, countries, percentBp,
+      clampInt(d.sortOrder, 0, 1000),
+      d.status === 'off' ? 'off' : 'active',
+      existing?.created_at ?? now, now,
+    ).run();
+
+    return json({ success: true, id, tax: await listTax() });
+  }
+
+  if (act === 'delete_tax') {
+    await env.DB.prepare('DELETE FROM crm_tax_rates WHERE id = ? AND account_id = ?')
+      .bind(String(d.id ?? ''), accountId).run();
+    return json({ success: true, tax: await listTax() });
+  }
+
+  if (act === 'save_tax_settings') {
+    /* Upserts the storefront row. A shop can be setting its VAT position before
+       it has connected a processor, and refusing to remember that until it has
+       would be an order of operations nobody would guess. Every other column
+       keeps its default, so this cannot disturb a connected processor. */
+    const inc = d.pricesIncludeTax === false ? 0 : 1;
+    await env.DB.prepare(
+      `INSERT INTO crm_storefront (account_id, updated_at, prices_include_tax)
+       VALUES (?,?,?)
+       ON CONFLICT(account_id) DO UPDATE SET
+         prices_include_tax=excluded.prices_include_tax, updated_at=excluded.updated_at`,
+    ).bind(accountId, nowIso(), inc).run();
+    return json({ success: true, pricesIncludeTax: inc === 1 });
   }
 
   if (act === 'delete_product') {

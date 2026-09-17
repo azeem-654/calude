@@ -137,6 +137,42 @@ export interface Order {
   supplierLines: number;
 }
 
+/**
+ * A tax rate per country — and firmly not a tax engine.
+ *
+ * It does not know about US state and city nexus, about which states tax
+ * delivery, about digital place-of-supply, or about EU OSS thresholds. Saying
+ * otherwise would be the worst kind of wrong here: under-collecting quietly for
+ * a year is a bill with interest on it, and nothing on the screen would have
+ * prompted a second look. So the panel says so, in as many words.
+ */
+export interface TaxRate {
+  id: string;
+  /** What the receipt calls it: VAT, Sales tax, GST. */
+  name: string;
+  /** Comma-separated ISO codes. Empty taxes everywhere — see the panel's note. */
+  countries: string;
+  /** Hundredths of a percent, so 8.875% is 888 rather than an impossible 8.875. */
+  percentBp: number;
+  position: number;
+  status: 'active' | 'off';
+}
+
+/**
+ * A rate as a percentage for a person to read or type. 2000 → "20", 888 → "8.88".
+ *
+ * No trailing-zero trimming: JavaScript's own number formatting never produces
+ * any, and a regex that strips them turns 20% into 2%.
+ */
+export const bpToPercent = (bp: number): string => String(Math.round(bp) / 100);
+
+/** And back. "8.875" → 888 (hundredths of a percent, rounded to what fits). */
+export const percentToBp = (pct: string): number => {
+  const n = Number(String(pct).replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(10_000, Math.max(0, Math.round(n * 100)));
+};
+
 interface Reply {
   success: boolean;
   error?: string;
@@ -148,6 +184,8 @@ interface Reply {
   supplierConnected?: boolean;
   discounts?: Discount[];
   shipping?: ShippingRate[];
+  tax?: TaxRate[];
+  pricesIncludeTax?: boolean;
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -175,6 +213,11 @@ export async function fetchCommerce() {
     supplierConnected: !!r.supplierConnected,
     discounts: (r.discounts ?? []) as Discount[],
     shipping: (r.shipping ?? []) as ShippingRate[],
+    tax: (r.tax ?? []) as TaxRate[],
+    /* Defaults to true when the server said nothing, matching the column — a
+       shop that has never opened the panel is treated as listing tax-inclusive
+       prices, which is the norm where most of this install's customers are. */
+    pricesIncludeTax: r.pricesIncludeTax !== false,
   };
 }
 
@@ -195,6 +238,11 @@ export async function saveDiscount(d: Partial<Discount>): Promise<Reply> { retur
 export async function deleteDiscount(id: string): Promise<Reply> { return call('delete_discount', { id }); }
 export async function saveShipping(r: Partial<ShippingRate>): Promise<Reply> { return call('save_shipping', r); }
 export async function deleteShipping(id: string): Promise<Reply> { return call('delete_shipping', { id }); }
+export async function saveTax(r: Partial<TaxRate>): Promise<Reply> { return call('save_tax', r); }
+export async function deleteTax(id: string): Promise<Reply> { return call('delete_tax', { id }); }
+export async function saveTaxSettings(pricesIncludeTax: boolean): Promise<Reply> {
+  return call('save_tax_settings', { pricesIncludeTax });
+}
 
 export async function suggestIdeas(about: string, budget: number): Promise<Reply> {
   return call('suggest_ideas', { about, budget });

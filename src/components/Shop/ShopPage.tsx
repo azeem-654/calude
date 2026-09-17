@@ -77,8 +77,19 @@ interface Totals {
   goodsCents: number;
   discountCents: number;
   shippingCents: number;
+  taxCents: number;
   totalCents: number;
   shippingLabel: string;
+  /** What the shop calls its tax. Empty when none applied. */
+  taxLabel: string;
+  /**
+   * Whether the tax is already inside the total or was added to it.
+   *
+   * Printed rather than inferred: "Total £120 (includes £20 VAT)" and
+   * "Total £120 + £20 VAT" are different amounts of money, and the number on
+   * its own cannot tell a buyer which one they are agreeing to.
+   */
+  taxIncluded: boolean;
   discountCode: string;
   discountProblem: string;
 }
@@ -751,6 +762,17 @@ export default function ShopPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span>{totals.shippingLabel || 'Delivery'}</span>
                       <span>{totals.shippingCents ? money(totals.shippingCents, currency) : 'Free'}</span>
+                    </div>
+                  )}
+                  {/* An included tax is shown as a note, not as a line to add
+                      up — listing it beside the others would make the column
+                      stop summing to the total and look like an error. */}
+                  {!!totals?.taxCents && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{totals.taxIncluded
+                        ? `Includes ${totals.taxLabel || 'tax'}`
+                        : (totals.taxLabel || 'Tax')}</span>
+                      <span>{totals.taxIncluded ? '' : '+'}{money(totals.taxCents, currency)}</span>
                     </div>
                   )}
                 </div>
