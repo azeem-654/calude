@@ -188,7 +188,10 @@ function friendly(status: number, raw: string): string {
   try { msg = (JSON.parse(raw) as { error?: { message?: string } })?.error?.message || raw; } catch { /* not JSON */ }
   if (status === 429) return 'The AI key has hit its rate limit or quota. Replies will resume when it resets.';
   if (/API[ _]KEY[ _]INVALID|API key not valid/i.test(raw)) {
-    return 'The AI key was rejected. Check it in Settings → AI Engine.';
+    /* Deliberately does not name a screen. On most installs the key is the
+       operator's, and sending a customer to their own AI Engine tab to fix a
+       key that is not there is a wild goose chase. */
+    return 'Writing was refused by the AI provider. If you connected your own key, check it under Settings → AI Engine; otherwise this is on us.';
   }
   if (/SERVICE[ _]DISABLED|API[ _]KEY[ _]SERVICE[ _]BLOCKED/i.test(raw)) {
     return 'The Generative Language API is not enabled for this key\'s project.';

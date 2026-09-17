@@ -344,7 +344,7 @@ export default function AutomationBuilder({ automations: storedAutomations, onAd
            concludes the AI is useless when it was never asked. */
         onNotify(
           r.needsKey
-            ? 'No AI key is connected, so this was started from a skeleton instead. Add one under Settings → AI Engine.'
+            ? 'Writing is unavailable at the moment, so this was started from a skeleton instead.'
             : `${r.error || 'The AI could not build that.'} Started from a skeleton instead — edit it on the canvas.`,
           'error',
         );

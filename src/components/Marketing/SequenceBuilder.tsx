@@ -652,7 +652,7 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
     } else {
       onNotify(
         r.needsKey
-          ? 'No AI key connected, so this is a skeleton with gaps to fill in. Add one under Settings → AI Engine.'
+          ? 'Writing is unavailable at the moment, so this is a skeleton with gaps to fill in.'
           : `${r.error || 'The AI could not write that.'} Started from a skeleton instead.`,
         'error',
       );

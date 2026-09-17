@@ -892,10 +892,27 @@ function AIEngineTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={card}>
         <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Google Gemini API Key</h3>
-        <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
-          Required for real AI analysis. Without a key, AI Shorts can only show sample clips — it can't
-          watch your video, so the clips won't match its content. Powers AI Shorts, content generation and design AI.
-        </p>
+        {/*
+          The framing changed when `loadAiKey` gained a fallback.
+          Writing is now part of the product: a workspace without a key of its
+          own uses the operator's. So this stopped being "required" for a
+          customer and became "yours, if you would rather" — and for the owner
+          it became the key their whole install runs on, which is a bill worth
+          naming on the screen where it is set.
+        */}
+        {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' ? (
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
+            <strong style={{ color: '#0f172a' }}>This is the key your whole installation writes with.</strong>{' '}
+            Every workspace that has not connected one of its own uses it, so the usage — and the bill —
+            scales with your customers. A customer who brings their own key uses theirs instead.
+          </p>
+        ) : (
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 18px', lineHeight: 1.6 }}>
+            <strong style={{ color: '#0f172a' }}>Optional.</strong> Writing is included — campaigns, content
+            and replies work without you arranging anything. Connect your own key here only if you would
+            rather use your own quota and your own billing; it takes priority over ours when you do.
+          </p>
+        )}
 
         {/* Two copies, two answers. Shown apart because they fail apart: the
             browser one going missing costs you AI Shorts on this device, and

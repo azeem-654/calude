@@ -138,7 +138,7 @@ export async function handleAiWrite(req: Request, env: Env): Promise<Response> {
   const key = await loadAiKey(env, accountId);
   if (!key) {
     return fail(
-      'No AI key is connected to this workspace, so nothing can be written. Add one under Settings → AI Engine.',
+      'Writing is unavailable on this installation at the moment. You do not need a key of your own — this is ours to fix.',
       200, { needsKey: true },
     );
   }

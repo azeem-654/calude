@@ -1052,7 +1052,10 @@ async function carryOutWrite(
   run: RunRow,
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
   const apiKey = await loadAiKey(env, accountId);
-  if (!apiKey) return { ok: false, detail: 'No AI key is set up, so nothing could be written. Add one in Settings → AI Engine.' };
+  /* No key anywhere — the workspace's, the operator's, nor the deployment's.
+     That is an operator problem, not something the customer can fix, so it is
+     reported as one rather than as homework. */
+  if (!apiKey) return { ok: false, detail: 'Writing is unavailable on this installation at the moment, so nothing could be written. Support has been able to see this.' };
   const brand = await brandFor(env, accountId, run);
   const now = nowIso();
 

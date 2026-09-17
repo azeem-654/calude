@@ -247,7 +247,7 @@ export async function planPipeline(brief: ProjectBrief): Promise<PipelinePlan> {
   const fallback = rulesPlan(brief);
   const key = getGeminiKey();
   if (!key) {
-    return { ...fallback, note: 'Built without an AI model — no Gemini key is set in Settings → AI Engine. Every stage below comes from what you wrote and from how sales pipelines are normally laid out.' };
+    return { ...fallback, note: 'Built without an AI model — writing is unavailable at the moment. Every stage below comes from what you wrote and from how sales pipelines are normally laid out.' };
   }
 
   const prompt = `You are laying out a sales pipeline for a small business in their CRM.
