@@ -124,7 +124,26 @@
       // Not inherited either. Unset, the cron would read the live app's own
       // address and post staging's payment links and digests at production.
       "vars": {
-        "APP_ORIGIN": "https://testing.protectedcentral.com"
+        "APP_ORIGIN": "https://testing.protectedcentral.com",
+
+        // ── One account, and no way to make a second ──
+        //
+        // Staging is for one person rehearsing changes. An open sign-up form on
+        // a public address is a table anybody can fill, and rows somebody else
+        // created then have to be told apart from the rehearsal data they sit
+        // next to — which is the point at which a testing environment stops
+        // being useful for testing.
+        //
+        // This shuts every self-serve route at once: the form, Google, and the
+        // emailed code. It does not stop the one account signing in by any of
+        // them, and it does not stop that account creating sub-accounts inside
+        // its own workspace — those are the owner's own doing and are the thing
+        // being rehearsed.
+        //
+        // Deliberately absent from the live app above. Unset means open, so a
+        // typo here fails towards a working product rather than towards one
+        // nobody can join.
+        "SELF_SERVE_SIGNUP": "off"
       },
 
       "triggers": {

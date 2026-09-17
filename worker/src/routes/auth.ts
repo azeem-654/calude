@@ -8,7 +8,7 @@
  */
 import { addr, body, fail, json, ok } from '../lib/http';
 import { hashPassword, newToken, timingSafeEqual, verifyPassword } from '../lib/crypto';
-import { hasAnyUser, hasInstallOwner, nowIso, sweepSessions, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { hasAnyUser, hasInstallOwner, nowIso, signupsClosed, sweepSessions, userFromToken, type Env, type SessionUser } from '../lib/db';
 import {
   authorizeUrl, checkState, exchangeCode, googleCreds, saveGoogleCreds, redirectUri, signInOrigin,
 } from '../lib/googleAuth';
@@ -192,6 +192,13 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, ip
   ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null }>();
 
   if (!user) {
+    /* Signing *in* still works for whoever already has an account here — it is
+       only the making of a new one that is shut. Checked in this branch rather
+       than at the top for exactly that reason: the one person who uses staging
+       must still be able to arrive through Google or a code. */
+    if (signupsClosed(env)) {
+      return fail('This is the testing site, and it has one account. Sign in at app.protectedcentral.com instead.', 403);
+    }
     const accountId = crypto.randomUUID();
     const name = suggestedName.trim().slice(0, 120) || email.split('@')[0];
     /* An empty hash, not a random one. `verifyPassword` fails against it, so
@@ -315,6 +322,11 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
    * workspaces it owns.
    */
   if (action === 'register') {
+    /* See `signupsClosed`. On staging this route is shut: one person uses that
+       deployment, and an open sign-up form on a public address is a table
+       anybody can fill with rows that then have to be told apart from real
+       rehearsal data. */
+    if (signupsClosed(env)) return fail('This is the testing site, and it has one account. Sign in at app.protectedcentral.com instead.', 403);
     const email = addr(d.email);
     if (!email) return fail('Enter a valid email address.');
     const name = String(d.name ?? '').trim();

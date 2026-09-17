@@ -26,7 +26,31 @@ export interface Env {
    * looks; a workspace's own key always wins.
    */
   AI_API_KEY?: string;
+  /**
+   * Whether a stranger may make themselves an account on this deployment.
+   *
+   * `'off'` closes every self-serve route — the public form, Google, the
+   * emailed code. Set on the staging environment in wrangler.jsonc, where
+   * there is exactly one person and an open form on a public address is a
+   * table anybody can fill.
+   *
+   * Explicit rather than inferred from `APP_ORIGIN`. A control that decides
+   * who may create an account should not be a side effect of a string
+   * somebody could change for an unrelated reason — and unset, this is open,
+   * which is right for the live app and wrong to arrive at by accident.
+   */
+  SELF_SERVE_SIGNUP?: string;
 }
+
+/**
+ * Whether this deployment lets people sign themselves up.
+ *
+ * Open unless it is explicitly closed: the live app sets nothing, so a
+ * misspelling here fails towards a working product rather than towards a
+ * product nobody can join.
+ */
+export const signupsClosed = (env: Env): boolean =>
+  String(env.SELF_SERVE_SIGNUP ?? '').trim().toLowerCase() === 'off';
 
 export interface SessionUser {
   email: string;
