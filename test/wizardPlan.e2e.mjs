@@ -33,8 +33,15 @@ const open = async (width) => {
   return { ctx, p, d, errs };
 };
 
-const toStep3 = async (d, p, industry) => {
-  await d.getByRole('button', { name: /Win new customers/ }).click();
+/*
+ * To the sending setup, which is now step four rather than step three.
+ *
+ * The goal step moved in front of it so that the project can be saved the
+ * moment the sizing is agreed — which is what lets the domains be bought on
+ * the very next screen instead of after the whole wizard.
+ */
+const toSendingSetup = async (d, p, industry) => {
+  await d.getByRole('button', { name: /phone has gone quiet/ }).click();
   await d.getByRole('button', { name: /^Continue/ }).click();
   await p.waitForTimeout(300);
   await d.getByRole('button', { name: industry }).click();
@@ -48,21 +55,30 @@ const toStep3 = async (d, p, industry) => {
   await d.getByPlaceholder(/Bob/).first().fill('Bobs Plumbing');
   await d.getByRole('button', { name: /^Continue/ }).click();
   await p.waitForTimeout(2200);
+
+  /* The goal step. Both fields are required before it will go on, which is
+     itself worth driving rather than stepping around. */
+  await d.getByPlaceholder(/Spring push|—/).first().fill('Test project');
+  await d.getByPlaceholder(/Pick one above to edit/).fill('Book six boiler services a month.');
+  await d.getByRole('button', { name: /^Continue/ }).click();
+  await p.waitForTimeout(900);
 };
 
 for (const width of [390, 1280]) {
   const { ctx, p, d, errs } = await open(width);
 
   /* No AI key anywhere. */
-  await d.getByRole('button', { name: /Choose it myself/ }).click();
+  await d.getByRole('button', { name: /I know exactly what I want/ }).click();
   await p.waitForTimeout(300);
   const caps = await d.textContent();
   ok(`${width}px · the capability list no longer asks for an AI key`, !/AI key/i.test(caps ?? ''), (caps ?? '').slice(0, 0) || 'found one');
 
-  await toStep3(d, p, /Trades and local services/);
+  await toSendingSetup(d, p, /Trades and local services/);
   const t = await d.textContent();
 
-  ok(`${width}px · step three is the sending setup`, /Your sending setup/.test(t ?? ''));
+  ok(`${width}px · the sending setup is reached`, /Your sending setup/.test(t ?? ''));
+  ok(`${width}px · and the step after it is named as the domains`,
+    /Domains and mailboxes/.test(t ?? '') || width < 900, 'the rail does not name the purchase step');
   ok(`${width}px · the starter is three domains and nine mailboxes`,
     /9 mailboxes across 3 domains/.test(t ?? ''), (t ?? '').match(/\d+ mailboxes across \d+ domains?/)?.[0] ?? 'not found');
   ok(`${width}px · it shows the arithmetic rather than just the answer`,
@@ -99,7 +115,7 @@ for (const width of [390, 1280]) {
 /* A shop is told it does not need a pool. */
 {
   const { ctx, p, d, errs } = await open(1280);
-  await toStep3(d, p, /Online shop/);
+  await toSendingSetup(d, p, /Online shop/);
   const t = await d.textContent();
   ok('a shop is told one address on its own domain', /One address, on your own domain/.test(t ?? ''), (t ?? '').slice(0, 140));
   ok('and is not sold a pool of domains', !/mailboxes across/.test(t ?? ''));

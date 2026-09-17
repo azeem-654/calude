@@ -44,6 +44,7 @@ import {
   Loader, Globe, Check, ArrowLeft, ArrowRight, Sparkles, Minus, Plus,
   ClipboardPaste, PenLine, Building2, Search, Mail, MessageSquare, HelpCircle,
   FileText, CalendarCheck, ShoppingBag, ChevronRight, ShieldCheck, ExternalLink,
+  Target, Lightbulb,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
@@ -73,6 +74,8 @@ const GREEN = '#0f7b3d';
 const JOB_ICON: Record<string, typeof Search> = {
   'new-customers': Search,
   'existing-customers': Mail,
+  'poor-results': MessageSquare,
+  diary: CalendarCheck,
   launch: Sparkles,
   shop: ShoppingBag,
   'be-found': FileText,
@@ -93,31 +96,75 @@ const GOALS = [
   { id: 'fill-diary', label: 'Fill the diary' },
 ] as const;
 
-/* Five before anything is saved, then the purchase. Completion falls off a
+/* Four before anything is saved, then the purchase. Completion falls off a
    cliff with length — three-step flows finish around 72%, seven-step around
-   16% — so each of these earns its place, and the sixth is optional and
-   after the fact. */
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+   16% — so each of these earns its place, and the review that used to have one
+   to itself is now folded into the step whose button it describes. */
+type Step = 1 | 2 | 3 | 4 | 5;
 type Way = 'site' | 'paste' | 'hand';
 /** How this project will get an address to send from. */
 type MailPlan = 'have' | 'buy' | 'later';
 
 const TITLES: Record<Step, string> = {
-  1: 'What are you trying to do?',
-  2: 'Who is it for?',
-  3: 'Your sending setup',
-  4: 'What would make this a success?',
-  5: 'Ready when you are',
-  6: 'Your domain and email',
+  1: 'What is going wrong right now?',
+  2: 'Whose business is this for?',
+  3: 'What would make this worth it?',
+  4: 'Your sending setup',
+  5: 'Your domains and mailboxes',
 };
 
 const SUBTITLES: Record<Step, string> = {
-  1: 'Pick the closest one. It decides what Autopilot does first, and you can change any of it later.',
+  1: 'Pick the one that sounds most like your week. It decides what Autopilot does first, and you can change any of it later.',
   2: 'Everything it writes comes from here — what they sell, who buys it, how they talk.',
-  3: 'Sized from what you want to send, and adjustable. The arithmetic is shown so you can check it.',
-  4: 'Autopilot reads this every time it decides what to do next.',
-  5: 'Nothing has been saved yet. Here is exactly what happens when you press start.',
-  6: 'Bought for this project. Skip it if you would rather not.',
+  3: 'Autopilot reads this every time it decides what to do next.',
+  4: 'Sized from what you want to send, and adjustable. The arithmetic is shown so you can check it — and the next screen buys it.',
+  5: 'Bought for this project, now rather than later. Nothing is charged until you press buy.',
+};
+
+/**
+ * The rail down the left.
+ *
+ * Named steps rather than a row of dots. A dot says how far along you are; a
+ * name says what is still coming, which is what somebody deciding whether to
+ * carry on actually wants to know — and it is why the last one can honestly
+ * say "and buy them", so the domain purchase is not a surprise at the end.
+ */
+const STEP_NAV: { n: Step; label: string; icon: typeof Search }[] = [
+  { n: 1, label: 'The problem', icon: Search },
+  { n: 2, label: 'The business', icon: Building2 },
+  { n: 3, label: 'The goal', icon: Target },
+  { n: 4, label: 'Sending setup', icon: Mail },
+  { n: 5, label: 'Domains and mailboxes', icon: Globe },
+];
+
+/**
+ * The note in the margin, per step.
+ *
+ * One thing worth knowing before answering, where somebody will read it —
+ * beside the question rather than under it. Deliberately the thing most likely
+ * to be got wrong rather than a restatement of the heading.
+ */
+const ASIDE: Record<Step, { title: string; body: string }> = {
+  1: {
+    title: 'Not sure which one?',
+    body: 'Pick the one that sounds most like your last month. None of it is locked in — the whole plan can be changed after the project exists, and picking the nearest one is better than picking none.',
+  },
+  2: {
+    title: 'Why this matters more than it looks',
+    body: 'Every email, page and post is written from what is on this screen. A profile that says "plumber, Leeds, mostly landlords" produces completely different writing from one that says "plumbing services".',
+  },
+  3: {
+    title: 'Say a number if you have one',
+    body: 'A target is what lets Autopilot tell you it is behind. Left blank it plans anyway and says it was not given one, rather than inventing a figure and reporting against it.',
+  },
+  4: {
+    title: 'Why several mailboxes and not one',
+    body: 'One address sending a few hundred emails a month is the usual reason mail stops arriving. Spreading the same volume over a pool, warmed up slowly, is what keeps it landing — which is why the number here is a pool and not a preference.',
+  },
+  5: {
+    title: 'What you are buying',
+    body: 'The domains, the mailboxes on them, and the records that make mail from them trusted — set up for you. You can point a domain you already own at this instead, from Settings, and skip this entirely.',
+  },
 };
 
 export default function NewProject({
@@ -129,6 +176,18 @@ export default function NewProject({
 }) {
   const { addNotification } = useApp();
   const [step, setStep] = useState<Step>(1);
+  /*
+   * Measured rather than guessed. Everything in this file is an inline style,
+   * so there is no media query to hang the two-column layout on — and a fixed
+   * breakpoint assumed from the viewport would be wrong inside the dialog's
+   * own padding.
+   */
+  const [wide, setWide] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 900));
+  useEffect(() => {
+    const onResize = () => setWide(window.innerWidth >= 900);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const [createdId, setCreatedId] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -271,7 +330,7 @@ export default function NewProject({
         : adding
           ? (form.companyName.trim() ? '' : 'Give the client a name')
           : (portfolioId ? '' : 'Choose a client'))
-        : step === 4 ? (!name.trim() ? 'Name the project'
+        : step === 3 ? (!name.trim() ? 'Name the project'
           : objective.trim().length < 8 ? 'Say what it should achieve' : '')
           : '';
 
@@ -301,28 +360,52 @@ export default function NewProject({
     if (!r.success || !r.id) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
     addNotification(`"${name.trim()}" started. Autopilot plans it within a day.`, 'success');
     setCreatedId(r.id);
-    /* Straight to the purchase only if they asked for one on step three.
-       Otherwise there is nothing left to do and another screen would be a
-       toll booth on the way out. */
-    if (mailPlan === 'buy') setStep(6);
+    /* Straight to the purchase if they asked for a pool, because they asked
+       for it on the screen they just left. Otherwise there is nothing to buy
+       and another screen would be a toll booth on the way out. */
+    if (mailPlan === 'buy') setStep(5);
     else onCreated();
   };
 
   const next = () => {
     if (blocked) return;
-    if (step === 5) { void create(); return; }
-    setStep(s => (Math.min(s + 1, 5) as Step));
+    /* Step four is where it commits: the project is saved and, if they asked
+       for a pool, the very next thing on screen is the shop for it. */
+    if (step === 4) { void create(); return; }
+    setStep(s => (Math.min(s + 1, 4) as Step));
   };
 
   /* ── Small shared pieces, in the one visual language ── */
 
+  /*
+   * ── The shape of the thing ──
+   *
+   * A wide card rather than a phone-width sheet, with the steps named down the
+   * left and a note in the right margin. The single narrow column was fine
+   * while every step was a list of options; it stopped being fine once one of
+   * them is a domain search with prices in it, which needs width to be read
+   * rather than scrolled.
+   *
+   * It collapses to one column under 900px, and the rail goes with it — on a
+   * phone the header already says which step this is, and a vertical list of
+   * five names above every question is a screen of chrome before the content.
+   */
   const sheet: React.CSSProperties = {
-    width: '100%', maxWidth: 560, background: '#fff',
-    borderRadius: 'clamp(20px, 4vw, 26px)',
+    width: '100%', maxWidth: wide ? 1000 : 560, background: '#fff',
+    borderRadius: 'clamp(18px, 3vw, 24px)',
     display: 'flex', flexDirection: 'column',
-    maxHeight: 'min(92vh, 860px)', overflow: 'hidden',
+    maxHeight: 'min(94vh, 900px)', overflow: 'hidden',
     boxShadow: '0 30px 80px -20px rgba(11,12,14,0.45)',
   };
+
+  const railItem = (on: boolean, done: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+    padding: '10px 12px', borderRadius: 11, border: 'none', fontFamily: 'inherit',
+    background: on ? 'rgba(91,70,229,0.08)' : 'transparent',
+    color: on ? ACCENT : done ? INK : '#94a3b8',
+    fontSize: 13, fontWeight: on ? 700 : 600,
+    cursor: done && !on ? 'pointer' : 'default',
+  });
 
   const row = (on: boolean): React.CSSProperties => ({
     display: 'flex', gap: 13, alignItems: 'flex-start', textAlign: 'left', width: '100%',
@@ -376,22 +459,49 @@ export default function NewProject({
             background: 'none', border: 0, padding: '4px 2px', cursor: 'pointer',
             color: MUTED, fontSize: 15, fontFamily: 'inherit', fontWeight: 500,
           }}>
-            {step === 6 ? 'Done' : 'Cancel'}
+            {step === 5 ? 'Done' : 'Cancel'}
           </button>
-          <span style={{ flex: 1, display: 'flex', gap: 6, justifyContent: 'center' }}>
-            {[1, 2, 3, 4, 5].map(n => (
-              <span key={n} style={{
-                width: step === n ? 20 : 6, height: 6, borderRadius: 99,
-                background: step >= n ? ACCENT : '#e2e6ee',
-                transition: 'width 0.25s ease, background 0.25s ease',
-              }} />
-            ))}
+          <span style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: MUTED, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              New project
+            </span>
+            <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8' }}>
+              Step {step} of 5
+            </span>
           </span>
-          {/* Balances the cancel button so the dots sit centred. */}
+          {/* Balances the cancel button so the label sits centred. */}
           <span style={{ width: 46 }} aria-hidden="true" />
         </header>
 
-        <div style={{ overflowY: 'auto', padding: '4px 20px 20px', display: 'grid', gap: 18 }}>
+        <div style={{
+          overflowY: 'auto', flex: 1, minHeight: 0,
+          padding: wide ? '10px 26px 26px' : '4px 20px 20px',
+          display: 'grid', gap: wide ? 26 : 0,
+          gridTemplateColumns: wide ? '188px minmax(0, 1fr) 232px' : '1fr',
+          alignItems: 'start',
+        }}>
+
+          {/* ── The rail: what is coming, not just how far along ── */}
+          {wide && (
+            <nav aria-label="Steps" style={{ display: 'grid', gap: 2, position: 'sticky', top: 0 }}>
+              {STEP_NAV.map(({ n, label, icon: Ic }) => {
+                const done = n < step;
+                return (
+                  <button key={n} type="button" aria-current={step === n ? 'step' : undefined}
+                    /* Backwards only. Forward would skip the checks the button
+                       at the bottom makes, and step five spends money. */
+                    onClick={() => { if (done && step !== 5) setStep(n); }}
+                    style={railItem(step === n, done)}>
+                    <Ic size={14} style={{ flexShrink: 0 }} />
+                    <span style={{ minWidth: 0 }}>{label}</span>
+                    {done && <Check size={12} color={GREEN} style={{ marginLeft: 'auto', flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+
+          <div style={{ display: 'grid', gap: 18, minWidth: 0 }}>
           <div>
             <h2 style={{
               margin: 0, fontSize: 'clamp(21px, 4.4vw, 27px)', fontWeight: 800,
@@ -426,6 +536,23 @@ export default function NewProject({
                         <span style={{ display: 'block', fontSize: 13, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>
                           {j.blurb}
                         </span>
+                        {/* The words somebody with this problem would have
+                            typed into a search box. Somebody scanning seven
+                            cards finds the phrase already in their head faster
+                            than they read seven paragraphs — and a product that
+                            never uses the customer's own vocabulary reads as
+                            though it was built for somebody else. */}
+                        {j.alsoKnownAs.length > 0 && (
+                          <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+                            {j.alsoKnownAs.map(term => (
+                              <span key={term} style={{
+                                fontSize: 11.5, color: on ? ACCENT : '#64748b', fontWeight: 600,
+                                background: on ? 'rgba(91,70,229,0.08)' : '#f1f3f7',
+                                borderRadius: 999, padding: '3px 9px',
+                              }}>{term}</span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                       {on
                         ? <Check size={17} color={ACCENT} style={{ flexShrink: 0, marginTop: 8 }} />
@@ -631,7 +758,7 @@ export default function NewProject({
           )}
 
           {/* ── 3 · The sending setup, sized from the target ── */}
-          {step === 3 && (
+          {step === 4 && (
             <div style={{ display: 'grid', gap: 14 }}>
 
               {/* An owned list is a different machine, and says so instead of
@@ -771,7 +898,7 @@ export default function NewProject({
                   </p>
                   <div style={{ display: 'grid', gap: 7, marginTop: 11 }}>
                     {([
-                      ['buy', `Buy the ${pool.domains} domain${pool.domains === 1 ? '' : 's'} and ${pool.mailboxes} mailbox${pool.mailboxes === 1 ? '' : 'es'}`, 'Chosen and paid for on the next screen, once the project exists.'],
+                      ['buy', `Buy the ${pool.domains} domain${pool.domains === 1 ? '' : 's'} and ${pool.mailboxes} mailbox${pool.mailboxes === 1 ? '' : 'es'}`, 'Chosen and paid for on the very next screen — the project is saved on the way there.'],
                       ['have', 'I have a mailbox to use', 'Connect it in Settings. Fine for your own list; not enough on its own for cold outreach at this volume.'],
                       ['later', 'Decide later', 'The project still starts. Nothing will send until this is sorted.'],
                     ] as const).map(([id, label, hint]) => (
@@ -838,7 +965,7 @@ export default function NewProject({
           )}
 
           {/* ── 4 · What success is ── */}
-          {step === 4 && (
+          {step === 3 && (
             <div style={{ display: 'grid', gap: 14 }}>
               <div><label style={lbl}>Call the project</label>
                 <input style={inp} value={name} onChange={e => setName(e.target.value)}
@@ -894,8 +1021,12 @@ export default function NewProject({
             </div>
           )}
 
-          {/* ── 5 · Review ── */}
-          {step === 5 && (
+          {/* ── 4b · What happens when you press the button ──
+              Folded into the sizing step rather than given one of its own. It is
+              the thing somebody is actually agreeing to, and the step after
+              this one spends money — so it has to be on the screen with the
+              button, not one back from it. */}
+          {step === 4 && (
             <div style={{ display: 'grid', gap: 11 }}>
               {([
                 ['Doing', job?.label ?? '—'],
@@ -966,8 +1097,12 @@ export default function NewProject({
             </div>
           )}
 
-          {/* ── 6 · The purchase, once the project is real ── */}
-          {step === 6 && createdId && (
+          {/* ── 5 · The domains, bought here rather than at the end ──
+              Somebody who has just decided on three domains and nine mailboxes
+              is at the exact moment they care about buying them. Sending them
+              through two more screens first and producing the shop at the end
+              turns a decision into an errand. */}
+          {step === 5 && createdId && (
             <DigitalSetupStep
               companyName={clientName}
               contactEmail={getSession()?.user?.email ?? ''}
@@ -975,10 +1110,34 @@ export default function NewProject({
               onOrder={() => { addNotification('Order placed. Watch it build on the project.', 'success'); onCreated(); }}
             />
           )}
+          </div>
+
+          {/* ── The note in the margin ──
+              Beside the question rather than under it, because it is the thing
+              most likely to be got wrong and nobody scrolls back up to read a
+              warning after answering. On a narrow screen it follows the
+              content, which is the only place it can go. */}
+          <aside style={{
+            border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px',
+            background: '#fbfbfd', marginTop: wide ? 0 : 16,
+            position: wide ? 'sticky' : undefined, top: wide ? 0 : undefined,
+          }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 7 }}>
+              <Lightbulb size={14} color={ACCENT} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>{ASIDE[step].title}</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.65 }}>{ASIDE[step].body}</p>
+
+            {/* "Not this one if" is deliberately *not* repeated here — the
+                chosen card already carries it, next to the thing it is warning
+                about. Saying it twice on one screen teaches people that this
+                column repeats what they have already read, and then they stop
+                reading the column. */}
+          </aside>
         </div>
 
         {/* ── One button, at the bottom, always ── */}
-        {step !== 6 && (
+        {step !== 5 && (
           <footer style={{ padding: '12px 20px 18px', borderTop: `1px solid ${LINE}`, flexShrink: 0, display: 'flex', gap: 10 }}>
             {step > 1 && (
               <button onClick={() => setStep(s => (Math.max(s - 1, 1) as Step))} style={{
@@ -998,7 +1157,13 @@ export default function NewProject({
             }}>
               {busy ? <Loader size={16} className="spin" />
                 : blocked ? blocked
-                  : step === 5 ? <>Start the project <Sparkles size={15} /></>
+                  : step === 4
+                    /* Named rather than "Continue": this press is the one that
+                       writes the project, and the one that leads to a payment
+                       screen. A button that spends money says so. */
+                    ? (mailPlan === 'buy'
+                        ? <>Create it and choose the domains <ArrowRight size={15} /></>
+                        : <>Start the project <Sparkles size={15} /></>)
                     : <>Continue <ArrowRight size={15} /></>}
             </button>
           </footer>

@@ -30,8 +30,8 @@ await p.getByRole('button', { name: /New project|Start your first project/i }).f
 const d = p.getByRole('dialog', { name: 'New project' });
 await d.waitFor({ timeout: 8000 });
 
-/* A shop, all the way to the review. */
-await d.getByRole('button', { name: /Sell products online/ }).click();
+/* A shop, all the way to the build order. */
+await d.getByRole('button', { name: /sell it online without building a shop/ }).click();
 await d.getByRole('button', { name: /^Continue/ }).click();
 await p.waitForTimeout(300);
 await d.getByRole('button', { name: /Online shop/ }).click();
@@ -44,15 +44,20 @@ await d.getByRole('button', { name: /Type it/ }).click();
 await d.getByPlaceholder(/Bob/).first().fill('Northgate Candles');
 await d.getByRole('button', { name: /^Continue/ }).click();
 await p.waitForTimeout(2200);
-await d.getByRole('button', { name: /^Continue/ }).click();
-await p.waitForTimeout(400);
+
+/* The goal step now comes before the sending setup, so that the project can be
+   saved the moment the sizing is agreed — which is what lets the domains be
+   bought on the next screen rather than after the whole wizard. */
 await d.getByPlaceholder(/Spring push|Northgate/).first().fill('Candles spring');
 await d.locator('textarea').first().fill('Sell 200 candles a month and get buyers back for a second order');
 await d.getByRole('button', { name: /^Continue/ }).click();
-await p.waitForTimeout(500);
+await p.waitForTimeout(900);
 
 const t = await d.textContent();
-ok('the review shows the build order', /The order it builds things in/.test(t ?? ''));
+ok('the build order is shown beside the button that commits to it',
+  /The order it builds things in/.test(t ?? ''));
+ok('and it is on the same screen as the sending setup',
+  /Your sending setup/.test(t ?? ''), 'the review is still a step of its own');
 ok('a shop starts with the catalogue, not outreach',
   (t ?? '').indexOf('Put the catalogue up') > 0
   && (t ?? '').indexOf('Put the catalogue up') < (t ?? '').indexOf('abandoned baskets'),

@@ -1,24 +1,37 @@
 /**
- * What somebody is actually trying to do, and what that implies.
+ * The problem somebody arrived with, and what that implies.
  *
- * ── Why this replaces six switches ──
+ * ── Why this asks about a problem and not a feature ──
  *
- * The wizard used to open on six capabilities — "Find people worth
- * contacting", "Write and send the emails", "Text them as well" — and ask a
- * plumber to tick the right ones. That is the *implementation* asking to be
- * configured. Nobody arrives at a marketing tool having decided they want
- * capability three and five; they arrive because the phone is not ringing, or
- * because they are launching something, or because they have four hundred old
- * customers and no reason to email them.
+ * The wizard once opened on six capabilities — "Find people worth contacting",
+ * "Write and send the emails", "Text them as well" — and asked a plumber to
+ * tick the right ones. That is the *implementation* asking to be configured.
  *
- * So the first question is the job. Capabilities are derived from it, which is
- * the same direction `kindFor` already works in: the server's contract is
- * computed from the answer rather than being the question.
+ * It then opened on the job: "Win new customers", "Get more from the customers
+ * you have". Better, but still the language of a marketing department. Nobody
+ * wakes up having decided to Win New Customers. They wake up because they were
+ * under a sink until seven and the phone did not ring, or because they sent
+ * four hundred emails last month and got two replies, or because they spend
+ * every evening answering "are you free Tuesday?" one message at a time.
+ *
+ * So each option below opens with the situation, in the words somebody would
+ * use about their own week. `label` is the complaint. `blurb` names who says
+ * it. The job is still there — it is what `caps` are derived from — but it is
+ * the answer rather than the question.
+ *
+ * ── `alsoKnownAs` ──
+ *
+ * The things people type into a search box when they have this problem:
+ * "automatic appointment booking", "cold email that doesn't go to spam". It is
+ * shown under the option because somebody scanning five cards for the words
+ * they already have in their head will find them faster than they will read
+ * five paragraphs — and because a product that never uses the customer's own
+ * vocabulary feels like it was built for somebody else.
  *
  * ── Why each one carries a fortnight ──
  *
  * `firstFortnight` is the teaching part, and it is the reason this file is
- * data rather than a switch statement. Somebody choosing between six abstract
+ * data rather than a switch statement. Somebody choosing between five abstract
  * options is guessing; somebody reading "week one it writes the emails and
  * shows them to you, week two it starts sending the approved ones" is making a
  * decision. It is also a promise, so it says what actually happens — including
@@ -27,18 +40,26 @@
  * ── `advanced` ──
  *
  * The six switches are not gone, they are the last option. Somebody who knows
- * exactly what they want should not have to pick a job that approximates it,
- * and a product that hides its own model from the people who understand it
+ * exactly what they want should not have to pick a problem that approximates
+ * it, and a product that hides its own model from the people who understand it
  * reads as condescending.
  */
 import { ALL_CAPABILITIES, CAPABILITIES, type Capability } from './projects';
 
 export interface Job {
   id: string;
-  /** What they would say they are trying to do, in their words. */
+  /** The situation, in the words somebody would use about their own week. */
   label: string;
-  /** One line under it. Concrete, not a benefit statement. */
+  /** Who says it. Named trades, so somebody recognises themselves in one line. */
   blurb: string;
+  /**
+   * What somebody with this problem types into a search box.
+   *
+   * Their vocabulary, not ours — "automatic appointment booking" rather than
+   * "calendar integration". Somebody scanning for words they already have in
+   * their head finds them faster than they read five paragraphs.
+   */
+  alsoKnownAs: string[];
   /** Derived, never asked. */
   caps: Capability[];
   /** The teaching part: what the first two weeks look like if they pick this. */
@@ -50,21 +71,23 @@ export interface Job {
 export const JOBS: Job[] = [
   {
     id: 'new-customers',
-    label: 'Win new customers',
-    blurb: 'Find businesses who plausibly need this, start the conversation, book the call.',
+    label: 'The work is good but the phone has gone quiet',
+    blurb: 'A plumber, an electrician, a builder, a cleaner — out on jobs all day, with nobody doing the finding. You are booked this week and you have no idea about next month.',
+    alsoKnownAs: ['get more leads', 'find new clients', 'cold email that lands', 'lead generation on autopilot'],
     caps: ['find', 'email', 'content', 'book'],
     firstFortnight: [
       'Builds a list of businesses that fit, from their trade and where they are.',
-      'Writes a first email and two follow-ups from the client’s own profile — and shows you all three before anything sends.',
+      'Writes a first email and two follow-ups from the client\u2019s own profile — and shows you all three before anything sends.',
       'Puts up a page for the offer, so the email has somewhere to point.',
       'Turns a reply into a slot in the diary instead of an email chain.',
     ],
-    notFor: 'A list you already have — "Get more from the customers you have" does that without the searching.',
+    notFor: 'A list you already have — "You are sitting on a list you never contact" does that without the searching.',
   },
   {
     id: 'existing-customers',
-    label: 'Get more from the customers you have',
-    blurb: 'The people already in your contacts, contacted properly instead of never.',
+    label: 'You are sitting on a list you never contact',
+    blurb: 'Hundreds of past customers, quotes that went cold, enquiries from two years ago. Everybody says "you should email them" and nobody has the evening free to write it.',
+    alsoKnownAs: ['email my old customers', 're-engage past clients', 'follow up on old quotes', 'win back lapsed customers'],
     caps: ['email', 'content', 'book'],
     firstFortnight: [
       'Reads the contacts already in the workspace — it does not go looking for more.',
@@ -72,12 +95,41 @@ export const JOBS: Job[] = [
       'Sends to a small group first, and waits for you before the rest.',
       'Books whoever replies.',
     ],
-    notFor: 'An empty contact list. Start with "Win new customers" and come back to this.',
+    notFor: 'An empty contact list. Start with "The work is good but the phone has gone quiet" and come back to this.',
+  },
+  {
+    id: 'poor-results',
+    label: 'You are already sending and barely anyone replies',
+    blurb: 'You bought a tool, you send the emails, and the open rate is embarrassing. Usually it is one address sending too much, no follow-up, and a template that reads like a template.',
+    alsoKnownAs: ['low reply rate', 'emails going to spam', 'improve open rates', 'email warm-up and deliverability'],
+    caps: ['email', 'content', 'book'],
+    firstFortnight: [
+      'Spreads the sending across several addresses instead of hammering one, which is the usual reason mail stops arriving.',
+      'Warms them up slowly before volume goes anywhere near them.',
+      'Rewrites the sequence from the client\u2019s own profile, and shows you all of it before a single send.',
+      'Follows up more than once, because almost nobody answers the first one.',
+    ],
+    notFor: 'Having nobody to write to yet. Sort the list first.',
+  },
+  {
+    id: 'diary',
+    label: 'You lose half your evening booking people in',
+    blurb: 'A trainer, a tutor, a clinic, a consultant. The enquiries come in and every one turns into six messages about whether Tuesday works.',
+    alsoKnownAs: ['automatic appointment booking', 'online booking page', 'stop the back and forth', 'appointment reminders'],
+    caps: ['email', 'book', 'content'],
+    firstFortnight: [
+      'Puts up a booking page with your real availability on it, so "are you free Tuesday?" answers itself.',
+      'Answers an enquiry and offers the times, rather than leaving it in your inbox until nine.',
+      'Reminds people before the appointment, which is what stops the no-shows.',
+      'Follows up with whoever went quiet without you having to remember them.',
+    ],
+    notFor: 'Work that is quoted rather than booked — a roof is not a 40-minute slot.',
   },
   {
     id: 'launch',
-    label: 'Launch something new',
-    blurb: 'A product, a service or a location — told to the people who should hear it first.',
+    label: 'You have something new and nobody knows yet',
+    blurb: 'A new service, a second location, a course, a listing. The people most likely to say yes are the ones who already know you, and they have not been told.',
+    alsoKnownAs: ['launch announcement', 'promote a new service', 'new product marketing', 'tell my customers first'],
     caps: ['find', 'email', 'content', 'book'],
     firstFortnight: [
       'Writes the page the launch points at, before anything is sent.',
@@ -85,12 +137,13 @@ export const JOBS: Job[] = [
       'Then goes looking for people who fit the new thing specifically.',
       'Keeps the two lists apart, so the second email does not land on somebody who already bought.',
     ],
-    notFor: 'Steady ongoing demand — the other two are better at the long game.',
+    notFor: 'Steady ongoing demand — the first two are better at the long game.',
   },
   {
     id: 'shop',
-    label: 'Sell products online',
-    blurb: 'A catalogue and a checkout, plus the chasing and thanking around it.',
+    label: 'You want to sell it online without building a shop',
+    blurb: 'You make or resell something and the whole thing stalls at "I need a website with a checkout". Plus the baskets people abandon and the thank-yous nobody sends.',
+    alsoKnownAs: ['sell products online', 'online store with checkout', 'abandoned cart emails', 'accept card payments'],
     caps: ['shop', 'email', 'content'],
     firstFortnight: [
       'Puts the products on a page a stranger can buy from, with no login.',
@@ -98,12 +151,13 @@ export const JOBS: Job[] = [
       'Thanks the people who bought, once, rather than every tick.',
       'Writes the product copy and the posts that point at it.',
     ],
-    notFor: 'Services and quoted work. Those are "Win new customers" — there is nothing to add to a basket.',
+    notFor: 'Services and quoted work. Those are the first option — there is nothing to add to a basket.',
   },
   {
     id: 'be-found',
-    label: 'Be found in the first place',
-    blurb: 'Pages and posts about the things their customers actually search for.',
+    label: 'Nobody finds you when they go looking',
+    blurb: 'An estate agent, a clinic, an accountant, a school. People in your area search for exactly what you do, and what they find is somebody else.',
+    alsoKnownAs: ['show up on Google', 'SEO for small business', 'content marketing', 'blog posts that rank'],
     caps: ['content'],
     firstFortnight: [
       'Works out what people search for before they buy this, and writes for that.',
@@ -117,8 +171,9 @@ export const JOBS: Job[] = [
 /** The escape hatch: the six switches, for somebody who already knows. */
 export const ADVANCED_JOB: Job = {
   id: 'advanced',
-  label: 'Choose it myself',
-  blurb: 'The six things it can do, switched on one at a time.',
+  label: 'I know exactly what I want it to do',
+  blurb: 'The six things it can do, switched on one at a time. No guessing on our part.',
+  alsoKnownAs: [],
   caps: [],
   firstFortnight: [],
   notFor: '',
