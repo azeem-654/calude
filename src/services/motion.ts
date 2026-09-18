@@ -170,6 +170,75 @@ export function watchNewStylesheets(): void {
 }
 
 /**
+ * What is actually happening, for somebody whose animations will not run.
+ *
+ * ── Why the app has to be able to answer this ──
+ *
+ * "It works on every other device but not this one" is a report nobody can act
+ * on, and the usual advice — check the accessibility setting, check battery
+ * saver, clear the cache — is a list of guesses. Each of the numbers below
+ * distinguishes between causes that look identical on screen:
+ *
+ *  - `rulesFound` at zero means the rewriter cannot see the app's own
+ *    stylesheets. Nothing this setting does will ever take effect, and the
+ *    cause is the browser, not the choice.
+ *  - `rulesFound` high but `systemReduced` true with a `system` choice means
+ *    the operating system is suppressing it and the override is simply not
+ *    switched on.
+ *  - Everything correct here while the test square still refuses to move means
+ *    motion is blocked below the app — an extension, a policy, a browser flag
+ *    — and no setting in this product can reach it.
+ */
+export interface MotionDiagnostics {
+  choice: MotionChoice;
+  systemReduced: boolean;
+  /** What `applyMotion` last wrote on `<html>`. */
+  attribute: string;
+  /** Reduced-motion blocks the rewriter can see. Zero is the interesting case. */
+  rulesFound: number;
+  /** Of those, how many are currently forced on or off rather than left alone. */
+  rulesForced: number;
+  /** Stylesheets it could not read at all. Ours are same-origin; fonts are not. */
+  sheetsUnreadable: number;
+}
+
+export function motionDiagnostics(): MotionDiagnostics {
+  let rulesFound = 0;
+  let rulesForced = 0;
+  let sheetsUnreadable = 0;
+
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      sheetsUnreadable += 1;
+      continue;
+    }
+    for (const rule of Array.from(rules)) {
+      if (!(rule instanceof CSSMediaRule)) continue;
+      const live = rule.conditionText ?? rule.media.mediaText;
+      const text = original.get(rule) ?? live;
+      if (!text.includes('prefers-reduced-motion')) continue;
+      rulesFound += 1;
+      if (live === 'all' || live === 'not all') rulesForced += 1;
+    }
+  }
+
+  return {
+    choice: motionChoice(),
+    systemReduced: systemPrefersReduced(),
+    attribute: (() => {
+      try { return document.documentElement.dataset.motion ?? '(not set)'; }
+      catch { return '(no DOM)'; }
+    })(),
+    rulesFound,
+    rulesForced,
+    sheetsUnreadable,
+  };
+}
+
+/**
  * Start following the system setting, for as long as the choice is `system`.
  *
  * Without this, turning battery saver on mid-session leaves the page animating

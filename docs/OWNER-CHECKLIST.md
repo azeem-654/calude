@@ -18,14 +18,19 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 |---|---|---|---|
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
 | 2 | **Attach a wildcard Worker route** for `*.protectedcentral.com` | Cloudflare → Workers → Routes | Reseller subdomains resolve |
-| 3 | **Revoke the Creem key pasted into a chat** and reissue | creem.io → Developers | Security |
-| 4 | **Confirm the billing webhook is set** | Settings → Billing | Payments succeed and nothing is provisioned without it |
-| 5 | **Change the master password** | Settings → Security | Security |
-| 6 | **Create the owner account on the testing site** | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
-| 7 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
+| 3 | **Change the master password** | Settings → Security | Security |
+| 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
+| 5 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
 
-**Done since this list was written:** attaching testing.protectedcentral.com to
-the staging Worker (confirmed 2026-09-16 — the Domains tab shows it).
+**Done, and no longer on the list:**
+
+- Attaching testing.protectedcentral.com to the staging Worker — 2026-09-16.
+- Revoking the Creem key that was pasted into a chat, and reissuing — 2026-09-18.
+- Confirming the billing webhook — 2026-09-18.
+
+The reasoning behind the two Creem items is kept below, because it explains why
+the signing secret matters more here than it would with Stripe and that is worth
+knowing the next time either is touched.
 
 Item 2 was attempted from a session on 2026-09-14 and could not be done: the
 Cloudflare token available to an assistant is a reference, not a working
@@ -59,10 +64,34 @@ because a link that will be refused is worse than no link.
 **Nobody can tell you the password of an existing account, including an
 assistant with the database open.** Passwords are stored as PBKDF2-SHA256
 hashes — the stored value cannot be turned back into the password, which is the
-property that makes storing it safe. If you are locked out of either site, the
-way back in is to clear that user's `hash` column in the matching D1 database
-(`crmpro` for live, `crmpro-staging` for testing) and set a new password, not to
-recover the old one.
+property that makes storing it safe.
+
+### Resetting a forgotten password, on either site
+
+There is no "forgot password" email yet, so this is done in the database. Both
+sites work the same way; the only difference is which one you open.
+
+1. **Cloudflare dashboard → Workers & Pages → D1.**
+2. Open **`crmpro-staging`** for testing.protectedcentral.com, or **`crmpro`**
+   for the live app. Getting this wrong resets the account on the other site,
+   so read the name before typing.
+3. **Console** tab, and run:
+
+   ```sql
+   UPDATE crm_users SET hash = '' WHERE email = 'azeem@protectedcentral.com';
+   ```
+
+   An empty hash is not a blank password — `verifyPassword` fails against it, so
+   the account simply has no password rather than one somebody might guess.
+4. Then set a new one. The simplest route is **Sign in with a code**: the app
+   emails a one-time code, and signing in that way works with no password at
+   all. Once in, set a password under **Settings → Security**.
+   - On the testing site that needs a mailbox connected there. If there is not
+     one, delete the row instead — `DELETE FROM crm_users WHERE email = '…'` —
+     and, with that database then holding no users, the site offers **"Create
+     your owner account"** again and you set the password as you create it.
+   - Deleting the row on the **live** database would take its workspace links
+     with it. Do not use that route there; use the code sign-in.
 
 ---
 
@@ -106,7 +135,7 @@ server-issued ones.
 Open a private window, sign in, and confirm the work is there. If it is not,
 that is a regression and worth reporting immediately.
 
-### 3. Revoke the Creem key that was pasted into a chat
+### 3. Revoke the Creem key that was pasted into a chat — **DONE 2026-09-18**
 
 The API key `creem_1ZcMy…` and the endpoint signing secret `whsec_4yeCh…` were
 pasted into a chat session while a connection problem was being diagnosed.
