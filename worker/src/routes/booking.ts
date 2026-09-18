@@ -18,6 +18,8 @@
 import { addr, body, fail, headerSafe, json, ok } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { newToken, timingSafeEqual } from '../lib/crypto';
+import { meetingForBooking } from './calendar';
+import { recordEvent, upsertPerson } from '../lib/engagement';
 
 interface BookingBody {
   action?: string;
@@ -174,7 +176,39 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       'INSERT INTO crm_bookings (id, account_id, manage_key, slot_date, slot_time, status, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     ).bind(id, accountId, manageKey, slotDate, slotTime, 'confirmed', JSON.stringify(data), nowIso()).run();
 
-    return json({ success: true, id, key: manageKey });
+    /*
+     * The video meeting, and the guest as a person in the CRM.
+     *
+     * After the booking row, never before it, and neither may fail the booking.
+     * A confirmed appointment with no Meet link is a real outcome the owner can
+     * fix in a click; a booking refused because Google was slow is a customer
+     * who believes they have no appointment at all — and they are the one who
+     * will not try again.
+     */
+    let meetingUrl = '';
+    try {
+      const meeting = await meetingForBooking(env, accountId, {
+        id, slotDate, slotTime, data: JSON.stringify(data),
+      });
+      if (meeting.ok) meetingUrl = meeting.url ?? '';
+    } catch { /* see above: the booking stands either way */ }
+
+    try {
+      const person = await upsertPerson(env, accountId, {
+        email: guestEmail, name: guestName, phone: data.guestPhone,
+        source: 'booking', sourceRef: id,
+      });
+      await recordEvent(env, accountId, {
+        kind: 'appointment.booked', personId: person.id, refId: id,
+        summary: `${guestName} booked ${slotDate} at ${slotTime}`,
+        detail: { meetingUrl },
+      });
+    } catch { /* the booking is the thing that had to be saved */ }
+
+    /* Returned so the confirmation screen can show it rather than promising a
+       link that may not exist. Empty means no calendar is connected, which the
+       booking page says plainly instead of leaving a blank. */
+    return json({ success: true, id, key: manageKey, meetingUrl });
   }
 
   /* ── Guest: manage their own booking, proven by the key in their link ── */

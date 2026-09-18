@@ -15,6 +15,7 @@
  * a failure is retried rather than silently dropped.
  */
 import { nowIso, type Env } from './lib/db';
+import { askGemini, loadAiKey } from './lib/ai';
 import { loadMailbox } from './routes/mailbox';
 import { buildMime } from './lib/mime';
 import { smtpSend } from './lib/smtp';
@@ -29,8 +30,72 @@ const NOTIFY: Record<string, { subject: (s: string) => string; setting: string }
   'form.submitted': { subject: s => `Form: ${s}`, setting: 'notify_new_submission' },
 };
 
+/**
+ * Read a submission and say what it is.
+ *
+ * On the tick rather than in the request for the same reason the emails are: a
+ * form on somebody else's website must not wait on a model, and a model having
+ * a bad day must not lose the lead. The submission is already stored and
+ * already visible before this runs — triage only ever adds to it.
+ *
+ * Deliberately three short fields. Anything longer and somebody reads the
+ * summary instead of the submission, which is the point at which a judgement
+ * made by a model starts standing in for what the customer actually wrote.
+ */
+async function triage(env: Env, report: DispatchReport): Promise<void> {
+  const { results } = await env.DB.prepare(
+    `SELECT sub.id, sub.account_id AS accountId, sub.answers, f.name AS formName
+     FROM crm_form_submissions sub
+     JOIN crm_forms f ON f.id = sub.form_id AND f.account_id = sub.account_id
+     WHERE sub.ai_summary = '' AND f.ai_triage = 1
+     ORDER BY sub.created_at ASC LIMIT 15`,
+  ).bind().all<{ id: string; accountId: string; answers: string; formName: string }>();
+
+  for (const sub of results ?? []) {
+    const key = await loadAiKey(env, sub.accountId);
+    if (!key) {
+      /* Left alone rather than stamped. A workspace whose key is fixed tomorrow
+         should get today's submissions read, not find them permanently blank. */
+      report.notes.push(`${sub.accountId}: no AI key, submission triage held`);
+      continue;
+    }
+
+    const res = await askGemini(key, `A visitor filled in the form "${sub.formName}".
+
+WHAT THEY SENT:
+${sub.answers.slice(0, 3000)}
+
+Read it and answer as JSON only. Judge only what is in front of you — do not
+infer a budget, a timescale or an intention they did not state.
+{
+  "summary": "one sentence a busy person can act on",
+  "intent": "sales | support | billing | complaint | spam | unclear",
+  "quality": "hot | warm | cold | junk"
+}`, 0.2);
+
+    if (!res.ok || !res.text) { report.notes.push(`triage failed: ${res.error}`); continue; }
+    try {
+      const j = JSON.parse(res.text) as Record<string, unknown>;
+      await env.DB.prepare(
+        'UPDATE crm_form_submissions SET ai_summary = ?, ai_intent = ?, ai_quality = ? WHERE id = ?',
+      ).bind(
+        String(j.summary ?? '').slice(0, 400),
+        String(j.intent ?? '').slice(0, 30),
+        String(j.quality ?? '').slice(0, 20),
+        sub.id,
+      ).run();
+    } catch {
+      report.notes.push(`triage returned something unreadable for ${sub.id}`);
+    }
+  }
+}
+
 export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
   const report: DispatchReport = { seen: 0, notified: 0, failed: 0, notes: [] };
+
+  /* Before the notifications, so an email about a new submission can carry what
+     the assistant made of it rather than arriving first and alone. */
+  await triage(env, report).catch(() => report.notes.push('submission triage failed'));
 
   const { results: events } = await env.DB.prepare(
     `SELECT id, account_id AS accountId, kind, summary, ref_id AS refId, person_id AS personId
@@ -47,6 +112,17 @@ export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
     if (!rule) {
       await mark(env, ev.id);
       continue;
+    }
+
+    /* If triage has read it, the email says what it said. A notification that
+       makes somebody open the app to find out whether it was worth opening the
+       app is a notification that gets switched off. */
+    let extra = '';
+    if (ev.kind === 'form.submitted') {
+      const t = await env.DB.prepare(
+        'SELECT ai_summary AS summary, ai_quality AS quality FROM crm_form_submissions WHERE id = ? AND account_id = ?',
+      ).bind(ev.refId, ev.accountId).first<{ summary: string; quality: string }>();
+      if (t?.summary) extra = `${t.summary}${t.quality ? ` (${t.quality})` : ''}`;
     }
 
     const settings = await env.DB.prepare(
@@ -88,6 +164,7 @@ export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
           to: address,
           subject: rule.subject(ev.summary || '').slice(0, 180),
           html: `<p>${escapeHtml(ev.summary || ev.kind)}</p>`
+            + (extra ? `<p style="color:#334155">${escapeHtml(extra)}</p>` : '')
             + '<p style="color:#64748b;font-size:13px">Open Customer Engagement to pick it up.</p>',
           replyTo: box.from.replyTo || undefined,
         }, box.smtp.host);

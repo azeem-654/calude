@@ -21,7 +21,9 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 2 | **Attach a wildcard Worker route** for `*.protectedcentral.com` | Cloudflare → Workers → Routes | Reseller subdomains resolve |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
-| 5 | *Optional* — **create a Google OAuth client** if you want the Google button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
+| 5 | **Add the Calendar scope** to your Google client | console.cloud.google.com | Google Meet links on bookings, and the assistant offering real times |
+| 6 | *Optional* — **choose a voice provider** | — | AI voice. Nothing else; the rest of Customer Engagement works without it |
+| 7 | *Optional* — **create a Google OAuth client** if you want the Google sign-in button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
 
 **Done, and no longer on the list:**
 
@@ -37,6 +39,67 @@ Item 2 was attempted from a session on 2026-09-14 and could not be done: the
 Cloudflare token available to an assistant is a reference, not a working
 credential, and `user/tokens/verify` refuses it. It needs a browser and the
 owner's login.
+
+---
+
+## Turning Customer Engagement on
+
+Everything below is done inside the app, in any order, from
+**Customer Engagement → Overview**, which carries a live checklist that reads
+the real state rather than remembering what you told it.
+
+1. **Settings** — your business name and the addresses to notify. Without the
+   addresses everything still arrives; you are simply not told about it.
+2. **AI agents** — describe the business in your own words. This is the single
+   biggest lever on whether it sounds like you. Tick only the things it may do:
+   anything unticked it cannot do, however it is asked.
+3. **Knowledge** — three or four articles covering what you are asked most.
+   Only *published* ones are ever used. With none, the assistant is honest and
+   useless: it will say it does not know and offer a person, every time.
+4. **Widgets** — make one, then **Copy embed code** and paste that single line
+   before `</body>` on your website. Set *Only on these websites* once you are
+   live; blank means anywhere, which is right only while testing.
+5. **Forms** — the address is `/f/<slug>`. Submissions appear under
+   **Submissions** and become contacts.
+6. **Meetings** — connect a Google Calendar (see below) for Meet links.
+
+Protected Central itself is configured exactly the same way, in its own
+workspace. There is no separate support system and no special code path.
+
+### What Google Cloud needs, for Calendar and Meet
+
+The sign-in client already exists. Calendar is a **sensitive** scope and is
+asked separately, of whoever connects a calendar — deliberately not added to
+sign-in, which would put every new user of this install behind Google's
+verification review and a 100-new-user cap.
+
+1. console.cloud.google.com → **APIs & Services → Library** → enable
+   **Google Calendar API**.
+2. **OAuth consent screen → Scopes** → add
+   `https://www.googleapis.com/auth/calendar.events`.
+   Not `auth/calendar`: that one can delete a customer's whole calendar, and the
+   narrower scope is both safer and the one people agree to.
+3. **Credentials → your OAuth client → Authorised redirect URIs** → add:
+   - `https://app.protectedcentral.com/api/calendar.php`
+   - `https://testing.protectedcentral.com/api/calendar.php`
+
+   The API path, not a pretty one: only `/api/*` reaches the Worker, so a
+   redirect anywhere else is answered by the single-page app and the code is
+   dropped while the flow appears to succeed.
+4. In the app: **Customer Engagement → Meetings → Connect a Google Calendar**.
+
+If Google does not return a refresh token, the app says so and tells you to
+remove the app at myaccount.google.com/permissions and connect again — that
+happens when the account has consented before, and a connection without one
+stops working an hour later.
+
+### Voice needs a provider, and says so
+
+There is no telephony in this installation. The data model, the configuration
+screen and the `VoiceProvider` interface are real and finished; the provider
+list is deliberately empty, and every screen and endpoint reports that by name
+rather than appearing to answer calls. Adding one is a single file plus a line
+in `PROVIDERS` — the product does not need rearranging around it.
 
 ---
 

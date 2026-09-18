@@ -20,6 +20,7 @@ import { handleData } from './routes/data';
 import { handleMailbox } from './routes/mailbox';
 import { handleInfra } from './routes/infra';
 import { handleAutomation } from './routes/automation';
+import { handleCalendar } from './routes/calendar';
 import { handleEngage } from './routes/engage';
 import { handleEngagement } from './routes/engagement';
 import { handleAutopilot } from './routes/autopilot';
@@ -74,6 +75,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/automation.php': handleAutomation,
   /* The public one: no session, reached by widget key or form slug. */
   '/api/engage.php': handleEngage,
+  /* POST is the ordinary JSON API; GET is Google's OAuth redirect landing on a
+     browser, so it answers with a page. Same path, because only /api/* reaches
+     the Worker at all. */
+  '/api/calendar.php': handleCalendar,
   /* The owner's one: session required, every query scoped to the workspace. */
   '/api/engagement.php': handleEngagement,
   /* Autopilot's ledger: what it is doing, what it did and why, and the two

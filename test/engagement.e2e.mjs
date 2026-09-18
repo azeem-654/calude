@@ -182,6 +182,37 @@ ok('  → and the capture landed in the form owner’s workspace',
 const peeping = await pub({ action: 'poll', conversationId: convId, visitorKey: 'not-the-key' });
 ok('a conversation cannot be read without its visitor key', peeping.json.success !== true);
 
+/* ── Calendar, voice and submissions: the pieces that were wired last ── */
+const vs = await owner('voice_status');
+ok('voice reports honestly that no provider is connected',
+  vs.json.success === true && vs.json.available === false && /no voice provider/i.test(vs.json.message ?? ''),
+  JSON.stringify(vs.json).slice(0, 120));
+
+const cal = await api('calendar.php', { token: TOK, accountId: ACCT, action: 'status' });
+ok('the calendar endpoint answers', cal.json.success === true);
+ok('and says whether a Google client exists rather than assuming one',
+  typeof cal.json.configured === 'boolean');
+
+const conn = await api('calendar.php', { token: TOK, accountId: ACCT, action: 'connect' });
+if (cal.json.configured) {
+  ok('connecting produces a consent URL on the events scope only',
+    typeof conn.json.url === 'string'
+    && conn.json.url.includes('calendar.events')
+    && !conn.json.url.includes('auth/calendar&'),
+    String(conn.json.url ?? '').slice(0, 90));
+  ok('  → asking for offline access, or the connection dies in an hour',
+    String(conn.json.url ?? '').includes('access_type=offline'));
+} else {
+  ok('connecting refuses by name when no client is configured',
+    conn.json.success !== true && /google client/i.test(conn.json.error ?? ''));
+}
+
+const calCross = await api('calendar.php', { token: TOK, accountId: OTHER || 'x', action: 'status' });
+ok('the calendar endpoint is tenant-scoped too', calCross.json.success !== true);
+
+const setSub = await owner('set_submission', { id: 'nope', status: 'spam' });
+ok('a submission status can be set without leaking whether the id exists', setSub.json.success === true);
+
 /* ── The widget actually runs on a page ── */
 {
   const b2 = await pw.chromium.launch();

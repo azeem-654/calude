@@ -11,6 +11,7 @@
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { cleanSlug, publicKey, recordEvent, rid } from '../lib/engagement';
+import { voiceStatus } from '../lib/voice';
 
 interface Req {
   token?: string;
@@ -439,6 +440,33 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       ).bind(s(pair.crmId, 80), now, s(pair.id, 80), accountId).run();
     }
     return json({ success: true, merged: pairs.length });
+  }
+
+  /* ── Voice ────────────────────────────────────────────────────────────── */
+  /*
+   * Asked of the server rather than hardcoded on the screen. Whether voice can
+   * work is a property of the deployment, not of the browser looking at it — so
+   * the day a provider is added, every tenant's screen stops saying it cannot.
+   */
+  if (act === 'voice_status') {
+    return json({ success: true, ...voiceStatus() });
+  }
+
+  if (act === 'voice_sessions') {
+    const { results } = await env.DB.prepare(
+      `SELECT id, direction, from_number AS fromNumber, duration_s AS durationSeconds,
+              ai_summary AS aiSummary, outcome, created_at AS createdAt
+       FROM crm_voice_sessions WHERE account_id = ? ORDER BY created_at DESC LIMIT 200`,
+    ).bind(accountId).all();
+    return json({ success: true, sessions: results ?? [] });
+  }
+
+  if (act === 'set_submission') {
+    const allowed = new Set(['new', 'seen', 'actioned', 'spam']);
+    const status = allowed.has(s(d.status, 20)) ? s(d.status, 20) : 'seen';
+    await env.DB.prepare('UPDATE crm_form_submissions SET status = ? WHERE id = ? AND account_id = ?')
+      .bind(status, s(d.id, 80), accountId).run();
+    return json({ success: true });
   }
 
   /* ── Settings ─────────────────────────────────────────────────────────── */

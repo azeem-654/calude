@@ -120,6 +120,32 @@ export const listOf = (kind: Kind) => call(`list_${kind}`);
 export const saveOf = (kind: Kind, record: Record<string, unknown>) => call(`save_${kind}`, { record });
 export const deleteOf = (kind: Kind, id: string) => call(`delete_${kind}`, { id });
 
+export const listVoiceSessions = () => call('voice_sessions');
+export const voiceStatus = () => call('voice_status');
+export const setSubmission = (id: string, status: string) => call('set_submission', { id, status });
+
+/* Calendar lives on its own endpoint: its OAuth redirect answers a browser with
+   a page, which is a different contract from the JSON everything else speaks. */
+async function cal(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
+  const accountId = getActiveAccountId();
+  if (!accountId) return { success: false, error: 'No workspace is active yet.' };
+  try {
+    const r = await fetch(`${API_BASE}/api/calendar.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: getSession()?.token, accountId, action, ...extra }),
+    });
+    return await r.json() as Reply;
+  } catch (e) {
+    return { success: false, error: `Could not reach the server: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+export const calendarStatus = () => cal('status');
+export const calendarConnect = () => cal('connect');
+export const calendarDisconnect = (ownerEmail: string) => cal('disconnect', { ownerEmail });
+export const createMeeting = (bookingId: string) => cal('create_meeting', { bookingId });
+
 export const getSettings = () => call('settings');
 export const saveSettings = (record: Record<string, unknown>) => call('save_settings', { record });
 
@@ -142,7 +168,7 @@ export async function mergeCaptured(): Promise<{ added: number; matched: number;
   const people = (res.people ?? []) as CapturedPerson[];
   if (!people.length) return { added: 0, matched: 0 };
 
-  let existing: Record<string, unknown>[] = [];
+  let existing: Record<string, unknown>[];
   try { existing = JSON.parse(window.localStorage.getItem('crm_contacts') || '[]') as Record<string, unknown>[]; }
   catch { existing = []; }
 

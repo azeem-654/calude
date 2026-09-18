@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   MessageSquare, Ticket as TicketIcon, FileText, Bot, BookOpen, Code2,
   Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic,
+  Inbox, CalendarCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -30,22 +31,28 @@ import EngageInbox from './EngageInbox';
 import EngageTickets from './EngageTickets';
 import EngageBuilder from './EngageBuilder';
 import EngageSettings from './EngageSettings';
+import EngageSetup from './EngageSetup';
+import EngageSubmissions from './EngageSubmissions';
+import EngageMeetings from './EngageMeetings';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
 const LINE = '#e6e9f0';
 const ACCENT = '#5b46e5';
 
-type Tab = 'overview' | 'inbox' | 'tickets' | 'forms' | 'agents' | 'knowledge' | 'widgets' | 'voice' | 'settings';
+type Tab = 'overview' | 'inbox' | 'tickets' | 'forms' | 'submissions' | 'agents'
+  | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'inbox', label: 'Conversations', icon: MessageSquare },
   { id: 'tickets', label: 'Tickets', icon: TicketIcon },
   { id: 'forms', label: 'Forms', icon: FileText },
+  { id: 'submissions', label: 'Submissions', icon: Inbox },
   { id: 'agents', label: 'AI agents', icon: Bot },
   { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
   { id: 'widgets', label: 'Widgets', icon: Code2 },
+  { id: 'meetings', label: 'Meetings', icon: CalendarCheck },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -135,7 +142,8 @@ export default function Engagement() {
         {TABS.map(({ id, label, icon: Ic }) => {
           const on = tab === id;
           const badge = id === 'inbox' ? (counts?.waitingOnHuman ?? 0)
-            : id === 'tickets' ? (counts?.openTickets ?? 0) : 0;
+            : id === 'tickets' ? (counts?.openTickets ?? 0)
+              : id === 'submissions' ? (counts?.newSubmissions ?? 0) : 0;
           return (
             <button key={id} role="tab" aria-selected={on} onClick={() => setTab(id)} style={{
               display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 13px',
@@ -157,6 +165,8 @@ export default function Engagement() {
 
       {tab === 'overview' && (
         <div style={{ display: 'grid', gap: 18 }}>
+          <EngageSetup onGo={t => setTab(t as Tab)} />
+
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))' }}>
             {stat('Waiting on a person', counts?.waitingOnHuman ?? 0,
               'Somebody is sitting in front of a chat window', true)}
@@ -243,9 +253,11 @@ export default function Engagement() {
       {tab === 'inbox' && <EngageInbox conversations={conversations} onChange={() => void refresh()} />}
       {tab === 'tickets' && <EngageTickets tickets={tickets} onChange={() => void refresh()} />}
       {tab === 'forms' && <EngageBuilder kind="form" onChange={() => void refresh()} />}
+      {tab === 'submissions' && <EngageSubmissions />}
       {tab === 'agents' && <EngageBuilder kind="agent" onChange={() => void refresh()} />}
       {tab === 'knowledge' && <EngageBuilder kind="article" onChange={() => void refresh()} />}
       {tab === 'widgets' && <EngageBuilder kind="widget" onChange={() => void refresh()} />}
+      {tab === 'meetings' && <EngageMeetings />}
       {tab === 'voice' && <EngageBuilder kind="voice_agent" onChange={() => void refresh()} />}
       {tab === 'settings' && <EngageSettings />}
     </div>
