@@ -49,7 +49,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
-import { WizardBackdrop, WizardCta, WizardTitle } from '../shared/WizardChrome';
+import { WizardBackdrop, WizardCta, WizardSplit, WizardStage, WizardTitle } from '../shared/WizardChrome';
 import {
   saveProject, savePortfolio, readPortfolioFromUrl, readPortfolioFromText,
   CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
@@ -401,7 +401,9 @@ export default function NewProject({
    * five names above every question is a screen of chrome before the content.
    */
   const sheet: React.CSSProperties = {
-    maxWidth: wide ? 1000 : 560,
+    /* Wider than it was, because the stage takes the right-hand two fifths and
+       the form still needs the room it had. */
+    maxWidth: wide ? 1140 : 560,
     maxHeight: 'min(94vh, 900px)',
   };
 
@@ -471,11 +473,33 @@ export default function NewProject({
           <span style={{ width: 46 }} aria-hidden="true" />
         </header>
 
+        <WizardSplit stage={
+          <WizardStage
+            kind="Project brief"
+            title={clientName || 'A new project'}
+            /* What it is about to do, in the client's own terms where there is
+               one yet. Scene-setting rather than instructions — the
+               instructions are on the left, where they can be read. */
+            /* Read from the same `listKind` the sizing step reads, not written
+               out here. The first version said "9 mailboxes across 3 domains"
+               whatever the trade — including for a shop, which the screen
+               beside it was at that moment telling to take one address on its
+               own domain. Two panes disagreeing about what is being bought is
+               worse than one pane saying nothing. */
+            lines={[
+              job ? job.label : 'Say what is going wrong, and it works out the rest.',
+              listKind === 'owned'
+                ? 'One address, on your own domain'
+                : `${pool.mailboxes} mailboxes across ${pool.domains} domains`,
+            ]}
+            faces={['AI', clientName ? clientName.slice(0, 1).toUpperCase() : 'P', '+']}
+          />
+        }>
         <div style={{
           overflowY: 'auto', flex: 1, minHeight: 0,
           padding: wide ? '10px 26px 26px' : '4px 20px 20px',
           display: 'grid', gap: wide ? 26 : 0,
-          gridTemplateColumns: wide ? '188px minmax(0, 1fr) 232px' : '1fr',
+          gridTemplateColumns: wide ? '176px minmax(0, 1fr)' : '1fr',
           alignItems: 'start',
         }}>
 
@@ -1101,17 +1125,17 @@ export default function NewProject({
               onOrder={() => { addNotification('Order placed. Watch it build on the project.', 'success'); onCreated(); }}
             />
           )}
-          </div>
 
-          {/* ── The note in the margin ──
-              Beside the question rather than under it, because it is the thing
-              most likely to be got wrong and nobody scrolls back up to read a
-              warning after answering. On a narrow screen it follows the
-              content, which is the only place it can go. */}
+          {/* ── The note ──
+              It used to sit in a third column. The stage took that space, and
+              two things competing for the right-hand edge is worse than either
+              — so it moved to the top of the content, above the question it is
+              about rather than beside it. Still before the answer, which is the
+              only part that mattered: nobody scrolls back up to read a warning
+              after they have already chosen. */}
           <aside style={{
             border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px',
-            background: '#fbfbfd', marginTop: wide ? 0 : 16,
-            position: wide ? 'sticky' : undefined, top: wide ? 0 : undefined,
+            background: '#fbfbfd',
           }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 7 }}>
               <Lightbulb size={14} color={ACCENT} style={{ flexShrink: 0 }} />
@@ -1122,9 +1146,10 @@ export default function NewProject({
             {/* "Not this one if" is deliberately *not* repeated here — the
                 chosen card already carries it, next to the thing it is warning
                 about. Saying it twice on one screen teaches people that this
-                column repeats what they have already read, and then they stop
-                reading the column. */}
+                note repeats what they have already read, and then they stop
+                reading it. */}
           </aside>
+          </div>
         </div>
 
         {/* ── One button, at the bottom, always ── */}
@@ -1158,6 +1183,7 @@ export default function NewProject({
             />
           </footer>
         )}
+        </WizardSplit>
       </div>
     </WizardBackdrop>
   );

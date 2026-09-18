@@ -239,3 +239,199 @@
   }
   .wz-cta { transition: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * The split: content on the left, a living stage on the right.
+ *
+ * ── Why the right-hand pane exists at all ──
+ *
+ * A setup wizard is a form, and a form on its own is a tax somebody pays
+ * before they get anything. The stage is what they are paying *for*, shown
+ * while they fill it in — the brief being written, the pieces being assembled.
+ * It is decoration in the strict sense (nothing in it is a control, and losing
+ * it loses no information), but it is the difference between "fill in five
+ * screens" and "watch the thing take shape".
+ *
+ * It is the first thing to go on a narrow screen. On a phone the content is
+ * the whole job, and a picture above it is a screenful of scrolling before the
+ * first question.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.wz-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+@media (min-width: 1040px) {
+  .wz-split { grid-template-columns: minmax(0, 1fr) 42%; }
+}
+
+.wz-stage {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 100% at 20% 0%, #6d5bf0 0%, transparent 55%),
+    radial-gradient(120% 110% at 100% 100%, #2dd4bf 0%, transparent 52%),
+    linear-gradient(160deg, #4c39d1 0%, #2e2a6b 100%);
+}
+@media (min-width: 1040px) { .wz-stage { display: block; } }
+
+/* The horizon: a soft light band, the reference's landscape reduced to the one
+   thing it was doing — separating the near from the far. */
+.wz-stage::after {
+  content: '';
+  position: absolute;
+  left: -20%; right: -20%; bottom: -34%;
+  height: 74%;
+  border-radius: 50% 50% 0 0 / 46% 46% 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.05));
+  pointer-events: none;
+}
+
+.wz-float {
+  position: absolute;
+  /* Frosted rather than solid: the gradient behind has to read through, or the
+     cards look pasted on rather than floating above something. */
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 18px 40px -14px rgba(16, 12, 48, 0.55);
+  /* Their own stacking context, so the shadows layer in the order written
+     rather than in whatever order the boxes happen to paint. */
+  will-change: transform;
+}
+
+.wz-float-brief {
+  left: 8%; right: 10%; top: 30%;
+  padding: 14px 15px;
+}
+.wz-float-preview {
+  left: 16%; right: 18%; top: 6%;
+  height: 21%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(233, 236, 255, 0.92));
+  transform: rotate(-3.5deg);
+  padding: 13px 15px;
+}
+
+/* Bars rather than a blank rectangle. A plain white card reads as a missing
+   image; three bars read as a page with something on it, which is what the
+   card is standing in for. */
+.wz-bar {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: #dfe3f2;
+  margin-bottom: 7px;
+}
+.wz-bar-lead { height: 10px; width: 52%; background: #5b46e5; opacity: 0.85; }
+.wz-bar-b { width: 84%; }
+.wz-bar-c { width: 62%; }
+.wz-float-tools {
+  left: 22%; bottom: 8%;
+  display: flex;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 999px;
+}
+.wz-tool {
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  background: #f1f3f7;
+  color: #5b46e5;
+}
+.wz-tool-on { background: #5b46e5; color: #fff; }
+
+.wz-faces {
+  position: absolute;
+  /* Clear of the preview card above and the brief below. They overlapped the
+     preview's corner, which made the stack read as damage rather than as a
+     third floating thing. */
+  right: 10%; top: 25.5%;
+  display: flex;
+  z-index: 2;
+}
+.wz-face {
+  width: 30px; height: 30px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  margin-left: -9px;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 800; color: #fff;
+  box-shadow: 0 6px 14px -4px rgba(16, 12, 48, 0.5);
+}
+.wz-face:first-child { margin-left: 0; }
+
+/* The line that fills in, as though something is being written. */
+.wz-writing {
+  height: 7px;
+  border-radius: 999px;
+  background: #e6e9f0;
+  overflow: hidden;
+  margin-top: 7px;
+}
+.wz-writing > span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5b46e5, #2dd4bf);
+}
+
+@keyframes wz-bob {
+  0%   { transform: translate3d(0, 0, 0); }
+  50%  { transform: translate3d(0, -13px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+@keyframes wz-bob-tilt {
+  0%   { transform: translate3d(0, 0, 0) rotate(-3.5deg); }
+  50%  { transform: translate3d(0, -16px, 0) rotate(-1.4deg); }
+  100% { transform: translate3d(0, 0, 0) rotate(-3.5deg); }
+}
+@keyframes wz-type {
+  0%   { width: 12%; }
+  55%  { width: 92%; }
+  70%  { width: 92%; }
+  100% { width: 12%; }
+}
+@keyframes wz-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Deliberately large and slow. The first version of this moved by three
+     pixels over twenty seconds, which is the same as not moving — somebody
+     looked straight at it and reported no animation at all. Thirteen pixels
+     over five seconds reads as floating; it is still nowhere near fast enough
+     to pull the eye off the form on the left. */
+  .wz-float-brief   { animation: wz-bob 5.4s ease-in-out infinite; }
+  .wz-float-preview { animation: wz-bob-tilt 6.6s ease-in-out infinite; }
+  .wz-float-tools   { animation: wz-bob 4.8s ease-in-out infinite 0.6s; }
+  .wz-faces         { animation: wz-bob 6.1s ease-in-out infinite 0.3s; }
+
+  .wz-writing > span { animation: wz-type 4.4s ease-in-out infinite; }
+
+  /* One at a time, around the row — a stack of avatars all pulsing together
+     looks like an error state. */
+  .wz-face { animation: wz-pop 3.6s ease-in-out infinite; }
+  .wz-face:nth-child(2) { animation-delay: 0.45s; }
+  .wz-face:nth-child(3) { animation-delay: 0.9s; }
+
+  .wz-tool-on { animation: wz-pop 3s ease-in-out infinite; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wz-float-brief, .wz-float-preview, .wz-float-tools, .wz-faces,
+  .wz-writing > span, .wz-face, .wz-tool-on {
+    animation: none !important;
+  }
+  /* Half-drawn is the honest resting state for something that writes: it says
+     "this is being written" without pretending to be finished. */
+  .wz-writing > span { width: 62%; }
+}

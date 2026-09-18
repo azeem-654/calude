@@ -10,6 +10,7 @@ import TemplateGallery from '../shared/TemplateGallery';
 import { PagesStrip, ScaledPage } from '../shared/BlockRender';
 import { activeAccount } from '../../services/tenancy';
 import SourceTag from '../shared/SourceTag';
+import { WizardBackdrop } from '../shared/WizardChrome';
 
 /* ─── Funnel type definitions (ClickFunnels-style) ─── */
 
@@ -224,9 +225,12 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+    /* The same shell as every other setup wizard in the app — see
+       components/shared/wizard.css for why that is one file and not five
+       copies of the same shadows. */
+    <WizardBackdrop label="Create a funnel" onClose={onClose}>
       {step === 1 ? (
-        <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '1100px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.25)' }}>
+        <div className="wz-card" style={{ maxWidth: 1180, maxHeight: '92vh' }}>
           {/* Header */}
           <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div>
@@ -236,7 +240,13 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
             <button onClick={onClose} style={{ padding: '8px', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}><X size={20} /></button>
           </div>
 
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          {/* No decorative stage here, deliberately. This wizard already has a
+              right-hand panel, and it shows the funnel actually being hovered —
+              its pages, its colour, its name. That is information, and swapping
+              it for a floating-card mood piece would be trading something true
+              for something pretty. The shared backdrop and card are what it
+              takes from the others; the pane it already had stays. */}
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
             {/* Left sidebar — categories */}
             <div style={{ width: '155px', borderRight: '1px solid #e2e8f0', padding: '14px 10px', flexShrink: 0, overflowY: 'auto' }}>
               <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px 4px' }}>Category</p>
@@ -428,7 +438,7 @@ function FunnelWizard({ onClose, onCreate }: { onClose: () => void; onCreate: (n
           </div>
         </div>
       )}
-    </div>
+    </WizardBackdrop>
   );
 }
 

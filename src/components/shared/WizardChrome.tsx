@@ -113,3 +113,101 @@ export function WizardCta({
     </button>
   );
 }
+
+/**
+ * The split window: the form on the left, what it is building on the right.
+ *
+ * ── Why the stage is not a screenshot ──
+ *
+ * The obvious way to fill that pane is a picture of the finished thing. A
+ * picture goes stale the week after it is taken, needs one per wizard, and
+ * says nothing while somebody is halfway through. These are a handful of divs
+ * that float and write themselves, so they cost nothing to keep true and they
+ * are doing something the whole time the form is being filled in.
+ *
+ * Nothing in here is a control and nothing in here is information. Losing the
+ * whole pane — which is what happens under 1040px, and what a reduced-motion
+ * preference does to its movement — loses nothing but the mood.
+ */
+export function WizardStage({
+  kind, title, lines, faces,
+}: {
+  /** What is being built, in two or three words. Sits above the brief. */
+  kind: string;
+  /** The heading inside the floating brief. */
+  title: string;
+  /** Two or three short lines. They are scene-setting, not instructions. */
+  lines: string[];
+  /** Initials for the avatar row. Empty for a wizard nobody collaborates in. */
+  faces?: string[];
+}) {
+  const people = faces ?? [];
+  return (
+    <div className="wz-stage" aria-hidden="true">
+      {/* A tilted card standing in for the thing being made. Bars rather than
+          a blank rectangle: an empty white card reads as an image that failed
+          to load. */}
+      <div className="wz-float wz-float-preview">
+        <span className="wz-bar wz-bar-lead" />
+        <span className="wz-bar wz-bar-b" />
+        <span className="wz-bar wz-bar-c" />
+      </div>
+
+      {people.length > 0 && (
+        <div className="wz-faces">
+          {people.map((f, i) => (
+            <span key={f + i} className="wz-face" style={{
+              background: ['#5b46e5', '#2dd4bf', '#f59e0b'][i % 3],
+            }}>{f}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="wz-float wz-float-brief">
+        <span style={{
+          display: 'block', fontSize: 8.5, fontWeight: 800, letterSpacing: '0.14em',
+          color: '#94a3b8', textTransform: 'uppercase',
+        }}>{kind}</span>
+        <span style={{
+          display: 'block', fontSize: 13, fontWeight: 800, color: '#0b0c0e', marginTop: 5,
+          letterSpacing: '-0.01em',
+        }}>{title}</span>
+        {lines.map(l => (
+          <span key={l} style={{
+            display: 'block', fontSize: 11, color: '#6b7280', marginTop: 5, lineHeight: 1.5,
+          }}>{l}</span>
+        ))}
+        <span className="wz-writing"><span /></span>
+      </div>
+
+      <div className="wz-float wz-float-tools">
+        {[0, 1, 2, 3].map(i => (
+          <span key={i} className={`wz-tool${i === 3 ? ' wz-tool-on' : ''}`}>
+            <span style={{
+              width: 9, height: 9, borderRadius: i % 2 ? 2 : 999,
+              border: '1.6px solid currentColor', display: 'block',
+            }} />
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Content and stage side by side, inside the card.
+ *
+ * The children are the form. The stage is passed rather than composed inside
+ * so a wizard that has nothing worth showing can simply not pass one, and get
+ * a single full-width column without a special case.
+ */
+export function WizardSplit({ stage, children }: { stage?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="wz-split">
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+        {children}
+      </div>
+      {stage}
+    </div>
+  );
+}

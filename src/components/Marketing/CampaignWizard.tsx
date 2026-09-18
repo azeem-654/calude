@@ -21,7 +21,7 @@ import EmailTemplateGallery from './EmailTemplates';
 import { useApp } from '../../context/AppContext';
 import { writeCampaign, rewriteEmail } from '../../services/aiWrite';
 import AiCampaignSetup, { type AiSetup } from './AiCampaignSetup';
-import { WizardBackdrop, WizardTitle } from '../shared/WizardChrome';
+import { WizardBackdrop, WizardSplit, WizardStage, WizardTitle } from '../shared/WizardChrome';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -2074,7 +2074,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
        not announced as one, and the nav behind keeps buttons whose names
        collide with these — "Reviews" in the rail against "Review" in here. */
     <WizardBackdrop label={editCampaign ? 'Edit campaign' : 'Create campaign'} onClose={onClose}>
-      <div className="wz-card" style={{ maxWidth: 1000, maxHeight: '94vh' }}>
+      <div className="wz-card" style={{ maxWidth: 1140, maxHeight: '94vh' }}>
 
         {/* Header */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, backgroundColor: 'white' }}>
@@ -2115,6 +2115,20 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
           </div>
           <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}><X size={20} color="#94a3b8" /></button>
         </div>
+
+        {/* The split: the form on the left, what it is building on the right.
+            Same shell as the AI Autopilot wizard — see shared/wizard.css. */}
+        <WizardSplit stage={
+          <WizardStage
+            kind="Campaign brief"
+            title={editCampaign?.name?.trim() || 'A new campaign'}
+            lines={[
+              'Written from your own profile, in your voice.',
+              'Nothing sends until you have read every word.',
+            ]}
+            faces={['AI', 'You']}
+          />
+        }>
 
         {/* ── The first question: who writes it ── */}
         {mode === null ? (
@@ -2308,6 +2322,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
         </div>
         </>
         )}
+        </WizardSplit>
       </div>
     </WizardBackdrop>
   );

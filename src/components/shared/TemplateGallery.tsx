@@ -41,9 +41,26 @@ function PreviewModal({ meta, pages, onClose, onUse }: {
   const frameW = device === 'desktop' ? 1100 : 390;
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 5000, background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column' }}>
+    /*
+     * Deliberately not the card-and-stage shape the other setup screens use.
+     *
+     * What this screen is for is the preview: a real page, rendered at a real
+     * width, that somebody is deciding between. Putting it inside a floating
+     * card would shrink the only thing on the screen worth looking at in order
+     * to make room for decoration — which is the trade the other wizards make
+     * because their content is a form, and the wrong trade here.
+     *
+     * It takes the palette and the softness without the shape: the scrim is
+     * the same light wash, so arriving here from the rest of the app does not
+     * feel like arriving somewhere else.
+     */
+    <div style={{ position: 'fixed', inset: 0, zIndex: 5000, display: 'flex', flexDirection: 'column',
+      background: 'radial-gradient(120% 90% at 14% 4%, rgba(91,70,229,0.5), transparent 58%),'
+        + ' radial-gradient(110% 90% at 92% 92%, rgba(45,212,191,0.4), transparent 56%),'
+        + ' linear-gradient(180deg, rgba(244,245,252,0.9), rgba(226,228,242,0.92))',
+      backdropFilter: 'blur(14px) saturate(1.1)', WebkitBackdropFilter: 'blur(14px) saturate(1.1)' }}>
       {/* Modal top bar */}
-      <div style={{ height: 58, background: '#0f172a', display: 'flex', alignItems: 'center', gap: 14, padding: '0 18px', flexShrink: 0 }}>
+      <div style={{ height: 58, background: '#16183a', display: 'flex', alignItems: 'center', gap: 14, padding: '0 18px', flexShrink: 0, borderRadius: '0 0 2px 2px' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: '#f8fafc', fontWeight: 800, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta.name}</div>
           <div style={{ color: '#94a3b8', fontSize: 11 }}>{meta.category} · {meta.industry} · {pages.length} page{pages.length > 1 ? 's' : ''}</div>

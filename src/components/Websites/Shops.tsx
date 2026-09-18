@@ -20,6 +20,7 @@ import { useApp } from '../../context/AppContext';
 import { listShops, saveShop, deleteShop, shopUrl, type Shop } from '../../services/shop';
 import { THEME_LIST, themeFor } from '../Shop/themes';
 import { fetchBoard, type Project } from '../../services/projects';
+import { WizardStage, WizardTitle } from '../shared/WizardChrome';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -118,10 +119,18 @@ export default function Shops() {
       )}
 
       {draft && (
-        <div style={{ background: '#fff', border: `1px solid ${LINE}`, borderRadius: 14, padding: 22, marginBottom: 20, display: 'grid', gap: 14, maxWidth: 640 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: INK }}>
-            {draft.id ? 'Edit shop' : 'New shop'}
-          </h3>
+        /* The same card, headline and stage as the other setup screens. This
+           one is not a modal — it is a panel on a page somebody navigated to —
+           so it takes the card and the stage but not the backdrop. The shape
+           is what makes it recognisable as the same kind of task; the scrim
+           was only ever there to dismiss the page behind. */
+        <div className="wz-card" style={{ marginBottom: 20, maxWidth: 1040, border: `1px solid ${LINE}` }}>
+        <div className="wz-split">
+        <div style={{ padding: 24, display: 'grid', gap: 14, alignContent: 'start' }}>
+          <WizardTitle
+            lead={draft.id ? 'Edit this' : 'A new'} accent="shop"
+            sub={draft.id ? undefined : 'One address a stranger can buy from, with no account and no login.'}
+          />
 
           <div>
             <label style={lbl}>Shop name</label>
@@ -277,6 +286,17 @@ export default function Shops() {
               Cancel
             </button>
           </div>
+        </div>
+        <WizardStage
+          kind="Shop"
+          title={draft.name?.trim() || 'A new shop'}
+          lines={[
+            'A catalogue, a basket and a checkout.',
+            'No login for the buyer, and no theme to wrestle.',
+          ]}
+          faces={['£', '★']}
+        />
+        </div>
         </div>
       )}
 
