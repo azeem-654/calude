@@ -20,6 +20,8 @@ import { handleData } from './routes/data';
 import { handleMailbox } from './routes/mailbox';
 import { handleInfra } from './routes/infra';
 import { handleAutomation } from './routes/automation';
+import { handleEngage } from './routes/engage';
+import { handleEngagement } from './routes/engagement';
 import { handleAutopilot } from './routes/autopilot';
 import { handleReplies } from './routes/replies';
 import { handleCommerce } from './routes/commerce';
@@ -52,6 +54,7 @@ import { runAutopilot } from './autopilotTick';
 import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
+import { runEngageDispatch } from './engageDispatch';
 import { pruneRateLimits } from './lib/rateLimit';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
@@ -69,6 +72,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/infra.php': handleInfra,
   /* Scheduled campaign starts, the tick's own health, and what the plan allows. */
   '/api/automation.php': handleAutomation,
+  /* The public one: no session, reached by widget key or form slug. */
+  '/api/engage.php': handleEngage,
+  /* The owner's one: session required, every query scoped to the workspace. */
+  '/api/engagement.php': handleEngagement,
   /* Autopilot's ledger: what it is doing, what it did and why, and the two
      decisions that belong to a person — approving a held-back action, and
      pausing the whole thing. */
@@ -268,6 +275,20 @@ export default {
        * a few milliseconds away.
        */
       const digest = await runDigests(env);
+
+      /*
+       * Telling somebody an engagement event happened.
+       *
+       * After the digest and before the housekeeping. It sends mail, so it
+       * belongs with the other things that send mail — and it is deliberately
+       * not inside the request that created the event: a slow mail server must
+       * not make a stranger's contact form slow, and a refused mailbox must not
+       * lose the lead behind the notification.
+       */
+      const engage = await runEngageDispatch(env);
+      for (const n of engage.notes.slice(0, 5)) {
+        report.notes.push({ accountId: '', text: n, kind: 'problem' });
+      }
 
       /* Housekeeping, after everything that matters and never in front of it.
          Every rate-limit window that ever opened leaves a row; a day is far

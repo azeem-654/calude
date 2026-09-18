@@ -16,6 +16,7 @@
  * side by side told nobody which was which; "Booking pages" and "Calendar" do.
  */
 import {
+  MessageSquare,
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
@@ -77,6 +78,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history', icon: Users, aka: ['people', 'leads', 'crm', 'customers'] },
       { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
+      /* Beside the inbox on purpose: this is where the conversations in that
+         inbox come from, and somebody looking for "chat widget" or "support"
+         is looking for the same thing from the other end. */
+      { path: '/engagement', label: 'Customer Engagement', desc: 'AI chat, forms, tickets and a widget for any website', icon: MessageSquare, aka: ['chat', 'chatbot', 'widget', 'support', 'helpdesk', 'tickets', 'forms', 'knowledge base', 'live chat', 'ai agent'] },
     ],
   },
   {

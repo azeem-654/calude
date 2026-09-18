@@ -38,6 +38,7 @@ import SiteHome from './components/Site/SiteHome';
 import Autopilot from './components/Autopilot/Autopilot';
 import Commerce from './components/Commerce/Commerce';
 import ShopPage from './components/Shop/ShopPage';
+import Engagement from './components/Engagement/Engagement';
 import ClientReport from './components/Portal/ClientReport';
 import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
@@ -120,6 +121,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/engagement" element={<Engagement />} />
           <Route path="/conversations" element={<Conversations />} />
           <Route path="/calendar" element={<CalendarView />} />
           <Route path="/pipelines" element={<Pipelines />} />

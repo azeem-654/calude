@@ -25,7 +25,11 @@ import { aiReview, screenText, type Category, type Verdict } from './moderation'
 import { nowIso, type Env } from './db';
 
 export type Surface =
-  | 'email' | 'sms' | 'blog' | 'website' | 'product' | 'shop' | 'social' | 'portfolio' | 'reply';
+  | 'email' | 'sms' | 'blog' | 'website' | 'product' | 'shop' | 'social' | 'portfolio' | 'reply'
+  /* The engagement channels. `chat` covers both directions — what a stranger
+     types into a widget and what the AI answers in the customer's brand voice,
+     which is the more dangerous of the two. */
+  | 'chat' | 'form';
 
 export interface GateResult {
   /** True when the caller may go ahead. Everything else is a stop. */
