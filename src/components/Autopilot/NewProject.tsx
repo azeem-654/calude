@@ -49,6 +49,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
+import { WizardBackdrop, WizardCta, WizardTitle } from '../shared/WizardChrome';
 import {
   saveProject, savePortfolio, readPortfolioFromUrl, readPortfolioFromText,
   CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
@@ -105,12 +106,21 @@ type Way = 'site' | 'paste' | 'hand';
 /** How this project will get an address to send from. */
 type MailPlan = 'have' | 'buy' | 'later';
 
-const TITLES: Record<Step, string> = {
-  1: 'What is going wrong right now?',
-  2: 'Whose business is this for?',
-  3: 'What would make this worth it?',
-  4: 'Your sending setup',
-  5: 'Your domains and mailboxes',
+/*
+ * Each title, split so one phrase can carry the accent.
+ *
+ * Three fields rather than markup inside a string: the phrase that gets the
+ * colour is a decision about emphasis, and it should be visible here next to
+ * the words rather than buried in a span somebody has to go and find.
+ */
+const TITLE_LEAD: Record<Step, string> = {
+  1: 'What is', 2: 'Whose', 3: 'What would make this', 4: 'Your', 5: 'Your',
+};
+const TITLE_ACCENT: Record<Step, string> = {
+  1: 'going wrong', 2: 'business', 3: 'worth it', 4: 'sending setup', 5: 'domains',
+};
+const TITLE_TAIL: Record<Step, string> = {
+  1: 'right now?', 2: 'is this for?', 3: '', 4: '', 5: 'and mailboxes',
 };
 
 const SUBTITLES: Record<Step, string> = {
@@ -391,11 +401,8 @@ export default function NewProject({
    * five names above every question is a screen of chrome before the content.
    */
   const sheet: React.CSSProperties = {
-    width: '100%', maxWidth: wide ? 1000 : 560, background: '#fff',
-    borderRadius: 'clamp(18px, 3vw, 24px)',
-    display: 'flex', flexDirection: 'column',
-    maxHeight: 'min(94vh, 900px)', overflow: 'hidden',
-    boxShadow: '0 30px 80px -20px rgba(11,12,14,0.45)',
+    maxWidth: wide ? 1000 : 560,
+    maxHeight: 'min(94vh, 900px)',
   };
 
   const railItem = (on: boolean, done: boolean): React.CSSProperties => ({
@@ -438,17 +445,8 @@ export default function NewProject({
   };
 
   return (
-    <div
-      role="dialog" aria-modal="true" aria-label="New project"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(11,12,14,0.5)',
-        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'clamp(10px, 3vw, 28px)',
-      }}>
-      <div style={sheet}>
+    <WizardBackdrop label="New project" onClose={onClose}>
+      <div className="wz-card" style={sheet} onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
 
         {/* ── Chrome: cancel, progress, nothing else ── */}
         <header style={{
@@ -501,18 +499,11 @@ export default function NewProject({
             </nav>
           )}
 
-          <div style={{ display: 'grid', gap: 18, minWidth: 0 }}>
-          <div>
-            <h2 style={{
-              margin: 0, fontSize: 'clamp(21px, 4.4vw, 27px)', fontWeight: 800,
-              color: INK, letterSpacing: '-0.03em', lineHeight: 1.18,
-            }}>
-              {TITLES[step]}
-            </h2>
-            <p style={{ margin: '7px 0 0', fontSize: 14.5, color: MUTED, lineHeight: 1.55 }}>
-              {SUBTITLES[step]}
-            </p>
-          </div>
+          <div className="wz-stagger" style={{ display: 'grid', gap: 18, minWidth: 0 }}>
+          <WizardTitle
+            lead={TITLE_LEAD[step]} accent={TITLE_ACCENT[step]} tail={TITLE_TAIL[step]}
+            sub={SUBTITLES[step]}
+          />
 
           {/* ── 1 · The job ── */}
           {step === 1 && (
@@ -1148,27 +1139,26 @@ export default function NewProject({
                 <ArrowLeft size={15} /> Back
               </button>
             )}
-            <button onClick={next} disabled={!!blocked || busy} title={blocked || undefined} style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              padding: '14px', borderRadius: 999, border: 'none',
-              background: blocked || busy ? '#dcdfe6' : ACCENT,
-              color: blocked || busy ? '#8b93a3' : '#fff',
-              fontSize: 16, fontWeight: 600, cursor: blocked || busy ? 'default' : 'pointer', fontFamily: 'inherit',
-            }}>
-              {busy ? <Loader size={16} className="spin" />
+            <WizardCta
+              grow
+              onClick={next}
+              disabled={!!blocked || busy}
+              title={blocked || undefined}
+              label={busy ? 'Working…'
                 : blocked ? blocked
                   : step === 4
                     /* Named rather than "Continue": this press is the one that
                        writes the project, and the one that leads to a payment
                        screen. A button that spends money says so. */
-                    ? (mailPlan === 'buy'
-                        ? <>Create it and choose the domains <ArrowRight size={15} /></>
-                        : <>Start the project <Sparkles size={15} /></>)
-                    : <>Continue <ArrowRight size={15} /></>}
-            </button>
+                    ? (mailPlan === 'buy' ? 'Create it and choose the domains' : 'Start the project')
+                    : 'Continue'}
+              icon={busy ? <Loader size={15} className="spin" />
+                : step === 4 && mailPlan !== 'buy' ? <Sparkles size={15} />
+                  : <ArrowRight size={15} />}
+            />
           </footer>
         )}
       </div>
-    </div>
+    </WizardBackdrop>
   );
 }

@@ -21,6 +21,7 @@ import EmailTemplateGallery from './EmailTemplates';
 import { useApp } from '../../context/AppContext';
 import { writeCampaign, rewriteEmail } from '../../services/aiWrite';
 import AiCampaignSetup, { type AiSetup } from './AiCampaignSetup';
+import { WizardBackdrop, WizardTitle } from '../shared/WizardChrome';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -2065,16 +2066,15 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      {/* A modal that does not say it is one is not announced as one, and the
-          nav behind it keeps buttons whose names collide with these — "Reviews"
-          in the rail against "Review" in here. */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={editCampaign ? 'Edit campaign' : 'Create campaign'}
-        style={{ backgroundColor: 'white', borderRadius: 20, width: '100%', maxWidth: 1000, maxHeight: '94vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 80px rgba(0,0,0,0.28)', overflow: 'hidden' }}
-      >
+    /* The same backdrop, card and accent as the AI Autopilot wizard. These are
+       the two screens where somebody commits to something, and they used to
+       look like two different products — see components/shared/wizard.css for
+       why that is one file rather than two copies. The dialog role and label
+       move onto the backdrop with it: a modal that does not say it is one is
+       not announced as one, and the nav behind keeps buttons whose names
+       collide with these — "Reviews" in the rail against "Review" in here. */
+    <WizardBackdrop label={editCampaign ? 'Edit campaign' : 'Create campaign'} onClose={onClose}>
+      <div className="wz-card" style={{ maxWidth: 1000, maxHeight: '94vh' }}>
 
         {/* Header */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, backgroundColor: 'white' }}>
@@ -2160,15 +2160,15 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
                 </button>
               </div>
             ) : (
-            <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
-              <h2 style={{ fontSize: 21, fontWeight: 800, color: '#0f172a', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
-                How would you like to start?
-              </h2>
-              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 26px', lineHeight: 1.6 }}>
-                Whichever you pick, you can edit every word before it goes anywhere.
-              </p>
+            <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center' }}>
+              <div style={{ marginBottom: 26 }}>
+                <WizardTitle
+                  lead="How would you like to" accent="start?"
+                  sub="Whichever you pick, you can edit every word before it goes anywhere."
+                />
+              </div>
 
-              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))' }}>
+              <div className="wz-stagger" style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))' }}>
                 {([
                   {
                     id: 'ai', icon: Sparkles, tint: 'linear-gradient(135deg,#4f46e5,#9333ea)',
@@ -2309,6 +2309,6 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
         </>
         )}
       </div>
-    </div>
+    </WizardBackdrop>
   );
 }

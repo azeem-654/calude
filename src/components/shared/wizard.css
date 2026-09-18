@@ -1,0 +1,241 @@
+/*
+ * The look every wizard shares.
+ *
+ * ── Why a stylesheet and not inline styles ──
+ *
+ * Two wizards — the AI Autopilot project one and the email campaign one — are
+ * the two screens where somebody commits to something. They had two different
+ * visual languages, which reads as two products bolted together, and fixing
+ * that by copying styles into both files would guarantee they drift the first
+ * time either changes.
+ *
+ * It is also the only way the loop animations below can be correct. Every
+ * moving part in this app is gated on `prefers-reduced-motion`, and a
+ * `style={{ animation: … }}` written in JSX is unreachable by any media query —
+ * that exact mistake left a "live" dot pulsing forever for somebody who had
+ * asked their whole machine to stop moving things. A class in a gated block
+ * can be reached, and `services/motion.ts` rewrites that block's condition, so
+ * the Animation setting in Settings → Profile governs all of this too.
+ *
+ * ── The colours ──
+ *
+ * The reference this is modelled on is a bright accent on white with a soft
+ * landscape behind the card. Ours uses the app's own indigo rather than
+ * inventing a palette: #5b46e5 is what every primary action in this product is
+ * already, and a wizard in a colour nothing else uses would look like a
+ * different application.
+ */
+
+.wz-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 3vw, 28px);
+  /*
+   * Light rather than dark. A modal scrim is usually near-black, and that is
+   * the right instinct when the thing behind is a document you must stop
+   * reading — but this is the screen somebody is starting something on, and a
+   * heavy scrim makes it feel like an interruption rather than an arrival.
+   *
+   * Deep enough to take the page behind out of contention, pale enough that
+   * the colour underneath is the thing you notice. The blur does most of the
+   * work of separating the two layers; the darkness only has to finish it.
+   */
+  background:
+    radial-gradient(130% 100% at 16% 6%, rgba(91, 70, 229, 0.50), transparent 60%),
+    radial-gradient(110% 90% at 90% 90%, rgba(45, 212, 191, 0.40), transparent 58%),
+    linear-gradient(180deg, rgba(244, 245, 252, 0.86), rgba(226, 228, 242, 0.88));
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+/* The two drifting washes. Separate elements rather than animating the
+   backdrop's own background, because animating a gradient forces a repaint of
+   the whole backdrop on every frame; transforming a child is composited. */
+.wz-wash {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  /* Enough to read as colour, not enough to compete with the card. Over a pale
+     scrim these carry the whole mood, so they are stronger than they would be
+     over a dark one. */
+  opacity: 0.62;
+}
+.wz-wash-a {
+  width: 46vw; height: 46vw; min-width: 320px; min-height: 320px;
+  left: 4%; top: -12%;
+  background: radial-gradient(circle, rgba(91, 70, 229, 0.85), transparent 68%);
+}
+.wz-wash-b {
+  width: 40vw; height: 40vw; min-width: 280px; min-height: 280px;
+  right: 2%; bottom: -14%;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.72), transparent 66%);
+}
+
+.wz-card {
+  position: relative;
+  width: 100%;
+  background: #fff;
+  border-radius: clamp(20px, 3vw, 28px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Two shadows: a tight one for the edge and a wide soft one for the lift.
+     One shadow doing both jobs is either a hard line or a grey smudge. */
+  box-shadow:
+    0 1px 2px rgba(11, 12, 14, 0.04),
+    0 2px 10px rgba(11, 12, 14, 0.05),
+    0 40px 80px -28px rgba(37, 30, 90, 0.38);
+}
+
+/* ── The headline, with one phrase carrying the accent ── */
+
+.wz-title {
+  margin: 0;
+  font-size: clamp(23px, 4.6vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+  color: #0b0c0e;
+}
+.wz-accent {
+  color: #5b46e5;
+  position: relative;
+  white-space: nowrap;
+}
+
+/* ── The primary action: a pill with a badge on the end ── */
+
+.wz-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 7px 7px 22px;
+  border: none;
+  border-radius: 999px;
+  background: #5b46e5;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  /* Not a loop: a transition, so it responds to a person rather than moving on
+     its own. Loops belong on decoration, not on the control somebody is about
+     to press. */
+  transition: background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 8px 20px -8px rgba(91, 70, 229, 0.75);
+}
+.wz-cta:hover:not(:disabled) {
+  background: #4c39d1;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -10px rgba(91, 70, 229, 0.85);
+}
+.wz-cta:disabled {
+  background: #dcdfe6;
+  color: #8b93a3;
+  cursor: default;
+  box-shadow: none;
+}
+.wz-cta-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.wz-cta:disabled .wz-cta-badge { background: rgba(255, 255, 255, 0.5); }
+
+/* ── Motion ──────────────────────────────────────────────────────────────────
+ *
+ * Everything below loops, and everything below is inside the gate. Nothing
+ * here carries information: if it all stops, the wizard says exactly what it
+ * said before. That is the test for whether a loop is decoration.
+ */
+
+@keyframes wz-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(3%, 4%, 0) scale(1.07); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes wz-drift-b {
+  0%   { transform: translate3d(0, 0, 0) scale(1.04); }
+  50%  { transform: translate3d(-4%, -3%, 0) scale(1); }
+  100% { transform: translate3d(0, 0, 0) scale(1.04); }
+}
+
+@keyframes wz-sheen {
+  0%   { background-position: -120% 0; }
+  60%  { background-position: 220% 0; }
+  100% { background-position: 220% 0; }
+}
+
+@keyframes wz-breathe {
+  0%   { transform: scale(1); opacity: 0.9; }
+  50%  { transform: scale(1.11); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+
+@keyframes wz-rise {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Long and out of phase — 19s against 23s never repeat together, so the
+     background never looks like it is on a timer. */
+  .wz-wash-a { animation: wz-drift 19s ease-in-out infinite; }
+  .wz-wash-b { animation: wz-drift-b 23s ease-in-out infinite; }
+
+  /* A slow sweep across the accent phrase. `background-clip: text` on top of
+     the flat colour, so if the animation is off the word is still solid
+     indigo rather than transparent — which is what a naive implementation
+     leaves behind. */
+  .wz-accent {
+    background-image: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.85) 42%,
+      transparent 62%
+    );
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: wz-sheen 7.5s ease-in-out infinite;
+  }
+
+  .wz-cta-badge { animation: wz-breathe 2.6s ease-in-out infinite; }
+  /* Stops while the button is being pressed or is busy: a control that keeps
+     idling after you have asked it to do something looks like it did not hear. */
+  .wz-cta:hover .wz-cta-badge,
+  .wz-cta:disabled .wz-cta-badge { animation: none; }
+
+  /* Each step's content arrives rather than appearing. 40ms apart, so a
+     four-item list is finished inside a fifth of a second — noticeable as
+     smoothness, not as a wait. */
+  .wz-stagger > * { animation: wz-rise 0.32s ease-out backwards; }
+  .wz-stagger > *:nth-child(1) { animation-delay: 0.02s; }
+  .wz-stagger > *:nth-child(2) { animation-delay: 0.06s; }
+  .wz-stagger > *:nth-child(3) { animation-delay: 0.10s; }
+  .wz-stagger > *:nth-child(4) { animation-delay: 0.14s; }
+  .wz-stagger > *:nth-child(5) { animation-delay: 0.18s; }
+  .wz-stagger > *:nth-child(6) { animation-delay: 0.22s; }
+  .wz-stagger > *:nth-child(n + 7) { animation-delay: 0.26s; }
+}
+
+/* The explicit stop. The gate above means these never start under a reduce
+   preference — this is for anything that slips in later, and for the CSSOM
+   override in services/motion.ts to have a matching pair to rewrite. */
+@media (prefers-reduced-motion: reduce) {
+  .wz-wash-a, .wz-wash-b, .wz-accent, .wz-cta-badge, .wz-stagger > * {
+    animation: none !important;
+  }
+  .wz-cta { transition: none; }
+}
