@@ -20,7 +20,7 @@ import { useApp } from '../../context/AppContext';
 import { listShops, saveShop, deleteShop, shopUrl, type Shop } from '../../services/shop';
 import { THEME_LIST, themeFor } from '../Shop/themes';
 import { fetchBoard, type Project } from '../../services/projects';
-import { WizardStage, WizardTitle } from '../shared/WizardChrome';
+import { WizardFlow, WizardTitle } from '../shared/WizardChrome';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -287,14 +287,20 @@ export default function Shops() {
             </button>
           </div>
         </div>
-        <WizardStage
-          kind="Shop"
-          title={draft.name?.trim() || 'A new shop'}
-          lines={[
-            'A catalogue, a basket and a checkout.',
-            'No login for the buyer, and no theme to wrestle.',
+        <WizardFlow
+          /* What a shop is made of, and what this one has so far. The detail
+             lines read back the draft rather than describing a shop in
+             general — an empty name says "not named yet" instead of quietly
+             showing a placeholder that looks like an answer. */
+          nodes={[
+            { label: 'The shop', detail: draft.name?.trim() || 'Not named yet' },
+            { label: 'Its address', detail: draft.slug?.trim() ? `/shop/${draft.slug.trim()}` : 'From the name' },
+            { label: 'The products', detail: 'Added from Sell, with their options and stock' },
+            { label: 'The basket', detail: 'Several products at once, capped at what you have' },
+            { label: 'Getting paid', detail: 'Your own Stripe or Creem account' },
           ]}
-          faces={['£', '★']}
+          activeIndex={draft.name?.trim() ? (draft.slug?.trim() ? 2 : 1) : 0}
+          caption={<><strong>Five pieces.</strong> The first two are on this screen; the rest are waiting in Sell.</>}
         />
         </div>
         </div>

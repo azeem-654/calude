@@ -14,7 +14,7 @@
  * animations have to sit inside a `prefers-reduced-motion` block to be
  * reachable by a media query at all. See the note at the top of that file.
  */
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import './wizard.css';
 
 /**
@@ -114,91 +114,97 @@ export function WizardCta({
   );
 }
 
+/** One box on the board. */
+export interface FlowNode {
+  /** What it is, in two or three words. */
+  label: string;
+  /** What it will hold, in the customer's own terms. One short line. */
+  detail: string;
+}
+
 /**
- * The split window: the form on the left, what it is building on the right.
+ * The right-hand pane: the workflow being built, following the form.
  *
- * ── Why the stage is not a screenshot ──
+ * ── Why this replaced a decorative stage ──
  *
- * The obvious way to fill that pane is a picture of the finished thing. A
- * picture goes stale the week after it is taken, needs one per wizard, and
- * says nothing while somebody is halfway through. These are a handful of divs
- * that float and write themselves, so they cost nothing to keep true and they
- * are doing something the whole time the form is being filled in.
+ * The first version of this pane was floating cards that meant nothing. It
+ * looked alive and said nothing, which is the worse half of both options — it
+ * took the width of a whole column to be pretty.
  *
- * Nothing in here is a control and nothing in here is information. Losing the
- * whole pane — which is what happens under 1040px, and what a reduced-motion
- * preference does to its movement — loses nothing but the mood.
+ * This shows the thing being assembled: the emails in the sequence, the stages
+ * of the launch, the pages of the shop, with the step in hand lit and the ones
+ * after it ghosted. The pane answers the question somebody is actually holding
+ * at each step — "what am I agreeing to?" — and answers it from the same
+ * values the form has collected rather than with a picture of a different
+ * product.
+ *
+ * ── Why it is tilted ──
+ *
+ * Flat, a column of boxes is a list, and a list beside a form reads as a
+ * second form. Tilted on two axes with the nodes at different depths it reads
+ * as a board being looked at, which is what it is. The dotted field behind is
+ * what makes the tilt legible; over a flat colour the same rotation looks like
+ * a skewed rectangle.
+ *
+ * ── What it must never do ──
+ *
+ * Invent. Every node is passed in by the wizard that owns it, out of what the
+ * form has already collected, so it cannot promise a step the product will not
+ * build. A pane that drifts from the form is worse than no pane, because it is
+ * read as a preview.
  */
-export function WizardStage({
-  kind, title, lines, faces,
+export function WizardFlow({
+  nodes, activeIndex, caption,
 }: {
-  /** What is being built, in two or three words. Sits above the brief. */
-  kind: string;
-  /** The heading inside the floating brief. */
-  title: string;
-  /** Two or three short lines. They are scene-setting, not instructions. */
-  lines: string[];
-  /** Initials for the avatar row. Empty for a wizard nobody collaborates in. */
-  faces?: string[];
+  nodes: FlowNode[];
+  /** Which node the form is on. Clamped, so an off-by-one cannot blank it. */
+  activeIndex: number;
+  /** One line under the board saying what it is. */
+  caption?: ReactNode;
 }) {
-  const people = faces ?? [];
+  const at = Math.min(Math.max(activeIndex, 0), Math.max(nodes.length - 1, 0));
+
+  /* Slide the board so the live node sits near the middle of the pane. A node
+     and its link come to roughly 86px; the first two do not move it, or the
+     board lurches on the very first step of the wizard. */
+  const shift = Math.max(0, at - 1) * 86;
+
   return (
     <div className="wz-stage" aria-hidden="true">
-      {/* A tilted card standing in for the thing being made. Bars rather than
-          a blank rectangle: an empty white card reads as an image that failed
-          to load. */}
-      <div className="wz-float wz-float-preview">
-        <span className="wz-bar wz-bar-lead" />
-        <span className="wz-bar wz-bar-b" />
-        <span className="wz-bar wz-bar-c" />
-      </div>
-
-      {people.length > 0 && (
-        <div className="wz-faces">
-          {people.map((f, i) => (
-            <span key={f + i} className="wz-face" style={{
-              background: ['#5b46e5', '#2dd4bf', '#f59e0b'][i % 3],
-            }}>{f}</span>
-          ))}
+      <div className="wz-board">
+        <div
+          className="wz-flow"
+          style={{ transform: `rotateY(-15deg) rotateX(7deg) translateZ(-30px) translateY(${-shift}px)` }}
+        >
+          {nodes.map((n, i) => {
+            const state = i < at ? 'done' : i === at ? 'now' : 'todo';
+            return (
+              <Fragment key={`${n.label}-${i}`}>
+                <div className={`wz-node wz-node-${state}`}>
+                  <span className="wz-node-icon">{state === 'done' ? '✓' : i + 1}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span className="wz-node-label">{n.label}</span>
+                    <span className="wz-node-detail">{n.detail}</span>
+                  </span>
+                </div>
+                {i < nodes.length - 1 && (
+                  <span className="wz-link"><span className="wz-link-dot" /></span>
+                )}
+              </Fragment>
+            );
+          })}
         </div>
-      )}
-
-      <div className="wz-float wz-float-brief">
-        <span style={{
-          display: 'block', fontSize: 8.5, fontWeight: 800, letterSpacing: '0.14em',
-          color: '#94a3b8', textTransform: 'uppercase',
-        }}>{kind}</span>
-        <span style={{
-          display: 'block', fontSize: 13, fontWeight: 800, color: '#0b0c0e', marginTop: 5,
-          letterSpacing: '-0.01em',
-        }}>{title}</span>
-        {lines.map(l => (
-          <span key={l} style={{
-            display: 'block', fontSize: 11, color: '#6b7280', marginTop: 5, lineHeight: 1.5,
-          }}>{l}</span>
-        ))}
-        <span className="wz-writing"><span /></span>
       </div>
-
-      <div className="wz-float wz-float-tools">
-        {[0, 1, 2, 3].map(i => (
-          <span key={i} className={`wz-tool${i === 3 ? ' wz-tool-on' : ''}`}>
-            <span style={{
-              width: 9, height: 9, borderRadius: i % 2 ? 2 : 999,
-              border: '1.6px solid currentColor', display: 'block',
-            }} />
-          </span>
-        ))}
-      </div>
+      {caption && <p className="wz-board-caption">{caption}</p>}
     </div>
   );
 }
 
 /**
- * Content and stage side by side, inside the card.
+ * Content and board side by side, inside the card.
  *
- * The children are the form. The stage is passed rather than composed inside
- * so a wizard that has nothing worth showing can simply not pass one, and get
+ * The children are the form. The board is passed rather than composed inside,
+ * so a wizard with no workflow worth drawing simply does not pass one and gets
  * a single full-width column without a special case.
  */
 export function WizardSplit({ stage, children }: { stage?: ReactNode; children: ReactNode }) {

@@ -49,7 +49,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
-import { WizardBackdrop, WizardCta, WizardSplit, WizardStage, WizardTitle } from '../shared/WizardChrome';
+import { WizardBackdrop, WizardCta, WizardFlow, WizardSplit, WizardTitle } from '../shared/WizardChrome';
 import {
   saveProject, savePortfolio, readPortfolioFromUrl, readPortfolioFromText,
   CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
@@ -474,25 +474,35 @@ export default function NewProject({
         </header>
 
         <WizardSplit stage={
-          <WizardStage
-            kind="Project brief"
-            title={clientName || 'A new project'}
-            /* What it is about to do, in the client's own terms where there is
-               one yet. Scene-setting rather than instructions — the
-               instructions are on the left, where they can be read. */
-            /* Read from the same `listKind` the sizing step reads, not written
-               out here. The first version said "9 mailboxes across 3 domains"
-               whatever the trade — including for a shop, which the screen
-               beside it was at that moment telling to take one address on its
-               own domain. Two panes disagreeing about what is being bought is
-               worse than one pane saying nothing. */
-            lines={[
-              job ? job.label : 'Say what is going wrong, and it works out the rest.',
-              listKind === 'owned'
-                ? 'One address, on your own domain'
-                : `${pool.mailboxes} mailboxes across ${pool.domains} domains`,
-            ]}
-            faces={['AI', clientName ? clientName.slice(0, 1).toUpperCase() : 'P', '+']}
+          /*
+           * The launch plan, which is the *same array* the review panel prints
+           * and `saveProject` sends to the board. Not a second description of
+           * what Autopilot will do — there is exactly one, computed from the
+           * trade and the capabilities, and this pane is a view of it.
+           *
+           * So the board on the right fills in as the answers on the left make
+           * it real: before a trade is picked there is nothing to plan, and it
+           * says so rather than showing a plausible-looking default.
+           */
+          <WizardFlow
+            /*
+             * Two boards, and which one shows is the honest part.
+             *
+             * `launchPlan` returns a single generic stage until it knows both
+             * the trade and the capabilities, and one lonely node captioned
+             * "1 stages" is a worse answer than no board. So until there is a
+             * real plan the board is the wizard itself — the five steps, each
+             * with the guidance for it — which is what somebody on step one
+             * actually wants to know. From the moment the plan has something
+             * to say, the board becomes the plan.
+             */
+            nodes={steps.length > 1
+              ? steps.map(st => ({ label: st.label, detail: st.why }))
+              : STEP_NAV.map(({ n, label }) => ({ label, detail: ASIDE[n].title }))}
+            activeIndex={steps.length > 1 ? 0 : step - 1}
+            caption={steps.length > 1
+              ? <><strong>{steps.length} stages</strong> — this becomes the first card on the project&rsquo;s board.</>
+              : <>The build order appears here once it knows the trade.</>}
           />
         }>
         <div style={{

@@ -21,7 +21,7 @@ import EmailTemplateGallery from './EmailTemplates';
 import { useApp } from '../../context/AppContext';
 import { writeCampaign, rewriteEmail } from '../../services/aiWrite';
 import AiCampaignSetup, { type AiSetup } from './AiCampaignSetup';
-import { WizardBackdrop, WizardSplit, WizardStage, WizardTitle } from '../shared/WizardChrome';
+import { WizardBackdrop, WizardFlow, WizardSplit, WizardTitle } from '../shared/WizardChrome';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -2119,14 +2119,30 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
         {/* The split: the form on the left, what it is building on the right.
             Same shell as the AI Autopilot wizard — see shared/wizard.css. */}
         <WizardSplit stage={
-          <WizardStage
-            kind="Campaign brief"
-            title={editCampaign?.name?.trim() || 'A new campaign'}
-            lines={[
-              'Written from your own profile, in your voice.',
-              'Nothing sends until you have read every word.',
-            ]}
-            faces={['AI', 'You']}
+          /*
+           * The emails themselves once there are any, and the shape of the
+           * wizard before that. Real subjects, in the order they will go out
+           * with the gap between them — which is the thing somebody wants to
+           * check before they press send and cannot check anywhere else on
+           * this screen.
+           */
+          <WizardFlow
+            nodes={state.steps.length > 0
+              ? state.steps.map((st, i) => ({
+                  label: st.subject?.trim() || `Email ${i + 1}`,
+                  detail: i === 0
+                    ? 'Goes out first'
+                    : `${st.day ?? 0} ${st.waitUnit ?? 'days'} later · ${st.condition ?? 'Always'}`,
+                }))
+              : STEP_LABELS.map((label, i) => ({
+                  label,
+                  detail: ['What it is for', 'How many emails', 'Who it comes from',
+                    'Who it goes to', 'Read it, then send'][i] ?? '',
+                }))}
+            activeIndex={state.steps.length > 0 ? 0 : step - 1}
+            caption={state.steps.length > 0
+              ? <><strong>{state.steps.length} email{state.steps.length === 1 ? '' : 's'}</strong> — nothing sends until you have read every word.</>
+              : <>The emails appear here as they are written.</>}
           />
         }>
 
