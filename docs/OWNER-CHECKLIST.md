@@ -16,6 +16,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 | # | What | Where | Blocks |
 |---|---|---|---|
+| 0 | **URGENT — add a route for `testing.protectedcentral.com/*` to `crmpro-staging`** | Cloudflare → Workers → crmpro-staging → Domains & Routes | The testing site being the testing site. See "The wildcard route swallowed testing" below |
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
 | 2 | **Attach a wildcard Worker route** for `*.protectedcentral.com` | Cloudflare → Workers → Routes | Reseller subdomains resolve |
 | 3 | **Change the master password** | Settings → Security | Security |
@@ -36,6 +37,55 @@ Item 2 was attempted from a session on 2026-09-14 and could not be done: the
 Cloudflare token available to an assistant is a reference, not a working
 credential, and `user/tokens/verify` refuses it. It needs a browser and the
 owner's login.
+
+---
+
+## The wildcard route swallowed testing — 2026-09-18
+
+**What happened.** The wildcard Worker route `*.protectedcentral.com/*` was
+added to the **live** `crmpro` Worker so reseller subdomains resolve. It also
+matches `testing.protectedcentral.com`, and it won over that subdomain's own
+Worker binding. From that moment the testing address was served by the **live
+Worker on the live `crmpro` database**, while still showing the purple TESTING
+banner — because the banner is drawn from the hostname, and the hostname was
+still "testing".
+
+Nothing failed. No deploy went red. Four staging deploys uploaded correctly to
+`crmpro-staging` and the testing address kept showing the old live build,
+because it was no longer that Worker's address.
+
+**How it was found.** `crmpro-staging.azeem654.workers.dev` and
+`testing.protectedcentral.com` answered `/api/auth.php` `status` differently:
+the workers.dev address knew about `signupsOpen`, the custom domain did not.
+Two addresses that should be one Worker were two.
+
+**The fix.** Cloudflare → Workers & Pages → **crmpro-staging** → Settings →
+Domains & Routes → **Add route**:
+
+- Route: `testing.protectedcentral.com/*`
+- Zone: `protectedcentral.com`
+
+A more specific route beats the wildcard, so testing goes back to the staging
+Worker and every other subdomain keeps reaching the live one.
+
+Confirm it with, from any machine:
+
+```
+curl -s -X POST https://testing.protectedcentral.com/api/auth.php \
+  -H 'Content-Type: application/json' -d '{"action":"status"}'
+```
+
+The reply must contain `"appOrigin":"https://testing.protectedcentral.com"`. If
+it says `app.protectedcentral.com`, the wildcard is still winning.
+
+**Anything typed into testing.protectedcentral.com while this was true went
+into the live database.** Worth checking the live workspace list and user list
+for rows created on 2026-09-18 that were meant to be rehearsal data.
+
+**What stops it recurring.** The Worker now reports which deployment it
+believes it is, and the app compares that against the address bar. When they
+disagree, every page carries a red **WRONG SITE** bar instead of the testing
+one. It is checked in both directions by `npm run test:hosts`.
 
 ---
 

@@ -80,6 +80,41 @@ for (const name of ['crmpro-staging.azeem654.workers.dev', 'abc123-crmpro-stagin
   ok('and is not treated as a rehearsal', !h.isStagingHost() && !h.isRehearsal());
 }
 
+
+/* ── The address bar and the Worker have to agree ──
+   The failure this exists for: on 2026-09-18 a wildcard Worker route on the
+   live app swallowed testing.protectedcentral.com, so the live Worker served
+   the testing address — on the live database, wearing the testing banner.
+   Nothing failed; it simply looked normal. ── */
+{
+  const t = await at('testing.protectedcentral.com');
+  ok('testing served by the staging Worker agrees',
+    t.hostMatchesServer('https://testing.protectedcentral.com') === true);
+  ok('testing served by the LIVE Worker is caught',
+    t.hostMatchesServer('https://app.protectedcentral.com') === false,
+    'the exact mistake that happened went undetected');
+  ok('a trailing slash does not read as a mismatch',
+    t.hostMatchesServer('https://testing.protectedcentral.com/') === true);
+
+  const a = await at('app.protectedcentral.com');
+  ok('live served by the live Worker agrees',
+    a.hostMatchesServer('https://app.protectedcentral.com') === true);
+  ok('and live served by the staging Worker is caught the other way too',
+    a.hostMatchesServer('https://testing.protectedcentral.com') === false);
+
+  /* "Cannot tell" must never produce the same alarm as "they disagree", or the
+     alarm gets ignored by the time it isneeded. */
+  ok('an older Worker that says nothing is not an accusation',
+    t.hostMatchesServer('') === null);
+  ok('and neither is an unparseable answer', t.hostMatchesServer('not a url') === null);
+
+  const w = await at('crmpro-staging.azeem654.workers.dev');
+  ok('a workers.dev preview is not checked', w.hostMatchesServer('https://testing.protectedcentral.com') === null);
+  const r = await at('crm.someagency.co.uk');
+  ok('and nor is a reseller domain, which legitimately differs',
+    r.hostMatchesServer('https://app.protectedcentral.com') === null);
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed}/${out.length} passed`);

@@ -82,6 +82,14 @@ export interface AuthStatus {
    */
   signupsOpen?: boolean;
   /**
+   * Which deployment the *server* believes this is, from its own config.
+   *
+   * Cross-checked against the hostname, because the hostname alone cannot
+   * detect a routing mistake that points one site's address at the other's
+   * Worker — and that mistake wears the wrong banner while behaving normally.
+   */
+  appOrigin?: string;
+  /**
    * Whether "Continue with Google" is worth drawing. The server decides, and it
    * says yes only when the application is configured *and* this is the host
    * Google will redirect back to — a button that lands on Google's own error
@@ -108,7 +116,7 @@ export async function authStatus(): Promise<AuthStatus> {
      * already had an owner. Read both, so the screen is right whichever name
      * the server on the other end happens to use.
      */
-    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown; signupsOpen?: unknown };
+    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown; signupsOpen?: unknown; appOrigin?: unknown };
     return {
       initialised: !!(data.initialised ?? data.hasOwner),
       writable: data.writable !== false,
@@ -116,6 +124,10 @@ export async function authStatus(): Promise<AuthStatus> {
          but the testing one is — the same fail-towards-working default the
          server itself uses. */
       signupsOpen: data.signupsOpen !== false,
+      /* Empty on an older Worker, which the check below treats as "cannot
+         tell" rather than as a mismatch — accusing a correct deployment of
+         being the wrong one would be its own false alarm. */
+      appOrigin: typeof data.appOrigin === 'string' ? data.appOrigin : '',
       backend: 'php',
       testLogin: (data.testLogin as AuthStatus['testLogin']) ?? null,
       /* Absent on an older Worker, which means no Google — the right answer, and

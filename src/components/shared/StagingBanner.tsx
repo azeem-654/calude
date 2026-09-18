@@ -21,9 +21,62 @@
  * flag would eventually be wrong in the one direction that matters: production
  * built from a staging config, with no warning on it at all.
  */
-import { isStagingHost } from '../../services/hosts';
+import { useEffect, useState } from 'react';
+import { hostMatchesServer, isStagingHost } from '../../services/hosts';
+import { authStatus } from '../../services/auth';
 
 export default function StagingBanner() {
+  /*
+   * ── Why this asks the server as well as the address bar ──
+   *
+   * The hostname is the right thing to draw the banner from, and it stays
+   * that way. But it can only say what was typed. On 2026-09-18 a wildcard
+   * Worker route on the live app swallowed testing.protectedcentral.com: the
+   * live Worker, on the live database, served that address wearing this
+   * banner, because this banner asked the hostname and the hostname still
+   * said "testing".
+   *
+   * A banner promising a rehearsal over the real customer database is the
+   * worst thing this component could do, so it now checks that the Worker
+   * answering agrees about which site this is. `null` means the server did not
+   * say — an older deployment — and is treated as "cannot tell" rather than as
+   * a mismatch, because a false alarm here teaches people to ignore the true
+   * one.
+   */
+  const [agrees, setAgrees] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    authStatus()
+      .then(st => { if (alive) setAgrees(hostMatchesServer(st.appOrigin ?? '')); })
+      .catch(() => { /* unreachable server: say nothing rather than guess */ });
+    return () => { alive = false; };
+  }, []);
+
+  /* Loud, and on both sites. The mismatch is as dangerous at the live address
+     as at the testing one — it means the address bar is lying either way. */
+  if (agrees === false) {
+    return (
+      <div role="alert" style={{
+        display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap',
+        padding: '10px clamp(14px, 3vw, 22px)',
+        background: '#b42318', color: '#fff',
+        fontSize: 12.5, fontWeight: 700, letterSpacing: '0.01em',
+      }}>
+        <span style={{
+          fontSize: 9.5, fontWeight: 800, letterSpacing: '0.06em',
+          padding: '2px 7px', borderRadius: 999, background: 'rgba(255,255,255,0.25)',
+        }}>
+          WRONG SITE
+        </span>
+        <span style={{ fontWeight: 500 }}>
+          This address is being served by the other deployment&rsquo;s Worker, so what you see and what
+          you change here are not what this address should be. Stop and fix the Cloudflare route before
+          working in it.
+        </span>
+      </div>
+    );
+  }
+
   if (!isStagingHost()) return null;
 
   return (

@@ -104,6 +104,45 @@ export const isStagingHost = (): boolean => {
 };
 
 /**
+ * Does the address bar agree with the Worker about which site this is?
+ *
+ * ── Why this needs checking at all ──
+ *
+ * `isStagingHost()` reads the hostname, which is right: one build serves both
+ * sites, so neither can be published with the other's banner baked in. But a
+ * hostname says only what was typed. It cannot see a routing mistake that
+ * points one site's address at the other's Worker.
+ *
+ * That is not hypothetical. On 2026-09-18 a wildcard Worker route added to the
+ * live app — `*.protectedcentral.com/*`, for reseller subdomains — swallowed
+ * testing.protectedcentral.com. The live Worker, on the live database, served
+ * that address for hours wearing the purple TESTING banner, because the banner
+ * asks the hostname and the hostname was still "testing". Nothing failed and
+ * nothing looked wrong.
+ *
+ * So the server now says which deployment it believes it is, and this compares
+ * the two. Returns `null` when the server did not say — an older Worker, or a
+ * deployment with no APP_ORIGIN — because "cannot tell" and "they disagree"
+ * must not produce the same alarm.
+ */
+export function hostMatchesServer(serverOrigin: string): boolean | null {
+  const said = (serverOrigin || '').trim();
+  if (!said) return null;
+  let serverHost: string;
+  try { serverHost = new URL(said).hostname.toLowerCase(); } catch { return null; }
+
+  const browserHost = host();
+  /* A preview URL, a reseller's own domain or a developer's machine legitimately
+     differ from APP_ORIGIN, and flagging those would train people to ignore the
+     warning. Only the two named sites are checked, because they are the pair
+     that can be confused for one another with real money behind it. */
+  const named = (h: string) => STAGING_HOSTS.has(h) || h === 'app.protectedcentral.com';
+  if (!named(browserHost) || !named(serverHost)) return null;
+
+  return STAGING_HOSTS.has(browserHost) === STAGING_HOSTS.has(serverHost);
+}
+
+/**
  * True where a feature that is not ready for paying customers may run.
  *
  * Staging and a developer's own machine. Deliberately *not* a white-label host:

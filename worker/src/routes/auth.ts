@@ -271,6 +271,22 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     return json({
       success: true, hasOwner: owner, initialised: owner, writable: true, google,
       signupsOpen: !signupsClosed(env),
+      /*
+       * Which deployment this really is, from the Worker's own configuration.
+       *
+       * The testing banner is drawn from `location.hostname`, which is right —
+       * one build serves both sites and neither can be published believing it
+       * is the other. But the hostname says only what was typed in the address
+       * bar, and on 2026-09-18 a wildcard Worker route on the live app
+       * swallowed testing.protectedcentral.com: the live Worker, on the live
+       * database, answering at the testing address and wearing the testing
+       * banner. Nothing failed. It looked entirely normal.
+       *
+       * So the browser and the Worker each say which they think this is, and
+       * the app checks they agree. A banner that promises a rehearsal over the
+       * real database is the worst lie this product could tell.
+       */
+      appOrigin: (env.APP_ORIGIN ?? '').replace(/\/$/, ''),
       policyVersion: POLICY_VERSION,
     });
   }
