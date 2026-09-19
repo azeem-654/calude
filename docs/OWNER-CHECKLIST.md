@@ -534,6 +534,60 @@ Two things worth knowing before you start:
 - The client secret is encrypted before it is stored and never shown again, not
   even its last characters. Leave the box blank to keep the one already saved.
 
+### 18. Voice: pick a provider, or leave it off — it says which
+
+The AI chatbot needs **no extra service at all**. It runs on the same Google AI
+(Gemini) key as everything else, through `loadAiKey`, so once item 14 is done
+the chat agent, the ticket triage, the knowledge-base answers and all the
+writing are covered by one key. There is nothing else to buy for it.
+
+**Voice is different, and this is the honest part:** a Gemini key cannot answer
+a phone. Answering a call needs three things Gemini does not provide — a phone
+number with a carrier behind it, speech-to-text and text-to-speech running
+inside a few hundred milliseconds, and something to hold the audio leg open. The
+voice agent screen, the session model and the `VoiceProvider` interface are all
+built and finished; the provider list is deliberately **empty**, and every
+screen and endpoint says so by name rather than pretending to take calls.
+
+Three ways to go, cheapest first:
+
+| Route | What it costs you | What you give up |
+|---|---|---|
+| **Leave it off** | Nothing | No inbound calls. Chat, forms and tickets are unaffected. |
+| **A hosted voice-agent API** (Vapi, Retell, ElevenLabs Agents and similar all expose the same shape) | Roughly $0.05–$0.15 a minute all-in, plus the number | A second bill and a second vendor. Cheapest to *build*: one file and one line in `PROVIDERS`. |
+| **Assemble it yourself** — Twilio for the number and the media stream, a streaming STT, Gemini for the reasoning, a TTS | Cheapest per minute at volume | Weeks of work and the latency problem is genuinely hard. Not worth it until voice is earning. |
+
+**The recommendation: leave voice off for now and turn the chatbot on.** The
+chatbot costs nothing beyond the key you already have, captures leads on every
+website and funnel, and is the thing customers will actually use first. Voice is
+worth adding when a customer asks for it and will pay for it — at which point it
+is a day's work, not a rebuild.
+
+Whichever you choose, **the key is entered in the app**, never pasted into a
+chat. It is encrypted at rest and never shown back, not even its last
+characters.
+
+### 19. Where the forms are, and what happens to a lead
+
+Not a task — the answer to "where do I find them", because it moved.
+
+- **Forms:** *Customers → Customer Engagement → Forms*, or straight to
+  `/engagement?tab=forms`. Each one gets a public address anybody can open with
+  no account, and the same form can be embedded in a **website** or a **funnel**.
+  Chat and voice capture into the same place.
+- **What is captured:** *Customer Engagement → Submissions*, and the people
+  themselves land in **Contacts**.
+- **Where a lead goes next:** *Customer Engagement → Settings → Where new leads
+  go*. By default every captured person gets a **deal on your pipeline**, in the
+  first stage, carrying that stage's checklist. Optionally they can also be put
+  into a **follow-up sequence** — that one is off until you pick a sequence,
+  deliberately, because it sends email to somebody who has just met you.
+- **Did the email arrive:** *Customer Engagement → Delivery log*, one row per
+  recipient, with the mail server's own words when it refused.
+- **The online shop** is no longer called "Sell" and no longer sits under
+  Marketing. It is **Sales → Online shop**, with a map of its nine panels at the
+  top, and it links both ways to the shop pages under *Websites → Shops*.
+
 ---
 
 ## Done
