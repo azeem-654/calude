@@ -91,6 +91,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/pipelines', label: 'Deals', desc: 'Move opportunities through to won', icon: TrendingUp, aka: ['pipeline', 'pipelines', 'opportunities', 'kanban'] },
       { path: '/calendar', label: 'Calendar', desc: 'Meetings, bookings and your own time on one grid', icon: Calendar, aka: ['diary', 'schedule', 'appointments'] },
       { path: '/scheduling', label: 'Booking pages', desc: 'Let people book you without the email chain', icon: CalendarClock, aka: ['scheduling', 'calendly', 'availability', 'event types'] },
+      /* ── Why the shop sits under Sales ──
+         It was called "Sell" and lived in Marketing, where it was next to
+         Funnels, Websites and Blog — four things that all build a web page, one
+         of which takes money. Nobody could tell from the name what it was, and
+         the one word most likely to find it, "shop", was only in the search
+         aliases. Under Sales it is beside Deals: the two places money arrives. */
+      { path: '/sell', label: 'Online shop', desc: 'Products, collections, orders, discounts, delivery and your storefront', icon: Package, aka: ['sell', 'products', 'orders', 'shop', 'store', 'ecommerce', 'commerce', 'checkout', 'discounts', 'shipping', 'tax', 'storefront', 'ideas', 'dropshipping'] },
     ],
   },
   {
@@ -101,9 +108,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/funnels', label: 'Funnels', desc: 'Landing pages built to capture a lead', icon: LayoutTemplate, aka: ['landing pages', 'opt-in'] },
       { path: '/websites', label: 'Websites', desc: 'Full sites, built and published from here', icon: Globe, aka: ['site', 'pages', 'web'] },
       { path: '/blog-automation', label: 'Blog & SEO', desc: 'A planned blog that ranks your own pages', icon: Newspaper, aka: ['seo', 'articles', 'content', 'ranking'] },
-      /* For the customer who has no business yet, as well as the one who has:
-         what you sell, and what you have sold. */
-      { path: '/sell', label: 'Sell', desc: 'Business ideas, products and the orders you have taken', icon: Package, aka: ['products', 'orders', 'shop', 'store', 'ecommerce', 'ideas'] },
     ],
   },
   {

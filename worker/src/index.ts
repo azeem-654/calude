@@ -57,6 +57,7 @@ import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
 import { runEngageDispatch } from './engageDispatch';
 import { pruneRateLimits } from './lib/rateLimit';
+import { pruneDeliveryLog } from './lib/deliveryLog';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -301,6 +302,7 @@ export default {
          somebody is still inside. It reports nothing because there is nothing
          a customer could do about it. */
       await pruneRateLimits(env);
+      await pruneDeliveryLog(env);
 
       const ms = Date.now() - started;
 

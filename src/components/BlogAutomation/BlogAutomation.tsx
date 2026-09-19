@@ -14,6 +14,7 @@ import ProfileReview from './ProfileReview';
 import MonthPlanner from './MonthPlanner';
 import WriteDesk from './WriteDesk';
 import PublishDesk from './PublishDesk';
+import AutopilotDrafts from './AutopilotDrafts';
 
 /**
  * Blog Automation — the shell.
@@ -167,6 +168,11 @@ export default function BlogAutomation() {
           </div>
         </div>
 
+        {/* Above the projects on purpose: a customer arriving from Autopilot's
+            board is looking for the post it just told them about, not for the
+            project workflow. */}
+        <AutopilotDrafts />
+
         {projects.length === 0 ? (
           <div style={{
             backgroundColor: '#fff', borderRadius: 22, border: `1px dashed ${LINE}`,
@@ -179,7 +185,7 @@ export default function BlogAutomation() {
               <Search size={24} />
             </span>
             <h3 style={{ margin: '0 0 7px', fontSize: 17, fontWeight: 800, color: INK }}>
-              Nothing to rank yet
+              No blog projects yet
             </h3>
             <p style={{ margin: '0 auto', maxWidth: 460, fontSize: 13, color: MUTED, lineHeight: 1.65 }}>
               Start a project for the site you want ranking, then paste in a few hundred words you have

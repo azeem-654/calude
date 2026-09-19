@@ -469,6 +469,38 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     return json({ success: true });
   }
 
+  /* ── The delivery log ─────────────────────────────────────────────────── */
+  /*
+   * "Did Rita get the email?" — the one question the enrolment history could
+   * never answer, because it lived inside a JSON blob that cannot be filtered.
+   * Optional filters rather than one fixed view: the same rows answer "what did
+   * this campaign send" and "what has this address ever been sent", and those
+   * are the two ways anybody ever comes at it.
+   */
+  if (act === 'delivery_log') {
+    const sourceId = s(d.id, 80);
+    const who = s(d.assignedTo, 200);   // reused as the recipient filter
+    const where: string[] = ['account_id = ?'];
+    const bind: (string | number)[] = [accountId];
+    if (sourceId) { where.push('source_id = ?'); bind.push(sourceId); }
+    if (who) { where.push('recipient = ?'); bind.push(who.toLowerCase()); }
+    if (s(d.status, 20)) { where.push('status = ?'); bind.push(s(d.status, 20)); }
+
+    const { results } = await env.DB.prepare(
+      `SELECT id, channel, source, source_id AS sourceId, source_name AS sourceName,
+              step_index AS stepIndex, contact_id AS contactId, recipient, subject,
+              status, detail, sent_from AS sentFrom, created_at AS createdAt
+       FROM crm_delivery_log WHERE ${where.join(' AND ')}
+       ORDER BY created_at DESC LIMIT 500`,
+    ).bind(...bind).all();
+
+    const totals = await env.DB.prepare(
+      `SELECT status, count(*) AS n FROM crm_delivery_log WHERE account_id = ? GROUP BY status`,
+    ).bind(accountId).all<{ status: string; n: number }>();
+
+    return json({ success: true, entries: results ?? [], totals: totals.results ?? [] });
+  }
+
   /* ── Settings ─────────────────────────────────────────────────────────── */
   if (act === 'settings') {
     const row = await env.DB.prepare('SELECT * FROM crm_engage_settings WHERE account_id = ?')

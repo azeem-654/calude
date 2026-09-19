@@ -19,6 +19,7 @@
  */
 import type { Env } from './lib/db';
 import { dataGet, dataPut } from './lib/db';
+import { logDelivery } from './lib/deliveryLog';
 import { loadMailbox } from './routes/mailbox';
 import { loadSmsConfig, sendSms } from './lib/sms';
 import { smtpSend } from './lib/smtp';
@@ -198,6 +199,10 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
      * drifted the first time one of them was fixed.
      */
     let out: { ok: boolean; error: string };
+    /* Tracked separately from `ok`, because an opt-out is the person's own
+       decision rather than a delivery fault — counting it as a failure is how
+       a healthy list looks broken. */
+    let suppressed = false;
 
     if (isSms) {
       /* SMS is plain text. Sending the HTML body of an email step would post
@@ -207,7 +212,10 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
       out = { ok: r.ok, error: r.error };
       /* An opt-out is not a failure to retry or a fault to fix — it is the
          person's decision, and it is worth naming as that in the log. */
-      if (r.suppressed) note(report, accountId, `${target} has opted out, so the text was not sent.`);
+      if (r.suppressed) {
+        suppressed = true;
+        note(report, accountId, `${target} has opted out, so the text was not sent.`);
+      }
     } else {
       const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
       const mime = buildMime({
@@ -221,6 +229,28 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
       const r = await smtpSend(mailbox!.smtp, { from: fromEmail, to: target, mime });
       out = { ok: r.ok, error: r.error };
     }
+
+    /*
+     * Written down before anything else happens with the result.
+     *
+     * Every send, whether it worked or not, and with whatever the server said
+     * when it did not. This is the row that answers "did Rita get it", which
+     * the enrolment history could never answer — it is inside a JSON blob
+     * nobody can filter, on a record nobody thinks to open.
+     */
+    await logDelivery(env, accountId, {
+      channel: isSms ? 'sms' : 'email',
+      source: 'sequence',
+      sourceId: seq.id,
+      sourceName: seq.name ?? '',
+      stepIndex: enr.currentStep,
+      contactId: String(contact.id ?? ''),
+      recipient: target,
+      subject: isSms ? '' : subject,
+      status: suppressed ? 'suppressed' : out.ok ? 'sent' : 'failed',
+      detail: out.error ?? '',
+      sentFrom: isSms ? '' : (mailbox?.from.email ?? ''),
+    });
 
     /* Advance whether or not the send succeeded.
        Leaving currentStep where it was means the next tick — a minute later —

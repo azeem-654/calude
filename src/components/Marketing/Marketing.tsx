@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Shield, Settings } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Shield, Settings, Bot } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
@@ -42,7 +42,52 @@ function MetricBar({ label, value, total, color }: { label: string; value: numbe
   );
 }
 
-function CampaignsTab() {
+/**
+ * Where Autopilot's email work actually went.
+ *
+ * Autopilot writes a *sequence* — a run of emails spaced over days — because
+ * that is what a follow-up is. It has never written a campaign, and it never
+ * should: a campaign is one send to a list somebody chose, and Autopilot has
+ * no business choosing a list on its own.
+ *
+ * But "AI Autopilot wrote your email campaign" is the sentence on its board,
+ * and Campaigns is the tab that word sends people to. They landed here, found
+ * it empty, and concluded the thing had not run. It had — one tab across.
+ *
+ * So this says so, here, rather than leaving the customer to guess which of
+ * three similarly-named tabs holds their work.
+ */
+function AutopilotSequenceNote({ onOpen }: { onOpen: () => void }) {
+  const { sequences } = useApp();
+  const mine = sequences.filter(s => s.source?.origin === 'autopilot');
+  if (!mine.length) return null;
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+      background: '#f4fbe6', border: '1px solid #d5ec9b', borderRadius: 12, marginBottom: 18, flexWrap: 'wrap',
+    }}>
+      <span style={{
+        width: 28, height: 28, borderRadius: 9, backgroundColor: '#17191c', color: '#c7f441',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}><Bot size={15} /></span>
+      <div style={{ flex: '1 1 260px', fontSize: 13, color: '#3f4a1f', lineHeight: 1.55 }}>
+        <strong>AI Autopilot has written {mine.length === 1 ? 'a follow-up sequence' : `${mine.length} follow-up sequences`}.</strong>{' '}
+        They are under <em>Sequences</em>, not here — a sequence starts when somebody is put into it,
+        which is what a follow-up needs. Nobody is enrolled until you say so.
+      </div>
+      <button onClick={onOpen} className="press" style={{
+        padding: '8px 15px', borderRadius: 9, border: 'none', backgroundColor: '#17191c',
+        color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+        display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
+      }}>
+        Open Sequences <ChevronRight size={13} />
+      </button>
+    </div>
+  );
+}
+
+function CampaignsTab({ onOpenSequences }: { onOpenSequences: () => void }) {
   const navigate = useNavigate();
   const { campaigns, addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus, contacts } = useApp();
   const [showModal, setShowModal] = useState(false);
@@ -70,6 +115,7 @@ function CampaignsTab() {
 
   return (
     <div style={{ padding: '28px' }}>
+      <AutopilotSequenceNote onOpen={onOpenSequences} />
       {/* Email provider setup nudge — non-blocking */}
       {!emailReady && !dismissedProviderBanner && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, marginBottom: 18 }}>
@@ -377,7 +423,7 @@ export default function Marketing() {
       {/* Tab content */}
       <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#f8fafc' }}>
         {activeTab === 'campaigns' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}><CampaignsTab /></div>
+          <div style={{ height: '100%', overflowY: 'auto' }}><CampaignsTab onOpenSequences={() => setActiveTab('sequences')} /></div>
         )}
         {activeTab === 'import' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>

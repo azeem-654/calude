@@ -261,3 +261,84 @@ export async function initCloudSync(timeoutMs = 6000): Promise<'cloud' | 'local'
   const timeout = new Promise<'cloud' | 'local'>(res => setTimeout(() => res('local'), timeoutMs));
   return Promise.race([done, timeout]);
 }
+
+/* ── Bringing the server's changes back down ── */
+
+/**
+ * The event fired when a refresh has written new values into localStorage.
+ *
+ * React state is seeded from storage once, at mount. Writing underneath it is
+ * invisible until something re-reads, so the refresh announces itself and
+ * `AppContext` re-loads the keys it owns.
+ */
+export const CLOUD_REFRESH_EVENT = 'crm:cloud-refresh';
+
+let refreshTimer: number | undefined;
+let refreshing = false;
+
+/**
+ * Pull the workspace down again, mid-session.
+ *
+ * ── Why this exists ──
+ *
+ * `initCloudSync` pulled once, at startup, and never again. That was fine while
+ * the browser was the only thing that ever wrote: whatever was on screen was
+ * also what was on the server.
+ *
+ * Autopilot broke that assumption. The cron runs every five minutes in the
+ * Worker and writes sequences, funnels, blog drafts and social posts straight
+ * into D1 — for a workspace whose owner is very likely sitting on the page
+ * watching for them. Without a re-pull they simply never appeared, which is
+ * exactly what was reported: "it says it created an email campaign and there
+ * are no campaigns there."
+ *
+ * Worse than invisible, it was destructive. The write listener pushes local
+ * changes up key by key. A browser holding a stale `crm_sequences` that the
+ * customer then edited would push its stale copy over Autopilot's work, and
+ * nothing anywhere would say a thing had been lost.
+ *
+ * A refresh is skipped while anything is queued to go *up*. The two directions
+ * would otherwise race over the same key and the loser is whichever finished
+ * second, which is not a rule anybody could reason about — the customer's own
+ * edit has to win, so the refresh waits for it to land.
+ */
+export async function refreshFromCloud(): Promise<boolean> {
+  if (refreshing) return false;
+  if (!pushAccount || !pushToken) return false;
+  if (cloudStatus() !== 'cloud') return false;
+  /* Something of the customer's is still on its way up. See above. */
+  if (Object.keys(pending).length) return false;
+
+  refreshing = true;
+  try {
+    const ok = await pull(pushAccount, pushToken);
+    if (ok) window.dispatchEvent(new CustomEvent(CLOUD_REFRESH_EVENT));
+    return ok;
+  } finally {
+    refreshing = false;
+  }
+}
+
+/**
+ * Keep asking, while the tab is in front.
+ *
+ * Two minutes, against a five-minute cron: fast enough that Autopilot's work
+ * shows up within one coffee sip of being made, slow enough that a workspace
+ * left open all day costs a few hundred requests rather than tens of thousands.
+ *
+ * A hidden tab asks for nothing — a laptop with this pinned in a background
+ * window should not hold a connection open all night — and asks immediately on
+ * becoming visible again, which is the moment somebody is actually looking.
+ */
+export function startCloudRefresh(intervalMs = 120_000): () => void {
+  stopCloudRefresh();
+  const tick = () => { if (document.visibilityState === 'visible') void refreshFromCloud(); };
+  refreshTimer = window.setInterval(tick, intervalMs);
+  const onVisible = () => { if (document.visibilityState === 'visible') void refreshFromCloud(); };
+  document.addEventListener('visibilitychange', onVisible);
+  return () => { stopCloudRefresh(); document.removeEventListener('visibilitychange', onVisible); };
+}
+
+export function stopCloudRefresh() {
+  if (refreshTimer !== undefined) { window.clearInterval(refreshTimer); refreshTimer = undefined; }
+}

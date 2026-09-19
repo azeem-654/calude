@@ -15,6 +15,7 @@
  * type a price is a second price to disagree with the first.
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Store, Plus, Trash2, ExternalLink, Copy, Check, Loader, AlertCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { listShops, saveShop, deleteShop, shopUrl, type Shop } from '../../services/shop';
@@ -100,8 +101,12 @@ export default function Shops() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         <p style={{ margin: 0, color: MUTED, fontSize: 14, lineHeight: 1.6, maxWidth: 560 }}>
           A shop is a page anyone can open without signing in, listing what you sell and taking
-          payment on your own processor. What is in it comes from your active products under{' '}
-          <strong>Sell</strong>.
+          payment on your own processor. What is in it comes from your active products in the{' '}
+          {/* A link rather than the name of a screen. It used to say "under Sell" in bold,
+              which meant finding a menu item that no longer has that name — and the whole
+              catalogue, the delivery rules and the orders for this shop live there. */}
+          <Link to="/sell#products" style={{ color: '#4f46e5', fontWeight: 700 }}>Online shop</Link>{' '}
+          module, along with its collections, discount codes, delivery rates and orders.
         </p>
         <button
           onClick={() => setDraft({ accent: '#0f172a', status: 'draft', template: 'classic' })}

@@ -17,10 +17,11 @@
  * has picked up is a customer sitting in front of a chat window.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   MessageSquare, Ticket as TicketIcon, FileText, Bot, BookOpen, Code2,
   Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic,
-  Inbox, CalendarCheck,
+  Inbox, CalendarCheck, Send,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -31,9 +32,11 @@ import EngageInbox from './EngageInbox';
 import EngageTickets from './EngageTickets';
 import EngageBuilder from './EngageBuilder';
 import EngageSettings from './EngageSettings';
+import LeadRoutingPanel from './LeadRoutingPanel';
 import EngageSetup from './EngageSetup';
 import EngageSubmissions from './EngageSubmissions';
 import EngageMeetings from './EngageMeetings';
+import EngageDelivery from './EngageDelivery';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -41,7 +44,7 @@ const LINE = '#e6e9f0';
 const ACCENT = '#5b46e5';
 
 type Tab = 'overview' | 'inbox' | 'tickets' | 'forms' | 'submissions' | 'agents'
-  | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'settings';
+  | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'delivery' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -53,13 +56,28 @@ const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
   { id: 'widgets', label: 'Widgets', icon: Code2 },
   { id: 'meetings', label: 'Meetings', icon: CalendarCheck },
+  /* Beside the channels rather than buried in Marketing: "did it arrive" is
+     asked of every send, not only of a campaign. */
+  { id: 'delivery', label: 'Delivery log', icon: Send },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 export default function Engagement() {
   const { addNotification } = useApp();
-  const [tab, setTab] = useState<Tab>('overview');
+  /*
+   * The chosen tab lives in the address.
+   *
+   * Eleven tabs, and every other module that points at one of them — "your
+   * forms are here", "the delivery log is here", the AI Autopilot board's own
+   * links — needs to be able to say which. `useState` made all eleven the same
+   * URL, so every one of those links landed on Overview and left somebody to
+   * find the rest themselves. Same pattern as Marketing and Websites.
+   */
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('tab');
+  const tab: Tab = TABS.some(t => t.id === asked) ? (asked as Tab) : 'overview';
+  const setTab = (id: Tab) => setParams(id === 'overview' ? {} : { tab: id }, { replace: true });
   const [counts, setCounts] = useState<EngageCounts | null>(null);
   const [recent, setRecent] = useState<{ kind: string; summary: string; createdAt: string }[]>([]);
   const [resolution, setResolution] = useState({ conversations: 0, escalated: 0 });
@@ -96,8 +114,18 @@ export default function Engagement() {
     let alive = true;
     void (async () => {
       const r = await mergeCaptured();
-      if (!alive || !r.added) return;
-      addNotification(`${r.added} new ${r.added === 1 ? 'contact' : 'contacts'} added from forms and chat.`, 'success');
+      if (!alive) return;
+      /* A routing that could not run is a lead nobody is working, so it is
+         said even when nothing new arrived — silence about it is how a week
+         of enquiries ends up sitting in a list. */
+      for (const p of r.problems ?? []) addNotification(p, 'error');
+      if (!r.added && !r.deals && !r.enrolled) return;
+      const bits = [
+        r.added ? `${r.added} new ${r.added === 1 ? 'contact' : 'contacts'}` : '',
+        r.deals ? `${r.deals} ${r.deals === 1 ? 'deal' : 'deals'} on the board` : '',
+        r.enrolled ? `${r.enrolled} put into follow-up` : '',
+      ].filter(Boolean);
+      addNotification(`${bits.join(', ')} from forms, chat and voice.`, 'success');
     })();
     return () => { alive = false; };
   }, [addNotification]);
@@ -234,8 +262,14 @@ export default function Engagement() {
               setMerging(true);
               const r = await mergeCaptured();
               setMerging(false);
+              for (const p of r.problems ?? []) addNotification(p, 'error');
               addNotification(
-                r.error ? r.error : `${r.added} added, ${r.matched} already in your contacts.`,
+                r.error
+                  ? r.error
+                  : `${r.added} added, ${r.matched} already in your contacts`
+                    + (r.deals ? `, ${r.deals} new ${r.deals === 1 ? 'deal' : 'deals'}` : '')
+                    + (r.enrolled ? `, ${r.enrolled} into follow-up` : '')
+                    + '.',
                 r.error ? 'error' : 'success',
               );
               void refresh();
@@ -258,8 +292,14 @@ export default function Engagement() {
       {tab === 'knowledge' && <EngageBuilder kind="article" onChange={() => void refresh()} />}
       {tab === 'widgets' && <EngageBuilder kind="widget" onChange={() => void refresh()} />}
       {tab === 'meetings' && <EngageMeetings />}
+      {tab === 'delivery' && <EngageDelivery />}
       {tab === 'voice' && <EngageBuilder kind="voice_agent" onChange={() => void refresh()} />}
-      {tab === 'settings' && <EngageSettings />}
+      {tab === 'settings' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <EngageSettings />
+          <LeadRoutingPanel />
+        </div>
+      )}
     </div>
   );
 }

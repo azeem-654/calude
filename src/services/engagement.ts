@@ -20,6 +20,7 @@
 import { API_BASE } from './apiBase';
 import { getSession } from './auth';
 import { getActiveAccountId } from './tenancy';
+import { routeLeads, type ArrivingLead } from './leadRouting';
 
 export interface EngageCounts {
   openConversations: number; waitingOnHuman: number; openTickets: number;
@@ -113,6 +114,16 @@ export const createTicket = (patch: Record<string, unknown>) => call('create_tic
 
 export const listSubmissions = () => call('submissions');
 
+/**
+ * Who was sent what, and what happened.
+ *
+ * The filters are optional and independent: the same rows answer "what did this
+ * campaign send" and "what has this address ever been sent", which are the two
+ * ways anybody ever comes at a delivery log.
+ */
+export const deliveryLog = (filter: { sourceId?: string; recipient?: string; status?: string } = {}) =>
+  call('delivery_log', { id: filter.sourceId ?? '', assignedTo: filter.recipient ?? '', status: filter.status ?? '' });
+
 /* One pair per record type, so adding a knowledge article and adding a widget
    are the same two calls rather than eight endpoints to remember. */
 type Kind = 'form' | 'agent' | 'article' | 'widget' | 'voice_agent';
@@ -161,7 +172,7 @@ export const saveSettings = (record: Record<string, unknown>) => call('save_sett
  * `mark_merged` only ever fills a blank, so a second run of the same batch
  * changes nothing.
  */
-export async function mergeCaptured(): Promise<{ added: number; matched: number; error?: string }> {
+export async function mergeCaptured(): Promise<{ added: number; matched: number; deals?: number; enrolled?: number; problems?: string[]; error?: string }> {
   const res = await call('unmerged_people');
   if (!res.success) return { added: 0, matched: 0, error: res.error ?? 'Could not read new captures.' };
 
@@ -179,6 +190,7 @@ export async function mergeCaptured(): Promise<{ added: number; matched: number;
   }
 
   const pairs: { id: string; crmId: string }[] = [];
+  const arrived: ArrivingLead[] = [];
   let added = 0;
   let matched = 0;
 
@@ -189,6 +201,15 @@ export async function mergeCaptured(): Promise<{ added: number; matched: number;
       /* Already a contact. Recorded as merged so it is not offered again, and
          not edited: the CRM copy is the one somebody has been maintaining. */
       pairs.push({ id: p.id, crmId: String(hit.id ?? '') });
+      /* Routed as well as added ones. Somebody already in the CRM who has just
+         filled in a form has just enquired, and a returning customer's enquiry
+         is not less of a lead than a stranger's. `routeLeads` refuses to make a
+         second deal for a contact that already has one, so a regular who
+         enquires every month does not accumulate a column of duplicates. */
+      arrived.push({
+        id: String(hit.id ?? ''), name: String(hit.name ?? '') || email, email,
+        phone: String(hit.phone ?? ''), channel: p.source || 'capture',
+      });
       matched += 1;
       continue;
     }
@@ -207,17 +228,24 @@ export async function mergeCaptured(): Promise<{ added: number; matched: number;
     });
     pairs.push({ id: p.id, crmId: id });
     byEmail.set(email, existing[0]);
+    arrived.push({ id, name: p.name || email, email, phone: p.phone || '', channel: p.source || 'capture' });
     added += 1;
   }
 
+  let routed = { deals: 0, enrolled: 0, problems: [] as string[] };
   if (added) {
     /* Written through the ordinary tenant-scoped setter, so the debounced push
        carries it to D1 exactly like any other edit. Writing the raw key would
        skip the prefix and land in the wrong workspace. */
     window.localStorage.setItem('crm_contacts', JSON.stringify(existing));
   }
+  /* A contact in a list is not a lead being worked. Routing is idempotent by
+     contact id, so it runs on every pass over the unmerged batch rather than
+     only when a contact was newly created — a capture whose contact already
+     existed still has to reach the board. */
+  routed = routeLeads(arrived);
   await call('mark_merged', { record: { pairs } });
-  return { added, matched };
+  return { added, matched, deals: routed.deals, enrolled: routed.enrolled, problems: routed.problems };
 }
 
 /** The snippet somebody pastes into their website. */

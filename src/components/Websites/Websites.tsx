@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import type { Website } from '../../types';
 import WebsiteBuilder from './WebsiteBuilder';
@@ -126,7 +126,13 @@ export default function Websites() {
   const [search, setSearch] = useState('');
   /* Sites and shops are both "a page of mine on the web", and a customer who
      wants one to sell from should not have to guess which module that is. */
-  const [tab, setTab] = useState<'sites' | 'shops'>('sites');
+  /* The tab lives in the address so "/websites?tab=shops" is a real link —
+     the shop module points here for the storefront, and a link that lands on
+     the wrong tab is a link that teaches somebody the feature is missing. */
+  const [params, setParams] = useSearchParams();
+  const tab: 'sites' | 'shops' = params.get('tab') === 'shops' ? 'shops' : 'sites';
+  const setTab = (id: 'sites' | 'shops') =>
+    setParams(id === 'shops' ? { tab: 'shops' } : {}, { replace: true });
   // Name of a site just created from a template — opened once it exists in state.
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
 

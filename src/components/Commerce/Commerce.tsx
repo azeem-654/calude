@@ -15,8 +15,10 @@
  * forecast is how a person commits money they do not have.
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Lightbulb, Package, Receipt, Plus, Trash2, Sparkles, Loader, Star, X, Link2, Truck,
+  Store, ExternalLink,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -49,6 +51,25 @@ const btn = (primary = false): React.CSSProperties => ({
   border: primary ? 'none' : `1px solid ${LINE}`, background: primary ? INK : '#fff',
   color: primary ? '#fff' : INK, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
 });
+
+/**
+ * The panels on this page, in the order they appear.
+ *
+ * Kept as data so the map at the top and the sections below cannot drift — a
+ * link to a panel that has been renamed or removed scrolls nowhere and says
+ * nothing about it.
+ */
+const SECTIONS: { id: string; label: string }[] = [
+  { id: 'ideas', label: 'Ideas' },
+  { id: 'products', label: 'Products' },
+  { id: 'storefront', label: 'Storefront' },
+  { id: 'collections', label: 'Collections' },
+  { id: 'discounts', label: 'Discount codes' },
+  { id: 'delivery', label: 'Delivery & tax' },
+  { id: 'payments', label: 'Getting paid' },
+  { id: 'supplier', label: 'Supplier' },
+  { id: 'orders', label: 'Orders' },
+];
 
 export default function Commerce() {
   const { addNotification } = useApp();
@@ -160,12 +181,51 @@ export default function Commerce() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Header title="Sell" subtitle="What you sell, and what you have sold" />
+      <Header title="Online shop" subtitle="Your catalogue, your storefront, and the orders you have taken" />
 
       <div style={{ padding: '18px clamp(16px, 3vw, 32px) 60px', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 980, margin: '0 auto' }}>
 
+        {/*
+          * A map of a long screen.
+          *
+          * This page is nine panels tall and was called "Sell", which told
+          * nobody that it is the e-commerce module — the catalogue, the
+          * storefront a stranger buys from, the delivery rules and the orders.
+          * Somebody looking for "where do I add a product" had to scroll and
+          * hope. So the screen says what is on it, at the top, and each one is
+          * a link to the panel rather than a tab that hides the other eight —
+          * these are settings you set once and then read together.
+          */}
+        <nav aria-label="On this page" style={{
+          display: 'flex', flexWrap: 'wrap', gap: 7, padding: '13px 15px',
+          background: '#fff', border: `1px solid ${LINE}`, borderRadius: 14,
+        }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: MUTED, alignSelf: 'center', marginRight: 4 }}>
+            On this page
+          </span>
+          {SECTIONS.map(sec => (
+            <a key={sec.id} href={`#${sec.id}`}
+              onClick={e => {
+                e.preventDefault();
+                document.getElementById(sec.id)?.scrollIntoView({
+                  /* Honours the same preference every other moving part does —
+                     a jump is motion, and somebody who asked for less of it
+                     should get the jump instantly rather than a glide. */
+                  behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                  block: 'start',
+                });
+              }}
+              style={{
+                fontSize: 12, fontWeight: 700, color: INK, textDecoration: 'none',
+                padding: '5px 11px', borderRadius: 999, border: `1px solid ${LINE}`, background: '#fbfbfc',
+              }}>
+              {sec.label}
+            </a>
+          ))}
+        </nav>
+
         {/* ── Ideas ── */}
-        <div style={card}>
+        <div id="ideas" style={card}>
           <div style={head}>
             <Lightbulb size={15} color={INK} />
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Ideas</h3>
@@ -222,7 +282,7 @@ export default function Commerce() {
         </div>
 
         {/* ── Products ── */}
-        <div style={card}>
+        <div id="products" style={card}>
           <div style={head}>
             <Package size={15} color={INK} />
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Products</h3>
@@ -297,24 +357,50 @@ export default function Commerce() {
         </div>
 
         {/* ── What the shop can do, including what it cannot ── */}
-        <ShopFeatures />
+        <div id="storefront" style={{ display: 'grid', gap: 16 }}>
+          {/* The page a stranger actually buys from is built one module over,
+              and nothing here said so — a customer could set up a catalogue,
+              delivery rates and a processor and never find the screen that
+              publishes it. */}
+          <div style={{
+            display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+            padding: '14px 16px', background: '#fff', border: `1px solid ${LINE}`, borderRadius: 14,
+          }}>
+            <Store size={16} color={INK} style={{ flexShrink: 0 }} />
+            <p style={{ margin: 0, flex: '1 1 260px', fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
+              <strong style={{ color: INK }}>The page people buy from</strong> is built under Websites → Shops.
+              Everything on this screen — the products, the collections, the codes, the delivery rates and
+              the processor — is what that page sells and how it charges.
+            </p>
+            <Link to="/websites?tab=shops" style={{
+              flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+              borderRadius: 9, background: INK, color: '#fff', fontSize: 12.5, fontWeight: 700,
+              textDecoration: 'none',
+            }}>
+              Open shop pages <ExternalLink size={12} />
+            </Link>
+          </div>
+          <ShopFeatures />
+        </div>
 
         {/* ── What a buyer can take off, and what delivery adds on ──
             Beside the catalogue rather than in Settings: these are decisions
             about what the shop sells for, not about how the app is wired. */}
-        <CollectionsPanel collections={collections} products={products} onChange={again} />
-        <DiscountsPanel discounts={discounts} currency={products[0]?.currency || 'USD'} onChange={again} />
-        <ShippingPanel rates={shipping} currency={products[0]?.currency || 'USD'} onChange={again} />
-        <TaxPanel rates={tax} pricesIncludeTax={pricesIncludeTax} onChange={again} />
+        <div id="collections"><CollectionsPanel collections={collections} products={products} onChange={again} /></div>
+        <div id="discounts"><DiscountsPanel discounts={discounts} currency={products[0]?.currency || 'USD'} onChange={again} /></div>
+        <div id="delivery" style={{ display: 'grid', gap: 16 }}>
+          <ShippingPanel rates={shipping} currency={products[0]?.currency || 'USD'} onChange={again} />
+          <TaxPanel rates={tax} pricesIncludeTax={pricesIncludeTax} onChange={again} />
+        </div>
 
         {/* ── Getting paid ── */}
-        <GettingPaid onChange={again} />
+        <div id="payments"><GettingPaid onChange={again} /></div>
 
         {/* ── Who makes and posts it ── */}
-        <SupplierPanel onChange={again} />
+        <div id="supplier"><SupplierPanel onChange={again} /></div>
 
         {/* ── Orders ── */}
-        <div style={card}>
+        <div id="orders" style={card}>
           <div style={head}>
             <Receipt size={15} color={INK} />
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>Orders</h3>

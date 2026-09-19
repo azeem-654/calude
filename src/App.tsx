@@ -7,7 +7,7 @@ import { getSession } from './services/auth';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
-import { initCloudSync } from './services/serverData';
+import { initCloudSync, startCloudRefresh } from './services/serverData';
 import { Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import DueWorkRunner from './components/shared/DueWorkRunner';
@@ -204,6 +204,10 @@ function SyncGate({ children }: { children: React.ReactNode }) {
      * starting the data sync before that is settled means syncing the wrong one
      * and then correcting it on screen.
      */
+    /* Kept so the refresh loop can be torn down with the rest of this effect —
+       a second one started by a re-mount would double every request. */
+    let stopRefresh: (() => void) | null = null;
+
     void (async () => {
       const match = await resolveHost();
       if (!alive) return;
@@ -212,9 +216,14 @@ function SyncGate({ children }: { children: React.ReactNode }) {
         markWhiteLabelHost(true);
       }
       await initCloudSync();
-      if (alive) setSyncing(false);
+      if (!alive) return;
+      /* Autopilot writes to the database from the cron, with nobody's browser
+         involved. Without this the customer sits on the page and watches
+         nothing appear. */
+      stopRefresh = startCloudRefresh();
+      setSyncing(false);
     })();
-    return () => { alive = false; };
+    return () => { alive = false; stopRefresh?.(); };
   }, []);
   if (!syncing) return <>{children}</>;
   return (

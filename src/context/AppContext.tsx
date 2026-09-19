@@ -4,7 +4,7 @@ import type { Contact, Conversation, Appointment, CalendarEvent, Pipeline, Campa
 import type { EmailSequence, Automation } from '../types/marketing';
 import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
-import { onServerRejection } from '../services/serverData';
+import { onServerRejection, CLOUD_REFRESH_EVENT } from '../services/serverData';
 
 interface Notification {
   id: string;
@@ -133,6 +133,36 @@ function saveLS<T>(key: string, value: T) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota exceeded */ }
 }
 
+/**
+ * The default pipeline, written down rather than only rendered.
+ *
+ * `crm_pipelines` fell back to `mockPipelines` when storage had nothing, so a
+ * new workspace opened on a board with stages — but nothing had ever *saved*
+ * them. The board on screen and the board in storage disagreed until somebody
+ * dragged a card, and anything reading storage rather than React state saw a
+ * workspace with no pipeline at all.
+ *
+ * That is not cosmetic. Lead routing reads storage, because it runs from a
+ * merge with no component mounted: it found no pipeline, correctly refused to
+ * invent one, and every captured lead stopped at the contact list while the
+ * screen showed three empty columns waiting for it.
+ *
+ * Done here, in the state initialiser, rather than in an effect — child effects
+ * run before a parent's, so an effect would have raced the very merge that
+ * needs the answer.
+ *
+ * The seed is written only when the key is genuinely absent. A customer who has
+ * deleted every pipeline has decided something, and must not find them back
+ * tomorrow.
+ */
+function loadDefaultPipelines(): Pipeline[] {
+  let stored: string | null = null;
+  try { stored = window.localStorage.getItem('crm_pipelines'); } catch { /* storage blocked */ }
+  if (stored !== null) return loadLS('crm_pipelines', mockPipelines);
+  saveLS('crm_pipelines', mockPipelines);
+  return mockPipelines;
+}
+
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -140,7 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>(() => loadLS('crm_conversations', []));
   const [appointments, setAppointments] = useState<Appointment[]>(()  => loadLS('crm_appointments',  []));
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => loadLS('crm_calendar_events', []));
-  const [pipelines, setPipelines]       = useState<Pipeline[]>(()     => loadLS('crm_pipelines',     mockPipelines));
+  const [pipelines, setPipelines]       = useState<Pipeline[]>(()     => loadDefaultPipelines());
   const [campaigns, setCampaigns]       = useState<Campaign[]>(()     => loadLS('crm_campaigns',     []));
   const [funnels, setFunnels]           = useState<Funnel[]>(()       => loadLS('crm_funnels',       []));
   const [websites, setWebsites]         = useState<Website[]>(()      => loadLS('crm_websites',      []));
@@ -163,6 +193,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => onServerRejection(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /*
+   * Take the server's changes into state when a refresh has brought them down.
+   *
+   * Every list here is seeded from localStorage once, at mount. That was the
+   * whole story while the browser was the only writer — but AI Autopilot runs
+   * in the Worker on a five-minute cron and writes sequences, funnels, blog
+   * drafts and social posts directly into the database. The customer would be
+   * told a campaign had been written, go to Marketing, and find nothing there,
+   * because the copy on screen had been in memory since before it existed.
+   *
+   * `serverData.refreshFromCloud()` writes the new values into storage and
+   * fires this; all that is left is to re-read. Only the lists Autopilot and
+   * the cron can touch are re-read — sweeping up everything would mean a form
+   * half-filled in another tab losing its place for no reason.
+   */
+  useEffect(() => {
+    const onRefresh = () => {
+      setContacts(loadLS<Contact[]>('crm_contacts', []));
+      setCampaigns(loadLS<Campaign[]>('crm_campaigns', []));
+      setSequences(loadLS<EmailSequence[]>('crm_sequences', []));
+      setAutomations(loadLS<Automation[]>('crm_automations', []));
+      setFunnels(loadLS<Funnel[]>('crm_funnels', []));
+      setWebsites(loadLS<Website[]>('crm_websites', []));
+      setPipelines(loadLS<Pipeline[]>('crm_pipelines', mockPipelines));
+      setSocialPosts(loadLS<DesignPost[]>('crm_social_posts', []));
+      setReviews(loadLS<Review[]>('crm_reviews', []));
+      setAppointments(loadLS<Appointment[]>('crm_appointments', []));
+    };
+    window.addEventListener(CLOUD_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(CLOUD_REFRESH_EVENT, onRefresh);
   }, []);
   const [sidebarMode, setSidebarModeState] = useState<'full' | 'icons' | 'hidden'>(() => (loadLS('crm_sidebar_mode', 'full') as 'full' | 'icons' | 'hidden'));
   const [videoProjects, setVideoProjects] = useState<VideoProject[]>(() => loadLS('crm_video_projects', []));
