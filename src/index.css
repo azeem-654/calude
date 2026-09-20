@@ -1319,3 +1319,54 @@ main section { min-width: 0; }
 @media (max-width: 1100px) {
   .ap-hub { grid-template-columns: minmax(0, 1fr) !important; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   The project bot.
+
+   A project runs on a cron somewhere nobody can see, and the hardest thing to
+   believe about this product is that anything is happening. A bot that blinks
+   and sways is the only signal on the screen that the system is present — so
+   this is closer to a status light than to decoration.
+
+   Real rules inside a reduced-motion block, never an inline animation: an
+   inline one cannot be reached by a media query, which is the mistake this file
+   has now caught three times. A paused project passes `awake={false}` and gets
+   none of these, because a paused project that still looks busy is a lie.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* A slow sway. Slower than a person notices, which is the point: it should
+     register as alive rather than as something demanding attention. */
+  .ap-bot { animation: ap-bot-float 4.2s ease-in-out infinite; }
+
+  /* The blink. Long gaps, short close — anything faster reads as a twitch. */
+  .ap-bot-eyes { animation: ap-bot-blink 5.6s ease-in-out infinite; transform-origin: center; }
+
+  /* The antenna, which is the one part that changes with state. */
+  .ap-bot-antenna { animation: ap-bot-ping 2.4s ease-in-out infinite; transform-origin: 32px 7px; }
+  .ap-bot-antenna-fast { animation-duration: 1.1s; }
+
+  /* The button that opens the wizard, so somebody arriving on an empty screen
+     has something to look at that is also the thing to press. */
+  .ap-cta-pulse { animation: ap-cta 2.6s ease-in-out infinite; }
+}
+
+@keyframes ap-bot-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-4px) rotate(-1.5deg); }
+}
+
+@keyframes ap-bot-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95%           { transform: scaleY(0.08); }
+}
+
+@keyframes ap-bot-ping {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(1.3); }
+}
+
+@keyframes ap-cta {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91, 70, 229, 0.42); }
+  70%      { box-shadow: 0 0 0 11px rgba(91, 70, 229, 0); }
+}

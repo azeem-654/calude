@@ -119,6 +119,11 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
               j.revenue_target AS revenueTarget, j.volume_target AS volumeTarget, j.goals,
               j.last_planned_at AS lastPlannedAt, j.last_acted_at AS lastActedAt,
               j.last_error AS lastError, j.created_at AS createdAt,
+              /* The build order the customer agreed to in the wizard. Sent so a
+                 project that has not produced anything yet can show what it is
+                 working through rather than an empty frame — real steps with a
+                 real count, never a bar on a timer. */
+              j.launch_steps AS launchSteps,
               COALESCE(p.name, '') AS portfolioName,
               (SELECT count(*) FROM crm_autopilot_actions a
                 WHERE a.project_id = j.id AND a.status = 'awaiting') AS awaiting,
@@ -134,7 +139,11 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       const row = r as Record<string, unknown>;
       let guardrails: unknown = {};
       try { guardrails = JSON.parse(String(row.guardrails ?? '{}')); } catch { guardrails = {}; }
-      return { ...row, guardrails };
+      /* Parsed here so a row whose JSON cannot be read arrives as an empty plan
+         rather than taking the whole board down on one bad record. */
+      let launchSteps: unknown = [];
+      try { launchSteps = JSON.parse(String(row.launchSteps ?? '[]')); } catch { launchSteps = []; }
+      return { ...row, guardrails, launchSteps: Array.isArray(launchSteps) ? launchSteps : [] };
     });
   };
 

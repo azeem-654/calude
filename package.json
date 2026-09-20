@@ -21,7 +21,9 @@
     "test:launch": "npx --yes tsx test/launchPlan.test.mts",
     "test:checkout": "npx --yes tsx worker/test/checkout.test.mts",
     "test:autopilot": "npx --yes tsx worker/test/autopilotPlan.test.mts",
-    "test:project": "node test/projectCard.e2e.mjs"
+    "test:project": "node test/projectCard.e2e.mjs",
+    "test:nodes": "npx --yes tsx test/workflowNodes.test.mts",
+    "test:studio": "node test/projectStudio.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

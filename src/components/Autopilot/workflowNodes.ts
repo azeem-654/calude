@@ -11,6 +11,7 @@ import {
   Zap, Clock, GitBranch, Mail, MessageSquare, Tag, Check, User, Edit2, X,
   Bot, Workflow, type LucideIcon,
 } from 'lucide-react';
+import type { WorkflowNode } from '../../services/autopilot';
 
 export interface NodeLook {
   icon: LucideIcon;
@@ -129,4 +130,104 @@ export function chain<T extends { id: string }>(raw: T[]): (T & { nextId: string
     ...n,
     nextId: idx < raw.length - 1 ? raw[idx + 1].id : null,
   }));
+}
+
+/**
+ * What is wrong with this graph, in the customer's terms.
+ *
+ * Exported because it is the whole judgement about whether a workflow can run,
+ * and it is far easier to argue with as a function than through a form.
+ */
+export function problemsWith(name: string, nodes: WorkflowNode[]): string[] {
+  const out: string[] = [];
+  if (!name.trim()) out.push('Give the workflow a name.');
+  if (!nodes.some(n => n.type === 'trigger')) out.push('It has no trigger, so nothing would ever start it.');
+  if (nodes.length < 2) out.push('It needs at least one step after the trigger.');
+
+  for (const n of nodes) {
+    const label = n.label || lookFor(n.type).label;
+    /* The two that reach a real person with nothing in them. A blank email is
+       worse than no email, and it is the kind of thing found in a delivery log
+       rather than in a builder. */
+    if (n.type === 'send_email' && !String(n.config.subject ?? '').trim()) {
+      out.push(`"${label}" has no subject, so it would send a blank email.`);
+    }
+    if (n.type === 'send_sms' && !String(n.config.message ?? '').trim()) {
+      out.push(`"${label}" has no message, so it would send an empty text.`);
+    }
+    if (n.type === 'condition' && !String(n.config.field ?? '').trim()) {
+      out.push(`"${label}" has nothing to test, so it would always take the No branch.`);
+    }
+    if ((n.type === 'add_tag' || n.type === 'remove_tag') && !String(n.config.tag ?? '').trim()) {
+      out.push(`"${label}" has no tag named.`);
+    }
+  }
+  return out;
+}
+
+/** One step, and where it sits. */
+interface Placed {
+  node: WorkflowNode;
+  column: number;
+  /** 0 is the spine; 1 is a No branch hanging under it. */
+  row: number;
+  /** The condition this branch left, so its elbow can be drawn. */
+  from?: string;
+}
+
+/**
+ * Walk the graph into rows and columns.
+ *
+ * Exported so it can be argued with directly: the interesting cases are a graph
+ * that points back at itself and a branch that rejoins the spine, and both are
+ * far easier to reason about as data than as pixels.
+ */
+export function layout(nodes: WorkflowNode[]): { placed: Placed[]; columns: number } {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const placed: Placed[] = [];
+  const seen = new Set<string>();
+
+  /* The spine: every condition answered Yes. That is the story the workflow is
+     about, and the path a customer pictures when they describe it. */
+  let cur: WorkflowNode | undefined = nodes.find(n => n.type === 'trigger') ?? nodes[0];
+  let col = 0;
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    placed.push({ node: cur, column: col, row: 0 });
+    col += 1;
+    const next: string | null = cur.type === 'condition'
+      ? (cur.yesId ?? cur.nextId ?? null)
+      : (cur.nextId ?? null);
+    cur = next ? byId.get(next) : undefined;
+  }
+
+  /* Then each No branch, under the column after the condition it left. A branch
+     that rejoins the spine stops at the join rather than drawing the rest of the
+     spine a second time — the arrow back is what says it rejoined. */
+  for (const p of placed.filter(x => x.node.type === 'condition')) {
+    const noId = p.node.noId;
+    if (!noId || seen.has(noId)) continue;
+    let b: WorkflowNode | undefined = byId.get(noId);
+    let bcol = p.column + 1;
+    while (b && !seen.has(b.id)) {
+      seen.add(b.id);
+      placed.push({ node: b, column: bcol, row: 1, from: p.node.id });
+      bcol += 1;
+      const nx: string | null = b.type === 'condition' ? (b.yesId ?? b.nextId ?? null) : (b.nextId ?? null);
+      b = nx ? byId.get(nx) : undefined;
+    }
+  }
+
+  /* Anything unreachable — a step left disconnected in the builder — still gets
+     drawn, on the second row, at the end. Dropping it silently would mean a
+     customer who cannot find the step they added concludes it was deleted. */
+  for (const n of nodes) {
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    placed.push({ node: n, column: Math.max(0, col), row: 1 });
+    col += 1;
+  }
+
+  const columns = placed.reduce((m, p) => Math.max(m, p.column + 1), 1);
+  return { placed, columns };
 }

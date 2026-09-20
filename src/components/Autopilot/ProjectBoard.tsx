@@ -20,26 +20,48 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, Clock, AlertTriangle, ExternalLink, Pause, Play, MoreHorizontal, Trash2, Globe,
+  Sparkles, Loader,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
   fetchBoard, setProjectStatus, deleteProject, poolTargetOf, KIND_LABEL,
-  type Project, type Card, type Portfolio,
+  saveProject, savePortfolio,
+  type Project, type Card,
 } from '../../services/projects';
 import { approveAction, rejectAction } from '../../services/autopilot';
 import ProjectInfra from './ProjectInfra';
 import ProjectAssets from './ProjectAssets';
 import ProjectCard from './ProjectCard';
+import AutopilotBot from './AutopilotBot';
+import { DEMO_CLIENT, DEMO_PROJECT, DEMO_WORKFLOWS, TEMPLATES } from './workflowTemplates';
+import { saveWorkflow } from '../../services/autopilot';
 import { getSession } from '../../services/auth';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
 const LINE = '#e6e9f0';
+const ACCENT = '#5b46e5';
 
 /** A dot per project, so a column is identifiable at a glance rather than by
  *  reading its heading. The palette repeats after six; a workspace with more
  *  than six live projects has bigger problems than colour collisions. */
 const DOTS = ['#6366f1', '#f59e0b', '#0ea5e9', '#10b981', '#ec4899', '#8b5cf6'];
+
+/**
+ * What Autopilot can actually do, said before somebody commits to a project.
+ *
+ * Deliberately the things it *does*, not the things it is. "Writes a blog post
+ * a day" is checkable; "AI-powered growth engine" is not, and a customer who
+ * cannot tell what they are buying tends not to buy it.
+ */
+const CAN_DO = [
+  { what: 'Writes a post a day', how: 'Blog, social and pages, in this client\u2019s voice.' },
+  { what: 'Answers enquiries', how: 'A form is filled in and somebody hears back within the hour.' },
+  { what: 'Follows up on its own', how: 'Email and SMS sequences, spaced over days.' },
+  { what: 'Keeps working closed', how: 'Runs on the server every five minutes, not in this tab.' },
+  { what: 'Asks before it sends', how: 'Anything that reaches a person waits for you by default.' },
+  { what: 'Shows its reasons', how: 'Every card says why it decided to, so you can disagree.' },
+];
 
 const STATUS_TONE: Record<Card['status'], { bg: string; fg: string; label: string }> = {
   awaiting: { bg: '#fff7e6', fg: '#7a4d00', label: 'Waiting for you' },
@@ -139,7 +161,6 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   const navigate = useNavigate();
   const { addNotification } = useApp();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [board, setBoard] = useState<Record<string, Card[]>>({});
   const [loading, setLoading] = useState(true);
   const [menu, setMenu] = useState<string | null>(null);
@@ -147,11 +168,66 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
      is a wall of numbers, and only one of them is the one being changed. */
   const [infra, setInfra] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
+  /* The message while the example is being built, so the button can say which
+     of the four steps it is on rather than spinning silently for six seconds. */
+  const [demoBusy, setDemoBusy] = useState('');
+
+  /**
+   * Build the worked example.
+   *
+   * ── Why it is real ──
+   *
+   * Every row it creates is the row a customer's own project has: a portfolio,
+   * a project with real guardrails, and three workflows in the project's own
+   * table that the engine would run exactly as it runs anybody's. There is no
+   * demo mode and no mock data path, because a demonstration that takes a
+   * different path through the code demonstrates the wrong code.
+   *
+   * ── Why nothing in it is switched on ──
+   *
+   * A worked example whose first act is emailing somebody is not an example,
+   * it is an accident. The workflows arrive as drafts and every guardrail that
+   * sends asks first — which is also what a real project does by default, so
+   * the example is honest about that too.
+   */
+  async function makeDemo() {
+    if (demoBusy) return;
+    try {
+      setDemoBusy('Making the client…');
+      const pf = await savePortfolio({ name: DEMO_CLIENT.name, profile: DEMO_CLIENT.profile, source: 'manual' });
+      if (!pf.success || !pf.id) throw new Error(String(pf.error ?? 'the client could not be saved'));
+
+      setDemoBusy('Starting the project…');
+      const pr = await saveProject({
+        name: DEMO_PROJECT.name,
+        objective: DEMO_PROJECT.objective,
+        portfolioId: pf.id,
+        kind: DEMO_PROJECT.kind,
+        guardrails: DEMO_PROJECT.guardrails,
+      });
+      if (!pr.success || !pr.id) throw new Error(String(pr.error ?? 'the project could not be started'));
+
+      setDemoBusy('Adding the workflows…');
+      for (const key of DEMO_WORKFLOWS) {
+        const t = TEMPLATES.find(x => x.key === key);
+        if (!t) continue;
+        await saveWorkflow(pr.id, {
+          name: t.name, description: t.description, status: 'draft', nodes: t.nodes,
+        });
+      }
+
+      setDemoBusy('');
+      await load();
+      addNotification('The example is ready. Nothing in it is switched on — read it, change it, or delete it.');
+    } catch (e) {
+      setDemoBusy('');
+      addNotification(`The example could not be built: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    }
+  }
 
   const load = async () => {
     const r = await fetchBoard();
     setProjects(r.projects);
-    setPortfolios(r.portfolios);
     setBoard(r.board);
     setLoading(false);
     if (r.error) addNotification(r.error, 'error');
@@ -164,7 +240,6 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
       const r = await fetchBoard();
       if (!live) return;
       setProjects(r.projects);
-      setPortfolios(r.portfolios);
       setBoard(r.board);
       setLoading(false);
       if (r.error) addNotification(r.error, 'error');
@@ -208,25 +283,63 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     return (
       <div style={{
         background: '#fff', border: `1px dashed ${LINE}`, borderRadius: 18,
-        padding: '38px 24px', textAlign: 'center', display: 'grid', gap: 10, justifyItems: 'center',
+        padding: '34px 24px', textAlign: 'center', display: 'grid', gap: 11, justifyItems: 'center',
       }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: INK }}>No projects yet</h3>
-        <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6, maxWidth: 460 }}>
+        <AutopilotBot size={62} awake />
+        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
+          No projects yet
+        </h3>
+        <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6, maxWidth: 470 }}>
           A project is one push for one client — find dental patients, sell a range of products,
           win consultancy work. Each one runs on its own and reports here.
         </p>
-        <button onClick={onNewProject} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4,
-          padding: '11px 20px', borderRadius: 999, border: 'none',
-          background: INK, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+
+        {/* What it can actually do, before somebody commits to anything. */}
+        <div style={{
+          display: 'grid', gap: 7, gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))',
+          maxWidth: 620, width: '100%', textAlign: 'left', marginTop: 2,
         }}>
-          <Plus size={14} /> Start your first project
-        </button>
-        {!portfolios.length && (
-          <p style={{ margin: '2px 0 0', fontSize: 11.5, color: MUTED }}>
-            You will be asked which client it is for, and can add one there.
-          </p>
-        )}
+          {CAN_DO.map(c => (
+            <span key={c.what} style={{
+              display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 11px',
+              border: `1px solid ${LINE}`, borderRadius: 11, background: '#fbfbfc',
+            }}>
+              <Check size={12} color="#16a34a" style={{ marginTop: 2, flexShrink: 0 }} />
+              <span>
+                <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{c.what}</span>
+                <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>
+                  {c.how}
+                </span>
+              </span>
+            </span>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
+          <button onClick={onNewProject} className="ap-cta-pulse" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '11px 20px', borderRadius: 999, border: 'none',
+            background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}>
+            <Plus size={14} /> Start your first project
+          </button>
+          <button onClick={() => void makeDemo()} disabled={!!demoBusy} className="press" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '11px 20px', borderRadius: 999, border: `1px solid ${LINE}`,
+            background: '#fff', color: INK, fontSize: 13, fontWeight: 700,
+            cursor: demoBusy ? 'default' : 'pointer', fontFamily: 'inherit',
+          }}>
+            {demoBusy ? <Loader size={14} className="spin" /> : <Sparkles size={14} />}
+            {demoBusy || 'See a worked example'}
+          </button>
+        </div>
+        <p style={{ margin: '2px 0 0', fontSize: 11, color: MUTED, lineHeight: 1.5, maxWidth: 440 }}>
+          {/* Said plainly: the example is not a mock-up, it is a real project
+              that really runs — which is also why it has to be deletable. */}
+          The example builds a real client, a real project and three real workflows you can read, change
+          and delete. Nothing in it is switched on.
+        </p>
       </div>
     );
   }
@@ -249,15 +362,54 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
    * watches.
    */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* ── The bar above the projects ──
+          The button was only at the bottom, after a page of projects, which is
+          the one place somebody with six of them will not look. It is here as
+          well, and it keeps a slow pulse so an eye scanning the top of the page
+          lands on the thing to press. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <AutopilotBot size={30} awake={projects.some(p => p.status === 'running' || p.status === 'learning')} />
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: INK }}>
+            {projects.length} project{projects.length === 1 ? '' : 's'}
+          </span>
+          <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1 }}>
+            Each runs on the server every five minutes, whether or not this is open.
+          </span>
+        </span>
+        <span style={{ flex: 1 }} />
+        <button onClick={onNewProject} className="ap-cta-pulse" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px',
+          borderRadius: 999, border: 'none', background: ACCENT, color: '#fff',
+          fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+        }}>
+          <Plus size={14} /> New project
+        </button>
+      </div>
+
       {projects.map((p, i) => {
         const cards = board[p.id] ?? [];
         const pool = poolTargetOf(p);
         const dot = DOTS[i % DOTS.length];
         const live = p.status === 'running' || p.status === 'learning';
         return (
+          <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {/* A line and a number between projects.
+                Six full-width cards in a column run together, and the thing
+                somebody loses is where one client ends and the next begins —
+                which is the only question the stack exists to answer. */}
+            {i > 0 && (
+              <div aria-hidden style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '2px 0' }}>
+                <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, transparent, ${LINE})` }} />
+                <span style={{
+                  fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.09em',
+                  textTransform: 'uppercase', whiteSpace: 'nowrap',
+                }}>Project {i + 1} of {projects.length}</span>
+                <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${LINE}, transparent)` }} />
+              </div>
+            )}
           <ProjectCard
-            key={p.id}
             project={p}
             onChanged={() => void load()}
             onToggle={x => void toggle(x)}
@@ -378,6 +530,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
           </section>
             )}
           />
+          </div>
         );
       })}
 

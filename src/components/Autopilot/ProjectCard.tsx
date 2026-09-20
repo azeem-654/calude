@@ -31,16 +31,20 @@ import { useNavigate } from 'react-router-dom';
 import {
   Workflow as WorkflowIcon, Bot, Library, BarChart3, Settings as SettingsIcon,
   Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle,
-  ChevronDown, ChevronRight, Pause, Play, ExternalLink, AlertTriangle, CheckCircle2,
+  ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 import {
-  fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow,
+  fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
   fetchProjectDay, approveAction, rejectAction,
   type ProjectWorkflow, type ProjectDay,
 } from '../../services/autopilot';
 import { KIND_LABEL, type Project } from '../../services/projects';
 import WorkflowCanvas from './WorkflowCanvas';
 import ProjectFlow from './ProjectFlow';
+import WorkflowEditor from './WorkflowEditor';
+import AutopilotBot from './AutopilotBot';
+import { TEMPLATES } from './workflowTemplates';
+import { lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
 
 const INK = '#17191c';
@@ -137,6 +141,13 @@ export default function ProjectCard({
   const [answer, setAnswer] = useState('');
   const [answerBad, setAnswerBad] = useState(false);
 
+  /* Null means closed; `{ workflow: null }` means a new one. A nested null is
+     the clearest way to say "open, on nothing" without a second flag that can
+     disagree with the first. */
+  const [editing, setEditing] = useState<{ workflow: ProjectWorkflow | null } | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [adding, setAdding] = useState('');
+
   const live = project.status === 'running' || project.status === 'learning';
   const avatar = avatarFor(project.name);
 
@@ -203,6 +214,63 @@ export default function ProjectCard({
 
   const made = (day?.didToday ?? []).filter(a => a.link?.kind);
 
+  /**
+   * What the AI actually does on this project, read from the workflows.
+   *
+   * The tab used to list guardrails alone, which answers "what is it allowed to
+   * do" and not "what is it doing" — and the second is the question somebody
+   * opening a tab called AI Agents is asking. A permission with no step behind
+   * it is a permission nothing uses.
+   *
+   * So every step the AI performs is gathered from the live graphs, with the
+   * workflow it belongs to. That is a real connection: delete the step and the
+   * duty disappears, because there is nothing else holding it up.
+   */
+  const duties = flows
+    .filter(f => f.status === 'active')
+    .flatMap(f => (f.nodes ?? [])
+      .filter(node => node.type === 'send_email' || node.type === 'send_sms' || node.type === 'condition')
+      .map(node => ({ workflow: f.name, workflowId: f.id, node })));
+
+  /**
+   * How far through its opening plan this project is.
+   *
+   * The launch order somebody agreed to in the wizard, against what Autopilot
+   * has actually finished. A real fraction: each step is matched to a card in
+   * the ledger, so nothing here moves until a record exists.
+   *
+   * This is what a brand-new project shows instead of an empty frame. It is
+   * deliberately not a bar that fills on a timer — the whole complaint about
+   * those is that they are indistinguishable from progress.
+   */
+  const plan = project.launchSteps ?? [];
+  const finished = (day?.didToday ?? []).filter(a => a.kind !== 'observe' && a.kind !== 'error');
+  const planDone = plan.filter(step => {
+    const words = step.label.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+    return finished.some(a => words.some(w => `${a.summary} ${a.detail}`.toLowerCase().includes(w)));
+  }).length;
+  const planPercent = plan.length ? Math.round((planDone / plan.length) * 100) : 0;
+  /* A project with nothing yet: no workflows, nothing produced, and the planner
+     has not run. That is the state the loading view is for — and it is not the
+     same as a project somebody has emptied, which has been planned. */
+  const preparing = !flows.length && !finished.length && !project.lastPlannedAt;
+
+  async function addTemplate(key: string) {
+    const t = TEMPLATES.find(x => x.key === key);
+    if (!t || adding) return;
+    setAdding(key);
+    const r = await saveWorkflow(project.id, {
+      name: t.name, description: t.description,
+      /* A draft, always. Each of these sends something. */
+      status: 'draft', nodes: t.nodes,
+    });
+    setAdding('');
+    setPicking(false);
+    if (!r.success) { setError(String(r.error ?? 'That could not be added.')); return; }
+    void read();
+    onChanged();
+  }
+
   return (
     <section style={{
       display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr) 272px', alignItems: 'start',
@@ -216,12 +284,23 @@ export default function ProjectCard({
           display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', flexWrap: 'wrap',
           background: '#fbfbfc', borderBottom: `1px solid ${LINE}`,
         }}>
+          {/* The project's own bot, and its letter behind it.
+              The bot says the system is present; the letter and its colour say
+              *which* project, which is what somebody scanning a stack of six
+              is actually using. Both, rather than choosing. */}
           <span style={{
-            width: 42, height: 42, borderRadius: 13, flexShrink: 0,
-            background: avatar.bg, color: avatar.fg,
+            position: 'relative', width: 52, height: 52, borderRadius: 15, flexShrink: 0,
+            background: avatar.bg,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 19, fontWeight: 800,
-          }} aria-hidden>{avatar.letter}</span>
+          }}>
+            <AutopilotBot size={40} awake={live} busy={(day?.upcoming.length ?? 0) > 0} />
+            <span aria-hidden style={{
+              position: 'absolute', right: -3, bottom: -3, width: 19, height: 19, borderRadius: 7,
+              background: '#fff', border: `1.5px solid ${avatar.bg}`, color: avatar.fg,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 10, fontWeight: 800,
+            }}>{avatar.letter}</span>
+          </span>
 
           <span style={{ minWidth: 0, flex: '1 1 240px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
@@ -317,22 +396,154 @@ export default function ProjectCard({
           {/* ── Workflows ── */}
           {tab === 'workflows' && (
             !flows.length ? (
-              <div style={{ padding: '26px 16px', textAlign: 'center' }}>
-                <span style={{
-                  width: 40, height: 40, borderRadius: 13, background: '#f5f3ff', color: ACCENT,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
-                }}><WorkflowIcon size={18} /></span>
-                <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
-                  No workflows on this project yet
-                </h4>
-                <p style={{ margin: '0 auto', maxWidth: 420, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                  A workflow is what happens on its own when somebody fills in this client's form, is
-                  tagged, or goes quiet. Describe one in the box beside this and it will be built as a
-                  draft.
+              <div style={{ padding: '18px 6px' }}>
+                {preparing && (
+                  /*
+                   * A brand-new project, before the planner has run.
+                   *
+                   * The bar is the launch plan the customer agreed to in the
+                   * wizard against what has actually finished — a real fraction
+                   * over real steps, which is why it can sit at 0% and say so
+                   * rather than creeping upward to look busy.
+                   */
+                  <div style={{
+                    border: '1px solid #ddd6fe', background: '#f8f7ff', borderRadius: 14,
+                    padding: 14, marginBottom: 14,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                      <AutopilotBot size={30} awake busy />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: INK }}>
+                          Getting this project ready
+                        </span>
+                        <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1 }}>
+                          It plans once a day and acts every five minutes, on the server.
+                        </span>
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT }}>{planPercent}%</span>
+                    </div>
+
+                    <div style={{ height: 6, borderRadius: 999, background: '#e9e5fb', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${Math.max(planPercent, 2)}%`, height: '100%', borderRadius: 999,
+                        background: ACCENT, transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                    {/* The sweep says "still working" without pretending the
+                        number underneath has moved. */}
+                    <div className={live ? 'ap-tick-bar' : undefined} style={{ marginTop: 7 }} aria-hidden />
+
+                    {plan.length > 0 && (
+                      <ol style={{ margin: '11px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 5 }}>
+                        {plan.slice(0, 6).map((step, i) => (
+                          <li key={step.label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                            <span style={{
+                              marginTop: 4, width: 6, height: 6, borderRadius: 999, flexShrink: 0,
+                              background: i < planDone ? '#16a34a' : '#cbd5e1',
+                            }} />
+                            <span style={{
+                              fontSize: 11.5, lineHeight: 1.5,
+                              color: i < planDone ? INK : MUTED,
+                              textDecoration: i < planDone ? 'line-through' : 'none',
+                            }}>{step.label}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    <p style={{ margin: '10px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+                      Nothing above moves on a timer — a step is ticked when the record behind it exists.
+                      You do not have to wait: start a workflow yourself below.
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ textAlign: 'center', padding: '10px 10px 4px' }}>
+                  <span style={{
+                    width: 40, height: 40, borderRadius: 13, background: '#f5f3ff', color: ACCENT,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+                  }}><WorkflowIcon size={18} /></span>
+                  <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
+                    No workflows on this project yet
+                  </h4>
+                  <p style={{ margin: '0 auto 13px', maxWidth: 440, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                    A workflow is what happens on its own when somebody fills in this client's form, is
+                    tagged, or goes quiet. Start one below, or describe one to the AI beside this.
+                  </p>
+                </div>
+
+                {/* Somebody can start one themselves rather than waiting. */}
+                <div style={{ display: 'grid', gap: 7, gridTemplateColumns: 'repeat(auto-fill, minmax(min(250px, 100%), 1fr))' }}>
+                  {TEMPLATES.map(t => (
+                    <button key={t.key} onClick={() => void addTemplate(t.key)} disabled={!!adding}
+                      className="press" style={{
+                        display: 'flex', gap: 9, alignItems: 'flex-start', textAlign: 'left',
+                        padding: '11px 12px', border: `1px solid ${LINE}`, borderRadius: 12,
+                        background: '#fff', cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
+                      }}>
+                      {adding === t.key
+                        ? <Loader size={13} className="spin" color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />
+                        : <Plus size={13} color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />}
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>{t.name}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
+                          {t.blurb}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                  <button onClick={() => setEditing({ workflow: null })} className="press" style={{
+                    display: 'flex', gap: 9, alignItems: 'center', justifyContent: 'center',
+                    padding: '11px 12px', border: `1px dashed ${ACCENT}`, borderRadius: 12,
+                    background: '#f8f7ff', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: 12.5, fontWeight: 700, color: ACCENT,
+                  }}>
+                    <Plus size={13} /> Build one from scratch
+                  </button>
+                </div>
+                <p style={{ margin: '11px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5, textAlign: 'center' }}>
+                  Every one arrives switched off and is yours to change, step by step, before anybody hears
+                  from it.
                 </p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  <button onClick={() => setEditing({ workflow: null })} className="press" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                    borderRadius: 10, border: 'none', background: ACCENT, color: '#fff',
+                    fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                    <Plus size={13} /> Create workflow
+                  </button>
+                  <button onClick={() => setPicking(p => !p)} className="press" style={ghost()}>
+                    Start from a template
+                  </button>
+                </div>
+
+                {picking && (
+                  <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))' }}>
+                    {TEMPLATES.map(t => (
+                      <button key={t.key} onClick={() => void addTemplate(t.key)} disabled={!!adding}
+                        className="press" style={{
+                          display: 'flex', gap: 8, alignItems: 'flex-start', textAlign: 'left',
+                          padding: '10px 11px', border: `1px solid ${LINE}`, borderRadius: 11,
+                          background: '#fbfbfc', cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
+                        }}>
+                        {adding === t.key
+                          ? <Loader size={12} className="spin" color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />
+                          : <Plus size={12} color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />}
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{t.name}</span>
+                          <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>
+                            {t.blurb}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {flows.map((f, i) => {
                   const isOpen = open[f.id] !== false;
                   const on = f.status === 'active';
@@ -378,6 +589,9 @@ export default function ProjectCard({
                             borderRadius: 999, background: '#fff', transition: 'left 0.15s',
                           }} />
                         </button>
+                        <button onClick={() => setEditing({ workflow: f })} className="press" style={ghost()}>
+                          Edit
+                        </button>
                         <button onClick={() => void removeFlow(f)} aria-label={`Delete ${f.name}`}
                           className="press" style={{ ...ghost(), color: '#b42318', padding: '5px 8px' }}>
                           <Trash2 size={11} />
@@ -398,7 +612,75 @@ export default function ProjectCard({
 
           {/* ── AI Agents: what this project's AI may do, and what it is doing ── */}
           {tab === 'agents' && (
-            <div style={{ display: 'grid', gap: 13 }}>
+            <div style={{ display: 'grid', gap: 15 }}>
+              {/*
+                * What the AI is actually on the hook for, read from the live
+                * workflows.
+                *
+                * This tab listed permissions alone, which answers "what is it
+                * allowed to do" and not "what is it doing" — and the second is
+                * the question somebody opening a tab called AI Agents is
+                * asking. A permission with no step behind it is a permission
+                * nothing uses, and a customer reading a wall of green switches
+                * would reasonably conclude a great deal was happening.
+                *
+                * Every row here is a real step in a real workflow. Delete the
+                * step and the duty disappears, because nothing else holds it up.
+                */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 3 }}>
+                  <AutopilotBot size={30} awake={live} busy={duties.length > 0} />
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: INK }}>
+                      What it is on the hook for
+                    </span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1 }}>
+                      {duties.length
+                        ? `${duties.length} step${duties.length === 1 ? '' : 's'} across ${new Set(duties.map(d => d.workflowId)).size} live workflow${new Set(duties.map(d => d.workflowId)).size === 1 ? '' : 's'}.`
+                        : 'Nothing yet — no live workflow has a step it performs.'}
+                    </span>
+                  </span>
+                </div>
+
+                {duties.length > 0 && (
+                  <ul style={{ margin: '9px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                    {duties.slice(0, 12).map(({ workflow, node }) => {
+                      const look = lookFor(node.type);
+                      const Ic = look.icon;
+                      return (
+                        <li key={`${workflow}-${node.id}`} style={{
+                          display: 'flex', gap: 9, alignItems: 'center', padding: '8px 11px',
+                          border: `1px solid ${LINE}`, borderRadius: 10, background: '#fbfbfc',
+                        }}>
+                          <span style={{
+                            width: 22, height: 22, borderRadius: 7, background: look.bg, color: look.fg,
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}><Ic size={11} /></span>
+                          <span style={{ minWidth: 0, flex: 1 }}>
+                            <span style={{
+                              display: 'block', fontSize: 12, fontWeight: 700, color: INK,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{node.label || look.label}</span>
+                            <span style={{ display: 'block', fontSize: 10.5, color: MUTED }}>
+                              in “{workflow}”
+                            </span>
+                          </span>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 999, fontSize: 9.5, fontWeight: 800,
+                            background: look.bg, color: look.fg, flexShrink: 0,
+                          }}>{look.label}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {duties.length > 12 && (
+                  <p style={{ margin: '7px 0 0', fontSize: 10.5, color: MUTED }}>
+                    and {duties.length - 12} more.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <h4 style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 800, color: INK }}>
                   What this project is allowed to do
@@ -591,6 +873,15 @@ export default function ProjectCard({
           </p>
         )}
       </aside>
+
+      {editing && (
+        <WorkflowEditor
+          projectId={project.id}
+          workflow={editing.workflow}
+          onClose={() => setEditing(null)}
+          onSaved={() => { void read(); onChanged(); }}
+        />
+      )}
     </section>
   );
 }
@@ -603,4 +894,3 @@ function ghost(): React.CSSProperties {
   };
 }
 
-export { Pause, Play };

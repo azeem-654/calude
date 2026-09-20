@@ -29,81 +29,14 @@
  * panel links out rather than embedding one.
  */
 import { Fragment } from 'react';
-import type { AutomationNode } from '../../types/marketing';
-import { lookFor, nodeDetail } from './workflowNodes';
+import type { WorkflowNode } from '../../services/autopilot';
+import { layout, lookFor, nodeDetail } from './workflowNodes';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
 const LINE = '#e6e9f0';
 
-/** One step, and where it sits. */
-interface Placed {
-  node: AutomationNode;
-  column: number;
-  /** 0 is the spine; 1 is a No branch hanging under it. */
-  row: number;
-  /** The condition this branch left, so its elbow can be drawn. */
-  from?: string;
-}
-
-/**
- * Walk the graph into rows and columns.
- *
- * Exported so it can be argued with directly: the interesting cases are a graph
- * that points back at itself and a branch that rejoins the spine, and both are
- * far easier to reason about as data than as pixels.
- */
-export function layout(nodes: AutomationNode[]): { placed: Placed[]; columns: number } {
-  const byId = new Map(nodes.map(n => [n.id, n]));
-  const placed: Placed[] = [];
-  const seen = new Set<string>();
-
-  /* The spine: every condition answered Yes. That is the story the workflow is
-     about, and the path a customer pictures when they describe it. */
-  let cur: AutomationNode | undefined = nodes.find(n => n.type === 'trigger') ?? nodes[0];
-  let col = 0;
-  while (cur && !seen.has(cur.id)) {
-    seen.add(cur.id);
-    placed.push({ node: cur, column: col, row: 0 });
-    col += 1;
-    const next: string | null = cur.type === 'condition'
-      ? (cur.yesId ?? cur.nextId ?? null)
-      : (cur.nextId ?? null);
-    cur = next ? byId.get(next) : undefined;
-  }
-
-  /* Then each No branch, under the column after the condition it left. A branch
-     that rejoins the spine stops at the join rather than drawing the rest of the
-     spine a second time — the arrow back is what says it rejoined. */
-  for (const p of placed.filter(x => x.node.type === 'condition')) {
-    const noId = p.node.noId;
-    if (!noId || seen.has(noId)) continue;
-    let b: AutomationNode | undefined = byId.get(noId);
-    let bcol = p.column + 1;
-    while (b && !seen.has(b.id)) {
-      seen.add(b.id);
-      placed.push({ node: b, column: bcol, row: 1, from: p.node.id });
-      bcol += 1;
-      const nx: string | null = b.type === 'condition' ? (b.yesId ?? b.nextId ?? null) : (b.nextId ?? null);
-      b = nx ? byId.get(nx) : undefined;
-    }
-  }
-
-  /* Anything unreachable — a step left disconnected in the builder — still gets
-     drawn, on the second row, at the end. Dropping it silently would mean a
-     customer who cannot find the step they added concludes it was deleted. */
-  for (const n of nodes) {
-    if (seen.has(n.id)) continue;
-    seen.add(n.id);
-    placed.push({ node: n, column: Math.max(0, col), row: 1 });
-    col += 1;
-  }
-
-  const columns = placed.reduce((m, p) => Math.max(m, p.column + 1), 1);
-  return { placed, columns };
-}
-
-function Node({ node, dim }: { node: AutomationNode; dim?: boolean }) {
+function Node({ node, dim }: { node: WorkflowNode; dim?: boolean }) {
   const look = lookFor(node.type);
   const Ic = look.icon;
   const detail = nodeDetail(node.type, node.config ?? {});
@@ -168,7 +101,7 @@ function Branch({ yes }: { yes: boolean }) {
 
 export default function WorkflowCanvas({
   nodes, live,
-}: { nodes: AutomationNode[]; live: boolean }) {
+}: { nodes: WorkflowNode[]; live: boolean }) {
   if (!nodes.length) {
     return (
       <p style={{ margin: 0, fontSize: 12, color: MUTED, padding: '12px 2px' }}>

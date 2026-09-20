@@ -43,6 +43,15 @@ export interface Project {
   volumeTarget: number;
   /** JSON array of the named goals somebody picked. */
   goals: string;
+  /**
+   * The build order somebody agreed to in the wizard.
+   *
+   * The project's own checklist, sent rather than recomputed — so a project
+   * that has not produced anything yet can show what it is working through
+   * instead of an empty frame. Real steps with a real count; nothing here
+   * advances on a timer.
+   */
+  launchSteps?: { label: string; why: string; route: string }[];
   /** What the board's column header counts. */
   awaiting: number;
   done: number;
