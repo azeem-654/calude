@@ -425,6 +425,159 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
   }
 
   /*
+   * ── Everything the hub screen shows, in one call ──
+   *
+   * The Autopilot screen has four live panels — what is being worked on, what
+   * is due today, what has just been published, and the week's numbers. Four
+   * calls would let them disagree with each other on screen, and the screen's
+   * whole job is to be one honest account of one moment.
+   *
+   * ── Why every number here is computed and none is decorative ──
+   *
+   * A dashboard is the easiest place in a product to lie, because a plausible
+   * number is indistinguishable from a real one until somebody acts on it. So:
+   * progress is steps taken over steps in the graph, "sent" comes from the
+   * delivery log, and engagement is opens over sends from the tracking table.
+   * Where there is nothing to compute the field is zero or absent and the
+   * screen says so, rather than being filled with something that looks healthy.
+   */
+  if (act === 'hub') {
+    const now = Date.now();
+    const weekAgo = new Date(now - 7 * 86_400_000).toISOString();
+    const dayAgo = new Date(now - 86_400_000).toISOString();
+
+    /*
+     * What is being worked on, with real progress.
+     *
+     * An automation run knows which node it is on and how many steps it has
+     * taken; the graph knows how many there are. That ratio is a true
+     * percentage — unlike a bar that fills on a timer, which is the usual way
+     * this panel gets built and is worth nothing.
+     */
+    const runsRows = (await env.DB.prepare(
+      `SELECT id, automation_id AS automationId, automation_name AS automationName,
+              contact_name AS contactName, contact_email AS contactEmail,
+              node_id AS nodeId, steps_taken AS stepsTaken, due_at AS dueAt, updated_at AS updatedAt
+       FROM crm_automation_runs
+       WHERE account_id = ? AND status = 'active'
+       ORDER BY updated_at DESC LIMIT 12`,
+    ).bind(accountId).all<Record<string, unknown>>()).results ?? [];
+
+    /* The graphs, so a run's position can be turned into a fraction. Read from
+       the browser-owned blob, which the Worker may read and must never write. */
+    let graphs: { id: string; name: string; nodes: unknown[]; status: string }[] = [];
+    try {
+      graphs = JSON.parse(await dataGet(env.DB, accountId, 'crm_automations') ?? '[]') as typeof graphs;
+    } catch { graphs = []; }
+    const sizeOf = (id: string) => {
+      const g = graphs.find(x => x.id === id);
+      return Array.isArray(g?.nodes) ? g!.nodes.length : 0;
+    };
+
+    const agents = runsRows.map(r => {
+      const total = sizeOf(String(r.automationId));
+      const taken = Number(r.stepsTaken) || 0;
+      return {
+        id: r.id, name: r.automationName, working: r.contactName || r.contactEmail || 'someone',
+        stepsTaken: taken,
+        totalSteps: total,
+        /* Absent rather than 100 when the graph cannot be found — a run whose
+           workflow was deleted is not finished, it is orphaned. */
+        percent: total > 0 ? Math.min(100, Math.round((taken / total) * 100)) : null,
+        dueAt: r.dueAt, updatedAt: r.updatedAt,
+      };
+    });
+
+    /* Today's tasks: what Autopilot has queued or carried out, with its time. */
+    const tasks = (await env.DB.prepare(
+      `SELECT a.id, a.kind, a.status, a.summary, a.due_at AS dueAt, a.created_at AS createdAt,
+              a.acted_at AS actedAt, a.link_kind AS linkKind, a.link_route AS linkRoute,
+              COALESCE(j.name, '') AS project
+       FROM crm_autopilot_actions a
+       LEFT JOIN crm_projects j ON j.id = a.project_id
+       WHERE a.account_id = ? AND (a.status IN ('pending','awaiting') OR a.created_at >= ?)
+       ORDER BY CASE WHEN a.due_at IS NULL THEN a.created_at ELSE a.due_at END DESC
+       LIMIT 40`,
+    ).bind(accountId, dayAgo).all<Record<string, unknown>>()).results ?? [];
+
+    /* Recently published: the things that left the building, from the ledger
+       for content and from the delivery log for messages. Two sources because
+       they are two different events, joined here rather than conflated. */
+    const madeRows = (await env.DB.prepare(
+      `SELECT id, summary, link_kind AS linkKind, link_label AS linkLabel, link_route AS linkRoute,
+              acted_at AS actedAt, detail
+       FROM crm_autopilot_actions
+       WHERE account_id = ? AND status = 'done' AND link_kind IS NOT NULL AND link_kind != ''
+             AND acted_at >= ?
+       ORDER BY acted_at DESC LIMIT 12`,
+    ).bind(accountId, weekAgo).all<Record<string, unknown>>()).results ?? [];
+
+    const sentRows = (await env.DB.prepare(
+      `SELECT id, channel, source_name AS sourceName, subject, recipient, status, created_at AS createdAt
+       FROM crm_delivery_log WHERE account_id = ? AND created_at >= ?
+       ORDER BY created_at DESC LIMIT 12`,
+    ).bind(accountId, weekAgo).all<Record<string, unknown>>()).results ?? [];
+
+    /* The week, counted rather than estimated. */
+    const weekCounts = await env.DB.prepare(
+      `SELECT
+         SUM(CASE WHEN channel = 'email' AND status = 'sent' THEN 1 ELSE 0 END) AS emails,
+         SUM(CASE WHEN channel = 'sms'   AND status = 'sent' THEN 1 ELSE 0 END) AS sms
+       FROM crm_delivery_log WHERE account_id = ? AND created_at >= ?`,
+    ).bind(accountId, weekAgo).first<{ emails: number | null; sms: number | null }>();
+
+    const contentMade = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM crm_autopilot_actions
+       WHERE account_id = ? AND status = 'done' AND link_kind IS NOT NULL AND link_kind != ''
+             AND acted_at >= ?`,
+    ).bind(accountId, weekAgo).first<{ n: number }>();
+
+    /*
+     * Engagement, or an honest absence of it.
+     *
+     * Opens over sends, both from real tables. It is reported as a rate and
+     * never as a flattering delta, and it is null when nothing was sent — a
+     * "0%" on a week with no campaigns reads as a failure rather than as a
+     * quiet week, and a made-up "+42%" is the single most tempting lie on a
+     * screen like this.
+     *
+     * Worth knowing what the number is not: an image-blocking mail client never
+     * reports an open, so this is a floor. The screen says so.
+     */
+    const opens = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM crm_track WHERE account_id = ? AND kind = 'open' AND at >= ?",
+    ).bind(accountId, weekAgo).first<{ n: number }>();
+
+    const emailsSent = Number(weekCounts?.emails ?? 0);
+    const openCount = Number(opens?.n ?? 0);
+
+    /* Instructions used, which is the only allowance this product actually
+       meters. Shown as what it is rather than as invented "credits". */
+    const usedInstructions = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM crm_autopilot_actions
+       WHERE account_id = ? AND kind = 'instruct' AND created_at >= ?`,
+    ).bind(accountId, dayAgo).first<{ n: number }>();
+
+    return json({
+      success: true,
+      agents,
+      tasks,
+      published: { made: madeRows, sent: sentRows },
+      week: {
+        contentCreated: Number(contentMade?.n ?? 0),
+        emailsSent,
+        smsSent: Number(weekCounts?.sms ?? 0),
+        opens: openCount,
+        openRate: emailsSent > 0 ? Math.round((openCount / emailsSent) * 100) : null,
+      },
+      instructions: {
+        used: Number(usedInstructions?.n ?? 0),
+        cap: await instructionCap(env, accountId),
+      },
+    });
+  }
+
+  /*
    * ── Where a post goes when nobody presses publish ──
    *
    * The credential never comes back out. `status` says whether one is set and

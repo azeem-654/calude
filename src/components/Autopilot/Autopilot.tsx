@@ -41,6 +41,7 @@ import { fetchBoard, type Portfolio } from '../../services/projects';
 import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
 import SetupProgress from '../Setup/SetupProgress';
 import ClientLinks from './ClientLinks';
+import WorkflowHub from './WorkflowHub';
 
 const MUTED = '#6b7280';
 
@@ -64,8 +65,26 @@ export default function Autopilot() {
    * on it — a customer who has just been charged and sees an ordinary board
    * with no acknowledgement assumes something went wrong.
    */
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const setupOrder = params.get('setup') ?? '';
+
+  /*
+   * Two views of the same thing, in the address.
+   *
+   * **Projects** is per client: how is each of mine doing, what is it about to
+   * do, what does it want from me. **Workflows** is per rule: what happens on
+   * its own to anybody, drawn as the shape it actually is.
+   *
+   * They are genuinely different questions and neither is a subset of the
+   * other, which is why they are tabs rather than one long screen. In the
+   * address so "look at the workflows" is a link somebody can send.
+   */
+  const view = params.get('view') === 'workflows' ? 'workflows' : 'projects';
+  const setView = (v: 'projects' | 'workflows') => {
+    const next = new URLSearchParams(params);
+    if (v === 'projects') next.delete('view'); else next.set('view', v);
+    setParams(next, { replace: true });
+  };
 
   const load = useCallback(async () => {
     /* Together, so the page cannot show a reply queue beside a board that has
@@ -124,7 +143,8 @@ export default function Autopilot() {
           </p>
         )}
 
-        {/* A customer is waiting at the other end of one of these. */}
+        {/* A customer is waiting at the other end of one of these, whichever
+            view they are looking at. */}
         <ReplyQueue
           drafts={drafts}
           busy={busy}
@@ -132,12 +152,28 @@ export default function Autopilot() {
           onDiscard={id => void decideDraft(id, false)}
         />
 
-        <ProjectBoard key={boardKey} onNewProject={() => setCreating(true)} />
+        <div role="tablist" aria-label="Autopilot views" style={{
+          display: 'flex', gap: 4, borderBottom: '1px solid #e6e9f0', paddingBottom: 0,
+        }}>
+          {([['projects', 'Projects'], ['workflows', 'Workflows']] as const).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)} style={{
+              padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 13.5, fontWeight: view === id ? 800 : 600,
+              color: view === id ? '#17191c' : MUTED,
+              borderBottom: `2px solid ${view === id ? '#5b46e5' : 'transparent'}`,
+              marginBottom: -1,
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {view === 'workflows'
+          ? <WorkflowHub />
+          : <ProjectBoard key={boardKey} onNewProject={() => setCreating(true)} />}
 
         {/* Below the board, because it is what somebody does *after* looking at
             the work rather than instead of it. Collapsed by default so it costs
             nothing to the people who never share anything. */}
-        {portfolios.length > 0 && <ClientLinks portfolios={portfolios} />}
+        {view === 'projects' && portfolios.length > 0 && <ClientLinks portfolios={portfolios} />}
 
         {creating && (
           <NewProject

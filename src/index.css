@@ -1312,3 +1312,10 @@ main section { min-width: 0; }
 @media (max-width: 900px) {
   .ap-split { grid-template-columns: minmax(0, 1fr) !important; }
 }
+
+/* The hub's AI column drops under the workflows on a narrow screen. The canvas
+   is the part that needs the width — it scrolls sideways, and squeezing a
+   300px column beside it leaves neither readable. */
+@media (max-width: 1100px) {
+  .ap-hub { grid-template-columns: minmax(0, 1fr) !important; }
+}

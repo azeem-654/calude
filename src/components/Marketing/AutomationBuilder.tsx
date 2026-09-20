@@ -3,6 +3,7 @@ import { Plus, Trash2, Play, Pause, Zap, GitBranch, Mail, MessageSquare, Tag, Cl
 import type { Automation, AutomationNode, AutomationNodeType } from '../../types/marketing';
 import { normaliseAutomations } from '../../services/marketingShape';
 import { writeAutomation } from '../../services/aiWrite';
+import { chain } from '../Autopilot/workflowNodes';
 
 /* ─── Node config ─── */
 
@@ -84,12 +85,10 @@ function skeletonAutomation(desc: string): Omit<AutomationNode, 'nextId'>[] {
   return nodes;
 }
 
-function buildNodes(raw: Omit<AutomationNode, 'nextId'>[]): AutomationNode[] {
-  return raw.map((n, idx) => ({
-    ...n,
-    nextId: idx < raw.length - 1 ? raw[idx + 1].id : null,
-  }));
-}
+/* Shared with the hub's canvas — see `chain`. Two copies of "what does next
+   mean" is the kind of thing that diverges silently and is very hard to see. */
+const buildNodes = (raw: Omit<AutomationNode, 'nextId'>[]): AutomationNode[] =>
+  chain(raw) as AutomationNode[];
 
 /* ─── Node card ─── */
 

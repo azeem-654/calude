@@ -72,6 +72,12 @@ interface Reply {
   upcoming?: AutopilotAction[];
   sentToday?: unknown[];
   totals?: Record<string, number>;
+  /* The hub screen's live panels. */
+  agents?: unknown[];
+  tasks?: unknown[];
+  published?: unknown;
+  week?: unknown;
+  instructions?: unknown;
   /* A typed instruction, and the cap that may have refused it. */
   understood?: boolean;
   what?: string;
@@ -209,4 +215,76 @@ export async function instructProject(projectId: string, instruction: string): P
     };
   }
   return { ok: true, understood: r.understood === true, message: String(r.message ?? '') };
+}
+
+/* ── The hub screen ──────────────────────────────────────────────────────── */
+
+export interface HubAgent {
+  id: string;
+  name: string;
+  /** Who it is working on, which is what makes a progress bar mean something. */
+  working: string;
+  stepsTaken: number;
+  totalSteps: number;
+  /** Null when the workflow behind the run has been deleted — orphaned, not done. */
+  percent: number | null;
+  dueAt: string | null;
+  updatedAt: string;
+}
+
+export interface HubTask {
+  id: string;
+  kind: string;
+  status: string;
+  summary: string;
+  dueAt: string | null;
+  createdAt: string;
+  actedAt: string | null;
+  linkKind: string | null;
+  linkRoute: string | null;
+  project: string;
+}
+
+export interface HubMade {
+  id: string; summary: string; linkKind: string; linkLabel: string;
+  linkRoute: string; actedAt: string; detail: string;
+}
+
+export interface HubSent {
+  id: string; channel: string; sourceName: string; subject: string;
+  recipient: string; status: string; createdAt: string;
+}
+
+export interface Hub {
+  agents: HubAgent[];
+  tasks: HubTask[];
+  published: { made: HubMade[]; sent: HubSent[] };
+  week: {
+    contentCreated: number; emailsSent: number; smsSent: number;
+    opens: number;
+    /** Null when nothing was sent. A 0% on a quiet week reads as a failure. */
+    openRate: number | null;
+  };
+  instructions: { used: number; cap: number };
+}
+
+/**
+ * Everything the Autopilot screen's live panels show, in one call.
+ *
+ * One rather than four, so the panels cannot disagree with each other on
+ * screen. Read-only, so it is safe to poll.
+ */
+export async function fetchHub(): Promise<{ hub: Hub | null; error: string }> {
+  const r = await call('hub');
+  if (!r.success) return { hub: null, error: String(r.error ?? 'Could not read what Autopilot is doing.') };
+  return {
+    hub: {
+      agents: (r.agents ?? []) as HubAgent[],
+      tasks: (r.tasks ?? []) as HubTask[],
+      published: (r.published ?? { made: [], sent: [] }) as Hub['published'],
+      week: (r.week ?? { contentCreated: 0, emailsSent: 0, smsSent: 0, opens: 0, openRate: null }) as Hub['week'],
+      instructions: (r.instructions ?? { used: 0, cap: 0 }) as Hub['instructions'],
+    },
+    error: '',
+  };
 }

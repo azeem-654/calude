@@ -20,7 +20,8 @@
     "test:plan": "npx --yes tsx test/sendingPlan.test.mts",
     "test:launch": "npx --yes tsx test/launchPlan.test.mts",
     "test:checkout": "npx --yes tsx worker/test/checkout.test.mts",
-    "test:autopilot": "npx --yes tsx worker/test/autopilotPlan.test.mts"
+    "test:autopilot": "npx --yes tsx worker/test/autopilotPlan.test.mts",
+    "test:workflows": "node test/workflowHub.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
