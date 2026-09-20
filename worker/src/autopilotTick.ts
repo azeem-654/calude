@@ -165,7 +165,28 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     content: await contentFor(env, accountId),
     commerce: await commerceFor(env, accountId),
     tomorrow: await bookingsTomorrow(env, accountId),
+    today: await todayFor(env, accountId),
   };
+}
+
+/**
+ * The customer's own calendar date.
+ *
+ * Read from the same place "tomorrow" is — the booking page's settings, the one
+ * place in this app a real IANA zone is stored. It date-stamps the daily plays,
+ * and getting it from the Worker's clock instead would mean a post planned at
+ * 22:00 in Karachi is filed as tomorrow's, which is the date a person reads on
+ * the card and would be wrong by a day for half the world every evening.
+ */
+async function todayFor(env: Env, accountId: string): Promise<string> {
+  const sched = parse<{ timezone?: string }>(await dataGet(env.DB, accountId, 'crm_schedule'), {});
+  try {
+    /* en-CA gives YYYY-MM-DD. Same formatter and same fallback as the booking
+       reminder above, so the two can never disagree about what day it is. */
+    return new Intl.DateTimeFormat('en-CA', { timeZone: sched.timezone || 'UTC' }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date());
+  }
 }
 
 /**
@@ -287,16 +308,60 @@ async function commerceFor(env: Env, accountId: string): Promise<Workspace['comm
   };
 }
 
-/** How much this workspace has published, and whether Autopilot can write more. */
+/**
+ * How much this workspace has published, when it last did, and whether
+ * Autopilot can write more.
+ *
+ * ── Why the dates matter as much as the counts ──
+ *
+ * The content plays used to ask "are there zero blog posts?" and "are there
+ * fewer than three social posts?". Both are the right question exactly once.
+ * After the first pass they are false for ever, so Autopilot wrote one blog
+ * post, one week of social and one landing page on the day a project was
+ * created and then never wrote anything again — while the board went on saying
+ * it was running.
+ *
+ * A cadence needs to know when the last one was, not how many there have ever
+ * been. `newestAt` is that, per kind: it is what turns "is there any?" into
+ * "is there one from today?".
+ */
 async function contentFor(env: Env, accountId: string): Promise<Workspace['content']> {
-  const count = async (key: string) =>
-    parse<unknown[]>(await dataGet(env.DB, accountId, key), []).length;
+  const rows = async (key: string) =>
+    parse<{ createdAt?: string; created_at?: string; scheduledFor?: string }[]>(await dataGet(env.DB, accountId, key), []);
+
+  /* The most recent creation stamp in a list, or null when there is nothing.
+     Defended rather than trusted: these lists are written by several versions
+     of several modules and a record with no date must not become NaN and then
+     silently win the comparison. */
+  const newest = (list: { createdAt?: string; created_at?: string }[]): string | null => {
+    let best = 0;
+    for (const r of list) {
+      const t = new Date(r.createdAt ?? r.created_at ?? '').getTime();
+      if (Number.isFinite(t) && t > best) best = t;
+    }
+    return best ? new Date(best).toISOString() : null;
+  };
+
+  const blog = await rows(BLOG_POSTS_KEY);
+  const social = await rows(SOCIAL_KEY);
+  const shorts = await rows(SHORTS_KEY);
+
   return {
-    funnels: await count(FUNNELS_KEY),
-    websites: await count(WEBSITES_KEY),
-    blogPosts: await count(BLOG_POSTS_KEY),
-    socialPosts: await count(SOCIAL_KEY),
-    shorts: await count(SHORTS_KEY),
+    funnels: (await rows(FUNNELS_KEY)).length,
+    websites: (await rows(WEBSITES_KEY)).length,
+    blogPosts: blog.length,
+    socialPosts: social.length,
+    shorts: shorts.length,
+    newestBlogAt: newest(blog),
+    newestSocialAt: newest(social),
+    /* Social is the one play that tops a *queue* up rather than adding one
+       thing, so it needs to know how many are still ahead rather than how many
+       have ever existed — a page with forty posts behind it and none in front
+       is a page that stops tomorrow. */
+    socialUnpublished: social.filter(p => {
+      const r = p as { status?: string };
+      return r.status === 'draft' || r.status === 'scheduled';
+    }).length,
     /* No key, no writing. Planning "write a landing page" for a workspace that
        cannot write one produces a queue item that fails every tick. */
     canWrite: !!(await loadAiKey(env, accountId)),
@@ -1048,7 +1113,7 @@ async function carryOutPoolStep(
 async function carryOutWrite(
   env: Env,
   accountId: string,
-  what: 'landing' | 'blog' | 'social' | 'short' | 'sequence',
+  what: 'landing' | 'website' | 'blog' | 'social' | 'short' | 'sequence',
   run: RunRow,
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
   const apiKey = await loadAiKey(env, accountId);
@@ -1137,6 +1202,83 @@ async function carryOutWrite(
       ok: true,
       detail: `Drafted "${v.headline}". Nothing is live until you publish it.`,
       link: { kind: 'funnel', id, label: v.headline.slice(0, 60), route: '/funnels' },
+    };
+  }
+
+  if (what === 'website') {
+    const r = await writeLandingPage(apiKey, brand);
+    if (!r.ok || !r.value) return { ok: false, detail: r.error };
+    const v = r.value;
+    const id = `ws-${crypto.randomUUID()}`;
+
+    /*
+     * A real site, with a form on it that really collects.
+     *
+     * ── Why the form is made here and not left to the customer ──
+     *
+     * A page with a contact form is the whole point of a services website, and
+     * a form block that is not bound to an engagement form collects nothing —
+     * it says so on the page, correctly, but a site Autopilot built that cannot
+     * take an enquiry is a site that has not done its job. So the form is
+     * created first, live, and the block is bound to it. Everything that
+     * follows — the contact, the deal, the workflow listening for this form —
+     * is then the path that already exists and is already tested.
+     */
+    const formId = `for-${crypto.randomUUID()}`;
+    const slug = `${(brand.companyName || 'enquiry').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'enquiry'}-${Math.random().toString(36).slice(2, 7)}`;
+    const fields = [
+      { key: 'name', label: 'Your name', type: 'text', required: true },
+      { key: 'email', label: 'Email', type: 'email', required: true },
+      { key: 'phone', label: 'Phone', type: 'phone', required: false },
+      { key: 'message', label: 'What do you need?', type: 'textarea', required: false },
+    ];
+    let formSlug = '';
+    try {
+      await env.DB.prepare(
+        `INSERT INTO crm_forms (id, account_id, name, slug, headline, blurb, fields,
+           submit_label, success_message, create_person, status, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,1,'live',?,?)`,
+      ).bind(
+        formId, accountId, `${brand.companyName || 'Website'} enquiries`.slice(0, 120), slug,
+        v.headline.slice(0, 160), '', JSON.stringify(fields),
+        'Send', 'Thank you — we will come back to you shortly.', now, now,
+      ).run();
+      formSlug = slug;
+    } catch {
+      /* A slug collision or a missing table must not lose the whole site. The
+         block renders unbound and says on the page that it cannot take an
+         enquiry, which is the honest fallback rather than a silent one. */
+      formSlug = '';
+    }
+
+    const block = (type: string, content: string, settings: Record<string, unknown>) =>
+      ({ id: `bl-${crypto.randomUUID()}`, type, content, settings });
+
+    await push(WEBSITES_KEY, {
+      id, name: brand.companyName || v.headline.slice(0, 60), status: 'draft', source, createdAt: now,
+      pages: [{
+        id: `pg-${crypto.randomUUID()}`, name: 'Home', type: 'landing',
+        blocks: [
+          block('navbar', '', { navLogo: brand.companyName || 'Home', buttonText: v.cta }),
+          block('hero', v.headline, { subheading: v.subhead, buttonText: v.cta, bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)' }),
+          /* The bullets become the "what we do" row, which is the section a
+             visitor reads to decide whether this business does their thing. */
+          block('features', 'What we do', {
+            featureItems: v.bullets.slice(0, 6).map(b => ({ icon: '✓', title: b.slice(0, 60), desc: '' })),
+          }),
+          ...v.sections.slice(0, 3).map(sec => block('columns', sec.heading, { subheading: sec.body })),
+          block('form', 'Get in touch', { formSlug, formFields: fields.map(f => ({ label: f.label, type: f.type, required: f.required })) }),
+          block('footer', '', { navLogo: brand.companyName || '' }),
+        ],
+      }],
+    });
+
+    return {
+      ok: true,
+      detail: formSlug
+        ? `Built "${brand.companyName || v.headline}" with an enquiry form that collects into your contacts. It is a draft until you publish it.`
+        : `Built "${brand.companyName || v.headline}". The enquiry form could not be connected, so it says so on the page — make one in Customer Engagement → Forms and pick it in the builder.`,
+      link: { kind: 'website', id, label: (brand.companyName || v.headline).slice(0, 60), route: '/websites' },
     };
   }
 

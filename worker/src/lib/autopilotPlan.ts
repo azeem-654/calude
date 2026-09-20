@@ -34,6 +34,17 @@ export interface Workspace {
   enrolments: Enrolment[];
   pipelines: Pipeline[];
   reviewRequests: { contactId?: string; dealId?: string; at?: string }[];
+  /**
+   * The customer's own calendar date, `YYYY-MM-DD`.
+   *
+   * Passed in rather than worked out here, for the same reason `tomorrow` is:
+   * a pure function that cannot be tested without knowing what day it is in
+   * Karachi is not much of a pure function. It is what date-stamps the daily
+   * plays, so a post planned at 22:00 local is filed as today's and not as
+   * tomorrow's — which is the date a person reads on the card.
+   */
+  today?: string;
+
   /** Can this workspace send at all? Nothing is worth planning if not. */
   canEmail: boolean;
   canSms: boolean;
@@ -83,6 +94,19 @@ export interface Workspace {
     blogPosts: number;
     socialPosts: number;
     shorts: number;
+    /**
+     * When the most recent one was written, per kind.
+     *
+     * The counts answer "has this ever happened", which is the right question
+     * exactly once — and the reason Autopilot wrote a blog post on the day a
+     * project was created and then nothing, for ever, while the board said it
+     * was running. These answer "did it happen today", which is what a cadence
+     * actually needs. Null means never.
+     */
+    newestBlogAt?: string | null;
+    newestSocialAt?: string | null;
+    /** Posts still ahead rather than behind. See the note where it is set. */
+    socialUnpublished?: number;
     canWrite: boolean;
   };
 }
@@ -167,7 +191,11 @@ export interface PlannedAction {
     | { type: 'pool_step'; step: string; detail: string }
     /* Writing something. The kind names which writer; the tick calls it and
        files the result in the module that owns it. */
-    | { type: 'write'; what: 'landing' | 'blog' | 'social' | 'short' | 'sequence' }
+    /* `landing` is a funnel — one page with one decision on it. `website` is
+       several pages somebody can read. They are different products for
+       different businesses and the planner picks, rather than everybody getting
+       whichever one happened to be built first. */
+    | { type: 'write'; what: 'landing' | 'website' | 'blog' | 'social' | 'short' | 'sequence' }
     /* Commerce. Each names orders rather than carrying their contents, so the
        tick reads the current state of an order rather than acting on a copy
        that was true when the plan was written — an order paid overnight must
@@ -178,6 +206,32 @@ export interface PlannedAction {
     | { type: 'remind_bookings'; bookingIds: string[] }
     | { type: 'none' };
 }
+
+/**
+ * Hours since an instant, or Infinity when it never happened.
+ *
+ * Twenty rather than twenty-four is the threshold every daily play uses. A tick
+ * runs every five minutes and a customer's "daily" post should not drift an
+ * hour later every day until it is arriving at midnight — twenty hours means it
+ * settles into the first tick of their morning and stays there.
+ */
+const hoursSince = (iso?: string | null): number => {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return Number.POSITIVE_INFINITY;
+  return (Date.now() - t) / 3_600_000;
+};
+
+/**
+ * The date a daily play is stamped with.
+ *
+ * It goes in the summary, which is what the existing dedupe reads — one open
+ * action per summary. That is what makes "one a day" work with no new
+ * machinery: yesterday's summary is different, so today's is not a duplicate,
+ * and a second tick on the same day finds today's already there and stops.
+ */
+const stamp = (today?: string): string =>
+  (today && /^\d{4}-\d{2}-\d{2}$/.test(today)) ? today : new Date().toISOString().slice(0, 10);
 
 const days = (iso?: string | null): number => {
   if (!iso) return Number.POSITIVE_INFINITY;
@@ -210,6 +264,13 @@ function describePoolStep(s: { type: string; count?: number; domain?: string; do
  */
 export function planNext(ws: Workspace): PlannedAction[] {
   const out: PlannedAction[] = [];
+  /*
+   * Read here rather than only at the bottom, because two plays now need it to
+   * decide *what* to plan rather than only whether to keep it — a shop gets a
+   * funnel where everybody else gets a website. The filter at the end still
+   * does the keeping.
+   */
+  const kind: ProjectKind = ws.kind ?? 'general';
   /* Collected first and filtered once at the bottom. Twenty `if (kind === …)`
      guards would be twenty chances to forget one, and the one forgotten is the
      one that plans an order chase for a dentist. */
@@ -281,49 +342,107 @@ export function planNext(ws: Workspace): PlannedAction[] {
     }
   }
 
-  /* ── Something to show for itself ──
+  /* ── Something to show for itself, and to go on showing ──
      A campaign with nowhere to send people, and a business with nothing
      published, is the commonest reason a small workspace does nothing. These
      only fire when there is a key to write with — a plan to write a page that
-     cannot be written is not a plan. */
+     cannot be written is not a plan.
+
+     ── Why these are cadences and not gates ──
+
+     Every one of these used to ask "is there none?". That is the right question
+     exactly once. After the first pass it was false for ever, so a project
+     produced one blog post, one week of social and one landing page on the day
+     it was created and then nothing at all, while the board went on saying it
+     was running. A customer paying monthly for "it markets your business" got a
+     day's work and eleven months of silence.
+
+     They now ask "is there one from today?" instead. The date is in the summary
+     so the existing dedupe — one open action per summary — becomes exactly one
+     of each a day without any new machinery: yesterday's is closed, today's is
+     not there yet, and a second tick on the same day finds it and stops. */
   if (ws.content?.canWrite) {
     const c = ws.content;
+    /* The customer's own day, not UTC's. A post "for Monday" planned at 22:00
+       in Karachi must not be filed as Sunday's — the stamp is what a person
+       reads on the card. */
+    const today = stamp(ws.today);
+
     if (c.funnels === 0 && c.websites === 0) {
+      /*
+       * A shop gets a funnel; everybody else gets a website.
+       *
+       * They are not interchangeable. A funnel is one page with one decision on
+       * it, which is what sells a product — and a services business judged on
+       * whether it looks like a real firm needs pages a person can read: what
+       * you do, who you are, how to reach you. Giving a plumber a single
+       * squeeze page is the same mistake as giving a supplement brand a
+       * five-page brochure.
+       */
+      const wantsFunnel = kind === 'ecommerce';
       out.push({
         key: 'write-landing',
         scope: 'project',
         kind: 'create',
-        summary: 'Write a landing page for what you do',
-        because: 'there is no website or funnel in this workspace, so every campaign would send people nowhere',
+        summary: wantsFunnel ? 'Build a funnel to sell from' : 'Build a website for what you do',
+        because: wantsFunnel
+          ? 'this project sells a product and has nowhere to sell it, and a funnel is one page with one decision on it — which is what a product needs'
+          : 'there is no website or funnel here, so every campaign would send people nowhere — and a services business is judged on whether it looks like a real firm',
         permission: 'createWorkflows',
-        effect: { type: 'write', what: 'landing' },
+        effect: { type: 'write', what: wantsFunnel ? 'landing' : 'website' },
       });
     }
-    if (c.blogPosts === 0) {
+
+    /*
+     * A post a day, and the reason it is a day.
+     *
+     * Search rewards a site that keeps answering questions, and nothing about
+     * one post is worth anything. A day is also the slowest cadence somebody
+     * notices: a customer watching the board wants to see it working, and the
+     * whole promise of this product is that it does something while they are
+     * doing their actual job.
+     */
+    if (hoursSince(c.newestBlogAt) >= 20) {
+      const first = c.blogPosts === 0;
       out.push({
-        key: 'write-blog',
+        key: `write-blog-${today}`,
         scope: 'project',
         kind: 'create',
-        summary: 'Write your first blog post',
-        because: 'nothing has been published, and the pages that bring people in from a search are the ones that answer a question before they buy',
+        summary: first ? 'Write your first blog post' : `Write today's blog post — ${today}`,
+        because: first
+          ? 'nothing has been published, and the pages that bring people in from a search are the ones that answer a question before they buy'
+          : 'a site that answers a new question every day is what search rewards, and one post on its own is worth almost nothing',
         permission: 'createWorkflows',
         effect: { type: 'write', what: 'blog' },
       });
     }
-    if (c.socialPosts < 3) {
+
+    /*
+     * Social is topped up rather than added to.
+     *
+     * The old rule counted every post that had ever existed, so a page with
+     * forty behind it and none in front never got another — which is exactly
+     * the page that stops tomorrow. What matters is how many are still ahead.
+     */
+    const ahead = c.socialUnpublished ?? c.socialPosts;
+    if (ahead < 5 && hoursSince(c.newestSocialAt) >= 20) {
       out.push({
-        key: 'write-social',
+        key: `write-social-${today}`,
         scope: 'project',
         kind: 'create',
-        summary: 'Write a week of social posts',
-        because: c.socialPosts === 0
+        summary: ahead === 0 ? 'Write a week of social posts' : `Top up the social queue — ${today}`,
+        because: ahead === 0
           ? 'nothing is scheduled, and a page with no posts on it reads as a business that has closed'
-          : `there ${c.socialPosts === 1 ? 'is 1 post' : `are ${c.socialPosts} posts`} scheduled, which is not enough to keep a page looking alive`,
+          : `there ${ahead === 1 ? 'is 1 post' : `are ${ahead} posts`} still to go out, which is a few days of cover and not enough to stop thinking about`,
         permission: 'createWorkflows',
         effect: { type: 'write', what: 'social' },
       });
     }
+
     if (c.shorts === 0) {
+      /* Deliberately still once. A short is a script somebody has to go and
+         film, and queueing a new one every day for a customer who has not
+         filmed the first is a pile of homework rather than a service. */
       out.push({
         key: 'write-short',
         scope: 'project',
@@ -338,6 +457,40 @@ export function planNext(ws: Workspace): PlannedAction[] {
 
   const active = ws.sequences.filter(s => s.status !== 'archived' && (s.steps?.length ?? 0) > 0);
   const enrolledIds = new Set(ws.enrolments.filter(e => e.status !== 'cancelled').map(e => e.contactId));
+
+  /*
+   * ── Another angle, every week ──
+   *
+   * One sequence is a follow-up. A business that keeps selling needs more than
+   * one thing to say: the enquiry that went cold, the customer who bought once,
+   * the season, the offer. Writing the first and then stopping is what the old
+   * plan did, and it is the difference between a tool that set something up
+   * once and a service that keeps working.
+   *
+   * Weekly rather than daily, deliberately. A blog post a day is a library; an
+   * email campaign a day is a list that unsubscribes. The cap is on *writing*
+   * them — nobody is enrolled without `sendEmail`, which holds for approval by
+   * default, so this produces things to read rather than things that have gone.
+   *
+   * Four is where it stops. Beyond that a customer is not reading them, and a
+   * queue of unread drafts is worse than none because it hides the one that
+   * matters.
+   */
+  if (ws.content?.canWrite && active.length >= 1 && active.length < 4 && canSend) {
+    const angles = ['win back a customer who bought once', 'restart an enquiry that went cold', 'introduce what else you do'];
+    const angle = angles[Math.min(active.length - 1, angles.length - 1)];
+    out.push({
+      key: `write-sequence-extra-${active.length}`,
+      kinds: ['leadgen', 'consultancy', 'ecommerce'],
+      scope: 'project',
+      kind: 'create',
+      summary: `Write an email campaign to ${angle}`,
+      because: `there ${active.length === 1 ? 'is 1 campaign' : `are ${active.length} campaigns`} here and only one thing to say to anybody who has already had it — a business that keeps selling needs more than one angle`,
+      counts: { campaigns: active.length },
+      permission: 'createWorkflows',
+      effect: { type: 'write', what: 'sequence' },
+    });
+  }
 
   /* ── New contacts nobody has started talking to ──
      The most valuable thing a small business fails to do. A lead that arrived
@@ -385,6 +538,8 @@ export function planNext(ws: Workspace): PlannedAction[] {
         counts: { contacts: ws.contacts.length },
         permission: 'createWorkflows',
         effect: { type: 'write', what: 'sequence' },
+        /* Named here so the block below can tell "the first one" apart from
+           "another angle", which read identically on the board. */
       });
     } else {
       out.push({
@@ -669,7 +824,6 @@ export function planNext(ws: Workspace): PlannedAction[] {
    * working yesterday must not have work silently withdrawn because a column
    * was added.
    */
-  const kind: ProjectKind = ws.kind ?? 'general';
   if (kind === 'general') return out;
   return out.filter(a => !a.kinds || a.kinds.includes(kind));
 }
