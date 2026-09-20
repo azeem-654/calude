@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  listConversations, listTickets, mergeCaptured, overview,
+  listConversations, listTickets, mergeCaptured, applyContactChanges, overview,
   type Conversation, type EngageCounts, type Ticket,
 } from '../../services/engagement';
 import EngageInbox from './EngageInbox';
@@ -114,6 +114,11 @@ export default function Engagement() {
     let alive = true;
     void (async () => {
       const r = await mergeCaptured();
+      if (!alive) return;
+      /* After the merge, not before: a tag the engine wants on a contact that
+         this same pass has just created would otherwise be skipped and wait a
+         whole cycle for a contact that already exists. */
+      await applyContactChanges();
       if (!alive) return;
       /* A routing that could not run is a lead nobody is working, so it is
          said even when nothing new arrived — silence about it is how a week

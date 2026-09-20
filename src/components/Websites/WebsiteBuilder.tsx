@@ -1,4 +1,5 @@
 import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
+import FormPicker from '../shared/FormPicker';
 import type { CSSProperties } from 'react';
 import { Globe, Search, Smartphone, Tablet, Monitor, Undo2, Redo2 } from 'lucide-react';
 import type { Website, FunnelStep, FunnelBlock } from '../../types';
@@ -441,6 +442,12 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
       )}
       {block.type === 'form' && (
         <div style={sec}>
+          {/* First, because it is the setting that decides whether the block
+              does anything at all. The fields below are the shape of the form;
+              this is where what somebody types actually goes. */}
+          <div style={{ marginBottom: 12 }}>
+            <FormPicker value={s.formSlug ?? ''} onChange={slug => set({ formSlug: slug })} />
+          </div>
           <label style={lbl}>Form Fields</label>
           {(s.formFields ?? []).map((f, i) => (
             <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 8, marginBottom: 8 }}>

@@ -9,6 +9,7 @@ import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
 import CampaignWizard from './CampaignWizard';
 import CampaignDetailPanel from './CampaignDetailPanel';
+import AutomationRuns from './AutomationRuns';
 import type { Campaign } from '../../types';
 import type { EmailSequence } from '../../types/marketing';
 import SourceTag from '../shared/SourceTag';
@@ -442,13 +443,20 @@ export default function Marketing() {
           />
         )}
         {activeTab === 'automations' && (
-          <AutomationBuilder
-            automations={automations}
-            onAddAutomation={addAutomation}
-            onUpdateAutomation={updateAutomation}
-            onDeleteAutomation={deleteAutomation}
-            onNotify={addNotification}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <AutomationBuilder
+              automations={automations}
+              onAddAutomation={addAutomation}
+              onUpdateAutomation={updateAutomation}
+              onDeleteAutomation={deleteAutomation}
+              onNotify={addNotification}
+            />
+            {/* Under the builder rather than inside it: the builder is the
+                drawing and this is what happened when it ran, and somebody
+                debugging "why did nobody get that email" is looking for the
+                second one. */}
+            <div style={{ padding: '0 28px 28px' }}><AutomationRuns /></div>
+          </div>
         )}
       </div>
     </div>

@@ -31,6 +31,9 @@ interface Req {
   category?: string;
   resolution?: string;
   personId?: string;
+  /* Automations — which graph's runs, and which run's history */
+  automationId?: string;
+  runId?: string;
   /* Forms, agents, knowledge, widgets — saved whole */
   record?: Record<string, unknown>;
 }
@@ -438,6 +441,31 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       await env.DB.prepare(
         "UPDATE crm_engage_people SET crm_id = ?, merged_at = ? WHERE id = ? AND account_id = ? AND crm_id = ''",
       ).bind(s(pair.crmId, 80), now, s(pair.id, 80), accountId).run();
+
+      /*
+       * Point any automation already running at the real contact.
+       *
+       * A form submission enrols somebody the instant it arrives, which is
+       * before the CRM contact exists — the contact list is the browser's
+       * document and nothing has written to it yet. So a run starts holding the
+       * *engagement* person's id and the name and address it was given.
+       *
+       * This is the moment a CRM contact exists. From here the run finds the
+       * full record, so a condition on a tag or a field the customer has since
+       * edited reads the real thing rather than the snapshot taken at capture.
+       */
+      await env.DB.prepare(
+        'UPDATE crm_automation_runs SET contact_id = ?, updated_at = ? WHERE account_id = ? AND contact_id = ?',
+      ).bind(s(pair.crmId, 80), now, accountId, s(pair.id, 80)).run();
+
+      /* And anything the engine has already asked to be changed on that person.
+         A tag added by an automation thirty seconds after the form was sent is
+         recorded against the engagement id, because that is the only id that
+         existed. Without this line it would be addressed to a contact the
+         browser has never heard of and would sit unapplied for ever. */
+      await env.DB.prepare(
+        'UPDATE crm_contact_changes SET contact_id = ? WHERE account_id = ? AND contact_id = ? AND applied_at IS NULL',
+      ).bind(s(pair.crmId, 80), accountId, s(pair.id, 80)).run();
     }
     return json({ success: true, merged: pairs.length });
   }
@@ -477,6 +505,86 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
    * this campaign send" and "what has this address ever been sent", and those
    * are the two ways anybody ever comes at it.
    */
+  /* ── What the automations actually did ──────────────────────────────────
+   *
+   * The builder has always been able to draw one. Until the engine existed,
+   * "enrolled: 0" was the only thing any screen could say about it, and it was
+   * indistinguishable from an automation nobody had triggered yet and from one
+   * that could never run at all. These two actions are what make the difference
+   * visible.
+   */
+  if (act === 'automation_runs') {
+    const id = s(d.automationId, 80);
+    const rows = id
+      ? await env.DB.prepare(
+          `SELECT id, automation_id AS automationId, automation_name AS automationName,
+                  contact_id AS contactId, contact_name AS contactName, contact_email AS contactEmail,
+                  node_id AS nodeId, due_at AS dueAt, status, detail,
+                  trigger_kind AS triggerKind, trigger_ref AS triggerRef,
+                  steps_taken AS stepsTaken, created_at AS createdAt, updated_at AS updatedAt
+           FROM crm_automation_runs WHERE account_id = ? AND automation_id = ?
+           ORDER BY updated_at DESC LIMIT 200`,
+        ).bind(accountId, id).all()
+      : await env.DB.prepare(
+          `SELECT id, automation_id AS automationId, automation_name AS automationName,
+                  contact_id AS contactId, contact_name AS contactName, contact_email AS contactEmail,
+                  node_id AS nodeId, due_at AS dueAt, status, detail,
+                  trigger_kind AS triggerKind, trigger_ref AS triggerRef,
+                  steps_taken AS stepsTaken, created_at AS createdAt, updated_at AS updatedAt
+           FROM crm_automation_runs WHERE account_id = ?
+           ORDER BY updated_at DESC LIMIT 200`,
+        ).bind(accountId).all();
+
+    /* Counted in the database rather than from the page of rows above, so a
+       workspace with three hundred runs does not read "200 active". */
+    const { results: totals } = await env.DB.prepare(
+      id
+        ? 'SELECT status, COUNT(*) AS n FROM crm_automation_runs WHERE account_id = ? AND automation_id = ? GROUP BY status'
+        : 'SELECT status, COUNT(*) AS n FROM crm_automation_runs WHERE account_id = ? GROUP BY status',
+    ).bind(...(id ? [accountId, id] : [accountId])).all();
+
+    return json({ success: true, runs: rows.results ?? [], totals: totals ?? [] });
+  }
+
+  if (act === 'automation_log') {
+    const runId = s(d.runId, 80);
+    if (!runId) return fail('Which run?', 400);
+    /* Scoped by account as well as by run id: a run id from another workspace
+       must read as empty rather than as somebody else's history. */
+    const { results } = await env.DB.prepare(
+      `SELECT id, node_id AS nodeId, node_type AS nodeType, status, detail, created_at AS createdAt
+       FROM crm_automation_log WHERE account_id = ? AND run_id = ? ORDER BY created_at ASC LIMIT 400`,
+    ).bind(accountId, runId).all();
+    return json({ success: true, entries: results ?? [] });
+  }
+
+  /* ── Changes the engine wants made to a contact ──
+   *
+   * Read and then confirmed by the browser, which is the only writer of the
+   * contact list. Exactly the shape `unmerged_people` / `mark_merged` already
+   * take, for exactly the same reason. */
+  if (act === 'pending_contact_changes') {
+    const { results } = await env.DB.prepare(
+      `SELECT id, contact_id AS contactId, kind, field, value, source, source_id AS sourceId, created_at AS createdAt
+       FROM crm_contact_changes WHERE account_id = ? AND applied_at IS NULL
+       ORDER BY created_at ASC LIMIT 300`,
+    ).bind(accountId).all();
+    return json({ success: true, changes: results ?? [] });
+  }
+
+  if (act === 'mark_changes_applied') {
+    const ids = Array.isArray(d.record?.ids) ? d.record.ids as string[] : [];
+    for (const id of ids.slice(0, 300)) {
+      /* `applied_at IS NULL` in the WHERE, so replaying a batch is harmless —
+         the same guarantee `mark_merged` gives, and the reason both are safe to
+         call on a timer. */
+      await env.DB.prepare(
+        'UPDATE crm_contact_changes SET applied_at = ? WHERE id = ? AND account_id = ? AND applied_at IS NULL',
+      ).bind(now, s(id, 80), accountId).run();
+    }
+    return json({ success: true, applied: ids.length });
+  }
+
   if (act === 'delivery_log') {
     const sourceId = s(d.id, 80);
     const who = s(d.assignedTo, 200);   // reused as the recipient filter

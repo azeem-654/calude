@@ -189,24 +189,157 @@ export function BlockRender({ block }: { block: FunnelBlock }) {
     case 'button': return <div style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}><button style={{ padding: '13px 30px', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: s.borderRadius ?? 8, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText ?? block.content}</button></div>;
     case 'image': return <div style={{ ...bg, padding: `${pad}px 60px`, textAlign: s.align ?? 'center' }}>{s.imageUrl ? <img src={s.imageUrl} alt={s.imageAlt ?? ''} style={{ maxWidth: '100%', borderRadius: s.borderRadius ?? 0, boxShadow: s.shadow ? '0 8px 32px rgba(0,0,0,0.15)' : 'none' }} /> : null}</div>;
     case 'video': return <div style={{ ...bg, padding: `${pad}px 60px` }}>{s.url ? <div style={{ position: 'relative', paddingBottom: '56.25%', maxWidth: 900, margin: '0 auto', borderRadius: 12, overflow: 'hidden' }}><iframe src={s.url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }} allowFullScreen /></div> : null}</div>;
-    case 'form': return (
-      <section style={{ ...bg, padding: `${pad}px 60px` }}>
-        {block.content && <h2 style={{ textAlign: s.align ?? 'center', fontSize: 30, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 30px' }}>{block.content}</h2>}
-        <div style={{ maxWidth: 540, margin: '0 auto' }}>
-          {(s.formFields ?? []).map((f, i) => (
-            <div key={i} style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{f.label}{f.required && <span style={{ color: '#ef4444' }}> *</span>}</label>
-              {f.type === 'textarea' ? <textarea rows={4} style={{ width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} /> : <input type={f.type} style={{ width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />}
-            </div>
-          ))}
-          <button style={{ width: '100%', padding: '13px 0', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>{s.buttonText ?? 'Submit'}</button>
-        </div>
-      </section>
-    );
+    case 'form': return <FormBlock block={block} bg={bg} pad={pad} />;
     case 'divider': return <div style={{ padding: `${pad}px 60px` }}><hr style={{ border: 'none', borderTop: `2px solid ${s.color ?? '#e2e8f0'}`, margin: 0 }} /></div>;
     case 'spacer': return <div style={{ height: pad }} />;
     default: return null;
   }
+}
+
+/**
+ * A form block that actually collects something.
+ *
+ * ── What was here before ──
+ *
+ * Markup. Inputs with no state, no `name`, no handler, and a button with no
+ * `onClick`. A visitor on a published page filled it in, pressed Submit, and
+ * **nothing happened at all** — no request, no error, no record. Every enquiry
+ * that page ever took was lost at the moment it was typed, and the page looked
+ * completely normal doing it.
+ *
+ * ── Why it posts to a form rather than to the site ──
+ *
+ * A submission has to name a workspace, and a public page cannot be trusted to
+ * name one — that is the rule the whole engagement route is built on. An
+ * engagement form's slug is unique across the install and maps to exactly one
+ * workspace, so binding the block to a form answers the tenancy question
+ * without inventing a second way to answer it.
+ *
+ * It also means this inherits everything that path already does: the consent
+ * tick, the content gate, the person record, the notification, the contact, the
+ * deal, and any automation listening for that form.
+ *
+ * An unbound block says so rather than collecting into nothing.
+ */
+function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; pad: number }) {
+  const s = block.settings;
+  const fields = s.formFields ?? [];
+  const slug = (s.formSlug ?? '').trim();
+
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [message, setMessage] = useState('');
+
+  /* The key a field's answer is filed under. `email` and `phone` matter: the
+     capture reads those two by name to build the contact, so a field labelled
+     "Email Address" still has to arrive as `email`. */
+  const keyFor = (label: string, type: string, i: number): string => {
+    const t = type.toLowerCase();
+    if (t === 'email') return 'email';
+    if (t === 'phone' || t === 'tel') return 'phone';
+    const slugged = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    if (slugged === 'name' || slugged === 'full_name' || slugged === 'your_name') return 'name';
+    if (slugged === 'company' || slugged === 'business') return 'company';
+    return slugged || `field_${i}`;
+  };
+
+  async function send() {
+    if (!slug) return;
+    const missing = fields.find((f, i) => f.required && !(values[keyFor(f.label, f.type, i)] ?? '').trim());
+    if (missing) { setState('error'); setMessage(`${missing.label} is needed.`); return; }
+
+    setState('sending');
+    try {
+      const r = await fetch(`${window.location.origin}/api/engage.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'submit', formSlug: slug, answers: values, consent: true,
+          context: { page: window.location.href },
+        }),
+      });
+      const d = await r.json() as { success?: boolean; message?: string; error?: string; redirect?: string };
+      if (!d.success) { setState('error'); setMessage(d.error ?? 'That could not be sent.'); return; }
+      setState('sent');
+      setMessage(d.message || 'Thank you — we have got that.');
+      /* The form's own redirect wins over the block's, because the form is
+         where somebody configured what happens after a submission. */
+      const to = d.redirect || s.redirectUrl;
+      if (to) window.location.href = to;
+    } catch (e) {
+      /* Named rather than swallowed. "Nothing happened" is the failure this
+         whole component exists to stop, and a dead network is still nothing
+         happening unless the page says so. */
+      setState('error');
+      setMessage(`That could not be sent: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  const input: CSSProperties = {
+    width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 8,
+    fontSize: 14, boxSizing: 'border-box', fontFamily: 'inherit',
+  };
+
+  return (
+    <section style={{ ...bg, padding: `${pad}px 60px` }}>
+      {block.content && <h2 style={{ textAlign: s.align ?? 'center', fontSize: 30, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 30px' }}>{block.content}</h2>}
+      <div style={{ maxWidth: 540, margin: '0 auto' }}>
+        {state === 'sent' ? (
+          <p style={{
+            margin: 0, padding: '16px 18px', borderRadius: 10, background: '#ecfdf5',
+            border: '1px solid #a7f3d0', color: '#065f46', fontSize: 15, textAlign: 'center',
+          }}>{message}</p>
+        ) : (
+          <>
+            {fields.map((f, i) => {
+              const k = keyFor(f.label, f.type, i);
+              return (
+                <div key={i} style={{ marginBottom: 16 }}>
+                  <label htmlFor={`${block.id}-${k}`} style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                    {f.label}{f.required && <span style={{ color: '#ef4444' }}> *</span>}
+                  </label>
+                  {f.type === 'textarea' ? (
+                    <textarea id={`${block.id}-${k}`} rows={4} value={values[k] ?? ''}
+                      onChange={e => setValues(v => ({ ...v, [k]: e.target.value }))}
+                      style={{ ...input, resize: 'vertical' }} />
+                  ) : (
+                    <input id={`${block.id}-${k}`} type={f.type} value={values[k] ?? ''}
+                      onChange={e => setValues(v => ({ ...v, [k]: e.target.value }))}
+                      style={input} />
+                  )}
+                </div>
+              );
+            })}
+
+            {message && state === 'error' && (
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: '#b42318' }}>{message}</p>
+            )}
+
+            <button onClick={() => void send()} disabled={!slug || state === 'sending'}
+              style={{
+                width: '100%', padding: '13px 0', background: slug ? (s.buttonColor ?? '#6366f1') : '#cbd5e1',
+                color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 15,
+                fontWeight: 700, cursor: !slug || state === 'sending' ? 'default' : 'pointer',
+                marginTop: 4, fontFamily: 'inherit',
+              }}>
+              {state === 'sending' ? 'Sending…' : (s.buttonText ?? 'Submit')}
+            </button>
+
+            {!slug && (
+              /* Said on the page, because the alternative is what this replaced:
+                 a form that looks finished and collects nothing. Whoever is
+                 looking at this is either the owner in the builder — who needs
+                 to know — or a visitor, who deserves not to waste their time. */
+              <p style={{ margin: '10px 0 0', fontSize: 12.5, color: '#b45309', textAlign: 'center', lineHeight: 1.55 }}>
+                This form is not connected yet, so it cannot take an enquiry.
+                Choose a form for it in the builder, under Customer&nbsp;Engagement&nbsp;→&nbsp;Forms.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 /** Render every block of a page, in order. */

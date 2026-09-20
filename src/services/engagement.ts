@@ -248,6 +248,97 @@ export async function mergeCaptured(): Promise<{ added: number; matched: number;
   return { added, matched, deals: routed.deals, enrolled: routed.enrolled, problems: routed.problems };
 }
 
+/* ── Automations ────────────────────────────────────────────────────────── */
+
+export interface AutomationRun {
+  id: string; automationId: string; automationName: string;
+  contactId: string; contactName: string; contactEmail: string;
+  nodeId: string; dueAt: string; status: string; detail: string;
+  triggerKind: string; triggerRef: string; stepsTaken: number;
+  createdAt: string; updatedAt: string;
+}
+
+export interface AutomationLogEntry {
+  id: string; nodeId: string; nodeType: string; status: string; detail: string; createdAt: string;
+}
+
+/** Everyone currently inside an automation, or inside one particular one. */
+export const automationRuns = (automationId?: string) =>
+  call('automation_runs', automationId ? { automationId } : {});
+
+/** Every node one person passed through, and what each one did. */
+export const automationLog = (runId: string) => call('automation_log', { runId });
+
+/**
+ * Apply what the engine wants changed on a contact.
+ *
+ * ── Why the server does not simply do this ──
+ *
+ * `crm_contacts` is the browser's document: the app writes it to localStorage
+ * and `serverData` pushes it up. A Worker writing the same key would be
+ * overwritten by the next browser that syncs, so a tag added by an automation
+ * at 3am would vanish the moment its owner opened the app — silently, and only
+ * on the records the automation had touched.
+ *
+ * So the engine records what it wants and this applies it. The same one-way
+ * route `mergeCaptured` takes, for the same reason.
+ *
+ * Idempotent from both ends: a change is only ever marked applied once, and
+ * adding a tag that is already there changes nothing.
+ */
+export async function applyContactChanges(): Promise<{ applied: number; error?: string }> {
+  const res = await call('pending_contact_changes');
+  if (!res.success) return { applied: 0, error: res.error ?? 'Could not read pending changes.' };
+
+  const changes = (res.changes ?? []) as {
+    id: string; contactId: string; kind: string; field: string; value: string;
+  }[];
+  if (!changes.length) return { applied: 0 };
+
+  let contacts: Record<string, unknown>[];
+  try { contacts = JSON.parse(window.localStorage.getItem('crm_contacts') || '[]') as Record<string, unknown>[]; }
+  catch { return { applied: 0, error: 'The contact list could not be read.' }; }
+
+  const byId = new Map(contacts.map(c => [String(c.id ?? ''), c]));
+  const done: string[] = [];
+  let touched = false;
+
+  for (const ch of changes) {
+    const c = byId.get(ch.contactId);
+    /* A change for a contact this browser has not got is *not* marked applied.
+       It is almost always a capture that has not been merged yet, and the next
+       pass — after the merge — will find it. Marking it done here would throw
+       the tag away for good. */
+    if (!c) continue;
+
+    if (ch.kind === 'add_tag') {
+      const tags = Array.isArray(c.tags) ? (c.tags as string[]).map(String) : [];
+      if (!tags.some(t => t.toLowerCase() === ch.value.toLowerCase())) {
+        c.tags = [...tags, ch.value];
+        touched = true;
+      }
+    } else if (ch.kind === 'remove_tag') {
+      const tags = Array.isArray(c.tags) ? (c.tags as string[]).map(String) : [];
+      const next = tags.filter(t => t.toLowerCase() !== ch.value.toLowerCase());
+      if (next.length !== tags.length) { c.tags = next; touched = true; }
+    } else if (ch.kind === 'assign') {
+      c.assignedTo = ch.value;
+      touched = true;
+    } else if (ch.kind === 'set_field') {
+      /* Only fields the app already understands, plus custom ones, and never
+         the id — a change that could rewrite `id` would silently detach a
+         contact from its deals, its emails and its own history. */
+      const field = ch.field.trim();
+      if (field && field !== 'id') { c[field] = ch.value; touched = true; }
+    }
+    done.push(ch.id);
+  }
+
+  if (touched) window.localStorage.setItem('crm_contacts', JSON.stringify(contacts));
+  if (done.length) await call('mark_changes_applied', { record: { ids: done } });
+  return { applied: done.length };
+}
+
 /** The snippet somebody pastes into their website. */
 export const embedSnippet = (publicKey: string): string =>
   `<script src="${window.location.origin}/widget.js" data-pc-widget="${publicKey}" async></script>`;

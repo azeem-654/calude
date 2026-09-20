@@ -1,4 +1,5 @@
 import { useState, useRef, Fragment, useEffect, useCallback, useMemo } from 'react';
+import FormPicker from '../shared/FormPicker';
 import type { CSSProperties } from 'react';
 import {
   X, Save, Eye, EyeOff,
@@ -1042,6 +1043,12 @@ function PropertiesPanel({ block, onChange }: PropPanelProps) {
       {/* Form fields */}
       {block.type === 'form' && (
         <div style={section}>
+          {/* First, because it is the setting that decides whether the block
+              collects anything. Same question, same consequence, same component
+              as the website builder. */}
+          <div style={{ marginBottom: 12 }}>
+            <FormPicker value={s.formSlug ?? ''} onChange={slug => set({ formSlug: slug })} />
+          </div>
           <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: '#475569' }}>Form Fields</div>
           {(s.formFields ?? []).map((f, i) => (
             <div key={i} style={{ background: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 8 }}>

@@ -20,7 +20,7 @@ import { nowIso, type Env } from './db';
 
 export interface LogEntry {
   channel?: 'email' | 'sms';
-  source?: 'sequence' | 'campaign' | 'engagement' | 'manual';
+  source?: 'sequence' | 'campaign' | 'engagement' | 'automation' | 'manual';
   sourceId?: string;
   sourceName?: string;
   stepIndex?: number;

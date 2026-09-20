@@ -58,6 +58,7 @@ import { runDigests } from './autopilotDigest';
 import { runEngageDispatch } from './engageDispatch';
 import { pruneRateLimits } from './lib/rateLimit';
 import { pruneDeliveryLog } from './lib/deliveryLog';
+import { runAutomations, pruneAutomationLog } from './lib/automationEngine';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -272,6 +273,17 @@ export default {
        * person who emails at nine should not wait for a campaign batch first.
        */
       const replies = await runReplies(env);
+      /*
+       * Automations before the campaign batch, for the same reason replies come
+       * before both.
+       *
+       * An automation is what answers a form the moment it is filled in — the
+       * acknowledgement, the tag, the task. A campaign batch is a scheduled
+       * send that has already waited hours for its hour, so letting it go first
+       * would put a queue of newsletters in front of somebody's "thanks, we
+       * have got your enquiry".
+       */
+      const flows = await runAutomations(env);
       const report = await runScheduledSends(env);
       /*
        * The digest goes last, and only in the customer's own morning.
@@ -296,6 +308,13 @@ export default {
         report.notes.push({ accountId: '', text: n, kind: 'problem' });
       }
 
+      /* An automation that could not send because nothing is connected belongs
+         in the same place a customer already looks to find out what the
+         schedule did while they were away. */
+      for (const n of flows.notes.slice(0, 5)) {
+        report.notes.push({ accountId: '', text: n, kind: 'problem' });
+      }
+
       /* Housekeeping, after everything that matters and never in front of it.
          Every rate-limit window that ever opened leaves a row; a day is far
          longer than any window in use, so this can never delete a budget
@@ -303,6 +322,7 @@ export default {
          a customer could do about it. */
       await pruneRateLimits(env);
       await pruneDeliveryLog(env);
+      await pruneAutomationLog(env);
 
       const ms = Date.now() - started;
 

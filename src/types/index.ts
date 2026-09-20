@@ -261,6 +261,20 @@ export interface FunnelBlock {
     secondaryButtonText?: string;
     secondaryButtonUrl?: string;
     formFields?: { label: string; type: string; required: boolean }[];
+    /**
+     * The engagement form this block collects into.
+     *
+     * Empty means the block is a *drawing* of a form and says so rather than
+     * pretending. That is not a small distinction: before this existed, a form
+     * block on a page had no submit handler at all — a visitor filled it in,
+     * pressed the button and nothing whatsoever happened, with no error and no
+     * record anywhere. Every lead that page ever collected was lost.
+     *
+     * Binding it to a real form means the submission takes the same public
+     * path the hosted form page takes: consent, the content gate, the contact,
+     * the deal, and any automation listening for it.
+     */
+    formSlug?: string;
     redirectUrl?: string;
     imageUrl?: string;
     imageAlt?: string;

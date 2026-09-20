@@ -31,6 +31,7 @@ import {
 } from '../lib/engagement';
 import { think, type AgentConfig, type Turn } from '../lib/agentBrain';
 import { runTool } from '../lib/agentTools';
+import { enrolOnEvent } from '../lib/automationEngine';
 
 interface Req {
   action?: string;
@@ -323,6 +324,14 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       kind: 'contact.captured', personId: person.id, refId: String(conv.id),
       summary: `${person.name || person.email || 'A visitor'} left their details in the chat`,
     });
+
+    /* Somebody who leaves their details in the chat is a new contact, and "when
+       a contact is created" is the trigger a customer reaches for to greet one.
+       Same reasoning as the form above. */
+    await enrolOnEvent(env, accountId, {
+      kind: 'contact_created', contactId: person.id,
+      contactName: person.name ?? '', contactEmail: person.email ?? '', contactPhone: person.phone ?? '',
+    });
     return withCors(json({ success: true }));
   }
 
@@ -405,6 +414,25 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       summary: `${answers.name || email || 'Someone'} sent "${String(form.name)}"`,
       detail: { formId: form.id },
     });
+
+    /*
+     * Start any automation waiting on this form.
+     *
+     * Here rather than on the tick, because the most useful thing an automation
+     * does is answer somebody in the moment they asked — and an event that has
+     * to wait up to five minutes to be *noticed* cannot do that. The work still
+     * happens on the tick; this only decides who is in it.
+     *
+     * `enrolOnEvent` never throws. A broken graph must not be the reason a
+     * stranger's enquiry is refused.
+     */
+    if (personId) {
+      await enrolOnEvent(env, accountId, {
+        kind: 'form_submitted', ref: String(form.name ?? ''),
+        contactId: personId, contactName: answers.name ?? '',
+        contactEmail: email, contactPhone: answers.phone ?? '',
+      });
+    }
 
     return withCors(json({
       success: true,
