@@ -281,6 +281,21 @@ export function guardrailsFor(caps: Capability[]): Record<string, string> {
     sendSms: has('sms') ? 'approval' : 'off',
     bookAppointments: has('book') ? 'on' : 'off',
     findProspects: has('find') ? 'approval' : 'off',
+    /*
+     * Publishing straight to the customer's own website.
+     *
+     * `'approval'` even for a project that picked "write the content", and
+     * deliberately so. Everything else this guardrail map governs happens
+     * inside the product, where the worst case is a record to delete. This one
+     * puts words on a website the public reads, under the customer's name —
+     * closer to sending than to drafting, and the standing rule here is that
+     * anything which reaches the outside world waits for a person until
+     * somebody says otherwise.
+     *
+     * It is a single switch away on the project, and the card says so when a
+     * post stays a draft.
+     */
+    publishContent: has('content') ? 'approval' : 'off',
   };
 }
 

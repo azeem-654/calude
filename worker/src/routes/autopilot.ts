@@ -19,6 +19,10 @@ import { body, fail, json } from '../lib/http';
 import { canAccess, dataGet, nowIso, userFromToken, type Env } from '../lib/db';
 import { loadAiKey } from '../lib/ai';
 import { understandInstruction, type Brand } from '../lib/autopilotWrite';
+import {
+  deletePublishTarget, loadPublishTarget, notePublishResult,
+  publishTargetStatus, savePublishTarget,
+} from '../lib/publishTarget';
 
 /** Kept in step with AIGuardrails in src/types/aiSalesAgent.ts. */
 const DEFAULT_GUARDRAILS = {
@@ -154,6 +158,10 @@ interface Body {
   projectId?: string;
   /** Free text from the box at the top of a project dashboard. */
   instruction?: string;
+  /* Where Autopilot may publish a blog post on its own. */
+  siteUrl?: string;
+  username?: string;
+  appPassword?: string;
 }
 
 export async function handleAutopilot(req: Request, env: Env): Promise<Response> {
@@ -414,6 +422,72 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       message: `Queued: ${v.summary}. It runs on the next pass, and you can reject it on the card.`,
       id,
     });
+  }
+
+  /*
+   * ── Where a post goes when nobody presses publish ──
+   *
+   * The credential never comes back out. `status` says whether one is set and
+   * which site it points at; the application password is write-only, because a
+   * masked tail is enough to confirm a guess and no screen needs it to say
+   * "connected".
+   */
+  if (act === 'publish_target') {
+    return json({ success: true, target: await publishTargetStatus(env, accountId) });
+  }
+
+  if (act === 'save_publish_target') {
+    const r = await savePublishTarget(env, accountId, {
+      kind: 'wordpress',
+      siteUrl: String(d.siteUrl ?? ''),
+      username: String(d.username ?? ''),
+      /* Blank means "keep the one you have" — the form shows dots and cannot
+         send back what it was never given. */
+      appPassword: String(d.appPassword ?? ''),
+    });
+    if (!r.ok) return fail(r.error);
+    return json({ success: true, target: await publishTargetStatus(env, accountId), message: 'Saved.' });
+  }
+
+  if (act === 'test_publish_target') {
+    const target = await loadPublishTarget(env, accountId);
+    if (!target) return fail('Nothing is connected yet.');
+    /*
+     * Proved by asking WordPress who we are, not by publishing a post.
+     *
+     * `/users/me` needs exactly the authentication a post needs and leaves
+     * nothing behind. Testing by publishing would put a real article on
+     * somebody's real website every time they pressed a button labelled Test.
+     */
+    let originOk = false;
+    let detail = '';
+    try {
+      const origin = new URL(target.siteUrl).origin;
+      const r = await fetch(`${origin}/wp-json/wp/v2/users/me?context=edit`, {
+        headers: { Authorization: 'Basic ' + btoa(`${target.username}:${target.appPassword}`) },
+      });
+      originOk = r.ok;
+      if (!r.ok) {
+        detail = r.status === 401
+          ? 'the application password is wrong or has been revoked'
+          : r.status === 403
+            ? 'WordPress refused it — a security plugin is often blocking the REST API'
+            : `HTTP ${r.status}`;
+      }
+    } catch (e) {
+      detail = `could not reach that site: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    await notePublishResult(env, accountId, originOk, detail);
+    return json({
+      success: true, ok: originOk,
+      message: originOk ? 'Connected — Autopilot can publish there.' : `Not working: ${detail}`,
+      target: await publishTargetStatus(env, accountId),
+    });
+  }
+
+  if (act === 'delete_publish_target') {
+    await deletePublishTarget(env, accountId);
+    return json({ success: true, target: await publishTargetStatus(env, accountId) });
   }
 
   /* ── Turn it on ── */

@@ -144,11 +144,45 @@ export async function runDigests(env: Env): Promise<DigestReport> {
     ).bind(accountId, since).all<ActionRow>()).results ?? [];
 
     const awaiting = rows.filter(r => r.status === 'awaiting');
-    const done = rows.filter(r => r.status === 'done' && r.created_at > since);
+    /*
+     * A notice is not a completed job.
+     *
+     * `observe` and `error` actions have nothing to carry out — noticing is the
+     * whole action — so the tick writes them straight to `done`. Listed with
+     * the rest, "Autopilot did 1 thing for your business" arrived in somebody's
+     * inbox whose single event was "nothing can be sent, no mailbox is
+     * connected". The subject line said the opposite of the news.
+     */
+    const isNotice = (r: ActionRow) => r.kind === 'observe' || r.kind === 'error';
+    const done = rows.filter(r => r.status === 'done' && !isNotice(r) && r.created_at > since);
     const failed = rows.filter(r => r.status === 'failed' && r.created_at > since);
+    const noticed = rows.filter(r => r.status === 'done' && isNotice(r) && r.created_at > since);
 
-    /* Nothing to say. Say nothing, and leave the clock alone. */
-    if (!awaiting.length && !done.length && !failed.length) { report.skipped++; continue; }
+    /*
+     * What it is *about* to do.
+     *
+     * The digest reported the past and stopped, which is half the question
+     * somebody has about a system running their business unattended. "It wrote
+     * three things last night" is reassuring; "and it is about to email 40
+     * people at nine" is the sentence that makes them open the app before it
+     * happens rather than after.
+     *
+     * Deliberately not time-boxed to the window: something queued four days ago
+     * and still due is more worth saying than something queued this morning.
+     */
+    const planned = (await env.DB.prepare(
+      `SELECT a.kind, a.status, a.summary, a.because, a.detail, a.created_at,
+              COALESCE(j.name, '') AS project
+       FROM crm_autopilot_actions a
+       LEFT JOIN crm_projects j ON j.id = a.project_id
+       WHERE a.account_id = ? AND a.status = 'pending'
+       ORDER BY CASE WHEN a.due_at IS NULL THEN 0 ELSE 1 END, a.due_at ASC LIMIT 12`,
+    ).bind(accountId).all<ActionRow>()).results ?? [];
+
+    /* Nothing to say. Say nothing, and leave the clock alone. A digest whose
+       only content is "here is what is queued" would arrive every morning of a
+       quiet week saying the same thing. */
+    if (!awaiting.length && !done.length && !failed.length && !noticed.length) { report.skipped++; continue; }
 
     const owner = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
       .bind(accountId).first<{ owner_email: string }>();
@@ -173,7 +207,12 @@ export async function runDigests(env: Env): Promise<DigestReport> {
       ? `${awaiting.length} thing${awaiting.length === 1 ? '' : 's'} waiting for you — Autopilot`
       : failed.length
         ? `Autopilot ran into ${failed.length} problem${failed.length === 1 ? '' : 's'}`
-        : `Autopilot did ${done.length} thing${done.length === 1 ? '' : 's'} for ${company}`;
+        : done.length
+          ? `Autopilot did ${done.length} thing${done.length === 1 ? '' : 's'} for ${company}`
+          /* The case that used to lie. A workspace whose only event was a
+             notice got "Autopilot did 1 thing", which is the opposite of what
+             happened — the news is that it *could not* do something. */
+          : `Autopilot needs something before it can work on ${company}`;
 
     const html = [
       `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#17191c;max-width:620px">`,
@@ -183,6 +222,12 @@ export async function runDigests(env: Env): Promise<DigestReport> {
       list('Done', done),
       list('Did not work', failed,
         'Autopilot has not retried these on its own. The reason each gives is the provider\'s own.'),
+      /* Named rather than counted, because every one of these is a thing a
+         person could switch on and stop reading about. */
+      list('Worth knowing', noticed,
+        'Nothing was carried out for these — they are conditions Autopilot noticed and could not act on.'),
+      list('Planning to do next', planned,
+        'Queued, and not yet done. Anything that sends still waits for you if you have asked it to.'),
       env.APP_ORIGIN
         ? `<p style="margin:24px 0 0"><a href="${esc(appUrl)}" style="color:#17191c">Open Autopilot</a></p>`
         : '',
