@@ -262,6 +262,23 @@ export interface AutomationLogEntry {
   id: string; nodeId: string; nodeType: string; status: string; detail: string; createdAt: string;
 }
 
+/**
+ * Tell the engine something happened in the app.
+ *
+ * Tags, deals and field changes happen in the browser, on records the browser
+ * owns, so the Worker never sees them. Without this the builder offered "when a
+ * tag is added" and nothing could ever fire it — a trigger that looks like a
+ * feature and is not, which is the whole class of bug the engine was written to
+ * end.
+ *
+ * Deliberately fire-and-forget: it returns how many automations it started, and
+ * callers ignore it. Adding a tag must not fail because a graph is broken.
+ */
+export const fireEvent = (e: {
+  kind: string; ref?: string; contactId: string;
+  contactName?: string; contactEmail?: string; contactPhone?: string;
+}) => call('enrol_event', { record: e });
+
 /** Everyone currently inside an automation, or inside one particular one. */
 export const automationRuns = (automationId?: string) =>
   call('automation_runs', automationId ? { automationId } : {});

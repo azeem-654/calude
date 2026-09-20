@@ -5,6 +5,7 @@ import type { EmailSequence, Automation } from '../types/marketing';
 import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
 import { onServerRejection, CLOUD_REFRESH_EVENT } from '../services/serverData';
+import { fireEvent } from '../services/engagement';
 
 interface Notification {
   id: string;
@@ -296,7 +297,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return c;
   };
   const updateContact = (id: string, updates: Partial<Contact>) => {
-    setContacts(prev => { const next = prev.map(c => c.id === id ? { ...c, ...updates } : c); saveLS('crm_contacts', next); return next; });
+    setContacts(prev => {
+      const before = prev.find(c => c.id === id);
+      const next = prev.map(c => c.id === id ? { ...c, ...updates } : c);
+      saveLS('crm_contacts', next);
+
+      /*
+       * A tag the customer has just added is an event the engine cannot see.
+       *
+       * Tags live on a record the browser owns, so the Worker never witnesses
+       * one being added — which made "when a tag is added" a trigger the
+       * builder offered and nothing could ever fire. This is the one place
+       * every tag change passes through, so it is the one place that has to
+       * say so.
+       *
+       * Only genuinely new tags, and only ones this contact did not already
+       * have: re-saving a contact must not re-enrol them in everything.
+       */
+      if (before && Array.isArray(updates.tags)) {
+        const had = new Set((before.tags ?? []).map(t => String(t).toLowerCase()));
+        const added = (updates.tags as string[]).filter(t => !had.has(String(t).toLowerCase()));
+        const after = next.find(c => c.id === id);
+        for (const tag of added.slice(0, 5)) {
+          /* Not awaited and its failure ignored on purpose — adding a tag must
+             not fail because a graph is broken or the network is down. */
+          void fireEvent({
+            kind: 'tag_added', ref: tag, contactId: id,
+            contactName: after?.name ?? '', contactEmail: after?.email ?? '', contactPhone: after?.phone ?? '',
+          });
+        }
+      }
+      return next;
+    });
     notify('Contact updated');
   };
   /**

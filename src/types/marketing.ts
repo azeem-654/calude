@@ -86,6 +86,16 @@ export interface Automation {
   createdAt: string;
   enrolledCount: number;
   completedCount: number;
+  /**
+   * The AI Autopilot project this workflow belongs to, if any.
+   *
+   * Optional because every automation built before projects existed has none,
+   * and because one built in Marketing belongs to the workspace rather than to
+   * a project. It only decides which screen *lists* it — the engine runs every
+   * live graph the same way, so a workflow cannot quietly behave differently
+   * depending on where somebody happened to draw it.
+   */
+  projectId?: string;
 }
 
 export interface FieldMapping {

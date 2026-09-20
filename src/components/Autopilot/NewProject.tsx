@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
+import ProjectProgress from './ProjectProgress';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import { WizardBackdrop, WizardCta, WizardFlow, WizardSplit, WizardTitle } from '../shared/WizardChrome';
 import {
@@ -101,7 +102,16 @@ const GOALS = [
    cliff with length — three-step flows finish around 72%, seven-step around
    16% — so each of these earns its place, and the review that used to have one
    to itself is now folded into the step whose button it describes. */
-type Step = 1 | 2 | 3 | 4 | 5;
+/*
+ * Six, not five.
+ *
+ * Step 6 is what happens *after* the project exists: the build, as it happens.
+ * It used to be nothing — the wizard closed, the board appeared with an empty
+ * column, and "Autopilot plans it within a day" was the only thing anybody had
+ * to go on. That sentence cannot tell "not started yet" apart from "cannot
+ * start at all", and a customer who has just chosen a plan is watching.
+ */
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type Way = 'site' | 'paste' | 'hand';
 /** How this project will get an address to send from. */
 type MailPlan = 'have' | 'buy' | 'later';
@@ -114,13 +124,13 @@ type MailPlan = 'have' | 'buy' | 'later';
  * the words rather than buried in a span somebody has to go and find.
  */
 const TITLE_LEAD: Record<Step, string> = {
-  1: 'What is', 2: 'Whose', 3: 'What would make this', 4: 'Your', 5: 'Your',
+  1: 'What is', 2: 'Whose', 3: 'What would make this', 4: 'Your', 5: 'Your', 6: 'Autopilot is',
 };
 const TITLE_ACCENT: Record<Step, string> = {
-  1: 'going wrong', 2: 'business', 3: 'worth it', 4: 'sending setup', 5: 'domains',
+  1: 'going wrong', 2: 'business', 3: 'worth it', 4: 'sending setup', 5: 'domains', 6: 'building it',
 };
 const TITLE_TAIL: Record<Step, string> = {
-  1: 'right now?', 2: 'is this for?', 3: '', 4: '', 5: 'and mailboxes',
+  1: 'right now?', 2: 'is this for?', 3: '', 4: '', 5: 'and mailboxes', 6: 'now',
 };
 
 const SUBTITLES: Record<Step, string> = {
@@ -129,6 +139,7 @@ const SUBTITLES: Record<Step, string> = {
   3: 'Autopilot reads this every time it decides what to do next.',
   4: 'Sized from what you want to send, and adjustable. The arithmetic is shown so you can check it — and the next screen buys it.',
   5: 'Bought for this project, now rather than later. Nothing is charged until you press buy.',
+  6: 'This carries on whether you stay here or not. Nothing below is ticked until the record behind it actually exists.',
 };
 
 /**
@@ -145,6 +156,7 @@ const STEP_NAV: { n: Step; label: string; icon: typeof Search }[] = [
   { n: 3, label: 'The goal', icon: Target },
   { n: 4, label: 'Sending setup', icon: Mail },
   { n: 5, label: 'Domains and mailboxes', icon: Globe },
+  { n: 6, label: 'Building', icon: Sparkles },
 ];
 
 /**
@@ -174,6 +186,10 @@ const ASIDE: Record<Step, { title: string; body: string }> = {
   5: {
     title: 'What you are buying',
     body: 'The domains, the mailboxes on them, and the records that make mail from them trusted — set up for you. You can point a domain you already own at this instead, from Settings, and skip this entirely.',
+  },
+  6: {
+    title: 'Why some of it stays grey',
+    body: 'Autopilot plans once a day and acts every five minutes, on the server. A step only turns green when the thing behind it exists — so grey means not yet, and anything that genuinely cannot happen is named rather than left to look like patience will fix it.',
   },
 };
 
@@ -374,7 +390,7 @@ export default function NewProject({
        for it on the screen they just left. Otherwise there is nothing to buy
        and another screen would be a toll booth on the way out. */
     if (mailPlan === 'buy') setStep(5);
-    else onCreated();
+    else setStep(6);
   };
 
   const next = () => {
@@ -459,7 +475,7 @@ export default function NewProject({
             background: 'none', border: 0, padding: '4px 2px', cursor: 'pointer',
             color: MUTED, fontSize: 15, fontFamily: 'inherit', fontWeight: 500,
           }}>
-            {step === 5 ? 'Done' : 'Cancel'}
+            {step >= 5 ? 'Done' : 'Cancel'}
           </button>
           <span style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
             <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: MUTED, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
@@ -1132,8 +1148,16 @@ export default function NewProject({
               companyName={clientName}
               contactEmail={getSession()?.user?.email ?? ''}
               projectId={createdId}
-              onOrder={() => { addNotification('Order placed. Watch it build on the project.', 'success'); onCreated(); }}
+              onOrder={() => { addNotification('Order placed. Watch it build.', 'success'); setStep(6); }}
             />
+          )}
+
+          {/* ── 6 · What it is doing now ──
+              Real states read from the project and its cards, never a bar on a
+              timer. See ProjectProgress for why that distinction is the whole
+              point of the screen. */}
+          {step === 6 && createdId && (
+            <ProjectProgress projectId={createdId} onOpenBoard={onCreated} />
           )}
 
           {/* ── The note ──
@@ -1162,10 +1186,13 @@ export default function NewProject({
           </div>
         </div>
 
-        {/* ── One button, at the bottom, always ── */}
-        {step !== 5 && (
+        {/* ── One button, at the bottom ──
+            Not on 5 or 6: the domain shop and the build view each end in their
+            own decision, and a "Continue" under either would be a second exit
+            that means something different from the one above it. */}
+        {step !== 5 && step !== 6 && (
           <footer style={{ padding: '12px 20px 18px', borderTop: `1px solid ${LINE}`, flexShrink: 0, display: 'flex', gap: 10 }}>
-            {step > 1 && (
+            {step > 1 && step < 5 && (
               <button onClick={() => setStep(s => (Math.max(s - 1, 1) as Step))} style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '14px 18px', borderRadius: 999,
                 border: `1px solid ${LINE}`, background: '#fff', color: INK,

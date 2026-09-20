@@ -12,6 +12,7 @@ import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { cleanSlug, publicKey, recordEvent, rid } from '../lib/engagement';
 import { voiceStatus } from '../lib/voice';
+import { enrolOnEvent } from '../lib/automationEngine';
 
 interface Req {
   token?: string;
@@ -513,6 +514,32 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
    * that could never run at all. These two actions are what make the difference
    * visible.
    */
+  /*
+   * An event the *browser* saw, handed to the engine.
+   *
+   * Tags, deals and field changes all happen in the app, on records the app
+   * owns. The Worker never sees them — so without this, "when a tag is added"
+   * was a trigger the builder offered and nothing could ever fire, which is the
+   * same class of bug as the missing engine itself.
+   *
+   * Authenticated and workspace-scoped, unlike the public path: only somebody
+   * already inside a workspace can say something happened in it.
+   */
+  if (act === 'enrol_event') {
+    const kind = s(d.record?.kind, 40);
+    const contactId = s(d.record?.contactId, 80);
+    if (!kind || !contactId) return fail('Which event, and for whom?', 400);
+    const started = await enrolOnEvent(env, accountId, {
+      kind,
+      ref: s(d.record?.ref, 160),
+      contactId,
+      contactName: s(d.record?.contactName, 120),
+      contactEmail: s(d.record?.contactEmail, 190),
+      contactPhone: s(d.record?.contactPhone, 40),
+    });
+    return json({ success: true, started });
+  }
+
   if (act === 'automation_runs') {
     const id = s(d.automationId, 80);
     const rows = id
