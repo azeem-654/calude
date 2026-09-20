@@ -72,6 +72,11 @@ interface Reply {
   upcoming?: AutopilotAction[];
   sentToday?: unknown[];
   totals?: Record<string, number>;
+  /* A project's own workflows. */
+  workflows?: unknown[];
+  id?: string;
+  name?: string;
+  steps?: number;
   /* The hub screen's live panels. */
   agents?: unknown[];
   tasks?: unknown[];
@@ -217,74 +222,82 @@ export async function instructProject(projectId: string, instruction: string): P
   return { ok: true, understood: r.understood === true, message: String(r.message ?? '') };
 }
 
-/* ── The hub screen ──────────────────────────────────────────────────────── */
+/* ── A project's own workflows ───────────────────────────────────────────── */
 
-export interface HubAgent {
+/**
+ * One step of a project workflow.
+ *
+ * The same shape Marketing's automations use, on purpose: one engine runs both,
+ * so a node that means one thing on one screen and another elsewhere would be a
+ * node that behaves differently depending on where it was drawn.
+ */
+export interface WorkflowNode {
   id: string;
+  type: string;
+  label: string;
+  config: Record<string, string>;
+  nextId: string | null;
+  yesId?: string | null;
+  noId?: string | null;
+}
+
+export interface ProjectWorkflow {
+  id: string;
+  projectId: string;
   name: string;
-  /** Who it is working on, which is what makes a progress bar mean something. */
-  working: string;
-  stepsTaken: number;
-  totalSteps: number;
-  /** Null when the workflow behind the run has been deleted — orphaned, not done. */
-  percent: number | null;
-  dueAt: string | null;
+  description: string;
+  status: 'draft' | 'active' | 'paused';
+  nodes: WorkflowNode[];
+  position: number;
+  createdAt: string;
   updatedAt: string;
 }
 
-export interface HubTask {
-  id: string;
-  kind: string;
-  status: string;
-  summary: string;
-  dueAt: string | null;
-  createdAt: string;
-  actedAt: string | null;
-  linkKind: string | null;
-  linkRoute: string | null;
-  project: string;
+/**
+ * A project's workflows — never the workspace's.
+ *
+ * These live in their own table and are shown only on their own project. The
+ * list under Marketing → Automations is a different list and neither writes the
+ * other's rows.
+ */
+export async function fetchWorkflows(projectId: string): Promise<{ workflows: ProjectWorkflow[]; error: string }> {
+  const r = await call('workflows', { projectId });
+  if (!r.success) return { workflows: [], error: String(r.error ?? 'Could not read this project\'s workflows.') };
+  return { workflows: (r.workflows ?? []) as ProjectWorkflow[], error: '' };
 }
 
-export interface HubMade {
-  id: string; summary: string; linkKind: string; linkLabel: string;
-  linkRoute: string; actedAt: string; detail: string;
-}
+export const setWorkflowStatus = (workflowId: string, status: 'draft' | 'active' | 'paused') =>
+  call('set_workflow_status', { workflowId, status });
 
-export interface HubSent {
-  id: string; channel: string; sourceName: string; subject: string;
-  recipient: string; status: string; createdAt: string;
-}
+export const deleteWorkflow = (workflowId: string) => call('delete_workflow', { workflowId });
 
-export interface Hub {
-  agents: HubAgent[];
-  tasks: HubTask[];
-  published: { made: HubMade[]; sent: HubSent[] };
-  week: {
-    contentCreated: number; emailsSent: number; smsSent: number;
-    opens: number;
-    /** Null when nothing was sent. A 0% on a quiet week reads as a failure. */
-    openRate: number | null;
-  };
-  instructions: { used: number; cap: number };
+export const saveWorkflow = (projectId: string, record: Partial<ProjectWorkflow>) =>
+  call('save_workflow', { projectId, record });
+
+export interface BuiltWorkflow {
+  ok: boolean;
+  message: string;
+  /** Set when the plan's daily allowance refused it. */
+  cap?: number;
+  used?: number;
 }
 
 /**
- * Everything the Autopilot screen's live panels show, in one call.
+ * Describe a workflow for this project and get one.
  *
- * One rather than four, so the panels cannot disagree with each other on
- * screen. Read-only, so it is safe to poll.
+ * Written against *this project's* client profile, so a plumber's workflow is
+ * about boilers and a coach's is not. It arrives as a draft: each of these
+ * sends something, and typing a sentence is not a permission to start.
  */
-export async function fetchHub(): Promise<{ hub: Hub | null; error: string }> {
-  const r = await call('hub');
-  if (!r.success) return { hub: null, error: String(r.error ?? 'Could not read what Autopilot is doing.') };
-  return {
-    hub: {
-      agents: (r.agents ?? []) as HubAgent[],
-      tasks: (r.tasks ?? []) as HubTask[],
-      published: (r.published ?? { made: [], sent: [] }) as Hub['published'],
-      week: (r.week ?? { contentCreated: 0, emailsSent: 0, smsSent: 0, opens: 0, openRate: null }) as Hub['week'],
-      instructions: (r.instructions ?? { used: 0, cap: 0 }) as Hub['instructions'],
-    },
-    error: '',
-  };
+export async function buildWorkflow(projectId: string, instruction: string): Promise<BuiltWorkflow> {
+  const r = await call('build_workflow', { projectId, instruction });
+  if (!r.success) {
+    return {
+      ok: false,
+      message: String(r.error ?? 'That could not be built.'),
+      cap: typeof r.cap === 'number' ? r.cap : undefined,
+      used: typeof r.used === 'number' ? r.used : undefined,
+    };
+  }
+  return { ok: true, message: String(r.message ?? 'Built as a draft.') };
 }

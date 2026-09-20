@@ -20,7 +20,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Check, Clock, AlertTriangle, ExternalLink, Pause, Play, MoreHorizontal, Trash2, Globe,
-  Workflow,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -30,8 +29,7 @@ import {
 import { approveAction, rejectAction } from '../../services/autopilot';
 import ProjectInfra from './ProjectInfra';
 import ProjectAssets from './ProjectAssets';
-import ProjectWorkflows from './ProjectWorkflows';
-import ProjectDashboard from './ProjectDashboard';
+import ProjectCard from './ProjectCard';
 import { getSession } from '../../services/auth';
 
 const INK = '#17191c';
@@ -139,7 +137,7 @@ function CardTile({ card, onOpen, onDecide, busy }: {
 
 export default function ProjectBoard({ onNewProject }: { onNewProject: () => void }) {
   const navigate = useNavigate();
-  const { addNotification, automations } = useApp();
+  const { addNotification } = useApp();
   const [projects, setProjects] = useState<Project[]>([]);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [board, setBoard] = useState<Record<string, Card[]>>({});
@@ -148,13 +146,6 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   /* Open for one project at a time. Two of these expanded in adjacent columns
      is a wall of numbers, and only one of them is the one being changed. */
   const [infra, setInfra] = useState<string | null>(null);
-  /* Its own slot rather than sharing `infra`: these are two different questions
-     and somebody comparing the two wants both open. */
-  const [flows, setFlows] = useState<string | null>(null);
-  /* Which project's settings-and-history panel is open. One at a time: two of
-     these expanded is a screen of settings with the dashboards pushed off it,
-     and only one of them is the one being changed. */
-  const [tools, setTools] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
 
   const load = async () => {
@@ -241,42 +232,37 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   }
 
   /*
-   * ── Stacked dashboards, not a row of columns ──
+   * ── Stacked project cards, not a row of columns ──
    *
    * The board was a horizontal scroller: one 320px column per project, each a
    * list of cards. That is the right shape for a log and the wrong one for a
    * service somebody pays for monthly — a column cannot say what is running
-   * now, what is due next, or what actually went out, and those are the three
-   * things a customer checks before deciding the money is well spent.
+   * now, what is due next, or what actually went out.
    *
-   * Each project now gets the full width and its own dashboard, and they stack.
-   * The old column survives underneath as the settings-and-history panel: it
-   * holds the sending pool, the workflows and the full card list, which are
-   * things somebody opens deliberately rather than watches.
+   * Each project now gets the full width and its own card: its workflows drawn
+   * as the shapes they are, what its AI may do, what it has produced, how it is
+   * doing, and its settings, behind one tab bar with the box that writes a
+   * workflow for it alongside.
+   *
+   * The old column survives inside the Settings tab, because the sending pool
+   * and the full ledger are things somebody opens deliberately rather than
+   * watches.
    */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {projects.map((p, i) => {
         const cards = board[p.id] ?? [];
         const pool = poolTargetOf(p);
-        const flowCount = automations.filter(a => a.projectId === p.id).length;
         const dot = DOTS[i % DOTS.length];
         const live = p.status === 'running' || p.status === 'learning';
-        const toolsOpen = tools === p.id;
         return (
-          <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-          <ProjectDashboard project={p} onChanged={() => void load()} onToggle={x => void toggle(x)} />
-
-          <button onClick={() => setTools(toolsOpen ? null : p.id)} aria-expanded={toolsOpen} style={{
-            alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '6px 12px', borderRadius: 999, border: `1px solid ${LINE}`,
-            background: '#fff', fontSize: 11.5, fontWeight: 700, color: MUTED,
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}>
-            {toolsOpen ? 'Hide' : 'Settings, workflows and everything it has ever done'}
-          </button>
-
-          {toolsOpen && (
+          <ProjectCard
+            key={p.id}
+            project={p}
+            onChanged={() => void load()}
+            onToggle={x => void toggle(x)}
+            onDelete={x => void remove(x)}
+            tools={(
           <section style={{
             background: '#f7f8fa',
             border: `1px solid ${LINE}`, borderRadius: 18, padding: 12,
@@ -333,26 +319,8 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                   {pool.domains > 0 ? `${pool.domains} × ${pool.mailboxesPerDomain}` : 'No domains'}
                 </button>
 
-                {/* Beside the sending pool rather than on another screen: both
-                    answer "what does this project do on its own", and a
-                    customer checking one is usually about to check the other. */}
-                <button onClick={() => setFlows(flows === p.id ? null : p.id)}
-                  title="What this project does on its own when somebody enquires"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px',
-                    borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700,
-                    border: `1px solid ${flows === p.id ? '#c7bdf7' : LINE}`,
-                    background: flowCount > 0 ? '#f5f3ff' : '#fff',
-                    color: flowCount > 0 ? '#6d28d9' : MUTED,
-                  }}>
-                  <Workflow size={10} />
-                  {flowCount > 0 ? `${flowCount} workflow${flowCount === 1 ? '' : 's'}` : 'Workflows'}
-                </button>
               </div>
 
-              {flows === p.id && (
-                <div style={{ marginBottom: 10 }}><ProjectWorkflows projectId={p.id} /></div>
-              )}
 
               {infra === p.id && (
                 <div style={{ display: 'grid', gap: 10 }}>
@@ -408,8 +376,8 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
               ))
             )}
           </section>
-          )}
-          </div>
+            )}
+          />
         );
       })}
 

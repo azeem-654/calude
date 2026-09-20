@@ -18,7 +18,7 @@
 import { body, fail, json } from '../lib/http';
 import { canAccess, dataGet, nowIso, userFromToken, type Env } from '../lib/db';
 import { loadAiKey } from '../lib/ai';
-import { understandInstruction, type Brand } from '../lib/autopilotWrite';
+import { AUTOMATION_NODE_TYPES, understandInstruction, writeAutomation, type Brand } from '../lib/autopilotWrite';
 import {
   deletePublishTarget, loadPublishTarget, notePublishResult,
   publishTargetStatus, savePublishTarget,
@@ -158,6 +158,9 @@ interface Body {
   projectId?: string;
   /** Free text from the box at the top of a project dashboard. */
   instruction?: string;
+  /* A project's own workflows. */
+  workflowId?: string;
+  record?: Record<string, unknown>;
   /* Where Autopilot may publish a blog post on its own. */
   siteUrl?: string;
   username?: string;
@@ -425,155 +428,223 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
   }
 
   /*
-   * ── Everything the hub screen shows, in one call ──
+   * ── A project's own workflows ──
    *
-   * The Autopilot screen has four live panels — what is being worked on, what
-   * is due today, what has just been published, and the week's numbers. Four
-   * calls would let them disagree with each other on screen, and the screen's
-   * whole job is to be one honest account of one moment.
+   * Separate from Marketing → Automations, deliberately and completely. Those
+   * are a workspace-wide list somebody builds by hand; these belong to one
+   * project, are written for one client, and are switched on and off with it.
+   * Neither endpoint touches the other's rows.
    *
-   * ── Why every number here is computed and none is decorative ──
-   *
-   * A dashboard is the easiest place in a product to lie, because a plausible
-   * number is indistinguishable from a real one until somebody acts on it. So:
-   * progress is steps taken over steps in the graph, "sent" comes from the
-   * delivery log, and engagement is opens over sends from the tracking table.
-   * Where there is nothing to compute the field is zero or absent and the
-   * screen says so, rather than being filled with something that looks healthy.
+   * What *is* shared is the engine that runs them, because two executors would
+   * be two implementations of wait, condition and send — and they would drift
+   * the first time either was fixed.
    */
-  if (act === 'hub') {
-    const now = Date.now();
-    const weekAgo = new Date(now - 7 * 86_400_000).toISOString();
-    const dayAgo = new Date(now - 86_400_000).toISOString();
+  if (act === 'workflows') {
+    const projectId = String(d.projectId ?? '').trim();
+    if (!projectId) return fail('Which project?', 400);
+    const { results } = await env.DB.prepare(
+      `SELECT id, project_id AS projectId, name, description, status, nodes, position,
+              created_at AS createdAt, updated_at AS updatedAt
+       FROM crm_project_workflows WHERE account_id = ? AND project_id = ?
+       ORDER BY position, created_at`,
+    ).bind(accountId, projectId).all<Record<string, unknown>>();
 
-    /*
-     * What is being worked on, with real progress.
-     *
-     * An automation run knows which node it is on and how many steps it has
-     * taken; the graph knows how many there are. That ratio is a true
-     * percentage — unlike a bar that fills on a timer, which is the usual way
-     * this panel gets built and is worth nothing.
-     */
-    const runsRows = (await env.DB.prepare(
-      `SELECT id, automation_id AS automationId, automation_name AS automationName,
-              contact_name AS contactName, contact_email AS contactEmail,
-              node_id AS nodeId, steps_taken AS stepsTaken, due_at AS dueAt, updated_at AS updatedAt
-       FROM crm_automation_runs
-       WHERE account_id = ? AND status = 'active'
-       ORDER BY updated_at DESC LIMIT 12`,
-    ).bind(accountId).all<Record<string, unknown>>()).results ?? [];
-
-    /* The graphs, so a run's position can be turned into a fraction. Read from
-       the browser-owned blob, which the Worker may read and must never write. */
-    let graphs: { id: string; name: string; nodes: unknown[]; status: string }[] = [];
-    try {
-      graphs = JSON.parse(await dataGet(env.DB, accountId, 'crm_automations') ?? '[]') as typeof graphs;
-    } catch { graphs = []; }
-    const sizeOf = (id: string) => {
-      const g = graphs.find(x => x.id === id);
-      return Array.isArray(g?.nodes) ? g!.nodes.length : 0;
-    };
-
-    const agents = runsRows.map(r => {
-      const total = sizeOf(String(r.automationId));
-      const taken = Number(r.stepsTaken) || 0;
-      return {
-        id: r.id, name: r.automationName, working: r.contactName || r.contactEmail || 'someone',
-        stepsTaken: taken,
-        totalSteps: total,
-        /* Absent rather than 100 when the graph cannot be found — a run whose
-           workflow was deleted is not finished, it is orphaned. */
-        percent: total > 0 ? Math.min(100, Math.round((taken / total) * 100)) : null,
-        dueAt: r.dueAt, updatedAt: r.updatedAt,
-      };
+    /* Parsed here rather than on the client so a row whose JSON cannot be read
+       arrives as an empty graph with its name intact — a workflow that draws as
+       "no steps yet" is recoverable; one that throws takes the screen with it. */
+    const workflows = (results ?? []).map(r => {
+      let nodes: unknown = [];
+      try { nodes = JSON.parse(String(r.nodes ?? '[]')); } catch { /* unreadable: an empty graph, with its name intact */ }
+      return { ...r, nodes: Array.isArray(nodes) ? nodes : [] };
     });
+    return json({ success: true, workflows });
+  }
 
-    /* Today's tasks: what Autopilot has queued or carried out, with its time. */
-    const tasks = (await env.DB.prepare(
-      `SELECT a.id, a.kind, a.status, a.summary, a.due_at AS dueAt, a.created_at AS createdAt,
-              a.acted_at AS actedAt, a.link_kind AS linkKind, a.link_route AS linkRoute,
-              COALESCE(j.name, '') AS project
-       FROM crm_autopilot_actions a
-       LEFT JOIN crm_projects j ON j.id = a.project_id
-       WHERE a.account_id = ? AND (a.status IN ('pending','awaiting') OR a.created_at >= ?)
-       ORDER BY CASE WHEN a.due_at IS NULL THEN a.created_at ELSE a.due_at END DESC
-       LIMIT 40`,
-    ).bind(accountId, dayAgo).all<Record<string, unknown>>()).results ?? [];
+  if (act === 'save_workflow') {
+    const projectId = String(d.projectId ?? '').trim();
+    if (!projectId) return fail('Which project?', 400);
+    const owns = await env.DB.prepare('SELECT 1 AS n FROM crm_projects WHERE id = ? AND account_id = ?')
+      .bind(projectId, accountId).first();
+    if (!owns) return fail('That project could not be found.', 404);
 
-    /* Recently published: the things that left the building, from the ledger
-       for content and from the delivery log for messages. Two sources because
-       they are two different events, joined here rather than conflated. */
-    const madeRows = (await env.DB.prepare(
-      `SELECT id, summary, link_kind AS linkKind, link_label AS linkLabel, link_route AS linkRoute,
-              acted_at AS actedAt, detail
-       FROM crm_autopilot_actions
-       WHERE account_id = ? AND status = 'done' AND link_kind IS NOT NULL AND link_kind != ''
-             AND acted_at >= ?
-       ORDER BY acted_at DESC LIMIT 12`,
-    ).bind(accountId, weekAgo).all<Record<string, unknown>>()).results ?? [];
+    const rec = (d.record ?? {}) as Record<string, unknown>;
+    const name = String(rec.name ?? '').trim().slice(0, 160);
+    if (!name) return fail('The workflow needs a name.');
 
-    const sentRows = (await env.DB.prepare(
-      `SELECT id, channel, source_name AS sourceName, subject, recipient, status, created_at AS createdAt
-       FROM crm_delivery_log WHERE account_id = ? AND created_at >= ?
-       ORDER BY created_at DESC LIMIT 12`,
-    ).bind(accountId, weekAgo).all<Record<string, unknown>>()).results ?? [];
+    const nodes = Array.isArray(rec.nodes) ? rec.nodes : [];
+    /* A ceiling rather than a crash. A graph beyond this is a mistake or an
+       abuse, and either way the honest answer is to refuse it by name. */
+    if (nodes.length > 60) return fail('That is more steps than a workflow can hold (60).');
 
-    /* The week, counted rather than estimated. */
-    const weekCounts = await env.DB.prepare(
-      `SELECT
-         SUM(CASE WHEN channel = 'email' AND status = 'sent' THEN 1 ELSE 0 END) AS emails,
-         SUM(CASE WHEN channel = 'sms'   AND status = 'sent' THEN 1 ELSE 0 END) AS sms
-       FROM crm_delivery_log WHERE account_id = ? AND created_at >= ?`,
-    ).bind(accountId, weekAgo).first<{ emails: number | null; sms: number | null }>();
+    const allowed = new Set(['draft', 'active', 'paused']);
+    const status = allowed.has(String(rec.status)) ? String(rec.status) : 'draft';
 
-    const contentMade = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM crm_autopilot_actions
-       WHERE account_id = ? AND status = 'done' AND link_kind IS NOT NULL AND link_kind != ''
-             AND acted_at >= ?`,
-    ).bind(accountId, weekAgo).first<{ n: number }>();
+    const id = String(rec.id ?? '').trim() || `pw-${crypto.randomUUID()}`;
+    const now = nowIso();
+    const existing = await env.DB.prepare(
+      'SELECT id FROM crm_project_workflows WHERE id = ? AND account_id = ?',
+    ).bind(id, accountId).first();
 
+    if (existing) {
+      await env.DB.prepare(
+        `UPDATE crm_project_workflows
+         SET name = ?, description = ?, status = ?, nodes = ?, updated_at = ?
+         WHERE id = ? AND account_id = ?`,
+      ).bind(
+        name, String(rec.description ?? '').slice(0, 300), status,
+        JSON.stringify(nodes).slice(0, 200_000), now, id, accountId,
+      ).run();
+    } else {
+      const next = await env.DB.prepare(
+        'SELECT COALESCE(MAX(position), -1) + 1 AS n FROM crm_project_workflows WHERE account_id = ? AND project_id = ?',
+      ).bind(accountId, projectId).first<{ n: number }>();
+      await env.DB.prepare(
+        `INSERT INTO crm_project_workflows
+         (id, account_id, project_id, name, description, status, nodes, position, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      ).bind(
+        id, accountId, projectId, name, String(rec.description ?? '').slice(0, 300),
+        status, JSON.stringify(nodes).slice(0, 200_000), next?.n ?? 0, now, now,
+      ).run();
+    }
+    return json({ success: true, id });
+  }
+
+  if (act === 'set_workflow_status') {
+    const id = String(d.workflowId ?? '').trim();
+    const allowed = new Set(['draft', 'active', 'paused']);
+    const status = String(d.status ?? '');
+    if (!id || !allowed.has(status)) return fail('Which workflow, and to what?', 400);
+    await env.DB.prepare(
+      'UPDATE crm_project_workflows SET status = ?, updated_at = ? WHERE id = ? AND account_id = ?',
+    ).bind(status, nowIso(), id, accountId).run();
+    return json({ success: true });
+  }
+
+  if (act === 'delete_workflow') {
+    const id = String(d.workflowId ?? '').trim();
+    if (!id) return fail('Which workflow?', 400);
+    await env.DB.prepare('DELETE FROM crm_project_workflows WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).run();
     /*
-     * Engagement, or an honest absence of it.
+     * Anybody part-way through it stops, and is told why.
      *
-     * Opens over sends, both from real tables. It is reported as a rate and
-     * never as a flattering delta, and it is null when nothing was sent — a
-     * "0%" on a week with no campaigns reads as a failure rather than as a
-     * quiet week, and a made-up "+42%" is the single most tempting lie on a
-     * screen like this.
-     *
-     * Worth knowing what the number is not: an image-blocking mail client never
-     * reports an open, so this is a floor. The screen says so.
+     * Left alone, their runs would be picked up on the next tick, fail to find
+     * the graph and be marked "the automation no longer exists" — true, but
+     * discovered five minutes later and recorded as a fault rather than as the
+     * consequence of a deliberate deletion.
      */
-    const opens = await env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM crm_track WHERE account_id = ? AND kind = 'open' AND at >= ?",
-    ).bind(accountId, weekAgo).first<{ n: number }>();
+    await env.DB.prepare(
+      `UPDATE crm_automation_runs
+       SET status = 'stopped', detail = 'The workflow was deleted.', node_id = '', updated_at = ?
+       WHERE account_id = ? AND automation_id = ? AND status = 'active'`,
+    ).bind(nowIso(), accountId, id).run();
+    return json({ success: true });
+  }
 
-    const emailsSent = Number(weekCounts?.emails ?? 0);
-    const openCount = Number(opens?.n ?? 0);
+  /*
+   * ── Describe a workflow for this project, and get one ──
+   *
+   * The same writer the Marketing builder uses, pointed at this project's own
+   * client profile — so a plumber's workflow is written about boilers and a
+   * coach's is not. It lands as a **draft** in the project's own list: every
+   * one of these sends something, and switching it on is a permission nobody
+   * gave by typing a sentence.
+   */
+  if (act === 'build_workflow') {
+    const projectId = String(d.projectId ?? '').trim();
+    const instruction = String(d.instruction ?? '').trim();
+    if (!projectId) return fail('Which project?', 400);
+    if (instruction.length < 8) return fail('Say what should happen — a sentence is enough.');
+    if (instruction.length > 1000) return fail('That is longer than this box takes. A sentence or two works best.');
 
-    /* Instructions used, which is the only allowance this product actually
-       meters. Shown as what it is rather than as invented "credits". */
-    const usedInstructions = await env.DB.prepare(
+    const project = await env.DB.prepare(
+      'SELECT id, name, portfolio_id AS portfolioId FROM crm_projects WHERE id = ? AND account_id = ?',
+    ).bind(projectId, accountId).first<{ id: string; name: string; portfolioId: string }>();
+    if (!project) return fail('That project could not be found.', 404);
+
+    /* The same rolling-day allowance a typed instruction uses. Both are a model
+       call the operator pays for, and metering one and not the other would
+       leave the cheaper door wide open. */
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    const used = await env.DB.prepare(
       `SELECT COUNT(*) AS n FROM crm_autopilot_actions
        WHERE account_id = ? AND kind = 'instruct' AND created_at >= ?`,
-    ).bind(accountId, dayAgo).first<{ n: number }>();
+    ).bind(accountId, since).first<{ n: number }>();
+    const cap = await instructionCap(env, accountId);
+    if ((used?.n ?? 0) >= cap) {
+      return fail(
+        `That is ${cap} in twenty-four hours, which is this plan's limit. Everything already set up carries on.`,
+        429, { code: 'instruction_cap', cap, used: used?.n ?? 0 },
+      );
+    }
+
+    const apiKey = await loadAiKey(env, accountId);
+    if (!apiKey) return fail('No AI key is connected yet. Settings → AI Engine.', 400);
+
+    const brand = await brandFor(env, accountId, project.portfolioId);
+    const r = await writeAutomation(apiKey, brand, instruction);
+    if (!r.ok || !r.value) return fail(r.error || 'That could not be built. Try describing it differently.');
+
+    const allowed = new Set<string>(AUTOMATION_NODE_TYPES);
+    const steps = (r.value.nodes ?? [])
+      /* A type the engine cannot carry out is a step that silently does nothing
+         when the workflow runs, which is worse than a shorter workflow. */
+      .filter(n => allowed.has(String(n.type)))
+      .slice(0, 40)
+      .map((n, i) => ({
+        id: `n${i}`,
+        type: String(n.type),
+        label: String(n.label ?? '').slice(0, 120),
+        config: Object.fromEntries(
+          Object.entries(n.config ?? {}).slice(0, 12)
+            .map(([k, v]) => [String(k).slice(0, 40), String(v).slice(0, 500)]),
+        ),
+        nextId: null as string | null,
+      }));
+    if (steps.length < 2) return fail('The answer had nothing runnable in it. Try saying it another way.');
+
+    /* Chained here, on the server. The writer returns steps in order and no
+       links; saved as they arrive every node points at nothing and the engine
+       carries out the first step and stops — a workflow that looks complete and
+       does one thing. */
+    for (let i = 0; i < steps.length - 1; i++) steps[i].nextId = steps[i + 1].id;
+
+    const id = `pw-${crypto.randomUUID()}`;
+    const now = nowIso();
+    const next = await env.DB.prepare(
+      'SELECT COALESCE(MAX(position), -1) + 1 AS n FROM crm_project_workflows WHERE account_id = ? AND project_id = ?',
+    ).bind(accountId, projectId).first<{ n: number }>();
+
+    await env.DB.prepare(
+      `INSERT INTO crm_project_workflows
+       (id, account_id, project_id, name, description, status, nodes, position, created_at, updated_at)
+       VALUES (?,?,?,?,?,'draft',?,?,?,?)`,
+    ).bind(
+      id, accountId, projectId,
+      String(r.value.name ?? instruction).slice(0, 160),
+      instruction.slice(0, 300),
+      JSON.stringify(steps), next?.n ?? 0, now, now,
+    ).run();
+
+    /* Written into the ledger so the allowance counts it and the project's own
+       log shows that somebody asked for this. */
+    await env.DB.prepare(
+      `INSERT INTO crm_autopilot_actions
+       (id, account_id, project_id, kind, status, summary, because, created_at, acted_at)
+       VALUES (?,?,?,'instruct','done',?,?,?,?)`,
+    ).bind(
+      `ac-${crypto.randomUUID()}`, accountId, projectId,
+      `Built "${String(r.value.name ?? 'a workflow').slice(0, 90)}"`,
+      `you asked for this — ${instruction.slice(0, 200)}`,
+      now, now,
+    ).run();
 
     return json({
-      success: true,
-      agents,
-      tasks,
-      published: { made: madeRows, sent: sentRows },
-      week: {
-        contentCreated: Number(contentMade?.n ?? 0),
-        emailsSent,
-        smsSent: Number(weekCounts?.sms ?? 0),
-        opens: openCount,
-        openRate: emailsSent > 0 ? Math.round((openCount / emailsSent) * 100) : null,
-      },
-      instructions: {
-        used: Number(usedInstructions?.n ?? 0),
-        cap: await instructionCap(env, accountId),
-      },
+      success: true, id,
+      name: r.value.name,
+      steps: steps.length,
+      message: `"${r.value.name}" built as a draft — read it, then switch it on.`,
     });
   }
 

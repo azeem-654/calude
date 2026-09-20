@@ -86,17 +86,24 @@ export interface Automation {
   createdAt: string;
   enrolledCount: number;
   completedCount: number;
-  /**
-   * The AI Autopilot project this workflow belongs to, if any.
-   *
-   * Optional because every automation built before projects existed has none,
-   * and because one built in Marketing belongs to the workspace rather than to
-   * a project. It only decides which screen *lists* it — the engine runs every
-   * live graph the same way, so a workflow cannot quietly behave differently
-   * depending on where somebody happened to draw it.
-   */
-  projectId?: string;
 }
+
+/*
+ * ── There is deliberately no `projectId` here ──
+ *
+ * An AI Autopilot project's workflows are not these. They live in
+ * `crm_project_workflows` on the server, are written for one client against
+ * that client's forms, and are switched on and off with the project.
+ *
+ * Tagging a workspace automation with a project id was the first attempt at
+ * that and it was the wrong shape: it put an agency's thirty-odd rules from six
+ * clients in one Marketing list with nothing but a hidden field telling them
+ * apart, and it meant deleting a project either orphaned rules or silently took
+ * somebody else's. Two lists, two screens, and neither writes the other's rows.
+ *
+ * What the two share is the engine — see `loadGraphs` in automationEngine.ts.
+ * Two executors would be two implementations of wait, condition and send.
+ */
 
 export interface FieldMapping {
   csvHeader: string;

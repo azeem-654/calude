@@ -77,6 +77,52 @@ export interface Automation {
   nodes: AutomationNode[];
   /** Set when a project owns this graph, so a project can show only its own. */
   projectId?: string;
+  /**
+   * Which list it came from.
+   *
+   * `marketing` is the workspace-wide list in Marketing → Automations, kept in
+   * the browser-owned blob. `project` is an AI Autopilot project's own, in
+   * `crm_project_workflows` on the server. They are separate lists on separate
+   * screens and neither writes the other's rows.
+   *
+   * The engine runs both, identically. Two executors would be two
+   * implementations of wait, condition and send, and they would drift the first
+   * time either was fixed.
+   */
+  source?: 'marketing' | 'project';
+}
+
+/**
+ * Every live graph in a workspace, from both lists.
+ *
+ * One function so the tick and the enrolment path can never disagree about
+ * what exists — a graph visible to one and not the other is a workflow that
+ * enrols people and then reports itself deleted on the next pass.
+ */
+export async function loadGraphs(env: Env, accountId: string): Promise<Automation[]> {
+  /* Marketing's, from the blob the Worker may read and must never write. */
+  const fromBlob = parseJson<Automation[]>(await dataGet(env.DB, accountId, AUTOMATIONS_KEY), [])
+    .filter(a => a && typeof a === 'object')
+    .map(a => ({ ...a, source: 'marketing' as const }));
+
+  /* The projects' own, from the server. Defended rather than trusted: a row
+     whose JSON cannot be read is skipped with its name intact rather than
+     taking the whole tick down. */
+  let fromProjects: Automation[] = [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT id, project_id AS projectId, name, description, status, nodes
+       FROM crm_project_workflows WHERE account_id = ? ORDER BY position, created_at`,
+    ).bind(accountId).all<{ id: string; projectId: string; name: string; description: string; status: string; nodes: string }>();
+    fromProjects = (results ?? []).map(r => ({
+      id: r.id, name: r.name, description: r.description, status: r.status,
+      nodes: parseJson<AutomationNode[]>(r.nodes, []),
+      projectId: r.projectId,
+      source: 'project' as const,
+    }));
+  } catch { fromProjects = []; }
+
+  return [...fromProjects, ...fromBlob];
 }
 
 interface Contact {
@@ -172,7 +218,7 @@ export function triggerMatches(node: AutomationNode | undefined, ev: TriggerEven
 export async function enrolOnEvent(env: Env, accountId: string, ev: TriggerEvent): Promise<number> {
   if (!ev.contactId) return 0;
   try {
-    const automations = parseJson<Automation[]>(await dataGet(env.DB, accountId, AUTOMATIONS_KEY), []);
+    const automations = await loadGraphs(env, accountId);
     const live = automations.filter(a => a.status === 'active' && Array.isArray(a.nodes) && a.nodes.length);
     if (!live.length) return 0;
 
@@ -192,13 +238,14 @@ export async function enrolOnEvent(env: Env, accountId: string, ev: TriggerEvent
       const r = await env.DB.prepare(
         `INSERT OR IGNORE INTO crm_automation_runs
            (id, account_id, automation_id, automation_name, contact_id, contact_name, contact_email, contact_phone,
-            node_id, due_at, status, trigger_kind, trigger_ref, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?)`,
+            node_id, due_at, status, trigger_kind, trigger_ref, workflow_source, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?)`,
       ).bind(
         rid('ar'), accountId, a.id, String(a.name ?? '').slice(0, 160),
         ev.contactId, (ev.contactName ?? '').slice(0, 120),
         (ev.contactEmail ?? '').slice(0, 190), (ev.contactPhone ?? '').slice(0, 40),
-        firstId, nowIso(), ev.kind, (ev.ref ?? '').slice(0, 160), nowIso(), nowIso(),
+        firstId, nowIso(), ev.kind, (ev.ref ?? '').slice(0, 160),
+        a.source ?? 'marketing', nowIso(), nowIso(),
       ).run();
       if (r.meta?.changes) started += 1;
     }
@@ -342,7 +389,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
   }
 
   for (const [accountId, runs] of byAccount) {
-    const automations = parseJson<Automation[]>(await dataGet(env.DB, accountId, AUTOMATIONS_KEY), []);
+    const automations = await loadGraphs(env, accountId);
     const contacts = parseJson<Contact[]>(await dataGet(env.DB, accountId, CONTACTS_KEY), []);
 
     /* Loaded lazily: a workspace whose runs are all waits and tags should not
