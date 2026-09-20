@@ -567,6 +567,51 @@ Whichever you choose, **the key is entered in the app**, never pasted into a
 chat. It is encrypted at rest and never shown back, not even its last
 characters.
 
+#### If you do want voice now: Vapi, step by step
+
+Vapi is the right first choice for this install. It bundles the number, the
+speech in both directions and the turn-taking into one API, it bills per minute
+with no monthly floor, and its webhook carries a transcript and a duration —
+which is exactly the shape `crm_voice_sessions` already stores. Retell and
+ElevenLabs Agents are the same shape if you prefer one of those; nothing below
+changes except the names.
+
+**What it costs.** Around $0.05–$0.09 a minute all-in at Vapi's own rates, plus
+roughly $2 a month for each phone number. There is no subscription to hold an
+account open, so an install with no calls costs nothing.
+
+**On your side:**
+
+1. **vapi.ai → sign up.** A card is needed before a number can be bought; there
+   is no charge until a call connects.
+2. **Dashboard → API Keys → create a private key.** The private one, not the
+   public one — the public key is for browsers, and every third-party call in
+   this app is made from the Worker.
+3. **Phone Numbers → Buy.** Pick the country your customers are in. A UK number
+   answering UK callers costs a fraction of an international leg and, more
+   importantly, gets answered.
+4. **Bring the key into the app, not into a chat.** Settings → Infrastructure →
+   Voice. It is encrypted at rest with the install secret and never shown back.
+5. **Tell me the number and that the key is in.** The `VoiceProvider` interface,
+   the session table and the screens are already built and tested; what is
+   missing is one file in `worker/src/lib/` and one line in `PROVIDERS`. That is
+   a day, not a rebuild — and until it exists every screen says voice cannot
+   take calls rather than pretending.
+
+**Two things worth knowing before you spend anything.**
+
+*Gemini cannot be the whole answer, but it can be part of it.* Google's
+Realtime/Live API does speech in and speech out, so the reasoning and the voice
+could both be Google — but it has no phone number and no carrier, so you would
+still be buying a number and a media bridge from Twilio and writing the glue
+between them. That is the "assemble it yourself" row above: cheaper per minute
+at volume, weeks of work, and the latency is the hard part. It is the right
+answer once voice is earning, and the wrong one before.
+
+*Calls are recorded and that is regulated.* Several countries require both
+parties to be told. The voice agent screen has a consent line for exactly this
+reason — write one and leave it on.
+
 ### 19. Where the forms are, and what happens to a lead
 
 Not a task — the answer to "where do I find them", because it moved.
@@ -587,6 +632,47 @@ Not a task — the answer to "where do I find them", because it moved.
 - **The online shop** is no longer called "Sell" and no longer sits under
   Marketing. It is **Sales → Online shop**, with a map of its nine panels at the
   top, and it links both ways to the shop pages under *Websites → Shops*.
+
+### 20. Connect every form block on a website or funnel — do this before launch
+
+Not optional, and it is the one thing on this list that silently loses money.
+
+A form block on a website or funnel page used to be **a picture of a form**: no
+handler, no request, nothing. A visitor filled it in, pressed Submit, and every
+word went nowhere. That is fixed — but a block only collects once it is told
+*which* form it collects into, because a public page cannot be trusted to name
+a workspace and a form's slug can.
+
+For each site and funnel you have already built:
+
+1. **Customer Engagement → Forms** — make one form per thing you actually want
+   to be asked ("Get a quote", "Book a survey"). Set it **live**.
+2. **Websites → open the builder → click the form block → "Collects into"** —
+   pick that form. Same control in the funnel builder.
+3. Preview the page and send yourself one. It should thank you, and the
+   submission should appear under *Customer Engagement → Submissions*.
+
+An unconnected block now says on the page that it cannot take an enquiry, so
+nothing is lost silently — but it is still a form your visitors cannot use.
+
+### 21. Switch on the workflows you want, and only those
+
+**Marketing → Automations**, or per project under **AI Autopilot → Workflows**.
+
+These now genuinely run: on the server, every five minutes, with the app closed.
+Until this release nothing executed them at all, so anything you drew before is
+sitting there having never done a thing — worth reading before you switch it on,
+because the moment you do it starts emailing real people.
+
+Three things to know:
+
+- **Everything arrives as a draft.** Nothing sends until you press *Switch on*.
+- **A step that cannot run is skipped and named**, never counted as sent. "No
+  mail server is connected to this workspace" is what you will see if item 8 is
+  not done — the workflow is fine, the mailbox is missing.
+- **"What has actually run"**, under the builder, lists every person inside a
+  workflow and every step it took for them. That is where "why did Rita get
+  that email" is answered.
 
 ---
 
