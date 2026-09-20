@@ -70,13 +70,13 @@ export function Toasts() {
               <div
                 key={n.id}
                 onClick={() => dismissNotification(n.id)}
+                className="toast-in"
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10,
                   padding: '12px 14px', borderRadius: 16, cursor: 'pointer', pointerEvents: 'auto',
                   backgroundColor: '#fff',
                   boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)',
                   color: '#17191c', fontSize: 13, fontWeight: 500, maxWidth: 340, lineHeight: 1.45,
-                  animation: 'slideInRight 0.28s cubic-bezier(0.16,1,0.3,1)',
                 }}
               >
                 <Icon size={16} color={color} style={{ flexShrink: 0, marginTop: 1 }} />

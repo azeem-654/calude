@@ -19,6 +19,7 @@ import {
 import type { AutomationRule, AutomationRunResult } from './Automations';
 import PipelineDesigner from './PipelineDesigner';
 import { playbookChecklist, seedExistingDeals } from '../../services/pipelineAI';
+import { fireEvent } from '../../services/engagement';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
 
@@ -2258,6 +2259,36 @@ export default function Pipelines() {
     const result = runAutomations(movedStages, dealId, { type: 'deal_moved', stageId: toStageId }, autoRules, selected.id);
     updatePipeline(selected.id, { stages: result.stages });
     finishAutomationRun(result);
+
+    /*
+     * And the workflow engine, which is a different thing from the stage rules
+     * above.
+     *
+     * `runAutomations` here is the pipeline's own rule engine: it moves deals
+     * and sets fields, in this browser, now. The workflow engine runs on the
+     * server on a schedule and can wait three days and then send an email,
+     * which nothing in this file can do.
+     *
+     * "Deal stage changes" is one of the triggers the builder offers, and until
+     * this line it was one nothing could ever fire. Not awaited and its failure
+     * ignored: dragging a card must not fail because a graph is broken.
+     */
+    {
+      const moved = result.stages.flatMap(st => st.deals).find(d => d.id === dealId);
+      const toStage = result.stages.find(st => st.id === toStageId);
+      if (moved?.contactId) {
+        void fireEvent({
+          kind: 'deal_stage_changed',
+          /* The stage's name, so "when it reaches Won" can be narrowed the same
+             way a form trigger names a form. */
+          ref: toStage?.name ?? '',
+          contactId: moved.contactId,
+          contactName: moved.contactName ?? '',
+          contactEmail: moved.contactEmail ?? '',
+          contactPhone: moved.contactPhone ?? '',
+        });
+      }
+    }
     // WIP limit warning (Kanban best practice — from ClickUp/Trello)
     const limit = wipLimits[toStageId];
     const newCount = (movedStages.find(s => s.id === toStageId)?.deals.length ?? 0);

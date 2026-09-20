@@ -73,6 +73,11 @@ const node = (id, type, config, nextId, extra = {}) => ({ id, type, label: type,
 
 /* ── 1. A stranger's form submission runs an automation ── */
 const w = await workspace('main');
+/* The second tenant, made here rather than where it is first used: the checks
+   that matter most are the ones that aim at a workspace somebody else really
+   owns, and an id nobody owns is a different thing entirely — naming one of
+   those *claims* it, which is deliberate and documented. */
+const other = await workspace('other');
 const slug = `quote-${Date.now().toString(36)}`;
 ok('a form can be published', (await liveForm(w, slug, 'Get a quote')).success === true);
 
@@ -221,9 +226,55 @@ ok('the tag is proposed to the browser rather than written by the server',
     (pp.changes ?? []).some(c => c.value === 'two'), JSON.stringify(pp.changes ?? []).slice(0, 200));
 }
 
+/* ── 4b. The triggers the app itself reports ──
+ *
+ * Four of the seven triggers the builder offers describe things that happen
+ * *in the browser* — a tag, a deal moving, an appointment — or on a tracking
+ * pixel. None of them could ever fire until the app was given a way to say so,
+ * which made them names in a menu and nothing else. This is that path.
+ */
+{
+  const ev = w;
+  graphs.push({
+    id: 'au-tag', name: 'On a tag', status: 'active', nodes: [
+      node('n0', 'trigger', { event: 'tag_added', tag: 'vip' }, 'n1'),
+      node('n1', 'add_tag', { tag: 'greeted' }, null),
+    ],
+  });
+  await saveGraph(ev, graphs);
+
+  const started = await post('/api/engagement.php', {
+    token: ev.token, accountId: ev.accountId, action: 'enrol_event',
+    record: { kind: 'tag_added', ref: 'vip', contactId: 'c-tagged-1', contactName: 'Tagged', contactEmail: 'tagged@example.test' },
+  });
+  ok('the app can report an event the server never saw', started.success === true && started.started === 1,
+    JSON.stringify(started));
+
+  /* A tag that no graph is listening for must start nothing — otherwise every
+     tag in the CRM would enrol everybody in everything. */
+  const quiet = await post('/api/engagement.php', {
+    token: ev.token, accountId: ev.accountId, action: 'enrol_event',
+    record: { kind: 'tag_added', ref: 'not-listened-for', contactId: 'c-tagged-2', contactEmail: 'two@example.test' },
+  });
+  ok('and a tag nothing listens for starts nothing', quiet.started === 0, JSON.stringify(quiet));
+
+  await tick();
+  const tr = await runs(ev, 'au-tag');
+  ok('the tag-triggered workflow ran', tr.runs?.[0]?.status === 'done' && tr.runs?.[0]?.stepsTaken === 1,
+    JSON.stringify(tr.runs?.[0] ?? {}));
+
+  /* An event needs a workspace. Without this, any signed-in tenant could enrol
+     into another's graphs by naming their account. */
+  const cross = await post('/api/engagement.php', {
+    token: ev.token, accountId: other.accountId, action: 'enrol_event',
+    record: { kind: 'tag_added', ref: 'vip', contactId: 'c-x' },
+  });
+  ok('and an event cannot be aimed at a workspace somebody else owns',
+    cross.success !== true, JSON.stringify(cross).slice(0, 140));
+}
+
 /* ── 5. One workspace cannot read another's ── */
 {
-  const other = await workspace('other');
   const cross = await post('/api/engagement.php', {
     token: other.token, accountId: w.accountId, action: 'automation_runs',
   });

@@ -20,14 +20,23 @@ const NODE_META: Record<AutomationNodeType, { label: string; color: string; bg: 
   end: { label: 'End', color: '#64748b', bg: '#f8fafc', icon: <X size={16} />, description: 'End of automation' },
 };
 
+/**
+ * What starts an automation, and — as importantly — what actually causes each.
+ *
+ * `fires` is not decoration. Every one of these was a name in a menu that
+ * nothing could ever set off until the engine and its event reporters were
+ * written, and "Tag is added" gives no clue whether that means a tag you add, a
+ * tag an import adds, or a tag another automation adds. Saying it here is the
+ * difference between choosing a trigger and guessing one.
+ */
 const TRIGGER_OPTIONS = [
-  { value: 'contact_created', label: 'Contact is created' },
-  { value: 'tag_added', label: 'Tag is added' },
-  { value: 'email_opened', label: 'Email is opened' },
-  { value: 'form_submitted', label: 'Form is submitted' },
-  { value: 'deal_stage_changed', label: 'Deal stage changes' },
-  { value: 'appointment_scheduled', label: 'Appointment is scheduled' },
-  { value: 'link_clicked', label: 'Link is clicked in email' },
+  { value: 'form_submitted', label: 'Form is submitted', fires: 'Any live form — the hosted page, a form block on a website or funnel, or the chat. Name one below to narrow it.' },
+  { value: 'contact_created', label: 'Contact is created', fires: 'Someone leaves their details in the chat, or a capture becomes a new contact.' },
+  { value: 'tag_added', label: 'Tag is added', fires: 'A tag put on a contact here or by another automation. Only tags they did not already have.' },
+  { value: 'deal_stage_changed', label: 'Deal stage changes', fires: 'A deal is dragged to a different column. Name the stage below to fire only on that one.' },
+  { value: 'appointment_scheduled', label: 'Appointment is scheduled', fires: 'Any appointment made — by you, by a booking page, or by the assistant.' },
+  { value: 'email_opened', label: 'Email is opened', fires: 'A tracked message is opened. Image-blocking mail clients never report one, so treat this as a floor rather than a count.' },
+  { value: 'link_clicked', label: 'Link is clicked in email', fires: 'A tracked link in a message is followed.' },
 ];
 
 const ACTION_STEPS: AutomationNodeType[] = ['wait', 'condition', 'send_email', 'send_sms', 'add_tag', 'remove_tag', 'create_task', 'assign_to', 'update_field'];
@@ -186,9 +195,21 @@ function EditNodeModal({ node, onSave, onClose }: { node: AutomationNode; onSave
             </select>
             <ChevronDown size={13} style={chevronStyle} />
           </div>
+          {/* What actually causes this one. See the note on TRIGGER_OPTIONS. */}
+          <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
+            {TRIGGER_OPTIONS.find(t => t.value === (draft.config.event || TRIGGER_OPTIONS[0].value))?.fires}
+          </p>
           {(draft.config.event === 'tag_added') && <>
             <label style={labelStyle}>Tag Name</label>
             <input value={draft.config.tag || ''} onChange={e => setConfig('tag', e.target.value)} placeholder="e.g. interested" style={inputStyle} />
+          </>}
+          {(draft.config.event === 'form_submitted') && <>
+            <label style={labelStyle}>Only this form (optional)</label>
+            <input value={draft.config.formName || ''} onChange={e => setConfig('formName', e.target.value)} placeholder="Leave blank for any form" style={inputStyle} />
+          </>}
+          {(draft.config.event === 'deal_stage_changed') && <>
+            <label style={labelStyle}>Only this stage (optional)</label>
+            <input value={draft.config.tag || ''} onChange={e => setConfig('tag', e.target.value)} placeholder="e.g. Won — blank for any stage" style={inputStyle} />
           </>}
         </>
       );

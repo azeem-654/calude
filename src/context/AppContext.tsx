@@ -410,6 +410,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const a: Appointment = { ...appt, id: `appt-${Date.now()}-${Math.floor(performance.now() * 1000) % 100000}` };
     setAppointments(prev => { const next = [...prev, a]; saveLS('crm_appointments', next); return next; });
     notify(`Appointment "${appt.title}" scheduled!`);
+
+    /* "Appointment is scheduled" is one of the workflow triggers, and every
+       appointment in the app is made here — whether by the owner, by a booking
+       page or by the assistant — so this is the one place it can be reported
+       from. Ignored on failure: a booking must not fail because a graph is. */
+    if (a.contactId) {
+      const c = contacts.find(x => x.id === a.contactId);
+      void fireEvent({
+        kind: 'appointment_scheduled', ref: a.title ?? '', contactId: a.contactId,
+        contactName: a.contactName ?? c?.name ?? '',
+        contactEmail: c?.email ?? '', contactPhone: c?.phone ?? '',
+      });
+    }
     return a;
   };
   const addCalendarEvent = (e: Omit<CalendarEvent, 'id' | 'createdAt'>): CalendarEvent => {

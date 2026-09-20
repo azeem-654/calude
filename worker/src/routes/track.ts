@@ -18,6 +18,8 @@
  */
 import { corsHeaders, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { dataGet } from '../lib/db';
+import { enrolOnEvent } from '../lib/automationEngine';
 
 /* The smallest transparent GIF there is. Served with no-store so a mail
    client's proxy cache does not swallow the second open of the same message. */
@@ -46,6 +48,42 @@ async function record(
   await env.DB.prepare(
     'INSERT INTO crm_track (account_id, kind, email_id, url, at, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
   ).bind(accountId, kind, emailId, url.slice(0, 2000), nowIso(), ua.slice(0, 180)).run();
+
+  /*
+   * And tell the automation engine, which is the only thing that can act on it.
+   *
+   * "Email is opened" and "Link is clicked" are two of the triggers the builder
+   * offers, and until this existed neither could ever fire — the open was
+   * written to `crm_track` and read by nothing that could do anything about it.
+   * A trigger in a menu that can never happen is the same bug as an automation
+   * with no engine, one layer up.
+   *
+   * The contact behind the message is resolved from `crm_contact_emails`, the
+   * browser's own record of what it sent. That is a read of a blob the Worker
+   * must never write, which is exactly what it is doing.
+   */
+  await fire(env, accountId, emailId, kind).catch(() => {});
+}
+
+/** Who was sent the message this open or click belongs to. */
+async function fire(env: Env, accountId: string, emailId: string, kind: 'open' | 'click'): Promise<void> {
+  const raw = await dataGet(env.DB, accountId, 'crm_contact_emails');
+  if (!raw) return;
+  let rows: { id?: string; contactId?: string; toEmail?: string; subject?: string }[];
+  try { rows = JSON.parse(raw) as typeof rows; } catch { return; }
+  if (!Array.isArray(rows)) return;
+
+  const msg = rows.find(r => r.id === emailId);
+  if (!msg?.contactId) return;
+
+  await enrolOnEvent(env, accountId, {
+    kind: kind === 'open' ? 'email_opened' : 'link_clicked',
+    /* The subject, so "when *that* email is opened" can be narrowed the same
+       way a form trigger names a form. */
+    ref: String(msg.subject ?? ''),
+    contactId: msg.contactId,
+    contactEmail: String(msg.toEmail ?? ''),
+  });
 }
 
 export async function handleTrack(req: Request, env: Env): Promise<Response> {

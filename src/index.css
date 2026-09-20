@@ -128,6 +128,22 @@ button:focus-visible, a:focus-visible {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/*
+ * The toast's entrance.
+ *
+ * A class rather than `style={{ animation }}` in the component, which is where
+ * it used to live. An inline animation cannot be reached by a media query, so
+ * a toast slid in even when the operating system had asked for no motion —
+ * the same defect this file's other blocks were written to avoid, and the same
+ * one the motion test has now caught three times.
+ *
+ * Being a real rule also means `services/motion.ts` can rewrite the condition,
+ * so somebody who has overruled their system gets what they chose here too.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .toast-in { animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+}
+
 @keyframes slideInRight {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
