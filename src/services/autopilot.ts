@@ -59,7 +59,24 @@ interface Reply {
   message?: string;
   autopilot?: AutopilotRun | null;
   actions?: AutopilotAction[];
-  awaiting?: number;
+  /* `awaiting` is a count on `get` and a list on `day`, because the two screens
+     want different things from the same fact — a badge and a queue. Typed as
+     both rather than given two names, which would be two things to keep in
+     step. */
+  awaiting?: number | AutopilotAction[];
+  /* The day feed. */
+  today?: string;
+  timezone?: string;
+  didToday?: AutopilotAction[];
+  failedToday?: AutopilotAction[];
+  upcoming?: AutopilotAction[];
+  sentToday?: unknown[];
+  totals?: Record<string, number>;
+  /* A typed instruction, and the cap that may have refused it. */
+  understood?: boolean;
+  what?: string;
+  cap?: number;
+  used?: number;
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -84,7 +101,10 @@ export async function fetchAutopilot(limit = 100): Promise<{ run: AutopilotRun |
   return {
     run: r.success ? (r.autopilot ?? null) : null,
     actions: r.actions ?? [],
-    awaiting: r.awaiting ?? 0,
+    /* `get` answers a count; the day feed answers a list under the same name.
+       Narrowed here rather than renaming one of them, because both are the
+       right word for the screen that asks. */
+    awaiting: typeof r.awaiting === 'number' ? r.awaiting : (r.awaiting?.length ?? 0),
   };
 }
 
@@ -107,4 +127,86 @@ export async function approveAction(actionId: string): Promise<Reply> {
 
 export async function rejectAction(actionId: string): Promise<Reply> {
   return call('reject', { actionId });
+}
+
+/* ── One project's day ────────────────────────────────────────────────────── */
+
+/** A send as the delivery log recorded it, for the previews on a dashboard. */
+export interface DaySend {
+  id: string;
+  channel: string;
+  source: string;
+  sourceName: string;
+  recipient: string;
+  subject: string;
+  status: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface ProjectDay {
+  /** The customer's own calendar date, which is what "today" means here. */
+  today: string;
+  timezone: string;
+  didToday: AutopilotAction[];
+  failedToday: AutopilotAction[];
+  awaiting: AutopilotAction[];
+  upcoming: AutopilotAction[];
+  sentToday: DaySend[];
+  totals: { doneToday: number; failedToday: number; awaiting: number; sentToday: number };
+}
+
+/**
+ * Everything one project's dashboard shows, in one call.
+ *
+ * One rather than five, because five let the panels disagree with each other on
+ * screen — and the whole point of the screen is that it is a single honest
+ * account of one project at one moment. Read-only, so it is safe to poll.
+ */
+export async function fetchProjectDay(projectId: string): Promise<{ day: ProjectDay | null; error: string }> {
+  const r = await call('day', { projectId });
+  if (!r.success) return { day: null, error: String(r.error ?? 'Could not read what this project has done.') };
+  return {
+    day: {
+      today: String(r.today ?? ''),
+      timezone: String(r.timezone ?? 'UTC'),
+      didToday: (r.didToday ?? []) as AutopilotAction[],
+      failedToday: (r.failedToday ?? []) as AutopilotAction[],
+      awaiting: (Array.isArray(r.awaiting) ? r.awaiting : []) as AutopilotAction[],
+      upcoming: (r.upcoming ?? []) as AutopilotAction[],
+      sentToday: (r.sentToday ?? []) as DaySend[],
+      totals: (r.totals ?? { doneToday: 0, failedToday: 0, awaiting: 0, sentToday: 0 }) as ProjectDay['totals'],
+    },
+    error: '',
+  };
+}
+
+export interface InstructionResult {
+  ok: boolean;
+  understood: boolean;
+  message: string;
+  /** Set when the cap was hit, so the box can say how many and when. */
+  cap?: number;
+  used?: number;
+}
+
+/**
+ * Tell a project what to do, in words.
+ *
+ * Whatever it understands is *queued*, never carried out here: it goes onto the
+ * same board under the same guardrails as anything the planner decided. A typed
+ * sentence is easier to misread than a rule, so if anything it deserves more
+ * scrutiny, not less — the customer sees the card and can reject it.
+ */
+export async function instructProject(projectId: string, instruction: string): Promise<InstructionResult> {
+  const r = await call('instruct', { projectId, instruction });
+  if (!r.success) {
+    return {
+      ok: false, understood: false,
+      message: String(r.error ?? 'That could not be sent.'),
+      cap: typeof r.cap === 'number' ? r.cap : undefined,
+      used: typeof r.used === 'number' ? r.used : undefined,
+    };
+  }
+  return { ok: true, understood: r.understood === true, message: String(r.message ?? '') };
 }

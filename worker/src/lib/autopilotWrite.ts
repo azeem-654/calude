@@ -410,3 +410,66 @@ Rules:
 Return ONLY valid JSON, no fences:
 {"name":"short name for this automation","nodes":[{"type":"trigger","label":"","config":{}}]}`, 0.5);
 }
+
+/* ── An instruction somebody typed at their project ───────────────────────── */
+
+/**
+ * What the customer asked for, turned into work Autopilot already knows how to
+ * do.
+ *
+ * ── Why it maps onto existing plays rather than inventing actions ──
+ *
+ * The execution pass can carry out a fixed set of effects, every one of which
+ * has been argued with and tested. Letting a model name an arbitrary action
+ * would produce rows nothing can execute — they would sit in the queue looking
+ * like planned work for ever, which is the exact failure this codebase keeps
+ * finding and fixing.
+ *
+ * So the model's whole job is classification: read a sentence, decide which of
+ * the things this product does the person is asking for, and say so. Anything
+ * it cannot map is returned as `none` with a reason the customer can read —
+ * which is a far better answer than a queued task that never runs.
+ */
+export interface UnderstoodInstruction {
+  /** One of the writers, or 'none' when the ask is not something this can do. */
+  what: 'landing' | 'website' | 'blog' | 'social' | 'short' | 'sequence' | 'none';
+  /** The card's one-line summary, in the customer's own terms. */
+  summary: string;
+  /** Why this is what they meant — shown to them, so they can disagree. */
+  because: string;
+  /** Set when `what` is 'none': what the product cannot do about this ask. */
+  cannot: string;
+}
+
+export function understandInstruction(apiKey: string, b: Brand, instruction: string): Promise<Written<UnderstoodInstruction>> {
+  return ask<UnderstoodInstruction>(apiKey, `A customer has typed an instruction at the marketing system running their business.
+Decide which ONE thing it is asking for, from the fixed list below. Do not invent others.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+
+=== WHAT THEY TYPED ===
+${instruction.slice(0, 1200)}
+
+=== THE ONLY THINGS THIS SYSTEM CAN DO ===
+- "blog"     write and file a blog post
+- "social"   write a batch of social posts
+- "sequence" write a multi-step email campaign
+- "landing"  build a one-page funnel to sell one thing
+- "website"  build a multi-page website with an enquiry form
+- "short"    write a script for a 30-second video
+- "none"     the ask is not one of the above
+
+Rules:
+- Pick "none" freely. A wrong guess makes the system do something nobody asked
+  for, which is far worse than saying it cannot.
+- Asks about *sending*, pricing, deleting things, connecting accounts, refunds
+  or anything touching money are always "none" — those are a person's decisions.
+- "summary" is one short line in their own words, starting with a verb.
+- "because" quotes or paraphrases what they typed. It is shown to them.
+- "cannot" is filled in only for "none", and says plainly what it cannot do and
+  what they could do instead. Empty otherwise.
+
+Answer as JSON only:
+{"what":"blog","summary":"Write a post about winter boiler checks","because":"you asked for something about getting ready for winter","cannot":""}`, 0.2);
+}

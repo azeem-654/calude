@@ -31,6 +31,7 @@ import { approveAction, rejectAction } from '../../services/autopilot';
 import ProjectInfra from './ProjectInfra';
 import ProjectAssets from './ProjectAssets';
 import ProjectWorkflows from './ProjectWorkflows';
+import ProjectDashboard from './ProjectDashboard';
 import { getSession } from '../../services/auth';
 
 const INK = '#17191c';
@@ -150,6 +151,10 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   /* Its own slot rather than sharing `infra`: these are two different questions
      and somebody comparing the two wants both open. */
   const [flows, setFlows] = useState<string | null>(null);
+  /* Which project's settings-and-history panel is open. One at a time: two of
+     these expanded is a screen of settings with the dashboards pushed off it,
+     and only one of them is the one being changed. */
+  const [tools, setTools] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
 
   const load = async () => {
@@ -235,17 +240,45 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     );
   }
 
+  /*
+   * ── Stacked dashboards, not a row of columns ──
+   *
+   * The board was a horizontal scroller: one 320px column per project, each a
+   * list of cards. That is the right shape for a log and the wrong one for a
+   * service somebody pays for monthly — a column cannot say what is running
+   * now, what is due next, or what actually went out, and those are the three
+   * things a customer checks before deciding the money is well spent.
+   *
+   * Each project now gets the full width and its own dashboard, and they stack.
+   * The old column survives underneath as the settings-and-history panel: it
+   * holds the sending pool, the workflows and the full card list, which are
+   * things somebody opens deliberately rather than watches.
+   */
   return (
-    <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       {projects.map((p, i) => {
         const cards = board[p.id] ?? [];
         const pool = poolTargetOf(p);
         const flowCount = automations.filter(a => a.projectId === p.id).length;
         const dot = DOTS[i % DOTS.length];
         const live = p.status === 'running' || p.status === 'learning';
+        const toolsOpen = tools === p.id;
         return (
-          <section key={p.id} style={{
-            flex: '0 0 320px', maxWidth: 320, background: '#f7f8fa',
+          <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <ProjectDashboard project={p} onChanged={() => void load()} onToggle={x => void toggle(x)} />
+
+          <button onClick={() => setTools(toolsOpen ? null : p.id)} aria-expanded={toolsOpen} style={{
+            alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 999, border: `1px solid ${LINE}`,
+            background: '#fff', fontSize: 11.5, fontWeight: 700, color: MUTED,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            {toolsOpen ? 'Hide' : 'Settings, workflows and everything it has ever done'}
+          </button>
+
+          {toolsOpen && (
+          <section style={{
+            background: '#f7f8fa',
             border: `1px solid ${LINE}`, borderRadius: 18, padding: 12,
             display: 'grid', gap: 10, alignContent: 'start',
           }}>
@@ -375,6 +408,8 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
               ))
             )}
           </section>
+          )}
+          </div>
         );
       })}
 

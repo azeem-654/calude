@@ -1191,3 +1191,124 @@ main section { min-width: 0; }
   border-color: #d5d8dd;
   box-shadow: 0 14px 30px -16px rgba(16, 24, 40, 0.35);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   AI Autopilot project dashboards — the signs of life.
+
+   These say one thing: this project is being worked on right now, by something
+   that keeps running whether or not anybody is looking. That is the whole
+   promise of the product and the hardest part of it to believe, because the
+   work happens on a five-minute cron somewhere else.
+
+   Every one is a real rule inside a `prefers-reduced-motion` block, never an
+   inline `style={{ animation }}`. An inline animation cannot be reached by a
+   media query — the mistake this file has now caught three times — and being
+   real rules is also what lets services/motion.ts rewrite the condition for
+   somebody who has overruled their system.
+
+   They are deliberately slow. A dashboard that pulses at the speed of a
+   notification badge reads as an alarm; these are closer to breathing, and the
+   point is reassurance rather than attention.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The dot beside a live project. Two beats a breath, not a heartbeat. */
+  .ap-live-dot { animation: ap-breathe 2.8s ease-in-out infinite; }
+  /* Its halo, offset so the two never peak together — one pulse reads as a
+     blink and two out of phase read as something running. */
+  .ap-live-ring { animation: ap-halo 2.8s ease-in-out infinite; }
+
+  /* The line joining two nodes of the workflow chart, with a lit segment
+     travelling along it. This is the one that says "still going". */
+  .ap-flow-line::after { animation: ap-travel 3.4s linear infinite; }
+
+  /* A node that is the current step. */
+  .ap-node-now { animation: ap-glow 2.6s ease-in-out infinite; }
+
+  /* The thin bar under a card that is waiting on the next tick. */
+  .ap-tick-bar::after { animation: ap-sweep 5s linear infinite; }
+}
+
+@keyframes ap-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.18); opacity: 0.82; }
+}
+
+@keyframes ap-halo {
+  0%   { transform: scale(0.9); opacity: 0.55; }
+  70%  { transform: scale(2.1); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
+@keyframes ap-travel {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+@keyframes ap-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91, 70, 229, 0.35); }
+  50%      { box-shadow: 0 0 0 6px rgba(91, 70, 229, 0); }
+}
+
+@keyframes ap-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* The structures the animations above attach to. Kept out of the media query so
+   the layout is identical whether or not anything moves — a reduced-motion page
+   must be still, not different. */
+.ap-live-dot {
+  position: relative;
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: #16a34a;
+  flex-shrink: 0;
+}
+.ap-live-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1.5px solid #16a34a;
+  pointer-events: none;
+}
+.ap-flow-line {
+  position: relative;
+  flex: 1;
+  min-width: 14px;
+  height: 2px;
+  background: #e3e6eb;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.ap-flow-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 25%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #5b46e5, transparent);
+}
+.ap-tick-bar {
+  position: relative;
+  height: 2px;
+  border-radius: 999px;
+  background: #eef0f4;
+  overflow: hidden;
+}
+.ap-tick-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #c7bdf7, transparent);
+}
+
+/* The dashboard's two columns become one on a narrow screen.
+   The chart is the part that suffers first — it is a column of labelled rows,
+   and below about 900px there is not enough width left for both it and the
+   log beside it without the log's sentences breaking every three words. */
+@media (max-width: 900px) {
+  .ap-split { grid-template-columns: minmax(0, 1fr) !important; }
+}
