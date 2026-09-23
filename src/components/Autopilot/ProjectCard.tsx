@@ -48,7 +48,9 @@ import AutopilotBot from './AutopilotBot';
 import BotSays from './BotSays';
 import ProducedRail from './ProducedRail';
 import Guardrails from './Guardrails';
+import { setupProgress } from '../../services/projectSetup';
 import VoicePrompt from './VoicePrompt';
+import WorkflowWizard from './WorkflowWizard';
 import ProjectLogo from './ProjectLogo';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
@@ -183,7 +185,9 @@ export default function ProjectCard({
      means. Carried here rather than inside the editor because the editor is
      unmounted between openings and would forget it. */
   const [editing, setEditing] = useState<{ workflow: ProjectWorkflow | null; focus?: string } | null>(null);
-  const [picking, setPicking] = useState(false);
+  /* The wizard asks *how* first — template, AI, or from scratch — rather than
+     opening a grid of templates on somebody who has not decided that yet. */
+  const [wizard, setWizard] = useState(false);
   const [adding, setAdding] = useState('');
 
   const live = project.status === 'running' || project.status === 'learning';
@@ -381,7 +385,21 @@ export default function ProjectCard({
     const words = step.label.toLowerCase().split(/\s+/).filter(w => w.length > 4);
     return finished.some(a => words.some(w => `${a.summary} ${a.detail}`.toLowerCase().includes(w)));
   }).length;
-  const planPercent = plan.length ? Math.round((planDone / plan.length) * 100) : 0;
+  /* How far this project actually is, and what it is doing. Pure and tested —
+     `npm run test:setup` — because "why does it say 0%" is a question about a
+     rule, and a rule is far easier to argue with as a function. */
+  const setup = setupProgress({
+    hasPortfolio: !!project.portfolioId,
+    guardrailCount: Object.keys(project.guardrails ?? {}).length,
+    launchSteps: plan,
+    launchDone: planDone,
+    lastPlannedAt: project.lastPlannedAt ?? null,
+    createdAt: project.createdAt,
+    workflows: flows.length,
+    produced: finished.length,
+    awaiting: day?.awaiting.length ?? 0,
+    lastError: project.lastError ?? '',
+  });
   /* A project with nothing yet: no workflows, nothing produced, and the planner
      has not run. That is the state the loading view is for — and it is not the
      same as a project somebody has emptied, which has been planned. */
@@ -445,10 +463,13 @@ export default function ProjectCard({
       status: 'draft', nodes: t.nodes,
     });
     setAdding('');
-    setPicking(false);
     if (!r.success) { setError(String(r.error ?? 'That could not be added.')); return; }
     void read();
     onChanged();
+    /* Deliberately not opening the editor here. The workflow appears in the
+       list with its whole graph drawn and every step clickable, which is a
+       better place to land than a form — and opening `{ workflow: null }`
+       would have opened a *new empty* one, which is worse than either. */
   }
 
   return (
@@ -585,56 +606,90 @@ export default function ProjectCard({
                   /*
                    * A brand-new project, before the planner has run.
                    *
-                   * The bar is the launch plan the customer agreed to in the
-                   * wizard against what has actually finished — a real fraction
-                   * over real steps, which is why it can sit at 0% and say so
-                   * rather than creeping upward to look busy.
+                   * ── Why this is not the launch plan alone any more ──
+                   *
+                   * It was, and for a project created a minute ago that is
+                   * honestly zero — but 0% under "Getting this project ready"
+                   * reads as broken rather than as early. Four things are
+                   * genuinely done at creation and every one is a record that
+                   * exists: the project, the client it writes from, the
+                   * permissions it holds, the build order agreed. Counting
+                   * those is not padding the number; the old bar was ignoring
+                   * work that had been done.
                    */
                   <div style={{
-                    border: `1px solid ${T.line}`, background: 'linear-gradient(180deg, rgba(91,124,250,0.1), transparent)', borderRadius: 14,
-                    padding: 14, marginBottom: 14,
+                    border: `1px solid ${setup.stalled ? `${T.warn}55` : T.line}`,
+                    background: setup.stalled
+                      ? T.warnSoft
+                      : 'linear-gradient(180deg, rgba(91,124,250,0.1), transparent)',
+                    borderRadius: 14, padding: 14, marginBottom: 14,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
-                      <AutopilotBot size={30} awake busy />
-                      <span style={{ minWidth: 0 }}>
+                      <AutopilotBot size={30} awake={live} busy={live && !setup.stalled} />
+                      <span style={{ minWidth: 0, flex: 1 }}>
                         <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: INK }}>
                           Getting this project ready
                         </span>
-                        <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1 }}>
-                          It plans once a day and acts every five minutes, on the server.
+                        <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1, lineHeight: 1.5 }}>
+                          {/* What it is doing *now*, not a description of the
+                              product. Every line is a fact about a record. */}
+                          {setup.doing}
                         </span>
                       </span>
-                      <span style={{ flex: 1 }} />
-                      <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT }}>{planPercent}%</span>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: setup.stalled ? T.warn : ACCENT, flexShrink: 0 }}>
+                        {setup.percent}%
+                      </span>
                     </div>
 
                     <div style={{ height: 6, borderRadius: 999, background: T.lineSoft, overflow: 'hidden' }}>
                       <div style={{
-                        width: `${Math.max(planPercent, 2)}%`, height: '100%', borderRadius: 999,
-                        background: ACCENT, transition: 'width 0.5s ease',
+                        width: `${Math.max(setup.percent, 2)}%`, height: '100%', borderRadius: 999,
+                        background: setup.stalled ? T.warn : ACCENT, transition: 'width 0.5s ease',
                       }} />
                     </div>
                     {/* The sweep says "still working" without pretending the
-                        number underneath has moved. */}
-                    <div className={live ? 'ap-tick-bar' : undefined} style={{ marginTop: 7 }} aria-hidden />
-
-                    {plan.length > 0 && (
-                      <ol style={{ margin: '11px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 5 }}>
-                        {plan.slice(0, 6).map((step, i) => (
-                          <li key={step.label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                            <span style={{
-                              marginTop: 4, width: 6, height: 6, borderRadius: 999, flexShrink: 0,
-                              background: i < planDone ? T.good : T.line,
-                            }} />
-                            <span style={{
-                              fontSize: 11.5, lineHeight: 1.5,
-                              color: i < planDone ? INK : MUTED,
-                              textDecoration: i < planDone ? 'line-through' : 'none',
-                            }}>{step.label}</span>
-                          </li>
-                        ))}
-                      </ol>
+                        number underneath has moved. Not drawn when it has been
+                        waiting too long, because then it is not working. */}
+                    {live && !setup.stalled && (
+                      <div className="ap-tick-bar" style={{ marginTop: 7 }} aria-hidden />
                     )}
+
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', gap: 10,
+                      margin: '8px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5,
+                    }}>
+                      <span>{setup.done} of {setup.total} done</span>
+                      {setup.eta && <span style={{ textAlign: 'right' }}>{setup.eta}</span>}
+                    </div>
+
+                    {/* The steps themselves, setup and build order together, so
+                        the number above can be checked against something. */}
+                    <ol style={{ margin: '11px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                      {setup.steps.slice(0, 9).map(st => (
+                        <li key={st.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <span style={{ marginTop: 1, flexShrink: 0, width: 13, display: 'inline-flex' }}>
+                            {st.state === 'done' ? <CheckCircle2 size={12} color={T.good} />
+                              : st.state === 'now' ? <Loader size={12} color={ACCENT} className="spin" />
+                                : st.state === 'stuck' ? <AlertTriangle size={12} color={T.warn} />
+                                  : <Clock size={12} color={T.faint} />}
+                          </span>
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{
+                              display: 'block', fontSize: 11.5, lineHeight: 1.45,
+                              fontWeight: st.state === 'now' ? 700 : 400,
+                              color: st.state === 'done' ? MUTED : st.state === 'stuck' ? T.warn : INK,
+                              textDecoration: st.state === 'done' ? 'line-through' : 'none',
+                            }}>{st.label}</span>
+                            {(st.state === 'now' || st.state === 'stuck') && (
+                              <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>
+                                {st.detail}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+
                     <p style={{ margin: '10px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
                       Nothing above moves on a timer — a step is ticked when the record behind it exists.
                       You do not have to wait: start a workflow yourself below.
@@ -652,87 +707,36 @@ export default function ProjectCard({
                   </h4>
                   <p style={{ margin: '0 auto 13px', maxWidth: 440, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                     A workflow is what happens on its own when somebody fills in this client's form, is
-                    tagged, or goes quiet. Build one, start from a template below, or describe one to the
-                    AI beside this.
+                    tagged, or goes quiet. There are {TEMPLATES.length} ready to read, the AI will write one
+                    from a sentence, or you can build your own.
                   </p>
 
                   {/*
-                    * The same button a project gets once it has a workflow.
+                    * One button, and it opens the wizard.
                     *
-                    * It was only offered as a dashed tile at the bottom of a
-                    * grid of eight templates, worded differently — so a
-                    * customer on a brand-new project looked for "Create
-                    * workflow", did not find it, added a template to get past
-                    * it, and only then saw the button appear. The empty state
-                    * is the one place the primary action must be impossible to
-                    * miss, not the one place it is hidden.
+                    * This used to be a grid of eight template tiles with a
+                    * dashed "build one from scratch" at the end, which asked
+                    * somebody to choose between eight things before they had
+                    * decided *how* they wanted to work. The wizard asks that
+                    * question first and then gets out of the way.
                     */}
-                  <button onClick={() => setEditing({ workflow: null })} className="press ap-btn"
+                  <button onClick={() => setWizard(true)} className="press ap-btn"
                     style={{ ...primaryBtn, padding: '11px 20px' }}>
-                    <Plus size={14} /> Create workflow
+                    <Plus size={14} /> Add a workflow
                   </button>
                 </div>
-
-                {/* Somebody can start one themselves rather than waiting. */}
-                <div style={{ display: 'grid', gap: 7, gridTemplateColumns: 'repeat(auto-fill, minmax(min(250px, 100%), 1fr))' }}>
-                  {TEMPLATES.map(t => (
-                    <button key={t.key} onClick={() => void addTemplate(t.key)} disabled={!!adding}
-                      className="press" style={{
-                        display: 'flex', gap: 9, alignItems: 'flex-start', textAlign: 'left',
-                        padding: '11px 12px', border: `1px solid ${LINE}`, borderRadius: 12,
-                        background: T.raised, cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
-                      }}>
-                      {adding === t.key
-                        ? <Loader size={13} className="spin" color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />
-                        : <Plus size={13} color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />}
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>{t.name}</span>
-                        <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
-                          {t.blurb}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <p style={{ margin: '11px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5, textAlign: 'center' }}>
-                  Every one arrives switched off and is yours to change, step by step, before anybody hears
-                  from it.
-                </p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                  <button onClick={() => setEditing({ workflow: null })} className="press ap-btn"
+                  <button onClick={() => setWizard(true)} className="press ap-btn"
                     style={{ ...primaryBtn, padding: '9px 16px' }}>
-                    <Plus size={13} /> Create workflow
+                    <Plus size={13} /> Add a workflow
                   </button>
-                  <button onClick={() => setPicking(p => !p)} className="press" style={ghost()}>
-                    Start from a template
+                  <button onClick={() => setEditing({ workflow: null })} className="press" style={ghost()}>
+                    Build one from scratch
                   </button>
                 </div>
-
-                {picking && (
-                  <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))' }}>
-                    {TEMPLATES.map(t => (
-                      <button key={t.key} onClick={() => void addTemplate(t.key)} disabled={!!adding}
-                        className="press" style={{
-                          display: 'flex', gap: 8, alignItems: 'flex-start', textAlign: 'left',
-                          padding: '10px 11px', border: `1px solid ${LINE}`, borderRadius: 11,
-                          background: T.raised, cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
-                        }}>
-                        {adding === t.key
-                          ? <Loader size={12} className="spin" color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />
-                          : <Plus size={12} color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />}
-                        <span style={{ minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{t.name}</span>
-                          <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>
-                            {t.blurb}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
 
                 {flows.map((f, i) => {
                   const isOpen = open[f.id] !== false;
@@ -1345,6 +1349,9 @@ export default function ProjectCard({
             value={prompt}
             onChange={e => { setPrompt(e.target.value.slice(0, 1000)); setAnswer(''); }}
             rows={5}
+            /* Addressable, so the wizard's "describe it" door can put the
+               cursor here rather than duplicating the box inside the dialog. */
+            id={`ap-prompt-${project.id}`}
             placeholder={`e.g. ${promptsFor(project.kind)[0]}`}
             aria-label={`Describe a workflow for ${project.name}`}
             style={{
@@ -1435,6 +1442,26 @@ export default function ProjectCard({
           </p>
         )}
       </aside>
+
+      {wizard && (
+        <WorkflowWizard
+          projectName={project.name}
+          adding={adding}
+          onClose={() => setWizard(false)}
+          onScratch={() => { setWizard(false); setEditing({ workflow: null }); }}
+          /* Sends them to the box that is already on this screen rather than
+             duplicating it inside the dialog: two places to type the same
+             sentence is two places to keep in step. */
+          onDescribe={() => {
+            setWizard(false);
+            setTab('workflows');
+            window.setTimeout(() => {
+              document.getElementById(`ap-prompt-${project.id}`)?.focus();
+            }, 60);
+          }}
+          onUseTemplate={key => { void addTemplate(key).then(() => setWizard(false)); }}
+        />
+      )}
 
       {editing && (
         <WorkflowEditor

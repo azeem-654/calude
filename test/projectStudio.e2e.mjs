@@ -107,7 +107,7 @@ for (const width of [390, 1280]) {
   const t = (await p.textContent('body')) ?? '';
 
   ok(`${width}px · the example project is on screen`, /Northside Plumbing/.test(t), t.slice(0, 250));
-  ok(`${width}px · with a Create workflow button`, await p.getByRole('button', { name: /Create workflow/ }).first().isVisible());
+  ok(`${width}px · with a way to add a workflow`, await p.getByRole('button', { name: /Add a workflow/ }).first().isVisible());
 
   /* The editor: open it on a real workflow and change a real field. */
   await p.getByRole('button', { name: /^Edit$/ }).first().click();
@@ -119,7 +119,10 @@ for (const width of [390, 1280]) {
 
   /* Every step is openable and its config editable — which is what "fully
      editable" has to mean. */
-  await dialog.getByRole('button', { name: /Acknowledge it/ }).first().click();
+  /* Found by the step's own label rather than by a name typed here: the
+     template library is data and its wording is allowed to change, but the
+     editor must always open a step and show that step's stored config. */
+  await dialog.getByRole('button', { name: /Answer them/ }).first().click();
   await p.waitForTimeout(400);
   const subject = dialog.getByLabel('Subject');
   ok(`${width}px · a step's real config is on the form`,
@@ -155,7 +158,10 @@ for (const width of [390, 1280]) {
 /* ── 4. The editor refuses a workflow that cannot run ── */
 {
   const { ctx, p, errs } = await open();
-  await p.getByRole('button', { name: /Create workflow/ }).first().click();
+  /* Straight to the empty builder. The wizard's third door and this button do
+     the same thing on purpose — somebody who knows the shape they want should
+     not have to walk through a chooser first. */
+  await p.getByRole('button', { name: /Build one from scratch/ }).first().click();
   await p.waitForTimeout(700);
   const dialog = p.getByRole('dialog');
 
