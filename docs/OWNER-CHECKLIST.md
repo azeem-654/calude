@@ -446,14 +446,42 @@ Cloudflare secret.
 
 Until you set one, a workspace with no key of its own can plan and produce
 nothing — and the wizard now promises it can. So this one is worth doing
-promptly:
+promptly.
+
+**Do it in the app. It takes about three minutes and needs no terminal.**
+
+1. Open <https://aistudio.google.com/apikey> and sign in with your Google
+   account.
+2. **Create API key**, then copy it. It starts with `AIza`.
+3. In the app — signed in as **azeem@protectedcentral.com**, the install owner
+   — go to **Settings → AI Engine**.
+4. Paste it into **API Key** and save.
+5. Press **Check what Autopilot has**. That asks Google about the key and
+   writes down what it said, so a key that was refused shows as refused rather
+   than as connected.
+
+Do it on **testing.protectedcentral.com** and again on
+**app.protectedcentral.com**. They are separate databases on purpose, so a key
+set on one is genuinely not set on the other.
+
+That key is now the whole install's: every sub-account that has not brought its
+own writes with it. The bill therefore scales with customers — a customer who
+connects their own key is preferred over yours on purpose, and keeps their own
+quota.
+
+**What you will see once it is set.** An AI agent step that said "Writing is
+unavailable on this installation at the moment" starts producing drafts on the
+next pass, within five minutes. Nothing it writes is published or sent: the
+`sendEmail` and `publishContent` permissions still hold everything for you.
+
+**The terminal route, if you would rather the key never touched the database.**
+It is read only after the two above, so setting it does not override a key you
+put in the app:
 
 ```bash
 npx wrangler secret put AI_API_KEY        # production
 npx wrangler secret put AI_API_KEY --env staging
 ```
-
-That is the quickest route and keeps the key out of the database entirely.
 
 ### 15. Content review — check it weekly
 
