@@ -45,6 +45,7 @@ import WorkflowCanvas from './WorkflowCanvas';
 import ProjectFlow from './ProjectFlow';
 import WorkflowEditor from './WorkflowEditor';
 import AutopilotBot from './AutopilotBot';
+import BotSays from './BotSays';
 import ProjectLogo from './ProjectLogo';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
@@ -340,6 +341,54 @@ export default function ProjectCard({
      has not run. That is the state the loading view is for — and it is not the
      same as a project somebody has emptied, which has been planned. */
   const preparing = !flows.length && !finished.length && !project.lastPlannedAt;
+
+  /**
+   * What the bot has to say, and nothing it does not.
+   *
+   * Every line is a fact about a record on this screen: a workflow that is
+   * live, a run that happened, an approval that is waiting. Nothing is
+   * "analysing your audience" — a line like that costs nothing to write, cannot
+   * be checked, and is what a customer remembers when their mail bounces a
+   * fortnight later.
+   *
+   * The last line is the honest one, and it is the only one a brand-new project
+   * gets. A face with nothing true to say should say that rather than fill the
+   * silence.
+   */
+  const botLines: string[] = (() => {
+    const say: string[] = [];
+    const liveFlows = flows.filter(f => f.status === 'active');
+
+    if (!live) {
+      return ['This project is paused, so I am not doing anything on it. Switch it on and I pick up at the next pass.'];
+    }
+
+    if (liveFlows.length) {
+      say.push(`${liveFlows.length} workflow${liveFlows.length === 1 ? ' is' : 's are'} switched on. I check them every five minutes.`);
+    }
+    if (agents.length) {
+      const scheduled = agents.filter(a => a.scheduled && a.workflow.status === 'active').length;
+      if (scheduled) say.push(`${scheduled} agent${scheduled === 1 ? '' : 's'} run on a schedule. Everything they write is a draft.`);
+    }
+    const ok = runs.find(r => r.outcome === 'ok');
+    if (ok) say.push(ok.detail);
+    const failed = runs.find(r => r.outcome === 'failed');
+    if (failed) say.push(`Something needs you: ${failed.detail}`);
+    if ((day?.awaiting.length ?? 0) > 0) {
+      const n = day?.awaiting.length ?? 0;
+      say.push(`${n} thing${n === 1 ? '' : 's'} waiting on you before I can go ahead.`);
+    }
+    if (finished.length) {
+      say.push(`${finished.length} thing${finished.length === 1 ? '' : 's'} carried out today.`);
+    }
+
+    if (!say.length) {
+      say.push(preparing
+        ? 'I am reading this client\u2019s profile. Nothing has been written yet — the first pass runs within the day.'
+        : 'Nothing has happened here today. I run on the server every five minutes whether or not this is open.');
+    }
+    return say;
+  })();
 
   async function addTemplate(key: string) {
     const t = TEMPLATES.find(x => x.key === key);
@@ -1157,6 +1206,10 @@ export default function ProjectCard({
               </span>
             </span>
           </div>
+          {/* What it is actually doing, in its own words — every line a fact
+              about a record on this screen. */}
+          <BotSays lines={botLines} />
+
           <p style={{ margin: '0 0 9px', fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
             Describe a workflow in simple words. It writes it for <strong>{project.portfolioName || 'this client'}</strong>,
             in their voice.

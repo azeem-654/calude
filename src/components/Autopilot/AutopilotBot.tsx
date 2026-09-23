@@ -58,17 +58,32 @@ export default function AutopilotBot({
         {/* Visor */}
         <rect x="17" y="23" width="30" height="19" rx="9" fill="#12103a" />
 
-        {/* Eyes. Closed is a flat line, which is what "paused" looks like. */}
+        {/* Eyes. Closed is a flat line, which is what "paused" looks like.
+            ── Why the eyes are two groups rather than one ──
+            The blink scales the whole pair vertically; the gaze slides them
+            sideways. One element cannot carry both without the two transforms
+            fighting over `transform`, which in practice means whichever is
+            declared last wins and the other silently does nothing. Nesting
+            them gives each its own. */}
         {awake ? (
           <g className="ap-bot-eyes">
-            <circle cx="26" cy="32.5" r="3.6" fill="#7dd3fc" />
-            <circle cx="38" cy="32.5" r="3.6" fill="#7dd3fc" />
+            <g className={busy ? 'ap-bot-gaze ap-bot-gaze-fast' : 'ap-bot-gaze'}>
+              <circle cx="26" cy="32.5" r="3.6" fill="#7dd3fc" />
+              <circle cx="38" cy="32.5" r="3.6" fill="#7dd3fc" />
+            </g>
           </g>
         ) : (
           <g>
             <rect x="22.5" y="31.5" width="7" height="2" rx="1" fill="#64748b" />
             <rect x="34.5" y="31.5" width="7" height="2" rx="1" fill="#64748b" />
           </g>
+        )}
+
+        {/* The scan across the visor, only while something is actually in
+            flight. A permanent one would say "working" on a project that has
+            been idle since Tuesday. */}
+        {awake && busy && (
+          <rect className="ap-bot-scan" x="17" y="23" width="7" height="19" rx="3.5" fill="#7dd3fc" opacity="0.18" />
         )}
 
         {/* A mouth line, so the visor is not a blank slab. */}

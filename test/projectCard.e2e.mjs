@@ -119,6 +119,20 @@ for (const width of [390, 1280]) {
 
   ok(`${width}px · the Edit with AI column is beside it`,
     /Edit with AI/.test(t) && /Update project/.test(t));
+
+  /* ── The bot says something, and it is true ──
+     A face that talks is the most persuasive thing on a screen and the easiest
+     place in this product to lie. Every line it can say is a fact about a
+     record: a workflow that is switched on, a run that happened, an approval
+     that is waiting. This asserts one of those is on screen, and that none of
+     the stock phrases a caption like this attracts is — "analysing your
+     audience" costs nothing to write and cannot be checked. */
+  ok(`${width}px · the bot says what is actually happening`,
+    /switched on\. I check them every five minutes|Nothing has happened here today|paused, so I am not doing anything|reading this client|waiting on you|carried out today/.test(t),
+    t.slice(0, 300));
+  ok(`${width}px · and never something it could not know`,
+    !/analysing your|optimi[sz]ing your|crunching|thinking\u2026|working on it\u2026/i.test(t),
+    (t.match(/[^.]*(analysing|optimi[sz]ing|crunching)[^.]*/i) ?? [''])[0]);
   ok(`${width}px · which says a new one arrives switched off`,
     /arrives switched off/.test(t), 'the warning before the button is missing');
 

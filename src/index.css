@@ -1348,6 +1348,20 @@ main section { min-width: 0; }
   .ap-bot-antenna { animation: ap-bot-ping 2.4s ease-in-out infinite; transform-origin: 32px 7px; }
   .ap-bot-antenna-fast { animation-duration: 1.1s; }
 
+  /* The gaze. Small, and with long holds at each end: eyes that slide
+     continuously read as a fairground ride rather than as something looking
+     at things. Two units either side is about a pupil's width at this size. */
+  .ap-bot-gaze { animation: ap-bot-look 7.4s ease-in-out infinite; }
+  .ap-bot-gaze-fast { animation-duration: 3.2s; }
+
+  /* The visor scan, drawn only while something is in flight. */
+  .ap-bot-scan { animation: ap-bot-scan 1.9s ease-in-out infinite; }
+
+  /* What the bot says, arriving. One pass, not a loop: the movement is the
+     change of line, and a caption that pulses on its own would be asking for
+     attention it has no news to justify. */
+  .bot-says { animation: bot-says-in 420ms ease-out both; }
+
   /* The button that opens the wizard, so somebody arriving on an empty screen
      has something to look at that is also the thing to press. */
   .ap-cta-pulse { animation: ap-cta 2.6s ease-in-out infinite; }
@@ -1361,6 +1375,23 @@ main section { min-width: 0; }
 @keyframes ap-bot-blink {
   0%, 92%, 100% { transform: scaleY(1); }
   95%           { transform: scaleY(0.08); }
+}
+
+@keyframes bot-says-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ap-bot-look {
+  0%, 26%    { transform: translateX(0); }
+  34%, 52%   { transform: translateX(2.2px); }
+  60%, 78%   { transform: translateX(-2.2px); }
+  86%, 100%  { transform: translateX(0); }
+}
+
+@keyframes ap-bot-scan {
+  0%, 100% { transform: translateX(0); opacity: 0.06; }
+  50%      { transform: translateX(23px); opacity: 0.26; }
 }
 
 @keyframes ap-bot-ping {
