@@ -43,6 +43,9 @@ interface Req {
   status?: string;
   kind?: string;
   guardrails?: Record<string, string>;
+  /* One permission, for `set_guardrail`. */
+  key?: string;
+  value?: string;
   /* Infrastructure, per project */
   purchaseMode?: string;
   domains?: number;
@@ -543,6 +546,52 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       .bind(status, nowIso(), id, accountId).run();
     if (!res.meta.changes) return fail('That project is not in this workspace.');
     return json({ success: true, projects: await listProjects() });
+  }
+
+  /**
+   * Change one permission on one project.
+   *
+   * ── Why this is its own action ──
+   *
+   * `save_project` already merges guardrails, but it takes the whole record —
+   * name, objective, targets, the launch plan — so a screen that only wants to
+   * turn SMS off has to send everything back, and anything it gets wrong or
+   * leaves out is written over the top. One switch should send one switch.
+   *
+   * ── Why one at a time ──
+   *
+   * Each of these is a permission somebody is granting. Sent one at a time, a
+   * failed request leaves the other six exactly as they were, and the screen
+   * can say which one did not take. A batch that half-applies is the shape of
+   * bug where a customer believes sending is off and it is not.
+   */
+  if (act === 'set_guardrail') {
+    const id = String(d.id ?? '').trim();
+    const key = String(d.key ?? '').trim();
+    const value = String(d.value ?? '').trim();
+
+    /* Only the keys this version knows. A guardrail the server does not read is
+       a permission the screen would show as set and nothing would honour. */
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_GUARDRAILS, key)) {
+      return fail(`"${key}" is not a permission this version has.`);
+    }
+    if (value !== 'off' && value !== 'approval' && value !== 'on') {
+      return fail('A permission is off, asks first, or runs on its own.');
+    }
+
+    const row = await env.DB.prepare('SELECT guardrails FROM crm_projects WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ guardrails: string }>();
+    if (!row) return fail('That project is not in this workspace.');
+
+    let current = { ...DEFAULT_GUARDRAILS } as Record<string, string>;
+    try { current = { ...current, ...JSON.parse(row.guardrails ?? '{}') as Record<string, string> }; }
+    catch { /* unreadable: the defaults, which are the cautious ones */ }
+    current[key] = value;
+
+    await env.DB.prepare('UPDATE crm_projects SET guardrails = ?, updated_at = ? WHERE id = ? AND account_id = ?')
+      .bind(JSON.stringify(current), nowIso(), id, accountId).run();
+
+    return json({ success: true, guardrails: current, projects: await listProjects() });
   }
 
   if (act === 'delete_project') {

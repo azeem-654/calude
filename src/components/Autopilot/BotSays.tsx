@@ -58,7 +58,7 @@ export default function BotSays({ lines }: { lines: string[] }) {
       style={{
         margin: '0 0 9px', padding: '8px 10px', borderRadius: 10,
         background: 'rgba(91,124,250,0.10)', border: '1px solid rgba(91,124,250,0.22)',
-        fontSize: 11, color: '#c3cdf0', lineHeight: 1.5,
+        fontSize: 11, color: '#3b4a7a', lineHeight: 1.5,
       }}
     >
       {line}

@@ -90,6 +90,9 @@ interface Reply {
   used?: number;
   /* What a scheduled agent made, and where it put it. */
   runs?: unknown[];
+  /* Who is standing where in each workflow, and how many runs each has had. */
+  stepState?: unknown;
+  runCounts?: unknown;
   outcome?: string;
   detail?: string;
   link?: unknown;
@@ -265,10 +268,32 @@ export interface ProjectWorkflow {
  * list under Marketing → Automations is a different list and neither writes the
  * other's rows.
  */
-export async function fetchWorkflows(projectId: string): Promise<{ workflows: ProjectWorkflow[]; error: string }> {
+/** How many runs are parked on each step, keyed by workflow then node. */
+export type StepStates = Record<string, Record<string, { waiting: number; done: number }>>;
+/** How many runs a workflow has, in flight and finished. */
+export type RunCounts = Record<string, { active: number; done: number }>;
+
+export async function fetchWorkflows(projectId: string): Promise<{
+  workflows: ProjectWorkflow[];
+  /* Sent with the graphs so the canvas cannot draw a step as busy while the
+     header says nothing is running. */
+  stepState: StepStates;
+  runCounts: RunCounts;
+  error: string;
+}> {
   const r = await call('workflows', { projectId });
-  if (!r.success) return { workflows: [], error: String(r.error ?? 'Could not read this project\'s workflows.') };
-  return { workflows: (r.workflows ?? []) as ProjectWorkflow[], error: '' };
+  if (!r.success) {
+    return {
+      workflows: [], stepState: {}, runCounts: {},
+      error: String(r.error ?? 'Could not read this project\'s workflows.'),
+    };
+  }
+  return {
+    workflows: (r.workflows ?? []) as ProjectWorkflow[],
+    stepState: (r.stepState ?? {}) as StepStates,
+    runCounts: (r.runCounts ?? {}) as RunCounts,
+    error: '',
+  };
 }
 
 export const setWorkflowStatus = (workflowId: string, status: 'draft' | 'active' | 'paused') =>

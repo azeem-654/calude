@@ -529,10 +529,23 @@ async function runAgentNode(
 export async function runProjectAgents(env: Env): Promise<AgentReport> {
   const report: AgentReport = { ran: 0, produced: 0, skipped: 0, failed: 0 };
 
+  /*
+   * Only the rows that could possibly be due.
+   *
+   * Without the date test this read every active workflow in the install on
+   * every one of the 288 daily ticks, parsed each graph, and threw almost all
+   * of them away because `cadenceDue` said no. The shortest cadence is hourly,
+   * so anything that ran within the hour cannot be due and the database can
+   * skip it against the same index it already keeps. `cadenceDue` is still the
+   * decision — this only avoids reading rows it is certain to refuse.
+   */
+  const earliest = new Date(Date.now() - CADENCE_HOURS.hourly * 3_600_000).toISOString();
   const { results } = await env.DB.prepare(
     `SELECT id, account_id, project_id, name, nodes, last_run_at
-     FROM crm_project_workflows WHERE status = 'active' ORDER BY last_run_at IS NOT NULL, last_run_at LIMIT 200`,
-  ).all<WorkflowRow>();
+     FROM crm_project_workflows
+     WHERE status = 'active' AND (last_run_at IS NULL OR last_run_at < ?)
+     ORDER BY last_run_at IS NOT NULL, last_run_at LIMIT 200`,
+  ).bind(earliest).all<WorkflowRow>();
 
   let budget = MAX_AGENTS_PER_TICK;
 

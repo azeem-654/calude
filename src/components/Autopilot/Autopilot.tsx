@@ -101,15 +101,15 @@ export default function Autopilot() {
 
   return (
     /*
-     * `data-noinvert` is load-bearing, not decoration.
+     * Deliberately *without* `data-noinvert`.
      *
-     * The app's dark mode is one `filter: invert(1)` on <html>. A screen
-     * authored dark would be inverted *to light* by it; the same stylesheet
-     * inverts `[data-noinvert]` back, so this stays dark in both app themes.
-     * Without it the whole control room flips to white the moment somebody
-     * switches the theme, and only here.
+     * The app's dark mode is one `filter: invert(1)` on <html>, and anything
+     * carrying that attribute is inverted back — i.e. opted out of theming.
+     * This screen carried it while it was authored dark, which is exactly why
+     * it was the one screen that did not change when somebody switched the
+     * theme. It is authored light now and themes with everything else.
      */
-    <div data-noinvert style={{ minHeight: '100vh', background: T.bg, color: T.ink }}>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.ink }}>
       <div style={{
         padding: 'clamp(16px, 3vw, 28px) clamp(16px, 3vw, 32px) 10px',
         borderBottom: `1px solid ${T.lineSoft}`,

@@ -252,11 +252,18 @@ const STAGES: { id: Stage; label: string; icon: typeof Play }[] = [
 ];
 
 export default function WorkflowEditor({
-  projectId, workflow, onClose, onSaved,
+  projectId, workflow, focusStep, onClose, onSaved,
 }: {
   projectId: string;
   /** Null for a new one. */
   workflow: ProjectWorkflow | null;
+  /**
+   * The step to open on, when somebody clicked one on the canvas rather than
+   * pressing Edit. Read once, as the initial selection, rather than watched:
+   * after the editor is open the selection is the customer's, and a prop that
+   * kept reasserting itself would drag them back to where they came in.
+   */
+  focusStep?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -272,7 +279,7 @@ export default function WorkflowEditor({
   /* Empty means "whichever is first". Derived below rather than synced in an
      effect: an effect would set state during the first render pass, and the
      fallback is a one-line read that cannot get out of step with the list. */
-  const [picked, setPicked] = useState<string>('');
+  const [picked, setPicked] = useState<string>(focusStep ?? '');
   const [stage, setStage] = useState<Stage>('configure');
   const [addingAfter, setAddingAfter] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -452,7 +459,8 @@ export default function WorkflowEditor({
 
   return (
     <div
-      data-noinvert
+      /* No `data-noinvert`: the editor themes with the app, like the board
+         behind it. It carried one while this screen was authored dark. */
       role="dialog"
       aria-modal="true"
       aria-label={workflow ? `Edit ${workflow.name}` : 'New workflow'}
@@ -650,7 +658,7 @@ export default function WorkflowEditor({
                           display: 'inline-flex', alignItems: 'center', gap: 5, padding: '10px 10px',
                           border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
                           fontSize: 12, fontWeight: on ? 800 : 600,
-                          color: on ? '#a9bbff' : MUTED,
+                          color: on ? T.accent : MUTED,
                           borderBottom: `2px solid ${on ? ACCENT : 'transparent'}`, marginBottom: -1,
                         }}>
                           <SIc size={11} /> {label}

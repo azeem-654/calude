@@ -1279,7 +1279,7 @@ main section { min-width: 0; }
   height: 2px;
   /* Dark, because the canvas this sits on is. A light rail here reads as a
      bright line between two dark cards rather than as a connector. */
-  background: #243050;
+  background: #e6e9f0;
   overflow: hidden;
   border-radius: 999px;
 }
@@ -1295,7 +1295,7 @@ main section { min-width: 0; }
   position: relative;
   height: 2px;
   border-radius: 999px;
-  background: #1b2440;
+  background: #eef0f6;
   overflow: hidden;
 }
 .ap-tick-bar::after {
@@ -1408,4 +1408,122 @@ main section { min-width: 0; }
    and the list is a list, and side by side below ~880px neither is usable. */
 @media (max-width: 880px) {
   .ap-editor { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   AI Autopilot: the parts that move.
+
+   This screen is the one place in the product where motion is doing a job
+   rather than decorating. The thing it has to communicate is that work is
+   happening on a server nobody can see, five minutes at a time — and a still
+   screenshot of a queue is indistinguishable from a broken one.
+
+   Every rule is inside a `prefers-reduced-motion` block, and nothing here
+   carries information that is only in the movement: a pulsing dot also has a
+   colour, a sheen crosses a button that is already the brightest thing on the
+   screen. Somebody who turns motion off loses the liveliness and none of the
+   meaning.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* The sheen's track is defined outside the media block so the pseudo-element
+   exists either way; only its animation is conditional. */
+.ap-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.34), transparent);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+
+.ap-glow { position: relative; }
+.ap-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, #6d5ef0, #22d3ee, #a855f7, #6d5ef0);
+  background-size: 300% 300%;
+  /* Draws the gradient as a border rather than a fill: the mask keeps the
+     middle transparent so the card's own background shows through. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* A dot that says something is live. It keeps its colour when still, because
+   the colour is the information and the pulse is only the emphasis. */
+.ap-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #16a34a;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ap-btn::after { animation: ap-sheen 3.8s ease-in-out infinite; }
+  .ap-glow::before { animation: ap-border-drift 7s linear infinite; }
+  .ap-live-dot { animation: ap-live 1.8s ease-in-out infinite; }
+  /* A step the engine is standing on. Slow, because it may be standing there
+     for two days waiting out a delay. */
+  .ap-working { animation: ap-working 2.6s ease-in-out infinite; }
+  /* Each produced thing, arriving in the carousel. One pass, not a loop. */
+  .ap-bubble-in { animation: ap-bubble 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  /* The rail of produced things, drifting so it reads as a feed rather than a
+     list that has stopped. */
+  .ap-orbit { animation: ap-orbit 9s ease-in-out infinite; }
+}
+
+@keyframes ap-sheen {
+  0%, 62% { transform: translateX(-120%); }
+  92%, 100% { transform: translateX(420%); }
+}
+
+@keyframes ap-border-drift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes ap-live {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+}
+
+@keyframes ap-working {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91, 70, 229, 0.28); }
+  60% { box-shadow: 0 0 0 7px rgba(91, 70, 229, 0); }
+}
+
+@keyframes ap-bubble {
+  from { opacity: 0; transform: translateY(8px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ap-orbit {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* The mark a project wears until its client has a logo. Three speeds, so it
+   reads as machinery rather than as a spinner; still, it is a clean geometric
+   mark, and nothing it says is only said by the movement. */
+@keyframes ai-mark-spin { to { transform: rotate(360deg); } }
+@keyframes ai-mark-spin-back { to { transform: rotate(-360deg); } }
+@keyframes ai-mark-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.9); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ai-mark-ring-slow { animation: ai-mark-spin 14s linear infinite; }
+  .ai-mark-ring-fast { animation: ai-mark-spin-back 7s linear infinite; }
+  .ai-mark-core { animation: ai-mark-breathe 3.2s ease-in-out infinite; }
 }

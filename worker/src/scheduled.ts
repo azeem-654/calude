@@ -518,7 +518,9 @@ export async function recordTick(env: Env, ms: number, report: TickReport): Prom
       JSON.stringify(report.notes),
     ).run();
 
-    await env.DB.prepare("DELETE FROM crm_ticks WHERE at < datetime('now', '-4 days')").run();
+    /* Trimming the tick table moved to `runHousekeeping`, which runs hourly.
+       Doing it here meant a delete statement on every one of the 288 daily
+       ticks to remove, almost always, nothing. */
   } catch {
     /* A health readout that cannot be written is not a reason to fail a tick
        that has already sent real mail. */

@@ -1,85 +1,95 @@
 /**
  * The AI Autopilot screen's own palette.
  *
- * ── Why this screen is dark when the rest of the app is not ──
+ * ── Why this is light, after a spell of being dark ──
  *
- * Everything else here is a CRM: lists, forms, tables, read in daylight for
- * hours. This screen is a control room — a graph of machinery, with live state
- * moving on it — and the things that have to stand out are a running workflow,
- * a step that failed and a decision waiting on somebody. Those read as light on
- * dark and wash out on white.
+ * It was authored dark, on the argument that a board of live machinery reads
+ * better on black. It does — but only on its own. Sitting inside an app whose
+ * every other screen is white, it made Autopilot look like a different product
+ * bolted on, and in the app's *dark* mode it was the one screen that did not
+ * change when somebody switched the theme.
  *
- * ── The bit that is not obvious ──
+ * So the rule is the boring one, and it is the right one: **this screen is
+ * whatever theme the app is in.** It is authored light, like everything else,
+ * and the app's dark mode inverts it along with the rest.
+ *
+ * ── The mechanism, because it is not obvious ──
  *
  * The app's dark mode is a single `filter: invert(1) hue-rotate(180deg)` on
- * `<html>`, which is a blunt but working answer for a product styled with
- * inline colours. A screen authored dark would be *inverted to light* by it —
- * so the Autopilot root carries `data-noinvert`, which the same stylesheet
- * inverts back. The sums:
+ * `<html>` — blunt, but a working answer for a product styled with inline
+ * colours. Anything carrying `data-noinvert` is inverted *back*, i.e. opted out
+ * of theming. This screen therefore must **not** carry it: that attribute is
+ * what pinned it dark in both themes.
  *
- *   light app → no filter → renders as authored → dark ✓
- *   dark app  → inverted, then inverted back by data-noinvert → dark ✓
- *
- * Getting that wrong is not subtle: the whole screen flips to white the moment
- * somebody switches the app's theme, and only in that one place.
+ * The exception is photographic content — a logo somebody uploaded, a post
+ * thumbnail. Those still carry `data-noinvert`, because a customer's own
+ * artwork rendered in negative is not a dark theme, it is a fault.
  */
 
 export const T = {
-  /* The ground. Blue-black rather than grey-black: a pure neutral makes the
-     accent colours look like they are floating on a different surface. */
-  bg: '#0b1020',
-  /* A project card. One step up from the ground so a stack of six reads as six
-     things rather than as one long page. */
-  panel: '#121a2e',
+  /* The ground the cards sit on. Barely tinted: a flat white page makes a
+     white card invisible, and a grey one makes the whole screen feel dim. */
+  bg: '#f6f7fb',
+  /* A project card. */
+  panel: '#ffffff',
   /* Anything sitting on a panel — a workflow row, a node, an input. */
-  raised: '#18223a',
-  /* The AI column, which is meant to feel like a different kind of object. */
-  aside: '#141d33',
+  raised: '#f9fafc',
+  /* The AI column, which is meant to feel like a different kind of object, so
+     it takes a wash of the accent rather than another grey. */
+  aside: '#f4f5ff',
 
-  line: '#243050',
-  lineSoft: '#1b2440',
+  line: '#e6e9f0',
+  lineSoft: '#f0f2f7',
 
-  ink: '#e9eefb',
-  muted: '#8f9dbd',
-  faint: '#65748f',
+  ink: '#17191c',
+  muted: '#6b7280',
+  faint: '#9aa3b2',
 
-  accent: '#5b7cfa',
-  accentSoft: '#1e2a4d',
-  violet: '#8b6cf6',
+  accent: '#5b46e5',
+  accentSoft: '#eef0ff',
+  violet: '#7c3aed',
 
-  good: '#34d399',
-  goodSoft: '#0f2f26',
-  warn: '#fbbf24',
-  warnSoft: '#332611',
-  bad: '#f87171',
-  badSoft: '#3a1c1f',
+  good: '#16a34a',
+  goodSoft: '#f0fdf4',
+  /* Dark enough to read as text on its own tint. `#fbbf24` is a fine dot and
+     an unreadable word. */
+  warn: '#b45309',
+  warnSoft: '#fffbeb',
+  bad: '#dc2626',
+  badSoft: '#fef2f2',
 } as const;
 
 /**
- * A node's colour on a dark ground.
+ * A node's colour.
  *
- * The light palette's tints are unusable here — `#f5f3ff` on `#121a2e` is a
- * white brick. Each one is a saturated foreground with a dark, low-alpha bed of
- * the same hue, which is what keeps a row of six nodes legible as six *kinds*
- * rather than six white rectangles.
+ * Kept as its own table rather than read from `NODE_LOOK` because this one also
+ * carries an `edge` — the border a selected or hovered node takes — and a
+ * two-field table that has to be joined with a three-field one at every call
+ * site is how the two end up disagreeing.
+ *
+ * The name is `nodeTone`; `nodeDark` remains as an alias because it is called
+ * in five files and renaming it in the same commit that changed every colour
+ * would make the diff unreadable.
  */
-export const NODE_DARK: Record<string, { fg: string; bg: string; edge: string }> = {
-  trigger:      { fg: '#a78bfa', bg: 'rgba(139,108,246,0.14)', edge: 'rgba(139,108,246,0.35)' },
-  ai:           { fg: '#c084fc', bg: 'rgba(192,132,252,0.14)', edge: 'rgba(192,132,252,0.35)' },
-  wait:         { fg: '#f472b6', bg: 'rgba(244,114,182,0.13)', edge: 'rgba(244,114,182,0.32)' },
-  condition:    { fg: '#fbbf24', bg: 'rgba(251,191,36,0.13)',  edge: 'rgba(251,191,36,0.32)' },
-  send_email:   { fg: '#60a5fa', bg: 'rgba(96,165,250,0.14)',  edge: 'rgba(96,165,250,0.34)' },
-  send_sms:     { fg: '#2dd4bf', bg: 'rgba(45,212,191,0.13)',  edge: 'rgba(45,212,191,0.32)' },
-  add_tag:      { fg: '#34d399', bg: 'rgba(52,211,153,0.13)',  edge: 'rgba(52,211,153,0.32)' },
-  remove_tag:   { fg: '#f87171', bg: 'rgba(248,113,113,0.13)', edge: 'rgba(248,113,113,0.32)' },
-  create_task:  { fg: '#34d399', bg: 'rgba(52,211,153,0.13)',  edge: 'rgba(52,211,153,0.32)' },
-  assign_to:    { fg: '#38bdf8', bg: 'rgba(56,189,248,0.13)',  edge: 'rgba(56,189,248,0.32)' },
-  update_field: { fg: '#94a3b8', bg: 'rgba(148,163,184,0.12)', edge: 'rgba(148,163,184,0.3)' },
-  integration:  { fg: '#818cf8', bg: 'rgba(129,140,248,0.14)', edge: 'rgba(129,140,248,0.34)' },
-  end:          { fg: '#8f9dbd', bg: 'rgba(143,157,189,0.1)',  edge: 'rgba(143,157,189,0.26)' },
+export const NODE_TONE: Record<string, { fg: string; bg: string; edge: string }> = {
+  trigger:      { fg: '#7c3aed', bg: '#f5f3ff', edge: '#ddd6fe' },
+  ai:           { fg: '#9333ea', bg: '#faf5ff', edge: '#e9d5ff' },
+  wait:         { fg: '#db2777', bg: '#fdf2f8', edge: '#fbcfe8' },
+  condition:    { fg: '#c2410c', bg: '#fff7ed', edge: '#fed7aa' },
+  send_email:   { fg: '#2563eb', bg: '#eff6ff', edge: '#bfdbfe' },
+  send_sms:     { fg: '#0d9488', bg: '#f0fdfa', edge: '#99f6e4' },
+  add_tag:      { fg: '#16a34a', bg: '#f0fdf4', edge: '#bbf7d0' },
+  remove_tag:   { fg: '#dc2626', bg: '#fef2f2', edge: '#fecaca' },
+  create_task:  { fg: '#16a34a', bg: '#f0fdf4', edge: '#bbf7d0' },
+  assign_to:    { fg: '#0369a1', bg: '#eff6ff', edge: '#bae6fd' },
+  update_field: { fg: '#475569', bg: '#f8fafc', edge: '#e2e8f0' },
+  integration:  { fg: '#4f46e5', bg: '#eef2ff', edge: '#c7d2fe' },
+  end:          { fg: '#64748b', bg: '#f8fafc', edge: '#e2e8f0' },
 };
 
-export const nodeDark = (type: string) => NODE_DARK[type] ?? NODE_DARK.end;
+export const nodeTone = (type: string) => NODE_TONE[type] ?? NODE_TONE.end;
+/** @deprecated Use `nodeTone`. Kept so one commit does not touch five files. */
+export const nodeDark = nodeTone;
 
 /* ── Shapes used often enough to be worth naming ── */
 
@@ -87,6 +97,9 @@ export const card: React.CSSProperties = {
   background: T.panel,
   border: `1px solid ${T.line}`,
   borderRadius: 18,
+  /* A shadow rather than only a border: on a tinted ground a bordered white box
+     reads as a hole, and a lifted one reads as a card. */
+  boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 8px 24px -16px rgba(16,24,40,0.18)',
 };
 
 export const input: React.CSSProperties = {
@@ -95,7 +108,7 @@ export const input: React.CSSProperties = {
   padding: '9px 11px',
   borderRadius: 10,
   border: `1px solid ${T.line}`,
-  background: T.raised,
+  background: '#fff',
   color: T.ink,
   fontSize: 12.5,
   outline: 'none',
@@ -109,7 +122,7 @@ export const ghostBtn: React.CSSProperties = {
   padding: '6px 11px',
   borderRadius: 999,
   border: `1px solid ${T.line}`,
-  background: T.raised,
+  background: '#fff',
   color: T.ink,
   fontSize: 11.5,
   fontWeight: 700,
@@ -118,17 +131,29 @@ export const ghostBtn: React.CSSProperties = {
   flexShrink: 0,
 };
 
+/**
+ * The button that does the main thing on whatever it is in.
+ *
+ * A gradient rather than a flat fill, and a real shadow in the accent's own
+ * hue: a flat indigo rectangle is the default every admin panel ships with, and
+ * this screen is the one somebody is deciding whether to trust. Pair it with
+ * `className="ap-btn"` for the sheen that crosses it — the class is where the
+ * motion lives, so `prefers-reduced-motion` can reach it.
+ */
 export const primaryBtn: React.CSSProperties = {
+  position: 'relative',
+  overflow: 'hidden',
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
   padding: '10px 17px',
   borderRadius: 11,
   border: 'none',
-  background: T.accent,
+  background: 'linear-gradient(135deg, #6d5ef0, #4a36d6)',
   color: '#fff',
   fontSize: 12.5,
   fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
+  boxShadow: '0 1px 2px rgba(74,54,214,0.24), 0 10px 22px -12px rgba(74,54,214,0.7)',
 };

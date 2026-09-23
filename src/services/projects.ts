@@ -116,6 +116,17 @@ export const savePortfolio = (p: { id?: string; name: string; profile: Record<st
   call('save_portfolio', p);
 
 /**
+ * Change one permission on one project.
+ *
+ * One switch, one request. `saveProject` would also do it, but it takes the
+ * whole record — so a screen that wants to turn SMS off would have to send the
+ * name, the objective, the targets and the launch plan back, and anything it
+ * got wrong would be written over the top.
+ */
+export const setGuardrail = (id: string, key: string, value: 'off' | 'approval' | 'on') =>
+  call('set_guardrail', { id, key, value });
+
+/**
  * Read a client's own website into a portfolio draft.
  *
  * A draft, deliberately. What comes back becomes the voice of every email and

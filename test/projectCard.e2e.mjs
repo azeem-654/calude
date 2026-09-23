@@ -90,7 +90,7 @@ for (const width of [390, 1280]) {
     /Created/.test(t) && /workflow.? active/.test(t), (t.match(/Created[^·]{0,40}/) ?? ['not found'])[0]);
 
   /* Its own tab bar — the five sections of a project. */
-  for (const tab of ['Workflows', 'AI Agents', 'Content Library', 'Analytics', 'Project Settings']) {
+  for (const tab of ['Workflows', 'AI Agents', 'Assets', 'Activity', 'Analytics', 'Project Settings']) {
     ok(`${width}px · it has a ${tab} tab`, await p.getByRole('tab', { name: new RegExp(tab) }).first().isVisible());
   }
 
@@ -149,15 +149,22 @@ for (const width of [390, 1280]) {
   await p.getByRole('tab', { name: /AI Agents/ }).first().click();
   await p.waitForTimeout(500);
   let t = (await p.textContent('body')) ?? '';
-  ok('AI Agents shows what the project may do', /What this project is allowed to do/.test(t), t.slice(0, 200));
-  /* The guardrail that decides whether anybody gets emailed, in plain words. */
-  ok('and names each permission in plain words', /Asks first|On its own|Off/.test(t));
+  ok('AI Agents points at what the project may do', /What this project is allowed to do/.test(t), t.slice(0, 200));
+  /* It used to list the permissions here, unchangeable. Now it summarises them
+     and sends you where they can actually be set. */
+  ok('and says where they are changed', /Project Settings/.test(t));
 
-  await p.getByRole('tab', { name: /Content Library/ }).first().click();
+  await p.getByRole('tab', { name: /^Assets/ }).first().click();
   await p.waitForTimeout(500);
   t = (await p.textContent('body')) ?? '';
-  ok('Content Library says what it holds rather than being blank',
-    /Nothing produced today|link to the real record/.test(t), t.slice(0, 200));
+  ok('Assets says what it holds rather than being blank',
+    /Nothing made yet|lives in the module that owns it|shortcut/.test(t), t.slice(0, 200));
+
+  /* Content Library was a second tab over the same records, fed from a
+     different place, so a post written yesterday showed in one and not the
+     other. One tab now — this pins that it does not come back. */
+  ok('and there is no second tab over the same records',
+    (await p.getByRole('tab', { name: /Content Library/ }).count()) === 0);
 
   await p.getByRole('tab', { name: /Analytics/ }).first().click();
   await p.waitForTimeout(600);
@@ -168,6 +175,15 @@ for (const width of [390, 1280]) {
   await p.waitForTimeout(600);
   t = (await p.textContent('body')) ?? '';
   ok('Settings still reaches the sending pool', /domain|sending/i.test(t), t.slice(0, 200));
+
+  /* ── The permissions are controls, not a readout ──
+     They were listed unchangeably on the Agents tab, which is the worst of
+     both: the first thing somebody wants after reading one is to change it,
+     and there was nowhere that could be done short of deleting the project. */
+  ok('the permissions are on Settings and are settable',
+    (await p.getByRole('radiogroup', { name: /Send email/ }).count()) > 0, t.slice(0, 250));
+  ok('and each says what it actually governs, not just its key name',
+    /Email this client|cost money per message|never run until switched on/.test(t), t.slice(0, 400));
 
   ok('nothing threw', errs.filter(e => !/ERR_CERT|fonts\.googleapis/.test(e)).length === 0, errs.join(' | '));
   await ctx.close();

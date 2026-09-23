@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Workflow as WorkflowIcon, Bot, Library, BarChart3, Settings as SettingsIcon,
+  Workflow as WorkflowIcon, Bot, BarChart3, Settings as SettingsIcon,
   Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle,
   ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2,
   Image as ImageIcon, Activity, Clock,
@@ -37,7 +37,7 @@ import {
 import {
   fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
   fetchProjectDay, approveAction, rejectAction, fetchAgentRuns,
-  type ProjectWorkflow, type ProjectDay, type AgentRun,
+  type ProjectWorkflow, type ProjectDay, type AgentRun, type StepStates, type RunCounts,
 } from '../../services/autopilot';
 import { KIND_LABEL, type Portfolio, type Project } from '../../services/projects';
 import { useApp } from '../../context/AppContext';
@@ -46,12 +46,15 @@ import ProjectFlow from './ProjectFlow';
 import WorkflowEditor from './WorkflowEditor';
 import AutopilotBot from './AutopilotBot';
 import BotSays from './BotSays';
+import ProducedRail from './ProducedRail';
+import Guardrails from './Guardrails';
+import VoicePrompt from './VoicePrompt';
 import ProjectLogo from './ProjectLogo';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
 
-import { T, nodeDark } from './theme';
+import { T, nodeTone, primaryBtn } from './theme';
 
 const INK = T.ink;
 const MUTED = T.muted;
@@ -67,17 +70,28 @@ const ACCENT = T.accent;
  * lists the steps the AI actually performs, each one a link into the workflow
  * that holds it, so deleting the step deletes the duty.
  *
- * `assets` and `activity` are new and are the two questions the board could not
- * answer: where is the work it produced, and what is it about to do.
+ * `assets` and `activity` answer the two questions the board could not: where
+ * is the work it produced, and what is it about to do.
+ *
+ * ── Assets and Content Library used to be two tabs ──
+ *
+ * They answered the same question in two shapes — a grid of thumbnails and a
+ * list of the same records — and nobody could say which one to open, including
+ * the person who built them. Worse, they were fed from slightly different
+ * places: Assets from the produced records, the Library from today's ledger
+ * only, so a post written yesterday appeared in one and not the other and the
+ * screen contradicted itself.
+ *
+ * One tab now, with a view switch inside it. Same list, two ways of looking at
+ * it, one source.
  */
-type Tab = 'workflows' | 'agents' | 'assets' | 'activity' | 'library' | 'analytics' | 'settings';
+type Tab = 'workflows' | 'agents' | 'assets' | 'activity' | 'analytics' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'workflows', label: 'Workflows', icon: WorkflowIcon },
   { id: 'agents', label: 'AI Agents', icon: Bot },
   { id: 'assets', label: 'Assets', icon: ImageIcon },
   { id: 'activity', label: 'Activity', icon: Activity },
-  { id: 'library', label: 'Content Library', icon: Library },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'settings', label: 'Project Settings', icon: SettingsIcon },
 ];
@@ -138,11 +152,18 @@ export default function ProjectCard({
      work that exists, not a second source of it. */
   const { socialPosts } = useApp();
   const [tab, setTab] = useState<Tab>('workflows');
+  /* Grid to recognise a picture, list to read a name. Not stored: it is a
+     glance, not a preference, and a remembered one is a setting to explain. */
+  const [assetView, setAssetView] = useState<'grid' | 'list'>('grid');
   const [flows, setFlows] = useState<ProjectWorkflow[]>([]);
   /* What the scheduled agents have made. Its own request because it is its own
      table: these rows are written by the cron with nobody signed in, so they
      cannot be derived from anything the browser already holds. */
   const [runs, setRuns] = useState<AgentRun[]>([]);
+  /* Who is standing where. Arrives with the graphs, so the canvas cannot draw a
+     step as busy while the header says nothing is running. */
+  const [stepState, setStepState] = useState<StepStates>({});
+  const [runCounts, setRunCounts] = useState<RunCounts>({});
   const [day, setDay] = useState<ProjectDay | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState(false);
@@ -157,7 +178,11 @@ export default function ProjectCard({
   /* Null means closed; `{ workflow: null }` means a new one. A nested null is
      the clearest way to say "open, on nothing" without a second flag that can
      disagree with the first. */
-  const [editing, setEditing] = useState<{ workflow: ProjectWorkflow | null } | null>(null);
+  /* `focus` is the step to open on. Null means "the first one", which is what
+     the Edit button means; a node id is what clicking a step on the canvas
+     means. Carried here rather than inside the editor because the editor is
+     unmounted between openings and would forget it. */
+  const [editing, setEditing] = useState<{ workflow: ProjectWorkflow | null; focus?: string } | null>(null);
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState('');
 
@@ -169,6 +194,8 @@ export default function ProjectCard({
     ]);
     if (w.error) setError(w.error); else setError('');
     setFlows(w.workflows);
+    setStepState(w.stepState);
+    setRunCounts(w.runCounts);
     if (d.day) setDay(d.day);
     /* A failed read leaves the last good list rather than emptying the tab:
        "nothing yet" and "could not ask" look identical in an empty list, and
@@ -176,22 +203,40 @@ export default function ProjectCard({
     if (!a.error) setRuns(a.runs);
   }, [project.id]);
 
+  /**
+   * How often to ask, which is not a constant.
+   *
+   * ── Why this was changed ──
+   *
+   * Every thirty seconds, three requests, per card. A board of six projects
+   * left open on a spare monitor was two thousand five hundred requests an
+   * hour, almost all of them fetching an answer that had not moved — the
+   * planner runs on a five-minute cron, so four polls in five are asking a
+   * question that cannot have a new answer yet. Together with the housekeeping
+   * this was why Cloudflare started writing about the daily D1 limit.
+   *
+   * So: fast while something is genuinely in flight and somebody is watching
+   * it happen, and a lot slower when the project is simply ticking over. An
+   * idle project still refreshes the instant the tab is brought back to the
+   * front, which is the moment anybody actually looks.
+   */
+  const inFlight = building || !!busyId || (day?.upcoming.length ?? 0) > 0;
+  const everyMs = inFlight ? 30_000 : 150_000;
+
   useEffect(() => {
     /* Read once on mount and then on a timer. The lint rule against setState in
        an effect is about synchronising React with React; this is the other
        thing it exists for — subscribing to an external system, which is what a
        server on a five-minute cron is. */
     void read();
-    /* Thirty seconds against a five-minute tick: fast enough that a card
-       appears without a reload, slow enough not to ask ten times for an answer
-       that cannot have changed. Stops while the tab is hidden, because several
-       of these on one screen left open all day should not each hold a request
-       open overnight. */
+    /* Nothing is asked while the tab is hidden — several of these left open all
+       day should not each hold a request open overnight — and everything is
+       asked the moment it comes back. */
     const tick = () => { if (document.visibilityState === 'visible') void read(); };
-    const t = window.setInterval(tick, 30_000);
+    const t = window.setInterval(tick, everyMs);
     document.addEventListener('visibilitychange', tick);
     return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', tick); };
-  }, [read]);
+  }, [read, everyMs]);
 
   const activeFlows = flows.filter(f => f.status === 'active').length;
 
@@ -504,7 +549,7 @@ export default function ProjectCard({
                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 12px',
                 border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap',
-                color: on ? '#a9bbff' : MUTED,
+                color: on ? T.accent : MUTED,
                 borderBottom: `2px solid ${on ? T.accent : 'transparent'}`, marginBottom: -1,
               }}>
                 <Ic size={12} />
@@ -514,6 +559,15 @@ export default function ProjectCard({
             );
           })}
         </div>
+
+        {/* ── What it has actually made ──
+            Under the tabs rather than inside one, because "is this doing
+            anything" is the question somebody has on every tab, and answering
+            it only inside Assets means they have to already believe the answer
+            is yes in order to go and look. */}
+        <ProducedRail items={assets.slice(0, 12).map(a => ({
+          id: a.id, kind: a.kind.replace(/ /g, '-'), label: a.name, route: a.route, at: a.at,
+        }))} />
 
         <div style={{ padding: 14 }}>
           {error && (
@@ -590,7 +644,7 @@ export default function ProjectCard({
 
                 <div style={{ textAlign: 'center', padding: '10px 10px 4px' }}>
                   <span style={{
-                    width: 40, height: 40, borderRadius: 13, background: T.accentSoft, color: '#a9bbff',
+                    width: 40, height: 40, borderRadius: 13, background: T.accentSoft, color: T.accent,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
                   }}><WorkflowIcon size={18} /></span>
                   <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
@@ -598,8 +652,25 @@ export default function ProjectCard({
                   </h4>
                   <p style={{ margin: '0 auto 13px', maxWidth: 440, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                     A workflow is what happens on its own when somebody fills in this client's form, is
-                    tagged, or goes quiet. Start one below, or describe one to the AI beside this.
+                    tagged, or goes quiet. Build one, start from a template below, or describe one to the
+                    AI beside this.
                   </p>
+
+                  {/*
+                    * The same button a project gets once it has a workflow.
+                    *
+                    * It was only offered as a dashed tile at the bottom of a
+                    * grid of eight templates, worded differently — so a
+                    * customer on a brand-new project looked for "Create
+                    * workflow", did not find it, added a template to get past
+                    * it, and only then saw the button appear. The empty state
+                    * is the one place the primary action must be impossible to
+                    * miss, not the one place it is hidden.
+                    */}
+                  <button onClick={() => setEditing({ workflow: null })} className="press ap-btn"
+                    style={{ ...primaryBtn, padding: '11px 20px' }}>
+                    <Plus size={14} /> Create workflow
+                  </button>
                 </div>
 
                 {/* Somebody can start one themselves rather than waiting. */}
@@ -612,8 +683,8 @@ export default function ProjectCard({
                         background: T.raised, cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
                       }}>
                       {adding === t.key
-                        ? <Loader size={13} className="spin" color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />
-                        : <Plus size={13} color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />}
+                        ? <Loader size={13} className="spin" color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />
+                        : <Plus size={13} color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />}
                       <span style={{ minWidth: 0 }}>
                         <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>{t.name}</span>
                         <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
@@ -622,14 +693,6 @@ export default function ProjectCard({
                       </span>
                     </button>
                   ))}
-                  <button onClick={() => setEditing({ workflow: null })} className="press" style={{
-                    display: 'flex', gap: 9, alignItems: 'center', justifyContent: 'center',
-                    padding: '11px 12px', border: `1px dashed ${ACCENT}`, borderRadius: 12,
-                    background: T.accentSoft, cursor: 'pointer', fontFamily: 'inherit',
-                    fontSize: 12.5, fontWeight: 700, color: ACCENT,
-                  }}>
-                    <Plus size={13} /> Build one from scratch
-                  </button>
                 </div>
                 <p style={{ margin: '11px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5, textAlign: 'center' }}>
                   Every one arrives switched off and is yours to change, step by step, before anybody hears
@@ -639,11 +702,8 @@ export default function ProjectCard({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                  <button onClick={() => setEditing({ workflow: null })} className="press" style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
-                    borderRadius: 10, border: 'none', background: ACCENT, color: '#fff',
-                    fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                  }}>
+                  <button onClick={() => setEditing({ workflow: null })} className="press ap-btn"
+                    style={{ ...primaryBtn, padding: '9px 16px' }}>
                     <Plus size={13} /> Create workflow
                   </button>
                   <button onClick={() => setPicking(p => !p)} className="press" style={ghost()}>
@@ -661,8 +721,8 @@ export default function ProjectCard({
                           background: T.raised, cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
                         }}>
                         {adding === t.key
-                          ? <Loader size={12} className="spin" color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />
-                          : <Plus size={12} color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />}
+                          ? <Loader size={12} className="spin" color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />
+                          : <Plus size={12} color={T.accent} style={{ marginTop: 2, flexShrink: 0 }} />}
                         <span style={{ minWidth: 0 }}>
                           <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{t.name}</span>
                           <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>
@@ -700,6 +760,32 @@ export default function ProjectCard({
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>{f.description}</span>
 
+                        {/*
+                          * Is it actually doing anything?
+                          *
+                          * "Active" says it is switched on, which is not the
+                          * same question — a live workflow nobody has ever
+                          * triggered looks identical to one running fifty
+                          * people through a week. These are counted from real
+                          * runs, so a workflow with nothing in it says nothing
+                          * rather than showing a zero dressed up as progress.
+                          */}
+                        {(runCounts[f.id]?.active ?? 0) > 0 && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                            padding: '2px 9px', borderRadius: 999, fontSize: 10, fontWeight: 800,
+                            background: T.accentSoft, color: T.accent,
+                          }}>
+                            <span className="ap-live-dot" style={{ background: T.accent }} />
+                            {runCounts[f.id].active} in it now
+                          </span>
+                        )}
+                        {(runCounts[f.id]?.done ?? 0) > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: MUTED, flexShrink: 0 }}>
+                            {runCounts[f.id].done} finished
+                          </span>
+                        )}
+
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: on ? '#15803d' : MUTED }}>
                           {on ? 'Active' : f.status === 'paused' ? 'Paused' : 'Draft'}
                         </span>
@@ -730,7 +816,15 @@ export default function ProjectCard({
 
                       {isOpen && (
                         <div style={{ background: T.panel, borderTop: `1px solid ${LINE}`, padding: 12 }}>
-                          <WorkflowCanvas nodes={f.nodes as unknown as AutomationNode[]} live={on && live} />
+                          <WorkflowCanvas
+                            nodes={f.nodes as unknown as AutomationNode[]}
+                            live={on && live}
+                            stepState={stepState[f.id]}
+                            /* The step *is* the control. Opening the builder
+                               and then hunting for the step you were already
+                               pointing at was three actions for one edit. */
+                            onPickStep={id => setEditing({ workflow: f, focus: id })}
+                          />
                         </div>
                       )}
                     </article>
@@ -784,7 +878,7 @@ export default function ProjectCard({
                           <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
                             <span style={{
                               width: 24, height: 24, borderRadius: 8, flexShrink: 0,
-                              background: nodeDark('ai').bg, color: nodeDark('ai').fg,
+                              background: nodeTone('ai').bg, color: nodeTone('ai').fg,
                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             }}><Bot size={12} /></span>
                             <span style={{ minWidth: 0, flex: '1 1 140px' }}>
@@ -882,7 +976,7 @@ export default function ProjectCard({
                         }}>
                           <span style={{
                             width: 22, height: 22, borderRadius: 7,
-                            background: nodeDark(node.type).bg, color: nodeDark(node.type).fg,
+                            background: nodeTone(node.type).bg, color: nodeTone(node.type).fg,
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                           }}><Ic size={11} /></span>
                           <span style={{ minWidth: 0, flex: 1 }}>
@@ -896,7 +990,7 @@ export default function ProjectCard({
                           </span>
                           <span style={{
                             padding: '2px 8px', borderRadius: 999, fontSize: 9.5, fontWeight: 800,
-                            background: nodeDark(node.type).bg, color: nodeDark(node.type).fg, flexShrink: 0,
+                            background: nodeTone(node.type).bg, color: nodeTone(node.type).fg, flexShrink: 0,
                           }}>{look.label}</span>
                         </li>
                       );
@@ -910,34 +1004,35 @@ export default function ProjectCard({
                 )}
               </div>
 
-              <div>
-                <h4 style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 800, color: INK }}>
-                  What this project is allowed to do
-                </h4>
-                <p style={{ margin: '0 0 9px', fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
-                  Anything set to <strong>ask first</strong> waits on the card rather than happening. Anything
-                  <strong> off</strong> it cannot do however it is asked.
-                </p>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {Object.entries(project.guardrails ?? {}).map(([k, v]) => (
-                    <div key={k} style={{
-                      display: 'flex', alignItems: 'center', gap: 9, padding: '8px 11px',
-                      border: `1px solid ${LINE}`, borderRadius: 10, background: T.raised,
-                    }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: INK, flex: 1, minWidth: 0 }}>
-                        {k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())}
-                      </span>
-                      <span style={{
-                        padding: '2px 9px', borderRadius: 999, fontSize: 10, fontWeight: 800,
-                        background: v === 'on' ? T.goodSoft : v === 'approval' ? T.warnSoft : T.lineSoft,
-                        color: v === 'on' ? T.good : v === 'approval' ? T.warn : MUTED,
-                      }}>
-                        {v === 'on' ? 'On its own' : v === 'approval' ? 'Asks first' : 'Off'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* ── Where the permissions went ──
+                  They were listed here, unchangeable, which is the worst of
+                  both: it is the first thing somebody wants to adjust after
+                  reading it. They now live in Project Settings, where the rest
+                  of what this project *is* lives, and this points at them
+                  rather than repeating them somewhere they still cannot be
+                  touched. */}
+              <button onClick={() => setTab('settings')} className="press" style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                padding: '11px 13px', border: `1px solid ${LINE}`, borderRadius: 12,
+                background: T.raised, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                <SettingsIcon size={14} color={T.accent} style={{ flexShrink: 0 }} />
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: INK }}>
+                    What this project is allowed to do
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
+                    {(() => {
+                      const g = Object.values(project.guardrails ?? {});
+                      const on = g.filter(v => v === 'on').length;
+                      const ask = g.filter(v => v === 'approval').length;
+                      const off = g.filter(v => v === 'off').length;
+                      return `${on} on its own · ${ask} ask first · ${off} off — change them in Project Settings`;
+                    })()}
+                  </span>
+                </span>
+                <ChevronRight size={14} color={MUTED} style={{ flexShrink: 0 }} />
+              </button>
 
               {(day?.awaiting.length ?? 0) > 0 && (
                 <div>
@@ -973,7 +1068,7 @@ export default function ProjectCard({
             !assets.length ? (
               <div style={{ padding: '26px 10px', textAlign: 'center' }}>
                 <span style={{
-                  width: 40, height: 40, borderRadius: 13, background: T.accentSoft, color: '#a9bbff',
+                  width: 40, height: 40, borderRadius: 13, background: T.accentSoft, color: T.accent,
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
                 }}><ImageIcon size={18} /></span>
                 <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
@@ -985,10 +1080,59 @@ export default function ProjectCard({
                 </p>
               </div>
             ) : (
-              <div style={{
-                display: 'grid', gap: 10,
-                gridTemplateColumns: 'repeat(auto-fill, minmax(min(150px, 100%), 1fr))',
-              }}>
+              <div style={{ display: 'grid', gap: 11 }}>
+                {/* ── Two ways of looking at one list ──
+                    This was two tabs, fed from two slightly different places,
+                    so a post written yesterday appeared in one and not the
+                    other. One list now; the switch only changes how it is
+                    drawn. Grid to recognise a picture, list to read a name. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, color: MUTED, flex: 1, minWidth: 0 }}>
+                    {assets.length} {assets.length === 1 ? 'thing' : 'things'} made. Each one lives in the
+                    module that owns it — this is the shortcut, not a copy.
+                  </span>
+                  <div role="radiogroup" aria-label="How to show these"
+                    style={{ display: 'inline-flex', gap: 3, padding: 3, borderRadius: 999, background: T.lineSoft }}>
+                    {(['grid', 'list'] as const).map(v => (
+                      <button key={v} role="radio" aria-checked={assetView === v}
+                        onClick={() => setAssetView(v)} style={{
+                          padding: '4px 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                          fontFamily: 'inherit', fontSize: 11, fontWeight: 800,
+                          background: assetView === v ? '#fff' : 'transparent',
+                          color: assetView === v ? T.ink : MUTED,
+                          boxShadow: assetView === v ? '0 1px 2px rgba(16,24,40,0.10)' : 'none',
+                        }}>{v === 'grid' ? 'Grid' : 'List'}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {assetView === 'list' ? (
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 7 }}>
+                    {assets.map(a => (
+                      <li key={a.id}>
+                        <button onClick={() => navigate(a.route)} className="press" style={{
+                          display: 'flex', gap: 10, alignItems: 'center', width: '100%', textAlign: 'left',
+                          border: `1px solid ${LINE}`, borderRadius: 11, padding: '10px 12px',
+                          background: T.raised, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>
+                          <span style={{ minWidth: 0, flex: 1 }}>
+                            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>
+                              {a.name}
+                            </span>
+                            <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2 }}>
+                              {a.kind}{a.at ? ` · ${new Date(a.at).toLocaleDateString()}` : ''}
+                            </span>
+                          </span>
+                          <ExternalLink size={12} color={MUTED} style={{ flexShrink: 0 }} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                <div style={{
+                  display: 'grid', gap: 10,
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(min(150px, 100%), 1fr))',
+                }}>
                 {assets.map(a => (
                   <button key={a.id} onClick={() => navigate(a.route)} className="press" style={{
                     display: 'flex', flexDirection: 'column', gap: 0, padding: 0, textAlign: 'left',
@@ -1018,6 +1162,8 @@ export default function ProjectCard({
                     </span>
                   </button>
                 ))}
+                </div>
+                )}
               </div>
             )
           )}
@@ -1151,42 +1297,22 @@ export default function ProjectCard({
           )}
 
           {/* ── Content Library: what it has actually produced ── */}
-          {tab === 'library' && (
-            !made.length ? (
-              <p style={{ margin: 0, padding: '22px 4px', fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                Nothing produced today. Everything this project writes — posts, pages, campaigns — appears
-                here with a link to the real record, not a copy of it.
-              </p>
-            ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
-                {made.map(a => (
-                  <li key={a.id}>
-                    <button onClick={() => a.link?.route && navigate(a.link.route)} style={{
-                      display: 'flex', gap: 10, alignItems: 'center', width: '100%', textAlign: 'left',
-                      border: `1px solid ${LINE}`, borderRadius: 11, padding: 11, background: T.raised,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                      <span style={{ minWidth: 0, flex: 1 }}>
-                        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>
-                          {a.link?.label || a.summary}
-                        </span>
-                        <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2 }}>
-                          {a.detail || a.summary}
-                        </span>
-                      </span>
-                      <ExternalLink size={12} color={MUTED} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )
-          )}
-
           {/* ── Analytics: the working day, and what went out ── */}
           {tab === 'analytics' && <ProjectFlow day={day} live={live} />}
 
           {/* ── Settings ── */}
-          {tab === 'settings' && <div style={{ display: 'grid', gap: 12 }}>{tools}</div>}
+          {tab === 'settings' && (
+            <div style={{ display: 'grid', gap: 16 }}>
+              {/* The permissions first: it is what somebody opens Settings for,
+                  and the infrastructure below it is set once and left. */}
+              <Guardrails
+                projectId={project.id}
+                guardrails={project.guardrails ?? {}}
+                onChanged={onChanged}
+              />
+              {tools}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1227,15 +1353,27 @@ export default function ProjectCard({
               fontFamily: 'inherit', lineHeight: 1.5,
             }}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 10, color: MUTED, marginTop: 3 }}>
-            {prompt.length}/1000
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+            gap: 8, fontSize: 10, color: MUTED, marginTop: 5,
+          }}>
+            {/* Renders nothing where the browser has no speech recognition, so
+                nobody is offered a button that quietly does not work. */}
+            <VoicePrompt
+              disabled={building}
+              /* Appended, never replacing: somebody who typed two sentences and
+                 then reached for the microphone meant to add a third. */
+              onText={heard => setPrompt(p => `${p.trim()} ${heard}`.trim().slice(0, 1000))}
+            />
+            <span style={{ flexShrink: 0, paddingTop: 9 }}>{prompt.length}/1000</span>
           </div>
 
-          <button onClick={() => void build()} disabled={building || prompt.trim().length < 8} style={{
-            width: '100%', marginTop: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, padding: '10px 14px', borderRadius: 10, border: 'none',
-            background: prompt.trim().length >= 8 ? ACCENT : T.line, color: '#fff',
-            fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
+          <button onClick={() => void build()} disabled={building || prompt.trim().length < 8}
+            className={prompt.trim().length >= 8 && !building ? 'press ap-btn' : 'press'} style={{
+            ...primaryBtn,
+            width: '100%', marginTop: 6, justifyContent: 'center', padding: '10px 14px',
+            background: prompt.trim().length >= 8 ? primaryBtn.background : T.line,
+            boxShadow: prompt.trim().length >= 8 ? primaryBtn.boxShadow : 'none',
             cursor: building || prompt.trim().length < 8 ? 'default' : 'pointer',
           }}>
             {building ? <Loader size={13} className="spin" /> : <Sparkles size={13} />}
@@ -1302,6 +1440,7 @@ export default function ProjectCard({
         <WorkflowEditor
           projectId={project.id}
           workflow={editing.workflow}
+          focusStep={editing.focus}
           onClose={() => setEditing(null)}
           onSaved={() => { void read(); onChanged(); }}
         />

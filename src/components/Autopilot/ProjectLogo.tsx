@@ -24,6 +24,7 @@
  * somebody nothing about what to do next.
  */
 import { useRef, useState } from 'react';
+import AiMark from './AiMark';
 import { ImagePlus, Loader, X } from 'lucide-react';
 import { savePortfolio, type Portfolio } from '../../services/projects';
 
@@ -36,7 +37,8 @@ const MAX_BYTES = 400_000;
 export default function ProjectLogo({
   portfolio, projectName, onSaved, onError, size = 52,
 }: {
-  /** Null when the project has no client — then this is a letter and nothing more. */
+  /** Null when the project has no client — then this is the system's mark and
+   *  nothing can be uploaded, because there is nowhere to keep it. */
   portfolio: Portfolio | null;
   projectName: string;
   onSaved: () => void;
@@ -61,7 +63,6 @@ export default function ProjectLogo({
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const tint = palette[h % palette.length];
-  const letter = (name.trim()[0] ?? '?').toUpperCase();
 
   async function store(dataUrl: string) {
     if (!portfolio) { onError('This project has no client yet, so there is nowhere to keep a logo.'); return; }
@@ -117,7 +118,10 @@ export default function ProjectLogo({
         }}>
         {logo
           ? <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          : <span style={{ fontSize: size * 0.4, fontWeight: 800, color: tint.fg }}>{letter}</span>}
+          /* No client logo yet: the system's own mark, in this project's tint.
+             A first letter in a tinted square is the default every dashboard
+             ships with and says only "nobody has filled this in". */
+          : <AiMark size={size * 0.74} fg={tint.fg} />}
 
         {/* The prompt only on hover, so a screen of six projects is not six
             "upload" badges shouting at somebody who has already done it. */}

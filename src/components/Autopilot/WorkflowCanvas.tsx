@@ -32,24 +32,40 @@ import { Fragment } from 'react';
 import type { WorkflowNode } from '../../services/autopilot';
 import { layout, lookFor, nodeDetail } from './workflowNodes';
 
-import { T, nodeDark } from './theme';
+import { T, nodeTone } from './theme';
 
 const INK = T.ink;
 const MUTED = T.muted;
 
-function Node({ node, dim }: { node: WorkflowNode; dim?: boolean }) {
+/**
+ * One step, drawn.
+ *
+ * ── Why it is a button ──
+ *
+ * It used to be a picture of a step: to change one you found the workflow's
+ * Edit button, opened the builder, then found the step again in a list. Three
+ * actions to reach the thing you were already pointing at. Now the step *is*
+ * the control — clicking it opens the builder on that step, which is what
+ * everybody tried first and what every tool of this kind does.
+ *
+ * `onPick` is optional because the same canvas is drawn in places where there
+ * is nothing to open. Without it this renders as a plain div rather than a
+ * button that does nothing, so nobody is offered a click that is ignored.
+ */
+function Node({ node, dim, state, onPick }: {
+  node: WorkflowNode;
+  dim?: boolean;
+  /** Real state, from the run: is anybody standing on this step right now? */
+  state?: StepState;
+  onPick?: (id: string) => void;
+}) {
   const look = lookFor(node.type);
-  /* The dark bed for this kind of step. The light palette's tints are white
-     bricks on this ground — see the note in theme.ts. */
-  const tone = nodeDark(node.type);
+  const tone = nodeTone(node.type);
   const Ic = look.icon;
   const detail = nodeDetail(node.type, node.config ?? {});
 
-  return (
-    <div style={{
-      width: 136, background: T.raised, border: `1px solid ${tone.edge}`, borderRadius: 11,
-      padding: '8px 9px', opacity: dim ? 0.72 : 1,
-    }}>
+  const body = (
+    <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
         <span style={{
           width: 17, height: 17, borderRadius: 5, background: tone.bg, color: tone.fg,
@@ -71,7 +87,43 @@ function Node({ node, dim }: { node: WorkflowNode; dim?: boolean }) {
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>{detail}</p>
       )}
-    </div>
+      {/* What is happening here, if anything. Counted from real runs standing
+          at this node — never a timer, which is the whole complaint about
+          progress bars that fill whether or not anything is happening. */}
+      {!!state?.waiting && (
+        <p style={{
+          margin: '5px 0 0', fontSize: 9, fontWeight: 800, color: T.accent,
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          <span className="ap-live-dot" style={{ background: T.accent }} />
+          {state.waiting} {state.waiting === 1 ? 'person' : 'people'} here now
+        </p>
+      )}
+      {!state?.waiting && !!state?.done && (
+        <p style={{ margin: '5px 0 0', fontSize: 9, fontWeight: 700, color: T.muted }}>
+          {state.done} {state.done === 1 ? 'time' : 'times'} so far
+        </p>
+      )}
+    </>
+  );
+
+  const shell: React.CSSProperties = {
+    width: 136, background: T.raised, border: `1px solid ${tone.edge}`, borderRadius: 11,
+    padding: '8px 9px', opacity: dim ? 0.72 : 1, textAlign: 'left', boxSizing: 'border-box',
+  };
+
+  if (!onPick) return <div style={shell}>{body}</div>;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(node.id)}
+      /* Named for what pressing it does, not for what it is: a screen reader
+         hearing "New lead enters CRM, button" learns nothing about the click. */
+      aria-label={`Edit step: ${node.label || look.label}`}
+      className={state?.waiting ? 'press ap-working' : 'press'}
+      style={{ ...shell, cursor: 'pointer', fontFamily: 'inherit' }}
+    >{body}</button>
   );
 }
 
@@ -103,9 +155,18 @@ function Branch({ yes }: { yes: boolean }) {
   );
 }
 
+/** How many runs are standing on a step, and how many have been through it. */
+export interface StepState { waiting: number; done: number }
+
 export default function WorkflowCanvas({
-  nodes, live,
-}: { nodes: WorkflowNode[]; live: boolean }) {
+  nodes, live, stepState, onPickStep,
+}: {
+  nodes: WorkflowNode[];
+  live: boolean;
+  /** Keyed by node id. Absent means "nothing known", which draws nothing. */
+  stepState?: Record<string, StepState>;
+  onPickStep?: (id: string) => void;
+}) {
   if (!nodes.length) {
     return (
       <p style={{ margin: 0, fontSize: 12, color: MUTED, padding: '12px 2px' }}>
@@ -131,7 +192,7 @@ export default function WorkflowCanvas({
           {spine.map((p, i) => (
             <Fragment key={p.node.id}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Node node={p.node} />
+                <Node node={p.node} state={stepState?.[p.node.id]} onPick={onPickStep} />
                 {p.node.type === 'condition' && (
                   <span style={{ display: 'grid', gap: 3, justifyItems: 'start' }}>
                     <Branch yes />
@@ -159,7 +220,7 @@ export default function WorkflowCanvas({
                 <Fragment key={p.node.id}>
                   {gap > 0 && <span aria-hidden style={{ width: gap, flexShrink: 0 }} />}
                   {i > 0 && <Arrow live={live} />}
-                  <Node node={p.node} dim />
+                  <Node node={p.node} dim state={stepState?.[p.node.id]} onPick={onPickStep} />
                 </Fragment>
               );
             })}

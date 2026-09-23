@@ -56,10 +56,9 @@ import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
 import { runEngageDispatch } from './engageDispatch';
-import { pruneRateLimits } from './lib/rateLimit';
-import { pruneDeliveryLog } from './lib/deliveryLog';
-import { runAutomations, pruneAutomationLog } from './lib/automationEngine';
-import { runProjectAgents, pruneAgentRuns } from './lib/projectAgents';
+import { runAutomations } from './lib/automationEngine';
+import { runProjectAgents } from './lib/projectAgents';
+import { runHousekeeping } from './lib/housekeeping';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -330,15 +329,22 @@ export default {
         report.notes.push({ accountId: '', text: n, kind: 'problem' });
       }
 
-      /* Housekeeping, after everything that matters and never in front of it.
-         Every rate-limit window that ever opened leaves a row; a day is far
-         longer than any window in use, so this can never delete a budget
-         somebody is still inside. It reports nothing because there is nothing
-         a customer could do about it. */
-      await pruneRateLimits(env);
-      await pruneDeliveryLog(env);
-      await pruneAutomationLog(env);
-      await pruneAgentRuns(env);
+      /*
+       * Housekeeping, after everything that matters, and at most once an hour.
+       *
+       * It used to be four prunes on every one of the 288 daily ticks, three of
+       * them asking for "keep the newest ten thousand rows" — which SQLite can
+       * only answer by sorting the whole table and testing every row against a
+       * list of ten thousand ids. Each one therefore read about as many rows as
+       * the table holds, every five minutes, to delete nothing at all on almost
+       * every run. That was the bulk of this account sitting at 77% of
+       * Cloudflare's daily D1 operation limit on very little real traffic.
+       *
+       * Now it deletes by age against an index, and its own gate decides
+       * whether this is the hour. It reports nothing to a customer because
+       * there is nothing they could do about it.
+       */
+      const swept = await runHousekeeping(env);
 
       const ms = Date.now() - started;
 
@@ -370,6 +376,8 @@ export default {
            nothing new in it is the ordinary case, and folding it into a
            success count would make a quiet week look like a busy one. */
         agents: { ran: agents.ran, produced: agents.produced, skipped: agents.skipped, failed: agents.failed },
+        /* Absent on most ticks, which is the point of the gate. */
+        ...(swept.ran ? { housekeeping: { deleted: swept.deleted } } : {}),
         notes: report.notes.slice(0, 20),
       }));
     })());

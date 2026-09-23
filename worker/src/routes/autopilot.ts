@@ -458,9 +458,63 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
     const workflows = (results ?? []).map(r => {
       let nodes: unknown = [];
       try { nodes = JSON.parse(String(r.nodes ?? '[]')); } catch { /* unreadable: an empty graph, with its name intact */ }
-      return { ...r, nodes: Array.isArray(nodes) ? nodes : [] };
+      return { ...r, nodes: Array.isArray(nodes) ? nodes : [] } as Record<string, unknown>;
     });
-    return json({ success: true, workflows });
+
+    /*
+     * Who is standing where, and how each workflow is doing overall.
+     *
+     * Sent with the graphs rather than as its own request: the canvas draws
+     * both at once, and two calls would mean a step that has people on it
+     * according to one answer and not according to the other for as long as the
+     * second was in flight.
+     *
+     * ── Why there is no per-step "done" count ──
+     *
+     * `crm_automation_log` records a row per step per run, but it holds only a
+     * `run_id` — the workflow it belongs to is a join away, over a table that
+     * keeps a fortnight of every step of every run. That join on every poll of
+     * every card is exactly the kind of query that put this account at 77% of
+     * the daily D1 limit. So the live count comes from the runs table, which is
+     * indexed for precisely this, and the per-workflow totals come from the
+     * same single grouped read.
+     *
+     * `waiting` is what makes a step honestly say it is working: somebody is
+     * parked on it right now. Nothing here is a timer.
+     */
+    const stepState: Record<string, Record<string, { waiting: number; done: number }>> = {};
+    const runCounts: Record<string, { active: number; done: number }> = {};
+
+    if (workflows.length) {
+      const ids = workflows.map(w => String(w.id));
+      const marks = ids.map(() => '?').join(',');
+      const { results: rows } = await env.DB.prepare(
+        `SELECT automation_id AS wf, node_id AS node, status, count(*) AS n
+         FROM crm_automation_runs
+         WHERE account_id = ? AND workflow_source = 'project' AND automation_id IN (${marks})
+         GROUP BY automation_id, node_id, status`,
+      ).bind(accountId, ...ids).all<{ wf: string; node: string; status: string; n: number }>();
+
+      for (const r of rows ?? []) {
+        const wf = String(r.wf ?? '');
+        if (!wf) continue;
+        const n = Number(r.n) || 0;
+        const tally = runCounts[wf] ?? (runCounts[wf] = { active: 0, done: 0 });
+        if (r.status === 'active') {
+          tally.active += n;
+          const node = String(r.node ?? '');
+          if (node) {
+            const byNode = stepState[wf] ?? (stepState[wf] = {});
+            const cell = byNode[node] ?? (byNode[node] = { waiting: 0, done: 0 });
+            cell.waiting += n;
+          }
+        } else if (r.status === 'done') {
+          tally.done += n;
+        }
+      }
+    }
+
+    return json({ success: true, workflows, stepState, runCounts });
   }
 
   /**
