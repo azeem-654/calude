@@ -1553,3 +1553,11 @@ main section { min-width: 0; }
   .ai-mark-ring-fast { animation: ai-mark-spin-back 7s linear infinite; }
   .ai-mark-core { animation: ai-mark-breathe 3.2s ease-in-out infinite; }
 }
+
+/* The gallery drops its assistant below the list on a narrow screen rather than
+   squeezing a 340px column into 300. The panel is sticky on desktop, which is
+   meaningless once it is underneath. */
+@media (max-width: 1100px) {
+  .ap-gallery { grid-template-columns: minmax(0, 1fr) !important; }
+  .ap-gallery > div:last-child { position: static !important; }
+}

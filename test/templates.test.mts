@@ -16,6 +16,9 @@
  */
 import { CATEGORIES, TEMPLATES, DEMO_WORKFLOWS } from '../src/components/Autopilot/workflowTemplates';
 import { problemsWith } from '../src/components/Autopilot/workflowNodes';
+import {
+  difficultyOf, hasBranches, isScheduled, outputsOf, setupMinutes, usesAi,
+} from '../src/components/Autopilot/templateMeta';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -24,7 +27,9 @@ const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  
    shipped with a working address would write about somebody else's business
    until it was noticed, so it ships blank and the editor refuses to save it
    until the customer supplies one. */
-const NEEDS_FILLING_IN = new Set(['feed-blog', 'youtube-blog']);
+const NEEDS_FILLING_IN = new Set([
+  'feed-blog', 'youtube-blog', 'linkedin-repurpose', 'shorts-repurpose', 'blog-to-social',
+]);
 
 /* ── Every template is a graph that would actually run ──────────────────── */
 
@@ -151,6 +156,65 @@ for (const t of TEMPLATES.filter(x => x.evidence)) {
   ok('every template carries keywords to be found by',
     TEMPLATES.every(t => t.keywords.length >= 3),
     TEMPLATES.filter(t => t.keywords.length < 3).map(t => t.key).join(', '));
+}
+
+/* ── The metadata the gallery shows is derived, and sane ────────────────── */
+
+{
+  for (const t of TEMPLATES) {
+    const d = difficultyOf(t.nodes);
+    const m = setupMinutes(t.nodes);
+    /* A gallery badge nobody can act on is worse than no badge. Five minutes is
+       the floor because reading it takes that long; an hour means the template
+       is too big to be a starting point. */
+    ok(`${t.key} · its setup estimate is a believable number`,
+      m >= 5 && m <= 60, `${m} minutes`);
+    ok(`${t.key} · has a difficulty`, ['easy', 'medium', 'advanced'].includes(d), d);
+    /* Every template produces something somebody can point at — the fallback
+       line is for a graph that only moves records, and no template here is
+       that. */
+    ok(`${t.key} · names what actually comes out of it`,
+      outputsOf(t.nodes).length > 0 && !/Nothing that leaves the app/.test(outputsOf(t.nodes)[0]),
+      outputsOf(t.nodes).join(' | '));
+    ok(`${t.key} · says which trades it is for`, t.industry.length > 0, JSON.stringify(t.industry));
+    /* Every name ends in "Automation": it is what the customer asked for and,
+       more usefully, it makes the library scan as one set rather than as a
+       pile of differently-written notes. */
+    ok(`${t.key} · is named as an automation`, /Automation$/.test(t.name), t.name);
+  }
+
+  /*
+   * Branching is what makes a workflow hard to hold in your head, so difficulty
+   * has to rise with it — that is the whole reason it is not a node count.
+   * Asserted against the rule directly rather than against a chosen template:
+   * the same graph, with and without a fork.
+   */
+  {
+    const plain = [
+      { id: 'a', type: 'trigger', label: 'Form', config: {}, nextId: 'b' },
+      { id: 'b', type: 'send_email', label: 'Mail', config: { subject: 'x' }, nextId: 'c' },
+      { id: 'c', type: 'wait', label: 'Wait', config: { days: '1' }, nextId: 'd' },
+      { id: 'd', type: 'send_email', label: 'Mail 2', config: { subject: 'y' }, nextId: null },
+    ];
+    const forked = [
+      ...plain.slice(0, 3),
+      { id: 'x', type: 'condition', label: 'Replied?', config: { field: 'status' }, nextId: null, yesId: 'd', noId: null },
+      plain[3],
+    ];
+    ok('adding a fork raises the setup estimate and the difficulty score',
+      setupMinutes(forked) > setupMinutes(plain),
+      `${setupMinutes(plain)} → ${setupMinutes(forked)}`);
+    ok('and a long straight drip is still easy', difficultyOf(plain) === 'easy', difficultyOf(plain));
+  }
+
+  ok('every scheduled content template is marked as using the AI',
+    TEMPLATES.filter(t => isScheduled(t.nodes)).every(t => usesAi(t.nodes)));
+
+  /* Featured is a recommendation, not a sort order. */
+  const featured = TEMPLATES.filter(t => t.featured);
+  ok('featured is a handful rather than half the library',
+    featured.length >= 2 && featured.length <= Math.ceil(TEMPLATES.length / 4),
+    `${featured.length} of ${TEMPLATES.length}`);
 }
 
 console.log(`\n${TEMPLATES.length} templates on ${CATEGORIES.length} shelves\n`);

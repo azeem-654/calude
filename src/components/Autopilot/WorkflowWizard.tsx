@@ -32,6 +32,7 @@
  * provider says so on the preview, not in a delivery log a week later.
  */
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X, Search, Sparkles, PenLine, LayoutTemplate, ChevronRight, ChevronLeft,
   Check, AlertTriangle, Loader, Zap, Info,
@@ -39,6 +40,7 @@ import {
 import WorkflowCanvas from './WorkflowCanvas';
 import { CATEGORIES, TEMPLATES, type WorkflowTemplate } from './workflowTemplates';
 import { lookFor } from './workflowNodes';
+import { DIFFICULTY_LABEL, difficultyOf, outputsOf, setupMinutes } from './templateMeta';
 import { T, ghostBtn, primaryBtn } from './theme';
 
 type Route = 'pick' | 'library' | 'preview';
@@ -55,6 +57,7 @@ export default function WorkflowWizard({
   /** The key currently being saved, so the button can say so. */
   adding: string;
 }) {
+  const navigate = useNavigate();
   const [route, setRoute] = useState<Route>('pick');
   const [category, setCategory] = useState<string>('all');
   const [query, setQuery] = useState('');
@@ -138,6 +141,12 @@ export default function WorkflowWizard({
                 onClick={onDescribe}
               />
               <Door
+                icon={Search}
+                title="Browse the full gallery"
+                body={`Every template with its whole workflow drawn, filed by the problem it solves, beside the assistant. Opens the ${TEMPLATES.length}-template gallery.`}
+                onClick={() => navigate('/autopilot?view=templates')}
+              />
+              <Door
                 icon={PenLine}
                 title="Build it from scratch"
                 body="An empty workflow with a trigger, and the step editor. For when you already know the shape you want."
@@ -212,7 +221,7 @@ export default function WorkflowWizard({
                           library recognises their own complaint faster than
                           they recognise a mechanism. */}
                       <span style={{ fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>{t.pain}</span>
-                      <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2 }}>
+                      <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2, alignItems: 'center' }}>
                         {t.nodes.slice(0, 5).map(node => {
                           const look = lookFor(node.type);
                           const Ic = look.icon;
@@ -224,8 +233,11 @@ export default function WorkflowWizard({
                             }}><Ic size={10} /></span>
                           );
                         })}
-                        <span style={{ fontSize: 10, color: T.faint, alignSelf: 'center' }}>
-                          {t.nodes.length} steps
+                        {/* The same derivation the gallery shows, so the two
+                            screens cannot disagree about how hard a template is
+                            or how long it takes. */}
+                        <span style={{ fontSize: 10, color: T.faint }}>
+                          {t.nodes.length} steps · {DIFFICULTY_LABEL[difficultyOf(t.nodes)]} · {setupMinutes(t.nodes)} min
                         </span>
                       </span>
                     </button>
@@ -256,6 +268,14 @@ export default function WorkflowWizard({
               <Panel icon={AlertTriangle} tone="warn" title="What it needs before it can run">
                 <ul style={{ margin: 0, paddingLeft: 17, display: 'grid', gap: 3 }}>
                   {picked.needs.map(x => <li key={x} style={{ fontSize: 12, lineHeight: 1.55 }}>{x}</li>)}
+                </ul>
+              </Panel>
+
+              <Panel icon={Zap} tone="plain" title="What comes out of it">
+                <ul style={{ margin: 0, paddingLeft: 17, display: 'grid', gap: 3 }}>
+                  {outputsOf(picked.nodes).map(x => (
+                    <li key={x} style={{ fontSize: 12, lineHeight: 1.55 }}>{x}</li>
+                  ))}
                 </ul>
               </Panel>
 

@@ -463,7 +463,9 @@ export default function ProjectCard({
       name: t.name, description: t.description,
       /* A draft, always. Each of these sends something. */
       status: 'draft', nodes: t.nodes,
-    });
+    /* Recorded so the gallery's usage count is a count rather than a claim.
+       Only honoured on creation — a later edit cannot reattribute it. */
+    }, t.key);
     setAdding('');
     if (!r.success) { setError(String(r.error ?? 'That could not be added.')); return; }
     void read();

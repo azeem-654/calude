@@ -31,6 +31,7 @@
 import { Fragment } from 'react';
 import type { WorkflowNode } from '../../services/autopilot';
 import { layout, lookFor, nodeDetail } from './workflowNodes';
+import { branchLabels } from './templateMeta';
 
 import { T, nodeTone } from './theme';
 
@@ -52,11 +53,19 @@ const MUTED = T.muted;
  * is nothing to open. Without it this renders as a plain div rather than a
  * button that does nothing, so nobody is offered a click that is ignored.
  */
-function Node({ node, dim, state, onPick }: {
+function Node({ node, dim, state, compact, onPick }: {
   node: WorkflowNode;
   dim?: boolean;
   /** Real state, from the run: is anybody standing on this step right now? */
   state?: StepState;
+  /**
+   * The gallery's sizing: narrower, tighter, on white.
+   *
+   * A row in a list of thirty templates is scanned, not read — somebody is
+   * looking at the *shape* of six workflows to find the one that matches their
+   * problem. The card version is for one workflow they have already chosen.
+   */
+  compact?: boolean;
   onPick?: (id: string) => void;
 }) {
   const look = lookFor(node.type);
@@ -108,8 +117,15 @@ function Node({ node, dim, state, onPick }: {
   );
 
   const shell: React.CSSProperties = {
-    width: 136, background: T.raised, border: `1px solid ${tone.edge}`, borderRadius: 11,
-    padding: '8px 9px', opacity: dim ? 0.72 : 1, textAlign: 'left', boxSizing: 'border-box',
+    width: compact ? 112 : 136,
+    background: compact ? '#fff' : T.raised,
+    border: `1px solid ${tone.edge}`,
+    borderRadius: compact ? 10 : 11,
+    padding: compact ? '7px 8px' : '8px 9px',
+    opacity: dim ? 0.72 : 1,
+    textAlign: 'left',
+    boxSizing: 'border-box',
+    boxShadow: compact ? '0 1px 2px rgba(16,24,40,0.05)' : 'none',
   };
 
   if (!onPick) return <div style={shell}>{body}</div>;
@@ -143,15 +159,21 @@ function Arrow({ live }: { live: boolean }) {
   );
 }
 
-/** The Yes / No labels leaving a condition. */
-function Branch({ yes }: { yes: boolean }) {
+/**
+ * The labels leaving a condition.
+ *
+ * Worded from the condition itself rather than always "Yes / No" — "Replied /
+ * No reply" and "Bought / Not yet" say what the fork means at a glance, which
+ * is the whole job of a preview somebody spends two seconds on.
+ */
+function Branch({ yes, label }: { yes: boolean; label: string }) {
   return (
     <span style={{
       padding: '1px 7px', borderRadius: 999, fontSize: 9, fontWeight: 800,
       background: yes ? 'rgba(52,211,153,0.16)' : 'rgba(248,113,113,0.16)',
       color: yes ? T.good : T.bad,
       whiteSpace: 'nowrap',
-    }}>{yes ? 'Yes' : 'No'}</span>
+    }}>{label}</span>
   );
 }
 
@@ -159,10 +181,12 @@ function Branch({ yes }: { yes: boolean }) {
 export interface StepState { waiting: number; done: number }
 
 export default function WorkflowCanvas({
-  nodes, live, stepState, onPickStep,
+  nodes, live, stepState, compact, onPickStep,
 }: {
   nodes: WorkflowNode[];
   live: boolean;
+  /** The gallery's sizing. See `Node`. */
+  compact?: boolean;
   /** Keyed by node id. Absent means "nothing known", which draws nothing. */
   stepState?: Record<string, StepState>;
   onPickStep?: (id: string) => void;
@@ -182,9 +206,10 @@ export default function WorkflowCanvas({
   /* A column is a card plus its arrow. Fixed rather than fractional so a long
      workflow scrolls instead of squeezing eleven steps into 900px — the shape
      is the point, and a shape you cannot read is not one. */
-  const COL = 158;
+  const COL = compact ? 130 : 158;
 
   return (
+    <div style={{ position: 'relative' }}>
     <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
       <div style={{ minWidth: columns * COL, display: 'grid', gap: 0 }}>
         {/* ── The spine ── */}
@@ -192,15 +217,15 @@ export default function WorkflowCanvas({
           {spine.map((p, i) => (
             <Fragment key={p.node.id}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Node node={p.node} state={stepState?.[p.node.id]} onPick={onPickStep} />
+                <Node node={p.node} state={stepState?.[p.node.id]} compact={compact} onPick={onPickStep} />
                 {p.node.type === 'condition' && (
                   <span style={{ display: 'grid', gap: 3, justifyItems: 'start' }}>
-                    <Branch yes />
+                    <Branch yes label={branchLabels(p.node).yes} />
                     {/* The No pill is drawn even when nothing hangs off it: a
                         condition with one wired path still has two outcomes,
                         and the unwired one ends the workflow. Saying so is the
                         difference between "it stops here" and a silent gap. */}
-                    <Branch yes={false} />
+                    <Branch yes={false} label={branchLabels(p.node).no} />
                   </span>
                 )}
               </div>
@@ -220,13 +245,24 @@ export default function WorkflowCanvas({
                 <Fragment key={p.node.id}>
                   {gap > 0 && <span aria-hidden style={{ width: gap, flexShrink: 0 }} />}
                   {i > 0 && <Arrow live={live} />}
-                  <Node node={p.node} dim state={stepState?.[p.node.id]} onPick={onPickStep} />
+                  <Node node={p.node} dim state={stepState?.[p.node.id]} compact={compact} onPick={onPickStep} />
                 </Fragment>
               );
             })}
           </div>
         )}
       </div>
+    </div>
+      {/* A row longer than the space it has says so. Without this a workflow
+          that scrolls looks as though it ends mid-step, which is the one thing
+          a preview must not do. `aria-hidden` and pointer-events off: it is a
+          hint about the scrollbar, not content. */}
+      {columns > 6 && (
+        <span aria-hidden style={{
+          position: 'absolute', top: 0, right: 0, bottom: 4, width: 42, pointerEvents: 'none',
+          background: `linear-gradient(90deg, transparent, ${compact ? T.raised : T.panel})`,
+        }} />
+      )}
     </div>
   );
 }

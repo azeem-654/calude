@@ -113,9 +113,15 @@ for (const width of [390, 1280]) {
   ok(`${width}px · a Marketing automation is NOT on the project`,
     !/MARKETING ONLY ROLE/.test(t), 'the workspace list leaked onto the project card');
 
-  /* And the top-level Workflows tab is gone: this is the only interface. */
+  /* And the top-level Workflows tab is gone: a project *is* its workflows, and
+     a second place to look at them asked somebody to hold two mental models of
+     one thing.
+
+     Aimed at the Workflows tab itself rather than at the presence of a
+     Projects tab — there is now a Projects/Templates pair, which is a
+     different thing and a legitimate one. */
   ok(`${width}px · there is no second top-level Workflows view`,
-    (await p.getByRole('tab', { name: /^Projects$/ }).count()) === 0, 'the old view switcher is still there');
+    (await p.getByRole('tab', { name: /^Workflows$/ }).count()) === 0, 'the old view switcher is still there');
 
   ok(`${width}px · the Edit with AI column is beside it`,
     /Edit with AI/.test(t) && /Update project/.test(t));

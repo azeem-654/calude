@@ -92,7 +92,10 @@ let projectId = '';
     JSON.stringify(demo?.guardrails ?? {}));
 
   /* Real steps, not placeholders — the workflow has to be worth reading. */
-  const enquiry = (wf.workflows ?? []).find(w => /enquiry/i.test(w.name));
+  /* Found by the template it came from rather than by a word in its name: the
+     library's wording is data and is allowed to change, and a test that breaks
+     on a rename is a test about the copy rather than about the behaviour. */
+  const enquiry = (wf.workflows ?? []).find(w => w.templateKey === 'speed-to-lead');
   ok('the workflows have real steps with real content',
     enquiry?.nodes?.some(n => n.type === 'send_email' && /Thanks for getting in touch/.test(n.config?.subject ?? '')),
     JSON.stringify(enquiry?.nodes?.map(n => n.type) ?? []));
@@ -134,7 +137,7 @@ for (const width of [390, 1280]) {
 
   /* Asked of the server, not the screen. */
   const after = await api('/api/autopilot.php', { action: 'workflows', projectId });
-  const edited = (after.workflows ?? []).find(w => /enquiry/i.test(w.name));
+  const edited = (after.workflows ?? []).find(w => w.templateKey === 'speed-to-lead');
   ok(`${width}px · and the edit is stored on the server`,
     edited?.nodes?.some(n => n.config?.subject === 'Edited by the test'),
     JSON.stringify(edited?.nodes?.find(n => n.type === 'send_email')?.config ?? {}));

@@ -25,6 +25,7 @@
     "test:nodes": "npx --yes tsx test/workflowNodes.test.mts",
     "test:setup": "npx --yes tsx test/projectSetup.test.mts",
     "test:templates": "npx --yes tsx test/templates.test.mts",
+    "test:gallery": "node test/templateGallery.e2e.mjs",
     "test:agents": "npx --yes tsx worker/test/projectAgents.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs"
   },

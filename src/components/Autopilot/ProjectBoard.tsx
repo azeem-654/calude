@@ -218,7 +218,10 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         if (!t) continue;
         await saveWorkflow(pr.id, {
           name: t.name, description: t.description, status: 'draft', nodes: t.nodes,
-        });
+        /* The demo's workflows came from templates like anybody else's, and
+           saying so keeps the gallery's usage count a count. The alternative is
+           a demo that is quietly invisible to the one number on that screen. */
+        }, t.key);
       }
 
       setDemoBusy('');

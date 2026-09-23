@@ -163,6 +163,8 @@ interface Body {
   workflowId?: string;
   /** Which step in it — an AI agent somebody asked to run now. */
   nodeId?: string;
+  /** Which gallery template this workflow came from, if any. */
+  templateKey?: string;
   record?: Record<string, unknown>;
   /* Where Autopilot may publish a blog post on its own. */
   siteUrl?: string;
@@ -447,7 +449,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
     if (!projectId) return fail('Which project?', 400);
     const { results } = await env.DB.prepare(
       `SELECT id, project_id AS projectId, name, description, status, nodes, position,
-              created_at AS createdAt, updated_at AS updatedAt
+              template_key AS templateKey, created_at AS createdAt, updated_at AS updatedAt
        FROM crm_project_workflows WHERE account_id = ? AND project_id = ?
        ORDER BY position, created_at`,
     ).bind(accountId, projectId).all<Record<string, unknown>>();
@@ -584,6 +586,12 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
     const allowed = new Set(['draft', 'active', 'paused']);
     const status = allowed.has(String(rec.status)) ? String(rec.status) : 'draft';
 
+    /* Where it came from. Only ever set when a workflow is created: renaming or
+       editing one afterwards does not stop it having come from the template it
+       came from, and re-reading it on every save would let a later edit quietly
+       reattribute it. */
+    const templateKey = String(d.templateKey ?? '').trim().slice(0, 60);
+
     const id = String(rec.id ?? '').trim() || `pw-${crypto.randomUUID()}`;
     const now = nowIso();
     const existing = await env.DB.prepare(
@@ -605,14 +613,41 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       ).bind(accountId, projectId).first<{ n: number }>();
       await env.DB.prepare(
         `INSERT INTO crm_project_workflows
-         (id, account_id, project_id, name, description, status, nodes, position, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         (id, account_id, project_id, name, description, status, nodes, position,
+          template_key, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       ).bind(
         id, accountId, projectId, name, String(rec.description ?? '').slice(0, 300),
-        status, JSON.stringify(nodes).slice(0, 200_000), next?.n ?? 0, now, now,
+        status, JSON.stringify(nodes).slice(0, 200_000), next?.n ?? 0, templateKey, now, now,
       ).run();
     }
     return json({ success: true, id });
+  }
+
+  /**
+   * How many workflows in this workspace came from each template.
+   *
+   * ── Why this is counted rather than stated ──
+   *
+   * Every gallery in this market puts a usage number on each card, and on a
+   * young product every one of those numbers is invented. This one starts at
+   * nothing and is true from the first use — which is worth more than a large
+   * number that is not, on a screen whose whole argument is that its figures
+   * can be checked.
+   *
+   * Scoped to the workspace on purpose: "used 4 times here" is a fact the
+   * customer can go and verify, and an install-wide total would be a claim
+   * about other people's workspaces that this account cannot see.
+   */
+  if (act === 'template_uses') {
+    const { results } = await env.DB.prepare(
+      `SELECT template_key AS k, count(*) AS n FROM crm_project_workflows
+       WHERE account_id = ? AND template_key != '' GROUP BY template_key`,
+    ).bind(accountId).all<{ k: string; n: number }>();
+
+    const uses: Record<string, number> = {};
+    for (const r of results ?? []) uses[String(r.k)] = Number(r.n) || 0;
+    return json({ success: true, uses });
   }
 
   if (act === 'set_workflow_status') {

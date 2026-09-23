@@ -41,6 +41,7 @@ import { fetchBoard, type Portfolio } from '../../services/projects';
 import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
 import SetupProgress from '../Setup/SetupProgress';
 import ClientLinks from './ClientLinks';
+import TemplateGallery from './TemplateGallery';
 import { T } from './theme';
 
 
@@ -64,8 +65,12 @@ export default function Autopilot() {
    * on it — a customer who has just been charged and sees an ordinary board
    * with no acknowledgement assumes something went wrong.
    */
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const setupOrder = params.get('setup') ?? '';
+  /* Which of the two views. In the URL so it is linkable and survives a
+     reload — somebody sent a colleague "look at the template gallery" should
+     get the template gallery. */
+  const view = params.get('view') === 'templates' ? 'templates' : 'projects';
 
   const load = useCallback(async () => {
     /* Together, so the page cannot show a reply queue beside a board that has
@@ -111,7 +116,7 @@ export default function Autopilot() {
      */
     <div style={{ minHeight: '100vh', background: T.bg, color: T.ink }}>
       <div style={{
-        padding: 'clamp(16px, 3vw, 28px) clamp(16px, 3vw, 32px) 10px',
+        padding: 'clamp(16px, 3vw, 28px) clamp(16px, 3vw, 32px) 0',
         borderBottom: `1px solid ${T.lineSoft}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -135,8 +140,45 @@ export default function Autopilot() {
             </span>
           </div>
         </div>
+
+        {/* ── Two views, not two pages ──
+            The gallery and the board share the header, the theme and the data
+            they are about. A separate route would mean a second screen with its
+            own copy of "AI Autopilot" at the top and its own idea of what a
+            project is. The query param keeps it linkable and survives a
+            reload, which a piece of component state would not. */}
+        <div role="tablist" aria-label="AI Autopilot sections"
+          style={{ display: 'flex', gap: 3, marginTop: 14 }}>
+          {([
+            { id: 'projects', label: 'Projects' },
+            { id: 'templates', label: 'Templates' },
+          ] as const).map(v => {
+            const on = view === v.id;
+            return (
+              <button key={v.id} role="tab" aria-selected={on}
+                onClick={() => setParams(p => {
+                  const next = new URLSearchParams(p);
+                  if (v.id === 'projects') next.delete('view'); else next.set('view', v.id);
+                  return next;
+                }, { replace: true })}
+                style={{
+                  padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 13.5, fontWeight: on ? 800 : 600,
+                  color: on ? T.accent : T.muted,
+                  borderBottom: `2px solid ${on ? T.accent : 'transparent'}`, marginBottom: -1,
+                }}>{v.label}</button>
+            );
+          })}
+        </div>
       </div>
 
+      {view === 'templates' ? (
+        <TemplateGallery onBack={() => setParams(p => {
+          const next = new URLSearchParams(p);
+          next.delete('view');
+          return next;
+        }, { replace: true })} />
+      ) : (
       <div style={{ padding: '18px clamp(16px, 3vw, 32px) 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loading && <p style={{ fontSize: 13, color: T.muted }}>Loading…</p>}
 
@@ -182,6 +224,7 @@ export default function Autopilot() {
           />
         )}
       </div>
+      )}
     </div>
   );
 }

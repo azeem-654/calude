@@ -90,6 +90,8 @@ interface Reply {
   used?: number;
   /* What a scheduled agent made, and where it put it. */
   runs?: unknown[];
+  /* How often each template has been used here. */
+  uses?: unknown;
   /* Who is standing where in each workflow, and how many runs each has had. */
   stepState?: unknown;
   runCounts?: unknown;
@@ -252,6 +254,8 @@ export interface WorkflowNode {
 export interface ProjectWorkflow {
   id: string;
   projectId: string;
+  /** The gallery template this came from, or '' when it did not. */
+  templateKey?: string;
   name: string;
   description: string;
   status: 'draft' | 'active' | 'paused';
@@ -301,8 +305,29 @@ export const setWorkflowStatus = (workflowId: string, status: 'draft' | 'active'
 
 export const deleteWorkflow = (workflowId: string) => call('delete_workflow', { workflowId });
 
-export const saveWorkflow = (projectId: string, record: Partial<ProjectWorkflow>) =>
-  call('save_workflow', { projectId, record });
+/**
+ * Save a workflow, saying where it came from when it came from a template.
+ *
+ * `templateKey` is only honoured on creation — the server ignores it on an
+ * update, so editing or renaming a workflow later cannot reattribute it to a
+ * different template.
+ */
+export const saveWorkflow = (
+  projectId: string, record: Partial<ProjectWorkflow>, templateKey?: string,
+) => call('save_workflow', { projectId, record, templateKey });
+
+/**
+ * How many workflows in this workspace came from each template.
+ *
+ * Counted, not stated. Empty on a fresh install, which is the honest answer and
+ * is why the gallery draws no badge at all rather than a zero.
+ */
+export async function templateUses(): Promise<Record<string, number>> {
+  const r = await call('template_uses');
+  return (r.success && r.uses && typeof r.uses === 'object')
+    ? r.uses as Record<string, number>
+    : {};
+}
 
 /* -- Scheduled agents --------------------------------------------------------
  *
