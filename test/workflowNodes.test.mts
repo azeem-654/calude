@@ -18,7 +18,7 @@
  * somebody's customer — which is the kind of thing found in a delivery log
  * rather than in a builder.
  */
-import { layout, problemsWith } from '../src/components/Autopilot/workflowNodes';
+import { layout, nodeDetail, previewStep, problemsWith } from '../src/components/Autopilot/workflowNodes';
 import type { WorkflowNode } from '../src/services/autopilot';
 
 const out: string[] = [];
@@ -153,6 +153,77 @@ const n = (
     problemsWith('x', several).join(' | '));
   ok('and each names the step it is about',
     problemsWith('x', several).every(p => /"One"|"Two"/.test(p)), problemsWith('x', several).join(' | '));
+}
+
+/* ── A workflow that runs on a clock ─────────────────────────────────────── */
+
+{
+  const scheduled: WorkflowNode[] = [
+    n('a', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'b'),
+    n('b', 'ai', 'Write a post', { source: 'portfolio', produces: 'social', count: '1' }),
+  ];
+  ok('a schedule and an agent is a complete workflow', problemsWith('Daily posts', scheduled).length === 0,
+    problemsWith('Daily posts', scheduled).join(' | '));
+
+  /*
+   * The check this whole pass exists for. A workflow on a schedule runs with
+   * nobody in it. A send step in one has no address, so it would be stepped
+   * over at run time — a line in a log nobody reads, on a workflow the screen
+   * says is live. Named before it is saved instead.
+   */
+  const sendsToNobody: WorkflowNode[] = [
+    n('a', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'b'),
+    n('b', 'ai', 'Write a post', { source: 'portfolio', produces: 'social' }, 'c'),
+    n('c', 'send_email', 'Tell them', { subject: 'Hello' }),
+  ];
+  ok('a send step in a scheduled workflow is named as having nobody to send to',
+    problemsWith('x', sendsToNobody).some(p => /no person in it/i.test(p)),
+    problemsWith('x', sendsToNobody).join(' | '));
+
+  const nothingToDo: WorkflowNode[] = [
+    n('a', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'b'),
+    n('b', 'add_tag', 'Tag them', { tag: 'x' }),
+  ];
+  ok('a scheduled workflow with no agent is refused',
+    problemsWith('x', nothingToDo).some(p => /needs an AI agent/i.test(p)),
+    problemsWith('x', nothingToDo).join(' | '));
+
+  /* A feed agent with no address fetches nothing, every morning, silently. */
+  const noAddress: WorkflowNode[] = [
+    n('a', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'b'),
+    n('b', 'ai', 'Write it up', { source: 'rss', sourceUrl: '', produces: 'blog' }),
+  ];
+  ok('an agent reading a feed with no address is refused',
+    problemsWith('x', noAddress).some(p => /no address is set/i.test(p)),
+    problemsWith('x', noAddress).join(' | '));
+  /* And the same agent reading the portfolio needs no address at all. */
+  ok('the same agent reading the portfolio needs none',
+    problemsWith('x', [
+      n('a', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'b'),
+      n('b', 'ai', 'Write it up', { source: 'portfolio', produces: 'blog' }),
+    ]).length === 0);
+
+  /* The line under the step's name says where the work ends up, because "where
+     did it put it" is the question this feature is answered by. */
+  ok('the agent step says what it reads and where the result goes',
+    /portfolio/i.test(nodeDetail('ai', { source: 'portfolio', produces: 'social' }))
+    && /Social Creator/.test(nodeDetail('ai', { source: 'portfolio', produces: 'social' })),
+    nodeDetail('ai', { source: 'portfolio', produces: 'social' }));
+  ok('and a schedule trigger reads as a schedule rather than as its config',
+    nodeDetail('trigger', { event: 'schedule', cadence: 'weekly' }) === 'Every week',
+    nodeDetail('trigger', { event: 'schedule', cadence: 'weekly' }));
+
+  /* The dry run must not claim to show copy it cannot have: the model writes
+     it at run time. */
+  const pv = previewStep(n('b', 'ai', 'Write a post', { source: 'portfolio', produces: 'social', count: '2' }));
+  ok('the agent preview says what it would do without inventing the copy',
+    !pv.blocked && pv.subject === undefined && pv.body === undefined, JSON.stringify(pv));
+  ok('and says everything it makes is a draft',
+    pv.notes.some(x => /draft/i.test(x)), pv.notes.join(' | '));
+
+  const blocked = previewStep(n('b', 'ai', 'Write it up', { source: 'rss', produces: 'blog' }));
+  ok('an agent with no feed address is blocked in the preview too',
+    /no address/i.test(blocked.blocked), blocked.blocked);
 }
 
 for (const line of out) console.log(line);

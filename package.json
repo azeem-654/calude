@@ -23,6 +23,7 @@
     "test:autopilot": "npx --yes tsx worker/test/autopilotPlan.test.mts",
     "test:project": "node test/projectCard.e2e.mjs",
     "test:nodes": "npx --yes tsx test/workflowNodes.test.mts",
+    "test:agents": "npx --yes tsx worker/test/projectAgents.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs"
   },
   "dependencies": {

@@ -40,12 +40,18 @@
  * whether a mail server will accept the message.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Trash2, ArrowUp, ArrowDown, X, Check, Loader, AlertTriangle, GitBranch,
   Play, Settings2, Sliders, ChevronRight,
 } from 'lucide-react';
-import { lookFor, previewStep, problemsWith, SAMPLE_CONTACT } from './workflowNodes';
-import { saveWorkflow, type ProjectWorkflow, type WorkflowNode } from '../../services/autopilot';
+import {
+  AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor, nodeDetail, previewStep, problemsWith, SAMPLE_CONTACT,
+} from './workflowNodes';
+import {
+  runAgent, saveWorkflow,
+  type AgentRunResult, type ProjectWorkflow, type WorkflowNode,
+} from '../../services/autopilot';
 import { T, nodeDark } from './theme';
 
 const INK = T.ink;
@@ -69,6 +75,15 @@ interface FieldDef {
   kind?: 'text' | 'textarea' | 'number' | 'select';
   options?: { value: string; label: string }[];
   placeholder?: string;
+  /**
+   * Shown only when this is true of the step's config.
+   *
+   * A feed address on a step reading the client's portfolio is a box that can
+   * only be filled in wrongly, and a campaign length on a step making images is
+   * a number that does nothing. Hiding them is not decoration: every visible
+   * field is a claim that it matters.
+   */
+  when?: (cfg: Record<string, string>) => boolean;
 }
 
 const STEP_FIELDS: Record<string, FieldDef[]> = {
@@ -83,10 +98,87 @@ const STEP_FIELDS: Record<string, FieldDef[]> = {
         { value: 'appointment_scheduled', label: 'An appointment is booked' },
         { value: 'email_opened', label: 'An email is opened' },
         { value: 'link_clicked', label: 'A link is clicked' },
+        /* The one that is not about a person. A workflow triggered this way is
+           run by `worker/src/lib/projectAgents.ts` instead of the contact
+           engine — see the note in 0044_agent_runs.sql. */
+        { value: 'schedule', label: 'A schedule — nobody has to do anything' },
       ],
     },
-    { key: 'formName', label: 'Only this form', hint: 'Leave blank for any form.', placeholder: 'Get a quote' },
-    { key: 'tag', label: 'Only this tag or stage', hint: 'Leave blank for any.', placeholder: 'enquiry' },
+    {
+      key: 'cadence', label: 'How often', kind: 'select',
+      when: cfg => cfg.event === 'schedule',
+      options: Object.entries(CADENCES).map(([value, label]) => ({ value, label })),
+      hint: 'Counted from when it last ran, not from a clock — so nothing is skipped by a tick landing a few minutes early.',
+    },
+    {
+      key: 'formName', label: 'Only this form', hint: 'Leave blank for any form.', placeholder: 'Get a quote',
+      when: cfg => cfg.event !== 'schedule',
+    },
+    {
+      key: 'tag', label: 'Only this tag or stage', hint: 'Leave blank for any.', placeholder: 'enquiry',
+      when: cfg => cfg.event !== 'schedule',
+    },
+  ],
+  /**
+   * The AI agent.
+   *
+   * Three questions in the order somebody actually asks them: what should it
+   * read, what should it make, and how much. The source and the output are the
+   * same two tables the runner reads, so a choice offered here is a choice the
+   * server can carry out.
+   */
+  ai: [
+    {
+      key: 'source', label: 'What it reads', kind: 'select',
+      options: Object.entries(AGENT_SOURCES).map(([value, v]) => ({ value, label: v.label })),
+      hint: 'The material it writes from. Everything else it says comes from this.',
+    },
+    {
+      key: 'sourceUrl', label: 'Address', kind: 'text',
+      when: cfg => !!AGENT_SOURCES[cfg.source ?? '']?.needsUrl,
+      hint: 'A feed, or a YouTube channel ID beginning UC.',
+      placeholder: 'https://example.com/feed',
+    },
+    {
+      key: 'produces', label: 'What it makes', kind: 'select',
+      options: Object.entries(AGENT_OUTPUTS).map(([value, v]) => ({ value, label: v.label })),
+    },
+    {
+      key: 'platform', label: 'For which platform', kind: 'select',
+      when: cfg => (cfg.produces ?? 'social') === 'social',
+      options: [
+        { value: 'instagram', label: 'Instagram — square' },
+        { value: 'facebook', label: 'Facebook — square' },
+        { value: 'linkedin', label: 'LinkedIn — wide' },
+        { value: 'twitter', label: 'X — wide' },
+      ],
+    },
+    {
+      key: 'count', label: 'How many each time', kind: 'number',
+      when: cfg => (cfg.produces ?? 'social') === 'social',
+      hint: 'One a day is a habit somebody can keep up with. Six is the most it will make in one run.',
+      placeholder: '1',
+    },
+    {
+      key: 'campaignSteps', label: 'How many emails', kind: 'select',
+      when: cfg => cfg.produces === 'email_campaign',
+      options: [
+        { value: '7', label: '7 — a week of daily emails, or seven weekly ones' },
+        { value: '20', label: '20 — a long nurture' },
+        { value: '52', label: '52 — one a week for a year' },
+      ],
+    },
+    {
+      key: 'everyDays', label: 'Days between emails', kind: 'number',
+      when: cfg => cfg.produces === 'email_campaign',
+      hint: 'Seven is weekly. The campaign is written all at once; this is the gap it schedules them at.',
+      placeholder: '7',
+    },
+    {
+      key: 'topic', label: 'Anything it should stick to', kind: 'textarea',
+      hint: 'Optional. Leave it blank and it chooses from what it reads.',
+      placeholder: 'Boiler servicing before winter, and the grant that pays for part of it.',
+    },
   ],
   wait: [
     { key: 'days', label: 'Days', kind: 'number', placeholder: '0' },
@@ -145,7 +237,7 @@ const STEP_FIELDS: Record<string, FieldDef[]> = {
 
 /** What a customer can add. `trigger` is not here: a workflow has exactly one
  *  and it is the first step, which the editor keeps true rather than policing. */
-const ADDABLE = ['send_email', 'send_sms', 'wait', 'condition', 'add_tag', 'remove_tag', 'create_task', 'assign_to', 'update_field'];
+const ADDABLE = ['ai', 'send_email', 'send_sms', 'wait', 'condition', 'add_tag', 'remove_tag', 'create_task', 'assign_to', 'update_field'];
 
 const newId = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -185,6 +277,9 @@ export default function WorkflowEditor({
   const [addingAfter, setAddingAfter] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const [running, setRunning] = useState(false);
+  const [ran, setRan] = useState<AgentRunResult | null>(null);
 
   /* The first step stands in until somebody picks another, so the panel is
      never an empty frame asking for a click before it will say anything. */
@@ -224,12 +319,79 @@ export default function WorkflowEditor({
   const setStep = (id: string, patch: Partial<WorkflowNode>) =>
     setNodes(list => relink(list.map(n => (n.id === id ? { ...n, ...patch } : n))));
 
+  /** Every stock trigger name, so one can be recognised as untouched. The
+   *  cadences are in here too because a schedule is named after its cadence
+   *  rather than after the option that chose it — "Every day" is a step name,
+   *  "A schedule — nobody has to do anything" is a menu entry. */
+  const TRIGGER_LABELS = [
+    ...(STEP_FIELDS.trigger[0].options ?? []).map(o => o.label),
+    ...Object.values(CADENCES),
+  ];
+
   const setConfig = (id: string, key: string, value: string) =>
-    setNodes(list => list.map(n => (n.id === id ? { ...n, config: { ...n.config, [key]: value } } : n)));
+    setNodes(list => list.map(n => {
+      if (n.id !== id) return n;
+      const next = { ...n, config: { ...n.config, [key]: value } };
+      /* Changing what starts a workflow renames it, unless somebody has named
+         it themselves. Without this a trigger switched to a schedule goes on
+         reading "A form is submitted" in the list — the one line somebody
+         scanning a workflow actually trusts. A name they typed is left alone,
+         because overwriting that is the worse of the two mistakes. */
+      if (n.type === 'trigger' && (key === 'event' || key === 'cadence') && TRIGGER_LABELS.includes(n.label)) {
+        const event = key === 'event' ? value : String(next.config.event ?? '');
+        if (event === 'schedule') {
+          next.label = CADENCES[key === 'cadence' ? value : String(next.config.cadence ?? 'daily')] ?? CADENCES.daily;
+        } else {
+          const chosen = (STEP_FIELDS.trigger[0].options ?? []).find(o => o.value === event);
+          if (chosen) next.label = chosen.label;
+        }
+      }
+      return next;
+    }));
+
+  /**
+   * Run one agent step against the saved workflow.
+   *
+   * Against the *saved* one, deliberately: the server can only run what it has
+   * stored, so an unsaved edit would be run as it was before the edit and the
+   * result would be quietly about a different step. The button is disabled
+   * until there is something to run rather than explaining that afterwards.
+   */
+  async function runNow(nodeId: string) {
+    if (!workflow?.id) return;
+    setRunning(true);
+    setRan(null);
+    const r = await runAgent(projectId, workflow.id, nodeId);
+    setRan(r);
+    setRunning(false);
+    /* The list on the left shows what each workflow has produced; a run that
+       made something has changed that. */
+    if (r.ok) onSaved();
+  }
+
+  /**
+   * What a step arrives already set to.
+   *
+   * An agent added with an empty config shows two boxes reading "— choose —",
+   * and until both are answered the step does nothing and the dry run can say
+   * nothing useful about it. These are the two commonest answers, so the step
+   * is complete from the moment it is added and changing it is an edit rather
+   * than a form to fill in.
+   *
+   * Only for the types where a default is genuinely right. An email's subject
+   * has no sensible default: a pre-filled one is a real message somebody might
+   * not read before switching it on.
+   */
+  const DEFAULTS: Record<string, Record<string, string>> = {
+    ai: { source: 'portfolio', produces: 'social', platform: 'instagram', count: '1' },
+    wait: { days: '1' },
+  };
 
   function addAt(type: string, after: string | null) {
     const look = lookFor(type);
-    const node: WorkflowNode = { id: newId(), type, label: look.label, config: {}, nextId: null };
+    const node: WorkflowNode = {
+      id: newId(), type, label: look.label, config: { ...(DEFAULTS[type] ?? {}) }, nextId: null,
+    };
     setNodes(list => {
       const at = after ? list.findIndex(n => n.id === after) + 1 : list.length;
       const next = [...list];
@@ -265,7 +427,9 @@ export default function WorkflowEditor({
   const problems = problemsWith(name, nodes);
   const current = nodes.find(n => n.id === selected) ?? null;
   const preview = useMemo(() => (current ? previewStep(current) : null), [current]);
-  const fields = current ? (STEP_FIELDS[current.type] ?? []) : [];
+  const fields = current
+    ? (STEP_FIELDS[current.type] ?? []).filter(f => !f.when || f.when(current.config ?? {}))
+    : [];
 
   async function save() {
     if (problems.length || saving) return;
@@ -363,8 +527,22 @@ export default function WorkflowEditor({
                             display: 'block', fontSize: 12.5, fontWeight: 700, color: INK,
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>{n.label || look.label}</span>
-                          <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1 }}>
-                            {look.label}
+                          {/* What it is *set to*, not what type it is. The type
+                              is already the icon, and the label above is the
+                              customer's own words — which go stale the moment
+                              they change the step and do not rename it. A
+                              trigger switched to a schedule would otherwise
+                              still read "A form is submitted" in both lines. */}
+                          <span style={{
+                            display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {/* The type, when the detail would only repeat the
+                                name above it — which it does whenever the step
+                                is still called what it does. */}
+                            {(nodeDetail(n.type, n.config) || look.label) === (n.label || look.label)
+                              ? look.label
+                              : (nodeDetail(n.type, n.config) || look.label)}
                           </span>
                         </span>
                         {/* A step that cannot run is marked in the list, not
@@ -598,9 +776,16 @@ export default function WorkflowEditor({
                       </div>
 
                       <p style={{ margin: 0, fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
-                        {/* The sentence that makes this button safe to press. */}
-                        This is a dry run against a stand-in person — <strong style={{ color: INK }}>{SAMPLE_CONTACT.name}</strong>.
-                        Nothing is sent and nobody is contacted.
+                        {current.type === 'ai'
+                          /* An agent step has no person in it, so the stand-in
+                             sentence would be a lie in the reassuring
+                             direction — the worst kind. */
+                          ? 'This describes what the agent would do. What it actually writes is written by the model when it runs.'
+                          : <>
+                            {/* The sentence that makes this button safe to press. */}
+                            This is a dry run against a stand-in person — <strong style={{ color: INK }}>{SAMPLE_CONTACT.name}</strong>.
+                            Nothing is sent and nobody is contacted.
+                          </>}
                       </p>
 
                       {preview.blocked && (
@@ -637,6 +822,60 @@ export default function WorkflowEditor({
                           {note}
                         </p>
                       ))}
+
+                      {/* ── Running it for real ──
+                          Only for an agent, and only once the workflow has been
+                          saved: the server runs the step it has stored, and a
+                          step that only exists in this browser is not one it can
+                          find. Saying so beats a 404 that reads like a fault. */}
+                      {current.type === 'ai' && (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 2 }}>
+                          <button
+                            disabled={!workflow?.id || running || !!preview.blocked}
+                            onClick={() => runNow(current.id)}
+                            style={{
+                              padding: '10px 14px', borderRadius: 10, border: `1px solid ${LINE}`,
+                              background: !workflow?.id || preview.blocked ? T.raised : T.accentSoft,
+                              color: !workflow?.id || preview.blocked ? MUTED : INK,
+                              fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
+                              cursor: !workflow?.id || running || preview.blocked ? 'default' : 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                            }}>
+                            {running
+                              ? <><Loader size={13} className="spin" /> Writing…</>
+                              : <><Play size={13} /> Run it now</>}
+                          </button>
+                          <span style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
+                            {!workflow?.id
+                              ? 'Save the workflow first — the server runs the step it has stored.'
+                              : 'This really runs: it writes a real draft, which you can read and delete like any other. It does not publish or send anything.'}
+                          </span>
+                          {ran && (
+                            <div style={{
+                              padding: '11px 12px', borderRadius: 11,
+                              background: ran.ok ? T.goodSoft : ran.outcome === 'skipped' ? T.raised : T.badSoft,
+                              border: `1px solid ${ran.ok ? T.good : ran.outcome === 'skipped' ? LINE : T.bad}55`,
+                              display: 'grid', gap: 6,
+                            }}>
+                              <span style={{ fontSize: 12, color: INK, lineHeight: 1.55 }}>{ran.detail}</span>
+                              {ran.link && (
+                                <a href={ran.link.route}
+                                  /* Routed rather than reloaded: a full page
+                                     load here throws away the editor and the
+                                     unsaved graph in it. */
+                                  onClick={e => { e.preventDefault(); navigate(ran.link!.route); }}
+                                  style={{
+                                    fontSize: 12, fontWeight: 700, color: T.accent,
+                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                  }}>
+                                  Open it in {AGENT_OUTPUTS[current.config.produces || 'social']?.where ?? 'the app'}
+                                  <ChevronRight size={12} />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
 

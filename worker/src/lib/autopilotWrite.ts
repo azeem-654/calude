@@ -473,3 +473,114 @@ Rules:
 Answer as JSON only:
 {"what":"blog","summary":"Write a post about winter boiler checks","because":"you asked for something about getting ready for winter","cannot":""}`, 0.2);
 }
+
+/* ── An agent writing from a source ──────────────────────────────────────────
+ *
+ * The difference between these and the writers above is where the substance
+ * comes from. Everything above writes from the brand block alone, which is six
+ * lines about a business, and the `NO_INVENTING` rule is there because a model
+ * given six lines and asked for a week of posts will pad the gap with awards
+ * and anniversaries.
+ *
+ * These are given *material* — a client's own portfolio, the items a news feed
+ * published this morning, the video a channel put up — and told to write about
+ * that and nothing else. So the rule gets stricter rather than looser: with a
+ * source in front of it, inventing a fact is no longer filling a gap, it is
+ * contradicting something the customer can go and read.
+ */
+
+export interface SourceItem {
+  title: string;
+  link: string;
+  summary: string;
+  published: string;
+}
+
+/** The material block, or an honest statement that there is none. */
+function materialBlock(items: SourceItem[]): string {
+  if (!items.length) return '';
+  return `\n=== WHAT IS NEW (write about THIS) ===\n${items.slice(0, 8).map((it, i) =>
+    `${i + 1}. ${it.title}\n   ${it.summary.slice(0, 400)}\n   ${it.link}`).join('\n')}\n`;
+}
+
+const SOURCED_RULE =
+  'You have the material above. Write about what is actually in it. Do not add facts that are not there, do not describe the business beyond what the brand block says, and if the material is thin, write a shorter post rather than padding it.';
+
+export interface WrittenImagePosts {
+  posts: { platform: string; headline: string; body: string; hashtags: string[] }[];
+}
+
+/**
+ * Posts meant to be *seen*, not just read.
+ *
+ * `writeSocialPosts` returns a caption. A caption alone lands in the Social
+ * Creator as a blank canvas with words underneath it, which is not what
+ * somebody asking for daily image posts is picturing. So this returns a
+ * headline as well — six words that go on the image — and the caption goes
+ * beneath it, which is how every one of these is actually read.
+ */
+export function writeImagePosts(
+  apiKey: string, b: Brand, opts: { count?: number; platform?: string; items?: SourceItem[] } = {},
+): Promise<Written<WrittenImagePosts>> {
+  const count = Math.min(Math.max(opts.count ?? 1, 1), 6);
+  const items = opts.items ?? [];
+  return ask<WrittenImagePosts>(apiKey, `Write ${count} social post${count === 1 ? '' : 's'} for this business, each with a headline that will be set large on the image itself.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+${materialBlock(items)}
+Rules:
+- The headline goes ON the image. Under nine words, no full stop, no hashtags, no emoji. It has to make sense to somebody scrolling who reads nothing else.
+- The caption goes under the image. Two or three sentences, plain, in their tone of voice.
+- ${items.length ? SOURCED_RULE : NO_INVENTING}
+- No "🚀", no "Let that sink in", no engagement-bait questions, no "DM us to learn more".
+- Three or four hashtags at most, lowercase, no invented brand tags.
+${count > 1 ? '- Each post is about one thing, and no two are about the same thing.\n' : ''}
+Return ONLY valid JSON, no fences:
+{
+  "posts": [{"platform": "${opts.platform || 'instagram'}", "headline": "", "body": "", "hashtags": ["", ""]}]
+}`, 0.85);
+}
+
+/**
+ * A stretch of a long email campaign.
+ *
+ * ── Why this is written in batches ──
+ *
+ * Somebody asking for "a year of emails" wants fifty-two of them. A model asked
+ * for fifty-two in one reply returns about a dozen good ones and then degrades
+ * into variations of the same email — and, often enough, JSON that does not
+ * close. So the runner asks for a batch at a time and says which stretch it is
+ * asking for, which keeps each reply short enough to be good and lets a failed
+ * batch leave the ones before it intact.
+ *
+ * `from` and `total` are in the prompt rather than only in the loop because the
+ * model writes a different email at week 40 than at week 2, and it can only do
+ * that if it knows where it is.
+ */
+export function writeSequenceBatch(
+  apiKey: string, b: Brand,
+  opts: { from: number; count: number; total: number; everyDays: number; theme?: string; items?: SourceItem[] },
+): Promise<Written<WrittenSequence>> {
+  const count = Math.min(Math.max(opts.count, 1), 13);
+  const items = opts.items ?? [];
+  return ask<WrittenSequence>(apiKey, `Write emails ${opts.from + 1} to ${opts.from + count} of a ${opts.total}-email campaign for this business.
+
+=== THE BUSINESS ===
+${brandBlock(b)}
+${opts.theme ? `\nWhat the campaign is about: ${opts.theme}\n` : ''}${materialBlock(items)}
+Where these sit: this is a campaign of ${opts.total} emails, one every ${opts.everyDays} days, to people already on their list. You are writing numbers ${opts.from + 1} to ${opts.from + count} of it${opts.from > 0 ? ' — the earlier ones have already introduced the business, so do not introduce it again' : ''}.
+
+Rules:
+- ${items.length ? SOURCED_RULE : NO_INVENTING}
+- Each email does one job and stands alone. Somebody who missed the last one must still get something out of this one.
+- Under 180 words each. No "I hope this email finds you well", no "just circling back".
+- Plain text with line breaks. No HTML, no images, no merge tags except {{firstName}}.
+- Nothing that only makes sense on a particular date — these send over ${Math.round(opts.total * opts.everyDays / 7)} weeks and nobody will be editing them.
+
+Return ONLY valid JSON, no fences:
+{
+  "name": "short name for the whole campaign",
+  "steps": [{"day": ${opts.from * opts.everyDays}, "subject": "", "body": ""}]
+}`, 0.7);
+}

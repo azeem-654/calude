@@ -45,6 +45,74 @@ export const NODE_LOOK: Record<string, NodeLook> = {
 export const lookFor = (type: string): NodeLook =>
   NODE_LOOK[type] ?? { icon: Workflow, fg: '#64748b', bg: '#f4f5f7', label: type.replace(/_/g, ' ') };
 
+/* ── What an AI agent reads, and what it makes ───────────────────────────────
+ *
+ * One table, because four things read it: the step's form, the line under its
+ * name, the dry run, and the Assets tab. A label typed in four places is a
+ * label that says "News feed" on one screen and "RSS" on the next.
+ *
+ * The Worker has its own copy of the *behaviour* — `worker/src/lib/
+ * projectAgents.ts` — for the same reason `fillTokens` is duplicated: the
+ * bundle and the Worker are separate builds. What is here is only the wording
+ * and the routes, neither of which the Worker needs to agree with, except the
+ * routes below, which it writes into the link on each run.
+ */
+
+export interface AgentSource {
+  label: string;
+  /** The one line under it in the picker. */
+  hint: string;
+  /** Does it need an address pasting in? */
+  needsUrl: boolean;
+  urlLabel?: string;
+  urlHint?: string;
+  urlPlaceholder?: string;
+}
+
+export const AGENT_SOURCES: Record<string, AgentSource> = {
+  portfolio: {
+    label: "The client's own portfolio",
+    hint: 'What they do, what they sell and who buys it — the profile on this project.',
+    needsUrl: false,
+  },
+  rss: {
+    label: 'A news feed',
+    hint: 'Any RSS or Atom feed. It writes about what appeared since it last ran, and skips a morning when nothing did.',
+    needsUrl: true,
+    urlLabel: 'Feed address',
+    urlHint: 'The feed itself, not the page it sits on — usually ends in /feed or /rss.xml.',
+    urlPlaceholder: 'https://example.com/feed',
+  },
+  youtube: {
+    label: 'A YouTube channel',
+    hint: 'Turns new videos into posts. Needs the channel ID rather than a handle — YouTube only publishes a feed for the ID.',
+    needsUrl: true,
+    urlLabel: 'Channel ID',
+    urlHint: 'Starts with UC. Open the channel, click a video, then "…more" under the description.',
+    urlPlaceholder: 'UCxxxxxxxxxxxxxxxxxxxxxx',
+  },
+};
+
+export interface AgentOutput {
+  label: string;
+  /** Where the finished thing lands, named as the customer knows it. */
+  where: string;
+  route: string;
+}
+
+export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
+  social: { label: 'Social posts, as images', where: 'Social Creator', route: '/social-creator' },
+  blog: { label: 'A blog post', where: 'Blog', route: '/blog-automation' },
+  email_campaign: { label: 'An email campaign', where: 'Campaigns', route: '/marketing?tab=sequences' },
+};
+
+/** How often a scheduled workflow runs, in the words on the form. */
+export const CADENCES: Record<string, string> = {
+  daily: 'Every day',
+  weekly: 'Every week',
+  monthly: 'Every month',
+};
+
 /**
  * The line under a step's name: what it will actually do, from its own config.
  *
@@ -57,9 +125,22 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
   const c = (k: string) => String(config[k] ?? '').trim();
 
   if (type === 'trigger') {
+    /* A schedule reads as a schedule. "schedule — daily" is the code's words;
+       "Every day" is what somebody set. */
+    if (c('event') === 'schedule') return CADENCES[c('cadence')] ?? CADENCES.daily;
     const ev = c('event').replace(/_/g, ' ');
     const named = c('formName') || c('tag');
     return named ? `${ev} — ${named}` : ev;
+  }
+  if (type === 'ai') {
+    const src = AGENT_SOURCES[c('source') || 'portfolio'];
+    const out = AGENT_OUTPUTS[c('produces') || 'social'];
+    if (!src || !out) return 'Not set up yet';
+    const n = Number(c('count'));
+    const many = c('produces') === 'email_campaign'
+      ? `${Math.max(Number(c('campaignSteps')) || 7, 2)} emails`
+      : n > 1 ? `${n} ${out.label.toLowerCase()}` : out.label.toLowerCase();
+    return `Reads ${src.label.toLowerCase()} → ${many} → ${out.where}`;
   }
   if (type === 'wait') {
     const bits = [
@@ -100,8 +181,12 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
  */
 export type WorkflowGroup = 'marketing' | 'content' | 'sales';
 
-export function groupOf(nodes: { type: string }[]): WorkflowGroup {
+export function groupOf(nodes: { type: string; config?: Record<string, string> }[]): WorkflowGroup {
   const has = (t: string) => nodes.some(n => n.type === t);
+  /* An agent writing a campaign is filed under Marketing even though it sends
+     nothing itself: what it produces is a list of emails, and that is what
+     somebody is looking for when they filter. */
+  if (nodes.some(n => n.type === 'ai' && n.config?.produces === 'email_campaign')) return 'marketing';
   if (has('send_email') || has('send_sms')) return 'marketing';
   if (has('assign_to') || has('create_task')) return 'sales';
   return 'content';
@@ -144,6 +229,22 @@ export function problemsWith(name: string, nodes: WorkflowNode[]): string[] {
   if (!nodes.some(n => n.type === 'trigger')) out.push('It has no trigger, so nothing would ever start it.');
   if (nodes.length < 2) out.push('It needs at least one step after the trigger.');
 
+  /* ── A workflow on a schedule is a different animal ──
+     It runs with nobody in it, so a send step in one has no address to send to.
+     Caught here rather than at run time, where it would be a line in a log
+     somebody never reads. */
+  const scheduled = nodes.some(n => n.type === 'trigger' && n.config?.event === 'schedule');
+  if (scheduled) {
+    if (!nodes.some(n => n.type === 'ai')) {
+      out.push('This runs on a schedule with nobody in it, so it needs an AI agent step — there is nothing else here for it to do.');
+    }
+    for (const n of nodes) {
+      if (n.type === 'send_email' || n.type === 'send_sms') {
+        out.push(`"${n.label || lookFor(n.type).label}" sends to a person, and a workflow on a schedule has no person in it. It would be stepped over.`);
+      }
+    }
+  }
+
   for (const n of nodes) {
     const label = n.label || lookFor(n.type).label;
     /* The two that reach a real person with nothing in them. A blank email is
@@ -160,6 +261,17 @@ export function problemsWith(name: string, nodes: WorkflowNode[]): string[] {
     }
     if ((n.type === 'add_tag' || n.type === 'remove_tag') && !String(n.config.tag ?? '').trim()) {
       out.push(`"${label}" has no tag named.`);
+    }
+    if (n.type === 'ai') {
+      const src = AGENT_SOURCES[String(n.config.source ?? 'portfolio')];
+      if (!src) {
+        out.push(`"${label}" has no source to read, so it has nothing to write from.`);
+      } else if (src.needsUrl && !String(n.config.sourceUrl ?? '').trim()) {
+        out.push(`"${label}" reads ${src.label.toLowerCase()} but no address is set.`);
+      }
+      if (!AGENT_OUTPUTS[String(n.config.produces ?? 'social')]) {
+        out.push(`"${label}" does not say what it should produce.`);
+      }
     }
   }
   return out;
@@ -324,12 +436,64 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
   const notes: string[] = [];
 
   if (node.type === 'trigger') {
+    if (c('event') === 'schedule') {
+      const cad = CADENCES[c('cadence')] ?? CADENCES.daily;
+      return {
+        headline: `${cad}, whether or not anybody has done anything.`,
+        blocked: '',
+        /* The two things somebody would otherwise find out by waiting a day.
+           Neither is a fault; both are surprising if unstated. */
+        notes: [
+          'Nobody is enrolled in a workflow like this — it has no contact in it, so a send step would have nowhere to send.',
+          'It runs on the server whether or not the app is open.',
+        ],
+      };
+    }
     const ev = c('event').replace(/_/g, ' ') || 'nothing';
     const named = c('formName') || c('tag');
     return {
       headline: `Starts when ${ev}${named ? ` — only "${named}"` : ''}.`,
       blocked: c('event') ? '' : 'No event is chosen, so nothing would ever start this workflow.',
       notes: named ? [] : ['Any form or tag will start it. Name one above to narrow it.'],
+    };
+  }
+
+  if (node.type === 'ai') {
+    const src = AGENT_SOURCES[c('source') || 'portfolio'];
+    const out = AGENT_OUTPUTS[c('produces') || 'social'];
+    if (!src || !out) {
+      return { headline: 'An AI agent.', blocked: 'It has no source or nothing to produce, so there is nothing to run.', notes: [] };
+    }
+    const count = Math.max(Number(c('count')) || 1, 1);
+    const emails = Math.max(Number(c('campaignSteps')) || 7, 2);
+    const makes = c('produces') === 'email_campaign'
+      ? `a campaign of ${emails} emails`
+      : c('produces') === 'blog' ? 'one blog post'
+        : `${count} ${count === 1 ? 'post' : 'posts'}`;
+
+    if (src.needsUrl && !c('sourceUrl')) {
+      return {
+        headline: `Would read ${src.label.toLowerCase()} and write ${makes}.`,
+        blocked: `No address is set, so there is nothing to read.`,
+        notes: [],
+      };
+    }
+
+    return {
+      headline: `Reads ${src.label.toLowerCase()} and writes ${makes}, filed in ${out.where}.`,
+      blocked: '',
+      notes: [
+        /* Said before it runs rather than discovered after. Everything it makes
+           is a draft; nothing it makes is posted. */
+        `Everything it makes is a draft in ${out.where}. Nothing is published or scheduled by this step.`,
+        ...(c('source') === 'rss' || c('source') === 'youtube'
+          ? ['It only writes about what appeared since it last ran. A morning with nothing new is recorded as skipped, not as done.']
+          : []),
+        ...(c('produces') === 'email_campaign' && emails > 13
+          ? [`${emails} emails are written a batch at a time, so this takes a few minutes and may finish across two runs.`]
+          : []),
+        'A dry run cannot show the copy — that is written by the model when it runs. Use "Run it now" to see the real thing.',
+      ],
     };
   }
 

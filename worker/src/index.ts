@@ -59,6 +59,7 @@ import { runEngageDispatch } from './engageDispatch';
 import { pruneRateLimits } from './lib/rateLimit';
 import { pruneDeliveryLog } from './lib/deliveryLog';
 import { runAutomations, pruneAutomationLog } from './lib/automationEngine';
+import { runProjectAgents, pruneAgentRuns } from './lib/projectAgents';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -284,6 +285,20 @@ export default {
        * have got your enquiry".
        */
       const flows = await runAutomations(env);
+      /*
+       * Scheduled agents after the contact passes and before the batch.
+       *
+       * They answer nobody, so nothing is waiting on them the way a lead is
+       * waiting on a reply — but they write into the same content lists the
+       * digest then reports on, and running them after the digest would mean
+       * every morning's post was first mentioned the following morning.
+       *
+       * They also call a model several times over, which is the slowest thing
+       * on this tick. `MAX_AGENTS_PER_TICK` is what keeps that from eating the
+       * batch's time: a workspace with thirty agents gets through them over
+       * several ticks rather than starving everybody else on one.
+       */
+      const agents = await runProjectAgents(env);
       const report = await runScheduledSends(env);
       /*
        * The digest goes last, and only in the customer's own morning.
@@ -323,6 +338,7 @@ export default {
       await pruneRateLimits(env);
       await pruneDeliveryLog(env);
       await pruneAutomationLog(env);
+      await pruneAgentRuns(env);
 
       const ms = Date.now() - started;
 
@@ -350,6 +366,10 @@ export default {
           drafted: replies.drafted, refused: replies.refused, failed: replies.failed,
         },
         digest: { sent: digest.sent, skipped: digest.skipped, failed: digest.failed },
+        /* `skipped` kept separate from `produced` on purpose: a feed with
+           nothing new in it is the ordinary case, and folding it into a
+           success count would make a quiet week look like a busy one. */
+        agents: { ran: agents.ran, produced: agents.produced, skipped: agents.skipped, failed: agents.failed },
         notes: report.notes.slice(0, 20),
       }));
     })());

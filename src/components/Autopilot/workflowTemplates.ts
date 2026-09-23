@@ -38,6 +38,50 @@ export interface WorkflowTemplate {
 }
 
 export const TEMPLATES: WorkflowTemplate[] = [
+  /* ── The ones that run on a clock ──
+     First in the list on purpose: a project with nobody in its CRM yet cannot
+     use any of the follow-ups below, and these three are the ones that start
+     producing something on the morning after they are switched on. */
+  {
+    key: 'daily-posts',
+    name: 'A post a day, from the portfolio',
+    description: 'One social post every morning, written from this client\u2019s profile',
+    blurb: 'Reads what the client does and who buys it, writes one post with a headline set on the image, and files it as a draft in the Social Creator.',
+    nodes: [
+      n('n0', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'n1'),
+      n('n1', 'ai', 'Write a post from the portfolio', {
+        source: 'portfolio', produces: 'social', platform: 'instagram', count: '1',
+      }, null),
+    ],
+  },
+  {
+    key: 'feed-blog',
+    name: 'Turn a news feed into blog posts',
+    description: 'Watches a feed and writes up anything new',
+    blurb: 'Reads an RSS or Atom feed each morning, writes a post about whatever appeared since it last looked, and leaves it as a draft in Blog. A morning with nothing new is recorded as skipped.',
+    nodes: [
+      n('n0', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' }, 'n1'),
+      /* Deliberately blank rather than a plausible example address: a template
+         that arrives pointed at somebody else's feed is one that quietly writes
+         about the wrong business until it is noticed. `problemsWith` refuses to
+         save it until an address is set. */
+      n('n1', 'ai', 'Write up what is new', {
+        source: 'rss', sourceUrl: '', produces: 'blog',
+      }, null),
+    ],
+  },
+  {
+    key: 'year-emails',
+    name: 'A year of weekly emails',
+    description: 'Fifty-two emails, written once, from the client\u2019s profile',
+    blurb: 'Writes a whole year of weekly emails in one go and files them as a draft campaign. Nobody is enrolled \u2014 they are there to be read and edited first.',
+    nodes: [
+      n('n0', 'trigger', 'Every month', { event: 'schedule', cadence: 'monthly' }, 'n1'),
+      n('n1', 'ai', 'Write the campaign', {
+        source: 'portfolio', produces: 'email_campaign', campaignSteps: '52', everyDays: '7',
+      }, null),
+    ],
+  },
   {
     key: 'enquiry',
     name: 'Answer a new enquiry',

@@ -23,6 +23,7 @@ import {
   deletePublishTarget, loadPublishTarget, notePublishResult,
   publishTargetStatus, savePublishTarget,
 } from '../lib/publishTarget';
+import { runAgentOnce } from '../lib/projectAgents';
 
 /** Kept in step with AIGuardrails in src/types/aiSalesAgent.ts. */
 const DEFAULT_GUARDRAILS = {
@@ -160,6 +161,8 @@ interface Body {
   instruction?: string;
   /* A project's own workflows. */
   workflowId?: string;
+  /** Which step in it — an AI agent somebody asked to run now. */
+  nodeId?: string;
   record?: Record<string, unknown>;
   /* Where Autopilot may publish a blog post on its own. */
   siteUrl?: string;
@@ -458,6 +461,54 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       return { ...r, nodes: Array.isArray(nodes) ? nodes : [] };
     });
     return json({ success: true, workflows });
+  }
+
+  /**
+   * What the scheduled agents have actually made.
+   *
+   * Read here rather than derived on the client, because the client cannot see
+   * it: these rows are written by the cron with nobody signed in. The link on
+   * each row is the whole point — a customer told that a post was written and
+   * left to go and find it is a customer who concludes it was not.
+   */
+  if (act === 'agent_runs') {
+    const projectId = String(d.projectId ?? '').trim();
+    if (!projectId) return fail('Which project?', 400);
+    const { results } = await env.DB.prepare(
+      `SELECT id, workflow_id AS workflowId, node_id AS nodeId, produces, outcome, detail, link,
+              created_at AS createdAt
+       FROM crm_agent_runs WHERE account_id = ? AND project_id = ?
+       ORDER BY created_at DESC LIMIT 60`,
+    ).bind(accountId, projectId).all<Record<string, unknown>>();
+
+    const runs = (results ?? []).map(r => {
+      let link: unknown = null;
+      try { link = r.link ? JSON.parse(String(r.link)) : null; } catch { /* a link that cannot be read is no link */ }
+      return { ...r, link };
+    });
+    return json({ success: true, runs });
+  }
+
+  /**
+   * Run one agent step now.
+   *
+   * Because waiting until tomorrow morning to find out whether a feed address
+   * was right is not a reasonable way to set one up. It writes a real draft and
+   * records a real run — a "test" that took a different path through the code
+   * would be testing the wrong code — and the drafts it makes are deletable
+   * like any other.
+   */
+  if (act === 'run_agent') {
+    const projectId = String(d.projectId ?? '').trim();
+    const workflowId = String(d.workflowId ?? '').trim();
+    const nodeId = String(d.nodeId ?? '').trim();
+    if (!projectId || !workflowId || !nodeId) return fail('Which step?', 400);
+
+    const r = await runAgentOnce(env, accountId, projectId, workflowId, nodeId);
+    /* Reported as a result rather than an error even when it failed: the
+       customer asked what would happen, and "the feed answered 404" is the
+       answer, not a fault in the request. */
+    return json({ success: true, outcome: r.outcome, detail: r.detail, link: r.link ?? null });
   }
 
   if (act === 'save_workflow') {

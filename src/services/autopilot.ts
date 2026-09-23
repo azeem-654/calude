@@ -88,6 +88,11 @@ interface Reply {
   what?: string;
   cap?: number;
   used?: number;
+  /* What a scheduled agent made, and where it put it. */
+  runs?: unknown[];
+  outcome?: string;
+  detail?: string;
+  link?: unknown;
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -273,6 +278,64 @@ export const deleteWorkflow = (workflowId: string) => call('delete_workflow', { 
 
 export const saveWorkflow = (projectId: string, record: Partial<ProjectWorkflow>) =>
   call('save_workflow', { projectId, record });
+
+/* -- Scheduled agents --------------------------------------------------------
+ *
+ * A workflow whose trigger is a schedule has no contact in it. It runs on the
+ * server, reads a source -- the client's portfolio, a feed, a channel -- and
+ * writes drafts into whichever module owns that kind of thing.
+ *
+ * The run history matters more here than it does for a contact workflow. With
+ * a contact workflow somebody can look at the contact; with one of these the
+ * only evidence it happened is the draft it made, which is filed in a different
+ * screen. So each run carries the link to what it produced.
+ */
+
+export interface AgentRun {
+  id: string;
+  workflowId: string;
+  nodeId: string;
+  /** social | blog | email_campaign */
+  produces: string;
+  /** ok | skipped | failed -- `skipped` is a feed with nothing new, which is
+   *  the ordinary case and is deliberately not counted as work done. */
+  outcome: string;
+  detail: string;
+  link: { kind: string; id: string; label: string; route: string } | null;
+  createdAt: string;
+}
+
+export async function fetchAgentRuns(projectId: string): Promise<{ runs: AgentRun[]; error: string }> {
+  const r = await call('agent_runs', { projectId });
+  if (!r.success) return { runs: [], error: String(r.error ?? 'Could not read what the agents have made.') };
+  return { runs: (r.runs ?? []) as AgentRun[], error: '' };
+}
+
+export interface AgentRunResult {
+  ok: boolean;
+  outcome: string;
+  detail: string;
+  link: { kind: string; id: string; label: string; route: string } | null;
+}
+
+/**
+ * Run one agent step now, rather than waiting for its schedule.
+ *
+ * This really runs it: a real model call writing a real draft. A "test" that
+ * took a different path would be testing the wrong code, which is the argument
+ * this codebase keeps having with itself. The draft is deletable like any
+ * other, and the button says so before it is pressed.
+ */
+export async function runAgent(projectId: string, workflowId: string, nodeId: string): Promise<AgentRunResult> {
+  const r = await call('run_agent', { projectId, workflowId, nodeId });
+  if (!r.success) return { ok: false, outcome: 'failed', detail: String(r.error ?? 'That could not be run.'), link: null };
+  return {
+    ok: r.outcome === 'ok',
+    outcome: String(r.outcome ?? 'failed'),
+    detail: String(r.detail ?? ''),
+    link: (r.link ?? null) as AgentRunResult['link'],
+  };
+}
 
 export interface BuiltWorkflow {
   ok: boolean;

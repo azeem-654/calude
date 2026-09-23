@@ -36,8 +36,8 @@ import {
 } from 'lucide-react';
 import {
   fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
-  fetchProjectDay, approveAction, rejectAction,
-  type ProjectWorkflow, type ProjectDay,
+  fetchProjectDay, approveAction, rejectAction, fetchAgentRuns,
+  type ProjectWorkflow, type ProjectDay, type AgentRun,
 } from '../../services/autopilot';
 import { KIND_LABEL, type Portfolio, type Project } from '../../services/projects';
 import { useApp } from '../../context/AppContext';
@@ -47,7 +47,7 @@ import WorkflowEditor from './WorkflowEditor';
 import AutopilotBot from './AutopilotBot';
 import ProjectLogo from './ProjectLogo';
 import { TEMPLATES } from './workflowTemplates';
-import { lookFor } from './workflowNodes';
+import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
 
 import { T, nodeDark } from './theme';
@@ -138,6 +138,10 @@ export default function ProjectCard({
   const { socialPosts } = useApp();
   const [tab, setTab] = useState<Tab>('workflows');
   const [flows, setFlows] = useState<ProjectWorkflow[]>([]);
+  /* What the scheduled agents have made. Its own request because it is its own
+     table: these rows are written by the cron with nobody signed in, so they
+     cannot be derived from anything the browser already holds. */
+  const [runs, setRuns] = useState<AgentRun[]>([]);
   const [day, setDay] = useState<ProjectDay | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState(false);
@@ -159,10 +163,16 @@ export default function ProjectCard({
   const live = project.status === 'running' || project.status === 'learning';
 
   const read = useCallback(async () => {
-    const [w, d] = await Promise.all([fetchWorkflows(project.id), fetchProjectDay(project.id)]);
+    const [w, d, a] = await Promise.all([
+      fetchWorkflows(project.id), fetchProjectDay(project.id), fetchAgentRuns(project.id),
+    ]);
     if (w.error) setError(w.error); else setError('');
     setFlows(w.workflows);
     if (d.day) setDay(d.day);
+    /* A failed read leaves the last good list rather than emptying the tab:
+       "nothing yet" and "could not ask" look identical in an empty list, and
+       only one of them is true. */
+    if (!a.error) setRuns(a.runs);
   }, [project.id]);
 
   useEffect(() => {
@@ -236,19 +246,33 @@ export default function ProjectCard({
    * placeholder image, because a grey rectangle pretending to be a picture is
    * worse than an honest icon.
    */
-  const assets = made
-    .filter(a => ['social-post', 'blog-post', 'website', 'funnel', 'short'].includes(a.link?.kind ?? ''))
-    .map(a => {
-      const design = socialPosts.find(p => p.id === a.link?.id);
-      return {
+  const assets = [
+    ...made
+      .filter(a => ['social-post', 'blog-post', 'website', 'funnel', 'short'].includes(a.link?.kind ?? ''))
+      .map(a => ({
         id: a.id,
         name: a.link?.label || a.summary,
         kind: (a.link?.kind ?? '').replace(/-/g, ' '),
         route: a.link?.route ?? '',
-        thumbnail: design?.thumbnail ?? '',
+        thumbnail: socialPosts.find(p => p.id === a.link?.id)?.thumbnail ?? '',
         at: a.actedAt ?? a.createdAt,
-      };
-    });
+      })),
+    /* And what the scheduled agents made, which is not in the ledger at all:
+       the ledger is the planner's queue, and an agent answers a clock rather
+       than a planned action. Only the runs that produced something — a
+       morning the feed was empty made no asset and must not leave a tile
+       saying it did. */
+    ...runs
+      .filter(r => r.outcome === 'ok' && r.link)
+      .map(r => ({
+        id: r.id,
+        name: r.link!.label || r.detail,
+        kind: r.link!.kind.replace(/-/g, ' '),
+        route: r.link!.route,
+        thumbnail: socialPosts.find(p => p.id === r.link!.id)?.thumbnail ?? '',
+        at: r.createdAt,
+      })),
+  ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
 
   /**
    * What the AI actually does on this project, read from the workflows.
@@ -265,8 +289,34 @@ export default function ProjectCard({
   const duties = flows
     .filter(f => f.status === 'active')
     .flatMap(f => (f.nodes ?? [])
-      .filter(node => node.type === 'send_email' || node.type === 'send_sms' || node.type === 'condition')
+      .filter(node => node.type === 'ai' || node.type === 'send_email'
+        || node.type === 'send_sms' || node.type === 'condition')
       .map(node => ({ workflow: f.name, workflowId: f.id, node })));
+
+  /**
+   * The agents proper: a step that reads a source and writes something, with
+   * what it has actually produced attached.
+   *
+   * Separated from `duties` because these are the only steps that run on their
+   * own clock, and "when did it last do anything" is the question about them.
+   * A condition inside a follow-up has no such answer.
+   */
+  const agents = flows
+    .flatMap(f => (f.nodes ?? [])
+      .filter(node => node.type === 'ai')
+      .map(node => {
+        const mine = runs.filter(r => r.workflowId === f.id && r.nodeId === node.id);
+        return {
+          workflow: f,
+          node,
+          cadence: String((f.nodes ?? []).find(n => n.type === 'trigger')?.config?.cadence ?? ''),
+          scheduled: (f.nodes ?? []).some(n => n.type === 'trigger' && n.config?.event === 'schedule'),
+          last: mine[0] ?? null,
+          /* Produced, not run: a skipped morning is not an achievement and
+             counting it as one is how a screen stops being believed. */
+          produced: mine.filter(r => r.outcome === 'ok').length,
+        };
+      }));
 
   /**
    * How far through its opening plan this project is.
@@ -658,6 +708,104 @@ export default function ProjectCard({
                 * Every row here is a real step in a real workflow. Delete the
                 * step and the duty disappears, because nothing else holds it up.
                 */}
+              {/* ── The agents that run on their own clock ──
+                  First, because they are the only steps here that do anything
+                  without somebody filling a form in. Each one says what it
+                  reads, what it makes, and when it last actually made it — and
+                  a run that produced nothing says so rather than being counted.
+              */}
+              {agents.length > 0 && (
+                <div>
+                  <h4 style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 800, color: INK }}>
+                    Agents on a schedule
+                  </h4>
+                  <p style={{ margin: '0 0 9px', fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
+                    These read something and write something, on the server, whether or not this is open.
+                    Everything they make is a draft.
+                  </p>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {agents.map(({ workflow, node, cadence, scheduled, last, produced }) => {
+                      const src = AGENT_SOURCES[node.config?.source ?? 'portfolio'];
+                      const out = AGENT_OUTPUTS[node.config?.produces ?? 'social'];
+                      return (
+                        <article key={`${workflow.id}-${node.id}`} style={{
+                          border: `1px solid ${LINE}`, borderRadius: 12, padding: 11, background: T.raised,
+                          display: 'grid', gap: 7,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                            <span style={{
+                              width: 24, height: 24, borderRadius: 8, flexShrink: 0,
+                              background: nodeDark('ai').bg, color: nodeDark('ai').fg,
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            }}><Bot size={12} /></span>
+                            <span style={{ minWidth: 0, flex: '1 1 140px' }}>
+                              <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>
+                                {node.label || 'AI agent'}
+                              </span>
+                              <span style={{ display: 'block', fontSize: 10.5, color: MUTED }}>
+                                in “{workflow.name}”
+                              </span>
+                            </span>
+                            <span style={{
+                              padding: '2px 9px', borderRadius: 999, fontSize: 9.5, fontWeight: 800, flexShrink: 0,
+                              background: workflow.status === 'active' ? T.goodSoft : T.lineSoft,
+                              color: workflow.status === 'active' ? T.good : MUTED,
+                            }}>
+                              {/* Three states, not two. A live agent with no
+                                  schedule never fires, and saying "Live" would
+                                  be the screen telling a comfortable lie. */}
+                              {workflow.status !== 'active' ? 'Switched off'
+                                : scheduled ? (CADENCES[cadence] ?? CADENCES.daily)
+                                  : 'Live, but not on a schedule'}
+                            </span>
+                          </div>
+
+                          <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
+                            Reads {src?.label.toLowerCase() ?? 'nothing set'} → writes{' '}
+                            {out?.label.toLowerCase() ?? 'nothing set'} into {out?.where ?? 'the app'}.
+                          </p>
+
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 10.5, color: MUTED }}>
+                              {last
+                                ? `Last run ${new Date(last.createdAt).toLocaleString()} — ${last.outcome === 'ok' ? 'made something' : last.outcome === 'skipped' ? 'nothing new to write about' : 'failed'}`
+                                : 'Has not run yet.'}
+                            </span>
+                            {produced > 0 && (
+                              <span style={{
+                                padding: '2px 8px', borderRadius: 999, fontSize: 9.5, fontWeight: 800,
+                                background: T.goodSoft, color: T.good,
+                              }}>{produced} made</span>
+                            )}
+                          </div>
+
+                          {last && last.outcome !== 'ok' && (
+                            <p style={{
+                              margin: 0, padding: '8px 10px', borderRadius: 9, fontSize: 11, lineHeight: 1.5,
+                              background: last.outcome === 'failed' ? T.badSoft : T.lineSoft,
+                              color: last.outcome === 'failed' ? T.bad : MUTED,
+                            }}>{last.detail}</p>
+                          )}
+
+                          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                            <button className="press" style={ghost()}
+                              onClick={() => { setEditing({ workflow }); }}>
+                              <Sparkles size={11} /> Edit this agent
+                            </button>
+                            {last?.link && (
+                              <button className="press" style={ghost()}
+                                onClick={() => navigate(last.link!.route)}>
+                                <ExternalLink size={11} /> Open what it made
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 3 }}>
                   <AutopilotBot size={30} awake={live} busy={duties.length > 0} />
@@ -867,6 +1015,52 @@ export default function ProjectCard({
                   </ul>
                 )}
               </div>
+
+              {/* ── What the scheduled agents did ──
+                  Kept apart from the ledger above because it answers a
+                  different question. The ledger is the planner's queue — what
+                  Autopilot decided to do. This is what the clock did, whether
+                  or not anybody decided anything, and a morning it found
+                  nothing new belongs here and nowhere else. */}
+              {runs.length > 0 && (
+                <div>
+                  <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Bot size={13} color={T.violet} /> What the agents made
+                  </h4>
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 7 }}>
+                    {runs.slice(0, 12).map(r => (
+                      <li key={r.id} style={{
+                        display: 'flex', gap: 9, alignItems: 'flex-start', padding: '9px 11px',
+                        border: `1px solid ${r.outcome === 'failed' ? `${T.bad}55` : LINE}`,
+                        borderRadius: 11, background: r.outcome === 'failed' ? T.badSoft : T.raised,
+                      }}>
+                        {r.outcome === 'ok'
+                          ? <CheckCircle2 size={12} color={T.good} style={{ marginTop: 2, flexShrink: 0 }} />
+                          : r.outcome === 'skipped'
+                            /* A clock, not a cross. Nothing went wrong; there
+                               was simply nothing new to write about. */
+                            ? <Clock size={12} color={T.faint} style={{ marginTop: 2, flexShrink: 0 }} />
+                            : <AlertTriangle size={12} color={T.bad} style={{ marginTop: 2, flexShrink: 0 }} />}
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: 12, color: INK, lineHeight: 1.5 }}>{r.detail}</span>
+                          {r.link && (
+                            <button onClick={() => navigate(r.link!.route)} style={{
+                              marginTop: 4, padding: 0, border: 'none', background: 'none',
+                              color: T.accent, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}>
+                              {r.link.label || 'Open it'} <ChevronRight size={11} />
+                            </button>
+                          )}
+                        </span>
+                        <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>
+                          {new Date(r.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div>
                 <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
