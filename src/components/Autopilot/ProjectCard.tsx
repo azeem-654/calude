@@ -446,9 +446,11 @@ export default function ProjectCard({
     }
 
     if (!say.length) {
-      say.push(preparing
-        ? 'I am reading this client\u2019s profile. Nothing has been written yet — the first pass runs within the day.'
-        : 'Nothing has happened here today. I run on the server every five minutes whether or not this is open.');
+      /* Taken from the same derivation the bar uses, rather than written out
+         a second time here. The two disagreed on screen the moment the bar
+         learned the real interval: the bar said five minutes and the bot went
+         on saying "within the day". */
+      say.push(preparing ? setup.doing : 'Nothing has happened here today. I run on the server every five minutes whether or not this is open.');
     }
     return say;
   })();
