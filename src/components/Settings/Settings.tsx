@@ -74,7 +74,7 @@ type TestStatus = 'idle' | 'testing' | 'ok' | 'fail';
 function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestStatus; onTest: () => void; label?: string }) {
   const map: Record<TestStatus, { bg: string; color: string; text: string; icon: ReactElement }> = {
     idle: { bg: '#f1f5f9', color: '#475569', text: label, icon: <RefreshCw size={14} /> },
-    testing: { bg: '#eff6ff', color: '#2563eb', text: 'Testing…', icon: <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> },
+    testing: { bg: '#eff6ff', color: '#2563eb', text: 'Testing…', icon: <Loader size={14} className="spin" /> },
     ok: { bg: '#ecfdf5', color: '#16a34a', text: 'Connected!', icon: <CheckCircle size={14} /> },
     fail: { bg: '#fef2f2', color: '#dc2626', text: 'Failed — check settings', icon: <XCircle size={14} /> },
   };
@@ -638,7 +638,7 @@ function IntegrationsTab() {
           <button onClick={() => runValidation('resend', { apiKey: resendKey }, setResendStatus, setResendResult, setShowResendPopup)}
             disabled={resendStatus === 'testing' || !resendKey.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: resendStatus === 'testing' || !resendKey.trim() ? '#e2e8f0' : '#17191c', color: resendStatus === 'testing' || !resendKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: resendStatus === 'testing' || !resendKey.trim() ? 'not-allowed' : 'pointer' }}>
-            {resendStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {resendStatus === 'testing' ? <Loader size={14} className="spin" /> : <FlaskConical size={14} />}
             {resendStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
           <ValidationStatusIndicator status={resendStatus === 'idle' ? 'idle' : resendStatus === 'testing' ? 'testing' : resendStatus === 'ok' ? 'success' : 'error'} message={resendResult?.message} />
@@ -663,7 +663,7 @@ function IntegrationsTab() {
           <button onClick={() => runValidation('mailtrap', { apiKey: mailtrapKey, inboxId: mailtrapInboxId }, setMailtrapStatus, setMailtrapResult, setShowMailtrapPopup)}
             disabled={mailtrapStatus === 'testing' || !mailtrapKey.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#e2e8f0' : '#0891b2', color: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: mailtrapStatus === 'testing' || !mailtrapKey.trim() ? 'not-allowed' : 'pointer' }}>
-            {mailtrapStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {mailtrapStatus === 'testing' ? <Loader size={14} className="spin" /> : <FlaskConical size={14} />}
             {mailtrapStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
           <ValidationStatusIndicator status={mailtrapStatus === 'idle' ? 'idle' : mailtrapStatus === 'testing' ? 'testing' : mailtrapStatus === 'ok' ? 'success' : 'error'} message={mailtrapResult?.message} />
@@ -687,7 +687,7 @@ function IntegrationsTab() {
           <button onClick={() => runValidation('openai', { apiKey: openaiKey }, setOpenaiStatus, setOpenaiResult, setShowOpenaiPopup)}
             disabled={openaiStatus === 'testing' || !openaiKey.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: openaiStatus === 'testing' || !openaiKey.trim() ? '#e2e8f0' : '#10a37f', color: openaiStatus === 'testing' || !openaiKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: openaiStatus === 'testing' || !openaiKey.trim() ? 'not-allowed' : 'pointer' }}>
-            {openaiStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {openaiStatus === 'testing' ? <Loader size={14} className="spin" /> : <FlaskConical size={14} />}
             {openaiStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
           <ValidationStatusIndicator status={openaiStatus === 'idle' ? 'idle' : openaiStatus === 'testing' ? 'testing' : openaiStatus === 'ok' ? 'success' : 'error'} message={openaiResult?.message} />
@@ -711,7 +711,7 @@ function IntegrationsTab() {
           <button onClick={() => runValidation('apollo', { apiKey: apolloKey }, setApolloStatus, setApolloResult, setShowApolloPopup)}
             disabled={apolloStatus === 'testing' || !apolloKey.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: apolloStatus === 'testing' || !apolloKey.trim() ? '#e2e8f0' : '#17191c', color: apolloStatus === 'testing' || !apolloKey.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: apolloStatus === 'testing' || !apolloKey.trim() ? 'not-allowed' : 'pointer' }}>
-            {apolloStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {apolloStatus === 'testing' ? <Loader size={14} className="spin" /> : <FlaskConical size={14} />}
             {apolloStatus === 'testing' ? 'Validating…' : 'Validate Key'}
           </button>
           <ValidationStatusIndicator status={apolloStatus === 'idle' ? 'idle' : apolloStatus === 'testing' ? 'testing' : apolloStatus === 'ok' ? 'success' : 'error'} message={apolloResult?.message} />
@@ -730,7 +730,7 @@ function IntegrationsTab() {
           <button onClick={() => runValidation('webhook', { url: webhookUrl }, setWebhookStatus, setWebhookResult, setShowWebhookPopup)}
             disabled={webhookStatus === 'testing' || !webhookUrl.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: webhookStatus === 'testing' || !webhookUrl.trim() ? '#e2e8f0' : '#f59e0b', color: webhookStatus === 'testing' || !webhookUrl.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: webhookStatus === 'testing' || !webhookUrl.trim() ? 'not-allowed' : 'pointer' }}>
-            {webhookStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {webhookStatus === 'testing' ? <Loader size={14} className="spin" /> : <FlaskConical size={14} />}
             {webhookStatus === 'testing' ? 'Testing…' : 'Test Webhook'}
           </button>
           <ValidationStatusIndicator status={webhookStatus === 'idle' ? 'idle' : webhookStatus === 'testing' ? 'testing' : webhookStatus === 'ok' ? 'success' : 'error'} message={webhookResult?.message} />
@@ -776,7 +776,7 @@ function IntegrationsTab() {
           <button onClick={() => runValidation('smtp', { host: smtpHost, port: parseInt(smtpPort) || 587, username: smtpUser, password: smtpPass, secure: smtpSecure }, setSmtpStatus, setSmtpResult, setShowSmtpPopup)}
             disabled={smtpStatus === 'testing' || !smtpHost.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: smtpStatus === 'testing' || !smtpHost.trim() ? '#e2e8f0' : '#374151', color: smtpStatus === 'testing' || !smtpHost.trim() ? '#94a3b8' : 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: smtpStatus === 'testing' || !smtpHost.trim() ? 'not-allowed' : 'pointer' }}>
-            {smtpStatus === 'testing' ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <FlaskConical size={14} />}
+            {smtpStatus === 'testing' ? <Loader size={14} className="spin" /> : <FlaskConical size={14} />}
             {smtpStatus === 'testing' ? 'Testing…' : 'Test SMTP'}
           </button>
           <ValidationStatusIndicator status={smtpStatus === 'idle' ? 'idle' : smtpStatus === 'testing' ? 'testing' : smtpStatus === 'ok' ? 'success' : 'error'} message={smtpResult?.message} />
@@ -931,7 +931,7 @@ function AIEngineTab() {
               it fails, and the screen would be saying it is fine. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, backgroundColor: !askedServer ? '#f8fafc' : serverWorks ? '#ecfdf5' : '#fff7ed', border: `1px solid ${!askedServer ? '#e2e8f0' : serverWorks ? '#a7f3d0' : '#fed7aa'}` }}>
             {!askedServer
-              ? <><Loader size={15} color="#94a3b8" style={{ animation: 'spin 0.8s linear infinite' }} /><span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Checking what Autopilot has…</span></>
+              ? <><Loader size={15} color="#94a3b8" className="spin" /><span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Checking what Autopilot has…</span></>
               : serverWorks
                 ? <>
                     <CheckCircle size={15} color="#059669" />
@@ -952,7 +952,7 @@ function AIEngineTab() {
             {askedServer && server?.hasKey && (
               <button onClick={handleCheckServer} disabled={checking}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: checking ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
-                {checking ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={12} />}
+                {checking ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />}
                 {checking ? 'Asking Google…' : 'Check now'}
               </button>
             )}
@@ -985,7 +985,7 @@ function AIEngineTab() {
           </div>
           <button onClick={handleSaveAndTest} disabled={testing || !key.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', backgroundColor: testing || !key.trim() ? '#cbd5e1' : '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: testing || !key.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
-            {testing ? <><Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Verifying…</> : <><Save size={14} /> Verify & Save</>}
+            {testing ? <><Loader size={14} className="spin" /> Verifying…</> : <><Save size={14} /> Verify & Save</>}
           </button>
           {savedKey && (
             <button onClick={handleRemove}

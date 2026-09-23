@@ -111,7 +111,7 @@ export default function ClientBilling() {
             </div>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: meta.bg, color: meta.color, padding: '7px 13px', borderRadius: 999, fontSize: 13, fontWeight: 700 }}>
-            {loading ? <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <meta.Icon size={14} strokeWidth={2.6} />}
+            {loading ? <Loader size={14} className="spin" /> : <meta.Icon size={14} strokeWidth={2.6} />}
             {loading ? 'Checking…' : meta.label}
           </div>
         </div>
@@ -137,7 +137,7 @@ export default function ClientBilling() {
             </p>
             <button onClick={manage} disabled={busy === 'portal'}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: INK, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 20px', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy === 'portal' ? 0.7 : 1 }}>
-              {busy === 'portal' ? <Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <ExternalLink size={15} strokeWidth={2.4} />}
+              {busy === 'portal' ? <Loader size={15} className="spin" /> : <ExternalLink size={15} strokeWidth={2.4} />}
               Manage billing & payment method
             </button>
           </>
@@ -149,7 +149,7 @@ export default function ClientBilling() {
             </p>
             <button onClick={subscribe} disabled={busy === 'checkout'}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: INK, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 20px', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy === 'checkout' ? 0.7 : 1 }}>
-              {busy === 'checkout' ? <Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Sparkles size={15} strokeWidth={2.4} />}
+              {busy === 'checkout' ? <Loader size={15} className="spin" /> : <Sparkles size={15} strokeWidth={2.4} />}
               Subscribe now
             </button>
           </>

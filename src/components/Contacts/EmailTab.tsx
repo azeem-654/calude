@@ -254,7 +254,7 @@ function Composer({ contact, onSent }: { contact: Contact; onSent: () => void })
           <button onClick={suggestSubjects} disabled={aiBusy || !hasGeminiKey()}
             title={hasGeminiKey() ? 'Suggest subject lines with AI' : 'Add a Gemini API key in Settings → AI Engine'}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', borderRadius: 9, border: 'none', background: hasGeminiKey() ? INK : '#e2e8f0', color: hasGeminiKey() ? '#fff' : '#94a3b8', fontSize: 11.5, fontWeight: 700, cursor: hasGeminiKey() && !aiBusy ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}>
-            {aiBusy ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Sparkles size={12} color={hasGeminiKey() ? '#c7f441' : '#94a3b8'} />} AI subjects
+            {aiBusy ? <Loader size={12} className="spin" /> : <Sparkles size={12} color={hasGeminiKey() ? '#c7f441' : '#94a3b8'} />} AI subjects
           </button>
         </div>
         {aiSubjects.length > 0 && (
@@ -328,7 +328,7 @@ function Composer({ contact, onSent }: { contact: Contact; onSent: () => void })
         <div style={{ flex: 1 }} />
         <button onClick={submit} disabled={sending} title="Send or schedule now"
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 20px', borderRadius: 9, border: 'none', background: sending ? '#94a3b8' : INK, color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: sending ? 'not-allowed' : 'pointer' }}>
-          {sending ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Send size={13} />}
+          {sending ? <Loader size={13} className="spin" /> : <Send size={13} />}
           {showSchedule && scheduleAt ? 'Schedule' : 'Send'}
         </button>
       </div>
@@ -508,7 +508,7 @@ export default function EmailTab({ contact, sequences, onActivity }: {
         <button onClick={manualSync} disabled={syncing}
           title="Check the server for new opens and clicks"
           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: 11, fontWeight: 700, cursor: syncing ? 'wait' : 'pointer' }}>
-          {syncing ? <Loader size={11} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={11} />} Sync tracking
+          {syncing ? <Loader size={11} className="spin" /> : <RefreshCw size={11} />} Sync tracking
         </button>
       </div>
       <History emails={emails} onChange={refresh} />

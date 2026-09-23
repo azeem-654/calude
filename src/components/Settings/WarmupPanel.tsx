@@ -139,7 +139,7 @@ export default function WarmupPanel() {
                   ? `${res.sent} warmup message${res.sent === 1 ? '' : 's'} sent`
                   : (res.notes[0] || 'Nothing to send right now'), res.sent ? 'success' : 'info');
               }}>
-              {busy === 'run' ? <RefreshCw size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Play size={13} />} Run warmup now
+              {busy === 'run' ? <RefreshCw size={13} className="spin" /> : <Play size={13} />} Run warmup now
             </button>
           </div>
         </div>
@@ -331,7 +331,7 @@ export default function WarmupPanel() {
                           },
                         }));
                       }}>
-                      {h.checking ? <RefreshCw size={11} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Search size={11} />} Check
+                      {h.checking ? <RefreshCw size={11} className="spin" /> : <Search size={11} />} Check
                     </button>
                     <button onClick={() => { removeIdentity(id.id); setIdentities(loadIdentities()); }} title={`Stop tracking ${id.host}`}
                       style={{ padding: 7, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', color: '#475569' }}>

@@ -310,7 +310,7 @@ export default function Conversations() {
           disabled={loading}
           style={btn(false)}
         >
-          <RefreshCw size={13} style={loading ? { animation: 'spin 0.8s linear infinite' } : undefined} /> Refresh
+          <RefreshCw size={13} className={loading ? 'spin' : undefined} /> Refresh
         </button>
         <button onClick={() => setShowLog(v => !v)} style={btn(showLog)}>
           <Activity size={13} /> Auto-reply log{log.length ? ` (${log.length})` : ''}

@@ -305,7 +305,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             {error && <div style={{ fontSize: 12.5, color: '#e5484d', fontWeight: 600, textAlign: 'center', lineHeight: 1.5 }}>{error}</div>}
 
             <button type="submit" disabled={busy} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', marginTop: 4 }}>
-              {busy || checking ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} /></>}
+              {busy || checking ? <Loader size={16} className="spin" /> : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} /></>}
             </button>
           </form>
 
@@ -368,7 +368,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
                     border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700,
                     cursor: busy || code.length !== 6 ? 'default' : 'pointer', fontFamily: 'inherit',
                   }}>
-                    {busy ? <Loader size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> : <>Sign in <ArrowRight size={15} /></>}
+                    {busy ? <Loader size={16} className="spin" /> : <>Sign in <ArrowRight size={15} /></>}
                   </button>
                   <button type="button" onClick={() => { setCodeStep('off'); setCode(''); setError(''); setNotice(''); }}
                     style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontSize: 12, color: MUTED, cursor: 'pointer', textDecoration: 'underline' }}>

@@ -439,7 +439,7 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
               )}
               {open.status === 'GENERATING' && (
                 <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 12, backgroundColor: '#fdeeda' }}>
-                  <Loader size={14} color="#c77414" style={{ animation: 'spin 0.9s linear infinite' }} />
+                  <Loader size={14} color="#c77414" className="spin" />
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#c77414' }}>Generating emails & SMS in the background — you'll get a notification.</span>
                 </div>
               )}

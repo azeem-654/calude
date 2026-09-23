@@ -89,7 +89,7 @@ export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
             </>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, color: MUTED, fontSize: 13.5 }}>
-              <Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Signing you in…
+              <Loader size={15} className="spin" /> Signing you in…
             </div>
           )}
         </div>

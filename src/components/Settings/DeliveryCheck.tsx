@@ -126,7 +126,7 @@ export default function DeliveryCheck() {
           }}
         >
           {state === 'sending'
-            ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</>
+            ? <><Loader size={14} className="spin" /> Sending…</>
             : <><Send size={14} /> Send the check</>}
         </button>
       </div>

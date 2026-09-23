@@ -233,7 +233,7 @@ function SyncGate({ children }: { children: React.ReactNode }) {
         <span style={{ fontSize: 22, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>{brand.appName}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8a8f98', fontSize: 13, fontWeight: 500 }}>
-        <Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading your workspace…
+        <Loader size={15} className="spin" /> Loading your workspace…
       </div>
     </div>
   );

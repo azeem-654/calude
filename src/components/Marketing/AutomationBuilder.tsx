@@ -505,7 +505,7 @@ export default function AutomationBuilder({ automations: storedAutomations, onAd
                 <button onClick={() => setCreating(false)} style={{ padding: '9px 18px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', background: 'white' }}>Cancel</button>
                 <button onClick={handleCreate} disabled={generating}
                   style={{ padding: '9px 20px', backgroundColor: generating ? '#c4b5fd' : '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {generating ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Building…</> : <><GitBranch size={14} /> {aiPrompt ? 'Build it' : 'Create empty'}</>}
+                  {generating ? <><Loader size={14} className="spin" /> Building…</> : <><GitBranch size={14} /> {aiPrompt ? 'Build it' : 'Create empty'}</>}
                 </button>
               </div>
             </div>

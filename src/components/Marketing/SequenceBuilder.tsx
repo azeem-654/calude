@@ -685,7 +685,7 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
           <button onClick={() => setShowCreate(true)} disabled={generating}
             style={{ width: '100%', padding: '9px 14px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            {generating ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
+            {generating ? <Loader size={14} className="spin" /> : <Plus size={14} />}
             {generating ? 'Generating…' : 'Create sequence'}
           </button>
         </div>

@@ -336,7 +336,7 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
                   }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>{f.label}</span>
-                      {busy && flow?.id === f.id && <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} />}
+                      {busy && flow?.id === f.id && <Loader size={12} className="spin" />}
                     </span>
                     <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{f.blurb}</span>
                   </button>
@@ -492,7 +492,7 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
                   )}
 
                   <button onClick={startLater} disabled={busy} style={{ ...darkBtn, marginTop: 12 }}>
-                    {busy ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <CalendarClock size={13} />}
+                    {busy ? <Loader size={13} className="spin" /> : <CalendarClock size={13} />}
                     Schedule the start
                   </button>
                   <p style={{ margin: '8px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
@@ -538,7 +538,7 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
             </span>
             {step === 'review' && (
               <button onClick={create} disabled={busy || !chosen.size} style={darkBtn}>
-                {busy ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : null}
+                {busy ? <Loader size={13} className="spin" /> : null}
                 Create {chosen.size} thing{chosen.size === 1 ? '' : 's'} <ChevronRight size={13} />
               </button>
             )}

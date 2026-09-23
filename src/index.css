@@ -158,8 +158,34 @@ button:focus-visible, a:focus-visible {
   to { transform: rotate(360deg); }
 }
 
-/* The class the loading spinners actually ask for. */
-.spin { animation: spin 0.9s linear infinite; }
+/*
+ * The class every loading spinner in the app asks for.
+ *
+ * ── Why this is a class at all ──
+ *
+ * Forty-nine of these were written as `style={{ animation: 'spin 1s linear
+ * infinite' }}` straight into JSX. An inline animation cannot be reached by a
+ * media query, so every one of them went on spinning for somebody who had
+ * asked the whole product to stop moving — the exact mistake this file has
+ * caught three times before, at scale.
+ *
+ * ── Why reduced motion does not simply freeze it ──
+ *
+ * A stopped spinner is worse than no spinner: it is what a hung page looks
+ * like, and the one thing this element exists to say is "still working". So
+ * reduced motion swaps the rotation for a slow fade, which carries the same
+ * meaning with no movement across the screen. Nothing is lost but the spin.
+ */
+.spin { animation: spin-fade 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .spin { animation: spin 0.9s linear infinite; }
+}
+
+@keyframes spin-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 
 /*
  * A written article, rendered.

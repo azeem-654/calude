@@ -97,7 +97,7 @@ export default function GenerationPanel({ campaign, onChange }: Props) {
           display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700,
           color: '#3e63dd', margin: '0 0 7px',
         }}>
-          <Loader size={13} style={{ animation: 'spin 0.9s linear infinite' }} /> {job.message}
+          <Loader size={13} className="spin" /> {job.message}
         </p>
         <div style={{ height: 4, borderRadius: 999, backgroundColor: '#dfe4f5', overflow: 'hidden' }}>
           <div style={{

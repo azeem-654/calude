@@ -206,7 +206,7 @@ export default function PipelineDesigner({ pipeline, onApply, onClose }: {
                   fontSize: 13, fontWeight: 700, cursor: usable && !busy ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
                 }}
               >
-                {busy ? <><Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Working…</> : <><Sparkles size={14} /> Design the stages</>}
+                {busy ? <><Loader size={14} className="spin" /> Working…</> : <><Sparkles size={14} /> Design the stages</>}
               </button>
             </>
           ) : (

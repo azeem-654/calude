@@ -105,7 +105,7 @@ export default function RouteCheck() {
         }}
       >
         {state === 'running'
-          ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Trying every route…</>
+          ? <><Loader size={14} className="spin" /> Trying every route…</>
           : <><Radar size={14} /> Check what works here</>}
       </button>
 

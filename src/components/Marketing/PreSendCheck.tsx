@@ -176,7 +176,7 @@ export default function PreSendCheck({ audience, subject, body, onProceed, onCan
                   ? `Seed test sent to ${ok} mailbox${ok === 1 ? '' : 'es'} — check placement before launching.`
                   : `Only ${ok} of ${seeds.length} seed sends succeeded.`, ok === seeds.length ? 'success' : 'error');
               }}>
-              {seeding ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Beaker size={13} />}
+              {seeding ? <Loader size={13} className="spin" /> : <Beaker size={13} />}
               {seedDone ? 'Seed test sent' : seeding ? 'Sending…' : 'Send seed test'}
             </button>
           )}

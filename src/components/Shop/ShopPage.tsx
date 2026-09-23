@@ -355,7 +355,7 @@ export default function ShopPage() {
   if (state === 'loading') {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#fff' }}>
-        <Loader size={22} style={{ animation: 'spin 1s linear infinite', color: '#8a8f98' }} />
+        <Loader size={22} className="spin" style={{ color: '#8a8f98' }} />
       </div>
     );
   }

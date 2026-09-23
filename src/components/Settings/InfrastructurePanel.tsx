@@ -125,7 +125,7 @@ function KindSection({ kind, specs, connected, onChanged }: {
           {connected && <Status p={connected} />}
           {connected && (
             <button onClick={check} disabled={!!busy} style={btnGhost}>
-              {busy === 'test' ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={12} />} Test
+              {busy === 'test' ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />} Test
             </button>
           )}
           <button onClick={() => setOpen(v => !v)} style={btnDark}>
@@ -180,7 +180,7 @@ function KindSection({ kind, specs, connected, onChanged }: {
               })}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <button onClick={save} disabled={busy === 'save'} style={btnDark}>
-                  {busy === 'save' ? <><Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> Testing…</> : 'Save and test'}
+                  {busy === 'save' ? <><Loader size={12} className="spin" /> Testing…</> : 'Save and test'}
                 </button>
                 {spec.docs && (
                   <a href={spec.docs} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: MUTED, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -241,7 +241,7 @@ function DomainSearch({ connected }: { connected: ConnectedProvider | null }) {
         <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && run()}
           placeholder="acme, or acme.com" style={{ ...input, flex: '1 1 220px' }} />
         <button onClick={run} disabled={busy || !connected} style={btnDark}>
-          {busy ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Search size={12} />} Search
+          {busy ? <Loader size={12} className="spin" /> : <Search size={12} />} Search
         </button>
       </div>
 
@@ -265,7 +265,7 @@ function DomainSearch({ connected }: { connected: ConnectedProvider | null }) {
               </span>
               {r.available && (
                 <button onClick={() => buy(r.domain, r.price)} disabled={buying === r.domain} style={btnDark}>
-                  {buying === r.domain ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : 'Register'}
+                  {buying === r.domain ? <Loader size={12} className="spin" /> : 'Register'}
                 </button>
               )}
             </li>
@@ -385,11 +385,11 @@ function DnsPanel() {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
         <button onClick={check} disabled={busy === 'check' || !domain.trim()} style={btnDark}>
-          {busy === 'check' ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <ShieldCheck size={12} />} Check what is live
+          {busy === 'check' ? <Loader size={12} className="spin" /> : <ShieldCheck size={12} />} Check what is live
         </button>
         {checked && canApply && missing.length > 0 && (
           <button onClick={() => apply(missing.map(m => m.purpose))} disabled={busy === 'apply'} style={btnDark}>
-            {busy === 'apply' ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : null}
+            {busy === 'apply' ? <Loader size={12} className="spin" /> : null}
             Write the {missing.length} missing record{missing.length === 1 ? '' : 's'}
           </button>
         )}
@@ -506,7 +506,7 @@ function MailboxPanel({ connected }: { connected: ConnectedProvider | null }) {
       </div>
 
       <button onClick={create} disabled={busy || !domain.trim() || !local.trim()} style={{ ...btnDark, marginTop: 12 }}>
-        {busy ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Mail size={12} />}
+        {busy ? <Loader size={12} className="spin" /> : <Mail size={12} />}
         Create {local || 'hello'}@{domain || 'yourdomain.com'}
       </button>
 
@@ -561,7 +561,7 @@ export default function InfrastructurePanel() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: MUTED, fontSize: 13, padding: 20 }}>
-        <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading your providers…
+        <Loader size={14} className="spin" /> Loading your providers…
       </div>
     );
   }

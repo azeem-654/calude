@@ -329,7 +329,7 @@ export default function ContactImport({ contacts, onBulkImport, onNotify }: Prop
   if (stage === 'importing') return (
     <div style={{ padding: '80px 28px', textAlign: 'center' }}>
       <div style={{ width: '76px', height: '76px', borderRadius: '50%', backgroundColor: '#f0f1f3', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-        <RefreshCw size={30} color="#17191c" className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+        <RefreshCw size={30} color="#17191c" className="spin" />
       </div>
       <h3 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Importing…</h3>
       <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 40px' }}>Processing {parsed?.rows.length.toLocaleString()} records</p>

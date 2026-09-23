@@ -120,7 +120,7 @@ export default function AutomationPanel() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: MUTED, fontSize: 13, padding: 20 }}>
-        <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> Asking the server what it has been doing…
+        <Loader size={14} className="spin" /> Asking the server what it has been doing…
       </div>
     );
   }

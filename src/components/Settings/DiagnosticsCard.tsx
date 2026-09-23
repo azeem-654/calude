@@ -98,7 +98,7 @@ export default function DiagnosticsCard() {
         <button onClick={run} disabled={state === 'running'}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', backgroundColor: state === 'running' ? '#e2e8f0' : '#17191c', color: state === 'running' ? '#94a3b8' : 'white', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: state === 'running' ? 'not-allowed' : 'pointer' }}>
           {state === 'running'
-            ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Running checks…</>
+            ? <><Loader size={14} className="spin" /> Running checks…</>
             : <><Stethoscope size={14} /> Run checks</>}
         </button>
         {result && (

@@ -91,7 +91,7 @@ export default function Shops() {
   if (shops === null) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: MUTED }}>
-        <Loader size={20} style={{ animation: 'spin 1s linear infinite' }} />
+        <Loader size={20} className="spin" />
       </div>
     );
   }

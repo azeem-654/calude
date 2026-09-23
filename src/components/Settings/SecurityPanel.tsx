@@ -137,7 +137,7 @@ export default function SecurityPanel() {
             color: (busy || !current || !next || !confirm) ? '#94a3b8' : 'white',
             cursor: (busy || !current || !next || !confirm) ? 'not-allowed' : 'pointer',
           }}>
-          {busy ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Changing…</> : <>Change password</>}
+          {busy ? <><Loader size={14} className="spin" /> Changing…</> : <>Change password</>}
         </button>
       </div>
 

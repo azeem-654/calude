@@ -623,7 +623,7 @@ export default function OnboardingWizard({ open, onClose }: { open: boolean; onC
               {generating && (
                 <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 52, height: 52, borderRadius: 999, backgroundColor: INK, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Loader size={22} color="#c7f441" style={{ animation: 'spin 0.9s linear infinite' }} />
+                    <Loader size={22} color="#c7f441" className="spin" />
                   </div>
                   <p style={{ fontSize: 14, fontWeight: 700, color: INK, margin: 0 }}>Planning your next 12 months…</p>
                   <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Themes, seasonal angles and campaign ideas tailored to {p.companyName || 'your business'}.</p>

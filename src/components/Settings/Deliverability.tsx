@@ -256,7 +256,7 @@ function DeliverabilityHealth() {
             placeholder="yourdomain.com" title="The domain your email is sent from"
             style={{ ...inp, flex: 1, minWidth: 200 }} />
           <button onClick={() => void runAuth()} disabled={busy === 'auth'} title="Look up the live DNS records for this domain" style={btn(true)}>
-            {busy === 'auth' ? <RefreshCw size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Search size={13} />} Check records
+            {busy === 'auth' ? <RefreshCw size={13} className="spin" /> : <Search size={13} />} Check records
           </button>
         </div>
 
@@ -344,7 +344,7 @@ function DeliverabilityHealth() {
             <p style={sub}>Queries {caps?.blacklists ?? 5} public blocklists — Spamhaus, Barracuda, SpamCop, SORBS and PSBL — for the IPs behind your sending domain.</p>
           </div>
           <button onClick={() => void runBlacklist()} disabled={busy === 'bl'} title="Check the blocklists now" style={btn()}>
-            {busy === 'bl' ? <RefreshCw size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Search size={13} />} Check now
+            {busy === 'bl' ? <RefreshCw size={13} className="spin" /> : <Search size={13} />} Check now
           </button>
         </div>
         {blErr && <div style={{ marginTop: 10, fontSize: 12.5, color: '#dc2626' }}>{blErr}</div>}
