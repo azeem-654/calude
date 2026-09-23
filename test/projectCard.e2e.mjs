@@ -35,6 +35,28 @@ const api = (body) => fetch(`${B}/api/autopilot.php`, {
   body: JSON.stringify({ token: TOK, accountId: ACCT, ...body }),
 }).then(r => r.json());
 
+const projectsApi = (body) => fetch(`${B}/api/projects.php`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: TOK, accountId: ACCT, ...body }),
+}).then(r => r.json());
+
+/* ── What the server actually holds ──
+   Asserted against, rather than against a name typed into this file. The
+   fixture is seeded by whoever runs this, and a hard-coded "Leeds plumbing"
+   fails on a differently-named project while proving nothing about the
+   screen. Reading it back means the check is what it claims to be: the card
+   shows *this* project, and each step says what the stored node will do. */
+const NAME = await projectsApi({ action: 'get' })
+  .then(r => (r.projects ?? []).find(x => x.id === PROJ)?.name ?? '');
+const STEPS = await api({ action: 'workflows', projectId: PROJ })
+  .then(r => (r.workflows ?? [])[0]?.nodes ?? []);
+if (!NAME) { console.error(`no project ${PROJ} in workspace ${ACCT} — seed one first`); process.exit(2); }
+if (!STEPS.length) { console.error(`project ${PROJ} has no workflow to draw — seed one first`); process.exit(2); }
+
+/* The label a step is drawn with: the node's own, or the subject it sends. */
+const stepLabel = (n) => String(n.label ?? n.config?.subject ?? '').trim();
+const rx = (s) => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
 const b = await pw.chromium.launch();
 
 const open = async (width, reduce = false) => {
@@ -63,7 +85,7 @@ for (const width of [390, 1280]) {
   const { ctx, p, errs } = await open(width);
   const t = (await p.textContent('body')) ?? '';
 
-  ok(`${width}px · the project is a card of its own`, /Leeds plumbing/.test(t), t.slice(0, 250));
+  ok(`${width}px · the project is a card of its own`, rx(NAME).test(t), t.slice(0, 250));
   ok(`${width}px · with when it was created and how many workflows are live`,
     /Created/.test(t) && /workflow.? active/.test(t), (t.match(/Created[^·]{0,40}/) ?? ['not found'])[0]);
 
@@ -75,8 +97,15 @@ for (const width of [390, 1280]) {
   /* The workflow, drawn. */
   ok(`${width}px · its workflow is drawn as a shape`,
     /Lead Nurture Flow/.test(t) && /New lead enters CRM/.test(t), t.slice(0, 350));
-  ok(`${width}px · each step says what it will actually do`,
-    /Are you losing money\?/.test(t) && /Wait 2 days/.test(t));
+  /* Every stored step is named on the screen. A step drawn as a blank box is
+     the failure this is aimed at — the customer cannot approve what it will
+     not tell them. */
+  {
+    const labels = STEPS.map(stepLabel).filter(Boolean);
+    const missing = labels.filter(l => !rx(l).test(t));
+    ok(`${width}px · each step says what it will actually do`,
+      labels.length > 0 && missing.length === 0, `not drawn: ${missing.join(' | ') || 'no step carries a label'}`);
+  }
   ok(`${width}px · and the branch the condition did not take is drawn too`,
     /Send educational content/.test(t), 'the No branch is missing');
 

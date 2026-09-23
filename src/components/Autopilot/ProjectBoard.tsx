@@ -26,7 +26,7 @@ import { useApp } from '../../context/AppContext';
 import {
   fetchBoard, setProjectStatus, deleteProject, poolTargetOf, KIND_LABEL,
   saveProject, savePortfolio,
-  type Project, type Card,
+  type Project, type Card, type Portfolio,
 } from '../../services/projects';
 import { approveAction, rejectAction } from '../../services/autopilot';
 import ProjectInfra from './ProjectInfra';
@@ -37,10 +37,12 @@ import { DEMO_CLIENT, DEMO_PROJECT, DEMO_WORKFLOWS, TEMPLATES } from './workflow
 import { saveWorkflow } from '../../services/autopilot';
 import { getSession } from '../../services/auth';
 
-const INK = '#17191c';
-const MUTED = '#6b7280';
-const LINE = '#e6e9f0';
-const ACCENT = '#5b46e5';
+const INK = T.ink;
+const MUTED = T.muted;
+import { T } from './theme';
+
+const LINE = T.line;
+const ACCENT = T.accent;
 
 /** A dot per project, so a column is identifiable at a glance rather than by
  *  reading its heading. The palette repeats after six; a workspace with more
@@ -96,7 +98,7 @@ function CardTile({ card, onOpen, onDecide, busy }: {
   const why = card.detail?.trim() || card.because?.trim() || '';
   return (
     <div style={{
-      background: '#fff', border: `1px solid ${LINE}`, borderRadius: 14,
+      background: T.raised, border: `1px solid ${LINE}`, borderRadius: 14,
       padding: 13, display: 'grid', gap: 8,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -133,11 +135,11 @@ function CardTile({ card, onOpen, onDecide, busy }: {
         <div style={{ display: 'flex', gap: 6 }}>
           <button disabled={busy} onClick={() => onDecide(card.id, true)} style={{
             flex: 1, padding: '7px 10px', borderRadius: 8, border: 'none',
-            background: INK, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+            background: ACCENT, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
           }}>Approve</button>
           <button disabled={busy} onClick={() => onDecide(card.id, false)} style={{
             padding: '7px 10px', borderRadius: 8, border: `1px solid ${LINE}`,
-            background: '#fff', color: MUTED, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+            background: T.raised, color: MUTED, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
           }}>No</button>
         </div>
       )}
@@ -148,7 +150,7 @@ function CardTile({ card, onOpen, onDecide, busy }: {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
             padding: '5px 10px', borderRadius: 8, border: `1px solid ${LINE}`,
-            background: '#fff', color: INK, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+            background: T.raised, color: INK, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
           }}>
           <ExternalLink size={11} /> {card.linkLabel || 'Open'}
         </button>
@@ -168,6 +170,9 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
      is a wall of numbers, and only one of them is the one being changed. */
   const [infra, setInfra] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
+  /* The client behind each project. A project's logo lives on its client, so
+     the card has to be handed one to show or change it. */
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   /* The message while the example is being built, so the button can say which
      of the four steps it is on rather than spinning silently for six seconds. */
   const [demoBusy, setDemoBusy] = useState('');
@@ -228,6 +233,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   const load = async () => {
     const r = await fetchBoard();
     setProjects(r.projects);
+    setPortfolios(r.portfolios);
     setBoard(r.board);
     setLoading(false);
     if (r.error) addNotification(r.error, 'error');
@@ -240,6 +246,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
       const r = await fetchBoard();
       if (!live) return;
       setProjects(r.projects);
+      setPortfolios(r.portfolios);
       setBoard(r.board);
       setLoading(false);
       if (r.error) addNotification(r.error, 'error');
@@ -282,7 +289,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   if (!projects.length) {
     return (
       <div style={{
-        background: '#fff', border: `1px dashed ${LINE}`, borderRadius: 18,
+        background: T.panel, border: `1px dashed ${LINE}`, borderRadius: 18,
         padding: '34px 24px', textAlign: 'center', display: 'grid', gap: 11, justifyItems: 'center',
       }}>
         <AutopilotBot size={62} awake />
@@ -302,7 +309,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
           {CAN_DO.map(c => (
             <span key={c.what} style={{
               display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 11px',
-              border: `1px solid ${LINE}`, borderRadius: 11, background: '#fbfbfc',
+              border: `1px solid ${LINE}`, borderRadius: 11, background: T.raised,
             }}>
               <Check size={12} color="#16a34a" style={{ marginTop: 2, flexShrink: 0 }} />
               <span>
@@ -327,7 +334,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
           <button onClick={() => void makeDemo()} disabled={!!demoBusy} className="press" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '11px 20px', borderRadius: 999, border: `1px solid ${LINE}`,
-            background: '#fff', color: INK, fontSize: 13, fontWeight: 700,
+            background: T.raised, color: INK, fontSize: 13, fontWeight: 700,
             cursor: demoBusy ? 'default' : 'pointer', fontFamily: 'inherit',
           }}>
             {demoBusy ? <Loader size={14} className="spin" /> : <Sparkles size={14} />}
@@ -411,12 +418,13 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
             )}
           <ProjectCard
             project={p}
+            portfolio={portfolios.find(x => x.id === p.portfolioId) ?? null}
             onChanged={() => void load()}
             onToggle={x => void toggle(x)}
             onDelete={x => void remove(x)}
             tools={(
           <section style={{
-            background: '#f7f8fa',
+            background: T.panel,
             border: `1px solid ${LINE}`, borderRadius: 18, padding: 12,
             display: 'grid', gap: 10, alignContent: 'start',
           }}>
@@ -464,7 +472,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                     display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px',
                     borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700,
                     border: `1px solid ${infra === p.id ? '#c7bdf7' : LINE}`,
-                    background: pool.domains > 0 ? '#eef2ff' : '#fff',
+                    background: pool.domains > 0 ? T.accentSoft : T.raised,
                     color: pool.domains > 0 ? '#4338ca' : MUTED,
                   }}>
                   <Globe size={10} />
@@ -493,14 +501,14 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '6px 0 2px' }}>
                   <button onClick={() => void toggle(p)} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px',
-                    borderRadius: 8, border: `1px solid ${LINE}`, background: '#fff',
+                    borderRadius: 8, border: `1px solid ${LINE}`, background: T.raised,
                     fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer',
                   }}>
                     {live ? <><Pause size={11} /> Pause</> : <><Play size={11} /> Resume</>}
                   </button>
                   <button onClick={() => void remove(p)} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px',
-                    borderRadius: 8, border: `1px solid ${LINE}`, background: '#fff',
+                    borderRadius: 8, border: `1px solid ${LINE}`, background: T.raised,
                     fontSize: 11.5, fontWeight: 700, color: '#b42318', cursor: 'pointer',
                   }}>
                     <Trash2 size={11} /> Delete
@@ -534,14 +542,18 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         );
       })}
 
-      {/* The way to add another, in the place somebody looks for it. */}
+      {/* The way to add another, for somebody who has read to the bottom.
+          A slim bar rather than the tall dashed box it was: that shape was
+          sized for the old horizontal column layout, and in a vertical stack it
+          became a full-width empty rectangle under the last project. The
+          button at the top is the one most people use. */}
       <button onClick={onNewProject} style={{
-        flex: '0 0 200px', minHeight: 120, background: 'transparent',
-        border: `1px dashed ${LINE}`, borderRadius: 18, cursor: 'pointer',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 6, color: MUTED, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
+        width: '100%', padding: '11px 16px', background: 'transparent',
+        border: `1px dashed ${LINE}`, borderRadius: 14, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 7, color: MUTED, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
       }}>
-        <Plus size={18} /> New project
+        <Plus size={14} /> Add another project
       </button>
     </div>
   );

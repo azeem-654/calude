@@ -231,3 +231,218 @@ export function layout(nodes: WorkflowNode[]): { placed: Placed[]; columns: numb
   const columns = placed.reduce((m, p) => Math.max(m, p.column + 1), 1);
   return { placed, columns };
 }
+
+/* ── What a step would actually do, before it does it ──────────────────────── */
+
+/**
+ * How long a wait step waits, in milliseconds.
+ *
+ * The same rules as `waitMs` in `worker/src/lib/automationEngine.ts`, including
+ * both defaults that a builder would otherwise have to discover by watching:
+ * nothing set means a day, and anything over 180 days is clamped — a "wait 365"
+ * meant as hours would otherwise park somebody in a workflow for a year.
+ *
+ * Duplicated for the same reason as `fillTokens` above, and kept to the same
+ * few lines so the two cannot quietly disagree.
+ */
+export function waitMs(config: Record<string, string> = {}): number {
+  const n = (k: string) => Number(config[k]);
+  let ms = 0;
+  if (Number.isFinite(n('days')) && n('days') > 0) ms += n('days') * 86_400_000;
+  if (Number.isFinite(n('hours')) && n('hours') > 0) ms += n('hours') * 3_600_000;
+  if (Number.isFinite(n('minutes')) && n('minutes') > 0) ms += n('minutes') * 60_000;
+  return Math.min(ms || 86_400_000, 180 * 86_400_000);
+}
+
+/**
+ * A stand-in person, for previewing a step.
+ *
+ * Deliberately a whole record with ordinary values rather than
+ * "FIRSTNAME_PLACEHOLDER": the point of a preview is to read the email as the
+ * person receiving it will, and a preview full of shouting placeholders is one
+ * nobody reads properly.
+ */
+export const SAMPLE_CONTACT = {
+  name: 'Rita Walker',
+  firstName: 'Rita',
+  lastName: 'Walker',
+  email: 'rita.walker@example.com',
+  phone: '07700 900123',
+  company: 'Walker Lettings',
+  jobTitle: 'Director',
+};
+
+/**
+ * Fill the tokens in a piece of text.
+ *
+ * ── The duplication here is deliberate, and so is this comment ──
+ *
+ * The engine does this in `worker/src/lib/automationEngine.ts` (`personalise`).
+ * The Worker and the bundle are separate builds with separate tsconfigs, so
+ * there is no honest way to share one function without restructuring both.
+ *
+ * Two copies of a substitution rule is exactly the kind of thing that drifts,
+ * and a preview that fills tokens differently from the sender is worse than no
+ * preview — it would show one email and send another. The rule is therefore
+ * kept deliberately tiny, stated identically in both files, and pinned by a
+ * test: an unknown token becomes an empty string rather than being left on
+ * screen, because "Hi {{firstName}}," arriving in somebody's inbox is the
+ * failure this is meant to prevent.
+ */
+export function fillTokens(text: string, contact: Record<string, string> = SAMPLE_CONTACT): string {
+  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => contact[key] ?? '');
+}
+
+/** What a dry run of one step has to say. */
+export interface StepPreview {
+  /** What it would do, in one line. */
+  headline: string;
+  /** The message, when there is one. */
+  subject?: string;
+  body?: string;
+  /** Why it would not run at all. Empty when it would. */
+  blocked: string;
+  /** Anything true but worth knowing before switching it on. */
+  notes: string[];
+}
+
+/**
+ * What this step would do to the sample person, without doing it.
+ *
+ * ── Why a dry run rather than a real send ──
+ *
+ * A "Test" button that actually sends puts a real email in a real inbox every
+ * time somebody presses it while building — and people press it a lot. This
+ * reports what *would* happen and names anything that would stop it, which is
+ * the question being asked.
+ *
+ * It is honest about the limits of that: it cannot know whether a mail server
+ * will accept the message, so it says so rather than reporting success.
+ */
+export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepPreview {
+  const c = (k: string) => String(node.config?.[k] ?? '').trim();
+  const notes: string[] = [];
+
+  if (node.type === 'trigger') {
+    const ev = c('event').replace(/_/g, ' ') || 'nothing';
+    const named = c('formName') || c('tag');
+    return {
+      headline: `Starts when ${ev}${named ? ` — only "${named}"` : ''}.`,
+      blocked: c('event') ? '' : 'No event is chosen, so nothing would ever start this workflow.',
+      notes: named ? [] : ['Any form or tag will start it. Name one above to narrow it.'],
+    };
+  }
+
+  if (node.type === 'wait') {
+    const ms = waitMs(node.config ?? {});
+    const days = ms / 86_400_000;
+    return {
+      headline: days >= 1
+        ? `Waits ${Number(days.toFixed(1))} day${days === 1 ? '' : 's'}, then carries on.`
+        : `Waits ${Math.round(ms / 60_000)} minutes, then carries on.`,
+      blocked: '',
+      notes: Object.keys(node.config ?? {}).length ? [] : ['Nothing is set, so this waits the default day.'],
+    };
+  }
+
+  if (node.type === 'condition') {
+    const field = c('field');
+    const op = c('operator') || 'equals';
+    const value = c('value');
+    if (!field) {
+      return {
+        headline: 'Splits the workflow in two.',
+        blocked: 'Nothing is chosen to test, so every person would take the No branch.',
+        notes: [],
+      };
+    }
+    const have = String((contact as Record<string, string>)[field] ?? '');
+    const yes = op === 'is_set' ? !!have
+      : op === 'is_empty' ? !have
+        : op === 'contains' ? have.toLowerCase().includes(value.toLowerCase())
+          : op === 'not_equals' ? have.toLowerCase() !== value.toLowerCase()
+            : have.toLowerCase() === value.toLowerCase();
+    /* Behaviour the engine has and a builder would not guess: a field nothing
+       records is unknown, and unknown takes No. */
+    if (!(field in contact)) {
+      notes.push(`Nothing records "${field}" yet, so in a real run this always takes the No branch.`);
+    }
+    return {
+      headline: `For ${contact.firstName}, this answers ${yes ? 'Yes' : 'No'}.`,
+      blocked: '',
+      notes,
+    };
+  }
+
+  if (node.type === 'send_email') {
+    const subject = fillTokens(c('subject'), contact);
+    const body = fillTokens(c('body') || c('preview'), contact);
+    return {
+      headline: `Emails ${contact.email}.`,
+      subject,
+      body,
+      blocked: c('subject') ? '' : 'There is no subject, so this would send a blank email.',
+      notes: ['This is what would be sent. Whether a mail server accepts it is only known once it goes.'],
+    };
+  }
+
+  if (node.type === 'send_sms') {
+    const text = fillTokens(c('message') || c('body'), contact);
+    return {
+      headline: `Texts ${contact.phone}.`,
+      body: text,
+      blocked: (c('message') || c('body')) ? '' : 'There is no message, so this would send an empty text.',
+      notes: text.length > 160
+        ? [`That is ${text.length} characters — over 160 it is billed and delivered as more than one text.`]
+        : [],
+    };
+  }
+
+  if (node.type === 'add_tag' || node.type === 'remove_tag') {
+    const tag = c('tag');
+    return {
+      headline: tag
+        ? `${node.type === 'add_tag' ? 'Adds' : 'Removes'} the tag "${tag}" on ${contact.firstName}.`
+        : 'Changes a tag.',
+      blocked: tag ? '' : 'No tag is named.',
+      /* The thing a builder would otherwise discover from a screen that does
+         not change: the engine proposes contact edits and the browser applies
+         them, because the contact list is the browser's document. */
+      notes: ['Contact changes are applied the next time the app is open.'],
+    };
+  }
+
+  if (node.type === 'create_task') {
+    return {
+      headline: `Puts "${c('title') || c('text') || 'Follow up'}" on your list, against ${contact.name}.`,
+      blocked: '',
+      notes: [],
+    };
+  }
+
+  if (node.type === 'assign_to') {
+    return {
+      headline: c('user') ? `Assigns ${contact.name} to ${c('user')}.` : 'Assigns the contact to somebody.',
+      blocked: c('user') ? '' : 'Nobody is named.',
+      notes: [],
+    };
+  }
+
+  if (node.type === 'update_field') {
+    return {
+      headline: c('field') ? `Sets ${c('field')} to "${c('value')}" on ${contact.name}.` : 'Sets a field.',
+      blocked: c('field') ? '' : 'No field is named.',
+      notes: ['Contact changes are applied the next time the app is open.'],
+    };
+  }
+
+  if (node.type === 'end') {
+    return { headline: 'Ends the workflow here.', blocked: '', notes: [] };
+  }
+
+  return {
+    headline: `"${node.type}" is not a step this version can carry out.`,
+    blocked: 'The engine would skip this step and carry on.',
+    notes: [],
+  };
+}

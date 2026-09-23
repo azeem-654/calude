@@ -1277,7 +1277,9 @@ main section { min-width: 0; }
   flex: 1;
   min-width: 14px;
   height: 2px;
-  background: #e3e6eb;
+  /* Dark, because the canvas this sits on is. A light rail here reads as a
+     bright line between two dark cards rather than as a connector. */
+  background: #243050;
   overflow: hidden;
   border-radius: 999px;
 }
@@ -1293,7 +1295,7 @@ main section { min-width: 0; }
   position: relative;
   height: 2px;
   border-radius: 999px;
-  background: #eef0f4;
+  background: #1b2440;
   overflow: hidden;
 }
 .ap-tick-bar::after {
@@ -1302,7 +1304,7 @@ main section { min-width: 0; }
   inset: 0;
   width: 40%;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent, #c7bdf7, transparent);
+  background: linear-gradient(90deg, transparent, #7c8cf8, transparent);
 }
 
 /* The dashboard's two columns become one on a narrow screen.
@@ -1369,4 +1371,10 @@ main section { min-width: 0; }
 @keyframes ap-cta {
   0%, 100% { box-shadow: 0 0 0 0 rgba(91, 70, 229, 0.42); }
   70%      { box-shadow: 0 0 0 11px rgba(91, 70, 229, 0); }
+}
+
+/* The step editor drops to one column on a narrow screen: the panel is a form
+   and the list is a list, and side by side below ~880px neither is usable. */
+@media (max-width: 880px) {
+  .ap-editor { grid-template-columns: minmax(0, 1fr) !important; }
 }

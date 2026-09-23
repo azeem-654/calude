@@ -32,27 +32,30 @@ import { Fragment } from 'react';
 import type { WorkflowNode } from '../../services/autopilot';
 import { layout, lookFor, nodeDetail } from './workflowNodes';
 
-const INK = '#17191c';
-const MUTED = '#6b7280';
-const LINE = '#e6e9f0';
+import { T, nodeDark } from './theme';
+
+const INK = T.ink;
+const MUTED = T.muted;
 
 function Node({ node, dim }: { node: WorkflowNode; dim?: boolean }) {
   const look = lookFor(node.type);
+  /* The dark bed for this kind of step. The light palette's tints are white
+     bricks on this ground — see the note in theme.ts. */
+  const tone = nodeDark(node.type);
   const Ic = look.icon;
   const detail = nodeDetail(node.type, node.config ?? {});
 
   return (
     <div style={{
-      width: 132, background: '#fff', border: `1px solid ${LINE}`, borderRadius: 11,
-      padding: '8px 9px', opacity: dim ? 0.75 : 1,
-      boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
+      width: 136, background: T.raised, border: `1px solid ${tone.edge}`, borderRadius: 11,
+      padding: '8px 9px', opacity: dim ? 0.72 : 1,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
         <span style={{
-          width: 17, height: 17, borderRadius: 5, background: look.bg, color: look.fg,
+          width: 17, height: 17, borderRadius: 5, background: tone.bg, color: tone.fg,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}><Ic size={10} /></span>
-        <span style={{ fontSize: 9.5, fontWeight: 800, color: look.fg, letterSpacing: '0.02em' }}>
+        <span style={{ fontSize: 9.5, fontWeight: 800, color: tone.fg, letterSpacing: '0.02em' }}>
           {look.label}
         </span>
       </div>
@@ -77,12 +80,12 @@ function Arrow({ live }: { live: boolean }) {
   return (
     <span aria-hidden style={{ display: 'flex', alignItems: 'center', width: 26, flexShrink: 0 }}>
       <span className={live ? 'ap-flow-line' : undefined} style={live ? undefined : {
-        flex: 1, height: 2, background: '#e3e6eb', borderRadius: 999,
+        flex: 1, height: 2, background: T.line, borderRadius: 999,
       }} />
       <span style={{
         width: 0, height: 0, marginLeft: -1,
         borderTop: '3.5px solid transparent', borderBottom: '3.5px solid transparent',
-        borderLeft: `5px solid ${live ? '#c7bdf7' : '#d6dae1'}`,
+        borderLeft: `5px solid ${live ? T.accent : T.line}`,
       }} />
     </span>
   );
@@ -93,7 +96,8 @@ function Branch({ yes }: { yes: boolean }) {
   return (
     <span style={{
       padding: '1px 7px', borderRadius: 999, fontSize: 9, fontWeight: 800,
-      background: yes ? '#dcfce7' : '#fee2e2', color: yes ? '#15803d' : '#b91c1c',
+      background: yes ? 'rgba(52,211,153,0.16)' : 'rgba(248,113,113,0.16)',
+      color: yes ? T.good : T.bad,
       whiteSpace: 'nowrap',
     }}>{yes ? 'Yes' : 'No'}</span>
   );

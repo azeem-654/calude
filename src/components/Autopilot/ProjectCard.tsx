@@ -32,31 +32,50 @@ import {
   Workflow as WorkflowIcon, Bot, Library, BarChart3, Settings as SettingsIcon,
   Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle,
   ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2,
+  Image as ImageIcon, Activity, Clock,
 } from 'lucide-react';
 import {
   fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
   fetchProjectDay, approveAction, rejectAction,
   type ProjectWorkflow, type ProjectDay,
 } from '../../services/autopilot';
-import { KIND_LABEL, type Project } from '../../services/projects';
+import { KIND_LABEL, type Portfolio, type Project } from '../../services/projects';
+import { useApp } from '../../context/AppContext';
 import WorkflowCanvas from './WorkflowCanvas';
 import ProjectFlow from './ProjectFlow';
 import WorkflowEditor from './WorkflowEditor';
 import AutopilotBot from './AutopilotBot';
+import ProjectLogo from './ProjectLogo';
 import { TEMPLATES } from './workflowTemplates';
 import { lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
 
-const INK = '#17191c';
-const MUTED = '#6b7280';
-const LINE = '#e6e9f0';
-const ACCENT = '#5b46e5';
+import { T, nodeDark } from './theme';
 
-type Tab = 'workflows' | 'agents' | 'library' | 'analytics' | 'settings';
+const INK = T.ink;
+const MUTED = T.muted;
+const LINE = T.line;
+const ACCENT = T.accent;
+
+/*
+ * ── The sections of a project ──
+ *
+ * `agents` came back after being cut, and it is a different tab now. It used to
+ * list guardrails, which answers "what is it allowed to do" rather than "what
+ * is it doing" — a wall of green switches with nothing behind them. It now
+ * lists the steps the AI actually performs, each one a link into the workflow
+ * that holds it, so deleting the step deletes the duty.
+ *
+ * `assets` and `activity` are new and are the two questions the board could not
+ * answer: where is the work it produced, and what is it about to do.
+ */
+type Tab = 'workflows' | 'agents' | 'assets' | 'activity' | 'library' | 'analytics' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'workflows', label: 'Workflows', icon: WorkflowIcon },
   { id: 'agents', label: 'AI Agents', icon: Bot },
+  { id: 'assets', label: 'Assets', icon: ImageIcon },
+  { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'library', label: 'Content Library', icon: Library },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'settings', label: 'Project Settings', icon: SettingsIcon },
@@ -64,24 +83,6 @@ const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
 
 /** The tint behind each workflow's index badge, so a card is findable at a glance. */
 const INDEX_TINT = ['#2563eb', '#ea580c', '#16a34a', '#7c3aed', '#0891b2', '#db2777'];
-
-/**
- * A project's initial, in a colour taken from its own name.
- *
- * Deterministic rather than random: the same project is the same colour on
- * every device and after every reload, which is what makes it useful for
- * finding your place in a stack of six.
- */
-function avatarFor(name: string): { letter: string; bg: string; fg: string } {
-  const palette = [
-    { bg: '#fef3c7', fg: '#b45309' }, { bg: '#ede9fe', fg: '#6d28d9' },
-    { bg: '#dcfce7', fg: '#15803d' }, { bg: '#dbeafe', fg: '#1d4ed8' },
-    { bg: '#fce7f3', fg: '#be185d' }, { bg: '#ccfbf1', fg: '#0f766e' },
-  ];
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return { letter: (name.trim()[0] ?? '?').toUpperCase(), ...palette[h % palette.length] };
-}
 
 /**
  * Things worth asking this project for.
@@ -118,9 +119,12 @@ function promptsFor(kind: string): string[] {
 }
 
 export default function ProjectCard({
-  project, onChanged, onToggle, onDelete, tools,
+  project, portfolio, onChanged, onToggle, onDelete, tools,
 }: {
   project: Project;
+  /** The client this project is for. Null when none was chosen — the logo then
+   *  falls back to a letter and says there is nowhere to keep one. */
+  portfolio: Portfolio | null;
   onChanged: () => void;
   onToggle: (p: Project) => void;
   onDelete: (p: Project) => void;
@@ -128,6 +132,10 @@ export default function ProjectCard({
   tools: React.ReactNode;
 }) {
   const navigate = useNavigate();
+  /* The designer's own posts, for their thumbnails. Read from the context that
+     already holds them rather than fetched again — the Assets tab is a view of
+     work that exists, not a second source of it. */
+  const { socialPosts } = useApp();
   const [tab, setTab] = useState<Tab>('workflows');
   const [flows, setFlows] = useState<ProjectWorkflow[]>([]);
   const [day, setDay] = useState<ProjectDay | null>(null);
@@ -149,7 +157,6 @@ export default function ProjectCard({
   const [adding, setAdding] = useState('');
 
   const live = project.status === 'running' || project.status === 'learning';
-  const avatar = avatarFor(project.name);
 
   const read = useCallback(async () => {
     const [w, d] = await Promise.all([fetchWorkflows(project.id), fetchProjectDay(project.id)]);
@@ -215,6 +222,35 @@ export default function ProjectCard({
   const made = (day?.didToday ?? []).filter(a => a.link?.kind);
 
   /**
+   * What this project has produced, as things rather than as log entries.
+   *
+   * ── Why the asset lives elsewhere and this is a shortcut ──
+   *
+   * A social post belongs to the Social Creator, a page to Websites, a draft to
+   * the Blog. Copying them here would be a second copy to keep in step, and the
+   * one somebody edited would always be the other one. So each tile carries the
+   * route to the real record and nothing else.
+   *
+   * The thumbnail is the designer's own, when the ledger's link names a post
+   * that still exists. A tile with no thumbnail shows its kind instead of a
+   * placeholder image, because a grey rectangle pretending to be a picture is
+   * worse than an honest icon.
+   */
+  const assets = made
+    .filter(a => ['social-post', 'blog-post', 'website', 'funnel', 'short'].includes(a.link?.kind ?? ''))
+    .map(a => {
+      const design = socialPosts.find(p => p.id === a.link?.id);
+      return {
+        id: a.id,
+        name: a.link?.label || a.summary,
+        kind: (a.link?.kind ?? '').replace(/-/g, ' '),
+        route: a.link?.route ?? '',
+        thumbnail: design?.thumbnail ?? '',
+        at: a.actedAt ?? a.createdAt,
+      };
+    });
+
+  /**
    * What the AI actually does on this project, read from the workflows.
    *
    * The tab used to list guardrails alone, which answers "what is it allowed to
@@ -277,30 +313,24 @@ export default function ProjectCard({
     }} className="ap-project">
       {/* ── The project ── */}
       <div style={{
-        background: '#fff', border: `1px solid ${LINE}`, borderRadius: 18, overflow: 'hidden', minWidth: 0,
+        background: T.panel, border: `1px solid ${LINE}`, borderRadius: 18, overflow: 'hidden', minWidth: 0,
       }}>
         {/* Identity */}
         <header style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', flexWrap: 'wrap',
-          background: '#fbfbfc', borderBottom: `1px solid ${LINE}`,
+          background: 'linear-gradient(180deg, rgba(91,124,250,0.07), transparent)',
+          borderBottom: `1px solid ${LINE}`,
         }}>
-          {/* The project's own bot, and its letter behind it.
-              The bot says the system is present; the letter and its colour say
-              *which* project, which is what somebody scanning a stack of six
-              is actually using. Both, rather than choosing. */}
-          <span style={{
-            position: 'relative', width: 52, height: 52, borderRadius: 15, flexShrink: 0,
-            background: avatar.bg,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <AutopilotBot size={40} awake={live} busy={(day?.upcoming.length ?? 0) > 0} />
-            <span aria-hidden style={{
-              position: 'absolute', right: -3, bottom: -3, width: 19, height: 19, borderRadius: 7,
-              background: '#fff', border: `1.5px solid ${avatar.bg}`, color: avatar.fg,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, fontWeight: 800,
-            }}>{avatar.letter}</span>
-          </span>
+          {/* The client's own mark. This is the spot somebody scanning a stack
+              of six projects uses to find their place, so it belongs to the
+              client rather than to the system — the bot lives beside the AI
+              column, where what it says about the system is the subject. */}
+          <ProjectLogo
+            portfolio={portfolio}
+            projectName={project.name}
+            onSaved={() => { onChanged(); void read(); }}
+            onError={setError}
+          />
 
           <span style={{ minWidth: 0, flex: '1 1 240px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
@@ -315,18 +345,18 @@ export default function ProjectCard({
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px 3px 4px',
                   borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                  background: live ? '#dcfce7' : '#f1f5f9',
+                  background: live ? T.goodSoft : T.lineSoft,
                 }}>
                 <span style={{
                   width: 26, height: 15, borderRadius: 999, position: 'relative', flexShrink: 0,
-                  background: live ? '#16a34a' : '#cbd5e1', transition: 'background 0.15s',
+                  background: live ? T.good : T.line, transition: 'background 0.15s',
                 }}>
                   <span style={{
                     position: 'absolute', top: 2, left: live ? 13 : 2, width: 11, height: 11,
                     borderRadius: 999, background: '#fff', transition: 'left 0.15s',
                   }} />
                 </span>
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: live ? '#15803d' : MUTED }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: live ? T.good : MUTED }}>
                   {live ? 'Active' : 'Paused'}
                 </span>
               </button>
@@ -365,7 +395,8 @@ export default function ProjectCard({
 
         {/* Its own tabs */}
         <div role="tablist" aria-label={`${project.name} sections`} style={{
-          display: 'flex', gap: 2, padding: '0 12px', borderBottom: `1px solid ${LINE}`, overflowX: 'auto',
+          display: 'flex', gap: 2, padding: '0 12px', borderBottom: `1px solid ${LINE}`,
+          overflowX: 'auto', background: T.panel,
         }}>
           {TABS.map(({ id, label, icon: Ic }) => {
             const on = tab === id;
@@ -374,8 +405,8 @@ export default function ProjectCard({
                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 12px',
                 border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap',
-                color: on ? ACCENT : MUTED,
-                borderBottom: `2px solid ${on ? ACCENT : 'transparent'}`, marginBottom: -1,
+                color: on ? '#a9bbff' : MUTED,
+                borderBottom: `2px solid ${on ? T.accent : 'transparent'}`, marginBottom: -1,
               }}>
                 <Ic size={12} />
                 {label}
@@ -389,7 +420,7 @@ export default function ProjectCard({
           {error && (
             <p style={{
               margin: '0 0 12px', padding: '10px 13px', borderRadius: 10, background: '#fdf3f3',
-              border: '1px solid #f3cfcf', color: '#b42318', fontSize: 12.5,
+              border: `1px solid ${T.bad}55`, color: T.bad, fontSize: 12.5,
             }}>{error}</p>
           )}
 
@@ -407,7 +438,7 @@ export default function ProjectCard({
                    * rather than creeping upward to look busy.
                    */
                   <div style={{
-                    border: '1px solid #ddd6fe', background: '#f8f7ff', borderRadius: 14,
+                    border: `1px solid ${T.line}`, background: 'linear-gradient(180deg, rgba(91,124,250,0.1), transparent)', borderRadius: 14,
                     padding: 14, marginBottom: 14,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
@@ -424,7 +455,7 @@ export default function ProjectCard({
                       <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT }}>{planPercent}%</span>
                     </div>
 
-                    <div style={{ height: 6, borderRadius: 999, background: '#e9e5fb', overflow: 'hidden' }}>
+                    <div style={{ height: 6, borderRadius: 999, background: T.lineSoft, overflow: 'hidden' }}>
                       <div style={{
                         width: `${Math.max(planPercent, 2)}%`, height: '100%', borderRadius: 999,
                         background: ACCENT, transition: 'width 0.5s ease',
@@ -440,7 +471,7 @@ export default function ProjectCard({
                           <li key={step.label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                             <span style={{
                               marginTop: 4, width: 6, height: 6, borderRadius: 999, flexShrink: 0,
-                              background: i < planDone ? '#16a34a' : '#cbd5e1',
+                              background: i < planDone ? T.good : T.line,
                             }} />
                             <span style={{
                               fontSize: 11.5, lineHeight: 1.5,
@@ -460,7 +491,7 @@ export default function ProjectCard({
 
                 <div style={{ textAlign: 'center', padding: '10px 10px 4px' }}>
                   <span style={{
-                    width: 40, height: 40, borderRadius: 13, background: '#f5f3ff', color: ACCENT,
+                    width: 40, height: 40, borderRadius: 13, background: T.accentSoft, color: '#a9bbff',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
                   }}><WorkflowIcon size={18} /></span>
                   <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
@@ -479,11 +510,11 @@ export default function ProjectCard({
                       className="press" style={{
                         display: 'flex', gap: 9, alignItems: 'flex-start', textAlign: 'left',
                         padding: '11px 12px', border: `1px solid ${LINE}`, borderRadius: 12,
-                        background: '#fff', cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
+                        background: T.raised, cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
                       }}>
                       {adding === t.key
-                        ? <Loader size={13} className="spin" color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />
-                        : <Plus size={13} color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />}
+                        ? <Loader size={13} className="spin" color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />
+                        : <Plus size={13} color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />}
                       <span style={{ minWidth: 0 }}>
                         <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>{t.name}</span>
                         <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
@@ -495,7 +526,7 @@ export default function ProjectCard({
                   <button onClick={() => setEditing({ workflow: null })} className="press" style={{
                     display: 'flex', gap: 9, alignItems: 'center', justifyContent: 'center',
                     padding: '11px 12px', border: `1px dashed ${ACCENT}`, borderRadius: 12,
-                    background: '#f8f7ff', cursor: 'pointer', fontFamily: 'inherit',
+                    background: T.accentSoft, cursor: 'pointer', fontFamily: 'inherit',
                     fontSize: 12.5, fontWeight: 700, color: ACCENT,
                   }}>
                     <Plus size={13} /> Build one from scratch
@@ -528,11 +559,11 @@ export default function ProjectCard({
                         className="press" style={{
                           display: 'flex', gap: 8, alignItems: 'flex-start', textAlign: 'left',
                           padding: '10px 11px', border: `1px solid ${LINE}`, borderRadius: 11,
-                          background: '#fbfbfc', cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
+                          background: T.raised, cursor: adding ? 'default' : 'pointer', fontFamily: 'inherit',
                         }}>
                         {adding === t.key
-                          ? <Loader size={12} className="spin" color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />
-                          : <Plus size={12} color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />}
+                          ? <Loader size={12} className="spin" color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />
+                          : <Plus size={12} color="#a9bbff" style={{ marginTop: 2, flexShrink: 0 }} />}
                         <span style={{ minWidth: 0 }}>
                           <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{t.name}</span>
                           <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 1, lineHeight: 1.45 }}>
@@ -550,7 +581,7 @@ export default function ProjectCard({
                   return (
                     <article key={f.id} style={{
                       border: `1px solid ${LINE}`, borderRadius: 14, overflow: 'hidden',
-                      background: '#fbfbfc',
+                      background: T.raised,
                     }}>
                       <header style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', flexWrap: 'wrap' }}>
                         <button onClick={() => setOpen(o => ({ ...o, [f.id]: !isOpen }))}
@@ -582,7 +613,7 @@ export default function ProjectCard({
                           style={{
                             width: 32, height: 18, borderRadius: 999, border: 'none', flexShrink: 0,
                             cursor: busyId === f.id ? 'default' : 'pointer', position: 'relative',
-                            background: on ? '#16a34a' : '#cbd5e1', transition: 'background 0.15s',
+                            background: on ? T.good : T.line, transition: 'background 0.15s',
                           }}>
                           <span style={{
                             position: 'absolute', top: 2, left: on ? 16 : 2, width: 14, height: 14,
@@ -599,7 +630,7 @@ export default function ProjectCard({
                       </header>
 
                       {isOpen && (
-                        <div style={{ background: '#fff', borderTop: `1px solid ${LINE}`, padding: 12 }}>
+                        <div style={{ background: T.panel, borderTop: `1px solid ${LINE}`, padding: 12 }}>
                           <WorkflowCanvas nodes={f.nodes as unknown as AutomationNode[]} live={on && live} />
                         </div>
                       )}
@@ -650,10 +681,11 @@ export default function ProjectCard({
                       return (
                         <li key={`${workflow}-${node.id}`} style={{
                           display: 'flex', gap: 9, alignItems: 'center', padding: '8px 11px',
-                          border: `1px solid ${LINE}`, borderRadius: 10, background: '#fbfbfc',
+                          border: `1px solid ${LINE}`, borderRadius: 10, background: T.raised,
                         }}>
                           <span style={{
-                            width: 22, height: 22, borderRadius: 7, background: look.bg, color: look.fg,
+                            width: 22, height: 22, borderRadius: 7,
+                            background: nodeDark(node.type).bg, color: nodeDark(node.type).fg,
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                           }}><Ic size={11} /></span>
                           <span style={{ minWidth: 0, flex: 1 }}>
@@ -667,7 +699,7 @@ export default function ProjectCard({
                           </span>
                           <span style={{
                             padding: '2px 8px', borderRadius: 999, fontSize: 9.5, fontWeight: 800,
-                            background: look.bg, color: look.fg, flexShrink: 0,
+                            background: nodeDark(node.type).bg, color: nodeDark(node.type).fg, flexShrink: 0,
                           }}>{look.label}</span>
                         </li>
                       );
@@ -693,15 +725,15 @@ export default function ProjectCard({
                   {Object.entries(project.guardrails ?? {}).map(([k, v]) => (
                     <div key={k} style={{
                       display: 'flex', alignItems: 'center', gap: 9, padding: '8px 11px',
-                      border: `1px solid ${LINE}`, borderRadius: 10, background: '#fbfbfc',
+                      border: `1px solid ${LINE}`, borderRadius: 10, background: T.raised,
                     }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: INK, flex: 1, minWidth: 0 }}>
                         {k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())}
                       </span>
                       <span style={{
                         padding: '2px 9px', borderRadius: 999, fontSize: 10, fontWeight: 800,
-                        background: v === 'on' ? '#e8f6ee' : v === 'approval' ? '#fff7e6' : '#f2f3f5',
-                        color: v === 'on' ? '#0f7b3d' : v === 'approval' ? '#7a4d00' : MUTED,
+                        background: v === 'on' ? T.goodSoft : v === 'approval' ? T.warnSoft : T.lineSoft,
+                        color: v === 'on' ? T.good : v === 'approval' ? T.warn : MUTED,
                       }}>
                         {v === 'on' ? 'On its own' : v === 'approval' ? 'Asks first' : 'Off'}
                       </span>
@@ -722,7 +754,7 @@ export default function ProjectCard({
                         <p style={{ margin: '3px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{a.because}</p>
                         <div style={{ display: 'flex', gap: 7, marginTop: 9 }}>
                           <button onClick={() => void decide(a.id, true)} disabled={busyId === a.id}
-                            className="press" style={{ ...ghost(), background: INK, color: '#fff', border: 'none' }}>
+                            className="press" style={{ ...ghost(), background: ACCENT, color: '#fff', border: 'none' }}>
                             {busyId === a.id ? <Loader size={11} className="spin" /> : <CheckCircle2 size={11} />} Do it
                           </button>
                           <button onClick={() => void decide(a.id, false)} disabled={busyId === a.id}
@@ -733,6 +765,145 @@ export default function ProjectCard({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Assets: the pictures and files this project has produced ──
+              Its own tab because "where is the thing it made" is a different
+              question from "what did it do", and answering it with a log entry
+              means opening five cards to find one image. */}
+          {tab === 'assets' && (
+            !assets.length ? (
+              <div style={{ padding: '26px 10px', textAlign: 'center' }}>
+                <span style={{
+                  width: 40, height: 40, borderRadius: 13, background: T.accentSoft, color: '#a9bbff',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+                }}><ImageIcon size={18} /></span>
+                <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
+                  Nothing made yet
+                </h4>
+                <p style={{ margin: '0 auto', maxWidth: 430, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                  Social posts, page designs and images this project produces collect here, with a link to
+                  the module that owns each one — the asset itself lives there, and this is the shortcut.
+                </p>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid', gap: 10,
+                gridTemplateColumns: 'repeat(auto-fill, minmax(min(150px, 100%), 1fr))',
+              }}>
+                {assets.map(a => (
+                  <button key={a.id} onClick={() => navigate(a.route)} className="press" style={{
+                    display: 'flex', flexDirection: 'column', gap: 0, padding: 0, textAlign: 'left',
+                    border: `1px solid ${LINE}`, borderRadius: 12, background: T.raised,
+                    cursor: 'pointer', fontFamily: 'inherit', overflow: 'hidden',
+                  }}>
+                    <span style={{
+                      height: 82, background: T.lineSoft, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    }}>
+                      {a.thumbnail
+                        /* The real thumbnail the designer rendered, not a stand-in.
+                           `data-noinvert` keeps it right way round under the app's
+                           dark-mode filter. */
+                        ? <img src={a.thumbnail} alt="" data-noinvert
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <ImageIcon size={20} color={T.faint} />}
+                    </span>
+                    <span style={{ padding: '8px 9px', minWidth: 0 }}>
+                      <span style={{
+                        display: 'block', fontSize: 11.5, fontWeight: 700, color: INK,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{a.name}</span>
+                      <span style={{ display: 'block', fontSize: 10, color: MUTED, marginTop: 2 }}>
+                        {a.kind}{a.at ? ` · ${new Date(a.at).toLocaleDateString()}` : ''}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* ── Activity: what is happening and what is next ──
+              Two lists rather than one, because "it did this" and "it is about
+              to do this" are answered at different moments and a single stream
+              buries the second under the first. */}
+          {tab === 'activity' && (
+            <div style={{ display: 'grid', gap: 15 }}>
+              <div>
+                <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Activity size={13} color={T.good} /> Going on now
+                </h4>
+                {!finished.length && !(day?.failedToday ?? []).length ? (
+                  <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                    Nothing carried out today. It plans once a day and acts every five minutes on the
+                    server, so this fills in without the app being open.
+                  </p>
+                ) : (
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 7 }}>
+                    {[...(day?.failedToday ?? []), ...finished].slice(0, 10).map(a => (
+                      <li key={a.id} style={{
+                        display: 'flex', gap: 9, alignItems: 'flex-start', padding: '9px 11px',
+                        border: `1px solid ${a.status === 'failed' ? `${T.bad}55` : LINE}`,
+                        borderRadius: 11, background: a.status === 'failed' ? T.badSoft : T.raised,
+                      }}>
+                        {a.status === 'failed'
+                          ? <AlertTriangle size={12} color={T.bad} style={{ marginTop: 2, flexShrink: 0 }} />
+                          : <CheckCircle2 size={12} color={T.good} style={{ marginTop: 2, flexShrink: 0 }} />}
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{a.summary}</span>
+                          {a.detail && (
+                            <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
+                              {a.detail}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>
+                          {a.actedAt ? new Date(a.actedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Clock size={13} color={T.accent} /> Coming up
+                </h4>
+                {!(day?.upcoming ?? []).length ? (
+                  <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                    Nothing queued. {live
+                      ? 'It plans again within the day and adds what it finds.'
+                      : 'This project is paused, so nothing will be.'}
+                  </p>
+                ) : (
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 7 }}>
+                    {(day?.upcoming ?? []).map(a => (
+                      <li key={a.id} style={{
+                        display: 'flex', gap: 9, alignItems: 'flex-start', padding: '9px 11px',
+                        border: `1px solid ${LINE}`, borderRadius: 11, background: T.raised,
+                      }}>
+                        <Clock size={12} color={T.faint} style={{ marginTop: 2, flexShrink: 0 }} />
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: INK }}>{a.summary}</span>
+                          <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
+                            {a.because}
+                          </span>
+                        </span>
+                        <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, textAlign: 'right' }}>
+                          {a.dueAt
+                            ? new Date(a.dueAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                            /* No due date means the next tick, which is sooner
+                               than anything scheduled — said rather than blank. */
+                            : 'next pass'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
 
@@ -749,7 +920,7 @@ export default function ProjectCard({
                   <li key={a.id}>
                     <button onClick={() => a.link?.route && navigate(a.link.route)} style={{
                       display: 'flex', gap: 10, alignItems: 'center', width: '100%', textAlign: 'left',
-                      border: `1px solid ${LINE}`, borderRadius: 11, padding: 11, background: '#fff',
+                      border: `1px solid ${LINE}`, borderRadius: 11, padding: 11, background: T.raised,
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}>
                       <span style={{ minWidth: 0, flex: 1 }}>
@@ -778,13 +949,19 @@ export default function ProjectCard({
 
       {/* ── Edit with AI, for this project ── */}
       <aside style={{ display: 'flex', flexDirection: 'column', gap: 11, minWidth: 0 }}>
-        <section style={{ background: '#fff', border: `1px solid ${LINE}`, borderRadius: 16, padding: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{
-              width: 30, height: 30, borderRadius: 10, background: '#f5f3ff', color: ACCENT,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            }}><Bot size={16} /></span>
-            <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: INK }}>Edit with AI</h4>
+        <section style={{ background: T.aside, border: `1px solid ${LINE}`, borderRadius: 16, padding: 14 }}>
+          {/* Where the bot belongs. Here it is *about* something — the thing on
+              the other side of this box — rather than decorating a client's
+              name. It sleeps when the project is paused and speeds up while
+              something is queued, so it is a status light as much as a face. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <AutopilotBot size={44} awake={live} busy={building || (day?.upcoming.length ?? 0) > 0} />
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: INK }}>Edit with AI</span>
+              <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 1 }}>
+                Your AI co-pilot
+              </span>
+            </span>
           </div>
           <p style={{ margin: '0 0 9px', fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
             Describe a workflow in simple words. It writes it for <strong>{project.portfolioName || 'this client'}</strong>,
@@ -810,7 +987,7 @@ export default function ProjectCard({
           <button onClick={() => void build()} disabled={building || prompt.trim().length < 8} style={{
             width: '100%', marginTop: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             gap: 6, padding: '10px 14px', borderRadius: 10, border: 'none',
-            background: prompt.trim().length >= 8 ? ACCENT : '#cbd5e1', color: '#fff',
+            background: prompt.trim().length >= 8 ? ACCENT : T.line, color: '#fff',
             fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
             cursor: building || prompt.trim().length < 8 ? 'default' : 'pointer',
           }}>
@@ -821,7 +998,7 @@ export default function ProjectCard({
           {answer && (
             <p style={{
               margin: '8px 0 0', fontSize: 11.5, lineHeight: 1.5,
-              color: answerBad ? '#92400e' : '#0f7b3d',
+              color: answerBad ? T.warn : T.good,
             }}>{answer}</p>
           )}
           <p style={{ margin: '7px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
@@ -830,14 +1007,14 @@ export default function ProjectCard({
           </p>
         </section>
 
-        <section style={{ background: '#fff', border: `1px solid ${LINE}`, borderRadius: 16, padding: 14 }}>
+        <section style={{ background: T.aside, border: `1px solid ${LINE}`, borderRadius: 16, padding: 14 }}>
           <h4 style={{ margin: '0 0 8px', fontSize: 12.5, fontWeight: 800, color: INK }}>Quick prompts</h4>
           <div style={{ display: 'grid', gap: 5 }}>
             {promptsFor(project.kind).map(q => (
               <button key={q} onClick={() => { setPrompt(q); setAnswer(''); }} className="press" style={{
                 display: 'flex', gap: 7, alignItems: 'flex-start', textAlign: 'left',
                 padding: '7px 9px', borderRadius: 9, border: `1px solid ${LINE}`,
-                background: '#fbfbfc', fontSize: 11, color: INK, cursor: 'pointer',
+                background: T.raised, fontSize: 11, color: INK, cursor: 'pointer',
                 fontFamily: 'inherit', lineHeight: 1.45,
               }}>
                 <Plus size={10} color={ACCENT} style={{ marginTop: 2, flexShrink: 0 }} />
@@ -851,7 +1028,7 @@ export default function ProjectCard({
         </section>
 
         <section style={{
-          background: '#f8f7ff', border: '1px solid #e4defc', borderRadius: 16, padding: 13,
+          background: T.accentSoft, border: `1px solid ${T.line}`, borderRadius: 16, padding: 13,
         }}>
           <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 6 }}>
             <HelpCircle size={13} color={ACCENT} /> Need help?
@@ -889,7 +1066,7 @@ export default function ProjectCard({
 function ghost(): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px',
-    borderRadius: 999, border: `1px solid ${LINE}`, background: '#fff',
+    borderRadius: 999, border: `1px solid ${LINE}`, background: T.raised,
     fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
   };
 }

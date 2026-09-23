@@ -32,7 +32,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import Header from '../Layout/Header';
+import { Sparkles } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import ReplyQueue from './ReplyQueue';
 import ProjectBoard from './ProjectBoard';
@@ -41,8 +41,8 @@ import { fetchBoard, type Portfolio } from '../../services/projects';
 import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
 import SetupProgress from '../Setup/SetupProgress';
 import ClientLinks from './ClientLinks';
+import { T } from './theme';
 
-const MUTED = '#6b7280';
 
 export default function Autopilot() {
   const { addNotification } = useApp();
@@ -100,14 +100,45 @@ export default function Autopilot() {
   };
 
   return (
-    <div style={{ minHeight: '100vh' }}>
-      <Header
-        title="AI Autopilot"
-        subtitle="One project per client. Say what each should achieve; it does the rest."
-      />
+    /*
+     * `data-noinvert` is load-bearing, not decoration.
+     *
+     * The app's dark mode is one `filter: invert(1)` on <html>. A screen
+     * authored dark would be inverted *to light* by it; the same stylesheet
+     * inverts `[data-noinvert]` back, so this stays dark in both app themes.
+     * Without it the whole control room flips to white the moment somebody
+     * switches the theme, and only here.
+     */
+    <div data-noinvert style={{ minHeight: '100vh', background: T.bg, color: T.ink }}>
+      <div style={{
+        padding: 'clamp(16px, 3vw, 28px) clamp(16px, 3vw, 32px) 10px',
+        borderBottom: `1px solid ${T.lineSoft}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+            <h1 style={{
+              margin: 0, fontSize: 'clamp(22px, 3vw, 30px)', fontWeight: 800,
+              color: T.ink, letterSpacing: '-0.03em',
+            }}>AI Autopilot</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13.5, color: T.muted, lineHeight: 1.55 }}>
+              Create, manage and automate your marketing, content and sales with AI.
+            </p>
+          </div>
+
+          {/* What the machine turns into what, in four words. It is the product
+              in one line, and it is the line somebody repeats to a colleague. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: T.muted, fontSize: 11.5 }}>
+            <Sparkles size={15} color={T.violet} />
+            <span style={{ lineHeight: 1.45 }}>
+              Ideas<br />Workflows<br />Revenue<br />
+              <strong style={{ color: T.ink }}>On Autopilot</strong>
+            </span>
+          </div>
+        </div>
+      </div>
 
       <div style={{ padding: '18px clamp(16px, 3vw, 32px) 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {loading && <p style={{ fontSize: 13, color: MUTED }}>Loading…</p>}
+        {loading && <p style={{ fontSize: 13, color: T.muted }}>Loading…</p>}
 
         {setupOrder && setupOrder !== 'cancelled' && (
           <SetupProgress
@@ -119,7 +150,7 @@ export default function Autopilot() {
           />
         )}
         {setupOrder === 'cancelled' && (
-          <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>
+          <p style={{ fontSize: 12.5, color: T.muted, margin: 0 }}>
             That payment was cancelled, so nothing was bought. Your project is running either way.
           </p>
         )}
