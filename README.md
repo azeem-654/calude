@@ -497,58 +497,39 @@ plan but needs a person to look at it, rather than being retried forever.
 
 ## The marketing site
 
-Fourteen sections, one viewport each, driven by scroll position rather than by
-a scroll container per section (`useScrollScene.ts`).
+`src/components/Site/SiteHome.tsx`. AI Autopilot first, then three chapters of
+modules — get leads, close deals, scale — then the agent chain, what the
+customer owns, a wall of what it does, and pricing.
 
-Seven of them are a module of the app, and each shows **two close-ups** rather
-than one whole window. That distinction is the whole point: a 1240px screen
-shrunk into a column renders at about 0.26x, which shows that a screen exists
-and nothing about what it does. The close-ups are cut from the running app at
-560–620px and shown at ~470px — roughly 0.8x, close enough to read the numbers.
-`scripts/site-shots.mjs` holds the clip regions in document pixels against a
-fixed 1240x800 viewport, so changing that viewport invalidates them.
+Each module is a **reel** (`ShotReel.tsx`): two to five real screens of the
+moments that carry its argument, one at a time, each held for about five
+seconds with a slow drift and a caption that changes with the picture. It
+replaced a looping video of each page being scrolled top to bottom, which
+showed that a screen was long and nothing about what it was for. A reel stops
+while it is off screen, while the tab is hidden and while a pointer or focus
+is on it; under reduced motion it does not advance or drift at all, and the
+arrows and dots still step through by hand.
 
-The views are a **collage**: overlapping a little, leaning opposite ways, the
-hovered one coming to the front. On a phone they stack, each nudged the other
-way, with the image shown at its own width and cropped by the frame so the
-pixels stay 1:1. Both stay on screen at every size — an earlier swipe row put
-everything after the first view behind a gesture nothing announced.
-
-### Contrast and opacity
-
-Two separate reasons the text was hard to read, both measured rather than
-judged:
-
-- `--text-mute` — every paragraph and caption — was **4.35:1** against the
-  paper, under the 4.5:1 floor, and `--text-faint` was 2.36:1. They are 7.79:1
-  and 4.76:1 now. Cards no longer name their own colours: on the dark bands the
-  hardcoded `var(--text)` title measured **1.03:1** against its own background,
-  which is not hard to read, it is invisible.
-- The staggered entry never finished. Each line's fade ran from `-0.42 + k*0.07`
-  to `0.06 + k*0.07`, so at `t = 0` — where a scene rests while you read it —
-  the fifth line sat at 21% opacity and the seventh at zero. The whole staircase
-  now lands by `t = -0.09`.
-
-Each view carries a caption naming the function it shows, a sheen that crosses
-it every few seconds and a live dot, all offset per view so a row never animates
-in unison. All of it is removed under `prefers-reduced-motion`.
+What each reel shows and says is one list, `src/components/Site/reels.ts`.
 
 ### Re-taking the pictures
 
 ```bash
-node scripts/site-shots.mjs
+VITE_BASE=/ npm run build && npx wrangler dev --local &
+npx tsx scripts/site-reels.mts            # every file
+npx tsx scripts/site-reels.mts ap-diagram # just one
 ```
 
-It boots the app against a seeded workspace, captures every region, encodes the
-WebP in the same Chromium, and writes `public/site/shots.json` with each view's
-real dimensions so the page can reserve space before the image arrives.
+It signs up against the local Worker, seeds a workspace (`site-seed.mjs`) plus
+an Autopilot project with a branching workflow, agent runs, forms and tickets,
+photographs each screen at 1440×900 and writes WebP into `public/site/reel/`.
+It refuses to run if `reels.ts` names a file it has no recipe for, so a caption
+cannot end up under a picture of something else.
 
 The seed is part of the product's honesty here. Photographing a module with
 nothing in it puts an empty table under a headline about what the table does, so
 the workspace is seeded with campaigns, deals that are actually *won* with a
 recent closing date, and meetings on the days the calendar's week grid shows.
-Each of those was a real defect found by looking at the crop: an empty Marketing
-screen, "Revenue won $0" beside a $113k pipeline, and a ruled but empty diary.
 
 ## The two sites
 

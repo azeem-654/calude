@@ -1,10 +1,10 @@
 /**
- * The workspace both capture scripts photograph.
+ * The workspace the marketing site's pictures are taken of.
  *
- * site-shots.mjs takes the stills and site-clips.mjs takes the moving loops,
- * and they have to be pictures of the *same* business — a tile whose still
- * shows three funnels and whose clip shows none is worse than either alone.
- * One definition, imported by both.
+ * site-reels.mts photographs every module against it, and they have to be
+ * pictures of the *same* business — a reel whose first screen shows three
+ * funnels and whose second shows none is worse than either alone. One
+ * definition, so every module agrees.
  *
  * Everything here is plausible rather than impressive. The figures are the
  * kind a real studio would have after a few months, because a marketing page

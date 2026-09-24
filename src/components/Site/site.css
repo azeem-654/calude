@@ -362,7 +362,10 @@
 }
 @keyframes dc-draw { from { transform: scaleY(0); opacity: 0; } to { transform: none; opacity: 1; } }
 
-.dc-hero-sub {
+/* `.dc` in front because the reset `.dc p { margin: 0 }` outranks a lone
+   class, and took the auto margins with it — the subtitle sat left of a
+   centred heading. */
+.dc .dc-hero-sub {
   max-width: 640px;
   margin: 24px auto 0;
   font-size: clamp(14.5px, 1.5vw, 17px);
@@ -720,7 +723,20 @@
   100% { top: 48px; opacity: 0; }
 }
 
-.dc-chain-out { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; width: 100%; }
+.dc-chain-out { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; max-width: 960px; }
+
+/* What the agent can read, as a row of small labels inside the source node. */
+.dc-chain-sources { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 520px; margin-top: 4px; }
+.dc-chain-sources span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid var(--edge);
+  background: var(--glass);
+  color: var(--text);
+}
 
 .dc-flow-shot {
   margin: clamp(36px, 5vw, 58px) auto 0;
@@ -1043,7 +1059,7 @@
   .dc-bento { grid-template-columns: repeat(2, 1fr); }
   .dc-tile.dc-wide { grid-column: span 2; }
   .dc-own { grid-template-columns: 1fr; }
-  .dc-chain-out { grid-template-columns: repeat(3, 1fr); }
+  .dc-chain-out { grid-template-columns: repeat(2, 1fr); }
   .dc-foot-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -1216,4 +1232,220 @@
 @media (prefers-reduced-motion: reduce) {
   .dc-tile-shot::after,
   .dc-chain-source::before { display: none; }
+}
+
+/* ── Reels ──────────────────────────────────────────────────────────────────
+   A module, a screen at a time (ShotReel.tsx). These replaced the looping
+   scroll videos: a picture held long enough to read, its caption changing
+   with it.
+
+   The pictures are stacked in one 16:10 stage and crossfade on opacity. The
+   slow drift is a separate animation on the showing picture only, inside a
+   `no-preference` block, so reduced motion — the system's or this browser's
+   own choice in services/motion.ts, which rewrites these conditions — gets a
+   crossfade and nothing that travels. The advancing itself is a timer, and is
+   stopped in the component.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.dc-reel { position: relative; min-width: 0; }
+
+.dc-reel-frame {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 30px 70px -34px rgba(0, 0, 0, 0.85);
+}
+
+.dc-reel-stage {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: #f4f6f3;
+}
+
+.dc-reel-shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  /* Scaled from the corner, so the drift crops the right and bottom — where a
+     screen is emptiest — and settles with its top-left, the logo and the
+     title, fully in frame. */
+  transform-origin: top left;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+.dc-reel-shot.on { opacity: 1; z-index: 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Scaled up a touch before it starts moving, so the drift never shows a
+     blank edge. The duration outlasts the hold, so it is still moving when it
+     fades — a picture that stops and then leaves looks like a slideshow. */
+  .dc-reel.in-view .dc-reel-shot.on[data-drift='a'] { animation: dc-drift-a 7s ease-out both; }
+  .dc-reel.in-view .dc-reel-shot.on[data-drift='b'] { animation: dc-drift-b 7s ease-out both; }
+  .dc-reel.held .dc-reel-shot.on { animation-play-state: paused; }
+  .dc-reel-text { animation: dc-caption-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@keyframes dc-drift-a {
+  from { transform: scale(1.04) translate(-2%, -2%); }
+  to   { transform: scale(1.04) translate(0, 0); }
+}
+@keyframes dc-drift-b {
+  from { transform: scale(1.04) translate(0, -2%); }
+  to   { transform: scale(1.04) translate(-2%, 0); }
+}
+@keyframes dc-caption-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.dc-reel-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+  min-height: 40px;
+}
+.dc-reel-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  font-weight: 600;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.dc-reel-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.dc-reel-arrow {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+.dc-reel-arrow:hover,
+.dc-reel-arrow:focus-visible { opacity: 1; background: rgba(127, 127, 127, 0.16); }
+
+.dc-reel-dots { display: flex; gap: 5px; }
+.dc-reel-dot {
+  position: relative;
+  width: 18px;
+  height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 99px;
+  overflow: hidden;
+  background: currentColor;
+  opacity: 0.28;
+  cursor: pointer;
+  transition: width 0.3s ease, opacity 0.3s ease;
+}
+.dc-reel-dot.on { width: 34px; opacity: 1; background: rgba(127, 127, 127, 0.35); }
+/* The fill is the clock until the next screen. It changes width, so it moves
+   geometry — it lives with the drift, behind `no-preference`. */
+.dc-reel-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: currentColor;
+  transform: scaleX(0);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dc-reel-fill { animation: dc-reel-fill 5.2s linear both; }
+}
+@keyframes dc-reel-fill { to { transform: scaleX(1); } }
+.dc-reel-dot:focus-visible,
+.dc-reel-arrow:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+/* Where a reel sits in a tile, it takes the old screenshot's place: flush to
+   the bottom edge, the caption above the picture rather than under it. */
+.dc-tile .dc-reel { margin-top: 18px; display: flex; flex-direction: column-reverse; }
+.dc-tile .dc-reel-caption { margin: 0 0 10px; }
+.dc-tile .dc-reel-frame { border-radius: 12px 12px 0 0; border-bottom: 0; }
+.dc-tile .dc-reel-text { font-size: 12.5px; text-align: left; }
+/* One screen in a tile: its caption would only repeat the tile's own sentence
+   an inch above it. */
+.dc-tile .dc-reel.single .dc-reel-caption { display: none; }
+.dc-lime .dc-reel-caption,
+.dc-mint .dc-reel-caption { color: var(--ink); }
+@media (min-width: 900px) {
+  .dc-tile.dc-wide .dc-reel { grid-column: 2; grid-row: 1 / span 3; margin: 28px 0 0; }
+}
+
+/* The hero's frame already has a chrome bar and a shadow of its own. */
+.dc-hero-shot .dc-reel-frame { border: 0; border-radius: 0; box-shadow: none; }
+.dc-hero-shot .dc-reel-caption {
+  padding: 10px 16px 12px;
+  margin: 0;
+  background: #0e1318;
+  color: var(--text);
+}
+
+/* ── The Autopilot showcase ── */
+.dc-showcase {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(40px, 6vw, 80px) clamp(16px, 4vw, 44px);
+}
+.dc-show {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: clamp(22px, 4vw, 54px);
+  align-items: center;
+}
+.dc-show-list { display: grid; gap: 12px; margin-top: 22px; }
+.dc-show-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+}
+.dc-show-item .dc-tile-icon { background: rgba(200, 242, 77, 0.14); color: var(--lime); }
+.dc-show-item b { display: block; font-size: 14.5px; letter-spacing: -0.01em; }
+.dc-show-item span { display: block; margin-top: 3px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.dc-show-reel .dc-reel-caption { color: var(--text); }
+.dc-show-head h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.08; margin-top: 12px; }
+.dc-show-head h2 em {
+  font-style: normal;
+  background: linear-gradient(90deg, var(--lime), var(--mint));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dc-show-head p { margin-top: 14px; font-size: 15.5px; line-height: 1.7; color: var(--muted); }
+
+.dc-flow-shot .dc-reel-caption,
+.dc-own-shot .dc-reel-caption { padding: 0 14px 12px; color: var(--text); }
+.dc-flow-shot, .dc-own-shot { background: rgba(255, 255, 255, 0.03); }
+.dc-flow-shot .dc-reel-frame,
+.dc-own-shot .dc-reel-frame { border: 0; border-radius: 0; box-shadow: none; }
+
+.dc-cta-shot .dc-reel-frame { border-radius: 16px 16px 0 0; border: 0; }
+.dc-cta-shot .dc-reel-caption { display: none; }
+
+@media (max-width: 1000px) {
+  .dc-show { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .dc-reel-caption { flex-direction: column; align-items: stretch; gap: 8px; }
+  .dc-reel-controls { justify-content: center; }
+  .dc-tile .dc-reel-text,
+  .dc-reel-text { text-align: center; }
+  .dc-show-item { text-align: left; }
 }

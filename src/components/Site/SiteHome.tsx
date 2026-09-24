@@ -9,12 +9,12 @@
  * The shape is the one a modern platform site has settled on, and it is that
  * shape for a reason: a visitor deciding between platforms is counting, and a
  * wall of tiles each containing a real screen answers "how much is in here"
- * faster than any paragraph. So the spine of the page is three chapters of
- * bento grid — get leads, close deals, scale — each tile a module, each module
- * photographed rather than illustrated.
+ * faster than any paragraph. So the spine of the page is AI Autopilot, then
+ * three chapters of bento grid — get leads, close deals, scale — each tile a
+ * module, each module shown as a reel of its screens that matter (ShotReel).
  *
  * Every screenshot is a photograph of the running application, taken by
- * scripts/site-shots.mjs against a seeded workspace. Nothing here is a mock-up,
+ * scripts/site-reels.mts against a seeded workspace. Nothing here is a mock-up,
  * and when a module's look changes the picture is re-taken rather than redrawn.
  *
  * What this page will not do is invent evidence. There are no customer counts,
@@ -24,24 +24,26 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
-  BarChart3, Building2, Inbox, Lock, Palette, ShieldCheck, Server, Activity,
-  Mail, MessageSquare, Image as ImageIcon, FileText, Clapperboard,
-  LayoutTemplate, Wand2,
+  BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
+  Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
+  PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar,
+  Workflow,
 } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
+import { featureReady } from '../../services/features';
 import { PLANS } from '../../services/tenancy';
+import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
+import ShotReel from './ShotReel';
+import { REELS } from './reels';
 import './site.css';
-import { motionReduced } from '../../services/motion';
 
-const ASSET = (name: string) => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/${name}`;
-const SHOT = (name: string) => ASSET(`${name}.webp`);
-const CLIP = (name: string) => ASSET(`${name}.webm`);
+type Reel = keyof typeof REELS;
 
 /* ── The tiles ───────────────────────────────────────────────────────────── */
 
@@ -51,13 +53,15 @@ const CLIP = (name: string) => ASSET(`${name}.webm`);
  * `tone` is the tile's colour and `span` its width in grid columns. Both are
  * data rather than taste: a grid where every tile is the same size and colour
  * reads as a table, and the eye needs somewhere to land first in each row.
+ *
+ * `reel` names the module's screens in reels.ts — what it is for, a picture at
+ * a time — rather than one clip of its page scrolling past.
  */
 interface Tile {
   id: string;
   title: string;
   body: string;
-  shot: string;
-  alt: string;
+  reel: Reel;
   tone: 'ink' | 'lime' | 'mint' | 'forest' | 'slate' | 'moss' | 'paper';
   span?: 2 | 3;
   icon: typeof Send;
@@ -80,46 +84,36 @@ const CHAPTERS: Chapter[] = [
     eyebrow: 'Find the work',
     lead: 'Get more',
     emph: 'leads.',
-    body: 'Say what you want in a sentence and the agent builds the campaign — then every place a '
-      + 'lead can come from, in the same login.',
-    pills: ['Describe the outcome', 'Approve before it exists', 'Sends on your own mailbox'],
+    body: 'Every place a lead can come from — pages, sites, posts and articles — with the people '
+      + 'they bring in kept in one list.',
+    pills: ['Pages on your own domain', 'Posts drafted for you', 'Everyone in one list'],
     tiles: [
       {
-        id: 'agent', title: 'AI Sales Agent', tone: 'ink', span: 3, icon: Sparkles,
-        body: 'Write the outcome you want. It works out who to reach and how, shows you the plan '
-          + 'before anything exists, then creates the real contacts, sequence and enrolments.',
-        shot: 'agent', alt: 'The AI Sales Agent, showing a campaign built from one sentence',
-      },
-      {
-        id: 'contacts', title: 'Contacts', tone: 'paper', icon: Users,
-        body: 'Everyone you have spoken to, with custom fields, notes, tasks and the full history. '
-          + 'Imports deduplicate on the way in.',
-        shot: 'contacts', alt: 'The contact list with filters and health on every row',
+        id: 'contacts', title: 'Contacts', tone: 'slate', span: 3, icon: Users,
+        body: 'Everyone you have spoken to, with custom fields, notes, tasks and the full history on '
+          + 'one page — and the next thing worth doing for each of them. Imports deduplicate on the way in.',
+        reel: 'contacts',
       },
       {
         id: 'funnels', title: 'Funnels', tone: 'lime', icon: MousePointerClick,
         body: 'Multi-step funnels with real pages behind them, published on your own domain.',
-        shot: 'funnels', alt: 'The funnel builder',
+        reel: 'funnels',
       },
       {
-        id: 'websites', title: 'Websites', tone: 'slate', icon: LayoutTemplate,
+        id: 'websites', title: 'Websites', tone: 'paper', icon: LayoutTemplate,
         body: 'Whole sites, built and published from the same place the campaigns run.',
-        shot: 'websites', alt: 'The website builder',
-      },
-      {
-        id: 'scheduling', title: 'Booking pages', tone: 'mint', icon: MessageSquare,
-        body: 'Your availability, a public link, and the meeting on your calendar without an email thread.',
-        shot: 'scheduling', alt: 'Scheduling and booking pages',
-      },
-      {
-        id: 'blog', title: 'Blog automation', tone: 'forest', icon: FileText,
-        body: 'A topic plan from your own portfolio, written to the search terms your buyers use.',
-        shot: 'blog', alt: 'Blog automation with topic clusters',
+        reel: 'websites',
       },
       {
         id: 'social', title: 'Social creator', tone: 'moss', icon: ImageIcon,
         body: 'Posts on the right canvas for each platform, in your colours, editable before they go.',
-        shot: 'social', alt: 'The social post creator',
+        reel: 'social',
+      },
+      {
+        id: 'blog', title: 'Blog automation', tone: 'forest', span: 3, icon: FileText,
+        body: 'A topic plan from your own portfolio, written to the search terms your buyers use — '
+          + 'or a post a week, written by an Autopilot agent and waiting for you to publish.',
+        reel: 'blog',
       },
     ],
   },
@@ -128,36 +122,31 @@ const CHAPTERS: Chapter[] = [
     eyebrow: 'Do the work',
     lead: 'Close more',
     emph: 'deals.',
-    body: 'The pipeline, the inbox and the calendar in one place — so the follow-up happens whether '
-      + 'or not anybody remembers it.',
+    body: 'The pipeline, the follow-up and the calendar in one place — so the next step happens '
+      + 'whether or not anybody remembers it.',
     pills: ['Stages you define', 'Replies end the cadence', 'Sends with nobody logged in'],
     tiles: [
       {
-        id: 'pipelines', title: 'Pipelines', tone: 'slate', span: 3, icon: BarChart3,
+        id: 'pipelines', title: 'Pipelines', tone: 'ink', span: 3, icon: BarChart3,
         body: 'Stages you define, dragged straight across. Open value and the same value weighted by '
           + 'probability, counted from your own records rather than estimated.',
-        shot: 'pipelines', alt: 'The pipeline board with deals by stage',
+        reel: 'pipelines',
       },
       {
         id: 'marketing', title: 'Email & sequences', tone: 'lime', icon: Mail,
-        body: 'Multi-step cadences on your own SMTP that stop the moment somebody answers. '
+        body: 'Multi-step cadences on your own mailbox that stop the moment somebody answers. '
           + 'The server sends them, so a scheduled campaign goes out with every tab closed.',
-        shot: 'marketing', alt: 'Campaigns and their sequences',
+        reel: 'marketing',
       },
       {
-        id: 'conversations', title: 'Conversations', tone: 'ink', icon: Inbox,
-        body: 'Replies read from your own mailbox over IMAP, so a conversation stays a conversation.',
-        shot: 'conversations', alt: 'The conversations inbox',
+        id: 'engagement', title: 'Forms & tickets', tone: 'paper', icon: ClipboardList,
+        body: 'A form that files the contact and starts the follow-up, and a ticket for anybody who needs help.',
+        reel: 'engagement',
       },
       {
-        id: 'calendar', title: 'Calendar', tone: 'paper', icon: Users,
-        body: 'The week on one grid, with what is booked and who booked it.',
-        shot: 'calendar', alt: 'The calendar week view',
-      },
-      {
-        id: 'reputation', title: 'Reputation', tone: 'moss', icon: ShieldCheck,
-        body: 'Ask the customers most likely to say something good, and answer the ones who did not.',
-        shot: 'reputation', alt: 'Reputation and review management',
+        id: 'calendar', title: 'Calendar', tone: 'mint', icon: Calendar,
+        body: 'The week on one grid, with what is booked, who booked it, and a public booking link.',
+        reel: 'calendar',
       },
     ],
   },
@@ -175,128 +164,80 @@ const CHAPTERS: Chapter[] = [
         body: 'Its own contacts, pipelines, campaigns and calendar for every client, switched between '
           + 'in one click. A workspace you do not own is refused by the API, not merely hidden by the '
           + 'interface — and each sub-account carries its own plan and its own price.',
-        shot: 'agency', alt: 'The agency dashboard listing client sub-accounts',
+        reel: 'agency',
       },
       {
-        id: 'analytics', title: 'Analytics', tone: 'lime', icon: BarChart3,
-        body: 'Every figure read live from the module that owns it. A rate over four sends is not shown as a rate.',
-        shot: 'analytics', alt: 'The analytics screen',
-      },
-      {
-        id: 'automation', title: 'Automation', tone: 'ink', icon: Activity,
-        body: 'What the schedule did while you were away — what started, what sent, and the exact '
-          + 'sentence for anything it could not do.',
-        shot: 'automation', alt: 'The automation health screen',
-      },
-      {
-        id: 'infrastructure', title: 'Domains & mailboxes', tone: 'mint', icon: Server,
-        body: 'Search a domain and register it, write SPF, DKIM and DMARC, create the mailbox — '
-          + 'without leaving the app.',
-        shot: 'infrastructure', alt: 'The infrastructure settings screen',
+        id: 'analytics', title: 'Analytics', tone: 'slate', span: 3, icon: BarChart3,
+        body: 'Every figure read live from the module that owns it — revenue, leads and where they came '
+          + 'from. A rate over four sends is not shown as a rate.',
+        reel: 'analytics',
       },
     ],
   },
 ];
 
+/* ── AI Autopilot, the part that is new ──────────────────────────────────── */
+
+/**
+ * What a visitor needs to know about Autopilot, one line each.
+ *
+ * Every line is something a customer can do today, on the live product. The
+ * template count is read from the library so it cannot drift from it.
+ */
+const AUTOPILOT = [
+  { icon: Mic, title: 'Say what you want', body: 'Type a sentence, say it out loud, or hand it your files and website. It asks only the questions it could not answer itself.' },
+  { icon: Workflow, title: 'Approve the blueprint', body: 'You read exactly what it will build — every workflow, every step — and change it in a sentence before anything exists.' },
+  { icon: GitBranch, title: 'See every branch', body: 'Workflows are drawn the way they run, each fork labelled Yes or No and every path joined up.' },
+  { icon: PenLine, title: 'Edit any step in place', body: 'The pen on a step opens that step alone, with your real forms, tags and stages to pick from — or a new form made on the spot.' },
+  { icon: LayoutTemplate, title: `${TEMPLATES.length} ready-made workflows`, body: 'Filed by the problem they solve — missed calls, quotes gone quiet, reviews, daily posts — each previewed in full first.' },
+  { icon: ShieldCheck, title: 'Nothing sends unasked', body: 'Anything that emails or texts starts as a draft. What each project may do on its own is a setting you can change.' },
+];
+
 /* ── The chain, as a diagram ─────────────────────────────────────────────── */
 
+/* What an Autopilot agent reads, and where what it makes lands. Both lists are
+   the ones the server runs (worker/src/lib/projectAgents.ts) — a source or an
+   output added here without one there would be a promise. */
+const SOURCES = [
+  { icon: Wand2, label: 'Your portfolio' },
+  { icon: Globe, label: 'A web page' },
+  { icon: Search, label: 'A web search' },
+  { icon: Rss, label: 'A news feed' },
+  { icon: PlaySquare, label: 'A YouTube channel' },
+];
+
 const CHAIN = [
-  { icon: Mail, label: 'Email sequence', where: 'Marketing' },
-  { icon: MessageSquare, label: 'SMS campaign', where: 'Marketing' },
   { icon: ImageIcon, label: 'Social posts', where: 'Social Creator' },
-  { icon: FileText, label: 'Blog project', where: 'Blog Automation' },
-  { icon: Clapperboard, label: 'Short script', where: 'Ready to shoot' },
-  { icon: LayoutTemplate, label: 'Landing page', where: 'Funnels' },
+  { icon: FileText, label: 'Blog posts', where: 'Blog' },
+  { icon: Mail, label: 'Email campaigns', where: 'Campaigns' },
+  { icon: MessageSquare, label: 'Follow-ups', where: 'When a lead arrives' },
 ];
 
 /* ── What it actually does, in place of testimonials ─────────────────────── */
 
 const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
-  { group: 'Reach', icon: Send, items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up', 'Prospect search'] },
-  { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Landing pages', 'Booking pages', 'Forms & surveys'] },
-  { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Tasks & notes'] },
-  { group: 'Create', icon: Sparkles, items: ['AI Shorts', 'Blog automation', 'Social creator', 'Content library', 'Brand overlays'] },
-  { group: 'Understand', icon: BarChart3, items: ['Campaign performance', 'Open & reply rates', 'Reputation', 'Analytics', 'Decision log'] },
+  { group: 'Automate', icon: Bot, items: ['AI Autopilot projects', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice prompts'] },
+  {
+    group: 'Reach', icon: Send,
+    /* Prospect search is held back on the live site (services/features.ts). A
+       wall of "what it does" cannot list what it does not do yet. */
+    items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up',
+      ...(featureReady('prospects') ? ['Prospect search'] : [])],
+  },
+  { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
+  { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
+  { group: 'Create', icon: Sparkles, items: ['Social creator', 'Blog automation', 'AI Shorts', 'Content library', 'Brand overlays'] },
   { group: 'Run it as an agency', icon: Building2, items: ['Sub-accounts', 'White-label branding', 'Per-client billing', 'Role-based access', 'Isolated data'] },
 ];
 
-const OWNERSHIP = [
-  { icon: Send, title: 'Your mailbox', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
-  { icon: ShieldCheck, title: 'Your domain', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
-  { icon: Palette, title: 'Your name', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
-  { icon: Lock, title: 'Your data', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
+const OWNERSHIP: { icon: typeof Send; title: string; body: string; reel: Reel }[] = [
+  { icon: Send, title: 'Your mailbox', reel: 'marketing', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
+  { icon: ShieldCheck, title: 'Your domain', reel: 'marketing', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
+  { icon: Palette, title: 'Your name', reel: 'agency', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
+  { icon: Lock, title: 'Your data', reel: 'agency', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
 ];
 
 /* ── Small pieces ────────────────────────────────────────────────────────── */
-
-/**
- * A module, moving.
- *
- * The still is an `<img>` underneath and the loop is a `<video>` on top, which
- * is what makes this degrade properly: before the clip loads, while it loads,
- * and for good on a browser that will not play WebM, the screenshot is what
- * shows. The video fades over it once it is actually playing.
- *
- * It is also why `preload="none"`. Sixteen clips fetched on load is a page
- * nobody on a phone waits for, so nothing is requested until the tile is
- * nearly on screen — and playback stops again when it leaves, because sixteen
- * videos decoding at once is a warm laptop for no benefit.
- *
- * The files are trimmed to their motion at capture time (scripts/site-clips.mjs),
- * so there is nothing here to skip past — the whole clip is the loop.
- */
-function ModuleClip({ name, alt, eager = false }: { name: string; alt: string; eager?: boolean }) {
-  const box = useRef<HTMLElement | null>(null);
-  const vid = useRef<HTMLVideoElement | null>(null);
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    const el = box.current;
-    const v = vid.current;
-    if (!el || !v) return;
-
-
-    /* Somebody who asked their system not to animate things does not want
-       sixteen looping videos either. They keep the stills. */
-    if (motionReduced()) return;
-
-    const io = new IntersectionObserver(entries => {
-      for (const e of entries) {
-        if (e.isIntersecting) {
-          if (!v.src) v.src = CLIP(name);
-          v.play().then(() => setPlaying(true)).catch(() => { /* autoplay refused; the still stands */ });
-        } else {
-          v.pause();
-        }
-      }
-    }, { rootMargin: '260px 0px', threshold: 0.01 });
-
-    io.observe(el);
-    return () => io.disconnect();
-  }, [name]);
-
-  return (
-    <figure className="dc-tile-shot" ref={box as React.RefObject<HTMLElement>}>
-      <img src={SHOT(name)} alt={alt} loading={eager ? 'eager' : 'lazy'} width={1400} height={903} />
-      <video
-        ref={vid}
-        className={`dc-clip${playing ? ' playing' : ''}`}
-        poster={SHOT(name)}
-        muted
-        loop
-        playsInline
-        preload="none"
-        aria-hidden="true"
-        tabIndex={-1}
-        /* A clip that will not decode — a half-written file, a codec the
-           browser lacks — hands the tile back to its screenshot rather than
-           leaving a blank rectangle where the product should be. */
-        onError={() => setPlaying(false)}
-        onStalled={() => setPlaying(false)}
-      />
-    </figure>
-  );
-}
 
 /**
  * The extra attributes a link to the app needs.
@@ -315,7 +256,7 @@ function Tile({ t }: { t: Tile }) {
         <h3>{t.title}</h3>
       </div>
       <p>{t.body}</p>
-      <ModuleClip name={t.shot} alt={t.alt} />
+      <ShotReel shots={REELS[t.reel]} label={t.title} />
     </article>
   );
 }
@@ -370,6 +311,8 @@ export default function SiteHome() {
   const source = useReveal<HTMLDivElement>();
   const flow = useReveal<HTMLDivElement>();
   const ctaShot = useReveal<HTMLDivElement>();
+  const showHead = useReveal<HTMLDivElement>();
+  const showList = useRevealGroup<HTMLDivElement>('.dc-show-item');
 
   return (
     <div className="dc">
@@ -383,6 +326,7 @@ export default function SiteHome() {
           <span>Protected Central</span>
         </a>
         <nav className="dc-links" aria-label="Sections">
+          <a href="#autopilot">Autopilot</a>
           <a href="#leads">Leads</a>
           <a href="#deals">Deals</a>
           <a href="#scale">Agency</a>
@@ -405,21 +349,21 @@ export default function SiteHome() {
             <span className="dc-lead-r">Resell it as your own</span>
           </h1>
           <p className="dc-hero-sub dc-lead-1">
-            Find the people worth contacting, write to them, book the meeting and see what actually
-            worked — one login, on your own mailbox, with every step visible and editable before it happens.
+            Tell it what you want in a sentence and AI Autopilot builds the workflows, writes the posts
+            and follows up every lead — one login, on your own mailbox, with every step visible and
+            editable before it happens.
           </p>
           <div className="dc-hero-cta dc-lead-2">
             <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
               Start free <ArrowRight size={16} />
             </a>
-            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#leads">See the modules</a>
+            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#autopilot">See how it works</a>
           </div>
-          {/* The hero's screenshot is the one clip that loads eagerly — it is
-              the first thing anybody sees, and waiting for it to be scrolled to
-              would mean it never plays. */}
+          {/* The hero's reel is the one that loads eagerly — it is the first
+              thing anybody sees, and waiting for it to be scrolled to would
+              mean it never starts. */}
           <div className="dc-hero-shot dc-lead-3">
-            <div className="dc-chrome" aria-hidden="true"><i /><i /><i /></div>
-            <ModuleClip name="dashboard" alt="The dashboard, showing the day at a glance" eager />
+            <ShotReel shots={REELS.dashboard} label="Protected Central" eager />
           </div>
         </div>
       </section>
@@ -428,9 +372,37 @@ export default function SiteHome() {
              Where a site of this shape prints a star rating, this prints
              something that can be checked by opening the product. ── */}
       <div className="dc-band reveal" ref={band}>
-        <span>Twenty modules. One login.</span>
+        <span>Every module. One login.</span>
         <b>Your mailbox, your domain, your name on it.</b>
       </div>
+
+      {/* ── AI Autopilot ──
+             First, because it is what the rest is now driven by, and because
+             it is the part a visitor has not seen on another platform. ── */}
+      <section className="dc-showcase" id="autopilot" aria-label="AI Autopilot">
+        <div className="dc-show">
+          <div className="dc-show-head reveal" ref={showHead}>
+            <span className="dc-eyebrow">AI Autopilot</span>
+            <h2>Describe it once. <em>It builds and runs it.</em></h2>
+            <p>
+              Say what the business needs — more reviews, quotes that do not go quiet, a post every
+              morning — and Autopilot turns it into workflows you can read, then runs them on the
+              server every five minutes, whether or not anybody is logged in.
+            </p>
+            <div className="dc-show-list stagger" ref={showList}>
+              {AUTOPILOT.map(a => (
+                <div key={a.title} className="dc-show-item">
+                  <span className="dc-tile-icon"><a.icon size={15} /></span>
+                  <div><b>{a.title}</b><span>{a.body}</span></div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="dc-show-reel">
+            <ShotReel shots={REELS.autopilot} label="AI Autopilot" />
+          </div>
+        </div>
+      </section>
 
       {/* ── The three chapters ── */}
       {CHAPTERS.map(c => <ChapterBlock key={c.id} c={c} />)}
@@ -438,20 +410,22 @@ export default function SiteHome() {
       {/* ── The chain ── */}
       <section className="dc-process" aria-label="One outcome, every channel">
         <div className="dc-chapter-head">
-          <span className="dc-eyebrow">The part nobody else does</span>
-          <h2>One outcome in. <em>Every channel out.</em></h2>
+          <span className="dc-eyebrow">Agents that work while you do not</span>
+          <h2>Your sources in. <em>Every channel out.</em></h2>
           <p>
-            Pick what you want to happen — book more consultations, launch an offer, win back the
-            customers who went quiet — and the whole campaign is written from your company portfolio.
-            You read it in full before anything is created.
+            An Autopilot agent reads what you point it at — your own portfolio, a page, a search of the
+            web, a news feed or a YouTube channel — and turns it into posts, articles and campaigns on
+            the schedule you choose. Each one lands in the module it belongs to, ready to read.
           </p>
         </div>
 
         <div className="dc-chain">
           <div className="dc-chain-node dc-chain-source reveal" ref={source}>
-            <span className="dc-tile-icon"><Wand2 size={16} /></span>
-            <b>Your portfolio</b>
-            <small>What you sell, and to whom</small>
+            <span className="dc-tile-icon"><Bot size={16} /></span>
+            <b>An agent reads</b>
+            <small className="dc-chain-sources">
+              {SOURCES.map(x => <span key={x.label}><x.icon size={11} /> {x.label}</span>)}
+            </small>
           </div>
           <div className="dc-chain-fan" aria-hidden="true" />
           <div className="dc-chain-out stagger" ref={chain}>
@@ -466,7 +440,7 @@ export default function SiteHome() {
         </div>
 
         <div className="dc-flow-shot reveal" ref={flow}>
-          <ModuleClip name="flow" alt="The campaign canvas, with each step as a node joined by wires" />
+          <ShotReel shots={REELS.autopilot.slice(1, 3)} label="A workflow, drawn as it runs" />
         </div>
       </section>
 
@@ -502,11 +476,7 @@ export default function SiteHome() {
             <p>{OWNERSHIP[tab].body}</p>
           </div>
           <div className="dc-own-shot">
-            <ModuleClip
-              key={tab === 3 ? 'agency' : 'infrastructure'}
-              name={tab === 3 ? 'agency' : 'infrastructure'}
-              alt={tab === 3 ? 'Client sub-accounts' : 'Domain, DNS and mailbox settings'}
-            />
+            <ShotReel key={OWNERSHIP[tab].reel} shots={REELS[OWNERSHIP[tab].reel]} label={OWNERSHIP[tab].title} />
           </div>
         </div>
       </section>
@@ -572,7 +542,7 @@ export default function SiteHome() {
           <a className="dc-btn dc-btn-outline-light dc-btn-lg" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
         </div>
         <div className="dc-cta-shot reveal" ref={ctaShot}>
-          <ModuleClip name="marketing" alt="Campaigns running in the product" />
+          <ShotReel shots={REELS.dashboard} label="The product" chrome={false} />
         </div>
       </section>
 
@@ -585,18 +555,18 @@ export default function SiteHome() {
           </div>
           <div>
             <h5>Find</h5>
-            <a href="#leads">AI Sales Agent</a><a href="#leads">Contacts</a>
-            <a href="#leads">Funnels</a><a href="#leads">Websites</a>
+            <a href="#autopilot">AI Autopilot</a><a href="#autopilot">Workflow templates</a>
+            <a href="#leads">Contacts</a><a href="#leads">Funnels</a>
           </div>
           <div>
             <h5>Do</h5>
             <a href="#deals">Pipelines</a><a href="#deals">Email &amp; sequences</a>
-            <a href="#deals">Conversations</a><a href="#deals">Calendar</a>
+            <a href="#deals">Forms &amp; tickets</a><a href="#deals">Calendar</a>
           </div>
           <div>
             <h5>Sell</h5>
             <a href="#scale">Sub-accounts</a><a href="#scale">White-label</a>
-            <a href="#scale">Automation</a><a href="#pricing">Pricing</a>
+            <a href="#scale">Analytics</a><a href="#pricing">Pricing</a>
           </div>
           <div>
             <h5>Account</h5>
