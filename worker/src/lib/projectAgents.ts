@@ -35,8 +35,8 @@
  * rest of the screen.
  */
 import { dataGet, dataPut, nowIso, type Env } from './db';
-import { loadAiKey } from './ai';
-import { urlProblem } from './readSite';
+import { loadAiKey, researchWeb } from './ai';
+import { readSite, urlProblem } from './readSite';
 import {
   writeBlogPost, writeImagePosts, writeSequenceBatch,
   type Brand, type SourceItem,
@@ -359,6 +359,25 @@ interface Produced {
   outcome: 'ok' | 'skipped' | 'failed';
   detail: string;
   link?: RunLink;
+  /** What was read, hashed, for sources with no dates to compare. */
+  hash?: string;
+}
+
+/** A short fingerprint of what a source said, whitespace-insensitive. */
+async function fingerprint(text: string): Promise<string> {
+  const norm = text.replace(/\s+/g, ' ').trim().toLowerCase();
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(norm));
+  return [...new Uint8Array(buf)].slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** What this step read the last time it produced or skipped anything. */
+async function lastHash(env: Env, workflowId: string, nodeId: string): Promise<string> {
+  const row = await env.DB.prepare(
+    `SELECT source_hash AS h FROM crm_agent_runs
+     WHERE workflow_id = ? AND node_id = ? AND source_hash != '' AND outcome IN ('ok', 'skipped')
+     ORDER BY created_at DESC LIMIT 1`,
+  ).bind(workflowId, nodeId).first<{ h: string }>().catch(() => null);
+  return row?.h ?? '';
 }
 
 async function push(env: Env, accountId: string, key: string, row: Record<string, unknown>): Promise<void> {
@@ -369,6 +388,7 @@ async function push(env: Env, accountId: string, key: string, row: Record<string
 
 async function runAgentNode(
   env: Env, accountId: string, project: ProjectRow, node: GraphNode, lastRunAt: string | null,
+  workflowId: string, force = false,
 ): Promise<Produced> {
   const cfg = node.config ?? {};
   const c = (k: string) => String(cfg[k] ?? '').trim();
@@ -390,6 +410,7 @@ async function runAgentNode(
 
   /* ── What it is writing from ── */
   let items: SourceItem[] = [];
+  let hash = '';
   const kind = c('source') || 'portfolio';
 
   if (kind === 'portfolio') {
@@ -399,6 +420,54 @@ async function runAgentNode(
         detail: 'The client’s portfolio has nothing in it yet, so there was nothing to write from. Fill in what they do and who buys it, and this runs on the next tick.',
       };
     }
+  } else if (kind === 'website') {
+    /*
+     * A page, read as it stands today.
+     *
+     * No dates to go on, so "new" means "changed since last time", decided by
+     * a fingerprint of the words. The same page two mornings running is
+     * skipped, not rewritten — the alternative is a daily post saying the
+     * same thing about an "About us" page for as long as anybody lets it run.
+     */
+    const url = c('sourceUrl');
+    if (!url) return { outcome: 'failed', detail: 'No web address is set.' };
+    const page = await readSite(url);
+    if (!page.ok) return { outcome: 'failed', detail: page.error || 'That page could not be read.' };
+    if (page.text.trim().length < 80) {
+      return { outcome: 'failed', detail: 'That page had almost no readable words on it — it may be built in a way that needs a browser to show anything.' };
+    }
+    hash = await fingerprint(page.text);
+    if (!force && hash === await lastHash(env, workflowId, node.id)) {
+      return { outcome: 'skipped', detail: 'The page has not changed since it last ran, so there was nothing new to write about.', hash };
+    }
+    items = [{ title: page.title || url, link: page.url || url, summary: page.text.slice(0, 3000), published: '' }];
+  } else if (kind === 'web') {
+    /*
+     * A question, researched with Google Search.
+     *
+     * Grounded, so the answer comes from pages found today rather than from
+     * what the model remembers — and a search that returns no sources is
+     * treated as a failure, because that is the model answering from memory.
+     * The same results as last time are skipped, like an unchanged page.
+     */
+    const question = c('sourcePrompt');
+    if (question.length < 6) return { outcome: 'failed', detail: 'No question is set for the search.' };
+    const found = await researchWeb(apiKey, question);
+    if (!found.ok) return { outcome: 'failed', detail: found.error };
+    if (!found.findings.length) {
+      return { outcome: 'skipped', detail: 'The search found nothing new worth writing about.' };
+    }
+    hash = await fingerprint(found.findings.map(f => f.title).sort().join('|'));
+    if (!force && hash === await lastHash(env, workflowId, node.id)) {
+      return { outcome: 'skipped', detail: `Nothing new since last time \u2014 the same ${found.findings.length} results came back.`, hash };
+    }
+    items = found.findings.map(f => ({
+      title: f.title, summary: f.summary,
+      /* The model's link when it gave one, otherwise the first page Google
+         says it used — so every post can be traced to a source. */
+      link: f.link || found.sources[0]?.uri || '',
+      published: '',
+    }));
   } else if (kind === 'rss' || kind === 'youtube') {
     const raw = c('sourceUrl');
     const resolved = kind === 'youtube' ? youtubeFeed(raw) : { url: raw, problem: raw ? '' : 'No feed address is set.' };
@@ -439,6 +508,7 @@ async function runAgentNode(
       outcome: 'ok',
       detail: `Made ${posts.length} post${posts.length === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : ''}. Every one is a draft — nothing is scheduled until you say so.`,
       link: { kind: 'social-post', id: first, label: posts[0].headline.slice(0, 60), route: '/social-creator' },
+      hash,
     };
   }
 
@@ -456,6 +526,7 @@ async function runAgentNode(
       outcome: 'ok',
       detail: `Drafted "${v.title}". Read it before it goes anywhere.`,
       link: { kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' },
+      hash,
     };
   }
 
@@ -510,6 +581,7 @@ async function runAgentNode(
         ? `Wrote ${steps.length} of the ${total} emails${stopped ? ` — it stopped because ${stopped}` : ''}. The ones it did write are there and readable; run it again to finish the rest.`
         : `Wrote all ${steps.length} emails, one every ${everyDays} days. Nobody is enrolled — read them first.`,
       link: { kind: 'sequence', id, label: (name || 'Campaign').slice(0, 60), route: '/marketing?tab=sequences' },
+      hash,
     };
   }
 
@@ -578,7 +650,7 @@ export async function runProjectAgents(env: Env): Promise<AgentReport> {
     for (const node of agents) {
       let outcome: Produced;
       try {
-        outcome = await runAgentNode(env, wf.account_id, project, node, wf.last_run_at);
+        outcome = await runAgentNode(env, wf.account_id, project, node, wf.last_run_at, wf.id);
       } catch (e) {
         /* A thrown agent must not take the tick down with it — the next
            workspace's agents have nothing to do with this one's feed. */
@@ -603,16 +675,16 @@ export async function runProjectAgents(env: Env): Promise<AgentReport> {
 /** One line of history, and the link to what it made. */
 export async function recordAgentRun(env: Env, r: {
   accountId: string; projectId: string; workflowId: string; nodeId: string;
-  produces: string; outcome: string; detail: string; link?: RunLink;
+  produces: string; outcome: string; detail: string; link?: RunLink; hash?: string;
 }): Promise<void> {
   try {
     await env.DB.prepare(
-      `INSERT INTO crm_agent_runs (id, account_id, project_id, workflow_id, node_id, produces, outcome, detail, link, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO crm_agent_runs (id, account_id, project_id, workflow_id, node_id, produces, outcome, detail, link, source_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       `ar-${crypto.randomUUID()}`, r.accountId, r.projectId, r.workflowId, r.nodeId,
       r.produces, r.outcome, r.detail.slice(0, 1000),
-      r.link ? JSON.stringify(r.link) : null, nowIso(),
+      r.link ? JSON.stringify(r.link) : null, r.hash ?? '', nowIso(),
     ).run();
   } catch { /* history only: losing a line must not lose the work it describes */ }
 }
@@ -650,7 +722,7 @@ export async function runAgentOnce(
     /* `null` rather than the workflow's stamp: somebody pressing Run now wants
        to see it work, and filtering a feed to "since the last run" would
        usually hand them "nothing new" — true, and not what the button is for. */
-    out = await runAgentNode(env, accountId, project, node, null);
+    out = await runAgentNode(env, accountId, project, node, null, workflowId, true);
   } catch (e) {
     out = { outcome: 'failed', detail: e instanceof Error ? e.message : String(e) };
   }

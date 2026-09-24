@@ -217,3 +217,124 @@ export async function verifyAiKey(apiKey: string): Promise<AiResult> {
     return { ok: false, text: '', error: `Could not reach Google: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+/* ── Asking the web ─────────────────────────────────────────────────────────── */
+
+export interface WebFinding {
+  title: string;
+  summary: string;
+  link: string;
+}
+
+export interface WebResult {
+  ok: boolean;
+  findings: WebFinding[];
+  /** The pages Google says the answer was grounded in, whatever the model wrote. */
+  sources: { title: string; uri: string }[];
+  error: string;
+}
+
+/**
+ * Pull the JSON out of a reply that was not allowed to be JSON.
+ *
+ * Grounded search cannot be combined with Gemini's JSON mode — the API refuses
+ * `responseMimeType: application/json` alongside the search tool — so the model
+ * is *asked* for JSON in plain text and this finds it. Lenient on purpose: a
+ * fence, some chatter before or after, or a stray trailing comma should not
+ * lose a morning's research. Exported so the shapes it tolerates are pinned by
+ * a test rather than discovered on a cron.
+ */
+export function extractJson<T>(text: string): T | null {
+  const cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  const body = cleaned.slice(start, end + 1).replace(/,\s*([}\]])/g, '$1');
+  try { return JSON.parse(body) as T; } catch { return null; }
+}
+
+/**
+ * Research a question on the web, with Google Search as the source.
+ *
+ * ── Why grounded, and not "ask the model" ──
+ *
+ * A model asked "what is new in UK heating grants this week" with no search
+ * answers from its training, confidently and out of date — and a scheduled
+ * agent would then write a daily post about last year's news. Grounding makes
+ * Google run the search and the model answer from the results, and the API
+ * returns the pages it used. Those pages are kept, so a post written from them
+ * can be traced to where it came from.
+ *
+ * ── What it cannot promise ──
+ *
+ * That the model summarised the pages faithfully. The sources are returned so
+ * a person reading the draft can check, and every draft stays a draft.
+ */
+export async function researchWeb(apiKey: string, question: string, max = 5): Promise<WebResult> {
+  const prompt = `Search the web for the most recent, genuinely new information on this, and report it.
+
+Question: ${question}
+
+Rules:
+- Only things you found in search results. If you found nothing recent, return an empty list rather than filling it.
+- Each finding is one distinct item: a piece of news, a change, an announcement. Not the same story twice.
+- Say when it happened if the source says.
+- No opinion, no advice, no marketing language.
+
+Reply with JSON only, in exactly this shape:
+{"findings": [{"title": "", "summary": "two or three plain sentences", "link": "the source page"}]}`;
+
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.2 },
+  };
+
+  let lastError = '';
+  for (const model of MODELS) {
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+    } catch (e) {
+      return { ok: false, findings: [], sources: [], error: `Could not reach Google: ${e instanceof Error ? e.message : String(e)}` };
+    }
+
+    if (res.ok) {
+      const data = await res.json<{
+        candidates?: {
+          content?: { parts?: { text?: string }[] };
+          groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] };
+        }[];
+      }>().catch(() => ({}) as Record<string, never>);
+      const cand = data.candidates?.[0];
+      const text = (cand?.content?.parts ?? []).map(p => p.text ?? '').join('');
+      const parsed = extractJson<{ findings?: Partial<WebFinding>[] }>(text);
+      const sources = (cand?.groundingMetadata?.groundingChunks ?? [])
+        .map(ch => ({ title: String(ch.web?.title ?? ''), uri: String(ch.web?.uri ?? '') }))
+        .filter(s => s.uri);
+
+      /* No grounding at all means the model answered from memory, whatever it
+         says. That is the failure this function exists to prevent, so it is
+         reported as one rather than passed on as research. */
+      if (!sources.length) {
+        return { ok: false, findings: [], sources: [], error: 'The search came back with no sources, so nothing was written from it.' };
+      }
+      const findings = (parsed?.findings ?? [])
+        .map(f => ({
+          title: String(f.title ?? '').trim().slice(0, 200),
+          summary: String(f.summary ?? '').trim().slice(0, 800),
+          link: String(f.link ?? '').trim().slice(0, 500),
+        }))
+        .filter(f => f.title && f.summary)
+        .slice(0, max);
+      return { ok: true, findings, sources, error: '' };
+    }
+
+    lastError = await res.text().catch(() => `HTTP ${res.status}`);
+    if (res.status === 404 || MODEL_GONE.test(lastError)) continue;
+    return { ok: false, findings: [], sources: [], error: friendly(res.status, lastError) };
+  }
+  return { ok: false, findings: [], sources: [], error: friendly(0, lastError || 'every model failed') };
+}

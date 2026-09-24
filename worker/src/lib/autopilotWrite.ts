@@ -499,8 +499,12 @@ export interface SourceItem {
 /** The material block, or an honest statement that there is none. */
 function materialBlock(items: SourceItem[]): string {
   if (!items.length) return '';
+  /* One item gets room to breathe: that is a whole web page read on purpose,
+     and cutting it to a feed-sized 400 characters would leave the writer with
+     the page's first paragraph and nothing else. */
+  const room = items.length === 1 ? 3000 : 400;
   return `\n=== WHAT IS NEW (write about THIS) ===\n${items.slice(0, 8).map((it, i) =>
-    `${i + 1}. ${it.title}\n   ${it.summary.slice(0, 400)}\n   ${it.link}`).join('\n')}\n`;
+    `${i + 1}. ${it.title}\n   ${it.summary.slice(0, room)}\n   ${it.link}`).join('\n')}\n`;
 }
 
 const SOURCED_RULE =

@@ -3,263 +3,352 @@
  *
  * ── Why a laid-out graph rather than a list of steps ──
  *
- * The list is what the builder shows, and it is fine for editing one step. It
- * is useless for the question this screen answers, which is "what does this
- * thing actually do to my customers" — because the answer is a shape. A branch
- * read as two indented lines is a branch nobody checks; a branch drawn as two
- * paths is one somebody argues with.
+ * The question this answers is "what does this thing actually do to my
+ * customers", and the answer is a shape. A branch read as two indented lines is
+ * a branch nobody checks; a branch drawn as two paths is one somebody argues
+ * with.
  *
- * ── The layout, and why it is a grid rather than absolute positions ──
+ * ── Why this is now positioned, when it used to be a grid ──
  *
- * Every step is placed in a CSS grid column by how far along the spine it sits.
- * The spine is the path a person takes when every condition answers Yes, which
- * is the story the workflow is about. A No branch drops to the row beneath,
- * starting in the column after its condition, so the two paths are readable as
- * two paths without anything being measured or positioned by hand.
+ * It was a flex row per path, on the argument that absolute coordinates would
+ * draw a prettier curve and be wrong the first time a label wrapped or a font
+ * loaded late. That argument was right about the risk and wrong about the
+ * trade: the grid could not draw the one line that matters. A No branch sat on
+ * the row below its condition with nothing joining the two, and somebody
+ * reading it saw a question, some steps floating underneath, and no way to
+ * tell which answer led where. That was reported, and it was fair.
  *
- * Absolute coordinates would draw a prettier curve and would be wrong the first
- * time a label wrapped, a font loaded late, or somebody opened this at 390px.
- * The grid is correct at every width and degrades to a scroll rather than to
- * overlapping boxes.
+ * So every step is now a **fixed-size box** at a computed position, and the
+ * connectors are an SVG layer drawn from the graph's own links (`edgesOf`).
+ * The fixed size is what answers the old objection: a long label is clamped
+ * inside its box rather than resizing it, so nothing a font or a translation
+ * does can move a line away from the box it points at. At 390px the whole
+ * thing scrolls sideways rather than squeezing, same as before.
  *
- * ── What it will not do ──
+ * ── Editing ──
  *
- * Edit. This is the map; the builder is the editor. Two node editors would
- * drift the first time either changed, which is the same reason the project
- * panel links out rather than embedding one.
+ * Each step carries a pen in its corner when the caller can edit. It opens
+ * that step's settings and nothing else — see `StepDrawer`. The map is still
+ * not an editor of its own; it hands the step to the one that is.
  */
-import { Fragment } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Pencil } from 'lucide-react';
 import type { WorkflowNode } from '../../services/autopilot';
-import { layout, lookFor, nodeDetail } from './workflowNodes';
+import { edgesOf, layout, lookFor, nodeDetail, type Edge } from './workflowNodes';
 import { branchLabels } from './templateMeta';
-
 import { T, nodeTone } from './theme';
 
 const INK = T.ink;
 const MUTED = T.muted;
 
+/** How many runs are standing on a step, and how many have been through it. */
+export interface StepState { waiting: number; done: number }
+
 /**
- * One step, drawn.
+ * The geometry, per size.
  *
- * ── Why it is a button ──
- *
- * It used to be a picture of a step: to change one you found the workflow's
- * Edit button, opened the builder, then found the step again in a list. Three
- * actions to reach the thing you were already pointing at. Now the step *is*
- * the control — clicking it opens the builder on that step, which is what
- * everybody tried first and what every tool of this kind does.
- *
- * `onPick` is optional because the same canvas is drawn in places where there
- * is nothing to open. Without it this renders as a plain div rather than a
- * button that does nothing, so nobody is offered a click that is ignored.
+ * The gap between columns is wide enough to carry a branch label ("No reply",
+ * "Qualified") on the line itself, which is where somebody's eye already is
+ * when they are following the path.
  */
-function Node({ node, dim, state, compact, onPick }: {
+const SIZES = {
+  compact: { w: 118, h: 86, col: 178, row: 118, pad: 6 },
+  full: { w: 142, h: 98, col: 206, row: 132, pad: 8 },
+} as const;
+
+type Geo = typeof SIZES[keyof typeof SIZES];
+
+function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
   node: WorkflowNode;
+  x: number;
+  y: number;
+  geo: Geo;
   dim?: boolean;
-  /** Real state, from the run: is anybody standing on this step right now? */
+  /** Real state, from the runs: is anybody standing on this step right now? */
   state?: StepState;
-  /**
-   * The gallery's sizing: narrower, tighter, on white.
-   *
-   * A row in a list of thirty templates is scanned, not read — somebody is
-   * looking at the *shape* of six workflows to find the one that matches their
-   * problem. The card version is for one workflow they have already chosen.
-   */
   compact?: boolean;
-  onPick?: (id: string) => void;
+  onEdit?: (id: string) => void;
 }) {
   const look = lookFor(node.type);
   const tone = nodeTone(node.type);
   const Ic = look.icon;
   const detail = nodeDetail(node.type, node.config ?? {});
+  const name = node.label || look.label;
 
-  const body = (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+  return (
+    <div
+      onClick={onEdit ? () => onEdit(node.id) : undefined}
+      className={state?.waiting ? 'ap-working' : undefined}
+      style={{
+        position: 'absolute', left: x, top: y, width: geo.w, height: geo.h,
+        boxSizing: 'border-box', overflow: 'hidden',
+        background: compact ? '#fff' : T.raised,
+        border: `1px solid ${tone.edge}`, borderRadius: compact ? 10 : 11,
+        padding: compact ? '7px 8px' : '8px 9px',
+        opacity: dim ? 0.78 : 1,
+        cursor: onEdit ? 'pointer' : 'default',
+        boxShadow: '0 1px 2px rgba(16,24,40,0.05)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, paddingRight: onEdit ? 18 : 0 }}>
         <span style={{
           width: 17, height: 17, borderRadius: 5, background: tone.bg, color: tone.fg,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}><Ic size={10} /></span>
-        <span style={{ fontSize: 9.5, fontWeight: 800, color: tone.fg, letterSpacing: '0.02em' }}>
-          {look.label}
-        </span>
+        <span style={{
+          fontSize: 9.5, fontWeight: 800, color: tone.fg, letterSpacing: '0.02em',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{look.label}</span>
       </div>
+
+      {/* The pen. A real button, so it is reachable by keyboard and a screen
+          reader hears what pressing it does; the box around it is also
+          clickable, for everybody using a mouse, because a 16px target in the
+          corner of a 118px box is a fiddly thing to have to hit. */}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onEdit(node.id); }}
+          aria-label={`Edit step: ${name}`}
+          title="Edit this step"
+          style={{
+            position: 'absolute', top: 5, right: 5, width: 20, height: 20, padding: 0,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            border: `1px solid ${T.line}`, borderRadius: 6, background: '#fff',
+            color: T.muted, cursor: 'pointer',
+          }}
+        ><Pencil size={10} /></button>
+      )}
+
       <p style={{
-        margin: 0, fontSize: 11.5, fontWeight: 700, color: INK, lineHeight: 1.3,
-        /* Two lines, then clipped. A step whose name is a paragraph makes every
-           other card in the row taller and the shape unreadable. */
+        margin: 0, fontSize: compact ? 11 : 11.5, fontWeight: 700, color: INK, lineHeight: 1.28,
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>{node.label || look.label}</p>
-      {detail && (
+      }}>{name}</p>
+
+      {!!detail && (
         <p style={{
-          margin: '2px 0 0', fontSize: 9.5, color: MUTED, lineHeight: 1.35,
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          margin: '2px 0 0', fontSize: 9.5, color: MUTED, lineHeight: 1.3,
+          display: '-webkit-box', WebkitLineClamp: compact ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>{detail}</p>
       )}
-      {/* What is happening here, if anything. Counted from real runs standing
-          at this node — never a timer, which is the whole complaint about
-          progress bars that fill whether or not anything is happening. */}
+
+      {/* What is happening here, counted from real runs standing at this node —
+          never a timer. */}
       {!!state?.waiting && (
         <p style={{
-          margin: '5px 0 0', fontSize: 9, fontWeight: 800, color: T.accent,
-          display: 'flex', alignItems: 'center', gap: 4,
+          margin: '3px 0 0', fontSize: 9, fontWeight: 800, color: T.accent,
+          display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
         }}>
           <span className="ap-live-dot" style={{ background: T.accent }} />
           {state.waiting} {state.waiting === 1 ? 'person' : 'people'} here now
         </p>
       )}
-      {!state?.waiting && !!state?.done && (
-        <p style={{ margin: '5px 0 0', fontSize: 9, fontWeight: 700, color: T.muted }}>
-          {state.done} {state.done === 1 ? 'time' : 'times'} so far
-        </p>
-      )}
-    </>
-  );
-
-  const shell: React.CSSProperties = {
-    width: compact ? 112 : 136,
-    background: compact ? '#fff' : T.raised,
-    border: `1px solid ${tone.edge}`,
-    borderRadius: compact ? 10 : 11,
-    padding: compact ? '7px 8px' : '8px 9px',
-    opacity: dim ? 0.72 : 1,
-    textAlign: 'left',
-    boxSizing: 'border-box',
-    boxShadow: compact ? '0 1px 2px rgba(16,24,40,0.05)' : 'none',
-  };
-
-  if (!onPick) return <div style={shell}>{body}</div>;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onPick(node.id)}
-      /* Named for what pressing it does, not for what it is: a screen reader
-         hearing "New lead enters CRM, button" learns nothing about the click. */
-      aria-label={`Edit step: ${node.label || look.label}`}
-      className={state?.waiting ? 'press ap-working' : 'press'}
-      style={{ ...shell, cursor: 'pointer', fontFamily: 'inherit' }}
-    >{body}</button>
+    </div>
   );
 }
 
-/** The arrow between two steps. Lit while the workflow is live. */
-function Arrow({ live }: { live: boolean }) {
-  return (
-    <span aria-hidden style={{ display: 'flex', alignItems: 'center', width: 26, flexShrink: 0 }}>
-      <span className={live ? 'ap-flow-line' : undefined} style={live ? undefined : {
-        flex: 1, height: 2, background: T.line, borderRadius: 999,
-      }} />
-      <span style={{
-        width: 0, height: 0, marginLeft: -1,
-        borderTop: '3.5px solid transparent', borderBottom: '3.5px solid transparent',
-        borderLeft: `5px solid ${live ? T.accent : T.line}`,
-      }} />
-    </span>
-  );
-}
-
-/**
- * The labels leaving a condition.
- *
- * Worded from the condition itself rather than always "Yes / No" — "Replied /
- * No reply" and "Bought / Not yet" say what the fork means at a glance, which
- * is the whole job of a preview somebody spends two seconds on.
- */
-function Branch({ yes, label }: { yes: boolean; label: string }) {
+/** A label on a condition's outgoing line. */
+function Pill({ x, y, text, yes }: { x: number; y: number; text: string; yes: boolean }) {
   return (
     <span style={{
-      padding: '1px 7px', borderRadius: 999, fontSize: 9, fontWeight: 800,
-      background: yes ? 'rgba(52,211,153,0.16)' : 'rgba(248,113,113,0.16)',
-      color: yes ? T.good : T.bad,
-      whiteSpace: 'nowrap',
-    }}>{label}</span>
+      position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)',
+      padding: '1px 6px', borderRadius: 999, fontSize: 9, fontWeight: 800, whiteSpace: 'nowrap',
+      background: yes ? '#ecfdf5' : '#fef2f2', color: yes ? T.good : T.bad,
+      border: `1px solid ${yes ? '#bbf7d0' : '#fecaca'}`, pointerEvents: 'none',
+    }}>{text}</span>
   );
 }
-
-/** How many runs are standing on a step, and how many have been through it. */
-export interface StepState { waiting: number; done: number }
 
 export default function WorkflowCanvas({
   nodes, live, stepState, compact, onPickStep,
 }: {
   nodes: WorkflowNode[];
   live: boolean;
-  /** The gallery's sizing. See `Node`. */
-  compact?: boolean;
   /** Keyed by node id. Absent means "nothing known", which draws nothing. */
   stepState?: Record<string, StepState>;
+  /** The gallery's sizing: narrower, tighter, on white. */
+  compact?: boolean;
+  /** Called with a step's id when its pen, or the step itself, is pressed. */
   onPickStep?: (id: string) => void;
 }) {
+  /*
+   * Fit to the space, down to a readable floor.
+   *
+   * A long workflow at full size puts its fork past the right edge, and the
+   * fork is the part somebody is trying to understand. So the diagram shrinks
+   * to fit the width it has — but never below the size at which a step's name
+   * stops being legible, and past that it scrolls. The floor is higher when the
+   * steps can be edited, because a pen has to stay big enough to press.
+   */
+  const box = useRef<HTMLDivElement | null>(null);
+  const [room, setRoom] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(entries => setRoom(entries[0]?.contentRect.width ?? 0));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (!nodes.length) {
     return (
       <p style={{ margin: 0, fontSize: 12, color: MUTED, padding: '12px 2px' }}>
-        This workflow has no steps yet. Open it in the builder to add some.
+        This workflow has no steps yet. Add one to begin.
       </p>
     );
   }
 
-  const { placed, columns } = layout(nodes);
-  const spine = placed.filter(p => p.row === 0).sort((a, b) => a.column - b.column);
-  const branch = placed.filter(p => p.row === 1).sort((a, b) => a.column - b.column);
+  const geo = compact ? SIZES.compact : SIZES.full;
+  const { placed, columns, rows } = layout(nodes);
+  const at = new Map(placed.map(p => [p.node.id, p]));
+  const pos = (column: number, row: number) => ({ x: geo.pad + column * geo.col, y: geo.pad + row * geo.row });
 
-  /* A column is a card plus its arrow. Fixed rather than fractional so a long
-     workflow scrolls instead of squeezing eleven steps into 900px — the shape
-     is the point, and a shape you cannot read is not one. */
-  const COL = compact ? 130 : 158;
+  /* Room under the last row for a condition's "ends here" stub, and for a line
+     that has to route round the bottom to reach a step to its left. */
+  const STUB = 30;
+  const width = geo.pad * 2 + (columns - 1) * geo.col + geo.w + 40;
+  const height = geo.pad * 2 + (rows - 1) * geo.row + geo.h + STUB;
+  const bottom = geo.pad + (rows - 1) * geo.row + geo.h + STUB - 8;
+
+  const edges = edgesOf(nodes);
+  const pills: { x: number; y: number; text: string; yes: boolean; key: string }[] = [];
+  /* Where an outcome that leads nowhere stops, so a dot can say "ends here". */
+  const ends: { x: number; y: number; key: string }[] = [];
+
+  /**
+   * One connector, as an SVG path.
+   *
+   * Four shapes, and the choice between them is the whole routing:
+   *
+   * - **Same row, to the right** — a straight line, which is almost every step.
+   * - **A condition's No outcome** — down out of the bottom of the condition
+   *   and across into the branch. That is what makes a fork read as a fork: the
+   *   Yes path carries on, the No path visibly drops away.
+   * - **Anything else to the right** — out, down or up, and in. A branch that
+   *   rejoins the spine takes this shape back up.
+   * - **To the left** — a loop somebody drew by hand. Routed round the bottom
+   *   of everything, so it is visible and never crosses a box.
+   */
+  const pathFor = (e: Edge): string | null => {
+    const s = at.get(e.from);
+    if (!s) return null;
+    const sp = pos(s.column, s.row);
+    const sx = sp.x + geo.w;
+    const sy = sp.y + geo.h / 2;
+    const cx = sp.x + geo.w / 2;
+    const by = sp.y + geo.h;
+
+    const labels = e.branch ? branchLabels(s.node) : null;
+
+    /* An outcome that leads nowhere: a short stub ending in a dot. */
+    if (!e.to) {
+      if (e.branch === 'no') {
+        pills.push({ key: `${e.from}-no`, x: cx, y: by + 13, text: labels!.no, yes: false });
+        ends.push({ key: `${e.from}-no-end`, x: cx, y: by + 24 });
+        return `M ${cx} ${by} V ${by + 24}`;
+      }
+      pills.push({ key: `${e.from}-yes`, x: sx + 24, y: sy, text: labels!.yes, yes: true });
+      ends.push({ key: `${e.from}-yes-end`, x: sx + 46, y: sy });
+      return `M ${sx} ${sy} H ${sx + 46}`;
+    }
+
+    const t = at.get(e.to);
+    if (!t) return null;
+    const tp = pos(t.column, t.row);
+    const tx = tp.x;
+    const ty = tp.y + geo.h / 2;
+
+    if (e.branch === 'no' && tx > sp.x) {
+      pills.push({ key: `${e.from}-no`, x: cx, y: by + 13, text: labels!.no, yes: false });
+      return `M ${cx} ${by} V ${ty} H ${tx}`;
+    }
+    if (e.branch === 'yes') {
+      pills.push({ key: `${e.from}-yes`, x: (sx + tx) / 2 < sx + 60 ? (sx + tx) / 2 : sx + 30, y: sy, text: labels!.yes, yes: true });
+    }
+
+    if (t.row === s.row && tx > sx) return `M ${sx} ${sy} H ${tx}`;
+    if (tx > sx) {
+      const mid = sx + Math.min(22, (tx - sx) / 2);
+      return `M ${sx} ${sy} H ${mid} V ${ty} H ${tx}`;
+    }
+    /* To the left: round the bottom. */
+    return `M ${sx} ${sy} H ${sx + 12} V ${bottom} H ${tx - 12} V ${ty} H ${tx}`;
+  };
+
+  const paths = edges
+    .map(e => ({ e, d: pathFor(e) }))
+    .filter((x): x is { e: Edge; d: string } => !!x.d);
+
+  const stroke = live ? T.accent : '#c7cedb';
+  const floor = onPickStep ? 0.84 : 0.72;
+  const scale = room > 0 ? Math.min(1, Math.max(floor, room / width)) : 1;
+  const overflows = room > 0 && width * scale > room + 1;
 
   return (
-    <div style={{ position: 'relative' }}>
-    <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-      <div style={{ minWidth: columns * COL, display: 'grid', gap: 0 }}>
-        {/* ── The spine ── */}
-        <div style={{ display: 'flex', alignItems: 'stretch' }}>
-          {spine.map((p, i) => (
-            <Fragment key={p.node.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Node node={p.node} state={stepState?.[p.node.id]} compact={compact} onPick={onPickStep} />
-                {p.node.type === 'condition' && (
-                  <span style={{ display: 'grid', gap: 3, justifyItems: 'start' }}>
-                    <Branch yes label={branchLabels(p.node).yes} />
-                    {/* The No pill is drawn even when nothing hangs off it: a
-                        condition with one wired path still has two outcomes,
-                        and the unwired one ends the workflow. Saying so is the
-                        difference between "it stops here" and a silent gap. */}
-                    <Branch yes={false} label={branchLabels(p.node).no} />
-                  </span>
-                )}
-              </div>
-              {i < spine.length - 1 && <Arrow live={live} />}
-            </Fragment>
+    <div style={{ position: 'relative' }} ref={box}>
+      <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+        {/* The box that takes up the scaled space, so the page lays out around
+            what is visible rather than around the unscaled diagram. */}
+        <div style={{ width: width * scale, height: height * scale }}>
+        <div role="group" aria-label="Workflow diagram"
+          style={{
+            position: 'relative', width, height,
+            transform: scale < 1 ? `scale(${scale})` : undefined, transformOrigin: 'top left',
+          }}>
+          <svg width={width} height={height} aria-hidden
+            style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
+            <defs>
+              <marker id={`ap-arrow-${live ? 'on' : 'off'}`} viewBox="0 0 8 8" refX="7" refY="4"
+                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 8 4 L 0 8 z" fill={stroke} />
+              </marker>
+            </defs>
+            {paths.map(({ e, d }) => (
+              <path
+                key={`${e.from}-${e.branch ?? 'n'}-${e.to ?? 'end'}`}
+                d={d}
+                fill="none"
+                stroke={e.branch === 'no' ? (live ? '#f87171' : '#e6b4b4') : stroke}
+                strokeWidth={1.6}
+                strokeLinejoin="round"
+                /* The travelling dash is a class, so reduced motion reaches it. */
+                className={live ? 'ap-edge-live' : undefined}
+                markerEnd={e.to ? `url(#ap-arrow-${live ? 'on' : 'off'})` : undefined}
+              />
+            ))}
+            {/* "Ends here" dots, where an outcome leads nowhere. */}
+            {ends.map(p => <circle key={p.key} cx={p.x} cy={p.y} r={3} fill="#cbd2de" />)}
+          </svg>
+
+          {placed.map(p => {
+            const { x, y } = pos(p.column, p.row);
+            return (
+              <Node key={p.node.id} node={p.node} x={x} y={y} geo={geo}
+                dim={p.row > 0} compact={compact}
+                state={stepState?.[p.node.id]} onEdit={onPickStep} />
+            );
+          })}
+
+          {pills.map(pl => <Pill key={pl.key} x={pl.x} y={pl.y} text={pl.text} yes={pl.yes} />)}
+
+          {/* An outcome that leads nowhere says so in words. A grey dot alone
+              was being read as a rendering glitch rather than as "the workflow
+              stops here for these people". */}
+          {ends.map(en => (
+            <span key={`${en.key}-label`} style={{
+              position: 'absolute', left: en.x + 7, top: en.y, transform: 'translateY(-50%)',
+              fontSize: 9, fontWeight: 700, color: T.faint, whiteSpace: 'nowrap', pointerEvents: 'none',
+            }}>Ends here</span>
           ))}
         </div>
-
-        {/* ── The No branches, under the column after their condition ── */}
-        {branch.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', marginTop: 10, minHeight: 1 }}>
-            {branch.map((p, i) => {
-              /* Indented to its own column, so a branch leaving step three sits
-                 under step four rather than under the trigger. */
-              const gap = i === 0 ? p.column * COL : 0;
-              return (
-                <Fragment key={p.node.id}>
-                  {gap > 0 && <span aria-hidden style={{ width: gap, flexShrink: 0 }} />}
-                  {i > 0 && <Arrow live={live} />}
-                  <Node node={p.node} dim state={stepState?.[p.node.id]} compact={compact} onPick={onPickStep} />
-                </Fragment>
-              );
-            })}
-          </div>
-        )}
+        </div>
       </div>
-    </div>
-      {/* A row longer than the space it has says so. Without this a workflow
-          that scrolls looks as though it ends mid-step, which is the one thing
-          a preview must not do. `aria-hidden` and pointer-events off: it is a
-          hint about the scrollbar, not content. */}
-      {columns > 6 && (
+
+      {/* A diagram still wider than the space it has says so, rather than
+          looking as though it ends mid-step. A hint about the scrollbar. */}
+      {overflows && (
         <span aria-hidden style={{
-          position: 'absolute', top: 0, right: 0, bottom: 4, width: 42, pointerEvents: 'none',
+          position: 'absolute', top: 0, right: 0, bottom: 4, width: 36, pointerEvents: 'none',
           background: `linear-gradient(90deg, transparent, ${compact ? T.raised : T.panel})`,
         }} />
       )}

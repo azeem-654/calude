@@ -1561,3 +1561,20 @@ main section { min-width: 0; }
   .ap-gallery { grid-template-columns: minmax(0, 1fr) !important; }
   .ap-gallery > div:last-child { position: static !important; }
 }
+
+/* A live workflow's connectors carry a travelling dash, so a switched-on graph
+   reads as running. Still under reduced motion: the colour already says live. */
+@media (prefers-reduced-motion: no-preference) {
+  .ap-edge-live { stroke-dasharray: 6 5; animation: ap-dash 1.4s linear infinite; }
+}
+@keyframes ap-dash { to { stroke-dashoffset: -22; } }
+
+/* The step panel slides in from the side it lives on. One pass, and absent
+   under reduced motion — it simply appears. */
+@media (prefers-reduced-motion: no-preference) {
+  .ap-drawer-in { animation: ap-drawer 220ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@keyframes ap-drawer {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

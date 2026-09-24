@@ -428,7 +428,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
      */
     if (personId) {
       await enrolOnEvent(env, accountId, {
-        kind: 'form_submitted', ref: String(form.name ?? ''),
+        kind: 'form_submitted', ref: String(form.name ?? ''), refId: String(form.id ?? ''),
         contactId: personId, contactName: answers.name ?? '',
         contactEmail: email, contactPhone: answers.phone ?? '',
       });

@@ -51,6 +51,7 @@ import Guardrails from './Guardrails';
 import { setupProgress } from '../../services/projectSetup';
 import VoicePrompt from './VoicePrompt';
 import WorkflowWizard from './WorkflowWizard';
+import StepDrawer from './StepDrawer';
 import ProjectLogo from './ProjectLogo';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
@@ -185,6 +186,8 @@ export default function ProjectCard({
      means. Carried here rather than inside the editor because the editor is
      unmounted between openings and would forget it. */
   const [editing, setEditing] = useState<{ workflow: ProjectWorkflow | null; focus?: string } | null>(null);
+  /* The one step being edited in place, from the pen on the diagram. */
+  const [stepEdit, setStepEdit] = useState<{ workflow: ProjectWorkflow; stepId: string } | null>(null);
   /* The wizard asks *how* first — template, AI, or from scratch — rather than
      opening a grid of templates on somebody who has not decided that yet. */
   const [wizard, setWizard] = useState(false);
@@ -828,10 +831,10 @@ export default function ProjectCard({
                             nodes={f.nodes as unknown as AutomationNode[]}
                             live={on && live}
                             stepState={stepState[f.id]}
-                            /* The step *is* the control. Opening the builder
-                               and then hunting for the step you were already
-                               pointing at was three actions for one edit. */
-                            onPickStep={id => setEditing({ workflow: f, focus: id })}
+                            /* The pen on a step opens that step, beside the
+                               diagram, rather than the whole workflow in a
+                               full-screen editor. One field, one panel. */
+                            onPickStep={id => setStepEdit({ workflow: f, stepId: id })}
                           />
                         </div>
                       )}
@@ -1464,6 +1467,22 @@ export default function ProjectCard({
             }, 60);
           }}
           onUseTemplate={key => { void addTemplate(key).then(() => setWizard(false)); }}
+        />
+      )}
+
+      {stepEdit && (
+        <StepDrawer
+          projectId={project.id}
+          workflow={stepEdit.workflow}
+          stepId={stepEdit.stepId}
+          onClose={() => setStepEdit(null)}
+          onSaved={() => { void read(); onChanged(); }}
+          onOpenFull={() => {
+            const w = stepEdit.workflow;
+            const focus = stepEdit.stepId;
+            setStepEdit(null);
+            setEditing({ workflow: w, focus });
+          }}
         />
       )}
 

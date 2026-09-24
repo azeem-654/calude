@@ -15,6 +15,7 @@
  * outside and is the reason somebody stops believing the screen.
  */
 import { cadenceDue, designFromPost, parseFeed, youtubeFeed } from '../src/lib/projectAgents';
+import { extractJson } from '../src/lib/ai';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -155,6 +156,31 @@ ok('an empty document gives nothing', parseFeed('').length === 0);
     { platform: 'myspace', headline: 'x', body: '', hashtags: [] },
     { id: 'sp-3', brandColor: '#000', company: 'c', source: {}, now: '' },
   ).platform === 'instagram');
+}
+
+/* ── Reading JSON the model was not allowed to send as JSON ──────────────── */
+
+{
+  /*
+   * Grounded search refuses Gemini's JSON mode, so the model is asked for JSON
+   * in plain text and `extractJson` finds it. These are the shapes models
+   * actually send back; each one losing a morning's research on a cron, with
+   * nobody watching, is the failure being pinned.
+   */
+  const clean = extractJson<{ findings: unknown[] }>('{"findings": [{"title": "a"}]}');
+  ok('plain JSON is read', clean?.findings.length === 1);
+
+  const fenced = extractJson<{ findings: unknown[] }>('```json\n{"findings": [{"title": "a"}]}\n```');
+  ok('JSON in a code fence is read', fenced?.findings.length === 1);
+
+  const chatty = extractJson<{ findings: unknown[] }>('Here is what I found:\n{"findings": [{"title": "a"}, {"title": "b"}]}\nLet me know!');
+  ok('JSON with chatter either side is read', chatty?.findings.length === 2);
+
+  const trailing = extractJson<{ findings: unknown[] }>('{"findings": [{"title": "a",},],}');
+  ok('a trailing comma does not lose the result', trailing?.findings.length === 1);
+
+  ok('prose with no JSON in it is null rather than a throw', extractJson('I could not find anything.') === null);
+  ok('broken JSON is null rather than a throw', extractJson('{"findings": [ {"title": }') === null);
 }
 
 for (const line of out) console.log(line);

@@ -46,210 +46,24 @@ import {
   Play, Settings2, Sliders, ChevronRight,
 } from 'lucide-react';
 import {
-  AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor, nodeDetail, previewStep, problemsWith, SAMPLE_CONTACT,
+  insertAfter, lookFor, nodeDetail, patchStep, previewStep,
+  problemsWith, removeStep, swapWithNext, swapWithPrev,
 } from './workflowNodes';
 import {
   runAgent, saveWorkflow,
   type AgentRunResult, type ProjectWorkflow, type WorkflowNode,
 } from '../../services/autopilot';
 import { T, nodeDark } from './theme';
+import StepSettings, {
+  ADDABLE, DEFAULTS, applyConfig, newId, type Stage,
+} from './StepSettings';
+import { renderGuided } from './GuidedFields';
 
 const INK = T.ink;
 const MUTED = T.muted;
 const LINE = T.line;
 const ACCENT = T.accent;
 
-/**
- * Every step somebody can add, and every field it takes.
- *
- * One table, read by the picker and by the form. The engine reads the same
- * config keys — `worker/src/lib/automationEngine.ts` — so a field named here is
- * a field that actually does something, and a field the engine reads and this
- * omits is a field somebody cannot set. Both are the sort of thing that only
- * shows up in production, which is why they are in one place.
- */
-interface FieldDef {
-  key: string;
-  label: string;
-  hint?: string;
-  kind?: 'text' | 'textarea' | 'number' | 'select';
-  options?: { value: string; label: string }[];
-  placeholder?: string;
-  /**
-   * Shown only when this is true of the step's config.
-   *
-   * A feed address on a step reading the client's portfolio is a box that can
-   * only be filled in wrongly, and a campaign length on a step making images is
-   * a number that does nothing. Hiding them is not decoration: every visible
-   * field is a claim that it matters.
-   */
-  when?: (cfg: Record<string, string>) => boolean;
-}
-
-const STEP_FIELDS: Record<string, FieldDef[]> = {
-  trigger: [
-    {
-      key: 'event', label: 'What starts it', kind: 'select',
-      options: [
-        { value: 'form_submitted', label: 'A form is submitted' },
-        { value: 'contact_created', label: 'A contact is created' },
-        { value: 'tag_added', label: 'A tag is added' },
-        { value: 'deal_stage_changed', label: 'A deal changes stage' },
-        { value: 'appointment_scheduled', label: 'An appointment is booked' },
-        { value: 'email_opened', label: 'An email is opened' },
-        { value: 'link_clicked', label: 'A link is clicked' },
-        /* The one that is not about a person. A workflow triggered this way is
-           run by `worker/src/lib/projectAgents.ts` instead of the contact
-           engine — see the note in 0044_agent_runs.sql. */
-        { value: 'schedule', label: 'A schedule — nobody has to do anything' },
-      ],
-    },
-    {
-      key: 'cadence', label: 'How often', kind: 'select',
-      when: cfg => cfg.event === 'schedule',
-      options: Object.entries(CADENCES).map(([value, label]) => ({ value, label })),
-      hint: 'Counted from when it last ran, not from a clock — so nothing is skipped by a tick landing a few minutes early.',
-    },
-    {
-      key: 'formName', label: 'Only this form', hint: 'Leave blank for any form.', placeholder: 'Get a quote',
-      when: cfg => cfg.event !== 'schedule',
-    },
-    {
-      key: 'tag', label: 'Only this tag or stage', hint: 'Leave blank for any.', placeholder: 'enquiry',
-      when: cfg => cfg.event !== 'schedule',
-    },
-  ],
-  /**
-   * The AI agent.
-   *
-   * Three questions in the order somebody actually asks them: what should it
-   * read, what should it make, and how much. The source and the output are the
-   * same two tables the runner reads, so a choice offered here is a choice the
-   * server can carry out.
-   */
-  ai: [
-    {
-      key: 'source', label: 'What it reads', kind: 'select',
-      options: Object.entries(AGENT_SOURCES).map(([value, v]) => ({ value, label: v.label })),
-      hint: 'The material it writes from. Everything else it says comes from this.',
-    },
-    {
-      key: 'sourceUrl', label: 'Address', kind: 'text',
-      when: cfg => !!AGENT_SOURCES[cfg.source ?? '']?.needsUrl,
-      hint: 'A feed, or a YouTube channel ID beginning UC.',
-      placeholder: 'https://example.com/feed',
-    },
-    {
-      key: 'produces', label: 'What it makes', kind: 'select',
-      options: Object.entries(AGENT_OUTPUTS).map(([value, v]) => ({ value, label: v.label })),
-    },
-    {
-      key: 'platform', label: 'For which platform', kind: 'select',
-      when: cfg => (cfg.produces ?? 'social') === 'social',
-      options: [
-        { value: 'instagram', label: 'Instagram — square' },
-        { value: 'facebook', label: 'Facebook — square' },
-        { value: 'linkedin', label: 'LinkedIn — wide' },
-        { value: 'twitter', label: 'X — wide' },
-      ],
-    },
-    {
-      key: 'count', label: 'How many each time', kind: 'number',
-      when: cfg => (cfg.produces ?? 'social') === 'social',
-      hint: 'One a day is a habit somebody can keep up with. Six is the most it will make in one run.',
-      placeholder: '1',
-    },
-    {
-      key: 'campaignSteps', label: 'How many emails', kind: 'select',
-      when: cfg => cfg.produces === 'email_campaign',
-      options: [
-        { value: '7', label: '7 — a week of daily emails, or seven weekly ones' },
-        { value: '20', label: '20 — a long nurture' },
-        { value: '52', label: '52 — one a week for a year' },
-      ],
-    },
-    {
-      key: 'everyDays', label: 'Days between emails', kind: 'number',
-      when: cfg => cfg.produces === 'email_campaign',
-      hint: 'Seven is weekly. The campaign is written all at once; this is the gap it schedules them at.',
-      placeholder: '7',
-    },
-    {
-      key: 'topic', label: 'Anything it should stick to', kind: 'textarea',
-      hint: 'Optional. Leave it blank and it chooses from what it reads.',
-      placeholder: 'Boiler servicing before winter, and the grant that pays for part of it.',
-    },
-  ],
-  wait: [
-    { key: 'days', label: 'Days', kind: 'number', placeholder: '0' },
-    { key: 'hours', label: 'Hours', kind: 'number', placeholder: '0' },
-    { key: 'minutes', label: 'Minutes', kind: 'number', placeholder: '0' },
-  ],
-  condition: [
-    {
-      key: 'field', label: 'Look at', kind: 'select',
-      options: [
-        { value: 'tag', label: 'A tag on the contact' },
-        { value: 'status', label: 'Their status' },
-        { value: 'email', label: 'Their email address' },
-        { value: 'phone', label: 'Their phone number' },
-        { value: 'company', label: 'Their company' },
-        { value: 'name', label: 'Their name' },
-      ],
-    },
-    {
-      key: 'operator', label: 'Test', kind: 'select',
-      options: [
-        { value: 'equals', label: 'is exactly' },
-        { value: 'not_equals', label: 'is not' },
-        { value: 'contains', label: 'contains' },
-        { value: 'is_set', label: 'is filled in' },
-        { value: 'is_empty', label: 'is empty' },
-      ],
-    },
-    { key: 'value', label: 'Value', hint: 'Not needed for "is filled in" or "is empty".', placeholder: 'customer' },
-  ],
-  send_email: [
-    { key: 'subject', label: 'Subject', placeholder: 'Thanks for getting in touch, {{firstName}}' },
-    {
-      key: 'body', label: 'Message', kind: 'textarea',
-      hint: '{{firstName}}, {{name}}, {{company}} and {{email}} are filled in for each person.',
-      placeholder: 'Hello {{firstName}},\n\nI have your enquiry and will come back to you shortly.',
-    },
-  ],
-  send_sms: [
-    {
-      key: 'message', label: 'Text', kind: 'textarea',
-      hint: 'Plain text only — a text is not an email. Keep it under about 160 characters.',
-      placeholder: 'Hi {{firstName}}, just checking you got my email.',
-    },
-  ],
-  add_tag: [{ key: 'tag', label: 'Tag to add', placeholder: 'enquiry' }],
-  remove_tag: [{ key: 'tag', label: 'Tag to remove', placeholder: 'enquiry' }],
-  create_task: [{ key: 'title', label: 'What to do', placeholder: 'Call this enquiry back' }],
-  assign_to: [{ key: 'user', label: 'Who to assign it to', placeholder: 'sam@yourbusiness.com' }],
-  update_field: [
-    { key: 'field', label: 'Field', placeholder: 'status' },
-    { key: 'value', label: 'Set it to', placeholder: 'customer' },
-  ],
-  end: [],
-};
-
-/** What a customer can add. `trigger` is not here: a workflow has exactly one
- *  and it is the first step, which the editor keeps true rather than policing. */
-const ADDABLE = ['ai', 'send_email', 'send_sms', 'wait', 'condition', 'add_tag', 'remove_tag', 'create_task', 'assign_to', 'update_field'];
-
-const newId = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-
-
-/** The three stages of setting one step up, in the order somebody asks them. */
-type Stage = 'setup' | 'configure' | 'test';
-
-const STAGES: { id: Stage; label: string; icon: typeof Play }[] = [
-  { id: 'setup', label: 'Setup', icon: Settings2 },
-  { id: 'configure', label: 'Configure', icon: Sliders },
-  { id: 'test', label: 'Test', icon: Play },
-];
 
 export default function WorkflowEditor({
   projectId, workflow, focusStep, onClose, onSaved,
@@ -300,61 +114,30 @@ export default function WorkflowEditor({
   }, [onClose]);
 
   /**
-   * Re-link the chain after any change to the order.
+   * Change one step's own fields.
    *
-   * Every step points at the next in the list, and a condition keeps Yes on the
-   * next step while No is the customer's to point somewhere. Doing it in one
-   * place after each edit is what stops a reorder leaving a step pointing at
-   * where it used to be — which reads as a workflow that skips a step for no
-   * reason at all.
+   * ── Why there is no longer a "relink" here ──
+   *
+   * This used to rebuild every link from the order of the list after any
+   * edit, renaming included. Correct for a straight line; destructive for a
+   * fork, because a condition's Yes was re-pointed at whatever sat next in the
+   * list — usually the first step of its own No branch. Renaming a step in
+   * "Speed to Lead" therefore sent the chase email to the people who had
+   * replied. The graph operations in `workflowNodes.ts` change only the links
+   * an edit actually touches, and a rename touches none.
+   *
+   * The one link a person sets here directly is a condition's No, which is
+   * theirs to point, and is written as chosen.
    */
-  const relink = (list: WorkflowNode[]): WorkflowNode[] =>
-    list.map((n, i) => {
-      const next = i < list.length - 1 ? list[i + 1].id : null;
-      if (n.type === 'condition') {
-        return {
-          ...n, nextId: null, yesId: next,
-          /* A No pointing at a deleted step is worse than one pointing nowhere:
-             the engine looks it up, fails, and ends the run reporting that the
-             step was removed. */
-          noId: n.noId && list.some(x => x.id === n.noId) ? n.noId : null,
-        };
-      }
-      return { ...n, nextId: next };
-    });
-
   const setStep = (id: string, patch: Partial<WorkflowNode>) =>
-    setNodes(list => relink(list.map(n => (n.id === id ? { ...n, ...patch } : n))));
+    setNodes(list => ('noId' in patch
+      ? list.map(n => (n.id === id ? { ...n, noId: patch.noId ?? null } : n))
+      : patchStep(list, id, patch)));
 
-  /** Every stock trigger name, so one can be recognised as untouched. The
-   *  cadences are in here too because a schedule is named after its cadence
-   *  rather than after the option that chose it — "Every day" is a step name,
-   *  "A schedule — nobody has to do anything" is a menu entry. */
-  const TRIGGER_LABELS = [
-    ...(STEP_FIELDS.trigger[0].options ?? []).map(o => o.label),
-    ...Object.values(CADENCES),
-  ];
-
+  /* One setting on one step. The rule for what that implies — a trigger renamed
+     when its event changes — lives in `applyConfig`, shared with the pen panel. */
   const setConfig = (id: string, key: string, value: string) =>
-    setNodes(list => list.map(n => {
-      if (n.id !== id) return n;
-      const next = { ...n, config: { ...n.config, [key]: value } };
-      /* Changing what starts a workflow renames it, unless somebody has named
-         it themselves. Without this a trigger switched to a schedule goes on
-         reading "A form is submitted" in the list — the one line somebody
-         scanning a workflow actually trusts. A name they typed is left alone,
-         because overwriting that is the worse of the two mistakes. */
-      if (n.type === 'trigger' && (key === 'event' || key === 'cadence') && TRIGGER_LABELS.includes(n.label)) {
-        const event = key === 'event' ? value : String(next.config.event ?? '');
-        if (event === 'schedule') {
-          next.label = CADENCES[key === 'cadence' ? value : String(next.config.cadence ?? 'daily')] ?? CADENCES.daily;
-        } else {
-          const chosen = (STEP_FIELDS.trigger[0].options ?? []).find(o => o.value === event);
-          if (chosen) next.label = chosen.label;
-        }
-      }
-      return next;
-    }));
+    setNodes(list => list.map(n => (n.id === id ? applyConfig(n, key, value) : n)));
 
   /**
    * Run one agent step against the saved workflow.
@@ -376,56 +159,30 @@ export default function WorkflowEditor({
     if (r.ok) onSaved();
   }
 
-  /**
-   * What a step arrives already set to.
-   *
-   * An agent added with an empty config shows two boxes reading "— choose —",
-   * and until both are answered the step does nothing and the dry run can say
-   * nothing useful about it. These are the two commonest answers, so the step
-   * is complete from the moment it is added and changing it is an edit rather
-   * than a form to fill in.
-   *
-   * Only for the types where a default is genuinely right. An email's subject
-   * has no sensible default: a pre-filled one is a real message somebody might
-   * not read before switching it on.
-   */
-  const DEFAULTS: Record<string, Record<string, string>> = {
-    ai: { source: 'portfolio', produces: 'social', platform: 'instagram', count: '1' },
-    wait: { days: '1' },
-  };
-
   function addAt(type: string, after: string | null) {
     const look = lookFor(type);
     const node: WorkflowNode = {
       id: newId(), type, label: look.label, config: { ...(DEFAULTS[type] ?? {}) }, nextId: null,
     };
-    setNodes(list => {
-      const at = after ? list.findIndex(n => n.id === after) + 1 : list.length;
-      const next = [...list];
-      next.splice(at, 0, node);
-      return relink(next);
-    });
+    /* On the same path as the step it follows, taking over where that step
+       was going — never re-deriving anybody else's links. */
+    setNodes(list => insertAfter(list, after ?? list[list.length - 1]?.id ?? '', node));
     setSelected(node.id);
     setStage('configure');
     setAddingAfter(null);
   }
 
   function move(id: string, by: -1 | 1) {
-    setNodes(list => {
-      const i = list.findIndex(n => n.id === id);
-      const j = i + by;
-      /* The trigger stays first. Moving it is not an edit, it is a workflow
-         with no way in. */
-      if (i < 1 || j < 1 || j >= list.length) return list;
-      const next = [...list];
-      [next[i], next[j]] = [next[j], next[i]];
-      return relink(next);
-    });
+    /* Along the path, not along the list: a step moves past its neighbour on
+       the route a person takes. It will not move past a condition, because
+       that would carry the condition's No branch to a different point in the
+       story without anybody deciding that. */
+    setNodes(list => (by < 0 ? swapWithPrev(list, id) : swapWithNext(list, id)));
   }
 
   function remove(id: string) {
     setNodes(list => {
-      const next = relink(list.filter(n => n.id !== id));
+      const next = removeStep(list, id);
       if (selected === id) setSelected(next[0]?.id ?? '');
       return next;
     });
@@ -433,10 +190,6 @@ export default function WorkflowEditor({
 
   const problems = problemsWith(name, nodes);
   const current = nodes.find(n => n.id === selected) ?? null;
-  const preview = useMemo(() => (current ? previewStep(current) : null), [current]);
-  const fields = current
-    ? (STEP_FIELDS[current.type] ?? []).filter(f => !f.when || f.when(current.config ?? {}))
-    : [];
 
   async function save() {
     if (problems.length || saving) return;
@@ -635,275 +388,23 @@ export default function WorkflowEditor({
 
           {/* ── Setup → Configure → Test, for the selected step ── */}
           <aside style={{ overflowY: 'auto', background: T.aside, minWidth: 0 }}>
-            {!current ? (
-              <p style={{ padding: 18, margin: 0, fontSize: 12, color: MUTED }}>
-                Choose a step on the left to set it up.
-              </p>
-            ) : (
-              <>
-                <div style={{
-                  display: 'flex', gap: 2, padding: '0 12px', borderBottom: `1px solid ${LINE}`,
-                  position: 'sticky', top: 0, background: T.aside, zIndex: 1,
-                }} role="tablist" aria-label="Step setup">
-                  {STAGES.map(({ id, label, icon: SIc }, idx) => {
-                    const on = stage === id;
-                    /* Setup is done the moment a step exists — it has a type.
-                       Configure is done when nothing blocks it. The ticks are
-                       real state, not a wizard pretending to have stages. */
-                    const done = id === 'setup' ? true : id === 'configure' ? !preview?.blocked : false;
-                    return (
-                      <span key={id} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        {idx > 0 && <ChevronRight size={11} color={T.faint} />}
-                        <button role="tab" aria-selected={on} onClick={() => setStage(id)} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '10px 10px',
-                          border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                          fontSize: 12, fontWeight: on ? 800 : 600,
-                          color: on ? T.accent : MUTED,
-                          borderBottom: `2px solid ${on ? ACCENT : 'transparent'}`, marginBottom: -1,
-                        }}>
-                          <SIc size={11} /> {label}
-                          {done && <Check size={10} color={T.good} />}
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-
-                <div style={{ padding: 15, display: 'grid', gap: 12 }}>
-                  {stage === 'setup' && (
-                    <>
-                      <div>
-                        <span style={lbl}>This step is</span>
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px',
-                          border: `1px solid ${nodeDark(current.type).edge}`, borderRadius: 11,
-                          background: T.raised,
-                        }}>
-                          <span style={{
-                            width: 24, height: 24, borderRadius: 7,
-                            background: nodeDark(current.type).bg, color: nodeDark(current.type).fg,
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                          }}>{(() => { const I3 = lookFor(current.type).icon; return <I3 size={12} />; })()}</span>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
-                            {lookFor(current.type).label}
-                          </span>
-                        </div>
-                        <p style={{ margin: '6px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
-                          {/* Changing a step's kind would throw away its settings
-                             silently, so it is delete-and-add rather than a
-                             dropdown that quietly empties the form. */}
-                          A step's kind is fixed. To change it, delete this one and add the kind you want.
-                        </p>
-                      </div>
-
-                      <label>
-                        <span style={lbl}>What to call it</span>
-                        <input value={current.label} onChange={e => setStep(current.id, { label: e.target.value })}
-                          style={inp} placeholder={lookFor(current.type).label} />
-                      </label>
-
-                      {current.type !== 'trigger' && (
-                        <button onClick={() => remove(current.id)} className="press" style={{
-                          justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 6,
-                          padding: '8px 13px', borderRadius: 10, border: `1px solid ${T.bad}55`,
-                          background: T.badSoft, color: T.bad, fontSize: 12, fontWeight: 700,
-                          cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                          <Trash2 size={12} /> Delete this step
-                        </button>
-                      )}
-                    </>
-                  )}
-
-                  {stage === 'configure' && (
-                    <>
-                      {!fields.length && (
-                        <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                          This step has nothing to set.
-                        </p>
-                      )}
-                      {fields.map(f => (
-                        <label key={f.key}>
-                          <span style={lbl}>{f.label}</span>
-                          {f.kind === 'select' ? (
-                            <select value={current.config[f.key] ?? ''}
-                              onChange={e => setConfig(current.id, f.key, e.target.value)} style={inp}>
-                              <option value="">— choose —</option>
-                              {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                          ) : f.kind === 'textarea' ? (
-                            <textarea value={current.config[f.key] ?? ''} rows={5}
-                              onChange={e => setConfig(current.id, f.key, e.target.value)}
-                              style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} placeholder={f.placeholder} />
-                          ) : (
-                            <input type={f.kind === 'number' ? 'number' : 'text'} min={0}
-                              value={current.config[f.key] ?? ''}
-                              onChange={e => setConfig(current.id, f.key, e.target.value)}
-                              style={inp} placeholder={f.placeholder} />
-                          )}
-                          {f.hint && (
-                            <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>
-                              {f.hint}
-                            </span>
-                          )}
-                        </label>
-                      ))}
-
-                      {current.type === 'condition' && (
-                        <label>
-                          <span style={lbl}>
-                            <GitBranch size={10} style={{ display: 'inline', marginRight: 4 }} />
-                            If the answer is No, go to
-                          </span>
-                          <select value={current.noId ?? ''}
-                            onChange={e => setStep(current.id, { noId: e.target.value || null })} style={inp}>
-                            {/* Nothing is a real answer and the commonest one. */}
-                            <option value="">Stop here</option>
-                            {nodes.filter(x => x.id !== current.id && x.type !== 'trigger').map(x => (
-                              <option key={x.id} value={x.id}>{x.label || lookFor(x.type).label}</option>
-                            ))}
-                          </select>
-                          <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>
-                            Yes always continues to the next step below. This is where No goes.
-                          </span>
-                        </label>
-                      )}
-                    </>
-                  )}
-
-                  {stage === 'test' && preview && (
-                    <>
-                      <div style={{
-                        display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px',
-                        borderRadius: 11, background: T.raised, border: `1px solid ${LINE}`,
-                      }}>
-                        <Play size={13} color={T.good} style={{ marginTop: 2, flexShrink: 0 }} />
-                        <span style={{ fontSize: 12.5, color: INK, fontWeight: 700, lineHeight: 1.5 }}>
-                          {preview.headline}
-                        </span>
-                      </div>
-
-                      <p style={{ margin: 0, fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
-                        {current.type === 'ai'
-                          /* An agent step has no person in it, so the stand-in
-                             sentence would be a lie in the reassuring
-                             direction — the worst kind. */
-                          ? 'This describes what the agent would do. What it actually writes is written by the model when it runs.'
-                          : <>
-                            {/* The sentence that makes this button safe to press. */}
-                            This is a dry run against a stand-in person — <strong style={{ color: INK }}>{SAMPLE_CONTACT.name}</strong>.
-                            Nothing is sent and nobody is contacted.
-                          </>}
-                      </p>
-
-                      {preview.blocked && (
-                        <p style={{
-                          margin: 0, padding: '10px 12px', borderRadius: 10, background: T.warnSoft,
-                          border: `1px solid ${T.warn}55`, color: T.warn, fontSize: 12, lineHeight: 1.5,
-                        }}>{preview.blocked}</p>
-                      )}
-
-                      {(preview.subject || preview.body) && (
-                        <div style={{
-                          border: `1px solid ${LINE}`, borderRadius: 11, overflow: 'hidden', background: T.raised,
-                        }}>
-                          {preview.subject !== undefined && (
-                            <div style={{ padding: '9px 12px', borderBottom: `1px solid ${LINE}` }}>
-                              <span style={{ fontSize: 10, color: MUTED, display: 'block' }}>Subject</span>
-                              <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
-                                {preview.subject || <em style={{ color: T.warn }}>empty</em>}
-                              </span>
-                            </div>
-                          )}
-                          {preview.body !== undefined && (
-                            <pre style={{
-                              margin: 0, padding: '11px 12px', fontSize: 12, lineHeight: 1.6, color: INK,
-                              whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit',
-                              maxHeight: 220, overflowY: 'auto',
-                            }}>{preview.body || 'empty'}</pre>
-                          )}
-                        </div>
-                      )}
-
-                      {preview.notes.map(note => (
-                        <p key={note} style={{ margin: 0, fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
-                          {note}
-                        </p>
-                      ))}
-
-                      {/* ── Running it for real ──
-                          Only for an agent, and only once the workflow has been
-                          saved: the server runs the step it has stored, and a
-                          step that only exists in this browser is not one it can
-                          find. Saying so beats a 404 that reads like a fault. */}
-                      {current.type === 'ai' && (
-                        <div style={{ display: 'grid', gap: 8, marginTop: 2 }}>
-                          <button
-                            disabled={!workflow?.id || running || !!preview.blocked}
-                            onClick={() => runNow(current.id)}
-                            style={{
-                              padding: '10px 14px', borderRadius: 10, border: `1px solid ${LINE}`,
-                              background: !workflow?.id || preview.blocked ? T.raised : T.accentSoft,
-                              color: !workflow?.id || preview.blocked ? MUTED : INK,
-                              fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
-                              cursor: !workflow?.id || running || preview.blocked ? 'default' : 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                            }}>
-                            {running
-                              ? <><Loader size={13} className="spin" /> Writing…</>
-                              : <><Play size={13} /> Run it now</>}
-                          </button>
-                          <span style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.55 }}>
-                            {!workflow?.id
-                              ? 'Save the workflow first — the server runs the step it has stored.'
-                              : 'This really runs: it writes a real draft, which you can read and delete like any other. It does not publish or send anything.'}
-                          </span>
-                          {ran && (
-                            <div style={{
-                              padding: '11px 12px', borderRadius: 11,
-                              background: ran.ok ? T.goodSoft : ran.outcome === 'skipped' ? T.raised : T.badSoft,
-                              border: `1px solid ${ran.ok ? T.good : ran.outcome === 'skipped' ? LINE : T.bad}55`,
-                              display: 'grid', gap: 6,
-                            }}>
-                              <span style={{ fontSize: 12, color: INK, lineHeight: 1.55 }}>{ran.detail}</span>
-                              {ran.link && (
-                                <a href={ran.link.route}
-                                  /* Routed rather than reloaded: a full page
-                                     load here throws away the editor and the
-                                     unsaved graph in it. */
-                                  onClick={e => { e.preventDefault(); navigate(ran.link!.route); }}
-                                  style={{
-                                    fontSize: 12, fontWeight: 700, color: T.accent,
-                                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                                  }}>
-                                  Open it in {AGENT_OUTPUTS[current.config.produces || 'social']?.where ?? 'the app'}
-                                  <ChevronRight size={12} />
-                                </a>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* Forward, in the order the stages are asked. */}
-                  {stage !== 'test' && (
-                    <button onClick={() => setStage(stage === 'setup' ? 'configure' : 'test')} style={{
-                      justifySelf: 'stretch', padding: '10px 16px', borderRadius: 10, border: 'none',
-                      background: stage === 'configure' && preview?.blocked ? T.line : ACCENT,
-                      color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                      {stage === 'configure' && preview?.blocked
-                        /* Zapier's phrasing, and it is the right one: it says
-                           what is missing rather than simply refusing. */
-                        ? 'Finish the fields above to test it'
-                        : 'Continue'}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
+            {/* One step's settings, shared with the pen panel on the canvas so the
+                two cannot disagree about what a step takes. */}
+            <StepSettings
+              node={current}
+              nodes={nodes}
+              stage={stage}
+              onStage={setStage}
+              onPatch={setStep}
+              onConfig={setConfig}
+              onDelete={remove}
+              onRun={id => void runNow(id)}
+              running={running}
+              ran={ran}
+              canRun={!!workflow?.id}
+              renderField={renderGuided}
+              onGraph={fn => setNodes(fn)}
+            />
           </aside>
         </div>
 

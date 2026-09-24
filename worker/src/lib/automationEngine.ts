@@ -178,36 +178,8 @@ function personalise(text: string, c: Contact): string {
  * acknowledgement, which is the single most useful thing an automation does.
  */
 
-export interface TriggerEvent {
-  /** contact_created | form_submitted | tag_added | deal_created | deal_moved */
-  kind: string;
-  /** The form's name or the tag, for triggers that name one. */
-  ref?: string;
-  contactId: string;
-  contactName?: string;
-  contactEmail?: string;
-  contactPhone?: string;
-}
-
-/**
- * Does this graph's trigger node want this event?
- *
- * Exported because it is the whole decision and it is worth being able to argue
- * with it directly in a test rather than through a database.
- */
-export function triggerMatches(node: AutomationNode | undefined, ev: TriggerEvent): boolean {
-  if (!node || node.type !== 'trigger') return false;
-  const cfg = node.config ?? {};
-  const want = String(cfg.event ?? '').trim();
-  if (!want || want !== ev.kind) return false;
-
-  /* A named form or tag narrows it; an unnamed one means "any". Matched
-     case-insensitively and loosely, because the name is typed in one screen and
-     chosen in another and nobody should lose an automation to capitalisation. */
-  const named = String(cfg.formName ?? cfg.tag ?? '').trim().toLowerCase();
-  if (!named) return true;
-  return (ev.ref ?? '').trim().toLowerCase() === named;
-}
+export { triggerMatches, type TriggerEvent } from './triggers';
+import { triggerMatches, type TriggerEvent } from './triggers';
 
 /**
  * Put somebody into every live automation whose trigger fits.

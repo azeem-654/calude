@@ -87,7 +87,7 @@ export default function WorkflowWizard({
       aria-label="Add a workflow"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(15,17,23,0.5)',
+        position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(15,17,23,0.5)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
       }}
     >

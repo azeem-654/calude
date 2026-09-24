@@ -62,7 +62,7 @@ export default function TemplatePreviewModal({
       aria-label={t.name}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(15,17,23,0.5)',
+        position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(15,17,23,0.5)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
       }}
     >

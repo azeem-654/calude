@@ -18,7 +18,11 @@
  * somebody's customer — which is the kind of thing found in a delivery log
  * rather than in a builder.
  */
-import { layout, nodeDetail, previewStep, problemsWith } from '../src/components/Autopilot/workflowNodes';
+import {
+  edgesOf, insertAfter, layout, nodeDetail, patchStep, previewStep, problemsWith,
+  pointReaderAt, readerOf, removeStep, swapWithNext, swapWithPrev,
+} from '../src/components/Autopilot/workflowNodes';
+import { TEMPLATES } from '../src/components/Autopilot/workflowTemplates';
 import type { WorkflowNode } from '../src/services/autopilot';
 
 const out: string[] = [];
@@ -224,6 +228,166 @@ const n = (
   const blocked = previewStep(n('b', 'ai', 'Write it up', { source: 'rss', produces: 'blog' }));
   ok('an agent with no feed address is blocked in the preview too',
     /no address/i.test(blocked.blocked), blocked.blocked);
+}
+
+/* ── Every branch gets its own row, and every link is a line ─────────────── */
+
+{
+  /* A fork inside a fork. The old layout gave every branch one shared second
+     row and never laid out a condition's No path when that condition was
+     itself on a branch — those steps fell into the "unreachable" pile and were
+     drawn as though disconnected. */
+  const nested: WorkflowNode[] = [
+    n('a', 'trigger', 'Form', {}, 'b'),
+    n('b', 'condition', 'Outer?', { field: 'status' }, null, { yesId: 'c', noId: 'd' }),
+    n('c', 'send_email', 'Outer yes', { subject: 'x' }),
+    n('d', 'condition', 'Inner?', { field: 'tag' }, null, { yesId: 'e', noId: 'f' }),
+    n('e', 'send_email', 'Inner yes', { subject: 'y' }),
+    n('f', 'send_sms', 'Inner no', { message: 'z' }),
+  ];
+  const r = layout(nested);
+  const row = (id: string) => r.placed.find(p => p.node.id === id)?.row;
+  ok('a fork inside a fork gives the inner No its own row',
+    row('d') === 1 && row('e') === 1 && row('f') === 2,
+    JSON.stringify(r.placed.map(p => `${p.node.id}:${p.row}:${p.column}`)));
+  ok('and the inner No remembers which condition it left',
+    r.placed.find(p => p.node.id === 'f')?.from === 'd');
+  ok('and no two steps share a place',
+    new Set(r.placed.map(p => `${p.row}:${p.column}`)).size === r.placed.length);
+
+  const edges = edgesOf(nested);
+  /* The thing that was missing from the screen: a line from a condition to
+     the branch it starts. */
+  ok('every condition yields both of its outcomes as lines',
+    edges.filter(e => e.from === 'b').length === 2 && edges.filter(e => e.from === 'd').length === 2);
+  ok('the No outcome leads to the branch it starts',
+    edges.some(e => e.from === 'b' && e.branch === 'no' && e.to === 'd'));
+}
+
+{
+  /* An outcome that leads nowhere is still an outcome — the workflow ends there
+     for everybody who answers that way. */
+  const e = edgesOf([
+    n('a', 'trigger', 'Form', {}, 'b'),
+    n('b', 'condition', 'Replied?', { field: 'status' }, null, { yesId: null, noId: 'c' }),
+    n('c', 'send_email', 'Chase', { subject: 's' }),
+  ]);
+  ok('an unwired Yes is drawn as an ending, not dropped',
+    e.some(x => x.from === 'b' && x.branch === 'yes' && x.to === null));
+}
+
+{
+  /* Every template in the library lays out with nothing overlapping and no
+     step left disconnected. This is the check that would have caught the
+     floating branch on the first template that had one. */
+  for (const t of TEMPLATES) {
+    const r = layout(t.nodes);
+    const places = r.placed.map(p => `${p.row}:${p.column}`);
+    ok(`${t.key} · lays out with nothing on top of anything else`,
+      new Set(places).size === places.length, places.join(' '));
+    ok(`${t.key} · every step is placed`, r.placed.length === t.nodes.length,
+      `${r.placed.length} of ${t.nodes.length}`);
+  }
+}
+
+/* ── Editing a graph without breaking it ────────────────────────────────── */
+
+{
+  /* The bug: renaming a step rebuilt every link from the list order, so a
+     condition whose Yes ends the workflow was re-pointed at the No branch. In
+     "Speed to Lead" that chased the people who had replied. */
+  const speed = TEMPLATES.find(t => t.key === 'speed-to-lead')!.nodes;
+  const renamed = patchStep(speed, 'n1', { label: 'Tag them' });
+  const cond = renamed.find(x => x.id === 'n6')!;
+  ok('renaming a step changes no link at all',
+    JSON.stringify(renamed.map(x => [x.id, x.nextId, x.yesId ?? null, x.noId ?? null]))
+      === JSON.stringify(speed.map(x => [x.id, x.nextId, x.yesId ?? null, x.noId ?? null])));
+  ok('in particular a Yes that ends the workflow still ends it',
+    (cond.yesId ?? null) === null && cond.noId === 'n7', JSON.stringify(cond));
+
+  const configured = patchStep(speed, 'n3', { config: { subject: 'New subject' } });
+  ok('changing a step’s settings keeps its other settings',
+    configured.find(x => x.id === 'n3')?.config.body === speed.find(x => x.id === 'n3')?.config.body);
+}
+
+{
+  const g: WorkflowNode[] = [
+    n('a', 'trigger', 'Form', {}, 'b'),
+    n('b', 'condition', 'Q?', { field: 'status' }, null, { yesId: 'c', noId: 'd' }),
+    n('c', 'send_email', 'Yes mail', { subject: 'y' }),
+    n('d', 'send_email', 'No mail', { subject: 'n' }),
+  ];
+  const added = insertAfter(g, 'b', n('x', 'wait', 'Wait', { days: '1' }));
+  const b = added.find(v => v.id === 'b')!;
+  ok('adding after a condition goes on its Yes path', b.yesId === 'x' && added.find(v => v.id === 'x')?.nextId === 'c',
+    JSON.stringify(b));
+  ok('and leaves its No branch exactly where it was', b.noId === 'd');
+
+  const mid = insertAfter(g, 'c', n('y', 'add_tag', 'Tag', { tag: 't' }));
+  ok('adding after a step takes over where it was going',
+    mid.find(v => v.id === 'c')?.nextId === 'y' && (mid.find(v => v.id === 'y')?.nextId ?? null) === null);
+}
+
+{
+  const g: WorkflowNode[] = [
+    n('a', 'trigger', 'Form', {}, 'b'),
+    n('b', 'add_tag', 'Tag', { tag: 't' }, 'c'),
+    n('c', 'condition', 'Q?', { field: 'status' }, null, { yesId: 'd', noId: 'e' }),
+    n('d', 'send_email', 'Yes', { subject: 'y' }),
+    n('e', 'send_email', 'No', { subject: 'n' }),
+  ];
+  const r = removeStep(g, 'b');
+  ok('removing a step joins what was before it to what was after it',
+    r.find(v => v.id === 'a')?.nextId === 'c' && !r.some(v => v.id === 'b'));
+  const r2 = removeStep(g, 'e');
+  ok('removing the first step of a No branch leaves that outcome ending, not rewired',
+    (r2.find(v => v.id === 'c')?.noId ?? null) === null && r2.find(v => v.id === 'c')?.yesId === 'd');
+}
+
+{
+  const g: WorkflowNode[] = [
+    n('a', 'trigger', 'Form', {}, 'b'),
+    n('b', 'add_tag', 'One', { tag: '1' }, 'c'),
+    n('c', 'add_tag', 'Two', { tag: '2' }, 'd'),
+    n('d', 'condition', 'Q?', { field: 'status' }, null, { yesId: null, noId: null }),
+  ];
+  const s1 = swapWithNext(g, 'b');
+  ok('swapping two steps swaps them on the path',
+    s1.find(v => v.id === 'a')?.nextId === 'c' && s1.find(v => v.id === 'c')?.nextId === 'b'
+      && s1.find(v => v.id === 'b')?.nextId === 'd');
+  ok('and moving it back puts it back',
+    JSON.stringify(swapWithPrev(s1, 'b').map(v => [v.id, v.nextId])) === JSON.stringify(g.map(v => [v.id, v.nextId])));
+  /* A condition carries a branch; swapping past it would move that branch to a
+     different point in the story without anybody deciding that. */
+  ok('a step is not swapped past a condition', swapWithNext(g, 'c') === g);
+  ok('and the trigger never moves', swapWithNext(g, 'a') === g);
+}
+
+/* ── Choosing what a scheduled workflow reads, from its trigger ────────── */
+
+{
+  const bare: WorkflowNode[] = [n('t', 'trigger', 'Every day', { event: 'schedule', cadence: 'daily' })];
+  const withReader = pointReaderAt(bare, 'website', { sourceUrl: 'https://example.com/news' });
+  const agent = readerOf(withReader);
+  /* A scheduled workflow with nothing to run is a clock with no hands. */
+  ok('choosing a source on a bare schedule adds an agent to read it',
+    !!agent && agent.config.source === 'website' && agent.config.sourceUrl === 'https://example.com/news');
+  ok('and joins it to the trigger', withReader.find(v => v.id === 't')?.nextId === agent?.id);
+  ok('and the result is a workflow that can be saved', problemsWith('x', withReader).length === 0,
+    problemsWith('x', withReader).join(' | '));
+
+  const existing: WorkflowNode[] = [
+    n('t', 'trigger', 'Every day', { event: 'schedule' }, 'a'),
+    n('a', 'ai', 'Write', { source: 'portfolio', produces: 'blog', count: '1' }),
+  ];
+  const repointed = pointReaderAt(existing, 'web', { sourcePrompt: 'heat pump grants this month' });
+  const a = readerOf(repointed)!;
+  ok('an existing agent is repointed rather than a second one added', repointed.filter(v => v.type === 'ai').length === 1);
+  ok('and keeps what it makes', a.config.produces === 'blog' && a.config.source === 'web');
+
+  const noQuestion = pointReaderAt(existing, 'web', {});
+  ok('a web search with no question is refused by name',
+    problemsWith('x', noQuestion).some(p => /no question/i.test(p)), problemsWith('x', noQuestion).join(' | '));
 }
 
 for (const line of out) console.log(line);

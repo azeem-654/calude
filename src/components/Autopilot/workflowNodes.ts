@@ -64,6 +64,8 @@ export interface AgentSource {
   hint: string;
   /** Does it need an address pasting in? */
   needsUrl: boolean;
+  /** Does it need a question written for it? The web search does. */
+  needsPrompt?: boolean;
   urlLabel?: string;
   urlHint?: string;
   urlPlaceholder?: string;
@@ -82,6 +84,20 @@ export const AGENT_SOURCES: Record<string, AgentSource> = {
     urlLabel: 'Feed address',
     urlHint: 'The feed itself, not the page it sits on — usually ends in /feed or /rss.xml.',
     urlPlaceholder: 'https://example.com/feed',
+  },
+  website: {
+    label: 'A web page',
+    hint: 'Any page — a company\u2019s news page, a competitor\u2019s offers, a council\u2019s notices. Read as it stands each time; an unchanged page is skipped, not rewritten.',
+    needsUrl: true,
+    urlLabel: 'Web address',
+    urlHint: 'The page itself. It has to be readable without logging in.',
+    urlPlaceholder: 'https://example.com/news',
+  },
+  web: {
+    label: 'A web search',
+    hint: 'A question, researched with Google Search each time it runs. It writes only from pages it actually found, and says which.',
+    needsUrl: false,
+    needsPrompt: true,
   },
   youtube: {
     label: 'A YouTube channel',
@@ -268,6 +284,8 @@ export function problemsWith(name: string, nodes: WorkflowNode[]): string[] {
         out.push(`"${label}" has no source to read, so it has nothing to write from.`);
       } else if (src.needsUrl && !String(n.config.sourceUrl ?? '').trim()) {
         out.push(`"${label}" reads ${src.label.toLowerCase()} but no address is set.`);
+      } else if (src.needsPrompt && String(n.config.sourcePrompt ?? '').trim().length < 6) {
+        out.push(`"${label}" searches the web but has no question to search for.`);
       }
       if (!AGENT_OUTPUTS[String(n.config.produces ?? 'social')]) {
         out.push(`"${label}" does not say what it should produce.`);
@@ -281,67 +299,141 @@ export function problemsWith(name: string, nodes: WorkflowNode[]): string[] {
 interface Placed {
   node: WorkflowNode;
   column: number;
-  /** 0 is the spine; 1 is a No branch hanging under it. */
+  /** 0 is the spine; every branch gets a row of its own beneath it. */
   row: number;
-  /** The condition this branch left, so its elbow can be drawn. */
+  /** The condition this branch left, so its connector can be drawn. */
   from?: string;
 }
+
+/** The next step along the path a step is on, ignoring any No branch. */
+const onward = (n: WorkflowNode): string | null =>
+  n.type === 'condition' ? (n.yesId ?? n.nextId ?? null) : (n.nextId ?? null);
 
 /**
  * Walk the graph into rows and columns.
  *
+ * ── The rule ──
+ *
+ * The spine is row 0: the path a person takes when every condition answers
+ * Yes, which is the story the workflow is about and the one somebody pictures
+ * when they describe it. **Every No branch gets a row of its own**, starting in
+ * the column after the condition it leaves.
+ *
+ * It used to be one shared second row for every branch. That was fine for the
+ * one-condition workflows the product started with and wrong for everything
+ * since: two branches landed on the same row, and a condition *inside* a branch
+ * never had its own No path laid out at all — those steps fell through to the
+ * "unreachable" pile at the end and were drawn as though disconnected, which
+ * is the exact failure somebody reported. A row per branch, found breadth
+ * first, keeps any number of forks legible.
+ *
+ * A branch that rejoins stops at the join rather than drawing the rest of the
+ * spine a second time; the connector back is what says it rejoined.
+ *
  * Exported so it can be argued with directly: the interesting cases are a graph
- * that points back at itself and a branch that rejoins the spine, and both are
- * far easier to reason about as data than as pixels.
+ * that points back at itself, a branch that rejoins, and a fork inside a fork,
+ * and all three are far easier to reason about as data than as pixels.
  */
-export function layout(nodes: WorkflowNode[]): { placed: Placed[]; columns: number } {
+export function layout(nodes: WorkflowNode[]): { placed: Placed[]; columns: number; rows: number } {
   const byId = new Map(nodes.map(n => [n.id, n]));
   const placed: Placed[] = [];
   const seen = new Set<string>();
+  const queue: Placed[] = [];
 
-  /* The spine: every condition answered Yes. That is the story the workflow is
-     about, and the path a customer pictures when they describe it. */
-  let cur: WorkflowNode | undefined = nodes.find(n => n.type === 'trigger') ?? nodes[0];
-  let col = 0;
-  while (cur && !seen.has(cur.id)) {
-    seen.add(cur.id);
-    placed.push({ node: cur, column: col, row: 0 });
-    col += 1;
-    const next: string | null = cur.type === 'condition'
-      ? (cur.yesId ?? cur.nextId ?? null)
-      : (cur.nextId ?? null);
-    cur = next ? byId.get(next) : undefined;
-  }
-
-  /* Then each No branch, under the column after the condition it left. A branch
-     that rejoins the spine stops at the join rather than drawing the rest of the
-     spine a second time — the arrow back is what says it rejoined. */
-  for (const p of placed.filter(x => x.node.type === 'condition')) {
-    const noId = p.node.noId;
-    if (!noId || seen.has(noId)) continue;
-    let b: WorkflowNode | undefined = byId.get(noId);
-    let bcol = p.column + 1;
-    while (b && !seen.has(b.id)) {
-      seen.add(b.id);
-      placed.push({ node: b, column: bcol, row: 1, from: p.node.id });
-      bcol += 1;
-      const nx: string | null = b.type === 'condition' ? (b.yesId ?? b.nextId ?? null) : (b.nextId ?? null);
-      b = nx ? byId.get(nx) : undefined;
+  const walk = (startId: string | null | undefined, column: number, row: number, from?: string) => {
+    let cur: WorkflowNode | undefined = startId ? byId.get(startId) : undefined;
+    let col = column;
+    let first = true;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const p: Placed = { node: cur, column: col, row, ...(first && from ? { from } : {}) };
+      placed.push(p);
+      /* Queued rather than recursed into, so every branch of the spine is laid
+         out before any branch of a branch — which is what keeps the rows in the
+         order somebody reads them, top to bottom. */
+      if (cur.type === 'condition') queue.push(p);
+      first = false;
+      col += 1;
+      const next = onward(cur);
+      cur = next ? byId.get(next) : undefined;
     }
+    return col;
+  };
+
+  /* The spine. */
+  const root = nodes.find(n => n.type === 'trigger') ?? nodes[0];
+  let endCol = root ? walk(root.id, 0, 0) : 0;
+  let nextRow = 1;
+
+  /* Then each No branch, breadth first, each on a row of its own. */
+  while (queue.length) {
+    const c = queue.shift()!;
+    const noId = c.node.noId;
+    if (!noId || seen.has(noId)) continue;
+    walk(noId, c.column + 1, nextRow, c.node.id);
+    nextRow += 1;
   }
 
-  /* Anything unreachable — a step left disconnected in the builder — still gets
-     drawn, on the second row, at the end. Dropping it silently would mean a
-     customer who cannot find the step they added concludes it was deleted. */
-  for (const n of nodes) {
-    if (seen.has(n.id)) continue;
-    seen.add(n.id);
-    placed.push({ node: n, column: Math.max(0, col), row: 1 });
-    col += 1;
+  /* Anything unreachable — a step left disconnected in the builder — still
+     gets drawn, on a row of its own at the end. Dropping it silently would mean
+     a customer who cannot find the step they added concludes it was deleted. */
+  const orphans = nodes.filter(n => !seen.has(n.id));
+  if (orphans.length) {
+    const row = nextRow;
+    for (const n of orphans) {
+      if (seen.has(n.id)) continue;
+      endCol = walk(n.id, Math.max(0, endCol), row);
+    }
+    nextRow += 1;
   }
 
   const columns = placed.reduce((m, p) => Math.max(m, p.column + 1), 1);
-  return { placed, columns };
+  const rows = placed.reduce((m, p) => Math.max(m, p.row + 1), 1);
+  return { placed, columns, rows };
+}
+
+/** One connector between two steps, or from a condition to where it ends. */
+export interface Edge {
+  from: string;
+  /** Null when this outcome of a condition leads nowhere — the workflow ends. */
+  to: string | null;
+  /** Set on a condition's two outcomes; absent on an ordinary next step. */
+  branch?: 'yes' | 'no';
+}
+
+/**
+ * Every link in the graph, as something to draw.
+ *
+ * ── Why this is its own function ──
+ *
+ * The canvas used to infer its arrows from which boxes sat side by side on a
+ * row. That drew the spine and nothing else: the line from a condition down to
+ * the branch it starts was never drawn, because the two boxes were never next
+ * to each other. Somebody reading it saw a condition, and some steps floating
+ * on the row below, and no way to tell which outcome led where.
+ *
+ * So the lines come from the links themselves — `nextId`, `yesId`, `noId` —
+ * the same fields the engine follows. A line on the screen is a path a person
+ * can actually take, and a path a person can take has a line.
+ *
+ * A condition always yields both of its outcomes, even when one leads nowhere.
+ * An unwired outcome is not an absence: it is where the workflow *ends* for the
+ * people who answer that way, and drawing nothing there is how somebody misses
+ * that half their contacts drop out at step four.
+ */
+export function edgesOf(nodes: WorkflowNode[]): Edge[] {
+  const ids = new Set(nodes.map(n => n.id));
+  const out: Edge[] = [];
+  for (const n of nodes) {
+    if (n.type === 'condition') {
+      const yes = n.yesId ?? n.nextId ?? null;
+      out.push({ from: n.id, to: yes && ids.has(yes) ? yes : null, branch: 'yes' });
+      out.push({ from: n.id, to: n.noId && ids.has(n.noId) ? n.noId : null, branch: 'no' });
+    } else if (n.nextId && ids.has(n.nextId)) {
+      out.push({ from: n.id, to: n.nextId });
+    }
+  }
+  return out;
 }
 
 /* ── What a step would actually do, before it does it ──────────────────────── */
@@ -478,6 +570,13 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
         notes: [],
       };
     }
+    if (src.needsPrompt && c('sourcePrompt').length < 6) {
+      return {
+        headline: `Would search the web and write ${makes}.`,
+        blocked: 'No question is set, so there is nothing to search for.',
+        notes: [],
+      };
+    }
 
     return {
       headline: `Reads ${src.label.toLowerCase()} and writes ${makes}, filed in ${out.where}.`,
@@ -488,6 +587,12 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
         `Everything it makes is a draft in ${out.where}. Nothing is published or scheduled by this step.`,
         ...(c('source') === 'rss' || c('source') === 'youtube'
           ? ['It only writes about what appeared since it last ran. A morning with nothing new is recorded as skipped, not as done.']
+          : []),
+        ...(c('source') === 'website'
+          ? ['It remembers what the page said. If the page has not changed since last time, it skips rather than writing the same thing again.']
+          : []),
+        ...(c('source') === 'web'
+          ? [`It searches for: \u201c${c('sourcePrompt')}\u201d. It writes only from pages Google actually returned, and a search with no sources is treated as a failure, not as research.`]
           : []),
         ...(c('produces') === 'email_campaign' && emails > 13
           ? [`${emails} emails are written a batch at a time, so this takes a few minutes and may finish across two runs.`]
@@ -609,4 +714,156 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
     blocked: 'The engine would skip this step and carry on.',
     notes: [],
   };
+}
+
+/* ── Changing a graph without breaking it ─────────────────────────────────────
+ *
+ * ── Why these exist ──
+ *
+ * The builder used to rebuild every link from the order of the step list after
+ * *any* edit — renaming a step included. That is correct for a straight line
+ * and destructive for anything that forks: a condition's Yes was re-pointed at
+ * whatever happened to sit next in the list, which in a branching workflow is
+ * usually the first step of the No branch. So renaming a step in "Speed to
+ * Lead" quietly sent the "did you get what you needed?" chase to the people who
+ * *had* replied. Nothing failed; the graph was simply different from the one
+ * on the screen a moment before.
+ *
+ * These change exactly the links an edit touches and no others. Renaming or
+ * configuring a step touches none. Pure, and tested: `npm run test:nodes`.
+ */
+
+/** Where a step goes next on its own path — Yes for a condition. */
+const nextOf = (n: WorkflowNode): string | null =>
+  n.type === 'condition' ? (n.yesId ?? n.nextId ?? null) : (n.nextId ?? null);
+
+/** Point a step's onward link somewhere, respecting which field a condition uses. */
+function withNext(n: WorkflowNode, to: string | null): WorkflowNode {
+  return n.type === 'condition' ? { ...n, yesId: to, nextId: null } : { ...n, nextId: to };
+}
+
+/** Change one step's own fields. Never touches a link. */
+export function patchStep(nodes: WorkflowNode[], id: string, patch: Partial<Omit<WorkflowNode, 'id' | 'nextId' | 'yesId'>>): WorkflowNode[] {
+  return nodes.map(n => (n.id === id ? { ...n, ...patch, config: { ...n.config, ...(patch.config ?? {}) } } : n));
+}
+
+/**
+ * Put a new step directly after another, on the same path.
+ *
+ * The new step takes over where the old one was going; the old one now goes
+ * to the new step. A condition gains the step on its Yes path — the one it
+ * continues along — and its No branch is left exactly as it was.
+ */
+export function insertAfter(nodes: WorkflowNode[], afterId: string, step: WorkflowNode): WorkflowNode[] {
+  const at = nodes.findIndex(n => n.id === afterId);
+  if (at < 0) return [...nodes, { ...step, nextId: null }];
+  const before = nodes[at];
+  const inserted = withNext(step, nextOf(before));
+  const out = nodes.map(n => (n.id === afterId ? withNext(n, step.id) : n));
+  out.splice(at + 1, 0, inserted);
+  return out;
+}
+
+/**
+ * Take a step out and close the gap.
+ *
+ * Anything that pointed at it — a step before it, or a condition branching to
+ * it — now points where it was going. A condition's own No branch has nowhere
+ * to reconnect to when the condition goes, so it becomes unreachable and is
+ * drawn as such rather than silently spliced into the Yes path.
+ */
+export function removeStep(nodes: WorkflowNode[], id: string): WorkflowNode[] {
+  const gone = nodes.find(n => n.id === id);
+  if (!gone) return nodes;
+  const onward = nextOf(gone);
+  return nodes
+    .filter(n => n.id !== id)
+    .map(n => ({
+      ...n,
+      nextId: n.nextId === id ? onward : n.nextId,
+      ...(n.type === 'condition' ? {
+        yesId: n.yesId === id ? onward : n.yesId,
+        noId: n.noId === id ? onward : n.noId,
+      } : {}),
+    }));
+}
+
+/**
+ * Swap a step with the one after it on its path.
+ *
+ * Only when that link is a plain "next" — a condition cannot be swapped past,
+ * because doing so would carry its No branch to a different point in the story
+ * without anybody deciding that. Returns the graph unchanged when refused.
+ */
+export function swapWithNext(nodes: WorkflowNode[], id: string): WorkflowNode[] {
+  const a = nodes.find(n => n.id === id);
+  if (!a || a.type === 'trigger' || a.type === 'condition') return nodes;
+  const bId = a.nextId;
+  const b = bId ? nodes.find(n => n.id === bId) : undefined;
+  if (!b || b.type === 'condition') return nodes;
+
+  const afterB = b.nextId ?? null;
+  return nodes.map(n => {
+    if (n.id === a.id) return { ...n, nextId: afterB };
+    if (n.id === b.id) return { ...n, nextId: a.id };
+    /* Everything that led to A now leads to B. */
+    return {
+      ...n,
+      nextId: n.nextId === a.id ? b.id : n.nextId,
+      ...(n.type === 'condition' ? {
+        yesId: n.yesId === a.id ? b.id : n.yesId,
+        noId: n.noId === a.id ? b.id : n.noId,
+      } : {}),
+    };
+  });
+}
+
+/** Swap a step with the one before it on its path. See `swapWithNext`. */
+export function swapWithPrev(nodes: WorkflowNode[], id: string): WorkflowNode[] {
+  const prev = nodes.find(n => n.type !== 'condition' && n.nextId === id);
+  return prev ? swapWithNext(nodes, prev.id) : nodes;
+}
+
+/* ── Where a scheduled workflow gets its material ─────────────────────────────
+ *
+ * In the engine a scheduled workflow's source lives on its AI step: the
+ * trigger says *when*, the agent says *what it reads*. That is the right model
+ * for running it and the wrong one for choosing it — somebody setting up
+ * "write a post from this web page every morning" thinks of the page as what
+ * starts it. So the trigger offers the sources, and these two keep the agent
+ * behind it in step, without the person having to visit a second step to
+ * finish a decision they made on the first.
+ */
+
+/** The agent a scheduled workflow reads through: the first AI step in it. */
+export function readerOf(nodes: WorkflowNode[]): WorkflowNode | null {
+  return nodes.find(n => n.type === 'ai') ?? null;
+}
+
+/**
+ * Point the workflow's reader at a source, adding one if there is none.
+ *
+ * An existing agent keeps everything else about it — what it makes, for which
+ * platform, how many — and only changes what it reads. A workflow with no
+ * agent gets one straight after the trigger, set up to write a social post,
+ * because a scheduled workflow with nothing to run is a clock with no hands.
+ */
+export function pointReaderAt(
+  nodes: WorkflowNode[], source: string, extra: Record<string, string> = {},
+): WorkflowNode[] {
+  const reader = readerOf(nodes);
+  const cfg = { source, ...extra };
+  if (reader) {
+    return nodes.map(n => (n.id === reader.id ? { ...n, config: { ...n.config, ...cfg } } : n));
+  }
+  const trigger = nodes.find(n => n.type === 'trigger');
+  if (!trigger) return nodes;
+  const agent: WorkflowNode = {
+    id: `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    type: 'ai',
+    label: 'Write from what it reads',
+    config: { produces: 'social', platform: 'instagram', count: '1', ...cfg },
+    nextId: null,
+  };
+  return insertAfter(nodes, trigger.id, agent);
 }
