@@ -1,0 +1,30 @@
+# Browser protections for every page and file the app serves.
+#
+# Static assets are answered by Cloudflare before the Worker runs, so these
+# are set here rather than in code. /api/* and /p/* are the Worker's own and
+# set their own headers (lib/http.ts).
+#
+# Content-Security-Policy is deliberately narrow: it governs *scripts* and
+# framing, which is where an injected string turns into somebody else's code
+# running with a customer's session. Images, fonts and connections are left
+# open because customers paste logos, product photos and embeds from anywhere,
+# and a policy that breaks their own pictures would be switched off within a
+# week. `script-src` has no 'unsafe-inline' and no 'unsafe-eval': the built app
+# needs neither, and together they are most of what XSS relies on.
+# YouTube's player API is the one third-party script (AI Shorts preview).
+#
+# microphone=(self) because voice prompts use it; camera and location are not
+# used anywhere and are refused.
+/*
+  Content-Security-Policy: script-src 'self' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: camera=(), geolocation=(), microphone=(self), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+# The chat widget is embedded on customers' own sites, so it must be loadable
+# cross-origin; everything above still applies to it.
+/widget.js
+  Access-Control-Allow-Origin: *

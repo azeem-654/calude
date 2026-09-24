@@ -7,8 +7,12 @@
  * locked-out account. Neither has a meaning here.
  */
 import { addr, body, fail, json, ok } from '../lib/http';
+import { rateLimit } from '../lib/rateLimit';
+import { origin, recordAuthEvent } from '../lib/audit';
 import { hashPassword, newToken, timingSafeEqual, verifyPassword } from '../lib/crypto';
-import { hasAnyUser, hasInstallOwner, nowIso, signupsClosed, sweepSessions, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { decryptSecret } from '../lib/crypto';
+import { hasAnyUser, hasInstallOwner, installSecret, nowIso, sessionKey, sessionKeys, signupsClosed, sweepSessions, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
+import { readTicket, signTicket, verifyTotp } from '../lib/totp';
 import {
   authorizeUrl, checkState, exchangeCode, googleCreds, saveGoogleCreds, redirectUri, signInOrigin,
 } from '../lib/googleAuth';
@@ -50,6 +54,10 @@ interface AuthBody {
   token?: string;
   email?: string;
   password?: string;
+  /** Your own password, when changing it. Checked on the server. */
+  currentPassword?: string;
+  /** Between the two steps of a 2-step sign-in. See lib/totp.ts. */
+  ticket?: string;
   name?: string;
   role?: string;
   accountId?: string | null;
@@ -70,12 +78,52 @@ function passwordProblem(pw: string, name = '', email = ''): string {
   return '';
 }
 
-async function issueSession(env: Env, email: string): Promise<string> {
+/**
+ * A new session. The browser gets the token; the database gets its hash, the
+ * device it came from and how it signed in — so "where am I signed in" can be
+ * answered and a stolen database cannot be replayed. See `sessionKey`.
+ */
+async function issueSession(env: Env, email: string, req: Request | null = null, method = 'password'): Promise<string> {
   const token = newToken();
   const expires = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86_400;
-  await env.DB.prepare('INSERT INTO crm_sessions (token, email, expires_at, created_at) VALUES (?, ?, ?, ?)')
-    .bind(token, email, expires, nowIso()).run();
+  const ip = req?.headers.get('CF-Connecting-IP') ?? '';
+  const ua = (req?.headers.get('User-Agent') ?? '').slice(0, 300);
+  try {
+    await env.DB.prepare('INSERT INTO crm_sessions (token, email, expires_at, created_at, ip, ua, method, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(await sessionKey(token), email, expires, nowIso(), ip, ua, method, nowIso()).run();
+  } catch {
+    /* A database a migration behind — the Worker deploys after migrations, so
+       this is a local copy. The session still works. */
+    await env.DB.prepare('INSERT INTO crm_sessions (token, email, expires_at, created_at) VALUES (?, ?, ?, ?)')
+      .bind(await sessionKey(token), email, expires, nowIso()).run();
+  }
+  await recordAuthEvent(env, { email, kind: 'login', detail: `Signed in with ${method === 'code' ? 'an emailed code' : method === 'google' ? 'Google' : method === 'signup' ? 'a new account' : 'a password'}`, ip, ua });
   return token;
+}
+
+/** The workspaces this address owns, most recently used first. */
+async function ownedWorkspaces(env: Env, email: string): Promise<{ accountId: string; lastUsed: string }[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT w.account_id AS accountId,
+            REPLACE(COALESCE((SELECT MAX(dd.updated_at) FROM crm_data dd WHERE dd.account_id = w.account_id), w.created_at), ' ', 'T') AS lastUsed
+     FROM crm_workspaces w WHERE w.owner_email = ? ORDER BY lastUsed DESC LIMIT 50`,
+  ).bind(email).all<{ accountId: string; lastUsed: string }>();
+  return results ?? [];
+}
+
+/**
+ * Has this account turned on 2-step sign-in? Then a correct password (or
+ * code, or Google) is not yet a session: it is a five-minute ticket, and
+ * `login_mfa` turns ticket + code into the session.
+ */
+async function secondStep(env: Env, email: string, method: string): Promise<Response | null> {
+  let on = false;
+  try {
+    const row = await env.DB.prepare('SELECT totp_enabled_at AS on_at FROM crm_users WHERE email = ?').bind(email).first<{ on_at: string | null }>();
+    on = !!row?.on_at;
+  } catch { on = false; }
+  if (!on) return null;
+  return json({ success: false, mfaRequired: true, ticket: await signTicket(env, email, method), error: 'Enter the 6-digit code from your authenticator app.' });
 }
 
 /** SHA-256 as lower-case hex. The code is never stored in the clear. */
@@ -186,10 +234,33 @@ async function sendLoginCode(env: Env, email: string, code: string): Promise<{ o
  * ordinary workspace-owning account; there is no route from a mailbox to
  * owning the install.
  */
-async function completeSignIn(env: Env, email: string, suggestedName: string, ip = ''): Promise<Response> {
+async function completeSignIn(env: Env, email: string, suggestedName: string, req: Request, method: 'code' | 'google'): Promise<Response> {
+  const ip = req.headers.get('CF-Connecting-IP') ?? '';
+  email = email.trim().toLowerCase();
   let user = await env.DB.prepare(
-    'SELECT email, name, role, account_id AS accountId FROM crm_users WHERE email = ?',
-  ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null }>();
+    'SELECT email, name, role, account_id AS accountId, hash FROM crm_users WHERE email = ?',
+  ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null; hash?: string }>();
+
+  /*
+   * The first proof that this person owns the address.
+   *
+   * Signing up with a password never proved it, so somebody could register a
+   * stranger's address first and set the password. When the real owner later
+   * arrives by code or Google, they would be signed into that account — and
+   * the squatter would still know its password. So the first time the mailbox
+   * is proved, a password set before that proof is cleared and every other
+   * session ended. The owner can set their own from Security & Privacy.
+   */
+  if (user) {
+    try {
+      const v = await env.DB.prepare('SELECT email_verified_at AS v FROM crm_users WHERE email = ?').bind(email).first<{ v: string | null }>();
+      if (v && !v.v) {
+        const unproved = !!user.hash && !(user.role === 'agency' && !user.accountId);
+        await env.DB.prepare(`UPDATE crm_users SET email_verified_at = ?${unproved ? ", hash = ''" : ''} WHERE email = ?`).bind(nowIso(), email).run();
+        if (unproved) await env.DB.prepare('DELETE FROM crm_sessions WHERE email = ?').bind(email).run();
+      }
+    } catch { /* a database before 0049 */ }
+  }
 
   if (!user) {
     /* Signing *in* still works for whoever already has an account here — it is
@@ -211,6 +282,8 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, ip
     await env.DB.prepare(
       'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
     ).bind(accountId, email, nowIso()).run();
+    try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), email).run(); }
+    catch { /* before 0049 */ }
     user = { email, name, role: 'agency', accountId };
     /*
      * Recorded on the way in, because these two paths have no checkbox.
@@ -224,16 +297,51 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, ip
     await recordPolicy(env, email, ip);
   }
 
+  const held = await secondStep(env, user.email, method);
+  if (held) return held;
+
   await sweepSessions(env.DB);
-  const token = await issueSession(env, user.email);
+  const token = await issueSession(env, user.email, req, method);
+  return json({ success: true, token, user: publicUser(user), workspaces: await ownedWorkspaces(env, user.email) });
+}
 
-  const { results: owned } = await env.DB.prepare(
-    `SELECT w.account_id AS accountId,
-            REPLACE(COALESCE((SELECT MAX(dd.updated_at) FROM crm_data dd WHERE dd.account_id = w.account_id), w.created_at), ' ', 'T') AS lastUsed
-     FROM crm_workspaces w WHERE w.owner_email = ? ORDER BY lastUsed DESC LIMIT 50`,
-  ).bind(user.email).all<{ accountId: string; lastUsed: string }>();
+/* ── Who may manage whom ──────────────────────────────────────────────────
+ *
+ * These four actions used to ask one question — "is the caller an agency?" —
+ * and that stopped meaning anything the day sign-up opened: every account
+ * that registers is an agency. So any stranger could set the install owner's
+ * password, delete the owner and re-register the address, or mint a client
+ * login bound to somebody else's workspace id and read it.
+ *
+ * The question now is about the *target*: yourself; a client login inside a
+ * workspace you own; or, for the install owner, anyone. Nothing else. */
 
-  return json({ success: true, token, user: publicUser(user), workspaces: owned ?? [] });
+const isInstallOwner = (u: SessionUser | null): boolean => !!u && u.role === 'agency' && !u.accountId;
+
+/** Does this agency own this workspace? A lookup only — it never claims one. */
+async function ownsWorkspace(env: Env, actor: SessionUser, accountId: string | null): Promise<boolean> {
+  if (!accountId) return false;
+  const row = await env.DB.prepare('SELECT 1 AS n FROM crm_workspaces WHERE account_id = ? AND owner_email = ?')
+    .bind(accountId, actor.email).first();
+  return !!row;
+}
+
+interface Target { email: string; role: string; accountId: string | null; hash: string }
+
+async function ownsAnyWorkspace(env: Env, email: string): Promise<boolean> {
+  return !!(await env.DB.prepare('SELECT 1 AS n FROM crm_workspaces WHERE owner_email = ? LIMIT 1').bind(email).first());
+}
+
+async function manageable(env: Env, actor: SessionUser, email: string): Promise<{ target: Target | null; self: boolean; ok: boolean }> {
+  const target = await env.DB.prepare('SELECT email, role, account_id AS accountId, hash FROM crm_users WHERE email = ?')
+    .bind(email).first<Target>();
+  if (!target) return { target: null, self: false, ok: false };
+  if (target.email === actor.email) return { target, self: true, ok: true };
+  if (isInstallOwner(actor)) return { target, self: false, ok: true };
+  /* The owner's row, and every other agency, are out of reach of anyone but
+     the owner. */
+  if (target.role !== 'client' || !target.accountId) return { target, self: false, ok: false };
+  return { target, self: false, ok: actor.role === 'agency' && await ownsWorkspace(env, actor, target.accountId) };
 }
 
 function publicUser(row: { email: string; name: string; role: string; accountId: string | null }): SessionUser {
@@ -297,8 +405,33 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
   }
 
   if (action === 'logout') {
-    if (d.token) await env.DB.prepare('DELETE FROM crm_sessions WHERE token = ?').bind(d.token).run();
+    if (d.token) {
+      const who = await userFromToken(env.DB, d.token);
+      const [h, raw] = await sessionKeys(d.token);
+      await env.DB.prepare('DELETE FROM crm_sessions WHERE token IN (?, ?)').bind(h, raw).run();
+      if (who) await recordAuthEvent(env, { email: who.email, kind: 'logout', ...origin(req) });
+    }
     return ok();
+  }
+
+  /* ── The second step: ticket + authenticator code → session ── */
+  if (action === 'login_mfa') {
+    const t = await readTicket(env, String(d.ticket ?? ''));
+    if (!t) return fail('That sign-in has expired. Start again.', 401);
+    const tries = await rateLimit(env, { what: 'mfa', who: t.email, max: 6, windowSeconds: 900 });
+    if (!tries.allowed) return fail('Too many wrong codes. Wait 15 minutes and sign in again.', 429);
+    const row = await env.DB.prepare(
+      'SELECT email, name, role, account_id AS accountId, totp_secret AS secret FROM crm_users WHERE email = ?',
+    ).bind(t.email).first<{ email: string; name: string; role: string; accountId: string | null; secret: string }>();
+    if (!row?.secret) return fail('That sign-in has expired. Start again.', 401);
+    const secret = await decryptSecret(await installSecret(env.DB, 'mailbox_key'), row.secret).catch(() => '');
+    if (!(await verifyTotp(secret, String(d.code ?? '')))) {
+      await recordAuthEvent(env, { email: row.email, kind: 'mfa_failed', ...origin(req) });
+      return fail('That code is not right. Check the time on your phone and try the newest one.', 401);
+    }
+    await sweepSessions(env.DB);
+    const token = await issueSession(env, row.email, req, t.method || 'password');
+    return json({ success: true, token, user: publicUser(row), workspaces: await ownedWorkspaces(env, row.email) });
   }
 
   /* ── First run: create the owner ── */
@@ -328,7 +461,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     ).bind(email.toLowerCase(), name, 'agency', null, await hashPassword(String(d.password)), nowIso()).run();
 
     await recordPolicy(env, email, req.headers.get('CF-Connecting-IP') ?? '');
-    const token = await issueSession(env, email.toLowerCase());
+    const token = await issueSession(env, email.toLowerCase(), req, 'signup');
     return json({ success: true, token, user: { email: email.toLowerCase(), name, role: 'agency', accountId: null } });
   }
 
@@ -408,7 +541,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     await recordPolicy(env, lower, ip);
 
     await sweepSessions(env.DB);
-    const token = await issueSession(env, lower);
+    const token = await issueSession(env, lower, req, 'signup');
     return json({ success: true, token, user: { email: lower, name, role: 'agency', accountId } });
   }
 
@@ -549,7 +682,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
        the mailbox, which is what a password reset proves and more than a
        password proves on its own. Sending them to a sign-up form to type the
        same address again would be ceremony, not security. */
-    return completeSignIn(env, email, email.split('@')[0], ip);
+    return completeSignIn(env, email, email.split('@')[0], req, 'code');
   }
 
   /* ── Agreeing to a policy that changed ── */
@@ -625,7 +758,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
       return fail('That Google account has not confirmed its email address, so it cannot be used to sign in.', 403);
     }
 
-    return completeSignIn(env, r.identity.email, r.identity.name, req.headers.get('CF-Connecting-IP') ?? '');
+    return completeSignIn(env, r.identity.email, r.identity.name, req, 'google');
   }
 
   /* ── Sign in ── */
@@ -634,6 +767,27 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     const password = String(d.password ?? '');
     if (!email || !password) return fail('Enter your email and password.');
 
+    /*
+     * Guessing, limited.
+     *
+     * There was no limit here at all: unlimited guesses at any address,
+     * including the install owner's, each one a 100,000-round hash — so it was
+     * also the cheapest way to tie up the Worker. Two limits, because they stop
+     * different things: per address stops a slow guess at one account from
+     * many machines; per network stops one machine trying every account.
+     * Only failures count against the address, so a person who types their
+     * password right is never locked out by somebody else's guessing beyond
+     * the fifteen-minute window.
+     */
+    const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const byIp = await rateLimit(env, { what: 'login-ip', who: ip, max: 30, windowSeconds: 900 });
+    if (!byIp.allowed) return fail('Too many sign-in attempts from this network. Wait a few minutes and try again.', 429);
+    const failures = await env.DB.prepare('SELECT hits, window_start AS start FROM crm_rate_limits WHERE bucket = ?')
+      .bind(`login-fail:${email}`.slice(0, 200)).first<{ hits: number; start: string }>();
+    if (failures && failures.hits >= 10 && Date.parse(failures.start) > Date.now() - 900_000) {
+      return fail('Too many wrong passwords for this account. Wait 15 minutes, or sign in with an emailed code.', 429);
+    }
+
     const row = await env.DB.prepare(
       'SELECT email, name, role, account_id AS accountId, hash FROM crm_users WHERE email = ?',
     ).bind(email).first<{ email: string; name: string; role: string; accountId: string | null; hash: string }>();
@@ -641,10 +795,17 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     /* One message for "no such account" and "wrong password" alike: telling
        them apart turns the login form into a way to enumerate who has one. */
     const good = row ? await verifyPassword(password, row.hash) : false;
-    if (!row || !good) return fail('Invalid email or password.', 401);
+    if (!row || !good) {
+      await rateLimit(env, { what: 'login-fail', who: email, max: 10, windowSeconds: 900 });
+      await recordAuthEvent(env, { email, kind: 'login_failed', ip, ua: req.headers.get('User-Agent') ?? '' });
+      return fail('Invalid email or password.', 401);
+    }
+
+    const held = await secondStep(env, row.email, 'password');
+    if (held) return held;
 
     await sweepSessions(env.DB);
-    const token = await issueSession(env, row.email);
+    const token = await issueSession(env, row.email, req, 'password');
 
     /*
      * Which workspaces are actually theirs.
@@ -667,16 +828,9 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
      * ordering out and sends the owner to the wrong workspace. Normalised here
      * rather than trusting every writer to agree.
      */
-    const { results: owned } = await env.DB.prepare(
-      `SELECT w.account_id AS accountId,
-              REPLACE(COALESCE((SELECT MAX(d.updated_at) FROM crm_data d WHERE d.account_id = w.account_id), w.created_at), ' ', 'T') AS lastUsed
-       FROM crm_workspaces w
-       WHERE w.owner_email = ?
-       ORDER BY lastUsed DESC
-       LIMIT 50`,
-    ).bind(row.email).all<{ accountId: string; lastUsed: string }>();
+    const owned = await ownedWorkspaces(env, row.email);
 
-    return json({ success: true, token, user: publicUser(row), workspaces: owned ?? [] });
+    return json({ success: true, token, user: publicUser(row), workspaces: owned });
   }
 
   /* ── Agency administration ── */
@@ -724,9 +878,19 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
 
   if (action === 'list_users') {
     if (!actor) return fail('Not authorised.', 401);
-    const { results } = await env.DB.prepare(
-      'SELECT email, name, role, account_id AS accountId FROM crm_users ORDER BY created_at',
-    ).all<{ email: string; name: string; role: string; accountId: string | null }>();
+    /* Every user on the install, to the owner. To anyone else, themselves and
+       the logins inside workspaces they own — it used to be every address on
+       the install, to any signed-in session. */
+    const { results } = isInstallOwner(actor)
+      ? await env.DB.prepare(
+        'SELECT email, name, role, account_id AS accountId FROM crm_users ORDER BY created_at',
+      ).all<{ email: string; name: string; role: string; accountId: string | null }>()
+      : await env.DB.prepare(
+        `SELECT email, name, role, account_id AS accountId FROM crm_users
+          WHERE email = ?1
+             OR (role = 'client' AND account_id IN (SELECT account_id FROM crm_workspaces WHERE owner_email = ?1))
+          ORDER BY created_at`,
+      ).bind(actor.email).all<{ email: string; name: string; role: string; accountId: string | null }>();
     return json({ success: true, users: (results ?? []).map(publicUser) });
   }
 
@@ -750,6 +914,16 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
      */
     const accountId = String(d.accountId ?? '').trim();
     if (!accountId) return fail('Choose which workspace this user belongs to.');
+    /* The workspace has to be the caller's. `workspaceAccess` is the one place
+       that decides that, including claiming a sub-account the agency has just
+       opened and holding it to the plan's allowance. */
+    const owner = isInstallOwner(actor);
+    if (!owner) {
+      const access = await workspaceAccess(env.DB, actor, accountId);
+      if (!access.ok) return fail(access.message ?? 'That workspace is not yours.', 403);
+    }
+    /* Only the owner makes agency logins; anyone else is adding a client. */
+    if (d.role === 'agency' && !owner) return fail('Only the install owner can add another agency login.', 403);
 
     await env.DB.prepare(
       'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -758,14 +932,31 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
       d.role === 'agency' ? 'agency' : 'client', accountId,
       await hashPassword(String(d.password)), nowIso(),
     ).run();
+    await recordAuthEvent(env, { email: actor.email, kind: 'user_created', detail: `Added ${email.toLowerCase()} as ${d.role === 'agency' ? 'agency' : 'client'}`, accountId, ...origin(req) });
     return ok();
   }
 
   if (action === 'set_password') {
     if (!actor) return fail('Not authorised.', 401);
     const email = String(d.email ?? '').trim().toLowerCase();
-    /* A client may change their own; only an agency may change anybody's. */
-    if (actor.role !== 'agency' && actor.email !== email) return fail('Not authorised.', 403);
+    const who = await manageable(env, actor, email);
+    if (!who.target) return fail('User not found.');
+    if (!who.ok) return fail('Not authorised.', 403);
+    /* Somebody who owns a workspace sets their own password, and nobody else
+       does — the install owner included. Recovery is the emailed code, which
+       proves the mailbox; a password set on their behalf would be a way into
+       a customer's business that leaves them none the wiser. */
+    if (!who.self && await ownsAnyWorkspace(env, email)) {
+      return fail('That person manages their own password. They can sign in with an emailed code to reset it.', 403);
+    }
+    /* Your own password needs your current one, checked here rather than by
+       the browser signing in again — a check only the browser makes is a
+       check an unlocked laptop can skip. An account that has never had a
+       password (code or Google sign-in) has nothing to confirm. */
+    if (who.self && who.target.hash) {
+      const good = await verifyPassword(String(d.currentPassword ?? ''), who.target.hash);
+      if (!good) return fail('Your current password is not right.', 403);
+    }
     const problem = passwordProblem(String(d.password ?? ''), '', email);
     if (problem) return fail(problem);
     const res = await env.DB.prepare('UPDATE crm_users SET hash = ? WHERE email = ?')
@@ -773,8 +964,13 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     if (!res.meta.changes) return fail('User not found.');
     /* Every other session for that account is ended: a password change that
        leaves a stolen session alive has not actually locked anybody out. */
-    await env.DB.prepare('DELETE FROM crm_sessions WHERE email = ? AND token != ?')
-      .bind(email, d.token ?? '').run();
+    const [keep, keepRaw] = await sessionKeys(String(d.token ?? ''));
+    await env.DB.prepare('DELETE FROM crm_sessions WHERE email = ? AND token NOT IN (?, ?)')
+      .bind(email, who.self ? keep : '', who.self ? keepRaw : '').run();
+    await recordAuthEvent(env, who.self
+      ? { email, kind: 'password_changed', ...origin(req) }
+      : { email: actor.email, kind: 'password_reset_by_admin', detail: `Set a new password for ${email}`, accountId: who.target.accountId, ...origin(req) });
+    if (!who.self) await recordAuthEvent(env, { email, kind: 'password_reset_by_admin', detail: `Password set by ${actor.email}`, accountId: who.target.accountId, ...origin(req) });
     return ok();
   }
 
@@ -782,8 +978,12 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     if (actor?.role !== 'agency') return fail('Only an agency account can remove users.', 403);
     const email = String(d.email ?? '').trim().toLowerCase();
     if (email === actor.email) return fail('You cannot remove your own account.');
+    const who = await manageable(env, actor, email);
+    if (!who.target) return fail('User not found.');
+    if (!who.ok) return fail('Not authorised.', 403);
     await env.DB.prepare('DELETE FROM crm_sessions WHERE email = ?').bind(email).run();
     const res = await env.DB.prepare('DELETE FROM crm_users WHERE email = ?').bind(email).run();
+    if (res.meta.changes) await recordAuthEvent(env, { email: actor.email, kind: 'user_removed', detail: `Removed ${email}`, accountId: who.target.accountId, ...origin(req) });
     return res.meta.changes ? ok() : fail('User not found.');
   }
 

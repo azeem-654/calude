@@ -13,6 +13,7 @@
  * with no way to tell which of them broke something. The suffix is a URL, not
  * a language.
  */
+import { handleSecurity } from './routes/security';
 import { corsHeaders, json, preflight } from './lib/http';
 import type { Env } from './lib/db';
 import { handleAuth } from './routes/auth';
@@ -65,6 +66,7 @@ type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Respon
 
 const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
+  '/api/security.php': handleSecurity,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot
      send. */
@@ -231,9 +233,13 @@ export default {
       /* A thrown error must not become a 500 with a stack trace in it: the
          client shows `message` to the customer, and a database error string is
          not something they can act on or should see. */
-      console.error(`${url.pathname} failed:`, e);
-      const msg = 'Something went wrong on the server handling that request.';
-      return new Response(JSON.stringify({ success: false, error: msg, message: msg }), {
+      /* A reference the customer can quote, and the same one in the log beside
+         the real error — so support can find what happened without the
+         customer ever being shown a stack, a query or a path. */
+      const ref = `PC-${[...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+      console.error(`[${ref}] ${url.pathname} failed:`, e);
+      const msg = `Something went wrong while processing your request. Please try again. If it keeps happening, quote reference ${ref}.`;
+      return new Response(JSON.stringify({ success: false, error: msg, message: msg, ref }), {
         status: 500,
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });

@@ -30,15 +30,15 @@
     "test:triggers": "npx --yes tsx worker/test/triggers.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs",
     "test:intake": "npx --yes tsx test/projectIntake.test.mts",
-    "test:wizard": "node test/newProject.e2e.mjs"
+    "test:wizard": "node test/newProject.e2e.mjs",
+    "test:security": "node test/security.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
-    "localtunnel": "^2.0.2",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "^7.18.4",
     "recharts": "^3.8.1"
   },
   "devDependencies": {

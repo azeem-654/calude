@@ -11,7 +11,7 @@
  *   install         no longer a thing, and says so
  */
 import { body, fail, headerSafe, json, ok } from '../lib/http';
-import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
+import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, denyForeignWorkspace, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
 import { imapFetch } from '../lib/imap';
 import { loadMailbox, loadMailboxById } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
@@ -31,6 +31,8 @@ export async function handleImapFetch(req: Request, env: Env): Promise<Response>
 
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
+  const foreign = await denyForeignWorkspace(env.DB, gate.user, d.accountId);
+  if (foreign) return foreign;
 
   /* Same rule as sending: explicit details are for the setup wizard, and
      everything else names a workspace and lets the server fetch its own. */
@@ -460,6 +462,8 @@ export async function handleBlogPublish(req: Request, env: Env): Promise<Respons
   }>(req);
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
+  const foreign = await denyForeignWorkspace(env.DB, gate.user, d.accountId);
+  if (foreign) return foreign;
 
   /*
    * Screened before it reaches WordPress, not after.
@@ -521,6 +525,11 @@ export async function handleDiagnostics(req: Request, env: Env): Promise<Respons
   const user = await userFromToken(env.DB, d.token);
   if (!user && (await hasAnyUser(env.DB))) {
     return fail('Your session has expired. Sign in again, then re-run the checks.', 401, { code: 'unauthorised' });
+  }
+  /* Install-wide counts (users, sessions) and raw database errors are the
+     operator's to see, not every customer's. */
+  if (user && !(user.role === 'agency' && !user.accountId)) {
+    return fail('System checks are available to the install owner only.', 403);
   }
 
   const checks: { id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }[] = [];

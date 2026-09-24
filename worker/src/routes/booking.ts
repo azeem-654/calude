@@ -15,6 +15,7 @@
  *   visitor config, slots, create              — public, by slug
  *   guest   get, cancel, reschedule            — proven by the booking's key
  */
+import { rateLimit } from '../lib/rateLimit';
 import { addr, body, fail, headerSafe, json, ok } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { newToken, timingSafeEqual } from '../lib/crypto';
@@ -147,6 +148,17 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     const slotTime = String(d.slotTime ?? '');
     if (!accountId) return fail('A workspace is required.');
     if (!DATE_OK.test(slotDate) || !TIME_OK.test(slotTime)) return fail('Pick a date and a time.');
+
+    /* Only a workspace that has published a booking page takes bookings. This
+       took any id, anonymously and without limit — so anyone could file
+       contacts into a stranger's workspace, start their automations, and, with
+       a calendar connected, have Google send invitations from their account to
+       any address. */
+    const page = await env.DB.prepare('SELECT 1 AS n FROM crm_booking_config WHERE account_id = ?').bind(accountId).first();
+    if (!page) return json({ success: false, notFound: true, error: 'There is no booking page at that address.' });
+    const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const limit = await rateLimit(env, { what: 'booking', who: ip, max: 8, windowSeconds: 3600 });
+    if (!limit.allowed) return fail('Too many bookings from here in the last hour. Try again later.', 429);
 
     const guestEmail = addr(d.guestEmail);
     if (!guestEmail) return fail('Enter a valid email address so we can send the confirmation.');

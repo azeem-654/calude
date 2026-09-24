@@ -9,9 +9,10 @@
  * network for an answer a server actually gave are all carried over from the
  * PHP — each of them was a real bug there before it was a rule.
  */
+import { signTrackedLinks } from '../lib/trackSign';
 import { addr, body, fail, headerSafe, json } from '../lib/http';
 import { diagnose } from '../lib/mailDiagnosis';
-import { requireSessionForSocket, type Env } from '../lib/db';
+import { requireSessionForSocket, denyForeignWorkspace, type Env } from '../lib/db';
 import { smtpSend, smtpVerify, type Encryption } from '../lib/smtp';
 import { buildMime } from '../lib/mime';
 import { loadMailbox } from './mailbox';
@@ -44,6 +45,8 @@ export async function handleSmtpSend(
 
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
+  const foreign = await denyForeignWorkspace(env.DB, gate.user, d.accountId);
+  if (foreign) return foreign;
 
   /**
    * Where the credentials come from.
@@ -153,7 +156,7 @@ export async function handleSmtpSend(
     fromEmail,
     to,
     subject: headerSafe(d.subject ?? '', 300),
-    html: String(d.html ?? ''),
+    html: await signTrackedLinks(env, String(d.html ?? '')),
     replyTo: replyToRaw || undefined,
     unsubscribeUrl: unsubscribeUrl || undefined,
   }, host);

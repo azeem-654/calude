@@ -10,6 +10,8 @@
  * wrote its account of itself to a Cloudflare log the customer cannot read, so
  * "my campaign never went out" had no answer available to the person asking.
  */
+import { closeWorkspace } from '../lib/closeWorkspace';
+import { origin, recordAuthEvent } from '../lib/audit';
 import { body, fail, json, ok } from '../lib/http';
 import { canAccess, dataGet, nowIso, planFor, resellLimitFor, userFromToken, workspacesOwned, type Env } from '../lib/db';
 
@@ -252,17 +254,8 @@ export async function handleAutomation(req: Request, env: Env): Promise<Response
     if (!row) return ok({ message: 'That workspace was not on the server. Nothing to close.' });
     if (row.owner_email !== user.email) return fail('That workspace is not yours.', 403);
 
-    /* Everything belonging to it, not just the row that counts it. Leaving the
-       data behind would keep a closed client's contacts and mail credentials on
-       the server with no account able to reach them. */
-    await env.DB.batch([
-      env.DB.prepare('DELETE FROM crm_data WHERE account_id = ?').bind(target),
-      env.DB.prepare('DELETE FROM crm_mailboxes WHERE account_id = ?').bind(target),
-      env.DB.prepare('DELETE FROM crm_providers WHERE account_id = ?').bind(target),
-      env.DB.prepare('DELETE FROM crm_provisioned WHERE account_id = ?').bind(target),
-      env.DB.prepare('DELETE FROM crm_schedules WHERE account_id = ?').bind(target),
-      env.DB.prepare('DELETE FROM crm_workspaces WHERE account_id = ?').bind(target),
-    ]);
+    await closeWorkspace(env, target);
+    await recordAuthEvent(env, { email: user.email, kind: 'workspace_closed', accountId: target, detail: 'Closed a sub-account and deleted its data', ...origin(req) });
 
     const used = await workspacesOwned(env.DB, user);
     return ok({ message: 'Closed, and its slot is free again.', used });

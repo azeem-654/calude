@@ -82,6 +82,10 @@ export async function handleUnsubscribe(req: Request, env: Env): Promise<Respons
   if (q.get('sign')) {
     const gate = await requireSessionForSocket(env.DB, q.get('token') ?? undefined);
     if ('denied' in gate) return gate.denied;
+    /* Only for your own workspace. A signed opt-out is an instruction to stop
+       mailing someone, and signing one for another workspace let anyone
+       unsubscribe that workspace's contacts. */
+    if (gate.user && !(await canAccess(env.DB, gate.user, account))) return fail('That workspace is not yours.', 403);
     const clean = addr(email);
     if (!clean) return fail('A valid email address is required to sign.');
     return json({ success: true, t: await signAddress(secret, clean, account) });

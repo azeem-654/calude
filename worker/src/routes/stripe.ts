@@ -10,7 +10,7 @@
  * something an endpoint will take somebody's word for.
  */
 import { addr, body, fail, json } from '../lib/http';
-import { agencyBucketFor, canAccess, dataPut, nowIso, userFromToken, type Env } from '../lib/db';
+import { agencyBucketFor, canAccess, dataGet, dataPut, nowIso, userFromToken, type Env } from '../lib/db';
 import { timingSafeEqual } from '../lib/crypto';
 
 const STRIPE = 'https://api.stripe.com/v1';
@@ -97,32 +97,34 @@ export async function handleStripeCheckout(req: Request, env: Env): Promise<Resp
   if (accountId) params.set('client_reference_id', accountId);
   if (accountId) params.set('metadata[accountId]', accountId);
 
-  if (d.priceId) {
-    params.set('line_items[0][price]', String(d.priceId));
-    params.set('line_items[0][quantity]', '1');
-  } else {
-    const amount = Number(d.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return fail('A subscription needs a price above zero.');
-    params.set('line_items[0][quantity]', '1');
-    params.set('line_items[0][price_data][currency]', (d.currency ?? 'usd').toLowerCase());
-    params.set('line_items[0][price_data][product_data][name]', String(d.productName ?? 'Subscription').slice(0, 250));
-    params.set('line_items[0][price_data][unit_amount]', String(Math.round(amount * 100)));
-    params.set('line_items[0][price_data][recurring][interval]', 'month');
-  }
-
-  const r = await stripePost(env, '/checkout/sessions', params);
-  if (!r.ok) return fail(stripeError(r.data));
-  return json({ success: true, url: r.data.url, id: r.data.id });
+  /*
+   * The price used to come from the request — `amount`, or any `priceId` on
+   * the operator's Stripe account — so a one-cent "subscription" could be
+   * bought and the webhook would then mark the workspace active. The live app
+   * pays through billing.php, which prices from its own table; nothing in the
+   * app calls this path any more, so it is closed rather than repaired.
+   */
+  void params; void email;
+  return fail('This checkout has moved. Open Billing in the app to subscribe.', 410);
 }
 
 /** The customer-facing portal, for changing card or cancelling. */
 export async function handleStripePortal(req: Request, env: Env): Promise<Response> {
-  const d = await body<{ token?: string; customerId?: string; returnUrl?: string }>(req);
+  const d = await body<{ token?: string; accountId?: string; returnUrl?: string }>(req);
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
   if (!env.STRIPE_SECRET_KEY) return fail('Stripe is not set up on this deployment.');
 
-  const customerId = String(d.customerId ?? '').trim();
+  /* The customer is the one the webhook recorded for a workspace this caller
+     may open — never an id from the request, which let anyone holding a
+     `cus_…` open that customer's portal, cancel, or change the card. */
+  const accountId = String(d.accountId ?? '').trim();
+  if (!accountId || !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
+  let customerId = '';
+  try {
+    const raw = await dataGet(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_status_${accountId}`);
+    customerId = String((JSON.parse(raw ?? '{}') as { customerId?: string }).customerId ?? '');
+  } catch { customerId = ''; }
   if (!/^cus_[A-Za-z0-9]+$/.test(customerId)) return fail('No Stripe customer is linked to this account yet.');
 
   const origin = new URL(req.url).origin;

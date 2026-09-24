@@ -148,14 +148,45 @@ export async function hasInstallOwner(db: D1Database): Promise<boolean> {
   return !!row;
 }
 
+/**
+ * What a session is stored under: a hash of the token, never the token.
+ *
+ * Sessions were keyed by the token itself, so anybody able to read the
+ * database — a leaked export, a backup, a support query — could sign in as
+ * every user in it. Now the browser holds the token and the database holds
+ * `h:` + its SHA-256, which is useless to present. Sessions issued before this
+ * change are still stored raw and are still accepted until they expire (at
+ * most 30 days), so nobody is signed out by the upgrade; after that the raw
+ * form can be dropped from `sessionKeys`.
+ */
+export async function sessionKey(raw: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  return `h:${[...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Both forms a session could be stored under — for lookups and deletes. */
+export async function sessionKeys(raw: string): Promise<[string, string]> {
+  return [await sessionKey(raw), raw];
+}
+
 export async function userFromToken(db: D1Database, token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
+  const [hashed, raw] = await sessionKeys(token);
   const row = await db.prepare(
-    `SELECT u.email, u.name, u.role, u.account_id AS accountId
+    `SELECT u.email, u.name, u.role, u.account_id AS accountId, s.token AS sk, s.last_seen_at AS seen
        FROM crm_sessions s JOIN crm_users u ON u.email = s.email
-      WHERE s.token = ? AND s.expires_at > ?`,
-  ).bind(token, Math.floor(Date.now() / 1000)).first<SessionUser>();
-  return row ?? null;
+      WHERE s.token IN (?, ?) AND s.expires_at > ?`,
+  ).bind(hashed, raw, Math.floor(Date.now() / 1000)).first<SessionUser & { sk: string; seen: string | null }>();
+  if (!row) return null;
+  /* "Last active", for the list of signed-in devices. Written at most every
+     ten minutes: every API call reads the session, and turning each of those
+     into a write would be most of this database's writes. */
+  const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+  if (!row.seen || row.seen < stale) {
+    try { await db.prepare('UPDATE crm_sessions SET last_seen_at = ? WHERE token = ?').bind(nowIso(), row.sk).run(); }
+    catch { /* a database older than 0049 — the session still works */ }
+  }
+  return { email: row.email, name: row.name, role: row.role, accountId: row.accountId };
 }
 
 /**
@@ -391,4 +422,48 @@ export async function sweepSessions(db: D1Database): Promise<void> {
      this already runs on every sign-in and every registration. */
   await db.prepare('DELETE FROM crm_signup_attempts WHERE created_at <= ?')
     .bind(Math.floor(Date.now() / 1000) - 7200).run();
+}
+
+/**
+ * The workspace a socket route acts for, checked.
+ *
+ * `requireSessionForSocket` proves a session exists and nothing more. Routes
+ * that then took `accountId` from the body and loaded that workspace's stored
+ * mailbox would read another customer's inbox, or send as them, for anyone
+ * signed in who named the id — and workspace ids are not secrets. This is the
+ * second half of that gate. `null` means go ahead.
+ *
+ * A null user is the first-run case `requireSessionForSocket` already allows:
+ * no accounts exist yet, so there is no other tenant to reach.
+ */
+export async function denyForeignWorkspace(
+  db: D1Database,
+  user: SessionUser | null,
+  accountId: string | undefined | null,
+): Promise<Response | null> {
+  const id = String(accountId ?? '').trim();
+  if (!id || !user) return null;
+  const access = await workspaceAccess(db, user, id);
+  if (access.ok) return null;
+  return new Response(JSON.stringify({ success: false, error: access.message ?? 'That workspace is not yours.' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+/**
+ * Is this id taken by another workspace?
+ *
+ * Every save here is `INSERT … ON CONFLICT(id) DO UPDATE`, and the ids are the
+ * whole primary key. Without a check, naming another tenant's product or
+ * project id updated *their* row. The upserts now carry
+ * `WHERE <table>.account_id = excluded.account_id`, so nothing is written; this
+ * lets the route say so rather than report a save that did not happen.
+ *
+ * The table name is always a literal from the caller, never from a request.
+ */
+export async function foreignId(env: Env, table: string, id: string, accountId: string): Promise<boolean> {
+  if (!/^crm_[a-z_]+$/.test(table)) throw new Error('foreignId: bad table');
+  const row = await env.DB.prepare(`SELECT account_id FROM ${table} WHERE id = ?`).bind(id).first<{ account_id: string }>();
+  return !!row && row.account_id !== accountId;
 }

@@ -224,7 +224,9 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
   const bgColorRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (editorRef.current) editorRef.current.innerHTML = initialValue;
+    /* Sanitised: a body can be AI-written from a scraped page, and whatever a
+       page says must not become script running with this session. */
+    if (editorRef.current) editorRef.current.innerHTML = sanitizeEmailHtml(initialValue);
     setWordCount(stripHtml(initialValue).split(/\s+/).filter(Boolean).length);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -263,7 +265,7 @@ function RichEmailEditor({ initialValue, onChange, compact }: { initialValue: st
 
   const applyTemplate = (templateHtml: string) => {
     if (editorRef.current) {
-      editorRef.current.innerHTML = templateHtml;
+      editorRef.current.innerHTML = sanitizeEmailHtml(templateHtml);
       onInput();
     }
     setShowTemplates(false);

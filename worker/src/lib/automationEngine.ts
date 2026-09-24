@@ -32,6 +32,7 @@
  * Waits are honoured exactly: `due_at` moves forward and the run is simply not
  * selected again until then. Nothing sleeps.
  */
+import { signTrackedLinks } from './trackSign';
 import type { Env } from './db';
 import { dataGet } from './db';
 import { logDelivery } from './deliveryLog';
@@ -463,7 +464,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           const html = personalise(String(node.config?.body ?? node.config?.preview ?? ''), contact);
           const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
           const mime = buildMime({
-            fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html,
+            fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: await signTrackedLinks(env, html),
             replyTo: mailbox!.from.replyTo || undefined,
           }, mailbox!.smtp.host);
           const r = await smtpSend(mailbox!.smtp, { from: fromEmail, to, mime });

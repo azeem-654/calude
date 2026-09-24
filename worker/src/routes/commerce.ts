@@ -13,7 +13,7 @@
  * thinks was paid and was not is worse than having no storefront at all.
  */
 import { body, fail, json } from '../lib/http';
-import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { storefrontCurrency, storefrontLabel, storefrontReady } from './storefront';
@@ -358,6 +358,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
   /* ── Products ── */
   if (act === 'save_product') {
     const id = String(d.id ?? '').trim() || rid('prod');
+    if (d.id && await foreignId(env, 'crm_products', id, accountId)) return fail('That product is not in this workspace.', 403);
     const name = String(d.name ?? '').trim();
     if (!name) return fail('A product needs a name.');
     /* Prices in minor units, clamped. A float price eventually shows
@@ -404,7 +405,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
          compare_at_cents=excluded.compare_at_cents,
          inventory=excluded.inventory, track_inventory=excluded.track_inventory,
          category=excluded.category, sort_order=excluded.sort_order,
-         project_id=excluded.project_id`,
+         project_id=excluded.project_id
+       WHERE crm_products.account_id = excluded.account_id`,
     ).bind(
       id, accountId, name.slice(0, 200), String(d.description ?? '').slice(0, 4000),
       String(d.sku ?? '').slice(0, 80), price, cost,
@@ -509,6 +511,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
 
     const now = nowIso();
     const id = String(d.id ?? '').trim() || rid('disc');
+    if (d.id && await foreignId(env, 'crm_discounts', id, accountId)) return fail('That discount is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at, used_count FROM crm_discounts WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string; used_count: number }>();
 
@@ -528,7 +531,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
          code=excluded.code, kind=excluded.kind, value=excluded.value,
          min_spend_cents=excluded.min_spend_cents, starts_at=excluded.starts_at,
          ends_at=excluded.ends_at, usage_limit=excluded.usage_limit,
-         status=excluded.status, updated_at=excluded.updated_at`,
+         status=excluded.status, updated_at=excluded.updated_at
+       WHERE crm_discounts.account_id = excluded.account_id`,
     ).bind(
       id, accountId, code, kind, value,
       clampInt(d.minSpendCents, 0, 100_000_000),
@@ -560,6 +564,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     if (!name) return fail('Give the rate a name — the buyer sees it at the checkout.');
     const now = nowIso();
     const id = String(d.id ?? '').trim() || rid('ship');
+    if (d.id && await foreignId(env, 'crm_shipping_rates', id, accountId)) return fail('That shipping rate is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at FROM crm_shipping_rates WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string }>();
 
@@ -576,7 +581,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, countries=excluded.countries, kind=excluded.kind,
          amount_cents=excluded.amount_cents, threshold_cents=excluded.threshold_cents,
-         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at`,
+         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at
+       WHERE crm_shipping_rates.account_id = excluded.account_id`,
     ).bind(
       id, accountId, name, countries,
       d.kind === 'free_over' ? 'free_over' : 'flat',
@@ -611,6 +617,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     if (!name) return fail('Give the tax a name — it is what the buyer sees on the receipt. “VAT”, “Sales tax”, “GST”.');
     const now = nowIso();
     const id = String(d.id ?? '').trim() || rid('tax');
+    if (d.id && await foreignId(env, 'crm_tax_rates', id, accountId)) return fail('That tax rate is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at FROM crm_tax_rates WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string }>();
 
@@ -631,7 +638,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
        VALUES (?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, countries=excluded.countries, percent_bp=excluded.percent_bp,
-         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at`,
+         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at
+       WHERE crm_tax_rates.account_id = excluded.account_id`,
     ).bind(
       id, accountId, name, countries, percentBp,
       clampInt(d.sortOrder, 0, 1000),
@@ -662,6 +670,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
 
     const now = nowIso();
     const id = String(d.id ?? '').trim() || rid('col');
+    if (d.id && await foreignId(env, 'crm_collections', id, accountId)) return fail('That collection is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at FROM crm_collections WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string }>();
 
@@ -683,7 +692,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
        VALUES (?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, slug=excluded.slug, description=excluded.description,
-         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at`,
+         position=excluded.position, status=excluded.status, updated_at=excluded.updated_at
+       WHERE crm_collections.account_id = excluded.account_id`,
     ).bind(
       id, accountId, name, slug, String(d.description ?? '').slice(0, 500),
       clampInt(d.sortOrder, 0, 1000),

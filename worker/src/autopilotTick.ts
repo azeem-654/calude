@@ -19,6 +19,7 @@
  * it inline and save a few minutes, but then two code paths could send the same
  * email, and the failure mode of that is a customer receiving it twice.
  */
+import { signTrackedLinks } from './lib/trackSign';
 import { dataGet, dataPut, installSecret, nowIso, type Env } from './lib/db';
 import { addr } from './lib/http';
 import { loadMailbox, loadMailboxes } from './routes/mailbox';
@@ -873,7 +874,7 @@ async function carryOutBuyerEmail(
     }
 
     const mime = buildMime({
-      fromName: mb.from.name || company, fromEmail, to: o.email, subject, html,
+      fromName: mb.from.name || company, fromEmail, to: o.email, subject, html: await signTrackedLinks(env, html),
       replyTo: mb.from.replyTo || undefined,
     }, mb.smtp.host);
 

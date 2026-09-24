@@ -4,6 +4,7 @@ import { login, bootstrap, register, hasAnyUser, authStatus, requestLoginCode, v
 import { activeBranding } from '../../services/tenancy';
 import { passwordProblem, passwordStrength } from '../../services/password';
 import { LogoMark } from '../shared/Logo';
+import TwoStepPrompt from './TwoStepPrompt';
 
 const INK = '#17191c';
 
@@ -93,6 +94,8 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
    */
   const [codeStep, setCodeStep] = useState<'off' | 'sent'>('off');
   const [code, setCode] = useState('');
+  /* Set when the first step was right and the account has 2-step sign-in on. */
+  const [ticket, setTicket] = useState('');
 
   /*
    * Whether Google is on offer, decided by the server rather than assumed.
@@ -130,6 +133,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
     setBusy(true); setError('');
     const r = await verifyLoginCode(email.trim(), code);
     setBusy(false);
+    if (r.mfaTicket) { setTicket(r.mfaTicket); return; }
     if (!r.ok) { setError(r.error); return; }
     onAuthed();
   };
@@ -204,12 +208,23 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
         return;
       }
       const res = await login(email.trim(), password);
-      if (res.ok) onAuthed();
+      if (res.mfaTicket) setTicket(res.mfaTicket);
+      else if (res.ok) onAuthed();
       else setError(res.error || 'Something went wrong.');
     } finally { setBusy(false); }
   };
 
   const inp: React.CSSProperties = { width: '100%', padding: '12px 12px 12px 40px', border: '1px solid #e6e9f0', borderRadius: 12, fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', background: '#fff' };
+
+  if (ticket) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#e9ebee', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ width: '100%', maxWidth: 400, background: '#fff', borderRadius: 22, padding: '28px 26px', boxShadow: '0 12px 40px -12px rgba(16,24,40,0.18)' }}>
+          <TwoStepPrompt ticket={ticket} onDone={onAuthed} onCancel={() => { setTicket(''); setPassword(''); setCode(''); setCodeStep('off'); }} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#e9ebee', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>

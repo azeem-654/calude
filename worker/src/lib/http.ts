@@ -28,6 +28,10 @@ export function corsHeaders(origin = '*'): Record<string, string> {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Vary': 'Origin',
+    /* An API answer is data. Told not to guess otherwise, a browser will never
+       run one as a script or render one as a page, whatever is inside it. */
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
   };
 }
 

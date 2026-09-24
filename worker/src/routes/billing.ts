@@ -33,7 +33,7 @@
  */
 import { addr, body, fail, json } from '../lib/http';
 import {
-  agencyBucketFor, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
+  agencyBucketFor, canAccess, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
 } from '../lib/db';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { DEFAULT_PROVIDER, providerChoices, providerFor, type ProviderContext } from '../lib/payments';
@@ -266,6 +266,9 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
 
     const accountId = String(d.accountId ?? '').trim();
     if (!accountId) return fail('Which workspace is being subscribed?');
+    /* Your own workspace. Paying for somebody else's, then refunding, flipped
+       their billing status to cancelled. */
+    if (!user || !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to subscribe.', 403);
 
     /* The plan names the price. `amount` in the request is ignored entirely —
        it is not validated and then used, it is never read. */
@@ -335,6 +338,24 @@ export async function handleBillingWebhook(req: Request, env: Env): Promise<Resp
 
   const event = provider.readEvent(payload);
   if (!event) return new Response('bad-json', { status: 400 });
+
+  /*
+   * Each delivery counts once.
+   *
+   * Creem signs the body and nothing else, so a delivery captured once stays
+   * valid for ever — and this handler overwrote the billing status with no
+   * other guard, so replaying an old "paid" reactivated a cancelled
+   * subscription. The body's hash is recorded; the same body again is
+   * acknowledged and ignored. (A processor's own retry of an event already
+   * handled is exactly that case, so 200 is the right answer to it.)
+   */
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+    const id = `billing:${[...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')}`;
+    const fresh = await env.DB.prepare('INSERT OR IGNORE INTO crm_webhook_events (id, source, created_at) VALUES (?, ?, ?)')
+      .bind(id, provider.id, nowIso()).run();
+    if (!fresh.meta.changes) return new Response('ok (already handled)', { status: 200 });
+  } catch { /* a database before 0049: carry on as before */ }
 
   /*
    * Two different things arrive on this endpoint.

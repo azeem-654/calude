@@ -20,7 +20,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader } from 'lucide-react';
-import { googleFinish } from '../../services/auth';
+import { googleFinish, googleStateIsOurs } from '../../services/auth';
+import TwoStepPrompt from './TwoStepPrompt';
 import { LogoMark } from '../shared/Logo';
 
 const INK = '#17191c';
@@ -31,6 +32,7 @@ const spent = new Set<string>();
 
 export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
   const [error, setError] = useState('');
+  const [ticket, setTicket] = useState('');
   const done = useRef(false);
 
   useEffect(() => {
@@ -56,9 +58,14 @@ export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
     }
     if (spent.has(code)) return;
     spent.add(code);
+    if (!googleStateIsOurs(state)) {
+      setError('That sign-in was not started from this browser, so it was not used. Start again from the sign-in page.');
+      return;
+    }
 
     void (async () => {
       const r = await googleFinish(code, state);
+      if (r.mfaTicket) { setTicket(r.mfaTicket); return; }
       if (r.ok) { onAuthed(); return; }
       setError(r.error);
     })();
@@ -76,7 +83,11 @@ export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
           <LogoMark size={30} />
         </div>
         <div style={{ background: '#fff', borderRadius: 20, padding: '30px 26px', boxShadow: '0 12px 40px -12px rgba(16,24,40,0.18)' }}>
-          {error ? (
+          {ticket ? (
+            <div style={{ textAlign: 'left' }}>
+              <TwoStepPrompt ticket={ticket} onDone={onAuthed} onCancel={back} />
+            </div>
+          ) : error ? (
             <>
               <AlertTriangle size={20} color="#e5484d" />
               <p style={{ fontSize: 13.5, color: INK, lineHeight: 1.6, margin: '10px 0 16px', fontWeight: 600 }}>{error}</p>

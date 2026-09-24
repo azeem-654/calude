@@ -16,6 +16,7 @@
  * anonymous caller can do is record a fake open on an id they would have to
  * guess. Reading the events back is what needs the session, and does.
  */
+import { trackedLinkValid } from '../lib/trackSign';
 import { corsHeaders, fail, json } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { dataGet } from '../lib/db';
@@ -86,6 +87,30 @@ async function fire(env: Env, accountId: string, emailId: string, kind: 'open' |
   });
 }
 
+/** A plain page naming the destination, for a link this server did not sign. */
+function leaving(dest: URL): Response {
+  const esc = (x: string) => x.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
+  const href = esc(dest.toString());
+  const host = esc(dest.hostname);
+  const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Leaving for ${host}</title></head>`
+    + `<body style="font-family:system-ui,sans-serif;background:#f4f5f7;margin:0;display:grid;place-items:center;min-height:100vh;padding:20px">`
+    + `<main style="background:#fff;border-radius:16px;padding:28px;max-width:440px;box-shadow:0 10px 30px -12px rgba(0,0,0,.2)">`
+    + `<h1 style="font-size:18px;margin:0 0 8px">This link goes to ${host}</h1>`
+    + `<p style="color:#475569;font-size:14px;line-height:1.55;margin:0 0 18px">Only continue if you expected to go there.</p>`
+    + `<p style="word-break:break-all;font-size:12.5px;color:#64748b;margin:0 0 18px">${href}</p>`
+    + `<a href="${href}" rel="noopener noreferrer nofollow" style="display:inline-block;background:#17191c;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px">Continue to ${host}</a>`
+    + `</main></body></html>`;
+  return new Response(page, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
+}
+
 export async function handleTrack(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const account = (url.searchParams.get('a') ?? '').slice(0, 64);
@@ -116,7 +141,7 @@ export async function handleTrack(req: Request, env: Env): Promise<Response> {
     /* A malformed id is dropped rather than stored: this endpoint is public,
        and the pixel still has to be returned either way so the message does
        not render with a broken image. */
-    if (ID_OK.test(openId) && account) {
+    if (ID_OK.test(openId) && account && await trackedLinkValid(env, account, `open:${openId}`, '', url.searchParams.get('s') ?? '')) {
       await record(env, account, openId, 'open', '', ua).catch(() => {});
     }
     return pixel();
@@ -135,13 +160,19 @@ export async function handleTrack(req: Request, env: Env): Promise<Response> {
       if (parsed.protocol === 'http:' || parsed.protocol === 'https:') dest = parsed;
     } catch { /* not a URL */ }
 
-    if (ID_OK.test(clickId) && account && dest) {
-      await record(env, account, clickId, 'click', dest.toString(), ua).catch(() => {});
-    }
     if (!dest) {
       return new Response('That link is not one this tracker can follow.', {
         status: 400, headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
+    }
+    /* Only a link this server signed on its way out is followed straight
+       through and counted (lib/trackSign.ts). Anything else — an email from
+       before signing, or a link somebody assembled to borrow this domain —
+       gets a page saying where it goes, and a click is not recorded. */
+    const signed = await trackedLinkValid(env, account, clickId, target, url.searchParams.get('s') ?? '');
+    if (!signed) return leaving(dest);
+    if (ID_OK.test(clickId) && account) {
+      await record(env, account, clickId, 'click', dest.toString(), ua).catch(() => {});
     }
     return Response.redirect(dest.toString(), 302);
   }

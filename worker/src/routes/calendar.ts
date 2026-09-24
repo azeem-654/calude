@@ -53,14 +53,17 @@ export async function handleCalendar(req: Request, env: Env): Promise<Response> 
     const state = url.searchParams.get('state') ?? '';
     const denied = url.searchParams.get('error');
 
+    /* Escaped: `detail` can carry Google's own error text, which is not ours
+       to trust inside a page on our domain. */
+    const esc = (x: string) => x.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
     const page = (title: string, detail: string) => new Response(
-      `<!doctype html><meta charset="utf-8"><title>${title}</title>`
+      `<!doctype html><meta charset="utf-8"><title>${esc(title)}</title>`
       + '<body style="font-family:system-ui;padding:48px;max-width:32rem;margin:0 auto;color:#0f172a">'
-      + `<h1 style="font-size:20px">${title}</h1>`
-      + `<p style="color:#64748b;line-height:1.6">${detail}</p>`
-      + `<p><a href="${origin}/engagement" style="color:#5b46e5">Back to Customer Engagement</a></p>`
+      + `<h1 style="font-size:20px">${esc(title)}</h1>`
+      + `<p style="color:#64748b;line-height:1.6">${esc(detail)}</p>`
+      + `<p><a href="${esc(origin)}/engagement" style="color:#5b46e5">Back to Customer Engagement</a></p>`
       + '</body>',
-      { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+      { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'", 'X-Content-Type-Options': 'nosniff' } },
     );
 
     if (denied) return page('Calendar not connected', 'Google was not given permission, so nothing was changed.');

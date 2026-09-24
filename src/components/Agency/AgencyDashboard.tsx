@@ -617,10 +617,10 @@ function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () 
               <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>Subscription for {account.name}</div>
               <p style={{ fontSize: 12, color: MUTED, margin: '0 0 12px' }}>{planById(account.plan).name} plan · <strong style={{ color: INK }}>${account.price}/mo</strong> · billed to {account.contactEmail || '(no email)'}</p>
 
-              <button onClick={subscribe} disabled={busy || !cfg.secretKey || !account.contactEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '11px', background: (cfg.secretKey && account.contactEmail) ? '#635bff' : '#c7cbd1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: (cfg.secretKey && account.contactEmail) ? 'pointer' : 'not-allowed' }}>
+              <button onClick={subscribe} disabled={busy || !(cfg.secretKey || cfg.connected) || !account.contactEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '11px', background: ((cfg.secretKey || cfg.connected) && account.contactEmail) ? '#635bff' : '#c7cbd1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: ((cfg.secretKey || cfg.connected) && account.contactEmail) ? 'pointer' : 'not-allowed' }}>
                 <CreditCard size={15} /> {busy ? 'Creating checkout…' : 'Create Stripe Checkout link'}
               </button>
-              {!cfg.secretKey && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>Add your Stripe secret key above first.</p>}
+              {!(cfg.secretKey || cfg.connected) && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>Add your Stripe secret key above first.</p>}
               {!account.contactEmail && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>This client needs a contact email (set it in Edit).</p>}
               {err && <p style={{ fontSize: 12, color: '#e5484d', margin: '8px 0 0', fontWeight: 600 }}>{err}</p>}
 

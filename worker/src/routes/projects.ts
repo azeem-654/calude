@@ -19,7 +19,7 @@
  * the first time like every other channel that reaches a stranger.
  */
 import { body, fail, json } from '../lib/http';
-import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { readSite } from '../lib/readSite';
@@ -214,6 +214,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const verdict = await contentGate(env, accountId, 'portfolio', profileText);
 
     const now = nowIso();
+    if (d.id && await foreignId(env, 'crm_portfolios', id, accountId)) return fail('That portfolio is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at FROM crm_portfolios WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string }>();
     await env.DB.prepare(
@@ -221,7 +222,8 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
        VALUES (?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          name=excluded.name, profile=excluded.profile, source=excluded.source,
-         updated_at=excluded.updated_at`,
+         updated_at=excluded.updated_at
+       WHERE crm_portfolios.account_id = excluded.account_id`,
     ).bind(
       id, accountId, name.slice(0, 160),
       JSON.stringify(d.profile ?? {}).slice(0, 200_000),
@@ -446,6 +448,11 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     }
 
     const now = nowIso();
+    /* An id that is somebody else's is refused, not upserted. `ON CONFLICT(id)`
+       used to update the other workspace's row — their guardrails, their brief —
+       while leaving it theirs; the WHERE on the upsert now stops that, and this
+       says so instead of answering "saved". */
+    if (d.id && await foreignId(env, 'crm_projects', id, accountId)) return fail('That project is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at, guardrails, status, launch_steps AS launchSteps, brief FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string; launchSteps: string; brief: string }>();
 
@@ -470,7 +477,8 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
          guardrails=excluded.guardrails, revenue_target=excluded.revenue_target,
          volume_target=excluded.volume_target, goals=excluded.goals,
          launch_steps=excluded.launch_steps, brief=excluded.brief,
-         last_error='', updated_at=excluded.updated_at`,
+         last_error='', updated_at=excluded.updated_at
+       WHERE crm_projects.account_id = excluded.account_id`,
     ).bind(
       id, accountId, portfolioId, name.slice(0, 160), objective.slice(0, 2000),
       kind, existing?.status ?? 'learning', JSON.stringify(guardrails),
@@ -494,8 +502,8 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
         `SELECT id, account_id, name, kind, objective, portfolio_id,
                 revenue_target AS revenueTarget, volume_target AS volumeTarget, goals,
                 launch_steps AS launchSteps
-         FROM crm_projects WHERE id = ?`,
-      ).bind(id).first<{
+         FROM crm_projects WHERE id = ? AND account_id = ?`,
+      ).bind(id, accountId).first<{
         id: string; account_id: string; name: string; kind: string; objective: string;
         portfolio_id: string; revenueTarget: number; volumeTarget: number; goals: string;
         launchSteps: string;

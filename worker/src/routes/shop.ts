@@ -22,7 +22,7 @@
  *    fill it.
  */
 import { addr, body, fail, json } from '../lib/http';
-import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
+import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { priceBasket, type Discount, type ShippingRate, type TaxRate } from '../lib/checkout';
 import { createPayLink } from './storefront';
 import { rateLimit } from '../lib/rateLimit';
@@ -625,6 +625,7 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
 
   if (act === 'save') {
     const id = String(d.id ?? '').trim() || rid('shop');
+    if (d.id && await foreignId(env, 'crm_shops', id, accountId)) return fail('That shop is not in this workspace.', 403);
     const name = String(d.name ?? '').trim();
     if (!name) return fail('Give the shop a name.');
 
@@ -661,7 +662,8 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
          status=excluded.status, updated_at=excluded.updated_at,
          template=excluded.template, hero_image=excluded.hero_image,
          shipping_note=excluded.shipping_note, returns_note=excluded.returns_note,
-         contact_email=excluded.contact_email`,
+         contact_email=excluded.contact_email
+       WHERE crm_shops.account_id = excluded.account_id`,
     ).bind(
       id, accountId, String(d.projectId ?? '').slice(0, 80), slug, name.slice(0, 120),
       String(d.headline ?? '').slice(0, 200), String(d.about ?? '').slice(0, 2000),

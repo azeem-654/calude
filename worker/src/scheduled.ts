@@ -17,6 +17,7 @@
  * that misses a tick — the recipient sees the mistake either way, but only
  * one of them is embarrassing twice.
  */
+import { signTrackedLinks } from './lib/trackSign';
 import type { Env } from './lib/db';
 import { dataGet, dataPut } from './lib/db';
 import { logDelivery } from './lib/deliveryLog';
@@ -223,7 +224,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
         fromEmail,
         to: target,
         subject,
-        html,
+        html: await signTrackedLinks(env, html),
         replyTo: mailbox!.from.replyTo || undefined,
       }, mailbox!.smtp.host);
       const r = await smtpSend(mailbox!.smtp, { from: fromEmail, to: target, mime });

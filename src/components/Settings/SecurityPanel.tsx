@@ -14,7 +14,7 @@
  */
 import { useState } from 'react';
 import { Shield, Check, AlertTriangle, LogOut, Loader, KeyRound } from 'lucide-react';
-import { getSession, setUserPassword, logout, login } from '../../services/auth';
+import { getSession, setUserPassword, logout } from '../../services/auth';
 import { passwordProblem, passwordStrength } from '../../services/password';
 
 const CARD: React.CSSProperties = {
@@ -49,17 +49,11 @@ export default function SecurityPanel() {
     if (next === current) { setMsg({ ok: false, text: 'That is already your password.' }); return; }
 
     setBusy(true);
-    /* The current password is verified by actually signing in with it, rather
-       than taken on trust. Without this, anyone who walked up to an unlocked
-       screen could change the password without knowing the old one. */
-    const check = await login(email, current);
-    if (!check.ok) {
-      setBusy(false);
-      setMsg({ ok: false, text: 'Your current password is not right.' });
-      return;
-    }
-
-    const res = await setUserPassword(email, next);
+    /* The current password goes with the request and the server checks it.
+       This used to be checked by signing in again from the browser, which the
+       server never saw — so the endpoint itself would change a password for
+       anybody who asked. */
+    const res = await setUserPassword(email, next, current);
     setBusy(false);
     if (res.ok) {
       setCurrent(''); setNext(''); setConfirm('');

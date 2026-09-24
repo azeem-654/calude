@@ -12,8 +12,9 @@
  * the request before it is made, and a sending key in the page is a licence to
  * send as that customer sitting where any script can read it.
  */
+import { signTrackedLinks } from '../lib/trackSign';
 import { addr, body, fail, headerSafe, json } from '../lib/http';
-import { requireSessionForSocket, type Env } from '../lib/db';
+import { requireSessionForSocket, denyForeignWorkspace, type Env } from '../lib/db';
 import { loadMailbox } from './mailbox';
 import { gate as contentGate } from '../lib/contentGate';
 
@@ -88,6 +89,8 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
   const d = await body<ProviderBody>(req);
   const gate = await requireSessionForSocket(env.DB, d.token);
   if ('denied' in gate) return gate.denied;
+  const foreign = await denyForeignWorkspace(env.DB, gate.user, d.accountId);
+  if (foreign) return foreign;
 
   /*
    * The key comes from the workspace's mailbox, not from the browser.
@@ -130,7 +133,7 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
 
   const fromName = headerSafe(d.fromName ?? 'CRM', 120);
   const subject = headerSafe(d.subject ?? '', 300) || '(no subject)';
-  const html = String(d.html ?? '');
+  const html = await signTrackedLinks(env, String(d.html ?? ''));
 
   /* The other email exit. A workspace that sends through Resend or Brevo rather
      than its own SMTP is on the same terms — an exit guarded on one route and

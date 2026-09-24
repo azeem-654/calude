@@ -200,9 +200,27 @@ function setActiveWorkspace(id: string) {
   try { window.localStorage.setItem('crm_active_account', id); } catch { /* private mode */ }
 }
 
-export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+/**
+ * 2-step sign-in. A correct password (or code, or Google) on an account with
+ * it switched on comes back as a ticket, not a session; the screen then asks
+ * for the six digits and `finishTwoStep` exchanges both for the session.
+ */
+export async function finishTwoStep(ticket: string, code: string): Promise<{ ok: boolean; error: string }> {
+  const res = await php('login_mfa', { ticket, code });
+  if (!res) return { ok: false, error: 'Could not reach the server.' };
+  if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That code did not work.') };
+  adoptSession(res.data);
+  return { ok: true, error: '' };
+}
+
+const ticketOf = (data: Record<string, unknown>): string | undefined =>
+  data.mfaRequired ? String(data.ticket ?? '') : undefined;
+
+export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string; mfaTicket?: string }> {
   const res = await php('login', { email, password });
   if (res) {
+    const mfaTicket = ticketOf(res.data);
+    if (mfaTicket) return { ok: false, mfaTicket, error: String(res.data.error ?? '') };
     if (res.ok) {
       const user = res.data.user as AuthUser;
       setSession({ token: res.data.token as string, user, backend: 'php' });
@@ -296,9 +314,11 @@ export async function requestLoginCode(email: string): Promise<{ ok: boolean; me
 }
 
 /** Exchange the six digits for a session. Creates the account if it is new. */
-export async function verifyLoginCode(email: string, code: string): Promise<{ ok: boolean; error: string }> {
+export async function verifyLoginCode(email: string, code: string): Promise<{ ok: boolean; error: string; mfaTicket?: string }> {
   const res = await php('verify_code', { email, code });
   if (!res) return { ok: false, error: 'Could not reach the server.' };
+  const mfaTicket = ticketOf(res.data);
+  if (mfaTicket) return { ok: false, mfaTicket, error: String(res.data.error ?? '') };
   if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That code did not work.') };
   adoptSession(res.data);
   return { ok: true, error: '' };
@@ -314,15 +334,31 @@ export async function verifyLoginCode(email: string, code: string): Promise<{ ok
 export async function googleStart(): Promise<{ ok: boolean; url: string; error: string }> {
   const res = await php('google_start', {});
   if (!res) return { ok: false, url: '', error: 'Could not reach the server.' };
-  return res.ok
-    ? { ok: true, url: String(res.data.url ?? ''), error: '' }
-    : { ok: false, url: '', error: String(res.data.error ?? 'Google sign-in is not available.') };
+  if (!res.ok) return { ok: false, url: '', error: String(res.data.error ?? 'Google sign-in is not available.') };
+  const url = String(res.data.url ?? '');
+  /* Remembered in this tab so the callback can check the answer is to a
+     sign-in *this browser* started. The server's signature proves the state
+     is genuine, not whose it is — without this, somebody could send you a
+     link carrying their own Google answer and sign you into their account. */
+  try { sessionStorage.setItem('crm_google_state', new URL(url).searchParams.get('state') ?? ''); } catch { /* storage off */ }
+  return { ok: true, url, error: '' };
+}
+
+/** Was this Google answer to a sign-in started in this tab? */
+export function googleStateIsOurs(state: string): boolean {
+  try {
+    const mine = sessionStorage.getItem('crm_google_state') ?? '';
+    sessionStorage.removeItem('crm_google_state');
+    return !!mine && mine === state;
+  } catch { return false; }
 }
 
 /** Hand Google's code back to the Worker, which swaps it and issues a session. */
-export async function googleFinish(code: string, state: string): Promise<{ ok: boolean; error: string }> {
+export async function googleFinish(code: string, state: string): Promise<{ ok: boolean; error: string; mfaTicket?: string }> {
   const res = await php('google_finish', { code, state });
   if (!res) return { ok: false, error: 'Could not reach the server.' };
+  const mfaTicket = ticketOf(res.data);
+  if (mfaTicket) return { ok: false, mfaTicket, error: String(res.data.error ?? '') };
   if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That sign-in did not work.') };
   adoptSession(res.data);
   return { ok: true, error: '' };
@@ -401,10 +437,11 @@ export async function deleteUser(email: string): Promise<{ ok: boolean; error?: 
 }
 
 /** Agency: reset another member's password (or your own). */
-export async function setUserPassword(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+export async function setUserPassword(email: string, password: string, currentPassword?: string): Promise<{ ok: boolean; error?: string }> {
   if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
   const s = getSession();
-  const res = await php('set_password', { token: s?.token, email, password });
+  /* Changing your own needs your current one; the server checks it. */
+  const res = await php('set_password', { token: s?.token, email, password, currentPassword });
   if (res) return res.ok ? { ok: true } : { ok: false, error: (res.data.error as string) || 'Could not set the password.' };
   const users = loadLocalUsers();
   const idx = users.findIndex(u => u.email === email.toLowerCase());

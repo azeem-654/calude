@@ -32,12 +32,31 @@ export interface BillingRecord {
 const CFG_KEY = 'crm_stripe_config';      // agency-global
 const BILL_KEY = 'crm_billing_records';   // agency-global
 
+/*
+ * The secret key is never kept in the browser.
+ *
+ * It used to be saved here in full — in a key every workspace opened in this
+ * browser shares, readable by any script or extension on the page. It goes to
+ * the server once (`saveStripeSecretToServer`, encrypted there) and all this
+ * remembers is that it was connected. A copy left by an older version is
+ * wiped the first time this is read.
+ */
 export function loadStripeConfig(): StripeConfig {
-  try { const c = JSON.parse(window.localStorage.getItem(CFG_KEY) || 'null'); if (c) return c; } catch { /* ignore */ }
+  try {
+    const c = JSON.parse(window.localStorage.getItem(CFG_KEY) || 'null') as StripeConfig | null;
+    if (c) {
+      if (c.secretKey) {
+        const clean = { publishableKey: c.publishableKey ?? '', connected: !!c.connected || !!c.secretKey };
+        window.localStorage.setItem(CFG_KEY, JSON.stringify(clean));
+        return { ...clean, secretKey: '' };
+      }
+      return { secretKey: '', publishableKey: c.publishableKey ?? '', connected: !!c.connected };
+    }
+  } catch { /* ignore */ }
   return { secretKey: '', publishableKey: '', connected: false };
 }
 export function saveStripeConfig(c: StripeConfig) {
-  window.localStorage.setItem(CFG_KEY, JSON.stringify({ ...c, connected: !!c.secretKey }));
+  window.localStorage.setItem(CFG_KEY, JSON.stringify({ publishableKey: c.publishableKey, connected: !!c.connected || !!c.secretKey }));
 }
 
 export function loadBilling(): BillingRecord[] {

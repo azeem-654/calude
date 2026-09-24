@@ -49,6 +49,13 @@ const KEEP_DAYS = {
      than any window in use, so this can never delete a budget somebody is
      still inside. */
   rateLimits: 1,
+  /* Security events: long enough to answer "was anyone trying my account
+     last quarter", short enough not to become a permanent record of where
+     everyone signs in from. */
+  audit: 180,
+  /* Webhook deliveries already handled. Processors retry for days, not
+     months; a replay older than this finds the order or status long settled. */
+  webhooks: 90,
 } as const;
 
 const GATE_KEY = 'housekeeping_at';
@@ -92,6 +99,8 @@ export async function runHousekeeping(env: Env): Promise<HousekeepingReport> {
   await sweep('DELETE FROM crm_agent_runs WHERE created_at < ?', daysAgo(KEEP_DAYS.agentRuns));
   await sweep('DELETE FROM crm_ticks WHERE at < ?', daysAgo(KEEP_DAYS.ticks));
   await sweep('DELETE FROM crm_rate_limits WHERE window_start < ?', daysAgo(KEEP_DAYS.rateLimits));
+  await sweep('DELETE FROM crm_audit_events WHERE at < ?', daysAgo(KEEP_DAYS.audit));
+  await sweep('DELETE FROM crm_webhook_events WHERE created_at < ?', daysAgo(KEEP_DAYS.webhooks));
 
   /* Stamped after the work rather than before, so a run that died half way
      through is retried on the next tick instead of being skipped for an hour. */
