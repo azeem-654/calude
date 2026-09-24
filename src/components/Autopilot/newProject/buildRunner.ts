@@ -168,7 +168,15 @@ export async function runBuild(
         if (r.success && r.profile) profile = { ...r.profile, website: site };
         else profileNote = `Could not read the website (${r.error ?? 'no answer'}), so the profile starts from its name — add detail on the project later.`;
       }
-      if (!profile.companyName) profile = { companyName: domainName(site) || 'My business', description: profile.description || state.prompt.slice(0, 300), website: site, ...profile };
+      /* The fallbacks go *after* the spread. A reading that returned
+         `companyName: ""` used to be spread over them, and the save was sent
+         with no name at all — "A portfolio needs the client's name", at 35%. */
+      profile = {
+        ...profile,
+        companyName: profile.companyName?.trim() || domainName(site) || 'My business',
+        description: profile.description?.trim() || state.prompt.slice(0, 300),
+        website: site,
+      };
     } else if (business === 'upload') {
       if (inp.profileDraft?.companyName || inp.profileDraft?.description) profile = { ...inp.profileDraft };
       else {
@@ -177,7 +185,11 @@ export async function runBuild(
         if (u?.ok && u.understanding?.profile?.companyName) profile = { ...u.understanding.profile };
         else profileNote = u?.noAi ? 'The document could not be read without the AI, so the profile starts almost empty — add detail on the project later.' : 'The document did not say enough to describe the business — add detail on the project later.';
       }
-      if (!profile.companyName) profile = { companyName: inp.workspace?.companyName || 'My business', description: state.prompt.slice(0, 300), ...profile };
+      profile = {
+        ...profile,
+        companyName: profile.companyName?.trim() || inp.workspace?.companyName || 'My business',
+        description: profile.description?.trim() || state.prompt.slice(0, 300),
+      };
     } else if (business === 'workspace' && inp.workspace) {
       profile = { companyName: inp.workspace.companyName, description: inp.workspace.description, website: inp.workspace.website };
     } else {

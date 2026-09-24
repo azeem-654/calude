@@ -304,6 +304,57 @@ for (const width of [1280, 390]) {
   await ctx.close();
 }
 
+/* ── TEST 8: a website that cannot be fully read is answered where it is given ──
+   The build used to read the site, get no name back, and stop at 35% with
+   "A portfolio needs the client's name" — on a screen with nowhere to type it.
+   Locally there is no AI key, so the site cannot be read at all: the business
+   screen must say so, offer to take the details, and hold Continue until the
+   name and what the business does are there. */
+{
+  const { ctx, p, d, errs } = await open(1280, 't8');
+  await d.getByLabel('What would you like Autopilot to do?').fill('Post one social image every weekday.');
+  await cta(d).click();
+  await d.getByText(/Here.s what I understood/).waitFor({ timeout: 20000 });
+  await cta(d).click();
+  let reached = false;
+  for (let i = 0; i < 8 && !reached; i++) {
+    await p.waitForTimeout(250);
+    const biz = d.locator('.np-q').filter({ hasText: 'How should Autopilot learn about the business?' });
+    if (await biz.count()) { reached = true; break; }
+    await answerScreen(d);
+    await cta(d).click();
+  }
+  ok('T8 the business screen is asked', reached);
+  await d.getByRole('button', { name: /Read my website/ }).click();
+  await d.locator('.np-q').filter({ hasText: 'The business website' }).locator('input').fill('https://pikeplumbing-test.example');
+  await d.getByText(/Could not read that site|What I found/).first().waitFor({ timeout: 25000 });
+  const said = await d.innerText();
+  ok('T8 the site is read on this screen, before moving on', /Could not read that site|What I found/.test(said), said.slice(0, 200));
+  ok('T8 Continue is held until the business is known', await cta(d).isDisabled(), await cta(d).innerText());
+  const typeIn = d.getByRole('button', { name: 'Type it in instead' });
+  if (await typeIn.count()) await typeIn.click();
+  ok('T8 the missing answer is asked for by name', /Business name — needed/.test(await d.innerText()), (await d.innerText()).slice(0, 300));
+  await d.getByLabel(/Business name/).fill('Pike Plumbing & Heating');
+  ok('T8 still held until it says what the business does', await cta(d).isDisabled(), await cta(d).innerText());
+  await d.getByLabel(/What it does/).fill('Boiler repairs and installations across Leeds');
+  await p.waitForTimeout(200);
+  ok('T8 then it can continue', !(await cta(d).isDisabled()), await cta(d).innerText());
+  for (let i = 0; i < 10; i++) {
+    await p.waitForTimeout(250);
+    if (await d.getByText(/Here.s what Autopilot/).count()) break;
+    await answerScreen(d);
+    await p.waitForTimeout(150);
+    if (await cta(d).isDisabled()) break;
+    await cta(d).click();
+  }
+  const { built } = await buildIt(p, d);
+  ok('T8 the build does not stop for a missing name', !/needs the client/.test(built) && /Your Autopilot is ready/.test(built), built.slice(0, 300));
+  const name = execSync(`npx wrangler d1 execute crmpro --local --json --command "SELECT name FROM crm_portfolios WHERE account_id = '${lastSession.acct}'"`, { encoding: 'utf8' });
+  ok('T8 the profile is saved under the name they typed', /Pike Plumbing & Heating/.test(name), name.slice(-200));
+  ok('T8 no page errors', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;

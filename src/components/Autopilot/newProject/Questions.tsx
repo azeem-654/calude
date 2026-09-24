@@ -10,14 +10,18 @@
  * five honest ways to answer it and a dropdown would hide four.
  */
 import { useRef } from 'react';
-import { Building2, Globe, Upload, PenLine, Sparkles, Check, Image as ImageIcon, UserCircle2 } from 'lucide-react';
+import { Building2, Globe, Upload, PenLine, Sparkles, Check, Image as ImageIcon, UserCircle2, Loader, AlertTriangle, RefreshCcw } from 'lucide-react';
 import { GROUP_TITLE, type Question } from '../../../services/projectSolutions';
 import type { Attachment, IntakeState, KnownSource, Screen, WorkspaceFacts } from '../../../services/projectIntake';
 import { readAttachment } from './attachments';
-import { MANUAL_FIELDS } from './questionRules';
+import { MANUAL_FIELDS, PROFILE_FIELDS, profileSource, type ProfileCheck } from './questionRules';
 
-export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total }: {
+export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile }: {
   screen: Screen;
+  /** The business as read so far, and the two ways to change it. */
+  profile: ProfileCheck;
+  onProfile: (patch: Record<string, string>) => void;
+  onReadProfile: () => void;
   state: IntakeState;
   ws: WorkspaceFacts;
   files: Attachment[];
@@ -38,6 +42,90 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
       {screen.questions.map(q => (
         <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} />
       ))}
+      {screen.questions.some(q => q.id === 'business') && (
+        <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * What was read about the business, right under where it was given.
+ *
+ * The site is read here, the moment its address is in, rather than during the
+ * build — so a reading that came back without a name, or could not open the
+ * page at all, is answered on this screen with a field to type into, instead
+ * of stopping the build at 35% with nowhere to put the answer.
+ */
+function ProfileFound({ state, files, profile, onProfile, onRead }: {
+  state: IntakeState; files: Attachment[]; profile: ProfileCheck;
+  onProfile: (patch: Record<string, string>) => void; onRead: () => void;
+}) {
+  const business = String(state.known.business?.value ?? '');
+  if (business !== 'website' && business !== 'upload') return null;
+  const source = profileSource(state, files);
+  if (!source) return null;
+  const what = business === 'website' ? 'the website' : 'the profile';
+  const fresh = profile.readFor === source && !!profile.draft;
+
+  if (profile.reading) {
+    return (
+      <div className="np-q" role="status" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, display: 'flex' }}>
+        <Loader size={16} className="spin" color="#5b46e5" />
+        <span style={{ fontSize: 14, color: '#334155' }}>Reading {what} — this takes a few seconds…</span>
+      </div>
+    );
+  }
+  if (!fresh) {
+    return (
+      <div className="np-q" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {profile.error && (
+          <span style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 13, color: '#9a3412', flex: '1 1 260px' }}>
+            <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} /> {profile.error}
+          </span>
+        )}
+        <button type="button" className="np-tool" onClick={onRead}>
+          <RefreshCcw size={14} /> {profile.error ? 'Try again' : `Read ${what} now`}
+        </button>
+        {profile.error && (
+          <button type="button" className="np-skip" onClick={() => onProfile({ companyName: '', description: '' })}>
+            Type it in instead
+          </button>
+        )}
+      </div>
+    );
+  }
+  const draft = profile.draft ?? {};
+  const missing = PROFILE_FIELDS.filter(f => f.need && !String(draft[f.id] ?? '').trim());
+  return (
+    <div className="np-q">
+      <div className="np-q-head">
+        <span style={{ fontSize: 17, fontWeight: 750, color: '#17191c' }}>What I found</span>
+        <span className="np-need" data-need={missing.length ? 'required' : 'optional'}>
+          {missing.length ? `${missing.length} TO ADD` : 'LOOKS COMPLETE'}
+        </span>
+      </div>
+      <p style={{ margin: '-4px 0 0', fontSize: 13, color: '#6b7280', lineHeight: 1.55 }}>
+        {missing.length
+          ? `${what.charAt(0).toUpperCase()}${what.slice(1)} did not say everything. Fill in what is missing — every post and email is written from this.`
+          : 'Check it reads right — every post and email is written from this. Change anything that is off.'}
+      </p>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {PROFILE_FIELDS.map(f => {
+          const v = String(draft[f.id] ?? '');
+          const gap = f.need && !v.trim();
+          return (
+            <label key={f.id} style={{ display: 'grid', gap: 5, fontSize: 12.5, fontWeight: 700, color: gap ? '#b45309' : '#475569' }}>
+              <span>{f.label}{gap ? ' — needed' : ''}</span>
+              {f.id === 'description'
+                ? <textarea className="np-input" rows={2} value={v} placeholder={f.placeholder}
+                    onChange={e => onProfile({ [f.id]: e.target.value })} style={gap ? { borderColor: '#f59e0b' } : undefined} />
+                : <input className="np-input" value={v} placeholder={f.placeholder}
+                    onChange={e => onProfile({ [f.id]: e.target.value })} style={gap ? { borderColor: '#f59e0b' } : undefined} />}
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }

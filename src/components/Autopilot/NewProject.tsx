@@ -44,7 +44,7 @@ import { loadOnboarding } from '../../services/onboarding';
 import { WizardBackdrop, WizardCta } from '../shared/WizardChrome';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import AutopilotBot from './AutopilotBot';
-import type { Portfolio } from '../../services/projects';
+import { readPortfolioFromUrl, type Portfolio } from '../../services/projects';
 import { checkReadiness, type Readiness } from '../../services/projectReadiness';
 import { understand, refine } from '../../services/intake';
 import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from '../../services/projectSolutions';
@@ -56,7 +56,7 @@ import {
 import Describe, { type DescribeValue } from './newProject/Describe';
 import Understanding, { type Stage } from './newProject/Understanding';
 import Questions from './newProject/Questions';
-import { screenBlocker } from './newProject/questionRules';
+import { screenBlocker, profileGap, profileSource, type ProfileCheck } from './newProject/questionRules';
 import BlueprintView, { EditPanel, type EditMessage } from './newProject/BlueprintView';
 import Requirements from './newProject/Requirements';
 import Review from './newProject/Review';
@@ -110,7 +110,10 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
   const [state, setState] = useState<IntakeState | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [understood, setUnderstood] = useState(false);
-  const [profileDraft, setProfileDraft] = useState<Record<string, string> | null>(null);
+  /* The business as read from its site or profile document, then corrected by
+     the customer. Read where it is given — see ProfileFound in Questions. */
+  const [profile, setProfile] = useState<ProfileCheck>({ draft: null, readFor: '', reading: false, error: '' });
+  const profileDraft = profile.draft;
 
   /* ── Questions ── */
   const [asked, setAsked] = useState<Set<string>>(new Set());
@@ -180,7 +183,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
     setStages(cur);
     setUnderstood(false);
     setState(null);
-    setProfileDraft(null);
+    setProfile({ draft: null, readFor: '', reading: false, error: '' });
 
     const single = ws.portfolios.length === 1 ? ws.portfolios[0].id : undefined;
     const r = await understand({ prompt, files, urls, portfolioId: single, candidates: base.solutionKeys });
@@ -203,7 +206,12 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
         }
       }
       const hasProfile = !!(u.profile?.companyName || u.profile?.description);
-      if (hasProfile) { setProfileDraft(u.profile); readProfile = u.profile.description || u.profile.companyName; }
+      if (hasProfile) {
+        /* Remembered with what it was read from, so the business screen knows
+           this site has already been read and does not read it twice. */
+        setProfile({ draft: u.profile, readFor: urls.length ? urls[0] : docs.map(f => f.id).join(','), reading: false, error: '' });
+        readProfile = u.profile.description || u.profile.companyName;
+      }
       if (hasProfile && !known.business && askedIds.has('business')) {
         if (urls.length) {
           known.business = { value: 'website', source: 'link', note: `read from ${host(urls[0])}` };
@@ -293,9 +301,64 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
     });
   }, []);
 
+  /* ── Reading the business, where it is given ── */
+  const readingFor = useRef('');
+  const readProfileNow = useCallback(async () => {
+    if (!state) return;
+    const business = String(state.known.business?.value ?? '');
+    const source = profileSource(state, files);
+    if (!source || readingFor.current === source) return;
+    readingFor.current = source;
+    setProfile(p => ({ ...p, reading: true, error: '' }));
+    let draft: Record<string, string> | null = null;
+    let error = '';
+    if (business === 'website') {
+      const r = await readPortfolioFromUrl(source);
+      if (r.success && r.profile) draft = { ...(r.profile as Record<string, string>), website: source };
+      else error = `Could not read that site${r.error ? ` — ${r.error}` : ''}. Check the address, or type the details in.`;
+    } else {
+      const docs = files.filter(f => f.kind === 'pdf' || f.kind === 'text');
+      const u = await understand({ prompt: 'Describe the business in the attached document.', files: docs, urls: [], candidates: [] });
+      if (u.ok && u.understanding?.profile) draft = { ...u.understanding.profile };
+      else error = u.noAi ? 'The document could not be read without the AI. Type the details in instead.' : `Could not read the document${u.error ? ` — ${u.error}` : ''}.`;
+    }
+    readingFor.current = '';
+    /* A reading that comes back is kept even with gaps: the empty fields are
+       exactly what the screen then asks for. */
+    setProfile({ draft, readFor: draft ? source : '', reading: false, error });
+  }, [state, files]);
+
+  const editProfile = useCallback((patch: Record<string, string>) => {
+    if (!state) return;
+    const source = profileSource(state, files);
+    setProfile(p => ({ ...p, draft: { ...(p.draft ?? {}), ...patch }, readFor: source, error: '' }));
+  }, [state, files]);
+
+  /* Read the site once its address has settled — not on every keystroke, and
+     not again once it has been read. */
+  const source = state ? profileSource(state, files) : '';
+  useEffect(() => {
+    if (phase !== 'questions' || !source || profile.reading || profile.readFor === source || profile.error) return;
+    if (String(state?.known.business?.value ?? '') === 'website' && !/^https?:\/\/[^/\s]+\.[^/\s]+/.test(source)) return;
+    const t = window.setTimeout(() => void readProfileNow(), 900);
+    return () => window.clearTimeout(t);
+  }, [phase, source, profile.reading, profile.readFor, profile.error, readProfileNow, state]);
+
+  /* A new address is a new question: forget the last one's failure. */
+  useEffect(() => { setProfile(p => (p.error ? { ...p, error: '' } : p)); }, [source]);
+
+  const gap = state ? profileGap(state, files, profile) : '';
+
+  /* The business questions, asked again. Used when the reading came back
+     short, and from Review if something about the business is still missing. */
+  const businessIds = (st: IntakeState) => allQuestions(st).filter(q => q.group === 'business').map(q => q.id);
+
   const startQuestions = () => {
     if (!state) return;
     const open = allQuestions(state).filter(q => !state.known[q.id]).map(q => q.id);
+    /* Known is not the same as enough. A site that was read but did not say
+       what the business is called still needs the business screen. */
+    if (profileGap(state, files, profile)) open.unshift(...businessIds(state).filter(id => !open.includes(id)));
     setAsked(new Set(open));
     setScreenIdx(0);
     const first = screensOf(allQuestions(state).filter(q => open.includes(q.id) && applies(q, state.known)));
@@ -398,7 +461,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
       return '';
     }
     if (phase === 'understand') return understood ? '' : 'Understanding…';
-    if (phase === 'questions' && screen && state) return screenBlocker(screen, state, files);
+    if (phase === 'questions' && screen && state) return screenBlocker(screen, state, files, profile);
     return '';
   })();
 
@@ -413,7 +476,20 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
     }
     if (phase === 'blueprint') { setPhase('requirements'); return; }
     if (phase === 'requirements') { setPhase('review'); return; }
-    if (phase === 'review') { void build(); }
+    if (phase === 'review') {
+      /* Checked once more before anything is written. Rather than a disabled
+         button, it takes them to the screen where the answer goes. */
+      if (gap && state) {
+        const ids = businessIds(state);
+        const nextAsked = new Set([...asked, ...ids]);
+        setAsked(nextAsked);
+        const list = screensOf(allQuestions(state).filter(q => nextAsked.has(q.id) && applies(q, state.known)));
+        setScreenIdx(Math.max(0, list.findIndex(sc => sc.questions.some(q => q.id === 'business'))));
+        setPhase('questions');
+        return;
+      }
+      void build();
+    }
   };
 
   const back = () => {
@@ -437,7 +513,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
     if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : 'See the blueprint';
     if (phase === 'blueprint') return 'Looks good — continue';
     if (phase === 'requirements') return 'Review';
-    if (phase === 'review') return 'Build My Autopilot';
+    if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My Autopilot';
     return 'Continue';
   })();
 
@@ -552,6 +628,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
               {phase === 'questions' && state && screen && (
                 <Questions
                   screen={screen} state={state} ws={ws} files={files} answer={answer}
+                  profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}
                   onLink={url => setDescribe(d => ({ ...d, links: [...d.links.filter(l => l.url !== url), { url, role: 'reference' }] }))}
                   index={screenIdx} total={screens.length}
