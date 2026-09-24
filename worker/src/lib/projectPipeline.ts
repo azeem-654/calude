@@ -276,6 +276,34 @@ export async function ensureProjectPipeline(
   const setupChecklist = agreed.length ? agreed : (tasks[0] ?? []);
 
   const now = nowIso();
+
+  /*
+   * The whole to-do list, on a timeline.
+   *
+   * This card used to carry the setup steps as a checklist with no dates, and
+   * the tasks written for every later stage sat in each stage's playbook where
+   * nobody saw them — so a new project looked like one task with nothing after
+   * it. Every one of them is now a sub-task on the card, with a due date:
+   * setup first, a day apart; then each stage's tasks, three days per stage.
+   * The dates are a sensible default rather than a promise — each can be moved
+   * on the card — and they are what drives the "due soon" reminders and the
+   * pending-task badge in the app's header.
+   */
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const subtasks: Array<Record<string, unknown>> = [];
+  setupChecklist.forEach((text, i) => subtasks.push({
+    id: rid('sub'), title: text, done: false, priority: i < 2 ? 'high' : 'normal', dueDate: day(i + 1), createdAt: now, source: 'autopilot',
+  }));
+  let offset = setupChecklist.length + 1;
+  shape.forEach((st, i) => {
+    /* The first stage's own tasks are the setup list when one was agreed. */
+    if (i === 0 && agreed.length === 0) return;
+    for (const text of tasks[i] ?? []) {
+      subtasks.push({ id: rid('sub'), title: `${st.name}: ${text}`, done: false, priority: 'normal', dueDate: day(offset), createdAt: now, source: 'autopilot' });
+    }
+    if ((tasks[i] ?? []).length) offset += 3;
+  });
+
   stages[0].deals.push({
     id: rid('deal'),
     title: `Get ${pf.name || project.name} live`,
@@ -284,12 +312,12 @@ export async function ensureProjectPipeline(
     value: 0,
     stage: stages[0].id,
     probability: 0,
-    expectedClose: '',
+    expectedClose: subtasks.length ? String(subtasks[subtasks.length - 1].dueDate) : '',
     assignedTo: '',
     createdAt: now,
     priority: 'high',
     description: project.objective,
-    checklist: setupChecklist.map(text => ({ id: rid('chk'), text, done: false })),
+    subtasks,
     status: 'active',
     /* Stamped, so a board full of generated cards can still be traced back to
        what made them. */

@@ -15,6 +15,7 @@
 import { CheckCircle2, CircleDashed, HelpCircle, ExternalLink, AlertCircle, Loader } from 'lucide-react';
 import { REQUIREMENT_INFO, type RequirementId } from '../../../services/projectSolutions';
 import type { Readiness } from '../../../services/projectReadiness';
+import { contactCount } from './contactFacts';
 
 const CHECKED: Partial<Record<RequirementId, keyof Readiness>> = { mailbox: 'mailbox', sms: 'sms', payments: 'payments' };
 
@@ -36,7 +37,10 @@ export default function Requirements({ ids, ready, mailboxPlan }: {
         {ids.map(id => {
           const info = REQUIREMENT_INFO[id];
           const key = CHECKED[id];
-          const state = key ? (ready ? ready[key] : 'checking') : info.kind;
+          /* Contacts is counted, not assumed: "Included" next to an empty list
+             was how a project that emails people started with nobody in it. */
+          const people = id === 'contacts' ? contactCount() : -1;
+          const state = id === 'contacts' ? (people > 0 ? 'ready' : 'missing') : key ? (ready ? ready[key] : 'checking') : info.kind;
           const tone = state === 'ready' || state === 'included' ? { bg: '#e8f6ee', fg: '#0f7b3d', label: state === 'ready' ? 'Connected' : 'Included' }
             : state === 'missing' ? { bg: '#fff4ed', fg: '#9a3412', label: 'Not set up yet' }
               : state === 'optional' ? { bg: '#f1f5f9', fg: '#475569', label: 'Optional' }
@@ -53,11 +57,12 @@ export default function Requirements({ ids, ready, mailboxPlan }: {
                 </span>
                 <span style={{ display: 'block', fontSize: 13, color: '#6b7280', marginTop: 3, lineHeight: 1.5 }}>
                   {info.why}
+                  {id === 'contacts' && (people > 0 ? ` ${people} in this workspace.` : ' None yet — import a list, or your forms and booking page will add people as they arrive.')}
                   {id === 'mailbox' && state === 'missing' && mailboxPlan === 'buy' && ' You chose to have one set up — domains and mailboxes are picked right after the project is created.'}
                   {state === 'unknown' && ' We could not reach the setting to check — that is not the same as it being missing.'}
                 </span>
                 {(state === 'missing' || state === 'optional') && info.route && (
-                  <a href={info.route} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 7, fontSize: 12.5, fontWeight: 700, color: '#5b46e5', textDecoration: 'none' }}>
+                  <a href={id === 'contacts' ? '/contacts?import=1' : info.route} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 7, fontSize: 12.5, fontWeight: 700, color: '#5b46e5', textDecoration: 'none' }}>
                     Set this up <ExternalLink size={11} />
                   </a>
                 )}

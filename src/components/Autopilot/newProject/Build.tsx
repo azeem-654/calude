@@ -13,9 +13,13 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Circle, Loader, AlertTriangle, XCircle, ArrowRight, ExternalLink } from 'lucide-react';
 import AutopilotBot from '../AutopilotBot';
 import { percentOf, type BuildResult, type BuildStep } from './buildRunner';
+import ContactsCheck from './ContactsCheck';
+import type { WorkflowNode } from '../../../services/autopilot';
 
-export default function Build({ steps, say, result }: {
+export default function Build({ steps, say, result, reach = [] }: {
   steps: BuildStep[];
+  /** The workflows that email or text people — for "who will this reach?". */
+  reach?: { name: string; nodes?: WorkflowNode[] }[];
   say: string;
   result: BuildResult | null;
 }) {
@@ -91,6 +95,8 @@ export default function Build({ steps, say, result }: {
           {result!.problems.length > 0 && <> {result!.problems.length} step{result!.problems.length === 1 ? '' : 's'} need{result!.problems.length === 1 ? 's' : ''} you — marked above.</>}
         </div>
       )}
+
+      {done && !failed && <ContactsCheck flows={reach} />}
     </div>
   );
 }

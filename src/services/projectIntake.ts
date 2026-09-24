@@ -687,7 +687,9 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     approvals: uniq(c.approvals),
     manual: uniq([...c.manual, ...full.unsupported.map(u => `${tidy(u)} — not something Autopilot can do yet, so it stays with you`)]),
     destinations: uniq(c.destinations, d => d.label),
-    requirements: uniq(['ai', 'profile', ...c.requirements] as RequirementId[]).filter(r => REQUIREMENT_INFO[r]),
+    /* A workflow that emails or texts people needs people: Contacts is
+       listed whenever one does, so the Connections step can say how many. */
+    requirements: uniq(['ai', 'profile', ...c.requirements, ...(workflows.some(w => w.sends) ? ['contacts'] : [])] as RequirementId[]).filter(r => REQUIREMENT_INFO[r]),
     limits: uniq(c.limits),
     decided,
     plannerChannels,

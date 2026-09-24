@@ -22,6 +22,7 @@
  * control when this returns null. The field table stays the one description of
  * what a step takes; this only decides how some of those fields are asked.
  */
+import EmailStepEditor from './EmailStepEditor';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -670,8 +671,13 @@ export function renderGuided(field: FieldDef, node: WorkflowNode, set: Set, grap
         : 'Taking a tag off does not undo anything it already started.'} />;
   }
 
-  if ((node.type === 'send_email' && (field.key === 'subject' || field.key === 'body'))
-    || (node.type === 'send_sms' && field.key === 'message')) {
+  /* An email is edited as one thing — subject, message, preview, test — so
+     the subject field draws the whole editor and the body field draws nothing. */
+  if (node.type === 'send_email') {
+    if (field.key === 'subject') return <EmailStepEditor node={node} set={set} />;
+    if (field.key === 'body') return <></>;
+  }
+  if (node.type === 'send_sms' && field.key === 'message') {
     return <TokenField field={field} node={node} set={set} />;
   }
 

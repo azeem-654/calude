@@ -25,6 +25,7 @@ import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
 import DayBoard from './DayBoard';
 import AutopilotPanel from './AutopilotPanel';
+import DueTasks from './DueTasks';
 import KpiTile from './KpiTile';
 import { buildKpis, shortMoney } from './kpis';
 import { useProgressBook } from './useProgressBook';
@@ -873,6 +874,9 @@ export default function Dashboard() {
             the page that is still happening, so it gets a section rather than a
             line. */}
         <AutopilotPanel />
+
+        {/* Deal tasks with a date upon them — drawn only when something is. */}
+        <DueTasks />
 
         {/*
           The "Build a campaign from your portfolio" strip stood here.

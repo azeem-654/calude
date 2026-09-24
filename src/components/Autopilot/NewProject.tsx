@@ -646,7 +646,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
                 <Requirements ids={bp.requirements} ready={ready} mailboxPlan={String(state?.known.mailbox?.value ?? '')} />
               )}
               {phase === 'review' && bp && <Review bp={bp} />}
-              {phase === 'build' && <Build steps={steps} say={say} result={result} />}
+              {phase === 'build' && <Build steps={steps} say={say} result={result} reach={(bp?.workflows ?? []).filter(w => w.sends).map(w => ({ name: w.name, nodes: w.nodes }))} />}
               {phase === 'domains' && result?.projectId && (
                 <DigitalSetupStep
                   companyName={company}

@@ -1,4 +1,5 @@
 import { Fragment, useState, useRef, useCallback, useEffect } from 'react';
+import { dueLabel, dueOf } from '../../services/dealTasks';
 import type { DragEvent } from 'react';
 import {
   Plus, Search, X, Check, Edit2, Trash2, User,
@@ -480,7 +481,15 @@ function DealCard({
                   {st.done
                     ? <CheckCircle2 size={15} color="#22c55e" strokeWidth={2.4} style={{ flexShrink: 0 }} />
                     : <Circle size={15} color="#c7ccd3" strokeWidth={2} style={{ flexShrink: 0 }} />}
-                  <span style={{ fontSize: 12.5, color: st.done ? '#a4abb5' : '#5c6270', textDecoration: st.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.title}</span>
+                  <span style={{ fontSize: 12.5, color: st.done ? '#a4abb5' : '#5c6270', textDecoration: st.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{st.title}</span>
+                  {/* When it is due, in words — red when late, amber today. */}
+                  {!st.done && st.dueDate && (() => {
+                    const due = dueOf(st.dueDate);
+                    const c = due === 'overdue' ? '#e5484d' : due === 'today' ? '#b45309' : '#8a8f98';
+                    return <span style={{ fontSize: 10.5, fontWeight: 700, color: c, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {dueLabel({ dueDate: st.dueDate, due } as Parameters<typeof dueLabel>[0])}
+                    </span>;
+                  })()}
                 </button>
               ))}
               {subtasks.length > 3 && (

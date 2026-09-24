@@ -1585,3 +1585,17 @@ main section { min-width: 0; }
   from { transform: translateX(24px); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* ── Workflow step cards (WorkflowCanvas) ──
+   A lift on hover says "this opens". Movement, so only with motion allowed;
+   the border colour change carries the same meaning without it. */
+.ap-step-card { transition: border-color 0.15s ease, box-shadow 0.2s ease; }
+.ap-step-card:hover { border-color: #b9b2ff !important; box-shadow: 0 2px 4px rgba(16,24,40,0.06), 0 14px 28px -16px rgba(91,70,229,0.45) !important; }
+@media (prefers-reduced-motion: no-preference) {
+  .ap-step-card { transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.2s ease; }
+  .ap-step-card:hover { transform: translateY(-2px); }
+}
+/* A scrollbar you can see, on a workflow wider than the screen. */
+.ap-canvas-scroll { scrollbar-width: thin; scrollbar-color: #c9cedb transparent; }
+.ap-canvas-scroll::-webkit-scrollbar { height: 8px; }
+.ap-canvas-scroll::-webkit-scrollbar-thumb { background: #c9cedb; border-radius: 99px; }

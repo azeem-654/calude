@@ -17,6 +17,7 @@
  * that misses a tick — the recipient sees the mistake either way, but only
  * one of them is embarrassing twice.
  */
+import { businessFor, personalise, textToHtml, type Business } from './lib/mergeFields';
 import { signTrackedLinks } from './lib/trackSign';
 import type { Env } from './lib/db';
 import { dataGet, dataPut } from './lib/db';
@@ -70,21 +71,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   try { return JSON.parse(raw) as T; } catch { return fallback; }
 }
 
-/** The same merge fields the browser fills in, so a server-sent step reads
- *  identically to one sent from an open tab. */
-function personalise(text: string, c: Contact): string {
-  const first = c.firstName || (c.name ?? '').split(' ')[0] || '';
-  const map: Record<string, string> = {
-    firstName: first,
-    lastName: c.lastName ?? '',
-    name: c.name ?? first,
-    email: c.email ?? '',
-    company: c.company ?? '',
-    jobTitle: c.jobTitle ?? '',
-  };
-  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (whole, key: string) =>
-    Object.prototype.hasOwnProperty.call(map, key) ? map[key] : whole);
-}
+/* Merge fields live in lib/mergeFields.ts, shared with the automation engine. */
 
 const note = (report: TickReport, accountId: string, text: string, kind: 'info' | 'problem' = 'problem') => {
   /* Bounded: a workspace with a thousand bad addresses must not write a
@@ -162,6 +149,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
   let touched = false;
   let sentHere = 0;
 
+  let biz: Business | null = null;
   for (const enr of due) {
     if (sentHere >= MAX_SENDS_PER_ACCOUNT) {
       note(report, accountId, 'Reached this run\'s limit; the rest go on the next tick.');
@@ -190,8 +178,9 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     /* A sequence someone paused mid-flight must not keep sending. */
     if (seq.status === 'paused') continue;
 
-    const html = personalise(step.body ?? '', contact);
-    const subject = personalise(step.subject ?? '', contact);
+    if (!biz) biz = await businessFor(env, accountId, null, mailbox?.from.name ?? '');
+    const html = textToHtml(personalise(step.body ?? '', contact, biz));
+    const subject = personalise(step.subject ?? '', contact, biz);
 
     /*
      * One result shape for both channels, so everything below — advancing the
@@ -208,7 +197,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     if (isSms) {
       /* SMS is plain text. Sending the HTML body of an email step would post
          markup to somebody's phone. */
-      const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+      const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
       const r = await sendSms(env, sms!, target, text, accountId);
       out = { ok: r.ok, error: r.error };
       /* An opt-out is not a failure to retry or a fault to fix — it is the

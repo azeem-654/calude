@@ -58,6 +58,7 @@ import StepSettings, {
   ADDABLE, DEFAULTS, applyConfig, newId, type Stage,
 } from './StepSettings';
 import { renderGuided } from './GuidedFields';
+import { StepContext } from './EmailStepEditor';
 
 const INK = T.ink;
 const MUTED = T.muted;
@@ -390,6 +391,7 @@ export default function WorkflowEditor({
           <aside style={{ overflowY: 'auto', background: T.aside, minWidth: 0 }}>
             {/* One step's settings, shared with the pen panel on the canvas so the
                 two cannot disagree about what a step takes. */}
+            <StepContext.Provider value={{ projectId, workflowName: name, workflowPurpose: workflow?.description }}>
             <StepSettings
               node={current}
               nodes={nodes}
@@ -405,6 +407,7 @@ export default function WorkflowEditor({
               renderField={renderGuided}
               onGraph={fn => setNodes(fn)}
             />
+            </StepContext.Provider>
           </aside>
         </div>
 

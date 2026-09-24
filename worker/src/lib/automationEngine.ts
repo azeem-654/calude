@@ -32,6 +32,7 @@
  * Waits are honoured exactly: `due_at` moves forward and the run is simply not
  * selected again until then. Nothing sleeps.
  */
+import { businessFor, personalise, textToHtml, type Business } from './mergeFields';
 import { signTrackedLinks } from './trackSign';
 import type { Env } from './db';
 import { dataGet } from './db';
@@ -153,24 +154,8 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 const tagSet = (c: Contact): Set<string> =>
   new Set((c.tags ?? []).map(t => String(t).toLowerCase().trim()).filter(Boolean));
 
-/**
- * `{{firstName}}` and friends, against the contact.
- *
- * The same substitution the sequence tick does. A token nothing matches is
- * replaced with an empty string rather than left on screen: "Hi {{firstName}},"
- * arriving in somebody's inbox is worse than "Hi ,".
- */
-function personalise(text: string, c: Contact): string {
-  const full = (c.name ?? '').trim();
-  const first = (c.firstName ?? full.split(' ')[0] ?? '').trim();
-  const last = (c.lastName ?? full.split(' ').slice(1).join(' ')).trim();
-  const map: Record<string, string> = {
-    firstName: first, lastName: last, name: full || first,
-    email: c.email ?? '', phone: c.phone ?? '',
-    company: c.company ?? '', jobTitle: c.jobTitle ?? '',
-  };
-  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => map[k] ?? '');
-}
+/* `{{firstName}}` and friends — and the business's own fields — live in
+   lib/mergeFields.ts, shared with the sequence tick. */
 
 /* ── Enrolment ─────────────────────────────────────────────────────────────
  *
@@ -371,6 +356,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
     let mailbox: Awaited<ReturnType<typeof loadMailbox>> | undefined;
     let smsCfg: Awaited<ReturnType<typeof loadSmsConfig>> | undefined;
     let mailboxLoaded = false;
+    const bizCache = new Map<string, Business>();
     let smsLoaded = false;
 
     for (const run of runs) {
@@ -460,8 +446,13 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           await log(env, accountId, run.id, node.id, node.type, 'skipped', 'No mail server is connected to this workspace.');
           report.notes.push(`"${a.name}" wanted to send an email but no mail server is connected.`);
         } else {
-          const subject = personalise(String(node.config?.subject ?? '') || `A message from ${mailbox!.from.name || 'us'}`, contact);
-          const html = personalise(String(node.config?.body ?? node.config?.preview ?? ''), contact);
+          /* The business fields are read once per graph per tick, not per
+             email: the same project, the same booking page. */
+          const bizKey = a.projectId ?? '';
+          if (!bizCache.has(bizKey)) bizCache.set(bizKey, await businessFor(env, accountId, a.projectId, mailbox!.from.name || ''));
+          const biz = bizCache.get(bizKey)!;
+          const subject = personalise(String(node.config?.subject ?? '') || `A message from ${mailbox!.from.name || 'us'}`, contact, biz);
+          const html = textToHtml(personalise(String(node.config?.body ?? node.config?.preview ?? ''), contact, biz));
           const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
           const mime = buildMime({
             fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: await signTrackedLinks(env, html),

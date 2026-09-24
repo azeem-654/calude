@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import StepSettings, { ADDABLE, DEFAULTS, applyConfig, newId, type Stage } from './StepSettings';
 import { renderGuided } from './GuidedFields';
+import { StepContext } from './EmailStepEditor';
 import {
   insertAfter, layout, lookFor, patchStep, previewStep, problemsWith, removeStep,
 } from './workflowNodes';
@@ -167,7 +168,7 @@ export default function StepDrawer({
         tabIndex={-1}
         className="ap-drawer-in"
         style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(460px, 100vw)',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: current?.type === 'send_email' ? 'min(620px, 100vw)' : 'min(460px, 100vw)',
           background: '#fff', display: 'flex', flexDirection: 'column', outline: 'none',
           boxShadow: '-18px 0 50px -20px rgba(16,24,40,0.35)',
         }}
@@ -222,6 +223,7 @@ export default function StepDrawer({
         </header>
 
         <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, background: T.aside }}>
+          <StepContext.Provider value={{ projectId, workflowName: workflow.name, workflowPurpose: workflow.description }}>
           <StepSettings
             node={current}
             nodes={nodes}
@@ -238,6 +240,7 @@ export default function StepDrawer({
             renderField={renderGuided}
               onGraph={fn => setNodes(fn)}
           />
+          </StepContext.Provider>
 
           {/* ── The graph-level things one step can still do ── */}
           {current && (

@@ -106,6 +106,25 @@ export async function refine(p: {
   return { ok: true, noAi: false, ops: r.ops as EditOps, reply: String(r.reply ?? ''), error: '' };
 }
 
+/**
+ * A workflow's emails, rewritten for this business and this strategy
+ * (routes/intake.ts `write_emails`). Ids come back as sent; anything the AI did
+ * not return keeps its wording.
+ */
+export interface EmailDraft { id: string; intent: string; subject: string; body: string }
+export async function writeEmails(p: {
+  /* Omitted from the step editor, which names the project instead and lets
+     the server read that project's own profile. */
+  business?: { companyName: string; description: string; audience?: string; offer?: string; website?: string; tone?: string };
+  projectId?: string;
+  strategy: { workflow: string; purpose: string; objective?: string; booking: boolean; instruction?: string };
+  emails: EmailDraft[];
+}): Promise<{ ok: boolean; noAi: boolean; emails: { id: string; subject: string; body: string }[]; error: string }> {
+  const r = await call('write_emails', p);
+  if (!r.success) return { ok: false, noAi: r.code === 'no_ai', emails: [], error: r.error ?? 'Could not write the emails.' };
+  return { ok: true, noAi: false, emails: (r.emails as { id: string; subject: string; body: string }[]) ?? [], error: '' };
+}
+
 export async function transcribe(audioBase64: string, mime: string, language: string): Promise<{
   ok: boolean; noAi: boolean; text: string; clarity: 'clear' | 'partly' | 'unclear'; error: string;
 }> {

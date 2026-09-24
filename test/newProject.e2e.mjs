@@ -226,7 +226,10 @@ for (const width of [1280, 390]) {
   const board = await pipelines(p, lastSession);
   /* The project's own pipeline, not the workspace's starter one. */
   const setupCard = board.flatMap(x => x.stages?.[0]?.deals ?? []).find(dl => /^Get .* live$/.test(dl.title ?? ''));
-  const checklist = (setupCard?.checklist ?? []).map(c => c.text);
+  /* The agreed set-up is now the card's dated sub-tasks (projectPipeline.ts),
+     not an undated checklist. */
+  const checklist = (setupCard?.subtasks ?? []).map(c => c.title);
+  ok('T3 every set-up task has a due date', (setupCard?.subtasks ?? []).length > 0 && (setupCard?.subtasks ?? []).every(t => /^\d{4}-\d{2}-\d{2}/.test(t.dueDate ?? '')), JSON.stringify(setupCard?.subtasks?.slice(0, 3)));
   ok('T3 the board carries the agreed set-up', checklist.some(c => /take payment/i.test(c)) && checklist.some(c => /Import the products/i.test(c)), JSON.stringify(checklist));
   ok('T3 no page errors', !errs.length, errs.join(' | '));
   await ctx.close();

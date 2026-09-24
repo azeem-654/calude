@@ -131,6 +131,9 @@ jobs:
       - name: Gemini model choice
         run: npm run test:models
 
+      - name: Merge fields
+        run: npm run test:merge
+
       - name: Build
         run: npm run build
         env:

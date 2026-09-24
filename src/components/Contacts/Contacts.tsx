@@ -161,7 +161,11 @@ export default function Contacts() {
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [profileContact, setProfileContact] = useState<Contact | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showImport, setShowImport] = useState(false);
+  /* `?import=1` opens the importer straight away — the New Project wizard
+     links here when a project that emails people has nobody to email. */
+  const [showImport, setShowImport] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('import') === '1'; } catch { return false; }
+  });
   const [showFind, setShowFind] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);

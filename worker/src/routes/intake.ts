@@ -64,6 +64,11 @@ interface Req {
   audio?: string;
   mime?: string;
   language?: string;
+  /* write_emails */
+  business?: { companyName?: string; description?: string; audience?: string; offer?: string; website?: string; tone?: string };
+  strategy?: { workflow?: string; purpose?: string; objective?: string; booking?: boolean; instruction?: string };
+  projectId?: string;
+  emails?: { id?: string; intent?: string; subject?: string; body?: string }[];
 }
 
 /* Limits, each with its reason. */
@@ -95,7 +100,7 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
   if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
 
   const act = String(d.action ?? '');
-  if (!['understand', 'refine', 'transcribe'].includes(act)) return fail('Unknown action.');
+  if (!['understand', 'refine', 'transcribe', 'write_emails'].includes(act)) return fail('Unknown action.');
 
   /*
    * Budgets per workspace, per hour.
@@ -117,8 +122,107 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
   if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
 
   if (act === 'transcribe') return transcribe(key, d);
+  if (act === 'write_emails') return writeEmails(env, key, accountId, d);
   if (act === 'refine') return refine(key, d);
   return understand(env, key, accountId, d);
+}
+
+/* ── write_emails ───────────────────────────────────────────────────────── */
+
+/**
+ * The emails in a workflow, written for this business.
+ *
+ * ── Why ──
+ *
+ * The New Project wizard builds its email workflows from gallery templates,
+ * and a template's emails were written for one trade: an Amazon FBA agency's
+ * reactivation campaign went out telling people to check their boiler
+ * pressure before winter. Each email is rewritten here from the client's
+ * business profile and the project's strategy, keeping what the step is *for*
+ * (its intent: "useful first, not an offer", "ask once whether to stop") and
+ * the order of the sequence.
+ *
+ * ── What the model may not do ──
+ *
+ * Invent. Only facts in the profile may be used — no made-up discounts,
+ * statistics, awards or clients. Merge fields must come from the known list;
+ * anything else is removed rather than sent as "{{discountCode}}". And every
+ * email opens by saying who is writing and why, in a sentence drawn from the
+ * profile — a cold email that does not is the one that gets reported.
+ */
+const MERGE = new Set(['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName']);
+
+async function writeEmails(env: Env, key: string, accountId: string, d: Req): Promise<Response> {
+  const emails = (d.emails ?? []).slice(0, 12).map(e => ({
+    id: clip(e.id, 60), intent: clip(e.intent, 160), subject: clip(e.subject, 200), body: clip(e.body, 3000),
+  })).filter(e => e.id);
+  if (!emails.length) return fail('There are no emails to write.');
+  let b = d.business ?? {};
+  /* From the step editor, the business is the project's own profile — read
+     here, scoped to this workspace, rather than trusted from the browser. */
+  if (!b.companyName && d.projectId) {
+    const row = await env.DB.prepare(
+      `SELECT p.name AS name, p.profile AS profile, j.objective AS objective FROM crm_projects j
+         JOIN crm_portfolios p ON p.id = j.portfolio_id AND p.account_id = j.account_id
+        WHERE j.id = ? AND j.account_id = ?`,
+    ).bind(clip(d.projectId, 80), accountId).first<{ name: string; profile: string; objective: string }>();
+    if (row) {
+      let prof: Record<string, string> = {};
+      try { prof = JSON.parse(row.profile || '{}') as Record<string, string>; } catch { prof = {}; }
+      b = { companyName: prof.companyName || row.name, description: prof.description, audience: prof.audience, offer: prof.offer, website: prof.website, tone: prof.tone };
+      d.strategy = { ...(d.strategy ?? {}), objective: d.strategy?.objective || row.objective };
+    }
+  }
+  const company = clip(b.companyName, 160);
+  const what = clip(b.description, 1200);
+  if (!company || what.length < 8) return fail('The business profile needs a name and what the business does before emails can be written from it.');
+  const st = d.strategy ?? {};
+
+  const prompt = [
+    'You write short, plain, human sales and follow-up emails for a small business. Rewrite each email below for THIS business.',
+    '',
+    'The business (the sender):',
+    `- Name: ${company}`,
+    `- What it does: ${what}`,
+    b.audience ? `- Who it sells to: ${clip(b.audience, 400)}` : '',
+    b.offer ? `- What it offers: ${clip(b.offer, 400)}` : '',
+    b.website ? `- Website: ${clip(b.website, 200)}` : '',
+    b.tone ? `- Tone: ${clip(b.tone, 100)}` : '',
+    '',
+    'The campaign:',
+    st.workflow ? `- Workflow: ${clip(st.workflow, 160)}` : '',
+    st.purpose ? `- What it is for: ${clip(st.purpose, 400)}` : '',
+    st.objective ? `- The project objective: ${clip(st.objective, 400)}` : '',
+    st.instruction ? `- The person editing asked: "${clip(st.instruction, 300)}" — do that, within the rules below.` : '',
+    st.booking ? '- The goal includes booking a call or appointment: where an email asks for a meeting, give the booking link as {{bookingLink}} on its own line.' : '- Do not mention booking links.',
+    '',
+    'Rules:',
+    '- Keep each email\'s intent and its place in the sequence. The recipient is a contact of the business; greet them with {{firstName}}.',
+    '- Open every email with one sentence saying who is writing and why, drawn from the business description (e.g. "I\'m writing from {{myCompany}} — we help … with …").',
+    '- Make it specific to what this business actually sells and to whom. Nothing from any other trade.',
+    '- Use only facts given above. Never invent prices, discounts, statistics, awards, guarantees, client names or deadlines.',
+    `- Merge fields allowed, exactly as written: ${[...MERGE].map(m => `{{${m}}}`).join(', ')}. No others.`,
+    '- 60 to 140 words per body. Plain text, blank line between paragraphs, no markdown, no signature block beyond "{{senderName}}" or the business name on its last line.',
+    '- Subjects under 60 characters, no clickbait, no ALL CAPS, no emoji.',
+    '',
+    'The emails, as JSON:',
+    JSON.stringify(emails),
+    '',
+    'Return JSON only: {"emails":[{"id":"…","subject":"…","body":"…"}]} with the same ids in the same order.',
+  ].filter(Boolean).join('\n');
+
+  const ai = await askGeminiParts(key, [{ text: prompt }], 0.6, { fast: true, timeoutMs: 45_000 });
+  if (!ai.ok) return fail(ai.error);
+  const r = parseJson<{ emails?: { id?: string; subject?: string; body?: string }[] }>(ai.text);
+  const ids = new Set(emails.map(e => e.id));
+  /* Merge fields not on the list are removed, not sent as literal braces. */
+  const clean = (t: string) => t.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k: string) => (MERGE.has(k) ? `{{${k}}}` : ''));
+  const out = (r?.emails ?? [])
+    .filter(e => ids.has(String(e.id ?? '')))
+    .map(e => ({ id: String(e.id), subject: clean(clip(e.subject, 160)), body: clean(clip(e.body, 4000)) }))
+    .filter(e => e.subject && e.body.length > 40);
+  if (!out.length) return fail('The AI did not return usable emails. The template wording has been kept — edit it on the workflow.');
+  return json({ success: true, emails: out });
 }
 
 /* ── transcribe ─────────────────────────────────────────────────────────── */

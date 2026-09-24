@@ -32,7 +32,8 @@
  * not an editor of its own; it hands the step to the one that is.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motionReduced } from '../../services/motion';
 import type { WorkflowNode } from '../../services/autopilot';
 import { edgesOf, layout, lookFor, nodeDetail, type Edge } from './workflowNodes';
 import { branchLabels } from './templateMeta';
@@ -53,7 +54,11 @@ export interface StepState { waiting: number; done: number }
  */
 const SIZES = {
   compact: { w: 118, h: 86, col: 178, row: 118, pad: 6 },
-  full: { w: 142, h: 98, col: 206, row: 132, pad: 8 },
+  /* Readable at arm's length: a step's name at 14px and two lines of what it
+     does. It was 142×98 and then scaled down to fit, so a long workflow drew
+     every step smaller the longer it got — the opposite of what somebody
+     reading a long one needs. Now it keeps its size and scrolls. */
+  full: { w: 206, h: 128, col: 282, row: 170, pad: 12 },
 } as const;
 
 type Geo = typeof SIZES[keyof typeof SIZES];
@@ -75,36 +80,59 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
   const detail = nodeDetail(node.type, node.config ?? {});
   const name = node.label || look.label;
 
+  if (compact) {
+    return (
+      <div
+        onClick={onEdit ? () => onEdit(node.id) : undefined}
+        style={{
+          position: 'absolute', left: x, top: y, width: geo.w, height: geo.h, boxSizing: 'border-box', overflow: 'hidden',
+          background: '#fff', border: `1px solid ${tone.edge}`, borderRadius: 10, padding: '7px 8px',
+          opacity: dim ? 0.78 : 1, cursor: onEdit ? 'pointer' : 'default', boxShadow: '0 1px 2px rgba(16,24,40,0.05)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+          <span style={{ width: 17, height: 17, borderRadius: 5, background: tone.bg, color: tone.fg, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic size={10} /></span>
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: tone.fg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{look.label}</span>
+        </div>
+        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: INK, lineHeight: 1.28, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{name}</p>
+        {!!detail && <p style={{ margin: '2px 0 0', fontSize: 9.5, color: MUTED, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{detail}</p>}
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={onEdit ? () => onEdit(node.id) : undefined}
-      className={state?.waiting ? 'ap-working' : undefined}
+      className={`ap-step-card${state?.waiting ? ' ap-working' : ''}`}
       style={{
         position: 'absolute', left: x, top: y, width: geo.w, height: geo.h,
         boxSizing: 'border-box', overflow: 'hidden',
-        background: compact ? '#fff' : T.raised,
-        border: `1px solid ${tone.edge}`, borderRadius: compact ? 10 : 11,
-        padding: compact ? '7px 8px' : '8px 9px',
-        opacity: dim ? 0.78 : 1,
+        background: '#fff',
+        border: `1px solid ${tone.edge}`, borderRadius: 16,
+        padding: '12px 14px 12px 17px',
+        opacity: dim ? 0.9 : 1,
         cursor: onEdit ? 'pointer' : 'default',
-        boxShadow: '0 1px 2px rgba(16,24,40,0.05)',
+        boxShadow: '0 1px 2px rgba(16,24,40,0.05), 0 8px 22px -14px rgba(16,24,40,0.28)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, paddingRight: onEdit ? 18 : 0 }}>
+      {/* The step's colour, as an edge rather than a fill: enough to tell an
+          email from a wait at a glance, without every card shouting. */}
+      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: tone.fg, opacity: 0.85 }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingRight: onEdit ? 30 : 0 }}>
         <span style={{
-          width: 17, height: 17, borderRadius: 5, background: tone.bg, color: tone.fg,
+          width: 28, height: 28, borderRadius: 9, background: tone.bg, color: tone.fg,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}><Ic size={10} /></span>
+        }}><Ic size={15} /></span>
         <span style={{
-          fontSize: 9.5, fontWeight: 800, color: tone.fg, letterSpacing: '0.02em',
+          fontSize: 11, fontWeight: 800, color: tone.fg, letterSpacing: '0.04em', textTransform: 'uppercase',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{look.label}</span>
       </div>
 
       {/* The pen. A real button, so it is reachable by keyboard and a screen
-          reader hears what pressing it does; the box around it is also
-          clickable, for everybody using a mouse, because a 16px target in the
-          corner of a 118px box is a fiddly thing to have to hit. */}
+          reader hears what pressing it does; the whole card is also
+          clickable, for everybody using a mouse. */}
       {onEdit && (
         <button
           type="button"
@@ -112,23 +140,23 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
           aria-label={`Edit step: ${name}`}
           title="Edit this step"
           style={{
-            position: 'absolute', top: 5, right: 5, width: 20, height: 20, padding: 0,
+            position: 'absolute', top: 10, right: 10, width: 28, height: 28, padding: 0,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            border: `1px solid ${T.line}`, borderRadius: 6, background: '#fff',
+            border: `1px solid ${T.line}`, borderRadius: 9, background: '#fff',
             color: T.muted, cursor: 'pointer',
           }}
-        ><Pencil size={10} /></button>
+        ><Pencil size={13} /></button>
       )}
 
       <p style={{
-        margin: 0, fontSize: compact ? 11 : 11.5, fontWeight: 700, color: INK, lineHeight: 1.28,
+        margin: 0, fontSize: 14, fontWeight: 750, color: INK, lineHeight: 1.3, letterSpacing: '-0.01em',
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
       }}>{name}</p>
 
-      {!!detail && (
+      {!!detail && !state?.waiting && (
         <p style={{
-          margin: '2px 0 0', fontSize: 9.5, color: MUTED, lineHeight: 1.3,
-          display: '-webkit-box', WebkitLineClamp: compact ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          margin: '4px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.4,
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>{detail}</p>
       )}
 
@@ -136,8 +164,8 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
           never a timer. */}
       {!!state?.waiting && (
         <p style={{
-          margin: '3px 0 0', fontSize: 9, fontWeight: 800, color: T.accent,
-          display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+          margin: '5px 0 0', fontSize: 11.5, fontWeight: 800, color: T.accent,
+          display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
         }}>
           <span className="ap-live-dot" style={{ background: T.accent }} />
           {state.waiting} {state.waiting === 1 ? 'person' : 'people'} here now
@@ -152,7 +180,7 @@ function Pill({ x, y, text, yes }: { x: number; y: number; text: string; yes: bo
   return (
     <span style={{
       position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)',
-      padding: '1px 6px', borderRadius: 999, fontSize: 9, fontWeight: 800, whiteSpace: 'nowrap',
+      padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 800, whiteSpace: 'nowrap',
       background: yes ? '#ecfdf5' : '#fef2f2', color: yes ? T.good : T.bad,
       border: `1px solid ${yes ? '#bbf7d0' : '#fecaca'}`, pointerEvents: 'none',
     }}>{text}</span>
@@ -181,7 +209,9 @@ export default function WorkflowCanvas({
    * steps can be edited, because a pen has to stay big enough to press.
    */
   const box = useRef<HTMLDivElement | null>(null);
+  const scroller = useRef<HTMLDivElement | null>(null);
   const [room, setRoom] = useState(0);
+  const [scrollX, setScrollX] = useState(0);
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -280,13 +310,16 @@ export default function WorkflowCanvas({
     .filter((x): x is { e: Edge; d: string } => !!x.d);
 
   const stroke = live ? T.accent : '#c7cedb';
-  const floor = onPickStep ? 0.84 : 0.72;
-  const scale = room > 0 ? Math.min(1, Math.max(floor, room / width)) : 1;
+  /* The gallery's small previews still fit to their card. The project board
+     never shrinks: a long workflow keeps full-size steps and scrolls. */
+  const scale = compact && room > 0 ? Math.min(1, Math.max(0.72, room / width)) : 1;
   const overflows = room > 0 && width * scale > room + 1;
+  const nudge = (dx: number) => scroller.current?.scrollBy({ left: dx, behavior: motionReduced() ? 'auto' : 'smooth' });
 
   return (
     <div style={{ position: 'relative' }} ref={box}>
-      <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+      <div ref={scroller} className="ap-canvas-scroll" onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
+        style={{ overflowX: 'auto', paddingBottom: 8 }}>
         {/* The box that takes up the scaled space, so the page lays out around
             what is visible rather than around the unscaled diagram. */}
         <div style={{ width: width * scale, height: height * scale }}>
@@ -337,7 +370,7 @@ export default function WorkflowCanvas({
           {ends.map(en => (
             <span key={`${en.key}-label`} style={{
               position: 'absolute', left: en.x + 7, top: en.y, transform: 'translateY(-50%)',
-              fontSize: 9, fontWeight: 700, color: T.faint, whiteSpace: 'nowrap', pointerEvents: 'none',
+              fontSize: 10.5, fontWeight: 700, color: T.faint, whiteSpace: 'nowrap', pointerEvents: 'none',
             }}>Ends here</span>
           ))}
         </div>
@@ -346,11 +379,28 @@ export default function WorkflowCanvas({
 
       {/* A diagram still wider than the space it has says so, rather than
           looking as though it ends mid-step. A hint about the scrollbar. */}
-      {overflows && (
+      {overflows && scrollX + room < width * scale - 2 && (
         <span aria-hidden style={{
-          position: 'absolute', top: 0, right: 0, bottom: 4, width: 36, pointerEvents: 'none',
+          position: 'absolute', top: 0, right: 0, bottom: 8, width: 36, pointerEvents: 'none',
           background: `linear-gradient(90deg, transparent, ${compact ? T.raised : T.panel})`,
         }} />
+      )}
+      {/* Scroll buttons for a workflow longer than the screen: a trackpad
+          scrolls sideways on its own, a mouse wheel does not. */}
+      {overflows && !compact && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <span style={{ fontSize: 11.5, color: MUTED, marginRight: 'auto' }}>
+            {placed.length} steps — scroll sideways to see the whole workflow
+          </span>
+          <button type="button" aria-label="Scroll the workflow left" onClick={() => nudge(-Math.max(300, room * 0.7))} disabled={scrollX <= 1}
+            style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${T.line}`, background: '#fff', color: INK, cursor: 'pointer', display: 'grid', placeItems: 'center', opacity: scrollX <= 1 ? 0.4 : 1 }}>
+            <ChevronLeft size={16} />
+          </button>
+          <button type="button" aria-label="Scroll the workflow right" onClick={() => nudge(Math.max(300, room * 0.7))} disabled={scrollX + room >= width - 2}
+            style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${T.line}`, background: '#fff', color: INK, cursor: 'pointer', display: 'grid', placeItems: 'center', opacity: scrollX + room >= width - 2 ? 0.4 : 1 }}>
+            <ChevronRight size={16} />
+          </button>
+        </div>
       )}
     </div>
   );

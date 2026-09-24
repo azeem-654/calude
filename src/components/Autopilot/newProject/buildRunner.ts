@@ -27,6 +27,7 @@ import {
 } from '../../../services/autopilot';
 import { saveProduct } from '../../../services/commerce';
 import { understand } from '../../../services/intake';
+import { tailorEmails } from './emailWriter';
 import {
   briefOf, capsOf, kindOf, launchStepsOf, parseCsv, productsFromCsv, imageFor,
   type Attachment, type Blueprint, type IntakeState, type ProductDraft,
@@ -156,6 +157,8 @@ export async function runBuild(
   let portfolioId = business.startsWith('existing:') ? business.slice(9) : '';
   let companyName = inp.portfolios.find(p => p.id === portfolioId)?.name ?? '';
   let profileNote = '';
+  /* The profile the emails are written from, whichever way it arrived. */
+  let bizProfile: Record<string, string> = { ...(inp.portfolios.find(p => p.id === portfolioId)?.profile ?? {}), companyName };
   if (!portfolioId) {
     let profile: Record<string, string> = {};
     let source: 'url' | 'manual' = 'manual';
@@ -199,6 +202,7 @@ export async function runBuild(
     if (!profile.offer && val(state, 'offer')) profile.offer = val(state, 'offer');
     if (val(state, 'brandColor')) profile.brandColor = val(state, 'brandColor');
     companyName = profile.companyName;
+    bizProfile = { ...profile };
     const r = await savePortfolio({ name: companyName.slice(0, 120), profile, source });
     if (!r.success || !r.id) {
       set('profile', { state: 'failed', detail: r.error ?? 'The business profile could not be saved.' });
@@ -245,11 +249,36 @@ export async function runBuild(
       else { result.problems.push(`${w.name}: ${r.message}`); set(`wf:${w.key}`, { state: 'warn', detail: `${r.message} You can add it from the project with Create Workflow.` }); }
       continue;
     }
-    const r = await saveWorkflow(p.id, { name: w.name, description: w.purpose.slice(0, 300), status: 'draft', nodes: w.nodes ?? [] }, w.templateKey);
+    /* A template's emails were written for one trade; they are rewritten
+       for this business before anything is saved (emailWriter.ts). */
+    let nodes = w.nodes ?? [];
+    let emailNote = '';
+    if (nodes.some(n => n.type === 'send_email')) {
+      set(`wf:${w.key}`, { state: 'now' }, `I’m writing ${w.name}’s emails for ${companyName}.`);
+      const booking = val(state, 'booking');
+      const t = await tailorEmails(nodes, {
+        business: {
+          companyName: bizProfile.companyName || companyName,
+          description: bizProfile.description || state.prompt.slice(0, 300),
+          audience: bizProfile.audience || val(state, 'audience'),
+          offer: bizProfile.offer || val(state, 'offer'),
+          website: bizProfile.website || '',
+          tone: bizProfile.tone || '',
+        },
+        workflow: w.name,
+        purpose: w.purpose,
+        objective: bp.objective,
+        booking: booking === 'own' ? 'own' : booking === 'none' ? 'none' : (booking === 'page' || val(state, 'emailGoal') === 'booking' ? 'page' : 'none'),
+        bookingUrl: val(state, 'bookingUrl'),
+      });
+      nodes = t.nodes;
+      emailNote = t.note;
+    }
+    const r = await saveWorkflow(p.id, { name: w.name, description: w.purpose.slice(0, 300), status: 'draft', nodes }, w.templateKey);
     if (r.success && r.id) {
       ids[w.key] = String(r.id);
       result.created.workflows++;
-      set(`wf:${w.key}`, { state: 'done', detail: w.sends ? 'Saved as a draft — it waits for you to switch it on.' : w.schedule });
+      set(`wf:${w.key}`, { state: 'done', detail: [emailNote, w.sends ? 'Saved as a draft — it waits for you to switch it on.' : w.schedule].filter(Boolean).join(' ') });
     } else {
       result.problems.push(`${w.name}: ${r.error ?? 'not saved'}`);
       set(`wf:${w.key}`, { state: 'warn', detail: r.error ?? 'The server did not save it.' });
