@@ -168,13 +168,17 @@ async function transcribe(key: string, d: Req): Promise<Response> {
     { text: prompt },
     { inlineData: { mimeType: mime.split(';')[0].replace('x-wav', 'wav').replace('wave', 'wav'), data: audio } },
   ];
-  const ai = await askGeminiParts(key, parts, 0);
+  /* No thinking, and a limit per model — see askGeminiParts. A voice note
+     is transcribed, not reasoned about, and somebody is waiting on it. */
+  const started = Date.now();
+  const ai = await askGeminiParts(key, parts, 0, { fast: true, timeoutMs: 25_000 });
   if (!ai.ok) return fail(ai.error);
   const r = parseJson<{ text?: string; language?: string; clarity?: string }>(ai.text);
+  const ms = Date.now() - started;
   const text = clip(r?.text, 6000);
   const clarity = ['clear', 'partly', 'unclear'].includes(String(r?.clarity)) ? String(r?.clarity) : 'partly';
-  if (!text) return json({ success: true, text: '', language: clip(r?.language, 12), clarity: 'unclear' });
-  return json({ success: true, text, language: clip(r?.language, 12), clarity });
+  if (!text) return json({ success: true, text: '', language: clip(r?.language, 12), clarity: 'unclear', ms });
+  return json({ success: true, text, language: clip(r?.language, 12), clarity, ms });
 }
 
 /* ── understand ─────────────────────────────────────────────────────────── */

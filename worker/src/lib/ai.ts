@@ -171,27 +171,46 @@ export type AiPart =
  * `json: false` returns the text as written, for a transcript that should not
  * be squeezed through a JSON encoder somebody's model might get wrong.
  */
+/**
+ * `fast`: for work that needs no reasoning — transcribing a recording is
+ * copying, not thinking. The Gemini 2.5+ models "think" before answering by
+ * default, which on a ten-second voice note was most of the wait. It is
+ * switched down per model family (a budget of 0 on 2.5, the lowest level on
+ * newer ones); a model that refuses the setting is simply asked again without
+ * it, so this can only ever make a call faster, never make it fail.
+ *
+ * `timeoutMs`: how long one model gets before the next is tried. Without it a
+ * slow or stuck model held the whole request for as long as Google took.
+ */
+function thinkingFor(model: string): Record<string, unknown> {
+  return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' };
+}
+
 export async function askGeminiParts(
-  apiKey: string, parts: AiPart[], temperature = 0.5, opts: { json?: boolean } = {},
+  apiKey: string, parts: AiPart[], temperature = 0.5, opts: { json?: boolean; fast?: boolean; timeoutMs?: number } = {},
 ): Promise<AiResult> {
   const asJson = opts.json !== false;
-  const body = {
-    contents: [{ parts }],
-    generationConfig: asJson ? { responseMimeType: 'application/json', temperature } : { temperature },
-  };
+  const base = asJson ? { responseMimeType: 'application/json', temperature } : { temperature };
 
   let lastError = '';
   for (const model of MODELS) {
+    let thinking = !!opts.fast;
     for (let attempt = 1; attempt <= 2; attempt++) {
+      const body = {
+        contents: [{ parts }],
+        generationConfig: thinking ? { ...base, thinkingConfig: thinkingFor(model) } : base,
+      };
       let res: Response;
       try {
         res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          ...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
         });
       } catch (e) {
-        lastError = `Could not reach Google: ${e instanceof Error ? e.message : String(e)}`;
+        const timedOut = e instanceof Error && /abort|timeout/i.test(`${e.name} ${e.message}`);
+        lastError = timedOut ? `${model} took too long` : `Could not reach Google: ${e instanceof Error ? e.message : String(e)}`;
         break;
       }
 
@@ -209,6 +228,8 @@ export async function askGeminiParts(
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
       if (res.status === 404 || MODEL_GONE.test(lastError)) break;   // this id is gone; next
+      /* The thinking setting refused: the same model, without it. */
+      if (thinking && res.status === 400 && /thinking/i.test(lastError)) { thinking = false; attempt--; continue; }
       if (!RETRYABLE.has(res.status)) return { ok: false, text: '', error: friendly(res.status, lastError) };
       if (attempt < 2) await new Promise(r => setTimeout(r, 800));
     }
