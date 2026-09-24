@@ -26,6 +26,7 @@ import { encryptSecret } from './lib/crypto';
 import { loadSmsConfig, sendSms } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
 import { ensureProjectPipeline } from './lib/projectPipeline';
+import { focusOf } from './lib/projectBrief';
 import {
   createMailbox, credsForMode, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
@@ -92,6 +93,8 @@ interface RunRow {
   revenue_target: number;
   volume_target: number;
   goals: string;
+  /** The approved blueprint. Only its `plannerChannels` is read here. */
+  brief?: string;
 }
 
 const rid = () => `ap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -152,6 +155,10 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     /* What this project is for, so the planner can leave out the work that
        belongs to a different kind of business. */
     kind: (run?.kind ?? 'general') as Workspace['kind'],
+    /* And which channels it asked the planner to look after. Null for every
+       project older than the brief, which is what keeps them planning as
+       before. */
+    focus: focusOf(run?.brief),
     contacts: parse<Contact[]>(contacts, []),
     sequences: parse<Sequence[]>(sequences, []),
     enrolments: parse<Enrolment[]>(enrolments, []),
@@ -1463,7 +1470,7 @@ export async function runAutopilot(env: Env): Promise<AutopilotReport> {
   const { results } = await env.DB.prepare(
     `SELECT id, account_id, portfolio_id, name, objective, kind, status, guardrails,
             last_planned_at, purchase_mode, pool_target,
-            revenue_target, volume_target, goals
+            revenue_target, volume_target, goals, brief
      FROM crm_projects WHERE status IN ('learning','running') LIMIT 400`,
   ).all<RunRow>();
 

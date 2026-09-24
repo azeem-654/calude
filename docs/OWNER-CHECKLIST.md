@@ -448,6 +448,14 @@ Until you set one, a workspace with no key of its own can plan and produce
 nothing — and the wizard now promises it can. So this one is worth doing
 promptly.
 
+**It now also drives the New Project wizard and the microphone** (2026-09-24).
+Without it the wizard still works, but it matches the customer's words to the
+solution catalogue instead of reading them, cannot read an attached brochure or
+a website, and the microphone falls back to the browser's own recogniser —
+which is the one customers said misheard them. The screen says so each time
+rather than pretending, but it is a noticeably worse first impression.
+Nothing else is needed for voice: transcription uses this same Gemini key.
+
 **Do it in the app. It takes about three minutes and needs no terminal.**
 
 1. Open <https://aistudio.google.com/apikey> and sign in with your Google

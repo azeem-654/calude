@@ -1562,6 +1562,13 @@ main section { min-width: 0; }
   .ap-gallery > div:last-child { position: static !important; }
 }
 
+/* A project's "Edit with AI" column goes underneath on a narrow screen. It was
+   a fixed 272px beside the project at every width, which on a phone left the
+   project itself about eighty pixels wide. */
+@media (max-width: 900px) {
+  .ap-project { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
 /* A live workflow's connectors carry a travelling dash, so a switched-on graph
    reads as running. Still under reduced motion: the colour already says live. */
 @media (prefers-reduced-motion: no-preference) {

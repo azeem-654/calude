@@ -117,6 +117,17 @@ jobs:
       - name: Test the checkout maths
         run: npm run test:checkout
 
+      # What a new project is asked and what it builds. The case that matters is
+      # the negative one: a social project must never be asked about mailboxes,
+      # and the old wizard asked every project about them.
+      - name: Test the project intake
+        run: npm run test:intake
+
+      # What the planner may do for a project whose brief narrowed it. A
+      # social-only project planned as 'general' would be sent email plays.
+      - name: Test the planner
+        run: npm run test:autopilot
+
       - name: Build
         run: npm run build
         env:

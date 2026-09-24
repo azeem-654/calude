@@ -1,0 +1,198 @@
+/*
+ * The New Project wizard.
+ *
+ * Built on the shared wizard look (shared/wizard.css — the backdrop, the card,
+ * the title and the pill button) so it reads as the same product as the
+ * campaign wizard. What is here is its own layout: the conversation on the
+ * left, and on wide screens a companion pane on the right where the AI shows
+ * what it knows so far.
+ *
+ * Every loop is inside `prefers-reduced-motion: no-preference` and nothing that
+ * moves carries information on its own — each state is also said in words.
+ */
+
+.np-card { max-width: 1180px; max-height: min(94vh, 940px); }
+/* One height for every step on a screen with room for it, so the card does not
+   jump each time a question screen is shorter than the last. */
+@media (min-height: 700px) and (min-width: 720px) { .np-card { height: min(92vh, 880px); } }
+
+.np-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px 10px; border-bottom: 1px solid #eef0f5; flex-shrink: 0;
+}
+.np-phases { display: flex; gap: 4px; flex: 1; justify-content: center; min-width: 0; overflow: hidden; }
+.np-phase {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: #9aa3b2; white-space: nowrap;
+}
+.np-phase[data-state='now'] { background: rgba(91, 70, 229, 0.09); color: #5b46e5; }
+.np-phase[data-state='done'] { color: #17191c; }
+.np-phase-dot { width: 7px; height: 7px; border-radius: 99px; background: currentColor; opacity: 0.6; }
+@media (max-width: 720px) {
+  .np-phase:not([data-state='now']) .np-phase-label { display: none; }
+  .np-phase { padding: 5px 6px; }
+}
+
+.np-body { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 0; }
+.np-main { overflow-y: auto; min-height: 0; padding: clamp(16px, 3vw, 30px) clamp(16px, 3.4vw, 36px) 26px; }
+.np-side { display: none; }
+@media (min-width: 1040px) {
+  .np-body { grid-template-columns: minmax(0, 1fr) 330px; }
+  .np-side {
+    display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0;
+    border-left: 1px solid #eef0f5; padding: 24px 20px;
+    background: linear-gradient(180deg, #f7f6ff 0%, #fbfbfe 60%);
+  }
+}
+
+.np-foot {
+  display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+  padding: 12px 18px 16px; border-top: 1px solid #eef0f5; flex-shrink: 0;
+}
+.np-back {
+  display: inline-flex; align-items: center; gap: 6px; padding: 12px 16px; border-radius: 999px;
+  border: 1px solid #e6e9f0; background: #fff; color: #17191c; font: inherit; font-size: 14px;
+  font-weight: 600; cursor: pointer;
+}
+.np-foot .wz-cta { max-width: 100%; }
+.np-foot .wz-cta > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ── Describe ── */
+.np-prompt {
+  border: 1.5px solid #e1e4ee; border-radius: 22px; background: #fff;
+  box-shadow: 0 10px 30px -18px rgba(37, 30, 90, 0.35);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.np-prompt:focus-within { border-color: #5b46e5; box-shadow: 0 12px 34px -16px rgba(91, 70, 229, 0.45); }
+.np-prompt[data-drag='1'] { border-color: #5b46e5; border-style: dashed; background: #faf9ff; }
+.np-prompt textarea {
+  width: 100%; box-sizing: border-box; border: none; outline: none; resize: none; background: transparent;
+  font: inherit; font-size: clamp(16px, 2.2vw, 18px); line-height: 1.55; color: #0b0c0e;
+  padding: 18px 20px 8px; min-height: 120px;
+}
+.np-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px 12px; }
+.np-tool {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
+  border: 1px solid #e6e9f0; background: #fff; color: #334155; font: inherit; font-size: 13px;
+  font-weight: 600; cursor: pointer;
+}
+.np-tool:hover { border-color: #c9c2fa; color: #5b46e5; }
+
+.np-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.np-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 5px 6px 5px 8px; border-radius: 10px; background: #f3f4f8; font-size: 12.5px; color: #334155;
+}
+.np-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.np-chip img { width: 22px; height: 22px; object-fit: cover; border-radius: 5px; flex-shrink: 0; }
+.np-chip button { border: none; background: none; cursor: pointer; color: #8b93a3; padding: 2px; display: grid; }
+
+.np-cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
+.np-sol {
+  display: flex; gap: 11px; align-items: flex-start; text-align: left; padding: 13px 14px;
+  border-radius: 16px; border: 1.5px solid #e6e9f0; background: #fff; cursor: pointer; font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.np-sol:hover { border-color: #c9c2fa; }
+.np-sol[aria-pressed='true'] { border-color: #5b46e5; background: #f8f7ff; }
+.np-sol-icon {
+  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0;
+  background: #f1f0ff; color: #5b46e5;
+}
+.np-sol[data-custom='1'] { border-style: dashed; }
+
+/* ── Understanding ── */
+.np-stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.np-stage { display: flex; gap: 11px; align-items: flex-start; font-size: 14.5px; color: #17191c; }
+.np-stage[data-state='todo'] { color: #9aa3b2; }
+.np-stage-icon { width: 20px; flex-shrink: 0; display: grid; place-items: center; margin-top: 1px; }
+
+/* ── Questions ── */
+.np-q { display: grid; gap: 10px; }
+.np-q-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.np-need { font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 99px; }
+.np-need[data-need='required'] { background: #eef0ff; color: #4c39d1; }
+.np-need[data-need='optional'] { background: #f1f5f9; color: #64748b; }
+.np-opts { display: flex; gap: 7px; flex-wrap: wrap; }
+.np-opt {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: 10px 14px; border-radius: 14px; border: 1.5px solid #e6e9f0; background: #fff;
+  font: inherit; font-size: 14px; font-weight: 600; color: #17191c; cursor: pointer; max-width: 100%;
+}
+.np-opt small { font-size: 11.5px; font-weight: 500; color: #6b7280; }
+.np-opt[aria-pressed='true'] { border-color: #5b46e5; background: #f6f4ff; color: #3b2fb0; }
+.np-opt[data-ai='1'] { border-style: dashed; color: #5b46e5; }
+.np-opt[data-ai='1'][aria-pressed='true'] { border-style: solid; }
+.np-input {
+  width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1.5px solid #e6e9f0; border-radius: 13px;
+  font: inherit; font-size: 15px; outline: none; background: #fff;
+}
+.np-input:focus { border-color: #5b46e5; }
+.np-skip { border: none; background: none; color: #6b7280; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 2px; text-decoration: underline; text-underline-offset: 3px; }
+
+.np-known { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: #f7f8fb; }
+.np-known-row { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: #334155; flex-wrap: wrap; }
+.np-known-row b { color: #17191c; }
+.np-known-row em { font-style: normal; color: #8b93a3; font-size: 12px; }
+
+/* ── Blueprint ── */
+.np-bp-hero {
+  border-radius: 20px; padding: 18px 20px; color: #fff;
+  background: radial-gradient(120% 140% at 0% 0%, #6d5ef0 0%, #4a36d6 45%, #1d1a3a 100%);
+}
+.np-bp-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.np-bp-box { border: 1px solid #e6e9f0; border-radius: 16px; padding: 14px 15px; background: #fff; min-width: 0; }
+.np-bp-box h4 { margin: 0 0 9px; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; color: #6b7280; text-transform: uppercase; display: flex; gap: 7px; align-items: center; }
+.np-bp-box ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.np-bp-box li { font-size: 13.5px; color: #17191c; line-height: 1.5; display: flex; gap: 8px; align-items: flex-start; }
+.np-wf { border: 1px solid #e6e9f0; border-radius: 16px; padding: 13px 15px; background: #fff; display: grid; gap: 6px; min-width: 0; }
+.np-wf-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.np-badge { font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 99px; background: #f1f5f9; color: #475569; white-space: nowrap; }
+.np-badge[data-tone='good'] { background: #e8f6ee; color: #0f7b3d; }
+.np-badge[data-tone='accent'] { background: #eef0ff; color: #4c39d1; }
+.np-badge[data-tone='warn'] { background: #fff4e5; color: #9a3412; }
+
+.np-edit { display: grid; gap: 10px; }
+.np-edit-log { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+.np-msg { font-size: 12.5px; line-height: 1.5; padding: 8px 11px; border-radius: 12px; }
+.np-msg[data-who='you'] { background: #fff; border: 1px solid #e6e9f0; justify-self: end; max-width: 92%; }
+.np-msg[data-who='ai'] { background: #eeebff; color: #2e2587; max-width: 96%; }
+.np-msg[data-who='bad'] { background: #fff4e5; color: #92400e; max-width: 96%; }
+
+/* ── Build ── */
+.np-bar { height: 8px; border-radius: 999px; background: #eef0f5; overflow: hidden; position: relative; }
+.np-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6d5ef0, #4a36d6); transition: width 0.4s ease; }
+.np-bar[data-indeterminate='1'] > i { width: 30% !important; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .np-rise { animation: np-rise 0.35s ease-out both; }
+  .np-sol:hover { transform: translateY(-1px); }
+  .np-bar[data-indeterminate='1'] > i { animation: np-slide 1.3s ease-in-out infinite; }
+  .np-think i { animation: np-dot 1.2s ease-in-out infinite; }
+  .np-think i:nth-child(2) { animation-delay: 0.15s; }
+  .np-think i:nth-child(3) { animation-delay: 0.3s; }
+  .np-glow { animation: np-glow 2.8s ease-in-out infinite; }
+}
+.np-think { display: inline-flex; gap: 3px; vertical-align: middle; }
+.np-think i { width: 5px; height: 5px; border-radius: 99px; background: currentColor; opacity: 0.6; }
+
+@keyframes np-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes np-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
+@keyframes np-dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+@keyframes np-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(91, 70, 229, 0.0); } 50% { box-shadow: 0 0 0 8px rgba(91, 70, 229, 0.12); } }
+
+/* Content that lives in the side pane on a wide screen and in the flow on a
+   narrow one — the blueprint's assistant, the companion's notes. */
+@media (min-width: 1040px) {
+  .np-only-narrow, .np-hide-wide { display: none !important; }
+}
+
+/* On a phone the footer is one row: Back shrinks to its arrow and the main
+   button takes the rest, rather than the two stacking into a tall bar that
+   eats a fifth of the screen. */
+@media (max-width: 520px) {
+  .np-foot { flex-wrap: nowrap; padding: 10px 12px 12px; }
+  .np-foot .wz-cta { min-width: 0; flex: 1 1 auto; justify-content: space-between; }
+  .np-back { padding: 12px; flex-shrink: 0; }
+  .np-back-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+}

@@ -190,7 +190,7 @@ whose assets 404.
 
 Both typecheck, build, apply D1 migrations and then deploy — migrations first,
 so a Worker can never reach a database that lacks a column it expects. Staging
-also runs `test:moderation`, `test:prospects`, `test:domains` and `test:hosts`; the live deploy does not,
+also runs `test:moderation`, `test:prospects`, `test:domains`, `test:hosts`, `test:intake` and `test:autopilot` (among others); the live deploy does not,
 because its job is to publish what has already been rehearsed.
 
 `main` is only ever moved by **Actions → Promote testing to live**, which
@@ -221,23 +221,56 @@ Do not deploy by hand. The repository secrets `CLOUDFLARE_API_TOKEN` and
 
 ## What a new project decides, and where
 
-The wizard is `src/components/Autopilot/NewProject.tsx`, and three pure modules
-behind it hold the judgement:
+The wizard is `src/components/Autopilot/NewProject.tsx`: **describe → understand
+→ only the questions still missing → blueprint (editable by sentence or voice)
+→ connections → review → build**. `docs/AUTOPILOT-NEW-PROJECT.md` has the audit
+of the fixed six-step wizard it replaced and why that one asked every project
+about mailboxes. The judgement lives in pure modules:
 
-- **`services/projectJobs.ts`** — the job somebody picks, and the capabilities
-  it implies. Capabilities are derived, never asked, the same direction
-  `kindFor` works in.
+- **`services/projectSolutions.ts`** — the solution catalogue (Social Media
+  Growth, E-commerce Store, …), one shared **question bank**, and a `build` per
+  solution that turns answers into workflows. **Every workflow it draws must be
+  one the engine runs today** — agent graphs (`projectAgents.ts`) or contact
+  graphs (`automationEngine.ts`). Anything asked for beyond that goes in
+  `manual` or `limits`, never into a workflow that quietly does nothing.
+- **`services/projectIntake.ts`** — matching a sentence to solutions,
+  extracting what the prompt/files/workspace already answer, choosing the open
+  questions, building the blueprint, and `parseEdit` for the commonest blueprint
+  edits. The blueprint is a pure function of `IntakeState`; an edit — by the AI
+  (`/api/intake.php` `refine`) or by `parseEdit` — changes the *answers* and the
+  blueprint is rebuilt. Never let an edit write workflows directly.
+  `npm run test:intake` covers the seven specified requests.
+- **`worker/src/routes/intake.ts`** — `understand` (prompt + inline images/PDFs
+  + up to three pages, on the operator's Gemini key), `refine`, `transcribe`.
+  With no AI it answers `code: 'no_ai'` and the wizard says it matched words
+  instead. Everything the model returns is checked against the catalogue the
+  client sent.
 - **`services/sendingPlan.ts`** — how much infrastructure a target needs, and
   what it might return. **`listKind` is the distinction everything turns on:**
   writing to people who asked to hear from you is one address on the domain they
   recognise, and writing to strangers is a pool of lookalikes. Recommending a
   pool to a shop would be selling it twenty-odd domains it does not need.
   Outcomes are ranges, always, and labelled as assumptions.
-- **`services/launchPlan.ts`** — the order things get built in, per trade. A
-  shop builds the catalogue before it writes about it; a trade gets mail working
-  first. Deterministic on purpose: the AI writes the tasks *inside* a stage,
-  which depend on the client, while the order of operations is the same for
-  every plumber and is what somebody is deciding whether to buy.
+- **`services/launchPlan.ts`** — the build order per trade, still used where a
+  trade is known; the new wizard's set-up steps become `launchSteps` the same way.
+
+**`crm_projects.brief`** holds the approved blueprint and is shown on the
+project's Overview. The server reads exactly one field of it:
+**`plannerChannels`**, which `planNext` uses to drop plays in other channels —
+every play carries `channels`. `null` (every project older than the brief)
+plans exactly as before; `[]` means the project's own workflows do all the work.
+A project built from the wizard is `general` far more often now, so without this
+a social-only project would be planned email sequences and a "no mailbox" error.
+
+The build (`newProject/buildRunner.ts`) performs real operations and the bar is
+their weighted share. Content-agent workflows (scheduled, only `ai` steps,
+nothing that sends) are switched on because the customer approved a blueprint
+saying they run; anything that emails or texts stays a draft.
+
+**Voice** is `components/Autopilot/voice/`: the browser recogniser for a live
+preview only (told the customer's real locale, restarted across pauses), and a
+16 kHz WAV of the whole take sent to `transcribe` for the text that goes in the
+box. The text is always put in the box for review — never submitted.
 
 The launch plan is **sent** with `saveProject` rather than recomputed on the
 server, and becomes the checklist on the project's first card — so the board

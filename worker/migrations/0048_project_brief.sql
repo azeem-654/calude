@@ -1,0 +1,23 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- What a project was built to do, as the customer agreed it.
+--
+-- ── Why a column and not more guardrails ──
+--
+-- The New Project wizard now starts from a sentence ("one image post every
+-- weekday") and ends at a blueprint the customer approves: the outputs, the
+-- schedules, the approvals, the things they will do by hand. The project page
+-- shows that blueprint back, so it has to live somewhere — and `guardrails`
+-- accepts arbitrary keys only by accident, while `launch_steps` is sanitised
+-- down to label / why / route.
+--
+-- ── The one field the server reads ──
+--
+-- `plannerChannels`. Before this, a project that only wanted social posts had
+-- kind 'general', and 'general' plans everything: email sequences, review
+-- asks, a website, a daily blog, a "no mailbox is connected" error. The brief
+-- says which channels the planner may act on for this project, and nothing
+-- else about it changes the tick.
+--
+-- '{}' means the project predates this, and it plans exactly as it always did.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE crm_projects ADD COLUMN brief TEXT NOT NULL DEFAULT '{}';

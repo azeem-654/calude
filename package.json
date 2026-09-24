@@ -28,7 +28,9 @@
     "test:gallery": "node test/templateGallery.e2e.mjs",
     "test:agents": "npx --yes tsx worker/test/projectAgents.test.mts",
     "test:triggers": "npx --yes tsx worker/test/triggers.test.mts",
-    "test:studio": "node test/projectStudio.e2e.mjs"
+    "test:studio": "node test/projectStudio.e2e.mjs",
+    "test:intake": "npx --yes tsx test/projectIntake.test.mts",
+    "test:wizard": "node test/newProject.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

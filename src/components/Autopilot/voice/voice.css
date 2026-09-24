@@ -1,0 +1,46 @@
+/*
+ * The microphone's motion, and only its motion.
+ *
+ * Every state is also said in words and colour in VoiceControl.tsx, so with
+ * motion reduced nothing is lost but the movement. `motion.ts` rewrites the
+ * media conditions below when somebody overrides their system setting.
+ */
+.vc-mic { transition: background 0.15s ease, border-color 0.15s ease; }
+.vc-mic::before,
+.vc-mic::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* A ring that grows with the voice: the clearest sign it is actually hearing. */
+  .vc-mic.vc-on::before {
+    opacity: 1;
+    background: rgba(220, 38, 38, 0.14);
+    transform: scale(calc(1 + var(--lvl, 0) * 0.9));
+    transition: transform 0.08s linear;
+  }
+  /* And a slow pulse behind it, so a silent room still reads as "listening". */
+  .vc-mic.vc-on::after {
+    border: 2px solid rgba(220, 38, 38, 0.35);
+    animation: vc-pulse 1.6s ease-out infinite;
+  }
+  .vc-review { animation: vc-in 0.25s ease-out both; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-mic.vc-on::before { opacity: 1; background: rgba(220, 38, 38, 0.12); }
+}
+
+@keyframes vc-pulse {
+  0% { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.7); }
+}
+@keyframes vc-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}

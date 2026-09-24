@@ -82,6 +82,12 @@ export const STEP_FIELDS: Record<string, FieldDef[]> = {
       hint: 'Counted from when it last ran, not from a clock — so nothing is skipped by a tick landing a few minutes early.',
     },
     {
+      key: 'days', label: 'Only on these days',
+      hint: 'Leave blank for every day. "mon, wed, fri" is three times a week. Read in UTC.',
+      placeholder: 'mon, wed, fri',
+      when: cfg => cfg.event === 'schedule' && (cfg.cadence ?? 'daily') === 'daily',
+    },
+    {
       key: 'formName', label: 'Only this form', hint: 'Leave blank for any form.', placeholder: 'Get a quote',
       /* Only for the event it narrows. It used to show for every event, so a
          tag trigger carried a form name it could not use — and the engine,

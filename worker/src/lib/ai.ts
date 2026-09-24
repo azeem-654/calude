@@ -145,9 +145,39 @@ export async function installAiKey(env: Env): Promise<string | null> {
  * take the rest of them down with it.
  */
 export async function askGemini(apiKey: string, prompt: string, temperature = 0.5): Promise<AiResult> {
+  return askGeminiParts(apiKey, [{ text: prompt }], temperature);
+}
+
+/**
+ * One piece of what the model is shown: words, or a file carried inline.
+ *
+ * Inline rather than uploaded through Google's file API, because there is no
+ * file store in this deployment to hold the upload's handle between the two
+ * calls, and every file the wizard sends is small enough to ride in the request
+ * — a photo, a PDF brochure, thirty seconds of somebody speaking.
+ */
+export type AiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * The same call as `askGemini`, with images, PDFs or audio alongside the text.
+ *
+ * This is what lets the New Project wizard read the brochure somebody attached
+ * and transcribe what they said into the microphone on the key the operator
+ * already holds — rather than adding a speech service, a second bill and a
+ * second place a customer's words are sent.
+ *
+ * `json: false` returns the text as written, for a transcript that should not
+ * be squeezed through a JSON encoder somebody's model might get wrong.
+ */
+export async function askGeminiParts(
+  apiKey: string, parts: AiPart[], temperature = 0.5, opts: { json?: boolean } = {},
+): Promise<AiResult> {
+  const asJson = opts.json !== false;
   const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature },
+    contents: [{ parts }],
+    generationConfig: asJson ? { responseMimeType: 'application/json', temperature } : { temperature },
   };
 
   let lastError = '';
@@ -168,9 +198,13 @@ export async function askGemini(apiKey: string, prompt: string, temperature = 0.
       if (res.ok) {
         const data = await res.json<{ candidates?: { content?: { parts?: { text?: string }[] } }[] }>()
           .catch(() => ({}) as Record<string, never>);
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const text = (data.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? '').join('');
         /* Models sometimes wrap JSON in a fence despite being asked not to. */
-        return { ok: true, text: text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim(), error: '' };
+        return {
+          ok: true,
+          text: asJson ? text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim(),
+          error: '',
+        };
       }
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);

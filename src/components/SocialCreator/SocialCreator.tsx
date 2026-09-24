@@ -11,6 +11,12 @@ import { PLATFORM_PRESETS, RATIO_SIZES, TEMPLATES } from './templates';
 import { normalisePosts } from './normalise';
 import { generateSocialPostDesign, hasGeminiKey } from '../../lib/gemini';
 
+/** The status as the customer should read it — see the note in the card. */
+function statusOf(p: DesignPost): { key: string; label: string } {
+  if (p.status === 'draft' && (p.tags ?? []).includes('ready-to-publish')) return { key: 'ready', label: 'Ready to publish' };
+  return { key: p.status, label: p.status };
+}
+
 const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   instagram: <span style={{ fontSize: 12, fontWeight: 700 }}>IG</span>,
   linkedin:  <span style={{ fontSize: 12, fontWeight: 700 }}>LI</span>,
@@ -41,7 +47,11 @@ function PostCard({
 }) {
   const [hover, setHover] = useState(false);
   const preset = PLATFORM_PRESETS[post.platform];
-  const statusColors: Record<string, string> = { draft: '#94a3b8', published: '#22c55e', scheduled: '#f59e0b' };
+  const statusColors: Record<string, string> = { draft: '#94a3b8', published: '#22c55e', scheduled: '#f59e0b', ready: '#5b46e5' };
+  /* An Autopilot post the customer said needs no further review. Still a draft
+     in every sense that matters — nothing here posts it — but "draft" would
+     hide the one thing they need to know: it is waiting for them to publish. */
+  const shown = statusOf(post);
 
   return (
     <div
@@ -92,8 +102,8 @@ function PostCard({
           </span>
           <span style={{
             fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 99, textTransform: 'capitalize',
-            background: statusColors[post.status] + '22', color: statusColors[post.status],
-          }}>{post.status}</span>
+            background: statusColors[shown.key] + '22', color: statusColors[shown.key],
+          }}>{shown.label}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{
@@ -710,8 +720,8 @@ export default function SocialCreator() {
                 <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 14 }}>{p.name}</div>
                 <div style={{ fontSize: 12, color: '#64748b' }}>{PLATFORM_PRESETS[p.platform]?.label} • {p.aspectRatio}</div>
               </div>
-              <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 99, background: p.status === 'published' ? '#dcfce7' : p.status === 'scheduled' ? '#fef3c7' : '#f1f5f9', color: p.status === 'published' ? '#16a34a' : p.status === 'scheduled' ? '#d97706' : '#64748b' }}>
-                {p.status}
+              <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 99, background: p.status === 'published' ? '#dcfce7' : p.status === 'scheduled' ? '#fef3c7' : statusOf(p).key === 'ready' ? '#eeebff' : '#f1f5f9', color: p.status === 'published' ? '#16a34a' : p.status === 'scheduled' ? '#d97706' : statusOf(p).key === 'ready' ? '#4c39d1' : '#64748b' }}>
+                {statusOf(p).label}
               </span>
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{new Date(p.updatedAt).toLocaleDateString()}</span>
               <div style={{ display: 'flex', gap: 4 }}>

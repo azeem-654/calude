@@ -43,6 +43,19 @@ ok('monthly is not due after a fortnight', !cadenceDue('monthly', hoursAgo(24 * 
 ok('an unknown cadence behaves as daily', cadenceDue('fortnightly', hoursAgo(21))
   && !cadenceDue('fortnightly', hoursAgo(4)));
 
+/* Weekdays, and named days. Tested at fixed instants: 2026-09-26 is a
+   Saturday, 2026-09-28 a Monday. */
+const SAT = Date.parse('2026-09-26T09:00:00Z');
+const MON = Date.parse('2026-09-28T09:00:00Z');
+const dayBefore = (t: number) => new Date(t - 21 * 3_600_000).toISOString();
+ok('weekdays is not due on a Saturday', !cadenceDue('weekdays', dayBefore(SAT), SAT));
+ok('weekdays is due on a Monday', cadenceDue('weekdays', dayBefore(MON), MON));
+ok('mon,wed,fri is due on a Monday', cadenceDue('daily', dayBefore(MON), MON, 'mon,wed,fri'));
+ok('mon,wed,fri is not due on a Saturday', !cadenceDue('daily', dayBefore(SAT), SAT, 'mon,wed,fri'));
+ok('named days still wait twenty hours', !cadenceDue('daily', new Date(MON - 3_600_000).toISOString(), MON, 'mon'));
+ok('a first run is due on any day — it is the proof it works', cadenceDue('weekdays', null, SAT));
+ok('nonsense days are ignored rather than stopping it', cadenceDue('daily', dayBefore(SAT), SAT, 'someday'));
+
 /* ── A YouTube channel ──────────────────────────────────────────────────── */
 
 ok('a bare channel ID becomes the feed',

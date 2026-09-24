@@ -26,9 +26,20 @@
  */
 
 /** The workspace records a play may look at. Parsed once, passed to all. */
+import type { PlannerChannel } from './projectBrief';
+
 export interface Workspace {
   /** What this project is for. Absent is treated as 'general'. */
   kind?: ProjectKind;
+  /**
+   * The channels this project's brief lets the planner act on.
+   *
+   * Absent for every project made before briefs existed, which plan exactly as
+   * they always did. Present and empty means the project's own workflows do
+   * all of its work and the planner stays out of it — a daily social post
+   * written by both would be two posts a day.
+   */
+  focus?: PlannerChannel[] | null;
   contacts: Contact[];
   sequences: Sequence[];
   enrolments: Enrolment[];
@@ -174,6 +185,14 @@ export interface PlannedAction {
    * somebody stop reading the board.
    */
   kinds?: ProjectKind[];
+  /**
+   * Which channel this play works in, for a project whose brief narrows them.
+   *
+   * Every play carries one. A play without it would be kept by a project that
+   * asked for "social only" — and the play most likely to be forgotten is the
+   * one that emails somebody.
+   */
+  channels: PlannerChannel[];
   kind: 'create' | 'enrol' | 'send' | 'observe' | 'advance' | 'book' | 'error';
   summary: string;
   because: string;
@@ -297,6 +316,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (!canSend) {
     out.push({
       key: 'no-sender',
+      channels: ['email', 'sms'],
       scope: 'workspace',
       kind: 'error',
       /* Only claims what is true. It used to say "cannot do anything yet",
@@ -317,6 +337,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (spends && !ws.pool.canBuy) {
       out.push({
         key: 'pool-cannot-buy',
+        channels: ['email'],
         scope: 'workspace',
         kind: 'error',
         summary: 'Autopilot cannot build your sending pool yet',
@@ -328,6 +349,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     } else {
       out.push({
         key: `pool:${step.type}`,
+        channels: ['email'],
         scope: 'workspace',
         /* Everything that spends money asks first, whichever mode is on. In
            bring-your-own it is the customer's registrar; in managed it is a
@@ -382,6 +404,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const wantsFunnel = kind === 'ecommerce';
       out.push({
         key: 'write-landing',
+        channels: ['site'],
         scope: 'project',
         kind: 'create',
         summary: wantsFunnel ? 'Build a funnel to sell from' : 'Build a website for what you do',
@@ -406,6 +429,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const first = c.blogPosts === 0;
       out.push({
         key: `write-blog-${today}`,
+        channels: ['blog'],
         scope: 'project',
         kind: 'create',
         summary: first ? 'Write your first blog post' : `Write today's blog post — ${today}`,
@@ -428,6 +452,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (ahead < 5 && hoursSince(c.newestSocialAt) >= 20) {
       out.push({
         key: `write-social-${today}`,
+        channels: ['social'],
         scope: 'project',
         kind: 'create',
         summary: ahead === 0 ? 'Write a week of social posts' : `Top up the social queue — ${today}`,
@@ -445,6 +470,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
          filmed the first is a pile of homework rather than a service. */
       out.push({
         key: 'write-short',
+        channels: ['video'],
         scope: 'project',
         kind: 'create',
         summary: 'Write a script for a 30-second video',
@@ -481,6 +507,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     const angle = angles[Math.min(active.length - 1, angles.length - 1)];
     out.push({
       key: `write-sequence-extra-${active.length}`,
+      channels: ['email'],
       kinds: ['leadgen', 'consultancy', 'ecommerce'],
       scope: 'project',
       kind: 'create',
@@ -504,6 +531,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = active[0];
       out.push({
         key: `enrol-new:${seq.id}`,
+        channels: ['email'],
         kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'enrol',
@@ -530,6 +558,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (ws.content?.canWrite) {
       out.push({
         key: 'write-sequence',
+        channels: ['email'],
         kinds: ['leadgen', 'consultancy'],
         scope: 'project',
         kind: 'create',
@@ -544,6 +573,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     } else {
       out.push({
         key: 'no-sequence',
+        channels: ['email'],
         kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'observe',
@@ -571,6 +601,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = textable[0];
       out.push({
         key: `enrol-sms:${seq.id}`,
+        channels: ['sms'],
         kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'enrol',
@@ -589,6 +620,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
          them, and without anywhere to put them it is. */
       out.push({
         key: 'no-sms-sequence',
+        channels: ['sms'],
         kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'observe',
@@ -609,6 +641,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (remindable.length) {
     out.push({
       key: 'remind-bookings',
+      channels: ['book'],
       scope: 'workspace',
       kind: 'send',
       summary: `Remind ${remindable.length} ${remindable.length === 1 ? 'person' : 'people'} about tomorrow's appointment`,
@@ -634,6 +667,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
        the outside this is indistinguishable from Autopilot not bothering. */
     out.push({
       key: 'cannot-remind',
+      channels: ['book'],
       scope: 'workspace',
       kind: 'observe',
       summary: `${due.length} appointment${due.length === 1 ? ' is' : 's are'} booked for tomorrow and cannot be reminded`,
@@ -669,6 +703,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     const worth = stalled.reduce((n, d) => n + (Number(d.value) || 0), 0);
     out.push({
       key: 'stalled-deals',
+      channels: ['sales'],
       scope: 'workspace',
       kind: 'observe',
       summary: `${stalled.length} deal${stalled.length === 1 ? '' : 's'} ${stalled.length === 1 ? 'has' : 'have'} not moved in two weeks`,
@@ -694,6 +729,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   if (won.length && canSend) {
     out.push({
       key: 'ask-reviews',
+      channels: ['reviews'],
       kinds: ['leadgen', 'consultancy'],
       scope: 'workspace',
       kind: 'create',
@@ -716,6 +752,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const seq = active[active.length - 1];
       out.push({
         key: `re-engage:${seq.id}`,
+        channels: ['email'],
         kinds: ['leadgen', 'consultancy'],
         scope: 'workspace',
         kind: 'enrol',
@@ -742,6 +779,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unthanked.length;
       out.push({
         key: 'thank-buyers',
+        channels: ['shop'],
         kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'send',
@@ -764,6 +802,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unpaid.length;
       out.push({
         key: 'chase-payment',
+        channels: ['shop'],
         kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'send',
@@ -785,6 +824,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       const n = com.unfulfilled.length;
       out.push({
         key: 'draft-at-supplier',
+        channels: ['shop'],
         kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'create',
@@ -804,6 +844,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
     if (com.draftProducts > 0) {
       out.push({
         key: 'draft-products',
+        channels: ['shop'],
         kinds: ['ecommerce'],
         scope: 'workspace',
         kind: 'observe',
@@ -824,6 +865,11 @@ export function planNext(ws: Workspace): PlannedAction[] {
    * working yesterday must not have work silently withdrawn because a column
    * was added.
    */
-  if (kind === 'general') return out;
-  return out.filter(a => !a.kinds || a.kinds.includes(kind));
+  /* The brief first: it is the narrower of the two, and a project that said
+     "social only" must not be handed an email play because its kind is
+     general. */
+  const focus = ws.focus;
+  const inFocus = focus ? out.filter(a => a.channels.some(c => focus.includes(c))) : out;
+  if (kind === 'general') return inFocus;
+  return inFocus.filter(a => !a.kinds || a.kinds.includes(kind));
 }

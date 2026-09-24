@@ -104,16 +104,44 @@ export interface RunLink { kind: string; id: string; label: string; route: strin
 const CADENCE_HOURS: Record<string, number> = {
   hourly: 1,
   daily: 20,
+  /* Daily on the days it may run; `allowedDays` does the rest. */
+  weekdays: 20,
   weekly: 24 * 6.5,
   monthly: 24 * 29,
 };
 
-export function cadenceDue(cadence: string, lastRunAt: string | null, now = Date.now()): boolean {
+/**
+ * The days of the week a cadence may run on, Sunday = 0.
+ *
+ * `weekdays` is its own cadence because it is the single most common answer to
+ * "how often?" for a business account — nobody wants their Saturday feed to be
+ * a post about office hours. `days` narrows a daily cadence further ("mon,wed,
+ * fri" is three a week), and is what the wizard writes for "3 times a week".
+ *
+ * Read in UTC. The customer's own timezone is not something this table knows,
+ * and the difference only matters within a few hours of midnight — where the
+ * worst case is a Friday post landing early on Saturday for somebody far east.
+ */
+const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+export function allowedDays(cadence: string, days?: string): Set<number> | null {
+  if (days && days.trim()) {
+    const set = new Set(days.toLowerCase().split(/[\s,]+/).map(d => DAY_NAMES.indexOf(d.slice(0, 3))).filter(i => i >= 0));
+    if (set.size) return set;
+  }
+  if (cadence === 'weekdays') return new Set([1, 2, 3, 4, 5]);
+  return null;
+}
+
+export function cadenceDue(cadence: string, lastRunAt: string | null, now = Date.now(), days?: string): boolean {
   /* Never run: due. Anything else would mean switching an agent on and being
-     told nothing happened, with no way to tell whether it was broken. */
+     told nothing happened, with no way to tell whether it was broken. That holds
+     on a Saturday too — the first one is the proof it works. */
   if (!lastRunAt) return true;
   const then = Date.parse(lastRunAt);
   if (!Number.isFinite(then)) return true;
+  const allowed = allowedDays(cadence, days);
+  if (allowed && !allowed.has(new Date(now).getUTCDay())) return false;
   const hours = CADENCE_HOURS[cadence] ?? CADENCE_HOURS.daily;
   return now - then >= hours * 3_600_000;
 }
@@ -301,7 +329,18 @@ const ACCENT = '#c7f441';
  */
 export function designFromPost(
   post: { platform: string; headline: string; body: string; hashtags: string[] },
-  opts: { id: string; brandColor: string; company: string; source: unknown; now: string },
+  opts: {
+    id: string; brandColor: string; company: string; source: unknown; now: string;
+    /**
+     * Whether the customer said a finished post needs no further review.
+     *
+     * It is still a draft either way — nothing here publishes, and the Social
+     * Creator has no connection to post through. The tag is what lets that
+     * screen say "ready to publish" rather than "draft", which is the handoff
+     * the customer agreed to: Autopilot makes it, they post it.
+     */
+    ready?: boolean;
+  },
 ): Record<string, unknown> {
   const platform = ['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok', 'youtube']
     .includes(post.platform) ? post.platform : 'instagram';
@@ -346,7 +385,7 @@ export function designFromPost(
     caption: [post.body, (post.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n'),
     content: post.body,
     hashtags: post.hashtags ?? [],
-    tags: ['autopilot'],
+    tags: opts.ready ? ['autopilot', 'ready-to-publish'] : ['autopilot'],
     source: opts.source,
     createdAt: opts.now,
     updatedAt: opts.now,
@@ -502,7 +541,9 @@ async function runAgentNode(
     for (const p of posts.slice(0, count)) {
       const id = `sp-${crypto.randomUUID()}`;
       if (!first) first = id;
-      await push(env, accountId, SOCIAL_KEY, designFromPost(p, { id, brandColor, company: brand.companyName, source, now }));
+      await push(env, accountId, SOCIAL_KEY, designFromPost(p, {
+        id, brandColor, company: brand.companyName, source, now, ready: c('handoff') === 'ready',
+      }));
     }
     return {
       outcome: 'ok',
@@ -628,7 +669,7 @@ export async function runProjectAgents(env: Env): Promise<AgentReport> {
     if (String(trigger?.config?.event ?? '') !== 'schedule') continue;
 
     const cadence = String(trigger?.config?.cadence ?? 'daily');
-    if (!cadenceDue(cadence, wf.last_run_at)) continue;
+    if (!cadenceDue(cadence, wf.last_run_at, Date.now(), String(trigger?.config?.days ?? ''))) continue;
 
     const agents = nodes.filter(n => n.type === 'ai');
     if (!agents.length) {

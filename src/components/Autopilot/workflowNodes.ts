@@ -125,9 +125,31 @@ export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
 /** How often a scheduled workflow runs, in the words on the form. */
 export const CADENCES: Record<string, string> = {
   daily: 'Every day',
+  /* Its own cadence rather than a daily one with five days typed in, because
+     it is the answer most businesses give to "how often?" — and the server
+     reads it the same way (`allowedDays` in projectAgents.ts). */
+  weekdays: 'Every weekday',
   weekly: 'Every week',
   monthly: 'Every month',
 };
+
+/**
+ * A schedule, in words, including the days it is limited to.
+ *
+ * `days` narrows a daily cadence ("mon,wed,fri" is three times a week). Said
+ * here once so the canvas, the preview and the project page all read the same
+ * sentence rather than three spellings of it.
+ */
+export function scheduleLabel(config: Record<string, string> = {}): string {
+  const cad = String(config.cadence ?? 'daily');
+  const days = String(config.days ?? '').trim();
+  if (days && (cad === 'daily' || cad === 'weekdays')) {
+    const names = days.split(/[\s,]+/).filter(Boolean)
+      .map(d => d.slice(0, 1).toUpperCase() + d.slice(1, 3).toLowerCase());
+    if (names.length) return `Every ${names.join(', ')}`;
+  }
+  return CADENCES[cad] ?? CADENCES.daily;
+}
 
 /**
  * The line under a step's name: what it will actually do, from its own config.
@@ -143,7 +165,7 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
   if (type === 'trigger') {
     /* A schedule reads as a schedule. "schedule — daily" is the code's words;
        "Every day" is what somebody set. */
-    if (c('event') === 'schedule') return CADENCES[c('cadence')] ?? CADENCES.daily;
+    if (c('event') === 'schedule') return scheduleLabel(config);
     const ev = c('event').replace(/_/g, ' ');
     const named = c('formName') || c('tag');
     return named ? `${ev} — ${named}` : ev;
@@ -529,7 +551,7 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
 
   if (node.type === 'trigger') {
     if (c('event') === 'schedule') {
-      const cad = CADENCES[c('cadence')] ?? CADENCES.daily;
+      const cad = scheduleLabel(node.config ?? {});
       return {
         headline: `${cad}, whether or not anybody has done anything.`,
         blocked: '',

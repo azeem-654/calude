@@ -24,6 +24,7 @@ import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey } from '../lib/ai';
 import { readSite } from '../lib/readSite';
 import { ensureProjectPipeline } from '../lib/projectPipeline';
+import { sanitiseBrief } from '../lib/projectBrief';
 
 interface Req {
   token?: string;
@@ -39,6 +40,8 @@ interface Req {
   goals?: unknown;
   /** The build order the wizard showed, kept as it was shown. */
   launchSteps?: unknown;
+  /** The blueprint the customer approved. See lib/projectBrief.ts. */
+  brief?: unknown;
   portfolioId?: string;
   status?: string;
   kind?: string;
@@ -127,6 +130,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
                  working through rather than an empty frame — real steps with a
                  real count, never a bar on a timer. */
               j.launch_steps AS launchSteps,
+              j.brief,
               COALESCE(p.name, '') AS portfolioName,
               (SELECT count(*) FROM crm_autopilot_actions a
                 WHERE a.project_id = j.id AND a.status = 'awaiting') AS awaiting,
@@ -146,7 +150,15 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
          rather than taking the whole board down on one bad record. */
       let launchSteps: unknown = [];
       try { launchSteps = JSON.parse(String(row.launchSteps ?? '[]')); } catch { launchSteps = []; }
-      return { ...row, guardrails, launchSteps: Array.isArray(launchSteps) ? launchSteps : [] };
+      /* The same for the blueprint: an unreadable one is no blueprint, and the
+         project page falls back to what it showed before briefs existed. */
+      let brief: unknown = null;
+      try { brief = JSON.parse(String(row.brief ?? '{}')); } catch { brief = null; }
+      const hasBrief = !!brief && typeof brief === 'object' && Object.keys(brief as object).length > 0;
+      return {
+        ...row, guardrails, launchSteps: Array.isArray(launchSteps) ? launchSteps : [],
+        brief: hasBrief ? brief : null,
+      };
     });
   };
 
@@ -425,9 +437,17 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       )
       : null;
 
+    /* Omitted on an edit, which keeps the one agreed at creation — the same rule
+       as the launch steps. Refused outright when present and unusable, rather
+       than saving a project whose page would then describe nothing. */
+    const brief = d.brief === undefined ? null : sanitiseBrief(d.brief);
+    if (d.brief !== undefined && brief === null) {
+      return fail('The project blueprint could not be saved — it was not a blueprint, or it was far too large.');
+    }
+
     const now = nowIso();
-    const existing = await env.DB.prepare('SELECT created_at, guardrails, status, launch_steps AS launchSteps FROM crm_projects WHERE id = ? AND account_id = ?')
-      .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string; launchSteps: string }>();
+    const existing = await env.DB.prepare('SELECT created_at, guardrails, status, launch_steps AS launchSteps, brief FROM crm_projects WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string; launchSteps: string; brief: string }>();
 
     /* Guardrails survive an edit. Somebody who opened sending up once should
        not be asked again because they reworded the objective. */
@@ -442,20 +462,21 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       `INSERT INTO crm_projects
        (id, account_id, portfolio_id, name, objective, kind, status, guardrails,
         purchase_mode, pool_target, revenue_target, volume_target, goals,
-        launch_steps, last_error, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, ?, '', ?,?)
+        launch_steps, brief, last_error, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, ?, ?, '', ?,?)
        ON CONFLICT(id) DO UPDATE SET
          portfolio_id=excluded.portfolio_id, name=excluded.name,
          objective=excluded.objective, kind=excluded.kind, status=excluded.status,
          guardrails=excluded.guardrails, revenue_target=excluded.revenue_target,
          volume_target=excluded.volume_target, goals=excluded.goals,
-         launch_steps=excluded.launch_steps,
+         launch_steps=excluded.launch_steps, brief=excluded.brief,
          last_error='', updated_at=excluded.updated_at`,
     ).bind(
       id, accountId, portfolioId, name.slice(0, 160), objective.slice(0, 2000),
       kind, existing?.status ?? 'learning', JSON.stringify(guardrails),
       revenueTarget, volumeTarget, goals,
       launchSteps ?? existing?.launchSteps ?? '[]',
+      brief ?? existing?.brief ?? '{}',
       existing?.created_at ?? now, now,
     ).run();
 

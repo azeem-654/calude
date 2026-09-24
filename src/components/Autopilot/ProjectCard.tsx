@@ -32,7 +32,7 @@ import {
   Workflow as WorkflowIcon, Bot, BarChart3, Settings as SettingsIcon,
   Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle,
   ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2,
-  Image as ImageIcon, Activity, Clock,
+  Image as ImageIcon, Activity, Clock, LayoutDashboard,
 } from 'lucide-react';
 import {
   fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
@@ -53,6 +53,8 @@ import VoicePrompt from './VoicePrompt';
 import WorkflowWizard from './WorkflowWizard';
 import StepDrawer from './StepDrawer';
 import ProjectLogo from './ProjectLogo';
+import ProjectOverview from './ProjectOverview';
+import ProjectSchedule from './ProjectSchedule';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
@@ -88,13 +90,22 @@ const ACCENT = T.accent;
  * One tab now, with a view switch inside it. Same list, two ways of looking at
  * it, one source.
  */
-type Tab = 'workflows' | 'agents' | 'assets' | 'activity' | 'analytics' | 'settings';
+type Tab = 'overview' | 'workflows' | 'agents' | 'activity' | 'assets' | 'schedule' | 'analytics' | 'settings';
 
+/*
+ * Overview first. It is the blueprint the customer approved and the latest
+ * things the project made — the answer to "what is this and is it working",
+ * which is the question on arrival. Schedule has its own tab because "when does
+ * it run next?" is asked often enough that hunting for the trigger on each
+ * canvas was a chore.
+ */
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'workflows', label: 'Workflows', icon: WorkflowIcon },
   { id: 'agents', label: 'AI Agents', icon: Bot },
-  { id: 'assets', label: 'Assets', icon: ImageIcon },
   { id: 'activity', label: 'Activity', icon: Activity },
+  { id: 'assets', label: 'Assets', icon: ImageIcon },
+  { id: 'schedule', label: 'Schedule', icon: Clock },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'settings', label: 'Project Settings', icon: SettingsIcon },
 ];
@@ -137,9 +148,11 @@ function promptsFor(kind: string): string[] {
 }
 
 export default function ProjectCard({
-  project, portfolio, onChanged, onToggle, onDelete, tools,
+  project, portfolio, onChanged, onToggle, onDelete, tools, focused,
 }: {
   project: Project;
+  /** Just built, or linked to: opened on its Overview and outlined. */
+  focused?: boolean;
   /** The client this project is for. Null when none was chosen — the logo then
    *  falls back to a letter and says there is nowhere to keep one. */
   portfolio: Portfolio | null;
@@ -154,7 +167,18 @@ export default function ProjectCard({
      already holds them rather than fetched again — the Assets tab is a view of
      work that exists, not a second source of it. */
   const { socialPosts } = useApp();
-  const [tab, setTab] = useState<Tab>('workflows');
+  /* Overview for a project built from a blueprint, or one somebody was just
+     sent to; Workflows, as it always was, for projects older than blueprints —
+     their Overview has little to say and their owners know where they work. */
+  const [tab, setTab] = useState<Tab>(focused || project.brief ? 'overview' : 'workflows');
+  /* Sent here after the card was already on screen: open the Overview then too.
+     Adjusted during render rather than in an effect, which would draw the old
+     tab for a frame first. */
+  const [seenFocus, setSeenFocus] = useState(focused);
+  if (focused !== seenFocus) {
+    setSeenFocus(focused);
+    if (focused) setTab('overview');
+  }
   /* Grid to recognise a picture, list to read a name. Not stored: it is a
      glance, not a preference, and a remembered one is a setting to explain. */
   const [assetView, setAssetView] = useState<'grid' | 'list'>('grid');
@@ -482,6 +506,7 @@ export default function ProjectCard({
   return (
     <section style={{
       display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr) 272px', alignItems: 'start',
+      ...(focused ? { outline: `2px solid ${T.accent}55`, outlineOffset: 6, borderRadius: 20 } : {}),
     }} className="ap-project">
       {/* ── The project ── */}
       <div style={{
@@ -605,7 +630,34 @@ export default function ProjectCard({
             }}>{error}</p>
           )}
 
-          {/* ── Workflows ── */}
+          {/* ── Overview ── */}
+          {tab === 'overview' && (
+            <ProjectOverview
+              project={project} flows={flows} runs={runs} assets={assets}
+              onCreateWorkflow={() => setWizard(true)}
+              onOpenWorkflows={() => setTab('workflows')}
+            />
+          )}
+
+          {tab === 'schedule' && <ProjectSchedule flows={flows} runs={runs} />}
+
+          {/* ── Workflows ──
+              "Create workflow" sits above both states, always. It used to live
+              inside the empty state *and* in a row that only appeared once a
+              workflow existed — so on a brand-new project it was under a tall
+              "getting ready" panel, and customers reported there was no way to
+              add the first one. */}
+          {tab === 'workflows' && (
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button onClick={() => setWizard(true)} className="press ap-btn"
+                style={{ ...primaryBtn, padding: '9px 16px' }}>
+                <Plus size={13} /> Create workflow
+              </button>
+              <button onClick={() => setEditing({ workflow: null })} className="press" style={ghost()}>
+                Build from scratch
+              </button>
+            </div>
+          )}
           {tab === 'workflows' && (
             !flows.length ? (
               <div style={{ padding: '18px 6px' }}>
@@ -699,7 +751,7 @@ export default function ProjectCard({
 
                     <p style={{ margin: '10px 0 0', fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
                       Nothing above moves on a timer — a step is ticked when the record behind it exists.
-                      You do not have to wait: start a workflow yourself below.
+                      You do not have to wait: press Create workflow above.
                     </p>
                   </div>
                 )}
@@ -712,38 +764,17 @@ export default function ProjectCard({
                   <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
                     No workflows on this project yet
                   </h4>
-                  <p style={{ margin: '0 auto 13px', maxWidth: 440, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                  <p style={{ margin: '0 auto 4px', maxWidth: 440, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                     A workflow is what happens on its own when somebody fills in this client's form, is
-                    tagged, or goes quiet. There are {TEMPLATES.length} ready to read, the AI will write one
-                    from a sentence, or you can build your own.
+                    tagged, or goes quiet — or on a schedule. There are {TEMPLATES.length} ready to read, the AI will
+                    write one from a sentence, or you can build your own: press Create workflow above.
                   </p>
 
-                  {/*
-                    * One button, and it opens the wizard.
-                    *
-                    * This used to be a grid of eight template tiles with a
-                    * dashed "build one from scratch" at the end, which asked
-                    * somebody to choose between eight things before they had
-                    * decided *how* they wanted to work. The wizard asks that
-                    * question first and then gets out of the way.
-                    */}
-                  <button onClick={() => setWizard(true)} className="press ap-btn"
-                    style={{ ...primaryBtn, padding: '11px 20px' }}>
-                    <Plus size={14} /> Add a workflow
-                  </button>
+
                 </div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                  <button onClick={() => setWizard(true)} className="press ap-btn"
-                    style={{ ...primaryBtn, padding: '9px 16px' }}>
-                    <Plus size={13} /> Add a workflow
-                  </button>
-                  <button onClick={() => setEditing({ workflow: null })} className="press" style={ghost()}>
-                    Build one from scratch
-                  </button>
-                </div>
 
                 {flows.map((f, i) => {
                   const isOpen = open[f.id] !== false;

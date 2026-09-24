@@ -1,0 +1,225 @@
+/**
+ * Step three: only what this project still needs, a few at a time.
+ *
+ * One topic per screen, three questions at most. Each says whether it is
+ * required or optional; most offer "Let AI decide", which resolves to a named
+ * choice the blueprint shows as "chosen for you" — so deciding nothing is a
+ * real option, and never a hidden one. Optional questions can be skipped.
+ *
+ * The business question is the one with a shape of its own, because there are
+ * five honest ways to answer it and a dropdown would hide four.
+ */
+import { useRef } from 'react';
+import { Building2, Globe, Upload, PenLine, Sparkles, Check, Image as ImageIcon, UserCircle2 } from 'lucide-react';
+import { GROUP_TITLE, type Question } from '../../../services/projectSolutions';
+import type { Attachment, IntakeState, KnownSource, Screen, WorkspaceFacts } from '../../../services/projectIntake';
+import { readAttachment } from './attachments';
+import { MANUAL_FIELDS } from './questionRules';
+
+export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total }: {
+  screen: Screen;
+  state: IntakeState;
+  ws: WorkspaceFacts;
+  files: Attachment[];
+  answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
+  onFiles: (atts: Attachment[]) => void;
+  onLink: (url: string) => void;
+  index: number;
+  total: number;
+}) {
+  return (
+    <div style={{ display: 'grid', gap: 24 }}>
+      <div>
+        <span style={{ fontSize: 12, fontWeight: 800, color: '#8b93a3', letterSpacing: '0.05em' }}>
+          {index + 1} OF {total}
+        </span>
+        <h2 className="wz-title" style={{ marginTop: 4 }}>{GROUP_TITLE[screen.group]}</h2>
+      </div>
+      {screen.questions.map(q => (
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} />
+      ))}
+    </div>
+  );
+}
+
+function Field({ q, state, ws, files, answer, onFiles, onLink }: {
+  q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
+  answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
+  onFiles: (atts: Attachment[]) => void;
+  onLink: (url: string) => void;
+}) {
+  const known = state.known[q.id];
+  const val = known?.value;
+  const vals = Array.isArray(val) ? val : val ? [val] : [];
+  const byAi = known?.source === 'default';
+  const aiValue = q.aiDecides;
+  const picker = useRef<HTMLInputElement>(null);
+
+  const head = (
+    <div className="np-q-head">
+      <span style={{ fontSize: 17, fontWeight: 750, color: '#17191c', letterSpacing: '-0.01em' }}>{q.prompt}</span>
+      <span className="np-need" data-need={q.need}>{q.need === 'required' ? 'NEEDED' : 'OPTIONAL'}</span>
+    </div>
+  );
+  const help = q.help ? <p style={{ margin: '-4px 0 0', fontSize: 13, color: '#6b7280', lineHeight: 1.55 }}>{q.help}</p> : null;
+  const aiButton = aiValue !== undefined && aiValue !== 'detect' ? (
+    <button type="button" className="np-opt" data-ai="1" aria-pressed={byAi}
+      onClick={() => answer(q.id, byAi ? null : aiValue, 'default')}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI decide</span>
+    </button>
+  ) : aiValue === 'detect' ? (
+    <button type="button" className="np-opt" data-ai="1" aria-pressed={vals[0] === 'detect'}
+      onClick={() => answer(q.id, vals[0] === 'detect' ? null : 'detect', 'default')}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI work it out</span>
+    </button>
+  ) : null;
+  const skipped = known?.note === 'skipped';
+  const skip = q.need !== 'optional' ? null : skipped ? (
+    <span style={{ fontSize: 12.5, color: '#6b7280' }}>Skipped{aiValue !== undefined ? ' — Autopilot will choose' : ''}.</span>
+  ) : !vals.length ? (
+    <button type="button" className="np-skip" onClick={() => answer(q.id, q.type === 'multi' ? [] : '', 'you')}>Skip for now</button>
+  ) : null;
+
+  /* ── The business ── */
+  if (q.type === 'business') {
+    const opts: { value: string; label: string; hint: string; icon: typeof Globe }[] = [
+      ...ws.portfolios.map(p => ({ value: `existing:${p.id}`, label: p.name, hint: 'Already in Protected Central', icon: Building2 })),
+      ...(ws.workspace?.companyName ? [{ value: 'workspace', label: `My ${ws.workspace.companyName} profile`, hint: 'From your account setup', icon: UserCircle2 }] : []),
+      { value: 'website', label: 'Read my website', hint: 'Autopilot reads it now', icon: Globe },
+      { value: 'upload', label: 'Upload a company profile', hint: 'A PDF, brochure or document', icon: Upload },
+      { value: 'manual', label: 'Type it in', hint: 'Three short lines', icon: PenLine },
+    ];
+    const docs = files.filter(f => f.kind === 'pdf' || f.kind === 'text');
+    return (
+      <div className="np-q">
+        {head}{help}
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))' }}>
+          {opts.map(o => {
+            const on = vals[0] === o.value;
+            return (
+              <button key={o.value} type="button" className="np-sol" aria-pressed={on} onClick={() => answer(q.id, o.value, 'you')}>
+                <span className="np-sol-icon"><o.icon size={16} /></span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#17191c' }}>{o.label}</span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#6b7280', marginTop: 2 }}>{o.hint}</span>
+                </span>
+                {on && <Check size={15} color="#5b46e5" style={{ marginLeft: 'auto', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </div>
+        {vals[0] === 'upload' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="np-tool" onClick={() => picker.current?.click()}><Upload size={14} /> Choose a file</button>
+            <input ref={picker} type="file" hidden accept="application/pdf,.pdf,.txt,.md"
+              onChange={async e => {
+                const f = e.target.files?.[0]; e.target.value = '';
+                if (!f) return;
+                const r = await readAttachment(f);
+                if (r.ok) onFiles([r.att]);
+              }} />
+            <span style={{ fontSize: 12.5, color: docs.length ? '#0f7b3d' : '#6b7280' }}>
+              {docs.length ? `Using ${docs.map(d => d.name).join(', ')}` : 'PDF or text, up to 3 MB'}
+            </span>
+          </div>
+        )}
+        {vals[0] === 'manual' && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {MANUAL_FIELDS.map(f => (
+              <label key={f.id} style={{ display: 'grid', gap: 5, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>
+                {f.label}
+                <input className="np-input" value={String(state.known[f.id]?.value ?? '')} placeholder={f.placeholder}
+                  onChange={e => answer(f.id, e.target.value, 'you')} />
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ── Style examples ── */
+  if (q.type === 'inspiration') {
+    const imgs = files.filter(f => f.kind === 'image');
+    return (
+      <div className="np-q">
+        {head}{help}
+        <div className="np-opts">
+          <button type="button" className="np-opt" onClick={() => picker.current?.click()}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ImageIcon size={13} /> Upload examples</span>
+            <small>Images, a design, a brand guide</small>
+          </button>
+          <input ref={picker} type="file" hidden multiple accept="image/*,application/pdf"
+            onChange={async e => {
+              const list = [...(e.target.files ?? [])]; e.target.value = '';
+              const out: Attachment[] = [];
+              for (const f of list.slice(0, 6)) { const r = await readAttachment(f); if (r.ok) out.push(r.att); }
+              if (out.length) { onFiles(out); answer(q.id, 'attached', 'you'); }
+            }} />
+          <button type="button" className="np-opt" data-ai="1" aria-pressed={vals[0] === 'ai'} onClick={() => answer(q.id, 'ai', 'default')}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Skip — let AI decide</span>
+            <small>From your brand, industry and audience</small>
+          </button>
+        </div>
+        <input className="np-input" placeholder="…or paste a link to a post or site you like"
+          onKeyDown={e => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const u = (e.target as HTMLInputElement).value.trim();
+            if (!u) return;
+            onLink(/^https?:\/\//.test(u) ? u : `https://${u}`);
+            answer(q.id, 'link', 'you');
+            (e.target as HTMLInputElement).value = '';
+          }} aria-label="Link to an example" />
+        {(imgs.length > 0 || vals[0] === 'link') && (
+          <span style={{ fontSize: 12.5, color: '#0f7b3d' }}>
+            {vals[0] === 'link' ? 'Link added as a reference. ' : ''}{imgs.length ? `${imgs.length} example image${imgs.length === 1 ? '' : 's'} attached.` : ''}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  /* ── Choices ── */
+  if (q.type === 'single' || q.type === 'multi') {
+    const toggle = (v: string) => {
+      if (q.type === 'single') { answer(q.id, vals[0] === v && !byAi ? null : v, 'you'); return; }
+      const base = byAi ? [] : vals;
+      const next = base.includes(v) ? base.filter(x => x !== v) : [...base.filter(x => x !== 'none' || v === 'none'), v].filter(x => v === 'none' ? x === 'none' : x !== 'none');
+      answer(q.id, next.length ? next : null, 'you');
+    };
+    return (
+      <div className="np-q">
+        {head}{help}
+        <div className="np-opts">
+          {(q.options ?? []).map(o => {
+            const on = vals.includes(o.value);
+            return (
+              <button key={o.value} type="button" className="np-opt" aria-pressed={on} onClick={() => toggle(o.value)}>
+                <span>{o.label}{byAi && on ? ' ✦' : ''}</span>
+                {o.hint && <small>{o.hint}</small>}
+              </button>
+            );
+          })}
+          {aiButton}
+        </div>
+        {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
+        {skip}
+      </div>
+    );
+  }
+
+  /* ── Words ── */
+  return (
+    <div className="np-q">
+      {head}{help}
+      <input className="np-input" inputMode={q.type === 'number' ? 'numeric' : undefined}
+        value={byAi ? '' : String(val ?? '')} placeholder={q.placeholder}
+        onChange={e => answer(q.id, e.target.value, 'you')} aria-label={q.prompt} />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {aiButton && <div className="np-opts">{aiButton}</div>}
+        {skip}
+      </div>
+    </div>
+  );
+}

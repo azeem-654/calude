@@ -149,6 +149,35 @@ const find = (w: Workspace, prefix: string) => planNext(w).find(a => a.key.start
     !find(ws(), 'write-short'), keys(ws()).join(' '));
 }
 
+/* ── A project's brief narrows what it plans ──
+ *
+ * The bug this guards: a project that only wanted social posts was 'general',
+ * and 'general' plans everything — a daily blog, a website, an email sequence
+ * and a "no mailbox" error for a project that was never going to send mail. */
+{
+  const everything = ws({
+    kind: 'general', canEmail: false,
+    content: { ...ws().content!, newestBlogAt: hoursAgo(30), newestSocialAt: hoursAgo(30), socialUnpublished: 0, websites: 0, funnels: 0 },
+  });
+  const all = keys(everything);
+  ok('without a brief, general still plans everything, as before',
+    all.includes('no-sender') && all.some(k => k.startsWith('write-blog')) && all.includes('write-landing'), all.join(' '));
+
+  const socialOnly = keys({ ...everything, focus: ['social'] });
+  ok('a social-only brief plans social', socialOnly.some(k => k.startsWith('write-social')), socialOnly.join(' '));
+  ok('and nothing that sends, not even the missing-mailbox warning',
+    !socialOnly.includes('no-sender') && !socialOnly.some(k => /sequence|enrol|re-engage|ask-reviews/.test(k)), socialOnly.join(' '));
+  ok('and no blog or website it never asked for',
+    !socialOnly.some(k => k.startsWith('write-blog') || k === 'write-landing'), socialOnly.join(' '));
+
+  const none = keys({ ...everything, focus: [] });
+  ok('an empty focus leaves the planner out entirely — the workflows do the work', none.length === 0, none.join(' '));
+
+  const emailOnly = keys({ ...everything, kind: 'leadgen', focus: ['email'] });
+  ok('an email brief still warns that nothing can send', emailOnly.includes('no-sender'), emailOnly.join(' '));
+  ok('every play names a channel', planNext({ ...everything, kind: 'general' }).every(a => a.channels.length > 0));
+}
+
 for (const line of out) console.log(line);
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed}/${out.length} passed`);

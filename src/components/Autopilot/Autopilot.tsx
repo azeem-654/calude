@@ -220,7 +220,15 @@ export default function Autopilot() {
           <NewProject
             portfolios={portfolios}
             onClose={() => setCreating(false)}
-            onCreated={() => { setCreating(false); setBoardKey(k => k + 1); void load(); }}
+            onCreated={id => {
+              setCreating(false);
+              setBoardKey(k => k + 1);
+              void load();
+              /* Straight into the project that was just built, rather than
+                 back to a board where it is one card among several and the
+                 customer has to find it. */
+              if (id) setParams(p => { const n = new URLSearchParams(p); n.set('project', id); n.delete('view'); return n; }, { replace: true });
+            }}
           />
         )}
       </div>

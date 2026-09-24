@@ -1,1226 +1,624 @@
 /**
- * Starting a project.
+ * Starting a project: describe it, and Autopilot works out the rest.
  *
- * ── What changed, and why ──
+ * ── What this replaced, and why ──
  *
- * It used to open on six capabilities — "Find people worth contacting", "Write
- * and send the emails", "Text them as well" — and ask a plumber to tick the
- * right ones. That is the implementation asking to be configured. Nobody
- * arrives at a marketing tool having decided they want capability three and
- * five; they arrive because the phone is not ringing, or because they are
- * launching something, or because they have four hundred old customers and no
- * reason to email them.
+ * The wizard used to be six fixed screens — "What is going wrong?", "What kind
+ * of business?", "Your sending setup", "Domains and mailboxes" — and every
+ * project went through all of them. Somebody who wanted one image post a day
+ * was sized for mailboxes; somebody building a shop was asked about reply
+ * rates. The questions were right for cold email and wrong for nearly
+ * everything else, because the shape was fixed. (docs/AUTOPILOT-NEW-PROJECT.md
+ * has the full audit.)
  *
- * So it opens on the job now, and the capabilities are derived from it —
- * `services/projectJobs.ts` holds the catalogue and `kindFor` already worked
- * this way round. Each job carries the first fortnight in plain sentences,
- * which is the teaching part: choosing between six abstract options is
- * guessing, and reading "week one it writes the emails and shows them to you"
- * is a decision. Each also says who it is *not* for, because that is what makes
- * the rest credible.
+ * Now:
  *
- * ── The step that was missing ──
+ *   Describe      one box: type, speak, attach files, add a website — or start
+ *                 from a ready-made solution card
+ *   Understand    the AI reads all of it (routes/intake.ts); without the AI,
+ *                 words are matched to the catalogue and the screen says so
+ *   Questions     only what is still missing for *this* project, a topic at a
+ *                 time, most with "Let AI decide"
+ *   Blueprint     the whole project on one screen, editable by sentence or voice
+ *   Connections   only the systems this project uses
+ *   Review        the counts, then "Build My Autopilot"
+ *   Build         every step a real operation, the bar their weighted share
  *
- * Nothing used to tell somebody that the job they picked needs a mailbox, or an
- * AI key, until it quietly failed to do anything. Step three names what this
- * particular job cannot run without, reports whether it is actually there —
- * asking the server, with `unknown` as its own state — and offers both ways to
- * fix it: connect a mailbox they own, or buy a domain and business email.
+ * The judgement lives in `services/projectSolutions.ts` (the catalogue and its
+ * questions) and `services/projectIntake.ts` (matching, extraction, the
+ * blueprint). This file holds the conversation and nothing it could get wrong
+ * on its own.
  *
- * The buying happens after the project is saved, because a purchase has to name
- * something that exists. That is not a step nobody warned them about: step
- * three is where the choice is made, and the last screen is where it completes.
+ * ── What is kept from before ──
  *
- * ── Why it looks like this ──
- *
- * One question per screen, a large title, and a single full-width button at the
- * bottom. Six things on a screen is a form; one thing is a conversation, and a
- * conversation is what somebody setting up their first project needs. Nothing
- * is saved until the create press, so abandoning halfway leaves no half-client
- * behind.
+ * Buying domains and mailboxes, for an email project that asked for them — it
+ * still happens right after the project is saved, because a purchase has to
+ * name something that exists. Nothing is written until "Build My Autopilot",
+ * so abandoning halfway leaves nothing behind.
  */
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Loader, Globe, Check, ArrowLeft, ArrowRight, Sparkles, Minus, Plus,
-  ClipboardPaste, PenLine, Building2, Search, Mail, MessageSquare, HelpCircle,
-  FileText, CalendarCheck, ShoppingBag, ChevronRight, ShieldCheck, ExternalLink,
-  Target, Lightbulb,
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Loader, Sparkles, Hammer, Mail } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
-import ProjectProgress from './ProjectProgress';
+import { loadOnboarding } from '../../services/onboarding';
+import { WizardBackdrop, WizardCta } from '../shared/WizardChrome';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
-import { WizardBackdrop, WizardCta, WizardFlow, WizardSplit, WizardTitle } from '../shared/WizardChrome';
+import AutopilotBot from './AutopilotBot';
+import type { Portfolio } from '../../services/projects';
+import { checkReadiness, type Readiness } from '../../services/projectReadiness';
+import { understand, refine } from '../../services/intake';
+import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from '../../services/projectSolutions';
 import {
-  saveProject, savePortfolio, readPortfolioFromUrl, readPortfolioFromText,
-  CAPABILITIES, kindFor, guardrailsFor, objectiveIdeas,
-  type Portfolio, type Capability,
-} from '../../services/projects';
-import {
-  ADVANCED_JOB, EVERYTHING, JOBS, REQUIREMENTS, jobById, requirementsFor,
-  type Job,
-} from '../../services/projectJobs';
-import { checkReadiness, type Readiness, type ReadyState } from '../../services/projectReadiness';
-import {
-  BEGINNER, DEFAULTS, INDUSTRIES, capacityOf, industryById, packageFor, project,
-  type Industry, type StarterPackage,
-} from '../../services/sendingPlan';
-import { launchPlan } from '../../services/launchPlan';
+  allQuestions, answersOf, applies, applyOps, buildBlueprint, extractKnown, initialState,
+  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer,
+  type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
+} from '../../services/projectIntake';
+import Describe, { type DescribeValue } from './newProject/Describe';
+import Understanding, { type Stage } from './newProject/Understanding';
+import Questions from './newProject/Questions';
+import { screenBlocker } from './newProject/questionRules';
+import BlueprintView, { EditPanel, type EditMessage } from './newProject/BlueprintView';
+import Requirements from './newProject/Requirements';
+import Review from './newProject/Review';
+import Build from './newProject/Build';
+import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProject/buildRunner';
+import './newProject/newProject.css';
 
-const INK = '#0b0c0e';
-const MUTED = '#6b7280';
-const LINE = '#e6e9f0';
-const ACCENT = '#5b46e5';
-const GREEN = '#0f7b3d';
+type Phase = 'describe' | 'understand' | 'questions' | 'blueprint' | 'requirements' | 'review' | 'build' | 'domains';
 
-const JOB_ICON: Record<string, typeof Search> = {
-  'new-customers': Search,
-  'existing-customers': Mail,
-  'poor-results': MessageSquare,
-  diary: CalendarCheck,
-  launch: Sparkles,
-  shop: ShoppingBag,
-  'be-found': FileText,
-  advanced: PenLine,
-};
-
-const CAP_ICON: Record<Capability, typeof Search> = {
-  find: Search, email: Mail, sms: MessageSquare,
-  content: FileText, book: CalendarCheck, shop: ShoppingBag,
-};
-
-const GOALS = [
-  { id: 'more-leads', label: 'More enquiries' },
-  { id: 'higher-value', label: 'Bigger jobs' },
-  { id: 'retention', label: 'Keep customers longer' },
-  { id: 'launch', label: 'Launch something new' },
-  { id: 'reputation', label: 'Reviews and reputation' },
-  { id: 'fill-diary', label: 'Fill the diary' },
-] as const;
-
-/* Four before anything is saved, then the purchase. Completion falls off a
-   cliff with length — three-step flows finish around 72%, seven-step around
-   16% — so each of these earns its place, and the review that used to have one
-   to itself is now folded into the step whose button it describes. */
-/*
- * Six, not five.
- *
- * Step 6 is what happens *after* the project exists: the build, as it happens.
- * It used to be nothing — the wizard closed, the board appeared with an empty
- * column, and "Autopilot plans it within a day" was the only thing anybody had
- * to go on. That sentence cannot tell "not started yet" apart from "cannot
- * start at all", and a customer who has just chosen a plan is watching.
- */
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
-type Way = 'site' | 'paste' | 'hand';
-/** How this project will get an address to send from. */
-type MailPlan = 'have' | 'buy' | 'later';
-
-/*
- * Each title, split so one phrase can carry the accent.
- *
- * Three fields rather than markup inside a string: the phrase that gets the
- * colour is a decision about emphasis, and it should be visible here next to
- * the words rather than buried in a span somebody has to go and find.
- */
-const TITLE_LEAD: Record<Step, string> = {
-  1: 'What is', 2: 'Whose', 3: 'What would make this', 4: 'Your', 5: 'Your', 6: 'Autopilot is',
-};
-const TITLE_ACCENT: Record<Step, string> = {
-  1: 'going wrong', 2: 'business', 3: 'worth it', 4: 'sending setup', 5: 'domains', 6: 'building it',
-};
-const TITLE_TAIL: Record<Step, string> = {
-  1: 'right now?', 2: 'is this for?', 3: '', 4: '', 5: 'and mailboxes', 6: 'now',
-};
-
-const SUBTITLES: Record<Step, string> = {
-  1: 'Pick the one that sounds most like your week. It decides what Autopilot does first, and you can change any of it later.',
-  2: 'Everything it writes comes from here — what they sell, who buys it, how they talk.',
-  3: 'Autopilot reads this every time it decides what to do next.',
-  4: 'Sized from what you want to send, and adjustable. The arithmetic is shown so you can check it — and the next screen buys it.',
-  5: 'Bought for this project, now rather than later. Nothing is charged until you press buy.',
-  6: 'This carries on whether you stay here or not. Nothing below is ticked until the record behind it actually exists.',
-};
-
-/**
- * The rail down the left.
- *
- * Named steps rather than a row of dots. A dot says how far along you are; a
- * name says what is still coming, which is what somebody deciding whether to
- * carry on actually wants to know — and it is why the last one can honestly
- * say "and buy them", so the domain purchase is not a surprise at the end.
- */
-const STEP_NAV: { n: Step; label: string; icon: typeof Search }[] = [
-  { n: 1, label: 'The problem', icon: Search },
-  { n: 2, label: 'The business', icon: Building2 },
-  { n: 3, label: 'The goal', icon: Target },
-  { n: 4, label: 'Sending setup', icon: Mail },
-  { n: 5, label: 'Domains and mailboxes', icon: Globe },
-  { n: 6, label: 'Building', icon: Sparkles },
+const PHASES: { key: Phase[]; label: string }[] = [
+  { key: ['describe'], label: 'Describe' },
+  { key: ['understand', 'questions'], label: 'Questions' },
+  { key: ['blueprint'], label: 'Blueprint' },
+  { key: ['requirements', 'review'], label: 'Connections' },
+  { key: ['build', 'domains'], label: 'Build' },
 ];
 
-/**
- * The note in the margin, per step.
- *
- * One thing worth knowing before answering, where somebody will read it —
- * beside the question rather than under it. Deliberately the thing most likely
- * to be got wrong rather than a restatement of the heading.
- */
-const ASIDE: Record<Step, { title: string; body: string }> = {
-  1: {
-    title: 'Not sure which one?',
-    body: 'Pick the one that sounds most like your last month. None of it is locked in — the whole plan can be changed after the project exists, and picking the nearest one is better than picking none.',
-  },
-  2: {
-    title: 'Why this matters more than it looks',
-    body: 'Every email, page and post is written from what is on this screen. A profile that says "plumber, Leeds, mostly landlords" produces completely different writing from one that says "plumbing services".',
-  },
-  3: {
-    title: 'Say a number if you have one',
-    body: 'A target is what lets Autopilot tell you it is behind. Left blank it plans anyway and says it was not given one, rather than inventing a figure and reporting against it.',
-  },
-  4: {
-    title: 'Why several mailboxes and not one',
-    body: 'One address sending a few hundred emails a month is the usual reason mail stops arriving. Spreading the same volume over a pool, warmed up slowly, is what keeps it landing — which is why the number here is a pool and not a preference.',
-  },
-  5: {
-    title: 'What you are buying',
-    body: 'The domains, the mailboxes on them, and the records that make mail from them trusted — set up for you. You can point a domain you already own at this instead, from Settings, and skip this entirely.',
-  },
-  6: {
-    title: 'Why some of it stays grey',
-    body: 'Autopilot plans once a day and acts every five minutes, on the server. A step only turns green when the thing behind it exists — so grey means not yet, and anything that genuinely cannot happen is named rather than left to look like patience will fix it.',
-  },
-};
+const EXAMPLES = [
+  'Study my company website and create one social image post every weekday.',
+  'I have 10,000 previous customers. Create an email reactivation campaign.',
+  'I have 80 products with images and prices. Build an e-commerce store.',
+  'Follow up with customers who miss appointments and try to rebook them.',
+  'Create SEO blog content every week.',
+];
 
-export default function NewProject({
-  portfolios, onClose, onCreated,
-}: {
+const pause = (ms: number) => new Promise(r => window.setTimeout(r, ms));
+
+export default function NewProject({ portfolios, onClose, onCreated }: {
   portfolios: Portfolio[];
   onClose: () => void;
-  onCreated: () => void;
+  /** Called with the new project's id when the customer goes into it. */
+  onCreated: (projectId?: string) => void;
 }) {
   const { addNotification } = useApp();
-  const [step, setStep] = useState<Step>(1);
-  /*
-   * Measured rather than guessed. Everything in this file is an inline style,
-   * so there is no media query to hang the two-column layout on — and a fixed
-   * breakpoint assumed from the viewport would be wrong inside the dialog's
-   * own padding.
-   */
-  const [wide, setWide] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 900));
-  useEffect(() => {
-    const onResize = () => setWide(window.innerWidth >= 900);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  const [createdId, setCreatedId] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>('describe');
+  const [describe, setDescribe] = useState<DescribeValue>({ prompt: '', picked: '', files: [], links: [], voicePending: false });
 
-  /* 1 — the job */
-  const [jobId, setJobId] = useState('');
-  const [caps, setCaps] = useState<Capability[]>([]);
+  /* ── What the workspace already knows ── */
+  const ws: WorkspaceFacts = useMemo(() => {
+    const ob = loadOnboarding().profile;
+    const real = ob?.companyName && ob.companyName !== 'My Business' && ob.description ? ob : null;
+    return {
+      portfolios: portfolios.map(p => ({
+        id: p.id, name: p.name, website: String(p.profile?.website ?? ''), description: String(p.profile?.description ?? ''),
+      })),
+      workspace: real ? { companyName: real.companyName, description: real.description, website: real.website ?? '' } : null,
+    };
+  }, [portfolios]);
 
-  /* 2 — the client */
-  const [portfolioId, setPortfolioId] = useState(portfolios[0]?.id ?? '');
-  const [adding, setAdding] = useState(!portfolios.length);
-  const [way, setWay] = useState<Way>('site');
-  const [reading, setReading] = useState(false);
-  const [readFrom, setReadFrom] = useState('');
-  const [pasted, setPasted] = useState('');
-  const [form, setForm] = useState<Record<string, string>>({
-    companyName: '', description: '', audience: '', offer: '',
-    industry: '', tone: '', locations: '', website: '',
-  });
+  /* ── Understanding ── */
+  const [state, setState] = useState<IntakeState | null>(null);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [understood, setUnderstood] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<Record<string, string> | null>(null);
 
-  /* 2b — the trade, which decides the shape of everything after it */
-  const [industryId, setIndustryId] = useState('');
+  /* ── Questions ── */
+  const [asked, setAsked] = useState<Set<string>>(new Set());
+  const [screenIdx, setScreenIdx] = useState(0);
 
-  /* 3 — the sending setup */
+  /* ── Blueprint editing ── */
+  const [log, setLog] = useState<EditMessage[]>([]);
+  const [editing, setEditing] = useState(false);
+  const aiDown = useRef(false);
+
+  /* ── Connections and build ── */
   const [ready, setReady] = useState<Readiness | null>(null);
-  const [mailPlan, setMailPlan] = useState<MailPlan>('later');
-  /* The pool, as domains × mailboxes. Edited directly by the steppers, or
-     recomputed when somebody types a monthly target. */
-  const [pool, setPool] = useState<StarterPackage>(BEGINNER);
-  const [targetMonth, setTargetMonth] = useState('');
+  const [steps, setSteps] = useState<BuildStep[]>([]);
+  const [say, setSay] = useState('');
+  const [result, setResult] = useState<BuildResult | null>(null);
+  const building = phase === 'build' && !result;
 
-  /* 4 — what good looks like */
-  const [name, setName] = useState('');
-  const [objective, setObjective] = useState('');
-  const [goals, setGoals] = useState<string[]>([]);
-  const [revenueTarget, setRevenueTarget] = useState('');
+  const files = describe.files;
+  const links = describe.links;
 
-  const job = jobById(jobId);
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-  const toggleCap = (c: Capability) =>
-    setCaps(cs => (cs.includes(c) ? cs.filter(x => x !== c) : [...cs, c]));
+  /* ── The screens of questions, from the answers so far ── */
+  const screens = useMemo(() => {
+    if (!state) return [];
+    return screensOf(allQuestions(state).filter(q => asked.has(q.id) && applies(q, state.known)));
+  }, [state, asked]);
+  const screen = screens[Math.min(screenIdx, Math.max(0, screens.length - 1))];
 
-  const clientName = adding
-    ? form.companyName
-    : (portfolios.find(p => p.id === portfolioId)?.name ?? '');
+  /* ── The business, as the blueprint needs to name it ── */
+  const company = useMemo(() => {
+    if (!state) return '';
+    const b = String(state.known.business?.value ?? '');
+    if (b.startsWith('existing:')) return portfolios.find(p => p.id === b.slice(9))?.name ?? '';
+    if (b === 'workspace') return ws.workspace?.companyName ?? '';
+    if (b === 'manual') return String(state.known.bizName?.value ?? '');
+    if (profileDraft?.companyName) return profileDraft.companyName;
+    /* Until the site is read, its name is the best guess at the business's —
+       "pikeplumbing.co.uk" names a project better than nothing does. */
+    try {
+      const host = new URL(String(state.known.website?.value ?? '')).hostname.replace(/^www\./, '').split('.')[0];
+      return host ? host.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
+    } catch { return ''; }
+  }, [state, portfolios, ws, profileDraft]);
 
-  const ideas = useMemo(() => objectiveIdeas(caps, clientName), [caps, clientName]);
-  const needs = useMemo(() => requirementsFor(caps), [caps]);
+  const bp: Blueprint | null = useMemo(() => (state ? buildBlueprint(state, {
+    companyName: company, website: String(state.known.website?.value ?? ''), files, links,
+  }) : null), [state, company, files, links]);
 
-  /* Asked when the step is reached, not at mount: a wizard that fires four
-     requests before anybody has chosen anything is four requests most people
-     never needed. */
+  /* ── Understand ── */
+  const runUnderstanding = useCallback(async () => {
+    const prompt = describe.prompt.trim();
+    const urls = [...new Set([...links.map(l => l.url), ...urlsIn(prompt)])];
+    const base = initialState(prompt, describe.picked || undefined, ws, files, links);
+    const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+    const docs = files.filter(f => f.kind !== 'image');
+    const imgs = files.filter(f => f.kind === 'image');
+    const init: Stage[] = [
+      { key: 'read', label: 'Understanding your request', state: 'now' },
+      ...(urls.length ? [{ key: 'site', label: `Reading ${urls.map(host).slice(0, 2).join(' and ')}`, state: 'now' as const }] : []),
+      ...(files.length ? [{ key: 'files', label: `Looking at ${[docs.length ? `${docs.length} document${docs.length === 1 ? '' : 's'}` : '', imgs.length ? `${imgs.length} image${imgs.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}`, state: 'now' as const }] : []),
+      { key: 'solutions', label: 'Checking Protected Central solutions', state: 'todo' },
+      { key: 'templates', label: 'Searching workflow templates', state: 'todo' },
+      { key: 'known', label: 'Checking what Protected Central already knows', state: 'todo' },
+      { key: 'missing', label: 'Working out what is still needed', state: 'todo' },
+    ];
+    let cur = init;
+    const mark = (key: string, patch: Partial<Stage>) => { cur = cur.map(s => (s.key === key ? { ...s, ...patch } : s)); setStages(cur); };
+    setStages(cur);
+    setUnderstood(false);
+    setState(null);
+    setProfileDraft(null);
+
+    const single = ws.portfolios.length === 1 ? ws.portfolios[0].id : undefined;
+    const r = await understand({ prompt, files, urls, portfolioId: single, candidates: base.solutionKeys });
+
+    let st: IntakeState = base;
+    let readProfile = '';
+    if (r.ok && r.understanding) {
+      const u = r.understanding;
+      const aiKeys = u.solutionKeys.filter(k => solutionByKey(k));
+      let keys = aiKeys.length ? aiKeys : base.solutionKeys;
+      if (describe.picked && describe.picked !== CUSTOM) keys = [describe.picked, ...aiKeys.filter(k => k !== describe.picked)].slice(0, 2);
+      const known = extractKnown(prompt, keys, ws, files, links);
+      const askedIds = new Set(allQuestions({ solutionKeys: keys, extraQuestions: [] }).map(q => q.id));
+      for (const [id, v] of Object.entries(u.facts ?? {})) {
+        const q = QUESTIONS[id];
+        if (!q || !askedIds.has(id) || known[id]) continue;
+        const clean = validValue(q, v);
+        if (clean !== null && !(id === 'business' && String(clean).startsWith('existing:'))) {
+          known[id] = { value: clean, source: 'ai', note: 'understood from what you gave me' };
+        }
+      }
+      const hasProfile = !!(u.profile?.companyName || u.profile?.description);
+      if (hasProfile) { setProfileDraft(u.profile); readProfile = u.profile.description || u.profile.companyName; }
+      if (hasProfile && !known.business && askedIds.has('business')) {
+        if (urls.length) {
+          known.business = { value: 'website', source: 'link', note: `read from ${host(urls[0])}` };
+          known.website = { value: urls[0], source: 'link', note: 'the website you gave' };
+        } else if (docs.length) {
+          known.business = { value: 'upload', source: 'file', note: `read from ${docs[0].name}` };
+        }
+      }
+      const extra: Question[] = keys.includes(CUSTOM) || u.match === 'custom'
+        ? u.extraQuestions.map(q => ({ ...q, group: 'custom' as const, type: q.type, need: q.need }))
+        : [];
+      st = {
+        ...base,
+        solutionKeys: keys,
+        strength: describe.picked && describe.picked !== CUSTOM ? (keys.length > 1 ? 'partial' : 'strong') : (aiKeys.length ? u.match : base.strength),
+        known,
+        extraQuestions: extra,
+        customWorkflows: u.customWorkflows ?? [],
+        unsupported: u.unsupported ?? [],
+        summary: u.summary || base.summary,
+        name: u.name || '',
+        objective: u.objective || '',
+        understoodBy: 'ai',
+      };
+      mark('read', { state: 'done', detail: u.summary || undefined });
+    } else {
+      aiDown.current = r.noAi;
+      mark('read', {
+        state: 'warn',
+        detail: r.noAi ? 'The AI is not available right now, so I matched your words to our solutions instead.' : `The AI could not be reached (${r.error}), so I matched your words instead.`,
+      });
+    }
+    const siteSources = r.sources.filter(s => /^https?:/.test(s.what));
+    const fileSources = r.sources.filter(s => !/^https?:/.test(s.what));
+    if (urls.length) {
+      const bad = siteSources.filter(s => !s.ok);
+      mark('site', r.ok
+        ? (bad.length ? { state: 'warn', detail: `Could not read ${bad.map(b => host(b.what)).join(', ')}: ${bad[0].error}` } : { state: 'done', detail: readProfile || undefined })
+        : { state: 'warn', detail: 'Not read — it will be read again while the project is built.' });
+    }
+    if (files.length) {
+      const bad = fileSources.filter(s => !s.ok);
+      mark('files', r.ok
+        ? (bad.length ? { state: 'warn', detail: `${bad.map(b => `${b.what} (${b.error})`).join(', ')}` } : { state: 'done' })
+        : { state: 'warn', detail: 'Kept for the build — spreadsheets and images are used either way.' });
+    }
+
+    /* The four quick ones. Each is real work — a catalogue search, a template
+       count, a look at the workspace, the question list — and each is shown
+       finishing rather than all at once, so it can be read. */
+    const names = st.solutionKeys.map(k => solutionByKey(k)?.label ?? k);
+    mark('solutions', { state: 'now' }); await pause(220);
+    mark('solutions', { state: 'done', detail: st.strength === 'custom' ? 'No ready-made solution fits exactly — this will be custom.' : names.join(' + ') });
+    const draft = buildBlueprint(withDefaults(st), { companyName: '', website: '', files, links });
+    const fromTemplates = draft.workflows.filter(w => w.origin === 'template').length;
+    mark('templates', { state: 'now' }); await pause(220);
+    mark('templates', {
+      state: 'done',
+      detail: fromTemplates
+        ? `${fromTemplates} of ${TEMPLATE_COUNT} ready-made workflow templates fit — they will be personalised.`
+        : draft.workflows.length ? 'None fit exactly, so the workflows will be built for this project.' : 'Nothing recurring needed so far.',
+    });
+    mark('known', { state: 'now' }); await pause(220);
+    const knownCount = Object.keys(st.known).length;
+    mark('known', {
+      state: 'done',
+      detail: `${knownCount} thing${knownCount === 1 ? '' : 's'} already known${ws.portfolios.length ? ` · ${ws.portfolios.length} business profile${ws.portfolios.length === 1 ? '' : 's'} on file` : ''}`,
+    });
+    mark('missing', { state: 'now' }); await pause(220);
+    const open = allQuestions(st).filter(q => applies(q, st.known) && !st.known[q.id]);
+    mark('missing', { state: 'done', detail: open.length ? `${open.length} question${open.length === 1 ? '' : 's'} left` : 'Nothing — enough to draw up the plan' });
+
+    setState(st);
+    setUnderstood(true);
+  }, [describe, files, links, ws]);
+
+  /* ── Answering ── */
+  const answer = useCallback((id: string, value: string | string[] | null, source: KnownSource = 'you') => {
+    setState(s => {
+      if (!s) return s;
+      const known = { ...s.known };
+      if (value === null) delete known[id];
+      else if (Array.isArray(value) ? !value.length : !String(value).trim() && source === 'you' && QUESTIONS[id]?.need === 'optional') {
+        known[id] = { value, source: 'you', note: 'skipped' };
+      } else known[id] = { value, source, note: source === 'default' ? 'chosen for you' : undefined };
+      return { ...s, known };
+    });
+  }, []);
+
+  const startQuestions = () => {
+    if (!state) return;
+    const open = allQuestions(state).filter(q => !state.known[q.id]).map(q => q.id);
+    setAsked(new Set(open));
+    setScreenIdx(0);
+    const first = screensOf(allQuestions(state).filter(q => open.includes(q.id) && applies(q, state.known)));
+    setPhase(first.length ? 'questions' : 'blueprint');
+  };
+
+  /* ── Editing the blueprint ── */
+  const edit = async (text: string) => {
+    if (!state || !bp) return;
+    setLog(l => [...l, { who: 'you', text }]);
+    setEditing(true);
+    let applied = false;
+    if (!aiDown.current) {
+      const snapshot = {
+        solutionKeys: state.solutionKeys,
+        answers: answersOf(withDefaults(state).known),
+        workflows: bp.workflows.map(w => ({ key: w.key, name: w.name })),
+        name: bp.name, objective: bp.objective,
+      };
+      const r = await refine({ instruction: text, state: snapshot });
+      if (r.noAi) aiDown.current = true;
+      const ops = r.ops;
+      const changes = !!ops && (Object.keys(ops.set ?? {}).length || ops.addSolutions?.length || ops.removeSolutions?.length || ops.removeWorkflows?.length || ops.name || ops.objective);
+      if (r.ok && ops && changes) {
+        setState(s => (s ? applyOps(s, ops) : s));
+        setLog(l => [...l, { who: 'ai', text: r.reply || 'Done — the blueprint is updated.' }]);
+        applied = true;
+      } else if (r.ok && r.reply && !parseEdit(text, state, bp)) {
+        setLog(l => [...l, { who: 'bad', text: r.reply }]);
+        setEditing(false);
+        return;
+      }
+    }
+    if (!applied) {
+      const parsed = parseEdit(text, state, bp);
+      if (parsed) {
+        setState(s => (s ? applyOps(s, parsed.ops) : s));
+        setLog(l => [...l, { who: 'ai', text: `Done: ${parsed.said}.` }]);
+      } else {
+        setLog(l => [...l, {
+          who: 'bad',
+          text: aiDown.current
+            ? 'I could not work out what to change without the AI. Try something like "three posts a week", "remove LinkedIn", "add a blog every Friday" or "make approval mandatory".'
+            : 'I could not work out what to change. Try saying it another way.',
+        }]);
+      }
+    }
+    setEditing(false);
+  };
+
+  const suggestions = useMemo(() => {
+    if (!bp) return [];
+    const out: string[] = [];
+    const social = bp.workflows.find(w => w.channel === 'social');
+    if (social) {
+      out.push('Make it three posts a week');
+      const plats = (social.nodes ?? []).map(n => n.config.platform).filter(Boolean);
+      out.push(plats.includes('linkedin') ? 'Remove LinkedIn' : 'Add LinkedIn');
+      if (!bp.workflows.some(w => w.channel === 'blog')) out.push('Add a blog every Friday');
+      out.push('Create two image versions');
+    }
+    if (bp.channels.includes('shop')) out.push('Change the store theme to luxury');
+    if (bp.channels.includes('email') && bp.outputs.some(o => /sequence/.test(o))) out.push('Make it a 3-email sequence');
+    out.push('Make approval mandatory');
+    return [...new Set(out)].slice(0, 5);
+  }, [bp]);
+
+  /* ── Connections: asked when the step is reached, not before ── */
   useEffect(() => {
-    if (step !== 3 || ready) return;
+    if (phase !== 'requirements' || ready || !bp) return;
+    if (!bp.requirements.some(r => r === 'mailbox' || r === 'sms' || r === 'payments')) return;
     let alive = true;
     void checkReadiness().then(r => { if (alive) setReady(r); });
     return () => { alive = false; };
-  }, [step, ready]);
+  }, [phase, ready, bp]);
 
-  const pickJob = (j: Job) => {
-    setJobId(j.id);
-    /* The advanced path starts from the commonest set rather than nothing, so
-       the first thing somebody sees is a sensible project they can trim. */
-    setCaps(j.id === ADVANCED_JOB.id ? ['find', 'email', 'content', 'book'] : j.caps);
+  /* ── Build ── */
+  const build = async () => {
+    if (!state || !bp) return;
+    const full = withDefaults(state);
+    const input = {
+      bp, state: full, files, portfolios, profileDraft, workspace: ws.workspace ?? null,
+    };
+    setPhase('build');
+    setSteps(planSteps(input));
+    setSay('I’m getting started.');
+    const r = await runBuild(input, (st, line) => { setSteps(st); if (line) setSay(line); });
+    setResult(r);
+    if (r.fatal) addNotification(r.fatal, 'error');
+    else addNotification(`"${bp.name}" is built.`, 'success');
   };
 
-  const absorb = (p: Record<string, string>, from: string) => {
-    setForm(f => {
-      const next = { ...f };
-      for (const k of Object.keys(next)) {
-        /* Typed wins. A machine reading a marketing page should not overrule
-           somebody who has already written the answer. */
-        if (!next[k].trim() && p[k]) next[k] = p[k];
-      }
-      return next;
-    });
-    setReadFrom(from);
-    setWay('hand');
-    addNotification('Read it in. Check it over — this is what everything gets written from.', 'success');
-  };
+  const buyDomains = !!result?.projectId && String(state?.known.mailbox?.value ?? '') === 'buy';
 
-  const readSite = async () => {
-    const url = form.website.trim();
-    if (!url) { addNotification('Paste the client’s website address first.', 'error'); return; }
-    setReading(true);
-    const r = await readPortfolioFromUrl(url);
-    setReading(false);
-    if (!r.success || !r.profile) { addNotification(r.error ?? 'That page could not be read.', 'error'); return; }
-    absorb(r.profile, r.readFrom ?? url);
-  };
-
-  const readPasted = async () => {
-    if (!pasted.trim()) { addNotification('Paste something about them first.', 'error'); return; }
-    setReading(true);
-    const r = await readPortfolioFromText(pasted);
-    setReading(false);
-    if (!r.success || !r.profile) { addNotification(r.error ?? 'That could not be read.', 'error'); return; }
-    absorb(r.profile, r.readFrom ?? 'what you pasted');
-  };
-
-  const industry: Industry | null = industryById(industryId);
-  /* An owned list needs one address on the domain people recognise, not a pool.
-     The trade decides which of the two this is; nothing else in the step
-     changes shape as much as that does. */
-  const listKind = industry?.listKind ?? 'cold';
-  const capacity = listKind === 'owned' ? Number(targetMonth) || 0 : capacityOf(pool);
-  const forecast = industry ? project(industry, capacity) : null;
-  /* The build order, from the trade and what the project may do. Shown on the
-     review screen and sent with the project, so the board cannot disagree with
-     the screen somebody agreed to. */
-  const steps = useMemo(() => launchPlan(industryId, caps), [industryId, caps]);
-
-  /** Resize the pool from a monthly number somebody typed. */
-  const sizeFromTarget = (raw: string) => {
-    setTargetMonth(raw);
-    const n = Number(raw);
-    if (!raw.trim() || !Number.isFinite(n) || n <= 0) return;
-    setPool(packageFor(n, listKind, { perMailboxPerDay: pool.perMailboxPerDay }));
-  };
-
-  /** Nudge one dimension of the pool, keeping the derived total honest. */
-  const nudge = (field: 'domains' | 'mailboxesPerDomain' | 'perMailboxPerDay', by: number) => {
-    setPool(p => {
-      const limits = { domains: [1, 50], mailboxesPerDomain: [1, 10], perMailboxPerDay: [1, 50] } as const;
-      const [lo, hi] = limits[field];
-      const next = { ...p, [field]: Math.min(Math.max(p[field] + by, lo), hi) };
-      next.mailboxes = next.domains * next.mailboxesPerDomain;
-      next.emailsPerMonth = capacityOf(next);
-      /* The typed target stops being the source of truth the moment somebody
-         edits the pool by hand — leaving it would show two different answers. */
-      setTargetMonth('');
-      return next;
-    });
-  };
-
-  /* Said on the button rather than as an error after the press. */
-  const blocked =
-    step === 1 ? (!jobId ? 'Pick what you are trying to do'
-      : caps.length === 0 ? 'Choose at least one thing for it to do' : '')
-      : step === 2 ? (!industryId ? 'Say what kind of business it is'
-        : adding
-          ? (form.companyName.trim() ? '' : 'Give the client a name')
-          : (portfolioId ? '' : 'Choose a client'))
-        : step === 3 ? (!name.trim() ? 'Name the project'
-          : objective.trim().length < 8 ? 'Say what it should achieve' : '')
-          : '';
-
-  const create = async () => {
-    setBusy(true);
-    let pid = portfolioId;
-
-    if (adding) {
-      const p = await savePortfolio({
-        name: form.companyName.trim(),
-        profile: { ...form, companyName: form.companyName.trim() },
-        source: readFrom ? 'url' : 'manual',
-      });
-      if (!p.success || !p.id) { setBusy(false); addNotification(p.error ?? 'Could not save the client.', 'error'); return; }
-      pid = p.id;
+  /* ── The footer ── */
+  const blocker = (() => {
+    if (phase === 'describe') {
+      if (describe.voicePending) return 'Check the transcript first';
+      if (describe.prompt.trim().length < 8 && !files.length) return describe.picked ? 'Say a little about what you want' : 'Describe what you want, or pick a solution';
+      return '';
     }
-
-    const r = await saveProject({
-      name: name.trim(), objective: objective.trim(), portfolioId: pid,
-      kind: kindFor(caps), guardrails: guardrailsFor(caps),
-      goals,
-      revenueTarget: Math.round(Number(revenueTarget) || 0),
-      volumeTarget: 0,
-      launchSteps: steps,
-    });
-    setBusy(false);
-    if (!r.success || !r.id) { addNotification(r.error ?? 'Could not start the project.', 'error'); return; }
-    addNotification(`"${name.trim()}" started. Autopilot plans it within a day.`, 'success');
-    setCreatedId(r.id);
-    /* Straight to the purchase if they asked for a pool, because they asked
-       for it on the screen they just left. Otherwise there is nothing to buy
-       and another screen would be a toll booth on the way out. */
-    if (mailPlan === 'buy') setStep(5);
-    else setStep(6);
-  };
+    if (phase === 'understand') return understood ? '' : 'Understanding…';
+    if (phase === 'questions' && screen && state) return screenBlocker(screen, state, files);
+    return '';
+  })();
 
   const next = () => {
-    if (blocked) return;
-    /* Step four is where it commits: the project is saved and, if they asked
-       for a pool, the very next thing on screen is the shop for it. */
-    if (step === 4) { void create(); return; }
-    setStep(s => (Math.min(s + 1, 4) as Step));
+    if (blocker) return;
+    if (phase === 'describe') { setPhase('understand'); void runUnderstanding(); return; }
+    if (phase === 'understand') { startQuestions(); return; }
+    if (phase === 'questions') {
+      if (screenIdx + 1 < screens.length) setScreenIdx(i => i + 1);
+      else setPhase('blueprint');
+      return;
+    }
+    if (phase === 'blueprint') { setPhase('requirements'); return; }
+    if (phase === 'requirements') { setPhase('review'); return; }
+    if (phase === 'review') { void build(); }
   };
 
-  /* ── Small shared pieces, in the one visual language ── */
-
-  /*
-   * ── The shape of the thing ──
-   *
-   * A wide card rather than a phone-width sheet, with the steps named down the
-   * left and a note in the right margin. The single narrow column was fine
-   * while every step was a list of options; it stopped being fine once one of
-   * them is a domain search with prices in it, which needs width to be read
-   * rather than scrolled.
-   *
-   * It collapses to one column under 900px, and the rail goes with it — on a
-   * phone the header already says which step this is, and a vertical list of
-   * five names above every question is a screen of chrome before the content.
-   */
-  const sheet: React.CSSProperties = {
-    /* Wider than it was, because the stage takes the right-hand two fifths and
-       the form still needs the room it had. */
-    maxWidth: wide ? 1140 : 560,
-    maxHeight: 'min(94vh, 900px)',
+  const back = () => {
+    if (phase === 'understand') setPhase('describe');
+    else if (phase === 'questions') { if (screenIdx > 0) setScreenIdx(i => i - 1); else setPhase('understand'); }
+    else if (phase === 'blueprint') { if (screens.length) { setScreenIdx(screens.length - 1); setPhase('questions'); } else setPhase('understand'); }
+    else if (phase === 'requirements') setPhase('blueprint');
+    else if (phase === 'review') setPhase('requirements');
   };
 
-  const railItem = (on: boolean, done: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-    padding: '10px 12px', borderRadius: 11, border: 'none', fontFamily: 'inherit',
-    background: on ? 'rgba(91,70,229,0.08)' : 'transparent',
-    color: on ? ACCENT : done ? INK : '#94a3b8',
-    fontSize: 13, fontWeight: on ? 700 : 600,
-    cursor: done && !on ? 'pointer' : 'default',
-  });
-
-  const row = (on: boolean): React.CSSProperties => ({
-    display: 'flex', gap: 13, alignItems: 'flex-start', textAlign: 'left', width: '100%',
-    padding: '15px 16px', borderRadius: 16, cursor: 'pointer', fontFamily: 'inherit',
-    border: `1.5px solid ${on ? ACCENT : LINE}`,
-    background: on ? 'rgba(91,70,229,0.045)' : '#fff',
-    transition: 'border-color 0.15s ease, background 0.15s ease',
-  });
-
-  const inp: React.CSSProperties = {
-    width: '100%', padding: '13px 14px', border: `1px solid ${LINE}`, borderRadius: 13,
-    fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', background: '#fff',
-  };
-  const lbl: React.CSSProperties = {
-    display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 7,
+  const close = () => {
+    if (building) return;
+    if (result?.projectId) { onCreated(result.projectId); return; }
+    onClose();
   };
 
-  const stepBtn: React.CSSProperties = {
-    width: 30, height: 30, borderRadius: 999, border: 'none', background: '#fff',
-    display: 'grid', placeItems: 'center', cursor: 'pointer', color: INK,
-    boxShadow: '0 1px 2px rgba(16,24,40,0.12)',
-  };
+  const ctaLabel = (() => {
+    if (blocker) return blocker;
+    if (phase === 'describe') return 'Continue';
+    if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
+    if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : 'See the blueprint';
+    if (phase === 'blueprint') return 'Looks good — continue';
+    if (phase === 'requirements') return 'Review';
+    if (phase === 'review') return 'Build My Autopilot';
+    return 'Continue';
+  })();
 
-  const STATE_TONE: Record<ReadyState, { bg: string; fg: string; label: string }> = {
-    ready: { bg: '#e8f6ee', fg: GREEN, label: 'Ready' },
-    missing: { bg: '#fff4ed', fg: '#9a3412', label: 'Not set up' },
-    /* Its own state on purpose: "we could not ask" is not "it is missing", and
-       reporting the second sends somebody to reconnect a working mailbox. */
-    unknown: { bg: '#f1f5f9', fg: '#475569', label: 'Could not check' },
-  };
+  const phaseIndex = PHASES.findIndex(p => p.key.includes(phase));
+
+  /* ── The companion pane ── */
+  const side = (
+    <aside className="np-side" aria-label="Autopilot">
+      <div style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
+        <AutopilotBot size={46} awake busy={phase === 'understand' && !understood} />
+        <span style={{ minWidth: 0 }}>
+          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>Autopilot</b>
+          <span style={{ display: 'block', fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
+            {phase === 'describe' ? 'Tell me the result. I’ll work out how.'
+              : phase === 'understand' ? (understood ? 'Here’s what I took from that.' : 'Reading everything you gave me…')
+                : phase === 'questions' ? 'Only what I still need.'
+                  : phase === 'blueprint' ? 'Tell me anything to change.'
+                    : phase === 'build' ? (result ? 'Done. It keeps running without this open.' : 'Building it now — every tick is a real record.')
+                      : 'Almost there.'}
+          </span>
+        </span>
+      </div>
+
+      {phase === 'describe' && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>A GOOD REQUEST SAYS</span>
+          {['The result you want', 'How often, if it repeats', 'Where it should end up', 'Anything I should read — attach it'].map(t => (
+            <span key={t} style={{ fontSize: 13, color: '#334155' }}>• {t}</span>
+          ))}
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em', marginTop: 8 }}>TRY ONE</span>
+          {EXAMPLES.map(e => (
+            <button key={e} type="button" className="np-tool" style={{ textAlign: 'left', borderRadius: 12, fontSize: 12.5, fontWeight: 500 }}
+              onClick={() => setDescribe(d => ({ ...d, prompt: e, voicePending: false }))}>{e}</button>
+          ))}
+        </div>
+      )}
+
+      {state && (phase === 'questions' || phase === 'requirements' || phase === 'review') && (
+        <div style={{ display: 'grid', gap: 7 }}>
+          <span style={{ fontSize: 13, color: '#17191c', lineHeight: 1.5, fontWeight: 600 }}>{state.summary}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em', marginTop: 6 }}>WHAT I KNOW SO FAR</span>
+          {Object.entries(state.known).filter(([id]) => QUESTIONS[id]).slice(0, 12).map(([id, k]) => {
+            const q = QUESTIONS[id];
+            const text = describeAnswer(q, k.value, portfolios);
+            if (!text) return null;
+            return (
+              <span key={id} style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.45 }}>
+                <b style={{ color: '#17191c' }}>{text}</b> <span style={{ color: '#8b93a3' }}>— {q.prompt.replace(/\?$/, '').toLowerCase()}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {phase === 'build' && result?.projectId && bp && (bp.manual.length > 0 || bp.setup.some(s => s.by === 'you')) && (
+        <div style={{ display: 'grid', gap: 7 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>WHAT IS YOURS TO DO</span>
+          {[...bp.setup.filter(s => s.by === 'you').map(s => s.label), ...bp.manual].map(t => (
+            <span key={t} style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.5 }}>• {t}</span>
+          ))}
+        </div>
+      )}
+
+      {phase === 'blueprint' && bp && (
+        <EditPanel log={log} busy={editing} suggestions={suggestions} onSend={t => void edit(t)} />
+      )}
+    </aside>
+  );
 
   return (
-    <WizardBackdrop label="New project" onClose={onClose}>
-      <div className="wz-card" style={sheet} onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
-
-        {/* ── Chrome: cancel, progress, nothing else ── */}
-        <header style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '14px 16px 10px', flexShrink: 0,
-        }}>
-          <button onClick={onClose} style={{
-            background: 'none', border: 0, padding: '4px 2px', cursor: 'pointer',
-            color: MUTED, fontSize: 15, fontFamily: 'inherit', fontWeight: 500,
+    <WizardBackdrop label="New project" onClose={close}>
+      <div className="wz-card np-card" onKeyDown={e => { if (e.key === 'Escape') close(); }}>
+        <header className="np-head">
+          <button type="button" onClick={close} disabled={building} style={{
+            background: 'none', border: 0, padding: '4px 2px', cursor: building ? 'default' : 'pointer',
+            color: building ? '#c3c9d4' : '#6b7280', fontSize: 14.5, fontFamily: 'inherit', fontWeight: 500, flexShrink: 0,
           }}>
-            {step >= 5 ? 'Done' : 'Cancel'}
+            {result?.projectId ? 'Done' : 'Cancel'}
           </button>
-          <span style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: MUTED, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              New project
-            </span>
-            <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8' }}>
-              Step {step} of 5
-            </span>
-          </span>
-          {/* Balances the cancel button so the label sits centred. */}
-          <span style={{ width: 46 }} aria-hidden="true" />
+          <nav className="np-phases" aria-label="Progress">
+            {PHASES.map((p, i) => (
+              <span key={p.label} className="np-phase" data-state={i === phaseIndex ? 'now' : i < phaseIndex ? 'done' : 'todo'}
+                aria-current={i === phaseIndex ? 'step' : undefined}>
+                <span className="np-phase-dot" /> <span className="np-phase-label">{p.label}</span>
+              </span>
+            ))}
+          </nav>
+          <span style={{ width: 46, flexShrink: 0 }} aria-hidden />
         </header>
 
-        <WizardSplit stage={
-          /*
-           * The launch plan, which is the *same array* the review panel prints
-           * and `saveProject` sends to the board. Not a second description of
-           * what Autopilot will do — there is exactly one, computed from the
-           * trade and the capabilities, and this pane is a view of it.
-           *
-           * So the board on the right fills in as the answers on the left make
-           * it real: before a trade is picked there is nothing to plan, and it
-           * says so rather than showing a plausible-looking default.
-           */
-          <WizardFlow
-            /*
-             * Two boards, and which one shows is the honest part.
-             *
-             * `launchPlan` returns a single generic stage until it knows both
-             * the trade and the capabilities, and one lonely node captioned
-             * "1 stages" is a worse answer than no board. So until there is a
-             * real plan the board is the wizard itself — the five steps, each
-             * with the guidance for it — which is what somebody on step one
-             * actually wants to know. From the moment the plan has something
-             * to say, the board becomes the plan.
-             */
-            nodes={steps.length > 1
-              ? steps.map(st => ({ label: st.label, detail: st.why }))
-              : STEP_NAV.map(({ n, label }) => ({ label, detail: ASIDE[n].title }))}
-            activeIndex={steps.length > 1 ? 0 : step - 1}
-            caption={steps.length > 1
-              ? <><strong>{steps.length} stages</strong> — this becomes the first card on the project&rsquo;s board.</>
-              : <>The build order appears here once it knows the trade.</>}
-          />
-        }>
-        <div style={{
-          overflowY: 'auto', flex: 1, minHeight: 0,
-          padding: wide ? '10px 26px 26px' : '4px 20px 20px',
-          display: 'grid', gap: wide ? 26 : 0,
-          gridTemplateColumns: wide ? '176px minmax(0, 1fr)' : '1fr',
-          alignItems: 'start',
-        }}>
-
-          {/* ── The rail: what is coming, not just how far along ── */}
-          {wide && (
-            <nav aria-label="Steps" style={{ display: 'grid', gap: 2, position: 'sticky', top: 0 }}>
-              {STEP_NAV.map(({ n, label, icon: Ic }) => {
-                const done = n < step;
-                return (
-                  <button key={n} type="button" aria-current={step === n ? 'step' : undefined}
-                    /* Backwards only. Forward would skip the checks the button
-                       at the bottom makes, and step five spends money. */
-                    onClick={() => { if (done && step !== 5) setStep(n); }}
-                    style={railItem(step === n, done)}>
-                    <Ic size={14} style={{ flexShrink: 0 }} />
-                    <span style={{ minWidth: 0 }}>{label}</span>
-                    {done && <Check size={12} color={GREEN} style={{ marginLeft: 'auto', flexShrink: 0 }} />}
-                  </button>
-                );
-              })}
-            </nav>
-          )}
-
-          <div className="wz-stagger" style={{ display: 'grid', gap: 18, minWidth: 0 }}>
-          <WizardTitle
-            lead={TITLE_LEAD[step]} accent={TITLE_ACCENT[step]} tail={TITLE_TAIL[step]}
-            sub={SUBTITLES[step]}
-          />
-
-          {/* ── 1 · The job ── */}
-          {step === 1 && (
-            <div style={{ display: 'grid', gap: 9 }}>
-              {[...JOBS, ADVANCED_JOB].map(j => {
-                const on = jobId === j.id;
-                const Icon = JOB_ICON[j.id] ?? Sparkles;
-                return (
-                  <div key={j.id}>
-                    <button type="button" onClick={() => pickJob(j)} aria-pressed={on} style={row(on)}>
-                      <span style={{
-                        flexShrink: 0, width: 34, height: 34, borderRadius: 11, display: 'grid', placeItems: 'center',
-                        background: on ? ACCENT : '#f1f3f7', color: on ? '#fff' : '#8b93a3',
-                      }}>
-                        <Icon size={17} />
-                      </span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: INK, letterSpacing: '-0.01em' }}>
-                          {j.label}
-                        </span>
-                        <span style={{ display: 'block', fontSize: 13, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>
-                          {j.blurb}
-                        </span>
-                        {/* The words somebody with this problem would have
-                            typed into a search box. Somebody scanning seven
-                            cards finds the phrase already in their head faster
-                            than they read seven paragraphs — and a product that
-                            never uses the customer's own vocabulary reads as
-                            though it was built for somebody else. */}
-                        {j.alsoKnownAs.length > 0 && (
-                          <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
-                            {j.alsoKnownAs.map(term => (
-                              <span key={term} style={{
-                                fontSize: 11.5, color: on ? ACCENT : '#64748b', fontWeight: 600,
-                                background: on ? 'rgba(91,70,229,0.08)' : '#f1f3f7',
-                                borderRadius: 999, padding: '3px 9px',
-                              }}>{term}</span>
-                            ))}
-                          </span>
-                        )}
-                      </span>
-                      {on
-                        ? <Check size={17} color={ACCENT} style={{ flexShrink: 0, marginTop: 8 }} />
-                        : <ChevronRight size={16} color="#c3c9d4" style={{ flexShrink: 0, marginTop: 9 }} />}
-                    </button>
-
-                    {/* The teaching part, and only for the one they chose — six
-                        expanded explanations is a wall nobody reads. */}
-                    {on && j.firstFortnight.length > 0 && (
-                      <div style={{ margin: '9px 0 2px', padding: '13px 15px', borderRadius: 14, background: '#f7f8fb' }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 800, color: '#475569', letterSpacing: '0.03em', marginBottom: 8 }}>
-                          THE FIRST FORTNIGHT
-                        </div>
-                        {j.firstFortnight.map((line, i) => (
-                          <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: i ? 7 : 0 }}>
-                            <span style={{
-                              flexShrink: 0, width: 17, height: 17, borderRadius: 99, marginTop: 1,
-                              display: 'grid', placeItems: 'center', background: '#fff',
-                              border: `1px solid ${LINE}`, fontSize: 9.5, fontWeight: 800, color: ACCENT,
-                            }}>{i + 1}</span>
-                            <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.55 }}>{line}</span>
-                          </div>
-                        ))}
-                        {j.notFor && (
-                          <p style={{ margin: '11px 0 0', paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
-                            <strong style={{ color: '#475569' }}>Not this one if:</strong> {j.notFor}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* The advanced path opens the six switches in place. */}
-                    {on && j.id === ADVANCED_JOB.id && (
-                      <div style={{ display: 'grid', gap: 7, marginTop: 9 }}>
-                        {CAPABILITIES.map(c => {
-                          const picked = caps.includes(c.id);
-                          const Ic = CAP_ICON[c.id];
-                          return (
-                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} aria-pressed={picked}
-                              style={{ ...row(picked), padding: '12px 14px' }}>
-                              <span style={{
-                                flexShrink: 0, width: 28, height: 28, borderRadius: 9, display: 'grid', placeItems: 'center',
-                                background: picked ? ACCENT : '#f1f3f7', color: picked ? '#fff' : '#8b93a3',
-                              }}>
-                                <Ic size={14} />
-                              </span>
-                              <span style={{ flex: 1, minWidth: 0 }}>
-                                <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: INK }}>{c.label}</span>
-                                <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
-                                  {c.blurb}{c.needs ? ` · needs ${c.needs}` : ''}
-                                </span>
-                              </span>
-                              {picked && <Check size={15} color={ACCENT} style={{ flexShrink: 0, marginTop: 5 }} />}
-                            </button>
-                          );
-                        })}
-                        <button type="button" onClick={() => setCaps(EVERYTHING)} style={{
-                          background: 'none', border: 0, padding: '4px 2px', textAlign: 'left',
-                          fontSize: 12.5, fontWeight: 700, color: ACCENT, cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                          Turn all six on
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ── 2 · The client ── */}
-          {step === 2 && (
-            <div style={{ display: 'grid', gap: 14 }}>
-              {/* Asked here rather than in a step of its own: it is a fact about
-                  the client, it lives on the portfolio, and it is what decides
-                  the shape of the next screen. */}
-              <div>
-                <label style={lbl}>What kind of business is it?</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {INDUSTRIES.map(i => {
-                    const on = industryId === i.id;
-                    return (
-                      <button key={i.id} type="button" onClick={() => { setIndustryId(i.id); set('industry', i.label); }}
-                        aria-pressed={on} style={{
-                          padding: '9px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
-                          border: `1.5px solid ${on ? ACCENT : LINE}`,
-                          background: on ? 'rgba(91,70,229,0.06)' : '#fff',
-                          color: on ? ACCENT : '#475569', fontSize: 13.5, fontWeight: 600,
-                        }}>{i.label}</button>
-                    );
-                  })}
-                </div>
-                {industry && (
-                  <p style={{ margin: '9px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>{industry.note}</p>
-                )}
-              </div>
-
-              {portfolios.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 13, background: '#f1f3f7' }}>
-                  {([[false, 'One I have'], [true, 'Someone new']] as const).map(([v, label]) => (
-                    <button key={label} type="button" onClick={() => setAdding(v)} style={{
-                      flex: 1, padding: '9px 10px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: adding === v ? '#fff' : 'transparent',
-                      color: adding === v ? INK : MUTED, fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit',
-                      boxShadow: adding === v ? '0 1px 3px rgba(16,24,40,0.12)' : 'none',
-                    }}>{label}</button>
-                  ))}
-                </div>
+        <div className="np-body">
+          <main className="np-main">
+            <div key={`${phase}-${screenIdx}`} className="np-rise">
+              {phase === 'describe' && (
+                <Describe value={describe} onChange={setDescribe} onError={m => addNotification(m, 'error')} />
               )}
-
-              {!adding ? (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {portfolios.map(p => {
-                    const on = p.id === portfolioId;
-                    const desc = String(p.profile?.description ?? '');
-                    return (
-                      <button key={p.id} type="button" onClick={() => setPortfolioId(p.id)} aria-pressed={on} style={row(on)}>
-                        <span style={{
-                          flexShrink: 0, width: 32, height: 32, borderRadius: 10, display: 'grid', placeItems: 'center',
-                          background: on ? ACCENT : '#f1f3f7', color: on ? '#fff' : '#8b93a3',
-                        }}>
-                          <Building2 size={15} />
-                        </span>
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: INK }}>{p.name}</span>
-                          <span style={{
-                            display: 'block', fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.5,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {desc || (p.source === 'url' ? 'Read from their website' : 'No description yet')}
-                          </span>
-                        </span>
-                        {on && <Check size={16} color={ACCENT} style={{ flexShrink: 0, marginTop: 7 }} />}
-                      </button>
-                    );
+              {phase === 'understand' && (
+                <Understanding
+                  stages={stages} state={state} finished={understood} portfolios={ws.portfolios}
+                  questionCount={state ? allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).length : 0}
+                  onChangeSolution={keys => setState(s => {
+                    if (!s) return s;
+                    const known = { ...extractKnown(s.prompt, keys, ws, files, links) };
+                    for (const [id, k] of Object.entries(s.known)) if (!known[id]) known[id] = k;
+                    return {
+                      ...s, solutionKeys: keys, strength: keys[0] === CUSTOM ? 'custom' : 'strong', known,
+                      summary: keys[0] === CUSTOM ? 'Built from scratch around what you described.' : `You chose ${solutionByKey(keys[0])?.label}.`,
+                    };
                   })}
-                </div>
-              ) : (
+                />
+              )}
+              {phase === 'questions' && state && screen && (
+                <Questions
+                  screen={screen} state={state} ws={ws} files={files} answer={answer}
+                  onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}
+                  onLink={url => setDescribe(d => ({ ...d, links: [...d.links.filter(l => l.url !== url), { url, role: 'reference' }] }))}
+                  index={screenIdx} total={screens.length}
+                />
+              )}
+              {phase === 'blueprint' && bp && (
                 <>
-                  <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 13, background: '#f1f3f7' }}>
-                    {([['site', 'Their website', Globe], ['paste', 'Paste something', ClipboardPaste], ['hand', 'Type it', PenLine]] as const).map(([v, label, Ic]) => (
-                      <button key={v} type="button" onClick={() => setWay(v)} style={{
-                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                        padding: '9px 6px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                        background: way === v ? '#fff' : 'transparent',
-                        color: way === v ? INK : MUTED, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
-                        boxShadow: way === v ? '0 1px 3px rgba(16,24,40,0.12)' : 'none',
-                      }}><Ic size={13} /> {label}</button>
-                    ))}
+                  <BlueprintView bp={bp} onRename={name => setState(s => (s ? { ...s, name } : s))} />
+                  <div className="np-only-narrow" style={{ marginTop: 20, padding: 16, borderRadius: 18, background: '#f7f6ff', border: '1px solid #e2ddff' }}>
+                    <EditPanel log={log} busy={editing} suggestions={suggestions} onSend={t => void edit(t)} />
                   </div>
-
-                  {way === 'site' && (
-                    <div style={{ display: 'grid', gap: 9 }}>
-                      <input style={inp} value={form.website} onChange={e => set('website', e.target.value)}
-                        placeholder="https://theircompany.com"
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void readSite(); } }} />
-                      <button type="button" onClick={() => void readSite()} disabled={reading} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '13px', borderRadius: 13, border: 'none', cursor: reading ? 'default' : 'pointer',
-                        background: reading ? '#c7c9d3' : INK, color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'inherit',
-                      }}>
-                        {reading ? <Loader size={15} className="spin" /> : <Globe size={15} />} Read their site
-                      </button>
-                    </div>
-                  )}
-
-                  {way === 'paste' && (
-                    <div style={{ display: 'grid', gap: 9 }}>
-                      <textarea value={pasted} onChange={e => setPasted(e.target.value)} rows={5}
-                        placeholder="Their about page, a brochure, an old proposal — anything that describes them."
-                        style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} />
-                      <button type="button" onClick={() => void readPasted()} disabled={reading} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '13px', borderRadius: 13, border: 'none', cursor: reading ? 'default' : 'pointer',
-                        background: reading ? '#c7c9d3' : INK, color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: 'inherit',
-                      }}>
-                        {reading ? <Loader size={15} className="spin" /> : <Sparkles size={15} />} Read it in
-                      </button>
-                    </div>
-                  )}
-
-                  {way === 'hand' && (
-                    <div style={{ display: 'grid', gap: 12 }}>
-                      {readFrom && (
-                        <p style={{ margin: 0, fontSize: 12.5, color: GREEN, fontWeight: 600 }}>
-                          Filled in from {readFrom}. Correct anything that reads wrong.
-                        </p>
-                      )}
-                      <div><label style={lbl}>Their name</label>
-                        <input style={inp} value={form.companyName} onChange={e => set('companyName', e.target.value)} placeholder="Bob’s Plumbing" /></div>
-                      <div><label style={lbl}>What they do</label>
-                        <textarea style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} rows={3} value={form.description}
-                          onChange={e => set('description', e.target.value)} placeholder="Emergency plumbing and boiler work across Greater Manchester." /></div>
-                      <div><label style={lbl}>Who buys it</label>
-                        <input style={inp} value={form.audience} onChange={e => set('audience', e.target.value)} placeholder="Homeowners and small landlords" /></div>
-                      <div><label style={lbl}>What you want to put in front of them</label>
-                        <input style={inp} value={form.offer} onChange={e => set('offer', e.target.value)} placeholder="Free boiler health check" /></div>
-                    </div>
-                  )}
                 </>
               )}
-            </div>
-          )}
-
-          {/* ── 3 · The sending setup, sized from the target ── */}
-          {step === 4 && (
-            <div style={{ display: 'grid', gap: 14 }}>
-
-              {/* An owned list is a different machine, and says so instead of
-                  being quietly sold a pool it does not need. */}
-              {listKind === 'owned' ? (
-                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '15px 16px' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: INK }}>One address, on your own domain</div>
-                  <p style={{ margin: '7px 0 0', fontSize: 13.5, color: MUTED, lineHeight: 1.6 }}>
-                    You are writing to people who already know you. That needs the domain they recognise —
-                    not a pool of lookalikes. Spreading it across nine new domains would make the mail
-                    <em> less</em> likely to arrive, not more.
-                  </p>
-                  <label style={{ ...lbl, marginTop: 14 }}>Roughly how many a month?</label>
-                  <input style={inp} inputMode="numeric" value={targetMonth}
-                    onChange={e => sizeFromTarget(e.target.value.replace(/[^0-9]/g, ''))} placeholder="4000" />
-                </div>
-              ) : (<>
-                <div>
-                  <label style={lbl}>How many emails a month do you want to send?</label>
-                  <input style={inp} inputMode="numeric" value={targetMonth}
-                    onChange={e => sizeFromTarget(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder={`Leave blank for the starter — ${BEGINNER.emailsPerMonth.toLocaleString()} a month`} />
-                  <p style={{ margin: '7px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
-                    Type a number and the setup below resizes itself. Or adjust it by hand — the total
-                    follows either way.
-                  </p>
-                </div>
-
-                {/* ── The pool, adjustable ── */}
-                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 15px', background: '#f7f8fb', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 800, color: INK }}>
-                    What gets bought
-                  </div>
-                  <div style={{ padding: '6px 15px 14px' }}>
-                    {([
-                      ['domains', 'Domains', pool.domains, 'Lookalikes of the client\u2019s name, never their real one — a filtered domain you paid \u00a39 for is an inconvenience.'],
-                      ['mailboxesPerDomain', 'Mailboxes on each', pool.mailboxesPerDomain, 'Three spreads the risk: a domain that gets filtered takes all of its mailboxes with it.'],
-                      ['perMailboxPerDay', 'Emails per mailbox, per day', pool.perMailboxPerDay, 'What gets somebody blocked is the daily rate from one address, not the monthly total.'],
-                    ] as const).map(([field, label, value, why]) => (
-                      <div key={field} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderTop: `1px solid ${LINE}` }}>
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: INK }}>{label}</span>
-                          <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{why}</span>
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, background: '#f1f3f7', borderRadius: 999, padding: 3 }}>
-                          <button type="button" aria-label={`Fewer ${label}`} onClick={() => nudge(field, -1)} style={stepBtn}>
-                            <Minus size={14} />
-                          </button>
-                          <span style={{ minWidth: 30, textAlign: 'center', fontSize: 15, fontWeight: 800, color: INK }}>{value}</span>
-                          <button type="button" aria-label={`More ${label}`} onClick={() => nudge(field, 1)} style={stepBtn}>
-                            <Plus size={14} />
-                          </button>
-                        </span>
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', paddingTop: 13, borderTop: `1px solid ${LINE}`, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>
-                        {pool.mailboxes} mailboxes across {pool.domains} domain{pool.domains === 1 ? '' : 's'}
-                      </span>
-                      <span style={{ fontSize: 13, color: MUTED }}>
-                        · {capacity.toLocaleString()} emails a month
-                      </span>
-                    </div>
-                    <p style={{ margin: '9px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
-                      {pool.domains} × {pool.mailboxesPerDomain} × {pool.perMailboxPerDay} a day ×{' '}
-                      {DEFAULTS.sendingDaysPerMonth} weekdays. The first three weeks run slower while the
-                      domains warm up — sending a new domain\u2019s full volume on day one is the surest way
-                      to be filtered.
-                    </p>
-                  </div>
-                </div>
-              </>)}
-
-              {/* ── What it might come back as ── */}
-              {forecast && capacity > 0 && (
-                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 15px', background: '#f7f8fb', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 800, color: INK }}>
-                    What that could come back as, per month
-                  </div>
-                  <div style={{ padding: '4px 15px 13px' }}>
-                    {(forecast.funnelApplies
-                      ? ([
-                        ['Delivered', forecast.delivered],
-                        ['Replies', forecast.replies],
-                        ['Interested', forecast.interested],
-                        ['Conversations booked', forecast.meetings],
-                        ['New customers', forecast.customers],
-                      ] as const)
-                      : ([
-                        ['Delivered', forecast.delivered],
-                        ['Orders', forecast.customers],
-                      ] as const)
-                    ).map(([label, range]) => (
-                      <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderTop: `1px solid ${LINE}` }}>
-                        <span style={{ flex: 1, fontSize: 13.5, color: '#334155' }}>{label}</span>
-                        <span style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>
-                          {range.low.toLocaleString()}–{range.high.toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0 0', borderTop: `1.5px solid ${LINE}` }}>
-                      <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: INK }}>Revenue</span>
-                      <span style={{ fontSize: 16, fontWeight: 800, color: GREEN }}>
-                        {forecast.revenue.low.toLocaleString()}–{forecast.revenue.high.toLocaleString()}
-                      </span>
-                    </div>
-                    {/* The honesty clause, and it is not small print. */}
-                    <p style={{ margin: '11px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                      Ranges, not a forecast. They come from ordinary published rates for{' '}
-                      {industry?.label.toLowerCase()} — a {(industry!.replyRate[0] * 100).toFixed(0)}–
-                      {(industry!.replyRate[1] * 100).toFixed(0)}% reply rate and a typical first order of{' '}
-                      {industry!.dealValue[0].toLocaleString()}–{industry!.dealValue[1].toLocaleString()}.
-                      The gap between a good list and a bad one is wider than any of this, so treat the low
-                      end as the one to plan against.
-                    </p>
-                  </div>
-                </div>
+              {phase === 'requirements' && bp && (
+                <Requirements ids={bp.requirements} ready={ready} mailboxPlan={String(state?.known.mailbox?.value ?? '')} />
               )}
-
-              {/* ── How the addresses get here ── */}
-              {needs.includes('mailbox') && (
-                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
-                  <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, flex: 1, minWidth: 140 }}>
-                      {REQUIREMENTS.mailbox.label}
-                    </span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
-                      background: ready ? STATE_TONE[ready.mailbox].bg : '#f1f5f9',
-                      color: ready ? STATE_TONE[ready.mailbox].fg : '#94a3b8',
-                    }}>
-                      {ready ? STATE_TONE[ready.mailbox].label : 'Checking\u2026'}
-                    </span>
-                  </div>
-                  <p style={{ margin: '6px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.55 }}>
-                    {REQUIREMENTS.mailbox.why}
-                  </p>
-                  <div style={{ display: 'grid', gap: 7, marginTop: 11 }}>
-                    {([
-                      ['buy', `Buy the ${pool.domains} domain${pool.domains === 1 ? '' : 's'} and ${pool.mailboxes} mailbox${pool.mailboxes === 1 ? '' : 'es'}`, 'Chosen and paid for on the very next screen — the project is saved on the way there.'],
-                      ['have', 'I have a mailbox to use', 'Connect it in Settings. Fine for your own list; not enough on its own for cold outreach at this volume.'],
-                      ['later', 'Decide later', 'The project still starts. Nothing will send until this is sorted.'],
-                    ] as const).map(([id, label, hint]) => (
-                      <button key={id} type="button" onClick={() => setMailPlan(id)} aria-pressed={mailPlan === id}
-                        style={{ ...row(mailPlan === id), padding: '11px 13px' }}>
-                        <span style={{
-                          flexShrink: 0, width: 17, height: 17, borderRadius: 99, marginTop: 2, display: 'grid', placeItems: 'center',
-                          border: `1.5px solid ${mailPlan === id ? ACCENT : '#cbd2df'}`, background: mailPlan === id ? ACCENT : '#fff',
-                        }}>
-                          {mailPlan === id && <Check size={10} color="#fff" />}
-                        </span>
-                        <span style={{ minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{label}</span>
-                          <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{hint}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* The other two, when the job needs them. */}
-              {needs.filter(n => n !== 'mailbox').map(req => {
-                const info = REQUIREMENTS[req];
-                const state: ReadyState = ready ? ready[req] : 'unknown';
-                return (
-                  <div key={req} style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
-                    <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, flex: 1, minWidth: 140 }}>{info.label}</span>
-                      <span style={{
-                        fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
-                        background: ready ? STATE_TONE[state].bg : '#f1f5f9',
-                        color: ready ? STATE_TONE[state].fg : '#94a3b8',
-                      }}>{ready ? STATE_TONE[state].label : 'Checking\u2026'}</span>
-                    </div>
-                    <p style={{ margin: '6px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.55 }}>{info.why}</p>
-                    {state !== 'ready' && (
-                      <a href={`/settings?tab=${info.settingsTab}`} target="_blank" rel="noopener noreferrer" style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10,
-                        fontSize: 13, fontWeight: 700, color: ACCENT, textDecoration: 'none',
-                      }}>Set this up <ExternalLink size={12} /></a>
-                    )}
-                    {state === 'unknown' && ready && (
-                      <p style={{ margin: '8px 0 0', display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-                        <HelpCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                        We could not reach the setting to check — that is not the same as it being missing.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-
-              <p style={{
-                margin: 0, display: 'flex', gap: 8, alignItems: 'flex-start',
-                padding: '12px 13px', borderRadius: 14, background: '#f4f7fb',
-                fontSize: 12.5, color: '#1e3a5f', lineHeight: 1.6,
-              }}>
-                <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                The writing is included — you do not need an AI key of your own. You can start with any of
-                the above missing: Autopilot plans either way and reports that a step was skipped, rather
-                than pretending it ran.
-              </p>
-            </div>
-          )}
-
-          {/* ── 4 · What success is ── */}
-          {step === 3 && (
-            <div style={{ display: 'grid', gap: 14 }}>
-              <div><label style={lbl}>Call the project</label>
-                <input style={inp} value={name} onChange={e => setName(e.target.value)}
-                  placeholder={clientName ? `${clientName} — ${job?.label.toLowerCase() ?? 'growth'}` : 'Spring push'} /></div>
-
-              <div>
-                <label style={lbl}>What should it achieve?</label>
-                {ideas.length > 0 && (
-                  <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
-                    {ideas.slice(0, 3).map(idea => (
-                      <button key={idea} type="button" onClick={() => setObjective(idea)} style={{
-                        textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
-                        border: `1px solid ${objective === idea ? ACCENT : LINE}`,
-                        background: objective === idea ? 'rgba(91,70,229,0.05)' : '#fff',
-                        fontSize: 13, color: '#334155', fontFamily: 'inherit', lineHeight: 1.5,
-                      }}>{idea}</button>
-                    ))}
-                  </div>
-                )}
-                <textarea style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }} rows={3} value={objective}
-                  onChange={e => setObjective(e.target.value)}
-                  placeholder="Pick one above to edit, or write your own." />
-                <p style={{ margin: '6px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-                  The difference between this and “more leads” is the difference between a plan and a shrug.
-                </p>
-              </div>
-
-              <div>
-                <label style={lbl}>Which of these matter? (optional)</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {GOALS.map(g => {
-                    const on = goals.includes(g.id);
-                    return (
-                      <button key={g.id} type="button"
-                        onClick={() => setGoals(gs => on ? gs.filter(x => x !== g.id) : [...gs, g.id])}
-                        style={{
-                          padding: '8px 13px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
-                          border: `1.5px solid ${on ? ACCENT : LINE}`,
-                          background: on ? 'rgba(91,70,229,0.06)' : '#fff',
-                          color: on ? ACCENT : '#475569', fontSize: 13, fontWeight: 600,
-                        }}>{g.label}</button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div><label style={lbl}>Revenue you want from it, per month (optional)</label>
-                <input style={inp} inputMode="numeric" value={revenueTarget}
-                  onChange={e => setRevenueTarget(e.target.value.replace(/[^0-9]/g, ''))} placeholder="5000" />
-                <p style={{ margin: '6px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-                  Left blank, the planner is told it was not given rather than inventing one.
-                </p></div>
-            </div>
-          )}
-
-          {/* ── 4b · What happens when you press the button ──
-              Folded into the sizing step rather than given one of its own. It is
-              the thing somebody is actually agreeing to, and the step after
-              this one spends money — so it has to be on the screen with the
-              button, not one back from it. */}
-          {step === 4 && (
-            <div style={{ display: 'grid', gap: 11 }}>
-              {([
-                ['Doing', job?.label ?? '—'],
-                ['For', clientName || '—'],
-                ['To achieve', objective || '—'],
-              ] as const).map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderRadius: 14, background: '#f7f8fb' }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', width: 78, flexShrink: 0, letterSpacing: '0.02em' }}>
-                    {k.toUpperCase()}
-                  </span>
-                  <span style={{ fontSize: 14, color: INK, lineHeight: 1.5, minWidth: 0 }}>{v}</span>
-                </div>
-              ))}
-
-              {steps.length > 0 && (
-                <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden' }}>
-                  <div style={{ padding: '12px 15px', background: '#f7f8fb', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 800, color: INK }}>
-                    The order it builds things in
-                  </div>
-                  <div style={{ padding: '4px 15px 13px' }}>
-                    {steps.map((s, i) => (
-                      <div key={s.label} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '11px 0', borderTop: i ? `1px solid ${LINE}` : 'none' }}>
-                        <span style={{
-                          flexShrink: 0, width: 20, height: 20, borderRadius: 99, marginTop: 1,
-                          display: 'grid', placeItems: 'center', background: '#f1f3f7',
-                          fontSize: 10.5, fontWeight: 800, color: ACCENT,
-                        }}>{i + 1}</span>
-                        <span style={{ minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: INK }}>{s.label}</span>
-                          <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.55 }}>{s.why}</span>
-                        </span>
-                      </div>
-                    ))}
-                    <p style={{ margin: '11px 0 0', paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
-                      This becomes the first card on the project&rsquo;s board, so you can work down it —
-                      and so the board says the same thing this screen does.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginBottom: 9 }}>
-                  What it will be allowed to do
-                </div>
-                {caps.map(c => {
-                  const info = CAPABILITIES.find(x => x.id === c);
-                  const Ic = CAP_ICON[c];
-                  return (
-                    <div key={c} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 8 }}>
-                      <Ic size={14} color={ACCENT} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>{info?.label ?? c}</span>
-                    </div>
-                  );
-                })}
-                <p style={{ margin: '11px 0 0', paddingTop: 10, borderTop: `1px solid ${LINE}`, fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
-                  Everything not on this list is switched off, not left at a default. Anything that reaches
-                  a stranger waits for your yes the first time.
-                </p>
-              </div>
-
-              {mailPlan === 'buy' && (
-                <p style={{ margin: 0, display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: '#1e3a5f', background: '#f4f7fb', borderRadius: 14, padding: '12px 13px', lineHeight: 1.6 }}>
-                  <Mail size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                  Next: choosing the domain and the mailboxes. Nothing is charged until you press buy.
-                </p>
+              {phase === 'review' && bp && <Review bp={bp} />}
+              {phase === 'build' && <Build steps={steps} say={say} result={result} />}
+              {phase === 'domains' && result?.projectId && (
+                <DigitalSetupStep
+                  companyName={company}
+                  contactEmail={getSession()?.user?.email ?? ''}
+                  projectId={result.projectId}
+                  onOrder={() => { addNotification('Order placed. Watch it build.', 'success'); onCreated(result.projectId); }}
+                />
               )}
             </div>
-          )}
-
-          {/* ── 5 · The domains, bought here rather than at the end ──
-              Somebody who has just decided on three domains and nine mailboxes
-              is at the exact moment they care about buying them. Sending them
-              through two more screens first and producing the shop at the end
-              turns a decision into an errand. */}
-          {step === 5 && createdId && (
-            <DigitalSetupStep
-              companyName={clientName}
-              contactEmail={getSession()?.user?.email ?? ''}
-              projectId={createdId}
-              onOrder={() => { addNotification('Order placed. Watch it build.', 'success'); setStep(6); }}
-            />
-          )}
-
-          {/* ── 6 · What it is doing now ──
-              Real states read from the project and its cards, never a bar on a
-              timer. See ProjectProgress for why that distinction is the whole
-              point of the screen. */}
-          {step === 6 && createdId && (
-            <ProjectProgress projectId={createdId} onOpenBoard={onCreated} />
-          )}
-
-          {/* ── The note ──
-              It used to sit in a third column. The stage took that space, and
-              two things competing for the right-hand edge is worse than either
-              — so it moved to the top of the content, above the question it is
-              about rather than beside it. Still before the answer, which is the
-              only part that mattered: nobody scrolls back up to read a warning
-              after they have already chosen. */}
-          <aside style={{
-            border: `1px solid ${LINE}`, borderRadius: 16, padding: '14px 15px',
-            background: '#fbfbfd',
-          }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 7 }}>
-              <Lightbulb size={14} color={ACCENT} style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>{ASIDE[step].title}</span>
-            </div>
-            <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.65 }}>{ASIDE[step].body}</p>
-
-            {/* "Not this one if" is deliberately *not* repeated here — the
-                chosen card already carries it, next to the thing it is warning
-                about. Saying it twice on one screen teaches people that this
-                note repeats what they have already read, and then they stop
-                reading it. */}
-          </aside>
-          </div>
+          </main>
+          {side}
         </div>
 
-        {/* ── One button, at the bottom ──
-            Not on 5 or 6: the domain shop and the build view each end in their
-            own decision, and a "Continue" under either would be a second exit
-            that means something different from the one above it. */}
-        {step !== 5 && step !== 6 && (
-          <footer style={{ padding: '12px 20px 18px', borderTop: `1px solid ${LINE}`, flexShrink: 0, display: 'flex', gap: 10 }}>
-            {step > 1 && step < 5 && (
-              <button onClick={() => setStep(s => (Math.max(s - 1, 1) as Step))} style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '14px 18px', borderRadius: 999,
-                border: `1px solid ${LINE}`, background: '#fff', color: INK,
-                fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-              }}>
-                <ArrowLeft size={15} /> Back
-              </button>
-            )}
+        <footer className="np-foot">
+          {['understand', 'questions', 'blueprint', 'requirements', 'review'].includes(phase) && (
+            <button type="button" className="np-back" onClick={back} style={{ marginRight: 'auto' }}>
+              <ArrowLeft size={15} /> <span className="np-back-label">Back</span>
+            </button>
+          )}
+          {phase === 'build' ? (
+            result ? (
+              <>
+                {buyDomains && (
+                  <button type="button" className="np-back" onClick={() => setPhase('domains')}>
+                    <Mail size={15} /> Choose domains and mailboxes
+                  </button>
+                )}
+                {result.projectId && (
+                  <WizardCta onClick={() => onCreated(result.projectId)} label="Open the project" icon={<ArrowRight size={15} />} />
+                )}
+                {!result.projectId && <WizardCta onClick={() => { setResult(null); setPhase('review'); }} label="Back to the review" icon={<ArrowLeft size={15} />} />}
+              </>
+            ) : (
+              <WizardCta onClick={() => undefined} disabled label="Building…" icon={<Loader size={15} className="spin" />} />
+            )
+          ) : phase === 'domains' ? (
+            <button type="button" className="np-back" onClick={() => onCreated(result?.projectId)}>Skip for now — open the project</button>
+          ) : (
             <WizardCta
-              grow
               onClick={next}
-              disabled={!!blocked || busy}
-              title={blocked || undefined}
-              label={busy ? 'Working…'
-                : blocked ? blocked
-                  : step === 4
-                    /* Named rather than "Continue": this press is the one that
-                       writes the project, and the one that leads to a payment
-                       screen. A button that spends money says so. */
-                    ? (mailPlan === 'buy' ? 'Create it and choose the domains' : 'Start the project')
-                    : 'Continue'}
-              icon={busy ? <Loader size={15} className="spin" />
-                : step === 4 && mailPlan !== 'buy' ? <Sparkles size={15} />
-                  : <ArrowRight size={15} />}
+              disabled={!!blocker}
+              title={blocker || undefined}
+              label={ctaLabel}
+              icon={phase === 'understand' && !understood ? <Loader size={15} className="spin" />
+                : phase === 'review' ? <Hammer size={15} />
+                  : phase === 'describe' ? <Sparkles size={15} /> : <ArrowRight size={15} />}
             />
-          </footer>
-        )}
-        </WizardSplit>
+          )}
+        </footer>
       </div>
     </WizardBackdrop>
   );

@@ -17,7 +17,7 @@
  * the link is where the thing actually lives.
  */
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Check, Clock, AlertTriangle, ExternalLink, Pause, Play, MoreHorizontal, Trash2, Globe,
   Sparkles, Loader,
@@ -176,6 +176,11 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   /* The message while the example is being built, so the button can say which
      of the four steps it is on rather than spinning silently for six seconds. */
   const [demoBusy, setDemoBusy] = useState('');
+  /* The project somebody was sent to — by the wizard that just built it, or a
+     link. Scrolled to and opened on its Overview, so a new project is the
+     first thing on screen rather than one card somewhere down a stack. */
+  const [params] = useSearchParams();
+  const focusId = params.get('project') ?? '';
 
   /**
    * Build the worked example.
@@ -257,6 +262,12 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     return () => { live = false; };
   }, [addNotification]);
 
+  useEffect(() => {
+    if (!focusId || loading) return;
+    const el = document.getElementById(`project-${focusId}`);
+    if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [focusId, loading, projects.length]);
+
   const decide = async (id: string, approve: boolean) => {
     setDeciding(true);
     const r = approve ? await approveAction(id) : await rejectAction(id);
@@ -294,6 +305,10 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
       <div style={{
         background: T.panel, border: `1px dashed ${LINE}`, borderRadius: 18,
         padding: '34px 24px', textAlign: 'center', display: 'grid', gap: 11, justifyItems: 'center',
+        /* One track as wide as the panel and no wider. Left to size itself,
+           the column took the paragraph's 470px maximum as its width and the
+           empty state ran 226px off a phone screen. */
+        gridTemplateColumns: 'minmax(0, 1fr)',
       }}>
         <AutopilotBot size={62} awake />
         <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
@@ -404,7 +419,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         const dot = DOTS[i % DOTS.length];
         const live = p.status === 'running' || p.status === 'learning';
         return (
-          <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div key={p.id} id={`project-${p.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 18, scrollMarginTop: 16 }}>
             {/* A line and a number between projects.
                 Six full-width cards in a column run together, and the thing
                 somebody loses is where one client ends and the next begins —
@@ -421,6 +436,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
             )}
           <ProjectCard
             project={p}
+            focused={p.id === focusId}
             portfolio={portfolios.find(x => x.id === p.portfolioId) ?? null}
             onChanged={() => void load()}
             onToggle={x => void toggle(x)}

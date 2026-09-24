@@ -110,7 +110,7 @@ for (const width of [390, 1280]) {
   const t = (await p.textContent('body')) ?? '';
 
   ok(`${width}px · the example project is on screen`, /Northside Plumbing/.test(t), t.slice(0, 250));
-  ok(`${width}px · with a way to add a workflow`, await p.getByRole('button', { name: /Add a workflow/ }).first().isVisible());
+  ok(`${width}px · with a way to add a workflow`, await p.getByRole('button', { name: /Create workflow/ }).first().isVisible());
 
   /* The editor: open it on a real workflow and change a real field. */
   await p.getByRole('button', { name: /^Edit$/ }).first().click();
@@ -164,7 +164,7 @@ for (const width of [390, 1280]) {
   /* Straight to the empty builder. The wizard's third door and this button do
      the same thing on purpose — somebody who knows the shape they want should
      not have to walk through a chooser first. */
-  await p.getByRole('button', { name: /Build one from scratch/ }).first().click();
+  await p.getByRole('button', { name: /Build from scratch/ }).first().click();
   await p.waitForTimeout(700);
   const dialog = p.getByRole('dialog');
 

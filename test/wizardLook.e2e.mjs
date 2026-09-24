@@ -23,7 +23,7 @@ const running = (p) => p.evaluate(() =>
   document.getAnimations()
     .filter(a => a.playState === 'running')
     .map(a => (a.effect?.target?.className ?? '').toString())
-    .filter(c => c.includes('wz-')));
+    .filter(c => /\b(wz|np|vc)-/.test(c)));
 
 const seed = (ctx) => ctx.addInitScript(([token, acct]) => {
   localStorage.setItem('crm_session', JSON.stringify({ token, backend: 'php', user: { email: 'other@test.dev', name: 'S', role: 'agency', accountId: acct } }));
@@ -53,9 +53,9 @@ const openAutopilot = async (ctx) => {
   ok('the backdrop carries the two washes',
     (await p.locator('.wz-wash').count()) === 2, `${await p.locator('.wz-wash').count()} washes`);
   ok('the headline carries an accent phrase',
-    (await p.locator('.wz-accent').first().textContent()) === 'going wrong',
+    (await p.locator('.wz-accent').first().textContent()) === 'Autopilot',
     await p.locator('.wz-accent').first().textContent() ?? 'none');
-  ok('and the words around it are still there', /What is[\s\S]*right now/.test(t ?? ''));
+  ok('and the words around it are still there', /What would you like[\s\S]*to do\?/.test(t ?? ''));
   ok('the primary action is the shared pill', await p.locator('.wz-cta').first().count() === 1);
 
   const live = await running(p);

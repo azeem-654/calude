@@ -30,6 +30,7 @@ import { handleStorefront, handleStorefrontWebhook } from './routes/storefront';
 import { handleSupplier } from './routes/supplier';
 import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
+import { handleIntake } from './routes/intake';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
 import { handleModeration } from './routes/moderation';
@@ -93,6 +94,10 @@ const ROUTES: Record<string, Handler> = {
   /* Projects and the client portfolios they write from — what AI Autopilot
      actually runs. See routes/projects.ts for why the Sales Agent folded in. */
   '/api/projects.php': handleProjects,
+  /* The New Project wizard's reading step: a request, its files and pages
+     understood before anybody is asked a question, blueprint edits, and the
+     microphone's transcript. See routes/intake.ts. */
+  '/api/intake.php': handleIntake,
   '/api/setup.php': handleSetup,
   '/api/whitelabel.php': handleWhitelabel,
   /* The client report. `view` answers to nobody signed in — see routes/portal.ts

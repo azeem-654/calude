@@ -52,10 +52,36 @@ export interface Project {
    * advances on a timer.
    */
   launchSteps?: { label: string; why: string; route: string }[];
+  /**
+   * The blueprint the customer approved in the wizard — null for projects made
+   * before it existed. Shown on the project's Overview; the server reads only
+   * its `plannerChannels`. See `briefOf` in services/projectIntake.ts.
+   */
+  brief?: ProjectBrief | null;
   /** What the board's column header counts. */
   awaiting: number;
   done: number;
   failed: number;
+}
+
+/** The stored blueprint, as the project page reads it back. */
+export interface ProjectBrief {
+  version: number;
+  prompt?: string;
+  solutionKeys?: string[];
+  strength?: 'strong' | 'partial' | 'custom';
+  channels?: string[];
+  plannerChannels?: string[];
+  inputs?: string[];
+  outputs?: string[];
+  workflows?: { name: string; purpose: string; schedule: string; output: { label: string; route: string } | null; sends: boolean }[];
+  agents?: { name: string; role: string; workflow: string }[];
+  approvals?: string[];
+  manual?: string[];
+  destinations?: { label: string; route: string }[];
+  requirements?: string[];
+  limits?: string[];
+  decided?: { question: string; answer: string }[];
 }
 
 /** One thing Autopilot did, or is waiting to do, for a project. */
@@ -155,6 +181,8 @@ export const saveProject = (p: {
    * edit, which leaves the order alone — it was agreed once.
    */
   launchSteps?: { label: string; why: string; route: string }[];
+  /** The approved blueprint. Omitted on an edit, which keeps the stored one. */
+  brief?: Record<string, unknown>;
 }) => call('save_project', p);
 export const setProjectStatus = (id: string, status: Project['status']) => call('set_status', { id, status });
 
