@@ -35,6 +35,10 @@ import { motionReduced } from '../../services/motion';
 import type { ReelShot } from './reels';
 
 const HOLD_MS = 5200;
+/* On a phone a screen is shown larger and panned across (see site.css), so
+   it needs longer to be read: the pan is the time it takes to follow. */
+const HOLD_NARROW_MS = 7600;
+const narrow = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 760px)').matches;
 
 const src = (file: string) =>
   `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/reel/${file}.webp`;
@@ -54,6 +58,7 @@ export default function ShotReel({
   const [inView, setInView] = useState(false);
   const [held, setHeld] = useState(false);
   const [still] = useState(() => motionReduced());
+  const [hold] = useState(() => (narrow() ? HOLD_NARROW_MS : HOLD_MS));
   const box = useRef<HTMLDivElement | null>(null);
   const many = shots.length > 1;
 
@@ -71,9 +76,9 @@ export default function ShotReel({
   useEffect(() => {
     if (!many || still || !inView || held) return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    const t = window.setTimeout(() => setAt(i => (i + 1) % shots.length), HOLD_MS);
+    const t = window.setTimeout(() => setAt(i => (i + 1) % shots.length), hold);
     return () => window.clearTimeout(t);
-  }, [at, many, still, inView, held, shots.length]);
+  }, [at, many, still, inView, held, shots.length, hold]);
 
   const go = (i: number) => setAt((i + shots.length) % shots.length);
   const shot = shots[at] ?? shots[0];
@@ -82,6 +87,7 @@ export default function ShotReel({
     <div
       className={`dc-reel${inView ? ' in-view' : ''}${held ? ' held' : ''}${many ? '' : ' single'}`}
       ref={box}
+      style={{ '--hold': `${hold}ms` } as React.CSSProperties}
       role="group"
       aria-roledescription="carousel"
       aria-label={label}

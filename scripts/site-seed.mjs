@@ -6,10 +6,11 @@
  * funnels and whose second shows none is worse than either alone. One
  * definition, so every module agrees.
  *
- * Everything here is plausible rather than impressive. The figures are the
- * kind a real studio would have after a few months, because a marketing page
- * showing $4m of pipeline on a product nobody has used yet is a lie told in
- * a screenshot.
+ * The figures are those of a busy, established agency — the business a
+ * visitor is picturing when they decide whether this can run theirs. They are
+ * a *sample workspace*, and the site says so beside the pictures (SiteHome's
+ * "sample workspace" note): example data in a product screen is normal; a
+ * product screen passed off as a customer's results is not.
  */
 
 const FIRST = ['Aisha','Tom','Marta','Devon','Priya','Grant','Nia','Owen','Rosa','Caleb','Hana','Iris','Marcus','Lena'];
@@ -28,7 +29,7 @@ function workspace() {
     status: ['lead','prospect','customer','lead','prospect'][i % 5],
     tags: [['website enquiry'],['referral'],['ai-sales-agent'],['event'],['inbound']][i % 5],
     source: ['Website form','Referral','AI Sales Agent','Trade show','Google'][i % 5],
-    createdAt: iso(-40 + i), lastActivity: iso(-i), value: [0,2400,7800,0,1200][i % 5],
+    createdAt: iso(-40 + i), lastActivity: iso(-i), value: [0,24000,78000,0,12000][i % 5],
     address: '18 Parker Rd, Plano, TX 75074',
   }));
 
@@ -36,7 +37,7 @@ function workspace() {
     id, name, color,
     deals: picks.map((i, n) => ({
       id: `d-${id}-${n}`, title: `${CO[i]} — retainer`, contactId: `c${i}`, contactName: contacts[i].name,
-      value: [4200, 12800, 7400, 3600, 21500, 9100][(i + n) % 6],
+      value: [42000, 128000, 74000, 36000, 215000, 91000][(i + n) % 6],
       stage: id, probability: [20, 45, 65, 85][['new','qualified','proposal','won'].indexOf(id)] ?? 40,
       expectedClose: day(9 + n * 4), assignedTo: 'You', createdAt: iso(-12 + n),
       priority: ['normal','high','urgent','normal'][n % 4],
@@ -151,7 +152,7 @@ function workspace() {
     { id: 'cmp-1', name: 'North Texas outreach', type: 'sequence', status: 'active',
       goal: 'Book consultations', audience: 'Clinics and firms, North Texas',
       fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
-      createdAt: day(-14), sent: 118, opened: 61, clicked: 22, replied: 9, bounced: 4,
+      createdAt: day(-14), sent: 1180, opened: 612, clicked: 224, replied: 91, bounced: 12,
       source: { origin: 'ai-sales-agent', title: 'North Texas outreach', refId: 'AI-SA-2026-0001', route: '/ai-sales-agent/AI-SA-2026-0001', at: iso(-14) } },
     { id: 'cmp-2', name: 'Lapsed customers — win back', type: 'email', status: 'scheduled',
       goal: 'Reopen conversations', audience: 'Customers with no activity in 90 days',
@@ -173,17 +174,17 @@ function workspace() {
    */
   const funnels = [
     { id: 'fn-1', name: 'Free audit → consultation', slug: 'free-audit', status: 'active',
-      goal: 'Book consultations', steps: 3, visitors: 1840, conversions: 214, revenue: 18600, createdAt: day(-52),
+      goal: 'Book consultations', steps: 3, visitors: 18400, conversions: 2140, revenue: 486000, createdAt: day(-52),
       pages: [
-        { id: 'fn-1-a', name: 'Free audit offer', type: 'landing', slug: 'free-audit', blocks: [], visitors: 1840, conversions: 612 },
-        { id: 'fn-1-b', name: 'Pick a time', type: 'booking', slug: 'book', blocks: [], visitors: 612, conversions: 214 },
-        { id: 'fn-1-c', name: 'Confirmed', type: 'thankyou', slug: 'done', blocks: [], visitors: 214, conversions: 214 },
+        { id: 'fn-1-a', name: 'Free audit offer', type: 'landing', slug: 'free-audit', blocks: [], visitors: 18400, conversions: 6120 },
+        { id: 'fn-1-b', name: 'Pick a time', type: 'booking', slug: 'book', blocks: [], visitors: 6120, conversions: 2140 },
+        { id: 'fn-1-c', name: 'Confirmed', type: 'thankyou', slug: 'done', blocks: [], visitors: 2140, conversions: 2140 },
       ] },
     { id: 'fn-2', name: 'Spring offer → checkout', slug: 'spring-offer', status: 'active',
-      goal: 'Sell the retainer', steps: 2, visitors: 960, conversions: 88, revenue: 24200, createdAt: day(-24),
+      goal: 'Sell the retainer', steps: 2, visitors: 9600, conversions: 880, revenue: 742000, createdAt: day(-24),
       pages: [
-        { id: 'fn-2-a', name: 'Spring offer', type: 'landing', slug: 'spring-offer', blocks: [], visitors: 960, conversions: 141 },
-        { id: 'fn-2-b', name: 'Checkout', type: 'checkout', slug: 'checkout', blocks: [], visitors: 141, conversions: 88 },
+        { id: 'fn-2-a', name: 'Spring offer', type: 'landing', slug: 'spring-offer', blocks: [], visitors: 9600, conversions: 1410 },
+        { id: 'fn-2-b', name: 'Checkout', type: 'checkout', slug: 'checkout', blocks: [], visitors: 1410, conversions: 880 },
       ] },
     { id: 'fn-3', name: 'Webinar registration', slug: 'webinar', status: 'draft',
       goal: 'Fill the seats', steps: 2, visitors: 0, conversions: 0, revenue: 0, createdAt: day(-3),
@@ -192,19 +193,19 @@ function workspace() {
 
   const websites = [
     { id: 'ws-1', name: 'Rivera Studio', subdomain: 'riverastudio', domain: 'riverastudio.com',
-      status: 'published', template: 'agency', visitors: 4120, pageViews: 9840, createdAt: day(-96),
+      status: 'published', template: 'agency', visitors: 41200, pageViews: 98400, createdAt: day(-96),
       description: 'The studio site — services, work and a booking page.',
       seoTitle: 'Rivera Studio — growth for local services',
       seoDescription: 'Campaigns, sites and booking for clinics, firms and trades across North Texas.',
       pages: [
-        { id: 'ws-1-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 4120, conversions: 168 },
-        { id: 'ws-1-b', name: 'Services', type: 'custom', slug: 'services', blocks: [], visitors: 1610, conversions: 74 },
-        { id: 'ws-1-c', name: 'Contact', type: 'custom', slug: 'contact', blocks: [], visitors: 980, conversions: 122 },
+        { id: 'ws-1-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 41200, conversions: 1680 },
+        { id: 'ws-1-b', name: 'Services', type: 'custom', slug: 'services', blocks: [], visitors: 16100, conversions: 740 },
+        { id: 'ws-1-c', name: 'Contact', type: 'custom', slug: 'contact', blocks: [], visitors: 9800, conversions: 1220 },
       ] },
     { id: 'ws-2', name: 'Parkway Dental', subdomain: 'parkwaydental', domain: 'parkwaydental.co',
-      status: 'published', template: 'clinic', visitors: 2260, pageViews: 5100, createdAt: day(-61),
+      status: 'published', template: 'clinic', visitors: 22600, pageViews: 51000, createdAt: day(-61),
       description: 'Client site — treatments, team and online booking.',
-      pages: [{ id: 'ws-2-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 2260, conversions: 96 }] },
+      pages: [{ id: 'ws-2-a', name: 'Home', type: 'custom', slug: '', blocks: [], visitors: 22600, conversions: 960 }] },
     { id: 'ws-3', name: 'Legacy Fitness', subdomain: 'legacyfitness', status: 'draft',
       template: 'fitness', visitors: 0, pageViews: 0, createdAt: day(-6),
       description: 'In progress — class timetable and trial signup.',

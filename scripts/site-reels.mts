@@ -219,11 +219,11 @@ await ctx.addInitScript(([token, acct]: string[]) => {
      server workspace everything else is read from. */
   localStorage.setItem('crm_subaccounts', JSON.stringify([
     { id: acct, name: 'Rivera Studio', plan: 'agency', status: 'active', price: 0 },
-    { id: 'reel-c1', parentId: acct, name: 'Northside Plumbing', plan: 'growth', status: 'active', price: 297, createdAt: '2026-06-02T09:00:00Z' },
-    { id: 'reel-c2', parentId: acct, name: 'Parkway Dental', plan: 'growth', status: 'active', price: 297, createdAt: '2026-06-19T09:00:00Z' },
-    { id: 'reel-c3', parentId: acct, name: 'Legacy Fitness', plan: 'starter', status: 'active', price: 147, createdAt: '2026-07-08T09:00:00Z' },
-    { id: 'reel-c4', parentId: acct, name: 'Harbour Law', plan: 'pro', status: 'active', price: 497, createdAt: '2026-08-14T09:00:00Z' },
-    { id: 'reel-c5', parentId: acct, name: 'Tenby Roofing', plan: 'starter', status: 'trial', price: 147, createdAt: '2026-09-10T09:00:00Z' },
+    { id: 'reel-c1', parentId: acct, name: 'Northside Plumbing', plan: 'growth', status: 'active', price: 1497, createdAt: '2026-06-02T09:00:00Z' },
+    { id: 'reel-c2', parentId: acct, name: 'Parkway Dental', plan: 'growth', status: 'active', price: 1497, createdAt: '2026-06-19T09:00:00Z' },
+    { id: 'reel-c3', parentId: acct, name: 'Legacy Fitness', plan: 'starter', status: 'active', price: 897, createdAt: '2026-07-08T09:00:00Z' },
+    { id: 'reel-c4', parentId: acct, name: 'Harbour Law', plan: 'pro', status: 'active', price: 2497, createdAt: '2026-08-14T09:00:00Z' },
+    { id: 'reel-c5', parentId: acct, name: 'Tenby Roofing', plan: 'starter', status: 'trial', price: 897, createdAt: '2026-09-10T09:00:00Z' },
   ]));
   localStorage.setItem('crm_sidebar_mode', JSON.stringify('hidden'));
   /* Still frames: nothing mid-animation in a photograph. */
@@ -235,6 +235,9 @@ page.on('pageerror', e => errs.push(`${page.url()}: ${e.message}`));
 
 const go = async (route: string, settle = 1800) => {
   await page.goto(`${B}${route}`, { waitUntil: 'networkidle' });
+  /* The notices the seeded automations raise ("Follow-up task created…")
+     stack over the top-right of every screen. Real, but not the picture. */
+  await page.addStyleTag({ content: '.toast-stack{display:none!important}' }).catch(() => {});
   await page.waitForTimeout(settle);
 };
 const into = async (text: string | RegExp) => {
@@ -246,7 +249,15 @@ const into = async (text: string | RegExp) => {
 /** How to reach each picture. Every file in reels.ts must be here. */
 type Clip = { x: number; y: number; width: number; height: number };
 const RECIPES: Record<string, () => Promise<void | Clip>> = {
-  'dashboard': () => go('/'),
+  /* Framed on the week's figures — pipeline, revenue won — rather than on
+     the greeting, which says nothing about what the product does. */
+  'dashboard': async () => {
+    await go('/');
+    await page.getByText('This week', { exact: true }).first().evaluate(el => {
+      window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 150);
+    }).catch(() => {});
+    await page.waitForTimeout(700);
+  },
   'ap-board': () => go('/autopilot'),
   'ap-describe': async () => {
     await go('/autopilot');
