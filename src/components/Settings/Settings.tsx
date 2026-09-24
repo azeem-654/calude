@@ -28,6 +28,7 @@ import DiagnosticsCard from './DiagnosticsCard';
 import DeliveryCheck from './DeliveryCheck';
 import RouteCheck from './RouteCheck';
 import SecurityPanel from './SecurityPanel';
+import SecurityCenter from './SecurityCenter';
 import BrandingPanel from './BrandingPanel';
 import InfrastructurePanel from './InfrastructurePanel';
 import AutomationPanel from './AutomationPanel';
@@ -1077,7 +1078,7 @@ const tabs = [
   { id: 'api-validation', label: 'API Validation', icon: FlaskConical },
   { id: 'integrations', label: 'Integrations', icon: Globe },
   { id: 'billing', label: 'Billing', icon: CreditCard },
-  { id: 'security', label: 'Security', icon: Shield },
+  { id: 'security', label: 'Security & Privacy', icon: Shield },
   { id: 'team', label: 'Team & Permissions', icon: Users },
   { id: 'deliverability', label: 'Email Deliverability', icon: ShieldCheck },
   /* Domains, DNS and mailbox provisioning — the accounts that let the app set a
@@ -1336,6 +1337,7 @@ export default function Settings() {
 
           {activeTab === 'security' && (
             <>
+              <SecurityCenter />
               <SecurityPanel />
               {/* How everybody *else* gets in, next to how you get in. Owner
                   only — one Google application per install, on the operator's

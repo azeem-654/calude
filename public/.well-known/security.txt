@@ -1,0 +1,5 @@
+Contact: mailto:security@protectedcentral.com
+Expires: 2027-09-24T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://protectedcentral.com/security#report
+Canonical: https://protectedcentral.com/.well-known/security.txt

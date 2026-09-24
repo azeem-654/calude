@@ -29,7 +29,7 @@ import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
   Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
-  PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar,
+  PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar, KeyRound, Eye,
   Workflow,
 } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
@@ -237,6 +237,16 @@ const OWNERSHIP: { icon: typeof Send; title: string; body: string; reel: Reel }[
   { icon: Lock, title: 'Your data', reel: 'agency', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
 ];
 
+/* ── Security, on the home page ──────────────────────────────────────────
+   Four things that are true of the running product, each backed by a section
+   of the Trust Center (/security). No certifications, no "unhackable". */
+const TRUST: { icon: typeof Send; title: string; body: string }[] = [
+  { icon: Lock, title: 'Workspace protection', body: 'Business information is separated between workspaces, and every request is checked on the server against who is signed in.' },
+  { icon: KeyRound, title: 'Secure access', body: 'Hashed passwords, optional 2-step sign-in, limits on password guessing, and a list of every device signed in to your account.' },
+  { icon: Eye, title: 'Visibility & control', body: 'See sign-ins and account changes, sign devices out, manage who can open a workspace, and export or delete your data.' },
+  { icon: Sparkles, title: 'Responsible AI processing', body: 'AI is given the material for the task you asked for, not your workspace — and the Security page lists exactly what goes where.' },
+];
+
 /* ── Small pieces ────────────────────────────────────────────────────────── */
 
 /**
@@ -332,6 +342,7 @@ export default function SiteHome() {
           <a href="#scale">Agency</a>
           <a href="#platform">Platform</a>
           <a href="#pricing">Pricing</a>
+          <a href="/security">Security</a>
         </nav>
         <div className="dc-nav-cta">
           <a className="dc-btn dc-btn-ghost" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
@@ -365,6 +376,9 @@ export default function SiteHome() {
           <div className="dc-hero-shot dc-lead-3">
             <ShotReel shots={REELS.dashboard} label="Protected Central" eager />
           </div>
+          {/* The figures in every screen on this page are example data. Said
+              once, plainly, where the first of them appears. */}
+          <p className="dc-sample-note">Screens show a sample workspace with example data.</p>
         </div>
       </section>
 
@@ -500,6 +514,27 @@ export default function SiteHome() {
         </div>
       </section>
 
+      {/* ── Security ── */}
+      <section className="dc-trust" id="trust" aria-label="Security and privacy">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">Security &amp; privacy</span>
+          <h2>Your business <em>belongs to you.</em></h2>
+          <p>Protected Central is built around privacy, access control and secure business operations.</p>
+        </div>
+        <div className="dc-trust-grid">
+          {TRUST.map(t => (
+            <div key={t.title} className="dc-trust-card">
+              <span className="dc-tile-icon"><t.icon size={15} /></span>
+              <h3>{t.title}</h3>
+              <p>{t.body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="dc-trust-more">
+          <a className="dc-btn dc-btn-outline" href="/security">Explore Security &amp; Privacy <ArrowRight size={14} /></a>
+        </div>
+      </section>
+
       {/* ── Pricing ── */}
       <section className="dc-pricing" id="pricing">
         <div className="dc-chapter-head">
@@ -572,6 +607,8 @@ export default function SiteHome() {
             <h5>Account</h5>
             <a href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
             <a href={appHref('/signup')} {...cross(appHref('/signup'))}>Create an account</a>
+            <a href="/security">Security &amp; privacy</a>
+            <a href="/terms">Acceptable use</a>
           </div>
         </div>
         <div className="dc-foot-base">

@@ -161,6 +161,27 @@ shows a state somebody would trust and only discover at the moment it matters.
 
 Every third-party API call is made from the Worker, never from the bundle.
 
+## Security rules — read docs/SECURITY.md
+
+The 2026-09-24 audit found that any signed-up account could reset the owner's
+password, read another workspace's inbox, and overwrite other tenants' rows by
+id. The rules that closed those holes:
+
+- **Every workspace a request names is checked on the server.** Routes behind
+  `requireSessionForSocket` also call `denyForeignWorkspace`; everything else
+  uses `canAccess` / `workspaceAccess`. A session existing is not permission.
+- **An upsert by id is scoped.** `ON CONFLICT(id) DO UPDATE … WHERE
+  <table>.account_id = excluded.account_id`, and `foreignId()` refuses a
+  foreign id. Ids are primary keys across all tenants.
+- **User administration acts on the target, not the caller's role**
+  (`manageable()` in routes/auth.ts). Every sign-up is an "agency".
+- **Sessions are stored as `sessionKey(token)`**, never the raw token; delete
+  and compare with `sessionKeys()`.
+- Record security events with `recordAuthEvent` — never a secret in `detail`.
+- Customer-facing security wording must match docs/SECURITY.md §7, and never
+  anything in §8. `npm run test:security` (needs `wrangler dev`) is the
+  two-tenant attack suite; extend it with every new route that takes an id.
+
 ## Commands
 
 ```bash

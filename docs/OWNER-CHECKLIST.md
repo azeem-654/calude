@@ -24,6 +24,11 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 5 | **Add the Calendar scope** to your Google client | console.cloud.google.com | Google Meet links on bookings, and the assistant offering real times |
 | 6 | *Optional* — **choose a voice provider** | — | AI voice. Nothing else; the rest of Customer Engagement works without it |
 | 7 | *Optional* — **create a Google OAuth client** if you want the Google sign-in button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
+| 8 | **Turn on 2-step sign-in for azeem@protectedcentral.com** | app → Settings → Security & Privacy → 2-step sign-in → Turn on | The owner account can connect payments and change settings for everyone; a password alone should not be enough. See 22 |
+| 9 | **Create the mailbox `security@protectedcentral.com`** (or an alias to yours) | your mail host | The Trust Center and `/.well-known/security.txt` publish it as the place to report vulnerabilities; until it exists those reports bounce |
+| 10 | **Confirm billing is enabled on the Google Cloud project behind the AI key** | console.cloud.google.com → Billing | What the Trust Center may say about AI training. On a free-tier key Google may use prompts to improve its products; on a paid one its terms say it does not |
+| 11 | **Confirm the Cloudflare plan** (Workers Paid gives D1 Time Travel 30 days; Free gives 7) | Cloudflare → Billing | How far back the database can be restored. See docs/SECURITY.md §3.10 |
+| 12 | **Have a Privacy Policy and Terms of Service written** | a lawyer; a factual draft is in `docs/PRIVACY-POLICY-DRAFT.md` | Launching to the public. Only the Acceptable Use policy (`/terms`) exists today |
 
 **Done, and no longer on the list:**
 
@@ -711,6 +716,30 @@ Three things to know:
   that email" is answered.
 
 ---
+
+
+### 22. Security & Privacy — what changed on 2026-09-24, and what is yours
+
+An audit found requests any signed-up account could make against other
+customers — including resetting the owner's password. They are fixed and live
+(docs/SECURITY.md has every finding, and `npm run test:security` re-runs the
+attack suite). Yours to do:
+
+1. **Change the master password** (still item 3 above) — from
+   Settings → Security & Privacy, which now needs your current one.
+2. **Turn on 2-step sign-in** (item 8): Settings → Security & Privacy →
+   *Turn on* → scan the QR code with Google Authenticator / Microsoft
+   Authenticator / 1Password → enter the 6 digits. From then on every sign-in
+   asks for a code. Keep the app on a phone you will not lose; if you do lose
+   it, a code or password sign-in on a device already signed in can switch it
+   off from the same screen.
+3. **Look at "Signed-in devices"** on that screen once, and sign out anything
+   you do not recognise.
+4. Items 9–12 above.
+
+Everything customers are told about security is in docs/SECURITY.md §7, and
+what they must **not** be told is §8 — no "end-to-end encrypted", no
+certifications, no "never used for AI training" until item 10 is confirmed.
 
 ## Done
 
