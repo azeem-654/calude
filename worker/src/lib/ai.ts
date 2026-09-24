@@ -18,7 +18,65 @@ import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
 
 const BASE = 'https://generativelanguage.googleapis.com';
-const MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+
+/*
+ * ── Which models, asked rather than assumed ──
+ *
+ * This used to be a fixed list — 3.5-flash-lite, 3.5-flash, 2.5-flash — and a
+ * fixed list is a date. Google retires ids and adds new ones; by 2026-09-24
+ * the first two did not exist on the operator's key and the third answered
+ * "no longer available to new users", so every AI call in the product failed
+ * at once, voice notes included, with an error telling the customer to update
+ * their code.
+ *
+ * So the key is asked which models it can use (ListModels, once per Worker
+ * instance per key, for six hours), and the newest Gemini Flash models are
+ * chosen: the lite one first, because these calls are short and speed is what
+ * a waiting person notices, then the full one, then the next newest. The fixed
+ * list is only the fallback for when the listing itself cannot be read, and
+ * ends in Google's own `-latest` aliases, which follow their releases.
+ */
+const FALLBACK_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-2.5-flash'];
+const modelCache = new Map<string, { at: number; models: string[] }>();
+
+/** Newest first: "3.6" before "3.5" before "2.5"; lite before full within a version. */
+export function pickModels(names: string[]): string[] {
+  const parsed = names
+    .map(n => n.replace(/^models\//, ''))
+    .map(n => ({ n, m: /^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(-preview(?:-[\w-]+)?)?$/.exec(n) }))
+    .filter((x): x is { n: string; m: RegExpExecArray } => !!x.m)
+    .map(x => ({ name: x.n, version: parseFloat(x.m[1]), lite: !!x.m[2], preview: !!x.m[3] }));
+  const stable = parsed.filter(p => !p.preview);
+  const pool = stable.length ? stable : parsed;
+  pool.sort((a, b) => (b.version - a.version) || (Number(b.lite) - Number(a.lite)));
+  const out: string[] = [];
+  const newest = pool[0]?.version;
+  for (const p of pool.filter(x => x.version === newest)) out.push(p.name);
+  const older = pool.find(p => p.version !== newest && !p.lite) ?? pool.find(p => p.version !== newest);
+  if (older) out.push(older.name);
+  return out.slice(0, 3);
+}
+
+export async function modelsFor(apiKey: string): Promise<string[]> {
+  const hit = modelCache.get(apiKey);
+  if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.models;
+  try {
+    const res = await fetch(`${BASE}/v1beta/models?pageSize=1000&key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const data = await res.json<{ models?: { name?: string; supportedGenerationMethods?: string[] }[] }>();
+      const names = (data.models ?? [])
+        .filter(m => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+        .map(m => String(m.name ?? ''));
+      const picked = pickModels(names);
+      if (picked.length) {
+        const models = [...picked, ...FALLBACK_MODELS.filter(f => f.endsWith('-latest'))];
+        modelCache.set(apiKey, { at: Date.now(), models });
+        return models;
+      }
+    }
+  } catch { /* the fallback below */ }
+  return FALLBACK_MODELS;
+}
 
 /** Google's wording when an id has been retired, in case the status is not 404. */
 const MODEL_GONE = /no longer available|is not found|not supported for|deprecated/i;
@@ -193,7 +251,7 @@ export async function askGeminiParts(
   const base = asJson ? { responseMimeType: 'application/json', temperature } : { temperature };
 
   let lastError = '';
-  for (const model of MODELS) {
+  for (const model of await modelsFor(apiKey)) {
     let thinking = !!opts.fast;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const body = {
@@ -346,7 +404,7 @@ Reply with JSON only, in exactly this shape:
   };
 
   let lastError = '';
-  for (const model of MODELS) {
+  for (const model of await modelsFor(apiKey)) {
     let res: Response;
     try {
       res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {

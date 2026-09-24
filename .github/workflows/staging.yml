@@ -128,6 +128,9 @@ jobs:
       - name: Test the planner
         run: npm run test:autopilot
 
+      - name: Gemini model choice
+        run: npm run test:models
+
       - name: Build
         run: npm run build
         env:
