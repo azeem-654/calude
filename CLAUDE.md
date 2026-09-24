@@ -194,7 +194,11 @@ also runs `test:moderation`, `test:prospects`, `test:domains`, `test:hosts`, `te
 because its job is to publish what has already been rehearsed.
 
 `main` is only ever moved by **Actions → Promote testing to live**, which
-fast-forwards it to `staging` after you type `PROMOTE`. It refuses if `main`
+fast-forwards it to `staging` after you type `PROMOTE` and then **starts
+`deploy.yml` on `main` itself**. It has to: a push made with the workflow's own
+token cannot start other workflows, so the push alone would move `main` and
+never deploy it. Check the Deploy to Cloudflare run, not the promote run, to
+know it is live. It refuses if `main`
 has commits `staging` does not, rather than discarding them. Pushing straight
 to `main` still works and still deploys — it is for a hotfix, and the next
 promotion will refuse until you have merged it back into `staging`.

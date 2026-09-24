@@ -35,6 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # To start the live deploy below. See the note on that step.
+      actions: write
     steps:
       - name: Check the confirmation
         run: |
@@ -79,6 +81,28 @@ jobs:
             exit 1
           fi
           git push origin origin/staging:refs/heads/main
+
+      # ── Starting the live deploy, explicitly ──────────────────────────────
+      #
+      # The push above does not do it. A push made with this workflow's own
+      # GITHUB_TOKEN is deliberately not allowed to start other workflows —
+      # GitHub's guard against one workflow triggering itself for ever — so
+      # deploy.yml, which listens for pushes to main, never hears about it.
+      # Every earlier deploy was a person pushing to main, which is why this
+      # went unnoticed until the first promotion: main would have moved, this
+      # run would have said "Promoted", and the live site would not have
+      # changed.
+      #
+      # A manual dispatch is the one event that token *may* start, so this asks
+      # for the deploy by name, on main, and says which run to watch. If the
+      # dispatch itself fails, the job fails: "promoted but not deployed" must
+      # never look like success.
+      - name: Start the live deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main
           echo "### Promoted" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "main now matches staging. **Deploy to Cloudflare** is publishing it to <https://app.protectedcentral.com>." >> $GITHUB_STEP_SUMMARY
+          echo "main now matches staging, and **Deploy to Cloudflare** has been started on main." >> $GITHUB_STEP_SUMMARY
+          echo "It is live at <https://app.protectedcentral.com> when that run finishes green — check it under Actions, not here." >> $GITHUB_STEP_SUMMARY
