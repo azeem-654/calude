@@ -142,6 +142,18 @@ export function installTenantStorage() {
   const _remove = ls.removeItem.bind(ls);
   _rawGetFn = _get; _rawSetFn = _set;
 
+  /* The prototype's own methods, taken before they are replaced. The patch sits
+     on Storage.prototype, so it is also what sessionStorage calls — and the
+     fallthrough for anything that is not localStorage used to call
+     `Storage.prototype.getItem` again, which by then *is* the patch. Every
+     sessionStorage read and write recursed until the stack ran out, and the
+     callers' try/catch turned that into a silent "storage off": Google sign-in
+     never remembered its state and refused every answer as "not started from
+     this browser". */
+  const protoGet = Storage.prototype.getItem;
+  const protoSet = Storage.prototype.setItem;
+  const protoRemove = Storage.prototype.removeItem;
+
   const activeId = () => _get('crm_active_account');
   const isScopable = (key: string) => key.startsWith('crm_') && !GLOBAL_KEYS.has(key) && !key.startsWith(PREFIX);
   const scoped = (key: string): string => {
@@ -152,7 +164,7 @@ export function installTenantStorage() {
   };
 
   Storage.prototype.getItem = function (key: string) {
-    return this === ls ? _get(scoped(key)) : Storage.prototype.getItem.call(this, key);
+    return this === ls ? _get(scoped(key)) : protoGet.call(this, key);
   };
   Storage.prototype.setItem = function (key: string, value: string) {
     if (this === ls) {
@@ -161,7 +173,7 @@ export function installTenantStorage() {
       if (scopedWriteListener && a && isScopable(key)) scopedWriteListener(a, key, value);
       return;
     }
-    return Storage.prototype.setItem.call(this, key, value);
+    return protoSet.call(this, key, value);
   };
   Storage.prototype.removeItem = function (key: string) {
     if (this === ls) {
@@ -170,7 +182,7 @@ export function installTenantStorage() {
       if (scopedWriteListener && a && isScopable(key)) scopedWriteListener(a, key, null);
       return;
     }
-    return Storage.prototype.removeItem.call(this, key);
+    return protoRemove.call(this, key);
   };
 
   ensureDefaultAccount(_get, _set);
