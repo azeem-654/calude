@@ -19,6 +19,8 @@
  * still opened, because a partial project the customer can see and fix beats a
  * wizard that threw away everything they answered.
  */
+import { buildTemplatePages, type BrandContext, type TemplateMeta } from '../../shared/pageTemplates';
+import type { Funnel, Website } from '../../../types';
 import {
   savePortfolio, saveProject, readPortfolioFromUrl, readLogoFromUrl, guardrailsFor, type Portfolio,
 } from '../../../services/projects';
@@ -59,6 +61,18 @@ export interface BuildInput {
   /** The logo chosen in the wizard, and the website to look on if it was left to Autopilot. */
   logo?: LogoChoice;
   logoSite?: string;
+  /**
+   * The website or funnel template picked in the wizard, built in the client's
+   * name and colour, and the app's own way of saving one — the same call the
+   * Websites and Funnels screens make, so the new draft appears there at once
+   * and syncs like any other.
+   */
+  page?: {
+    template: TemplateMeta;
+    brand: BrandContext;
+    addWebsite: (w: Omit<Website, 'id'>) => void;
+    addFunnel: (f: Omit<Funnel, 'id'>) => void;
+  };
 }
 
 /**
@@ -154,6 +168,9 @@ export function planSteps(inp: BuildInput): BuildStep[] {
   if (first) {
     const out = first.channel === 'social' ? 'post' : first.channel === 'blog' ? 'article' : 'draft';
     steps.push({ key: 'first', label: `Making your first ${out} now`, state: 'todo', weight: 3 });
+  }
+  if (inp.page) {
+    steps.push({ key: 'page', label: `Building your ${inp.page.template.kind === 'funnel' ? 'funnel' : 'website'} from the “${inp.page.template.name}” template`, state: 'todo', weight: 1.5 });
   }
   steps.push({ key: 'validate', label: 'Checking everything is in place', state: 'todo', weight: 0.5 });
   return steps;
@@ -343,6 +360,30 @@ export async function runBuild(
         ? 'On. Everything they make is saved for you to check — nothing is published.'
         : `${on} of ${agentFlows.length} switched on. The rest can be switched on from the project.`,
     });
+  }
+
+  /* ── 4b · The website or funnel they picked ──
+     Built here rather than by the planner: the planner only builds a page
+     for a workspace with none, so once this exists it does not add another. */
+  if (inp.page && steps.some(st => st.key === 'page')) {
+    const { template, brand, addWebsite, addFunnel } = inp.page;
+    set('page', { state: 'now' }, `I’m building your ${template.kind} from “${template.name}”.`);
+    try {
+      const pages = buildTemplatePages(template, brand, { brand: true });
+      const source = { origin: 'autopilot' as const, title: bp.name, refId: p.id, route: '/autopilot', at: new Date().toISOString() };
+      if (template.kind === 'funnel') {
+        addFunnel({ name: `${brand.name} — ${template.name}`.slice(0, 90), status: 'draft', steps: pages.length, pages, visitors: 0, conversions: 0, revenue: 0, goal: bp.objective.slice(0, 200), source, createdAt: new Date().toISOString() });
+      } else {
+        addWebsite({ name: brand.name.slice(0, 90), status: 'draft', template: template.id, pages, visitors: 0, pageViews: 0, source, description: brand.tagline ?? '', createdAt: new Date().toISOString() });
+      }
+      set('page', {
+        state: 'done',
+        detail: `${pages.length} ${template.kind === 'funnel' ? 'steps' : 'pages'} in your name and colour, saved as a draft. The wording is a starting point — change it block by block.`,
+        link: { label: template.kind === 'funnel' ? 'Open Funnels' : 'Open Websites', route: template.kind === 'funnel' ? '/funnels' : '/websites' },
+      });
+    } catch (e) {
+      set('page', { state: 'warn', detail: `Not built: ${e instanceof Error ? e.message : 'the template could not be built'}. Pick it again from Websites or Funnels.` });
+    }
   }
 
   /* ── 5 · Products ── */

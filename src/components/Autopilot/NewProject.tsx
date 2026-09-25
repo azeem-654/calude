@@ -36,6 +36,9 @@
  * name something that exists. Nothing is written until "Build My Autopilot",
  * so abandoning halfway leaves nothing behind.
  */
+import ResultPreview from './newProject/ResultPreview';
+import { DEFAULT_THEME, resolveTheme } from '../../services/designOptions';
+import { TEMPLATE_CATALOG } from '../shared/pageTemplates';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Loader, Sparkles, Hammer, Mail } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -92,7 +95,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
   /** Called with the new project's id when the customer goes into it. */
   onCreated: (projectId?: string) => void;
 }) {
-  const { addNotification } = useApp();
+  const { addNotification, addWebsite, addFunnel } = useApp();
   const [phase, setPhase] = useState<Phase>('describe');
   const [describe, setDescribe] = useState<DescribeValue>({ prompt: '', picked: '', files: [], links: [], voicePending: false });
 
@@ -170,6 +173,17 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
       return host ? host.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
     } catch { return ''; }
   }, [state, portfolios, ws, profileDraft]);
+
+  /* The client's own words for the template previews and the result preview:
+     their name, one line of what they do, and their offer as the headline. */
+  const brandWords = useMemo(() => {
+    const first = (t: string) => (t.split(/(?<=[.!?])\s/)[0] ?? '').trim().slice(0, 120);
+    const known = (id: string) => String(state?.known[id]?.value ?? '');
+    const what = profileDraft?.description || known('bizWhat') || ws.workspace?.description || '';
+    const offer = profileDraft?.offer || known('offer');
+    return { name: company, tagline: first(what), heroTitle: first(offer) };
+  }, [company, profileDraft, state, ws]);
+  const prefersFunnel = !!state?.solutionKeys.some(k => /ecommerce|product|launch/.test(k));
 
   const bp: Blueprint | null = useMemo(() => (state ? buildBlueprint(state, {
     companyName: company, website: String(state.known.website?.value ?? ''), files, links,
@@ -510,9 +524,20 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
   const build = async () => {
     if (!state || !bp) return;
     const full = withDefaults(state);
+    /* The website or funnel picked from the gallery, built in the client's
+       name and theme colour. "ai" leaves the page to the planner. */
+    const tplId = String(full.known.pageTemplate?.value ?? '');
+    const template = TEMPLATE_CATALOG.find(t => t.id === tplId);
+    const said = (id: string) => String(full.known[id]?.value ?? '');
+    const pal = resolveTheme(said('theme') || DEFAULT_THEME, said('brandColor'), said('designStyle'));
     const input = {
       bp, state: full, files, portfolios, profileDraft, workspace: ws.workspace ?? null,
       logo: { ...shownLogo, answer: String(full.known.logo?.value ?? '') }, logoSite,
+      page: template ? {
+        template,
+        brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle },
+        addWebsite, addFunnel,
+      } : undefined,
     };
     setPhase('build');
     setSteps(planSteps(input));
@@ -699,7 +724,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
               )}
               {phase === 'questions' && state && screen && (
                 <Questions
-                  design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f) }}
+                  design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f), brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website' }}
                   screen={screen} state={state} ws={ws} files={files} answer={answer}
                   profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}
@@ -710,6 +735,17 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
               {phase === 'blueprint' && bp && (
                 <>
                   <BlueprintView bp={bp} onRename={name => setState(s => (s ? { ...s, name } : s))} />
+                  {(() => {
+                    const said = (id: string) => String(withDefaults(state!).known[id]?.value ?? '');
+                    return (
+                      <div style={{ marginTop: 18 }}>
+                        <ResultPreview bp={bp} brand={brandWords}
+                          palette={resolveTheme(said('theme') || DEFAULT_THEME, said('brandColor'), said('designStyle'))}
+                          logo={said('logo') === 'none' ? '' : shownLogo.dataUrl}
+                          templateId={said('pageTemplate')} pageLayout={said('pageLayout')} audience={said('audience') || String(profileDraft?.audience ?? '')} />
+                      </div>
+                    );
+                  })()}
                   <div className="np-only-narrow" style={{ marginTop: 20, padding: 16, borderRadius: 18, background: '#f7f6ff', border: '1px solid #e2ddff' }}>
                     <EditPanel log={log} busy={editing} suggestions={suggestions} onSend={t => void edit(t)} />
                   </div>

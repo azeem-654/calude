@@ -502,6 +502,9 @@ export function designQuestions(state: QuestionSource): Question[] {
     out.push(emailOnly ? { ...QUESTIONS.theme, showIf: branded } : QUESTIONS.theme);
     out.push(QUESTIONS.brandColor);
   }
+  /* Pages start from a real template, shown in the client's colours; the
+     layout question is only asked if they leave the design to Autopilot. */
+  if (kinds.includes('page')) out.push(QUESTIONS.pageTemplate);
   for (const k of kinds) out.push(QUESTIONS[LAYOUT_QUESTION[k]]);
   return out.filter(Boolean);
 }
@@ -929,7 +932,7 @@ export function validValue(q: Question, v: unknown): string | string[] | null {
     const list = (Array.isArray(v) ? v : [v]).map(String).filter(x => allowed.has(x));
     return list.length ? [...new Set(list)] : null;
   }
-  if (q.type === 'single' || q.type === 'layout' || q.type === 'theme' || q.type === 'logo') {
+  if (q.type === 'single' || q.type === 'layout' || q.type === 'theme' || q.type === 'logo' || q.type === 'template') {
     const s = String(Array.isArray(v) ? v[0] : v ?? '');
     /* A single named day is a valid schedule even though it is not a button. */
     if ((q.id === 'frequency' || q.id === 'blogFrequency') && /^(mon|tue|wed|thu|fri|sat|sun)$/.test(s)) return s;

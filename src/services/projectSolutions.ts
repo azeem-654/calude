@@ -35,6 +35,7 @@
  * from Shopify) is said as a manual action or a limitation, never drawn as a
  * workflow that will quietly do nothing.
  */
+import { TEMPLATE_CATALOG } from '../components/shared/pageTemplates';
 import type { WorkflowNode } from './autopilot';
 import { TEMPLATES } from '../components/Autopilot/workflowTemplates';
 import { LAYOUTS, THEMES, DEFAULT_LAYOUT, DEFAULT_THEME } from './designOptions';
@@ -57,7 +58,7 @@ export type Channel =
  * validated against `options` like any other — and differ only in being drawn
  * as pictures, because nobody chooses a layout from its name.
  */
-export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' | 'inspiration' | 'layout' | 'theme' | 'logo';
+export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' | 'inspiration' | 'layout' | 'theme' | 'logo' | 'template';
 
 /**
  * Screens group questions so no screen is a form.
@@ -69,7 +70,7 @@ export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' |
 export type QuestionGroup =
   | 'business' | 'deliverable' | 'schedule' | 'style' | 'audience' | 'contacts'
   | 'offer' | 'sending' | 'catalogue' | 'store' | 'booking' | 'handoff' | 'custom'
-  | 'brand' | 'look' | 'layout';
+  | 'brand' | 'look' | 'pages' | 'layout';
 
 export const GROUP_TITLE: Record<QuestionGroup, string> = {
   business: 'Your business',
@@ -87,13 +88,14 @@ export const GROUP_TITLE: Record<QuestionGroup, string> = {
   custom: 'A few details',
   brand: 'Your logo and feel',
   look: 'Colours and theme',
+  pages: 'Your website or funnel',
   layout: 'Layouts',
 };
 
 /** The order screens appear in, whichever solutions contributed them. */
 export const GROUP_ORDER: QuestionGroup[] = [
   'business', 'deliverable', 'catalogue', 'audience', 'contacts', 'offer',
-  'schedule', 'booking', 'brand', 'look', 'layout', 'style', 'store', 'sending', 'handoff', 'custom',
+  'schedule', 'booking', 'brand', 'look', 'pages', 'layout', 'style', 'store', 'sending', 'handoff', 'custom',
 ];
 
 export interface QuestionOption {
@@ -252,11 +254,22 @@ const Q: Record<string, Question> = {
     options: LAYOUTS.social,
     aiDecides: DEFAULT_LAYOUT.social,
   },
+  /* The real templates from Websites and Funnels, previewed in the client's
+     name and colours. Choosing one builds it at the end of the wizard; "ai"
+     leaves the page to Autopilot, which then asks the layout below. */
+  pageTemplate: {
+    id: 'pageTemplate', group: 'pages', type: 'template', need: 'required',
+    prompt: 'Pick the website or funnel to start from',
+    help: 'Shown in your name and colours. It is built as a draft you can change block by block — the words are placeholders until you or Autopilot write them.',
+    options: [{ value: 'ai', label: 'Let Autopilot design it' }, ...TEMPLATE_CATALOG.map(t => ({ value: t.id, label: t.name }))],
+    aiDecides: 'ai',
+  },
   pageLayout: {
     id: 'pageLayout', group: 'layout', type: 'layout', need: 'required',
     prompt: 'Layout for the pages and funnels it builds',
     options: LAYOUTS.page,
     aiDecides: DEFAULT_LAYOUT.page,
+    showIf: { id: 'pageTemplate', in: ['ai'] },
   },
   emailLayout: {
     id: 'emailLayout', group: 'layout', type: 'layout', need: 'required',

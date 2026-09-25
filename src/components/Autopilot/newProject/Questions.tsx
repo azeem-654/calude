@@ -9,6 +9,7 @@
  * The business question is the one with a shape of its own, because there are
  * five honest ways to answer it and a dropdown would hide four.
  */
+import TemplatePicker from './TemplatePicker';
 import { useRef } from 'react';
 import { Building2, Globe, Upload, PenLine, Sparkles, Check, Image as ImageIcon, UserCircle2, Loader, AlertTriangle, RefreshCcw } from 'lucide-react';
 import { GROUP_TITLE, type Question } from '../../../services/projectSolutions';
@@ -24,6 +25,10 @@ export interface DesignHooks {
   logo: LogoFieldState;
   onFind: (url: string) => void;
   onFile: (f: File) => void;
+  /** The client's name and words, for the template previews (colour comes from the theme). */
+  brand: { name: string; tagline: string; heroTitle: string };
+  /** Which templates to show first. */
+  prefer: 'website' | 'funnel';
 }
 
 export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design }: {
@@ -266,6 +271,16 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
           onPick={v => answer(q.id, v, 'you')} onAi={() => answer(q.id, byAi ? null : aiValue ?? null, 'default')}
           palette={palette} logo={logoShown} />
         {skip}
+      </div>
+    );
+  }
+  if (q.type === 'template') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <TemplatePicker value={vals[0] ?? ''} prefer={design.prefer}
+          brand={{ name: design.brand.name || 'Your business', color: palette.accent, tagline: design.brand.tagline, heroTitle: design.brand.heroTitle }}
+          onPick={v => answer(q.id, v, v === 'ai' ? 'default' : 'you')} />
       </div>
     );
   }

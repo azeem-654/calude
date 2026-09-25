@@ -358,6 +358,44 @@ for (const width of [1280, 390]) {
   await ctx.close();
 }
 
+/* ── TEST 9: a project that builds pages starts from a real template ──
+   The gallery shows the Websites/Funnels templates in the client's name, the
+   blueprint shows a preview of the results, and the pick is built as a draft
+   in the app's own list — so the planner, which only builds a page for a
+   workspace with none, does not add a second. */
+{
+  const { ctx, p, d, errs } = await open(1280, 't9');
+  await d.getByLabel('What would you like Autopilot to do?').fill('Launch our new boiler service plan with a landing page, a social post every weekday and an email to past customers.');
+  await cta(d).click();
+  await d.getByText(/Here.s what I understood/).waitFor({ timeout: 20000 });
+  await cta(d).click();
+  let picked = '';
+  for (let i = 0; i < 16; i++) {
+    await p.waitForTimeout(300);
+    if (await d.getByText(/Here.s what Autopilot/).count()) break;
+    if (!picked && await d.locator('.np-tpl').count()) {
+      const card = d.locator('.np-tpl').nth(1);
+      picked = (await card.locator('b').first().innerText()).trim();
+      await card.click();
+    } else {
+      await answerScreen(d);
+    }
+    await p.waitForTimeout(150);
+    if (await cta(d).isDisabled()) break;
+    await cta(d).click();
+  }
+  ok('T9 the template gallery is shown for a project that builds pages', !!picked, 'no gallery');
+  const prev = d.locator('section[aria-label="Preview of the results"]');
+  ok('T9 the blueprint shows a preview of the results', await prev.count() === 1 && await prev.locator('.np-prev-post').count() === 3);
+  ok('T9 the preview says it is not the final copy', /not the final copy/.test(await prev.innerText().catch(() => '')));
+  const { built } = await buildIt(p, d);
+  ok('T9 the build says it built from the template', new RegExp(`from the “${picked.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}” template`).test(built), built.slice(0, 400));
+  const saved = await p.evaluate(() => [...JSON.parse(localStorage.getItem('crm_funnels') || '[]'), ...JSON.parse(localStorage.getItem('crm_websites') || '[]')].map(x => ({ name: x.name, pages: x.pages?.length ?? 0, status: x.status })));
+  ok('T9 the template is saved as a draft with its pages', saved.some(x => x.pages > 0 && x.status === 'draft' && x.name.includes(picked)), JSON.stringify(saved));
+  ok('T9 no page errors', !errs.length, errs.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;

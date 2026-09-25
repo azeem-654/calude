@@ -1011,14 +1011,22 @@ export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
 ];
 
 /** Build the real, populated pages for any catalog template. */
-export function buildTemplatePages(meta: TemplateMeta, ctx: BrandContext): FunnelStep[] {
+export function buildTemplatePages(meta: TemplateMeta, ctx: BrandContext, opts: { brand?: boolean } = {}): FunnelStep[] {
   const copy = HERO_COPY[meta.id];
   const long = LONG_TEMPLATES.find(t => t.id === meta.id);
-  const withAccent: BrandContext = {
-    ...ctx,
-    ...(meta.accent ? { color: meta.accent } : {}),
-    ...(copy ? { heroTitle: copy.title, heroEyebrow: copy.eyebrow, heroCta: copy.cta } : {}),
-  };
+  /* In the gallery a template shows off in its own accent and showcase
+     headline. Built for a client (`brand`), the client's colour and their own
+     headline win, and the showcase copy only fills what they did not give. */
+  const withAccent: BrandContext = opts.brand
+    ? {
+      ...(copy ? { heroTitle: copy.title, heroEyebrow: copy.eyebrow, heroCta: copy.cta } : {}),
+      ...Object.fromEntries(Object.entries(ctx).filter(([, v]) => v)) as BrandContext,
+    }
+    : {
+      ...ctx,
+      ...(meta.accent ? { color: meta.accent } : {}),
+      ...(copy ? { heroTitle: copy.title, heroEyebrow: copy.eyebrow, heroCta: copy.cta } : {}),
+    };
   if (long) {
     // Long-form: a 12+ section main page, plus supporting pages where it helps.
     const main = buildLongFormPage(long.kind === 'website' ? 'Home' : 'Landing', withAccent, long.variant);

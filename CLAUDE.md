@@ -319,6 +319,17 @@ the client offers a layout the server cannot draw. The logo lives on the
 portfolio (`profile.logoUrl`, a ≤320px PNG made in the browser); posts and
 emails carry a **signed** `/api/logo.php` address instead of the data URL.
 
+**Pages start from a real template.** When a project builds pages,
+`designQuestions` adds `pageTemplate`: a gallery of the Websites/Funnels
+catalogue (`shared/pageTemplates.ts`) rendered by the builders' own renderer in
+the client's name and theme colour (`buildTemplatePages(meta, ctx, { brand:
+true })`). The pick is built by the wizard as a draft through `addWebsite` /
+`addFunnel`; the planner only builds a page for a workspace with none, so it
+does not add a second. `ai` falls back to the `pageLayout` question and the
+planner's page. The blueprint shows `ResultPreview` — posts, the page, the
+first email's opening — drawn from what the wizard knows, no AI call, and
+labelled as a preview. T9 in `test:wizard` covers it.
+
 The build (`newProject/buildRunner.ts`) performs real operations and the bar is
 their weighted share. Content-agent workflows (scheduled, only `ai` steps,
 nothing that sends) are switched on because the customer approved a blueprint
