@@ -488,7 +488,9 @@ function BlockRender({ block }: { block: FunnelBlock }) {
   switch (block.type) {
     case 'navbar': return (
       <nav style={{ background: s.bgColor ?? '#fff', padding: '0 40px', height: 68, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: s.textColor ?? '#0f172a', letterSpacing: '-0.5px' }}>{s.navLogo ?? 'YourBrand'}</div>
+        {s.navLogoImage
+          ? <img src={s.navLogoImage} alt={s.navLogo ?? ''} style={{ height: 40, width: 'auto', maxWidth: 180, objectFit: 'contain' }} />
+          : <div style={{ fontSize: 20, fontWeight: 800, color: s.textColor ?? '#0f172a', letterSpacing: '-0.5px' }}>{s.navLogo ?? 'YourBrand'}</div>}
         <div style={{ display: 'flex', gap: 28 }}>
           {(s.navLinks ?? []).map((l, i) => <a key={i} href={l.url} style={{ fontSize: 14, color: s.textColor ?? '#374151', textDecoration: 'none', fontWeight: 500 }}>{l.label}</a>)}
         </div>

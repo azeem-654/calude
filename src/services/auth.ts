@@ -156,9 +156,14 @@ async function php(action: string, body: Record<string, unknown>): Promise<{ ok:
  * is not an account, and offering one would leave somebody believing they had
  * signed up for a product they cannot sign in to from anywhere else.
  */
-export async function register(email: string, password: string, name: string): Promise<{ ok: boolean; error?: string; code?: string }> {
-  const res = await php('register', { email, password, name });
+export async function register(
+  email: string, password: string, name: string, emailCode = '',
+): Promise<{ ok: boolean; error?: string; code?: string; needsCode?: boolean; message?: string }> {
+  const res = await php('register', { email, password, name, ...(emailCode ? { code: emailCode } : {}) });
   if (!res) return { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
+  /* The server posted a code to prove the address; nothing exists yet. The
+     form asks for the code and calls this again with it. */
+  if (res.ok && res.data.needsCode) return { ok: false, needsCode: true, message: String(res.data.message ?? '') };
   if (res.ok) return login(email, password);
   return {
     ok: false,

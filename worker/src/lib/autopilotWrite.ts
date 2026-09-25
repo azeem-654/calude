@@ -17,6 +17,7 @@
  * gets the real writer. What this removes is the blank page, which is the thing
  * that actually stops a plumber ever publishing anything.
  */
+import { blogFormatRule } from './designLayouts';
 import { askGemini } from './ai';
 
 export interface Brand {
@@ -107,7 +108,11 @@ export interface WrittenPost {
   keywords: string[];
 }
 
-export function writeBlogPost(apiKey: string, b: Brand, topic = ''): Promise<Written<WrittenPost>> {
+/**
+ * `format` is the article shape chosen in the wizard (lib/designLayouts.ts).
+ * Empty keeps the free shape every article had before there was a choice.
+ */
+export function writeBlogPost(apiKey: string, b: Brand, topic = '', format = ''): Promise<Written<WrittenPost>> {
   return ask<WrittenPost>(apiKey, `Write a blog post for this business.
 
 === THE BUSINESS ===
@@ -118,7 +123,7 @@ ${topic ? `Topic: ${topic}` : 'Choose a topic their customers actually search fo
 Rules:
 - Genuinely useful to somebody who never buys anything. A post that is only an advert does not get read or ranked.
 - ${NO_INVENTING}
-- 500-700 words, in markdown, with two or three subheadings.
+- 500-700 words, in markdown, ${format ? 'with subheadings.' : 'with two or three subheadings.'}${format ? `\n- ${blogFormatRule(format)}` : ''}
 - No introduction about what the article will cover. Start with the substance.
 
 Return ONLY valid JSON, no fences:
@@ -511,7 +516,7 @@ const SOURCED_RULE =
   'You have the material above. Write about what is actually in it. Do not add facts that are not there, do not describe the business beyond what the brand block says, and if the material is thin, write a shorter post rather than padding it.';
 
 export interface WrittenImagePosts {
-  posts: { platform: string; headline: string; body: string; hashtags: string[] }[];
+  posts: { platform: string; headline: string; body: string; hashtags: string[]; badge?: string; cta?: string }[];
 }
 
 /**
@@ -524,10 +529,18 @@ export interface WrittenImagePosts {
  * beneath it, which is how every one of these is actually read.
  */
 export function writeImagePosts(
-  apiKey: string, b: Brand, opts: { count?: number; platform?: string; items?: SourceItem[] } = {},
+  apiKey: string, b: Brand,
+  opts: {
+    count?: number; platform?: string; items?: SourceItem[];
+    /** Two or three words for the feel, from the wizard. */
+    style?: string;
+    /** The offer layout: ask for a badge and a button as well. */
+    offer?: boolean;
+  } = {},
 ): Promise<Written<WrittenImagePosts>> {
   const count = Math.min(Math.max(opts.count ?? 1, 1), 6);
   const items = opts.items ?? [];
+  const style = (opts.style ?? '').replace(/[`$\\]/g, '').trim().slice(0, 80);
   return ask<WrittenImagePosts>(apiKey, `Write ${count} social post${count === 1 ? '' : 's'} for this business, each with a headline that will be set large on the image itself.
 
 === THE BUSINESS ===
@@ -539,10 +552,10 @@ Rules:
 - ${items.length ? SOURCED_RULE : NO_INVENTING}
 - No "🚀", no "Let that sink in", no engagement-bait questions, no "DM us to learn more".
 - Three or four hashtags at most, lowercase, no invented brand tags.
-${count > 1 ? '- Each post is about one thing, and no two are about the same thing.\n' : ''}
+${count > 1 ? '- Each post is about one thing, and no two are about the same thing.\n' : ''}${style ? `- The feel the business wants: ${style}. Let it shape the headline's words, not its facts.\n` : ''}${opts.offer ? '- "badge": a real offer the brand block or material states, in at most three words ("20% off", "Free survey"). If none is stated, an empty string — never invent a discount.\n- "cta": the button, two or three words ("Book now", "Shop the range").\n' : ''}
 Return ONLY valid JSON, no fences:
 {
-  "posts": [{"platform": "${opts.platform || 'instagram'}", "headline": "", "body": "", "hashtags": ["", ""]}]
+  "posts": [{"platform": "${opts.platform || 'instagram'}", "headline": "", "body": "", "hashtags": ["", ""]${opts.offer ? ', "badge": "", "cta": ""' : ''}}]
 }`, 0.85);
 }
 

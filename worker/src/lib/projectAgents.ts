@@ -37,6 +37,8 @@
 import { dataGet, dataPut, nowIso, type Env } from './db';
 import { loadAiKey, researchWeb } from './ai';
 import { readSite, urlProblem } from './readSite';
+import { drawSocial, paletteOf } from './designLayouts';
+import { logoAddress } from './brandLogo';
 import {
   writeBlogPost, writeImagePosts, writeSequenceBatch,
   type Brand, type SourceItem,
@@ -306,8 +308,6 @@ function portfolioThin(b: Brand): boolean {
 
 /* ── Composing a post that is actually an image ──────────────────────────── */
 
-const ACCENT = '#c7f441';
-
 /**
  * A headline and a caption, as a design the Social Creator can open.
  *
@@ -328,7 +328,7 @@ const ACCENT = '#c7f441';
  * six-fingered plumber.
  */
 export function designFromPost(
-  post: { platform: string; headline: string; body: string; hashtags: string[] },
+  post: { platform: string; headline: string; body: string; hashtags: string[]; badge?: string; cta?: string },
   opts: {
     id: string; brandColor: string; company: string; source: unknown; now: string;
     /**
@@ -340,6 +340,14 @@ export function designFromPost(
      * the customer agreed to: Autopilot makes it, they post it.
      */
     ready?: boolean;
+    /**
+     * The layout and colours the customer chose in the wizard, as the step's
+     * config holds them. Absent for steps written before layouts existed,
+     * which then draw exactly what they always drew. See lib/designLayouts.ts.
+     */
+    design?: Record<string, string>;
+    /** A signed address for the client's logo, or '' to set the name instead. */
+    logoSrc?: string;
   },
 ): Record<string, unknown> {
   const platform = ['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok', 'youtube']
@@ -347,11 +355,12 @@ export function designFromPost(
   const square = platform === 'instagram' || platform === 'facebook';
   const W = square ? 1080 : 1200;
   const H = square ? 1080 : 675;
-  let z = 0;
-  const el = (x: number, y: number, w: number, h: number, data: unknown) => ({
-    id: `ael-${opts.id}-${z}`, type: (data as { kind: string }).kind,
-    x, y, width: w, height: h, rotation: 0, zIndex: ++z, locked: false, visible: true, data,
-  });
+  const cfg = opts.design ?? {};
+  const c = (k: string) => String(cfg[k] ?? '').trim();
+  const palette = paletteOf(c, opts.brandColor);
+  const drawn = drawSocial(c('layout') || 'bold', W, H, palette, {
+    headline: post.headline, company: opts.company, badge: (post.badge ?? '').trim().slice(0, 14), cta: (post.cta ?? '').trim().slice(0, 22),
+  }, opts.logoSrc ?? '', opts.id);
 
   return {
     id: opts.id,
@@ -360,25 +369,8 @@ export function designFromPost(
     aspectRatio: square ? '1:1' : '16:9',
     canvasWidth: W,
     canvasHeight: H,
-    background: {
-      type: 'gradient', color: opts.brandColor,
-      gradientStart: opts.brandColor, gradientEnd: '#17191c', gradientAngle: 135, imageFit: 'cover',
-    },
-    elements: [
-      el(W * 0.07, H * 0.10, 110, 12, {
-        kind: 'shape', shapeType: 'rounded-rect', fill: ACCENT, stroke: 'transparent', strokeWidth: 0, opacity: 1,
-      }),
-      el(W * 0.07, H * 0.22, W * 0.86, H * 0.40, {
-        kind: 'text', text: post.headline, fontSize: square ? 88 : 72, fontFamily: 'Inter',
-        color: '#ffffff', fontWeight: '800', fontStyle: 'normal', textAlign: 'left',
-        lineHeight: 1.08, letterSpacing: -1, textDecoration: 'none', effect: 'shadow',
-      }),
-      el(W * 0.07, H * 0.78, W * 0.86, H * 0.10, {
-        kind: 'text', text: opts.company, fontSize: square ? 34 : 28, fontFamily: 'Inter',
-        color: ACCENT, fontWeight: '600', fontStyle: 'normal', textAlign: 'left',
-        lineHeight: 1.2, letterSpacing: 1, textDecoration: 'none', uppercase: true,
-      }),
-    ],
+    background: drawn.background,
+    elements: drawn.elements,
     status: 'draft',
     /* The caption travels with the design rather than only on the image, so
        whatever posts it has the words to post. */
@@ -390,6 +382,21 @@ export function designFromPost(
     createdAt: opts.now,
     updatedAt: opts.now,
   };
+}
+
+/**
+ * The client's logo, as an address a saved post can carry.
+ *
+ * Not the data URL itself: a post is saved into the workspace's list of posts,
+ * which keeps five hundred of them, and a logo copied into each would make that
+ * list megabytes for one small picture.
+ */
+async function logoSrcFor(env: Env, accountId: string, project: ProjectRow): Promise<string> {
+  if (!project.portfolio_id) return '';
+  const row = await env.DB.prepare('SELECT profile FROM crm_portfolios WHERE id = ? AND account_id = ?')
+    .bind(project.portfolio_id, accountId).first<{ profile: string }>().catch(() => null);
+  const logo = String(parse<Record<string, unknown>>(row?.profile ?? '', {}).logoUrl ?? '');
+  return logo ? logoAddress(env, project.portfolio_id, logo).catch(() => '') : '';
 }
 
 /* ── Carrying out one agent step ─────────────────────────────────────────── */
@@ -531,18 +538,25 @@ async function runAgentNode(
 
   if (produces === 'social') {
     const count = Math.min(Math.max(Number(c('count')) || 1, 1), 6);
-    const r = await writeImagePosts(apiKey, brand, { count, platform: c('platform') || 'instagram', items });
+    const layout = c('layout');
+    const r = await writeImagePosts(apiKey, brand, {
+      count, platform: c('platform') || 'instagram', items, style: c('style'),
+      /* Only the offer layout has a badge and a button to fill. */
+      offer: layout === 'offer',
+    });
     const posts = (r.value?.posts ?? []).filter(p => (p.headline ?? '').trim());
     if (!r.ok || !posts.length) {
       return { outcome: 'failed', detail: r.error || 'Nothing usable came back from the writer.' };
     }
     const brandColor = c('brandColor') || '#5b7cfa';
+    const logoSrc = c('logo') === 'on' ? await logoSrcFor(env, accountId, project) : '';
     let first = '';
     for (const p of posts.slice(0, count)) {
       const id = `sp-${crypto.randomUUID()}`;
       if (!first) first = id;
       await push(env, accountId, SOCIAL_KEY, designFromPost(p, {
         id, brandColor, company: brand.companyName, source, now, ready: c('handoff') === 'ready',
+        design: cfg as Record<string, string>, logoSrc,
       }));
     }
     return {
@@ -555,7 +569,7 @@ async function runAgentNode(
 
   if (produces === 'blog') {
     const topic = items.length ? `${items[0].title}. ${items[0].summary.slice(0, 400)}` : c('topic');
-    const r = await writeBlogPost(apiKey, brand, topic);
+    const r = await writeBlogPost(apiKey, brand, topic, c('format'));
     if (!r.ok || !r.value?.title) return { outcome: 'failed', detail: r.error || 'Nothing usable came back from the writer.' };
     const v = r.value;
     const id = `bp-${crypto.randomUUID()}`;

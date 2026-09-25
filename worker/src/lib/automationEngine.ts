@@ -41,6 +41,30 @@ import { loadMailbox } from '../routes/mailbox';
 import { loadSmsConfig, sendSms } from './sms';
 import { smtpSend } from './smtp';
 import { buildMime } from './mime';
+import { wrapEmail } from './designLayouts';
+import { logoAddress } from './brandLogo';
+
+/**
+ * The project client's logo as an absolute, signed address — a mail client
+ * fetches it with no session and drops data URLs. Empty when there is no logo,
+ * no project, or no `APP_ORIGIN` to make it absolute; the email then carries
+ * the business's name instead of a broken image.
+ */
+async function emailLogoFor(env: Env, accountId: string, projectId?: string | null): Promise<string> {
+  const origin = (env.APP_ORIGIN ?? '').trim();
+  if (!projectId || !origin) return '';
+  try {
+    const row = await env.DB.prepare(
+      `SELECT p.id AS id, p.profile AS profile FROM crm_projects j JOIN crm_portfolios p ON p.id = j.portfolio_id
+        WHERE j.id = ? AND j.account_id = ?`,
+    ).bind(projectId, accountId).first<{ id: string; profile: string }>();
+    if (!row) return '';
+    const logo = String((JSON.parse(row.profile || '{}') as { logoUrl?: string }).logoUrl ?? '');
+    return await logoAddress(env, row.id, logo, origin);
+  } catch {
+    return '';
+  }
+}
 
 const AUTOMATIONS_KEY = 'crm_automations';
 const CONTACTS_KEY = 'crm_contacts';
@@ -357,6 +381,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
     let smsCfg: Awaited<ReturnType<typeof loadSmsConfig>> | undefined;
     let mailboxLoaded = false;
     const bizCache = new Map<string, Business>();
+    const logoCache = new Map<string, string>();
     let smsLoaded = false;
 
     for (const run of runs) {
@@ -452,7 +477,14 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           if (!bizCache.has(bizKey)) bizCache.set(bizKey, await businessFor(env, accountId, a.projectId, mailbox!.from.name || ''));
           const biz = bizCache.get(bizKey)!;
           const subject = personalise(String(node.config?.subject ?? '') || `A message from ${mailbox!.from.name || 'us'}`, contact, biz);
-          const html = textToHtml(personalise(String(node.config?.body ?? node.config?.preview ?? ''), contact, biz));
+          const cfg = (k: string) => String(node.config?.[k] ?? '').trim();
+          let html = textToHtml(personalise(String(node.config?.body ?? node.config?.preview ?? ''), contact, biz));
+          /* The frame the wizard's email layout chose. `plain` — the default,
+             and every step written before layouts — is left exactly as it was. */
+          if (cfg('emailLayout') && cfg('emailLayout') !== 'plain') {
+            if (!logoCache.has(bizKey)) logoCache.set(bizKey, cfg('logo') === 'off' ? '' : await emailLogoFor(env, accountId, a.projectId));
+            html = wrapEmail(html, cfg, { company: biz.myCompany || mailbox!.from.name || '', logoSrc: logoCache.get(bizKey) ?? '' });
+          }
           const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
           const mime = buildMime({
             fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: await signTrackedLinks(env, html),

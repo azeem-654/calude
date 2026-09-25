@@ -28,6 +28,9 @@ import {
   type RequirementId, type SetupStep, type WorkflowSpec,
 } from './projectSolutions';
 import type { Capability, ProjectKind } from './projects';
+import {
+  DEFAULT_LAYOUT, LAYOUT_QUESTION, designConfig, layoutLabel, themeLabel, type DesignKind,
+} from './designOptions';
 import type { LaunchStep } from './launchPlan';
 
 /* ── Inputs ───────────────────────────────────────────────────────────────── */
@@ -416,10 +419,91 @@ export function answersOf(known: KnownMap): Answers {
 }
 
 /** Every question the state's solutions ask, in bank order, deduplicated. */
-export function allQuestions(state: Pick<IntakeState, 'solutionKeys' | 'extraQuestions'>): Question[] {
+type QuestionSource = Pick<IntakeState, 'solutionKeys' | 'extraQuestions'>
+  & Partial<Pick<IntakeState, 'known' | 'customWorkflows' | 'removed'>>;
+
+export function allQuestions(state: QuestionSource): Question[] {
   const ids = [...new Set(state.solutionKeys.flatMap(k => solutionByKey(k)?.questions ?? []))];
   const qs = ids.map(id => QUESTIONS[id]).filter((q): q is Question => !!q);
-  return [...qs, ...state.extraQuestions.filter(x => !QUESTIONS[x.id])];
+  return [...qs, ...designQuestions(state).filter(q => !ids.includes(q.id)), ...state.extraQuestions.filter(x => !QUESTIONS[x.id])];
+}
+
+/* ── Design: asked for what is actually built ─────────────────────────────── */
+
+/** Every id `designQuestions` can ever return — see `startQuestions`. */
+export const DESIGN_QUESTION_IDS = ['logo', 'designStyle', 'theme', 'brandColor', 'postLayout', 'pageLayout', 'emailLayout', 'blogLayout'];
+
+/**
+ * Which kinds of designed thing these answers would build.
+ *
+ * Read off the workflows the solutions would draw — not off the solutions'
+ * names — because that is what the layouts are applied to. "Product launch"
+ * makes posts only if somebody ticked social; "lead generation" builds pages
+ * only through the planner's `site` channel; an email layout means something
+ * only where a workflow has a step that sends. Asking about a thing the project
+ * will never make would be a question whose answer does nothing.
+ *
+ * Unanswered questions are filled with their "Let AI decide" value first, the
+ * same value the build will use, so the kinds do not flicker as screens pass.
+ */
+export function designKindsOf(state: QuestionSource): DesignKind[] {
+  const known = state.known ?? {};
+  const a: Answers = {};
+  for (const key of state.solutionKeys) {
+    for (const id of solutionByKey(key)?.questions ?? []) {
+      const q = QUESTIONS[id];
+      if (q?.aiDecides !== undefined && q.aiDecides !== 'detect') a[id] = q.aiDecides;
+    }
+  }
+  Object.assign(a, answersOf(known));
+  const workflows: WorkflowSpec[] = [];
+  const planner: Channel[] = [];
+  for (const key of state.solutionKeys) {
+    const s = solutionByKey(key);
+    if (!s) continue;
+    const part = s.build(a, { companyName: '', website: '' });
+    workflows.push(...part.workflows);
+    planner.push(...part.planner);
+  }
+  (state.customWorkflows ?? []).forEach((w, i) => { const sp = customToSpec(w, i); if (sp) workflows.push(sp); });
+  const kinds = new Set<DesignKind>();
+  for (const w of workflows) {
+    if ((state.removed ?? []).includes(w.key)) continue;
+    for (const n of w.nodes ?? []) {
+      const produces = String(n.config?.produces ?? '');
+      if (n.type === 'ai' && produces === 'social') kinds.add('social');
+      if (n.type === 'ai' && produces === 'blog') kinds.add('blog');
+      if (n.type === 'send_email') kinds.add('email');
+    }
+  }
+  if (planner.includes('site')) kinds.add('page');
+  return (['social', 'page', 'email', 'blog'] as DesignKind[]).filter(k => kinds.has(k));
+}
+
+/**
+ * The design questions for this project.
+ *
+ * The logo and colours are asked when something visual is made. A project
+ * whose only designed thing is email asks for them only once somebody picks a
+ * layout that shows them — a plain email has no logo and no colours, and
+ * plain is the default for good reason. Articles are text, so a blog-only
+ * project is asked the article's shape and nothing else.
+ */
+export function designQuestions(state: QuestionSource): Question[] {
+  const kinds = designKindsOf(state);
+  if (!kinds.length) return [];
+  const out: Question[] = [];
+  const visual = kinds.includes('social') || kinds.includes('page');
+  const emailOnly = !visual && kinds.includes('email');
+  const branded = { id: 'emailLayout', in: ['branded', 'newsletter', 'promo'] };
+  if (visual || emailOnly) {
+    out.push(emailOnly ? { ...QUESTIONS.logo, showIf: branded } : QUESTIONS.logo);
+    if (visual) out.push(QUESTIONS.designStyle);
+    out.push(emailOnly ? { ...QUESTIONS.theme, showIf: branded } : QUESTIONS.theme);
+    out.push(QUESTIONS.brandColor);
+  }
+  for (const k of kinds) out.push(QUESTIONS[LAYOUT_QUESTION[k]]);
+  return out.filter(Boolean);
 }
 
 /** Whether a question applies, given the answers so far. */
@@ -510,6 +594,15 @@ export interface Blueprint {
   /** Answers that were chosen for the customer, named on the blueprint. */
   decided: { question: string; answer: string }[];
   plannerChannels: Channel[];
+  /** The look, in words, for the blueprint screen. Empty when nothing is designed. */
+  design: { label: string; value: string }[];
+  /**
+   * How pages the planner builds should look, as colours and a layout.
+   *
+   * Stored on the brief because the planner, not a workflow, makes pages — and
+   * the brief is the one record of the project the planner reads.
+   */
+  pageDesign: Record<string, string> | null;
 }
 
 export interface BlueprintContext {
@@ -645,7 +738,9 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     return xs.filter(x => { const k = key(x); if (!k || seen.has(k)) return false; seen.add(k); return true; });
   };
 
-  const workflows = uniq(c.workflows, w => w.name).filter(w => !full.removed.includes(w.key));
+  const kinds = designKindsOf(full);
+  const workflows = uniq(c.workflows, w => w.name).filter(w => !full.removed.includes(w.key))
+    .map(w => (w.nodes ? { ...w, nodes: w.nodes.map(n => stampDesign(n, a)) } : w));
   const agents = workflows.flatMap(w => w.agents.map(ag => ({ ...ag, workflow: w.name })));
   const plannerChannels = uniq(c.planner).filter(ch => PLANNER.includes(ch));
   if (plannerChannels.length) {
@@ -693,7 +788,48 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     limits: uniq(c.limits),
     decided,
     plannerChannels,
+    design: designSummary(kinds, a),
+    pageDesign: kinds.includes('page') ? designConfig('page', a) : null,
   };
+}
+
+/**
+ * The chosen look, written onto the steps that make things.
+ *
+ * Onto the nodes themselves rather than read from the project at run time,
+ * because a workflow can be opened and edited on its own — the step editor
+ * shows these values and they can be changed there without re-running the
+ * wizard. The client's logo is the exception: `logo: 'on'` says to use it, and
+ * the step reads the portfolio for it when it runs.
+ */
+function stampDesign<N extends { type: string; config?: Record<string, string> }>(n: N, a: Answers): N {
+  const produces = String(n.config?.produces ?? '');
+  if (n.type === 'ai' && produces === 'social') return { ...n, config: { ...n.config, ...designConfig('social', a) } };
+  if (n.type === 'ai' && produces === 'blog') return { ...n, config: { ...n.config, ...designConfig('blog', a) } };
+  if (n.type === 'send_email') return { ...n, config: { ...n.config, ...designConfig('email', a) } };
+  return n;
+}
+
+function designSummary(kinds: DesignKind[], a: Answers): { label: string; value: string }[] {
+  if (!kinds.length) return [];
+  const one = (k: string) => String(Array.isArray(a[k]) ? (a[k] as string[])[0] ?? '' : a[k] ?? '').trim();
+  const out: { label: string; value: string }[] = [];
+  const LABEL: Record<DesignKind, string> = { social: 'Social posts', page: 'Pages and funnels', email: 'Emails', blog: 'Articles' };
+  for (const k of kinds) out.push({ label: LABEL[k], value: layoutLabel(k, one(LAYOUT_QUESTION[k]) || DEFAULT_LAYOUT[k]) });
+  const visual = kinds.includes('social') || kinds.includes('page') || ['branded', 'newsletter', 'promo'].includes(one('emailLayout'));
+  if (visual) {
+    out.push({ label: 'Colours', value: `${themeLabel(one('theme') || 'brand')}${one('brandColor') ? ` · ${one('brandColor')}` : ''}` });
+    const logo = one('logo');
+    out.push({
+      label: 'Logo',
+      value: logo === 'none' ? 'None — the name is set as a wordmark'
+        : logo === 'upload' ? 'The one you uploaded'
+          : logo === 'site' ? 'Taken from your website'
+            : 'Your website’s if it has one, otherwise the name',
+    });
+    if (one('designStyle')) out.push({ label: 'Feel', value: one('designStyle') });
+  }
+  return out;
 }
 
 /* ── What the server is told ──────────────────────────────────────────────── */
@@ -759,6 +895,7 @@ export function briefOf(bp: Blueprint, prompt: string): Record<string, unknown> 
     requirements: bp.requirements,
     limits: bp.limits,
     decided: bp.decided,
+    design: { summary: bp.design, page: bp.pageDesign },
     createdWith: 'wizard-v2',
   };
 }
@@ -792,7 +929,7 @@ export function validValue(q: Question, v: unknown): string | string[] | null {
     const list = (Array.isArray(v) ? v : [v]).map(String).filter(x => allowed.has(x));
     return list.length ? [...new Set(list)] : null;
   }
-  if (q.type === 'single') {
+  if (q.type === 'single' || q.type === 'layout' || q.type === 'theme' || q.type === 'logo') {
     const s = String(Array.isArray(v) ? v[0] : v ?? '');
     /* A single named day is a valid schedule even though it is not a button. */
     if ((q.id === 'frequency' || q.id === 'blogFrequency') && /^(mon|tue|wed|thu|fri|sat|sun)$/.test(s)) return s;
@@ -882,8 +1019,36 @@ export function parseEdit(text: string, state: IntakeState, bp: Blueprint): { op
     ops.set!.approval = 'ready'; said.push('finished posts are marked ready to publish');
   }
 
+  /* The look — only on a blueprint that has one, so "luxury" on a shop still
+     means the store's style below and not a colour theme it does not use. */
+  if (bp.design.length) {
+    const has = (id: string) => designQuestions(state).some(q => q.id === id);
+    const THEME_WORDS: [RegExp, string][] = [
+      [/\bluxur/, 'luxury'], [/\b(dark|black)\b/, 'bold-dark'], [/\b(vibrant|colou?rful|bright)\b/, 'vibrant'],
+      [/\b(clean|light|white)\b/, 'clean'], [/\b(pastel|soft|pink)\b/, 'pastel'], [/\b(corporate|navy|blue)\b/, 'corporate'],
+      [/\b(green|natural|fresh)\b/, 'fresh'], [/\b(warm|cream|orange)\b/, 'warm'], [/\bbrand colou?r\b/, 'brand'],
+    ];
+    if (has('theme') && /\b(colou?rs?|theme|palette|look)\b/.test(t)) {
+      const th = THEME_WORDS.find(([re]) => re.test(t))?.[1];
+      if (th) { ops.set!.theme = th; said.push(`colours: ${th.replace('-', ' ')}`); }
+    }
+    const POST_WORDS: [RegExp, string][] = [
+      [/\bminimal|elegant\b/, 'minimal'], [/\b(offer|sale|discount|badge)\b/, 'offer'], [/\bquote|tip\b/, 'quote'],
+      [/\bsplit\b/, 'split'], [/\bdiagonal|sporty|dynamic\b/, 'diagonal'], [/\bframe[ds]?\b/, 'framed'], [/\bbold\b/, 'bold'],
+    ];
+    if (has('postLayout') && /\bposts?\b/.test(t) && /\b(layout|look|style|design|make|use)\b/.test(t)) {
+      const l = POST_WORDS.find(([re]) => re.test(t))?.[1];
+      if (l) { ops.set!.postLayout = l; said.push(`post layout: ${l}`); }
+    }
+    if (has('emailLayout') && /\bemails?\b/.test(t)) {
+      const e = /\bplain\b/.test(t) ? 'plain' : /\bnewsletter\b/.test(t) ? 'newsletter' : /\b(promo|promotion)/.test(t) ? 'promo' : /\bbranded\b/.test(t) ? 'branded' : '';
+      if (e) { ops.set!.emailLayout = e; said.push(`emails: ${e}`); }
+    }
+    if (has('logo') && /\bno logo\b|\bwithout (a |the )?logo\b/.test(t)) { ops.set!.logo = 'none'; said.push('no logo — the name is used'); }
+  }
+
   const style = /\b(minimal|premium|fashion|technology|luxury|colou?rful|family)\b/.exec(t)?.[1];
-  if (style && /\b(store|shop|theme|design|look|style)\b/.test(t)) {
+  if (style && bp.channels.includes('shop') && /\b(store|shop|theme|design|look|style)\b/.test(t)) {
     ops.set!.storeDesign = style.replace('colorful', 'colourful');
     said.push(`store style: ${style}`);
   }

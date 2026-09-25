@@ -20,8 +20,10 @@
  * wizard that threw away everything they answered.
  */
 import {
-  savePortfolio, saveProject, readPortfolioFromUrl, guardrailsFor, type Portfolio,
+  savePortfolio, saveProject, readPortfolioFromUrl, readLogoFromUrl, guardrailsFor, type Portfolio,
 } from '../../../services/projects';
+import type { LogoChoice } from '../../../services/designOptions';
+import { shrinkLogo } from './logoImage';
 import {
   saveWorkflow, buildWorkflow, setWorkflowStatus, runAgent, fetchWorkflows,
 } from '../../../services/autopilot';
@@ -54,6 +56,33 @@ export interface BuildInput {
   /** The profile the understanding step read from the website or files. */
   profileDraft: Record<string, string> | null;
   workspace: { companyName: string; description: string; website: string } | null;
+  /** The logo chosen in the wizard, and the website to look on if it was left to Autopilot. */
+  logo?: LogoChoice;
+  logoSite?: string;
+}
+
+/**
+ * The logo the project should wear, as a data URL — or '' with the reason.
+ *
+ * "Let AI decide" and "from my website" that were never looked up (the site
+ * was given on the last screen, or the lookup was still running) are looked up
+ * here, once. A site with no marked logo is not a failure of the build; the
+ * name is set as a wordmark and the step says so.
+ */
+async function resolveLogo(inp: BuildInput): Promise<{ dataUrl: string; note: string }> {
+  const l = inp.logo;
+  if (!l || l.answer === 'none') return { dataUrl: '', note: '' };
+  if (l.dataUrl) return { dataUrl: l.dataUrl, note: l.from ? `Logo taken from ${l.from}.` : 'Logo added.' };
+  const site = (inp.logoSite ?? '').trim();
+  if ((l.answer === 'auto' || l.answer === 'site') && /^https?:\/\//.test(site)) {
+    const r = await readLogoFromUrl(site);
+    if (r.success && r.logo) {
+      const small = await shrinkLogo(r.logo);
+      if (small.ok) return { dataUrl: small.dataUrl, note: 'Logo taken from the website.' };
+    }
+    return { dataUrl: '', note: 'No logo could be taken from the website, so the name is used — add one on the project any time.' };
+  }
+  return { dataUrl: '', note: '' };
 }
 
 export interface BuildResult {
@@ -201,6 +230,9 @@ export async function runBuild(
     if (!profile.audience && val(state, 'audience')) profile.audience = val(state, 'audience');
     if (!profile.offer && val(state, 'offer')) profile.offer = val(state, 'offer');
     if (val(state, 'brandColor')) profile.brandColor = val(state, 'brandColor');
+    const lg = await resolveLogo(inp);
+    if (lg.dataUrl) profile.logoUrl = lg.dataUrl;
+    const logoNote = lg.note;
     companyName = profile.companyName;
     bizProfile = { ...profile };
     const r = await savePortfolio({ name: companyName.slice(0, 120), profile, source });
@@ -213,10 +245,20 @@ export async function runBuild(
     const services = (profile.offer ?? '').split(/,|;|\band\b/).map(x => x.trim()).filter(x => x.length > 2);
     set('profile', {
       state: profileNote ? 'warn' : 'done',
-      detail: profileNote || (profile.description ? profile.description.slice(0, 160) : `Saved ${companyName}.`),
+      detail: profileNote ? `${profileNote}${logoNote ? ` ${logoNote}` : ''}` : [logoNote, profile.description ? profile.description.slice(0, 160) : `Saved ${companyName}.`].filter(Boolean).join(' '),
     }, services.length >= 2 ? `I found ${services.length} services — ${services.slice(0, 3).join(', ')}${services.length > 3 ? '…' : ''}.` : `I’ve got ${companyName}’s details.`);
   } else {
-    set('profile', { state: 'done', detail: 'Already in Protected Central.' }, `I’m using ${companyName}’s profile.`);
+    /* A client already on file: a new logo from the wizard goes onto their
+       profile, which every other project for them then wears too. The
+       one they already had is left alone unless something replaced it. */
+    const existing = inp.portfolios.find(p => p.id === portfolioId);
+    const lg = await resolveLogo(inp);
+    let detail = 'Already in Protected Central.';
+    if (existing && lg.dataUrl && lg.dataUrl !== String(existing.profile?.logoUrl ?? '')) {
+      const r = await savePortfolio({ id: existing.id, name: existing.name, profile: { ...existing.profile, logoUrl: lg.dataUrl } });
+      detail = r.success ? `${lg.note} ${detail}` : `The logo could not be saved (${r.error ?? 'no answer'}) — add it on the project.`;
+    } else if (lg.note && !lg.dataUrl) detail = `${detail} ${lg.note}`;
+    set('profile', { state: 'done', detail }, `I’m using ${companyName}’s profile.`);
   }
 
   /* ── 2 · The project ── */

@@ -37,6 +37,7 @@
  */
 import type { WorkflowNode } from './autopilot';
 import { TEMPLATES } from '../components/Autopilot/workflowTemplates';
+import { LAYOUTS, THEMES, DEFAULT_LAYOUT, DEFAULT_THEME } from './designOptions';
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────── */
 
@@ -51,7 +52,12 @@ export type Channel =
   | 'social' | 'blog' | 'email' | 'sms' | 'shop' | 'book' | 'site' | 'video'
   | 'contacts' | 'sales' | 'reviews' | 'support' | 'tasks';
 
-export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' | 'inspiration';
+/*
+ * `layout`, `theme` and `logo` are single choices underneath — their values are
+ * validated against `options` like any other — and differ only in being drawn
+ * as pictures, because nobody chooses a layout from its name.
+ */
+export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' | 'inspiration' | 'layout' | 'theme' | 'logo';
 
 /**
  * Screens group questions so no screen is a form.
@@ -62,7 +68,8 @@ export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' |
  */
 export type QuestionGroup =
   | 'business' | 'deliverable' | 'schedule' | 'style' | 'audience' | 'contacts'
-  | 'offer' | 'sending' | 'catalogue' | 'store' | 'booking' | 'handoff' | 'custom';
+  | 'offer' | 'sending' | 'catalogue' | 'store' | 'booking' | 'handoff' | 'custom'
+  | 'brand' | 'look' | 'layout';
 
 export const GROUP_TITLE: Record<QuestionGroup, string> = {
   business: 'Your business',
@@ -78,12 +85,15 @@ export const GROUP_TITLE: Record<QuestionGroup, string> = {
   booking: 'Appointments',
   handoff: 'What happens to the result',
   custom: 'A few details',
+  brand: 'Your logo and feel',
+  look: 'Colours and theme',
+  layout: 'Layouts',
 };
 
 /** The order screens appear in, whichever solutions contributed them. */
 export const GROUP_ORDER: QuestionGroup[] = [
   'business', 'deliverable', 'catalogue', 'audience', 'contacts', 'offer',
-  'schedule', 'booking', 'style', 'store', 'sending', 'handoff', 'custom',
+  'schedule', 'booking', 'brand', 'look', 'layout', 'style', 'store', 'sending', 'handoff', 'custom',
 ];
 
 export interface QuestionOption {
@@ -196,10 +206,70 @@ const Q: Record<string, Question> = {
     help: 'An image, a post you admire, a brand guide or a link. Skip it and Autopilot works from your brand colours, industry and audience.',
   },
   brandColor: {
-    id: 'brandColor', group: 'style', type: 'text', need: 'optional',
+    id: 'brandColor', group: 'look', type: 'text', need: 'optional',
     prompt: 'Your main brand colour',
     placeholder: '#5b7cfa',
-    help: 'Used as the background of every design. Leave blank and it uses the one on your profile.',
+    help: 'The theme is built around it. Leave blank and it uses the one on your profile.',
+    showIf: { id: 'theme', in: ['brand', 'clean'] },
+  },
+
+  /* ── Design — asked only for what the project actually makes ──
+   *
+   * None of these is in a solution's `questions` list. `designQuestions` in
+   * projectIntake.ts adds them from the workflows the answers would build, so
+   * a project that makes no posts is never asked for a post layout, and one
+   * that gains posts from a later answer is asked then. */
+  logo: {
+    id: 'logo', group: 'brand', type: 'logo', need: 'optional',
+    prompt: 'Your logo',
+    help: 'Set small in a corner of every design, never over the headline. Without one, the business name is set as a wordmark.',
+    options: [
+      { value: 'site', label: 'The one on my website' },
+      { value: 'upload', label: 'I will upload it' },
+      { value: 'none', label: 'No logo — use the name' },
+      { value: 'auto', label: 'The website’s, otherwise the name' },
+    ],
+    aiDecides: 'auto',
+  },
+  designStyle: {
+    id: 'designStyle', group: 'brand', type: 'text', need: 'optional',
+    prompt: 'The feel, in two or three words',
+    placeholder: 'bold, playful, premium',
+    help: 'Guides the headlines and the type — "elegant" sets a serif, "bold" a heavy display face.',
+    aiDecides: 'clear, confident, modern',
+  },
+  theme: {
+    id: 'theme', group: 'look', type: 'theme', need: 'required',
+    prompt: 'Which colours?',
+    help: 'Text colour is picked for you from the background, so it stays readable on a phone.',
+    options: THEMES.map(t => ({ value: t.value, label: t.label, hint: t.hint })),
+    aiDecides: DEFAULT_THEME,
+  },
+  postLayout: {
+    id: 'postLayout', group: 'layout', type: 'layout', need: 'required',
+    prompt: 'Layout for the social posts',
+    help: 'Sized for each platform automatically — square for Instagram and Facebook, wide for LinkedIn and X.',
+    options: LAYOUTS.social,
+    aiDecides: DEFAULT_LAYOUT.social,
+  },
+  pageLayout: {
+    id: 'pageLayout', group: 'layout', type: 'layout', need: 'required',
+    prompt: 'Layout for the pages and funnels it builds',
+    options: LAYOUTS.page,
+    aiDecides: DEFAULT_LAYOUT.page,
+  },
+  emailLayout: {
+    id: 'emailLayout', group: 'layout', type: 'layout', need: 'required',
+    prompt: 'How should the emails look?',
+    help: 'Applies to every email this project’s workflows send.',
+    options: LAYOUTS.email,
+    aiDecides: DEFAULT_LAYOUT.email,
+  },
+  blogLayout: {
+    id: 'blogLayout', group: 'layout', type: 'layout', need: 'required',
+    prompt: 'What shape should the articles take?',
+    options: LAYOUTS.blog,
+    aiDecides: DEFAULT_LAYOUT.blog,
   },
   approval: {
     id: 'approval', group: 'handoff', type: 'single', need: 'required',
@@ -1029,7 +1099,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Learn about my company and create one professional image post every weekday.',
     keywords: [['social', 3], ['social media', 3], ['post', 2], ['posts', 2], ['instagram', 3], ['facebook', 2.5], ['linkedin', 2.5], ['tiktok', 2], ['image post', 3], ['caption', 2], ['hashtag', 2], ['feed', 1], ['content calendar', 1.5]],
     channels: ['social'],
-    questions: ['business', 'website', 'socialOutputs', 'platforms', 'postsPerRun', 'frequency', 'inspiration', 'brandColor', 'approval'],
+    questions: ['business', 'website', 'socialOutputs', 'platforms', 'postsPerRun', 'frequency', 'inspiration', 'approval'],
     build: a => merge(empty(), socialPart(a)),
   },
   {

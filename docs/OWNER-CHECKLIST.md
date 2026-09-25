@@ -23,13 +23,14 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
 | 5 | **Add the Calendar scope** to your Google client | console.cloud.google.com | Google Meet links on bookings, and the assistant offering real times |
 | 6 | *Optional* — **choose a voice provider** | — | AI voice. Nothing else; the rest of Customer Engagement works without it |
-| 7 | *Optional* — **create a Google OAuth client** if you want the Google sign-in button | console.cloud.google.com, then Settings → Security | Nothing. Sign-in already works without it (see 16) |
+| 7 | **Create a Google OAuth client** for "Sign up / Continue with Google" — ten minutes, step by step in 17 | console.cloud.google.com, then Settings → Security | The Google button on sign-in *and* sign-up. The code is built and live; it only appears once the client is saved. Do it on both sites |
 | 8 | **Turn on 2-step sign-in for azeem@protectedcentral.com** | app → Settings → Security & Privacy → 2-step sign-in → Turn on | The owner account can connect payments and change settings for everyone; a password alone should not be enough. See 22 |
 | 9 | **Create the mailbox `security@protectedcentral.com`** (or an alias to yours) | your mail host | The Trust Center and `/.well-known/security.txt` publish it as the place to report vulnerabilities; until it exists those reports bounce |
 | 10 | **Confirm billing is enabled on the Google Cloud project behind the AI key** | console.cloud.google.com → Billing | What the Trust Center may say about AI training. On a free-tier key Google may use prompts to improve its products; on a paid one its terms say it does not |
 | 11 | **Confirm the Cloudflare plan** (Workers Paid gives D1 Time Travel 30 days; Free gives 7) | Cloudflare → Billing | How far back the database can be restored. See docs/SECURITY.md §3.10 |
 | 12 | **Have a Privacy Policy and Terms of Service written** | a lawyer; a factual draft is in `docs/PRIVACY-POLICY-DRAFT.md` | Launching to the public. Only the Acceptable Use policy (`/terms`) exists today |
 | 13 | **Set `CREDENTIAL_WRAP_KEY`** on both Workers — a long random string, different for each, **never changed afterwards** | Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets → Add → type *Secret* | Encrypting the key that encrypts every stored password and API key. Until it is set, a database export contains both. See 23 |
+| 15 | **Connect a mailbox in your own workspace** (signed in as azeem@protectedcentral.com — Settings → Email & SMS) | app.protectedcentral.com and testing.protectedcentral.com | Emailed sign-in codes, **and the new sign-up check** that proves a new customer owns their email address. Until it exists, sign-up falls back to the old unproved way and code sign-in says it is unavailable. See 24 |
 | 14 | **Add the repository secret `BACKUP_PASSPHRASE`** — a long random phrase, also kept somewhere outside GitHub | GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret | The nightly encrypted database backup (`backup.yml`). Without it the job warns and takes nothing |
 
 **Done, and no longer on the list:**
@@ -543,24 +544,68 @@ a sole trader working from home, and it carries a phone number far more often
 than an email. The screen says so before the search rather than after an empty
 result.
 
-### 17. Sign in with Google, if you want the button — optional
+### 17. Sign up and sign in with Google — step by step
 
-Customers can already sign in without a password: **Email me a sign-in code**
-works today, for any address, with nothing to set up. This adds the Google
-button beside it, which is one tap for anybody who has a Google account.
+**Already built, waiting for your Google client.** The button reads **"Sign up
+with Google"** on the sign-up form and **"Continue with Google"** on sign-in. A
+first-time Google address becomes a new account with its own workspace; an
+existing one signs in. It is drawn only once the server says it will work, so
+until you finish these steps nobody sees a broken button.
 
-**Settings → Security → Sign in with Google.** That screen prints the exact
-redirect address to paste into Google and lists the steps in the console's own
-order. The short version:
+Why it is secure: the browser never holds a Google token (the Worker swaps the
+code with a secret the browser never sees), the sign-in is bound to the browser
+that started it, Google must say the address is **verified** or it is refused,
+and a password somebody set on that address before it was proved is wiped the
+first time the real owner arrives through Google. 2-step sign-in still applies
+on top.
 
-1. console.cloud.google.com → new project (customers never see its name).
-2. **APIs & Services → OAuth consent screen** → *External*. Put your business
-   name and logo on it — this is the screen your customers read.
-3. Add **only** the `openid`, `email` and `profile` scopes, then **Publish**.
-   With just those three there is no review, no waiting and no user cap.
-4. **Credentials → Create OAuth client ID → Web application**, and paste in the
-   redirect address the settings screen shows you.
-5. Copy the client ID and client secret back into that screen.
+**On Google's side** — about ten minutes, signed in to the Google account you
+want to own this:
+
+1. Open <https://console.cloud.google.com> → project picker (top left) →
+   **New project**. Call it anything, e.g. `Protected Central sign-in`.
+   Customers never see this name.
+2. **APIs & Services → OAuth consent screen** (Google may call it **Google Auth
+   Platform → Branding**). Choose **External**, then fill in:
+   - *App name*: `Protected Central`
+   - *User support email*: your address
+   - *App logo*: optional — adding one can trigger a short brand check; you can
+     add it later
+   - *Authorised domains*: `protectedcentral.com`
+   - *Developer contact*: your address
+   - Home page / privacy policy / terms links: `https://protectedcentral.com`,
+     and the privacy and terms pages once they exist (item 12)
+3. **Data access / Scopes** → add **only** `openid`, `.../auth/userinfo.email`
+   and `.../auth/userinfo.profile`. Nothing else.
+4. **Audience** → **Publish app** (move it from *Testing* to *In production*).
+   With only those three scopes there is no review, no waiting and no 100-user
+   cap. Left in *Testing*, only the test users you list can sign in.
+5. **Clients** (or **Credentials → Create credentials → OAuth client ID**) →
+   *Application type*: **Web application**, name it `app`.
+   - *Authorised JavaScript origins*: `https://app.protectedcentral.com`
+   - *Authorised redirect URIs*: `https://app.protectedcentral.com/auth/google`
+   - For the testing site add a second pair:
+     `https://testing.protectedcentral.com` and
+     `https://testing.protectedcentral.com/auth/google`
+   The settings screen in the app prints the exact redirect address for the
+   site you are on — copy it from there rather than typing it; one character
+   off is Google's `redirect_uri_mismatch` page.
+6. **Create**, then copy the **Client ID** (ends `.apps.googleusercontent.com`)
+   and the **Client secret**.
+
+**In the app** — signed in as azeem@protectedcentral.com:
+
+7. **Settings → Security & Privacy → Sign in with Google**. Paste the client ID
+   and secret, **Save**. The secret is encrypted and never shown again, not
+   even its last characters; leave the box blank later to keep it.
+8. Open a private window at <https://app.protectedcentral.com/signup> — the
+   **Sign up with Google** button should be there. Try it with a spare Google
+   account.
+9. Repeat 7–8 on **testing.protectedcentral.com**. It is a separate database, so
+   the client has to be saved there too. (Sign-up is closed on testing; Google
+   there only signs *you* in.)
+
+**Never paste the client secret into a chat** — only into that settings box.
 
 **Do not add a Gmail, Drive or Calendar scope.** Those are the *sensitive and
 restricted* ones: they put the whole app into Google's verification queue, which
@@ -777,6 +822,38 @@ To restore from one: download the artifact, then
 `npx wrangler d1 execute <new database> --remote --file restore.sql`.
 Once a backup has run successfully, the Trust Center may say "an encrypted
 copy of the database is taken every night" — not before (docs/SECURITY.md §8).
+
+### 24. What changed on 2026-09-25 — design steps, logos, sign-up
+
+**New Project now asks how things should look**, but only for what the project
+really makes: a logo, two or three words for the feel, a colour theme, and a
+layout for each kind of output (social posts, pages and funnels, emails,
+articles). Every question has **Let AI decide**, and each screen has **Let AI
+decide all of these**. The choices are carried out when the work is made, not
+just remembered: posts are drawn in the chosen layout and colours with the
+logo in a corner, pages are built in that order and colour, branded emails get
+a header and a button, and articles take the chosen shape.
+
+**The logo is taken from the website** the moment one is given — found on the
+page, shrunk to 320px and kept on the client's profile, so it becomes the
+project's logo (the same one `ProjectLogo` shows). If none can be found, the
+wizard asks for an upload. Nothing for you to do.
+
+**Sign-up now proves the email address.** A new customer who signs up with a
+password gets a six-digit code by email and must enter it before the account
+exists. **This needs item 15** — a mailbox connected in *your own* workspace.
+Until then, sign-up keeps working the old way (unproved) rather than being
+blocked.
+
+**Sign-in codes no longer go out through a customer's mailbox.** They used to
+use the first mailbox on the install, whoever owned it — and Gmail keeps what it
+sends in the Sent folder, so that customer could have read other people's
+sign-in codes, including yours. Codes now come only from your own mailbox
+(item 15). If you use "Email me a sign-in code" for yourself, connect it before
+you next need it.
+
+Checks you can run: `npm run test:design` (68, no server needed) and
+`npm run test:signup` (16, needs a fresh local database — see the file).
 
 ## Done
 

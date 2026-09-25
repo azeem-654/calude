@@ -44,13 +44,15 @@ import { loadOnboarding } from '../../services/onboarding';
 import { WizardBackdrop, WizardCta } from '../shared/WizardChrome';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import AutopilotBot from './AutopilotBot';
-import { readPortfolioFromUrl, type Portfolio } from '../../services/projects';
+import { readPortfolioFromUrl, readLogoFromUrl, type Portfolio } from '../../services/projects';
+import type { LogoChoice } from '../../services/designOptions';
+import { shrinkLogo, logoFromFile } from './newProject/logoImage';
 import { checkReadiness, type Readiness } from '../../services/projectReadiness';
 import { understand, refine } from '../../services/intake';
 import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from '../../services/projectSolutions';
 import {
   allQuestions, answersOf, applies, applyOps, buildBlueprint, extractKnown, initialState,
-  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer,
+  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer, DESIGN_QUESTION_IDS, designQuestions,
   type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
@@ -114,6 +116,18 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
      the customer. Read where it is given — see ProfileFound in Questions. */
   const [profile, setProfile] = useState<ProfileCheck>({ draft: null, readFor: '', reading: false, error: '' });
   const profileDraft = profile.draft;
+
+  /* ── The logo ──
+   *
+   * Kept beside the answers rather than in them: the answer says *which* logo
+   * ('site', 'upload', 'none', 'auto'); the picture itself is tens of
+   * kilobytes and has no business in the snapshot the blueprint editor sends
+   * to the AI. The build writes it onto the client's portfolio, which is where
+   * a project's logo lives (ProjectLogo.tsx). */
+  const [logo, setLogo] = useState<LogoChoice>({ answer: '', dataUrl: '', from: '' });
+  const [logoFinding, setLogoFinding] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const logoLookedAt = useRef('');
 
   /* ── Questions ── */
   const [asked, setAsked] = useState<Set<string>>(new Set());
@@ -301,6 +315,57 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
     });
   }, []);
 
+  /* ── Finding the logo ──
+   *
+   * Asked of the website as soon as there is one — while the site is being
+   * read for the profile, not as a separate chore — so by the time the logo
+   * question comes round it usually has an answer. Found, it becomes a known
+   * answer ("taken from your website") and the question is not asked; not
+   * found, the question is asked with the upload button first. */
+  const findLogo = useCallback(async (url: string, quiet = false) => {
+    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+    logoLookedAt.current = url;
+    setLogoFinding(true); setLogoError('');
+    const r = await readLogoFromUrl(url);
+    let error = '';
+    if (r.success && r.logo) {
+      const small = await shrinkLogo(r.logo);
+      if (small.ok) {
+        setLogo(l => ({ ...l, dataUrl: small.dataUrl, from: host }));
+        setState(s => (s && (!s.known.logo || s.known.logo.source !== 'you' || s.known.logo.value === 'site')
+          ? { ...s, known: { ...s.known, logo: { value: 'site', source: 'link', note: `found on ${host}` } } } : s));
+      } else error = small.error;
+    } else error = r.error || 'No logo was found on that site.';
+    setLogoFinding(false);
+    if (error && !quiet) setLogoError(error);
+  }, []);
+
+  const logoFile = useCallback(async (f: File) => {
+    setLogoError('');
+    const r = await logoFromFile(f);
+    if (!r.ok) { setLogoError(r.error); return; }
+    setLogo(l => ({ ...l, dataUrl: r.dataUrl, from: '' }));
+  }, []);
+
+  /* The client already on file may have a logo: that one is theirs, and is
+     what the screens show until somebody finds or uploads another. Derived,
+     not copied into state, so switching client switches the logo with it. */
+  const chosenBusiness = String(state?.known.business?.value ?? '');
+  const onFile = chosenBusiness.startsWith('existing:')
+    ? String(portfolios.find(p => p.id === chosenBusiness.slice(9))?.profile?.logoUrl ?? '') : '';
+  const shownLogo: LogoChoice = logo.dataUrl || !onFile ? logo : { ...logo, dataUrl: onFile, from: '' };
+
+  /* The website to look on: the one given, or the one the profile says. */
+  const logoSite = String(state?.known.website?.value ?? '') || String(profile.draft?.website ?? '')
+    || (chosenBusiness.startsWith('existing:') ? String(ws.portfolios.find(p => p.id === chosenBusiness.slice(9))?.website ?? '') : '')
+    || (chosenBusiness === 'workspace' ? ws.workspace?.website ?? '' : '');
+  useEffect(() => {
+    if (!state || !/^https?:\/\/[^/\s]+\.[^/\s]+/.test(logoSite) || logoLookedAt.current === logoSite || shownLogo.dataUrl) return;
+    if (!designQuestions(state).some(q => q.id === 'logo')) return;
+    const t = window.setTimeout(() => void findLogo(logoSite, true), 400);
+    return () => window.clearTimeout(t);
+  }, [state, logoSite, shownLogo.dataUrl, findLogo]);
+
   /* ── Reading the business, where it is given ── */
   const readingFor = useRef('');
   const readProfileNow = useCallback(async () => {
@@ -356,6 +421,11 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
   const startQuestions = () => {
     if (!state) return;
     const open = allQuestions(state).filter(q => !state.known[q.id]).map(q => q.id);
+    /* Every design question goes on the list, answered or not relevant yet:
+       whether it is shown is decided screen by screen from the answers, and a
+       project gains its posts (and so a post layout) from an answer given on
+       an earlier screen. Known ones are filtered out when the screen is drawn. */
+    for (const id of DESIGN_QUESTION_IDS) if (!state.known[id] && !open.includes(id)) open.push(id);
     /* Known is not the same as enough. A site that was read but did not say
        what the business is called still needs the business screen. */
     if (profileGap(state, files, profile)) open.unshift(...businessIds(state).filter(id => !open.includes(id)));
@@ -420,6 +490,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
       if (!bp.workflows.some(w => w.channel === 'blog')) out.push('Add a blog every Friday');
       out.push('Create two image versions');
     }
+    if (bp.design.some(d => d.label === 'Social posts')) out.push('Make the posts minimal with luxury colours');
     if (bp.channels.includes('shop')) out.push('Change the store theme to luxury');
     if (bp.channels.includes('email') && bp.outputs.some(o => /sequence/.test(o))) out.push('Make it a 3-email sequence');
     out.push('Make approval mandatory');
@@ -441,6 +512,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
     const full = withDefaults(state);
     const input = {
       bp, state: full, files, portfolios, profileDraft, workspace: ws.workspace ?? null,
+      logo: { ...shownLogo, answer: String(full.known.logo?.value ?? '') }, logoSite,
     };
     setPhase('build');
     setSteps(planSteps(input));
@@ -627,6 +699,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
               )}
               {phase === 'questions' && state && screen && (
                 <Questions
+                  design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f) }}
                   screen={screen} state={state} ws={ws} files={files} answer={answer}
                   profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}

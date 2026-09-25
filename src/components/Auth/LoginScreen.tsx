@@ -106,6 +106,16 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
    */
   const [google, setGoogle] = useState(false);
 
+  /*
+   * Sign-up proves the address before the account exists: the first press
+   * posts a code, the second brings it back. The fields above stay filled and
+   * locked, so a typo in the address is fixed with "Change the address"
+   * rather than by starting again.
+   */
+  const [regStep, setRegStep] = useState<'form' | 'code'>('form');
+  const [regCode, setRegCode] = useState('');
+  const locked = mode === 'register' && regStep === 'code';
+
   /** Hand the browser to Google. The URL is signed server-side. */
   const goToGoogle = async () => {
     setBusy(true); setError('');
@@ -183,7 +193,9 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
       if (mode === 'register') {
         const problem = signupProblem(name, email, password, confirm, agreed);
         if (problem) { setError(problem); return; }
-        const res = await register(email.trim(), password, name.trim());
+        if (locked && regCode.length !== 6) { setError('Enter the six-digit code from your email.'); return; }
+        const res = await register(email.trim(), password, name.trim(), regCode);
+        if (res.needsCode) { setRegStep('code'); setNotice(res.message || 'Check your email for a six-digit code.'); return; }
         if (res.ok) { onAuthed(); return; }
         setError(res.error || 'Could not create the account.');
         return;
@@ -252,18 +264,18 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             {mode !== 'login' && (
               <div style={{ position: 'relative' }}>
                 <UserPlus size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
-                <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
+                <input style={inp} value={name} disabled={locked} onChange={e => setName(e.target.value)} placeholder="Your name" />
               </div>
             )}
             <div style={{ position: 'relative' }}>
               <Mail size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
-              <input style={inp} type={mode !== 'login' ? 'email' : 'text'} required autoComplete={mode !== 'login' ? 'email' : 'username'}
+              <input style={inp} disabled={locked} type={mode !== 'login' ? 'email' : 'text'} required autoComplete={mode !== 'login' ? 'email' : 'username'}
                 value={email} onChange={e => setEmail(e.target.value)}
                 placeholder={mode !== 'login' ? 'Email address' : 'Email or username'} />
             </div>
             <div style={{ position: 'relative' }}>
               <Lock size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
-              <input style={inp} type="password" required autoComplete={mode !== 'login' ? 'new-password' : 'current-password'}
+              <input style={inp} disabled={locked} type="password" required autoComplete={mode !== 'login' ? 'new-password' : 'current-password'}
                 value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
             </div>
 
@@ -284,7 +296,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             {mode !== 'login' && (
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: MUTED }} />
-                <input style={inp} type="password" required autoComplete="new-password" value={confirm}
+                <input style={inp} disabled={locked} type="password" required autoComplete="new-password" value={confirm}
                   onChange={e => setConfirm(e.target.value)} placeholder="Confirm password" />
                 {confirm.length > 0 && confirm !== password && (
                   <div style={{ fontSize: 11.5, color: '#e5484d', marginTop: 5 }}>The two passwords do not match.</div>
@@ -311,6 +323,30 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               </label>
             )}
 
+            {locked && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 700, color: INK }} htmlFor="reg-code">The code from your email</label>
+                <input id="reg-code"
+                  style={{ ...inp, paddingLeft: 13, textAlign: 'center', fontSize: 22, fontWeight: 700, letterSpacing: '0.28em' }}
+                  value={regCode} inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} placeholder="000000"
+                  onChange={e => setRegCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12 }}>
+                  <button type="button" onClick={() => { setRegStep('form'); setRegCode(''); setNotice(''); setError(''); }}
+                    style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: MUTED, cursor: 'pointer', textDecoration: 'underline' }}>
+                    Change the address
+                  </button>
+                  <button type="button" disabled={busy} onClick={async () => {
+                    setBusy(true); setError('');
+                    const r = await register(email.trim(), password, name.trim());
+                    setBusy(false);
+                    if (r.needsCode) setNotice(r.message || 'A new code is on its way.'); else if (r.error) setError(r.error);
+                  }} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: MUTED, cursor: 'pointer', textDecoration: 'underline' }}>
+                    Send a new code
+                  </button>
+                </span>
+              </div>
+            )}
+
             {notice && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '9px 11px' }}>
                 <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -320,7 +356,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             {error && <div style={{ fontSize: 12.5, color: '#e5484d', fontWeight: 600, textAlign: 'center', lineHeight: 1.5 }}>{error}</div>}
 
             <button type="submit" disabled={busy} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', marginTop: 4 }}>
-              {busy || checking ? <Loader size={16} className="spin" /> : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} /></>}
+              {busy || checking ? <Loader size={16} className="spin" /> : <>{mode === 'login' ? 'Sign in' : locked ? 'Confirm and create account' : mode === 'register' ? 'Continue' : 'Create account'} <ArrowRight size={15} /></>}
             </button>
           </form>
 
@@ -346,7 +382,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
                       borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: busy ? 'default' : 'pointer',
                       fontFamily: 'inherit',
                     }}>
-                      <GoogleG /> Continue with Google
+                      <GoogleG /> {mode === 'register' ? 'Sign up with Google' : 'Continue with Google'}
                     </button>
                   )}
                   {/* The passwordless paths have no checkbox — that is the point of
@@ -402,7 +438,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
             {mode === 'login' ? 'No account yet? ' : 'Already have an account? '}
             <button
               type="button"
-              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}
+              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setRegStep('form'); setRegCode(''); }}
               style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 700, color: INK, cursor: 'pointer', textDecoration: 'underline' }}
             >
               {mode === 'login' ? 'Create one' : 'Sign in'}

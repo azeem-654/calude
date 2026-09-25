@@ -13,6 +13,7 @@
  */
 import { useState } from 'react';
 import {
+  Palette,
   Target, Inbox, PackageCheck, Bot, Workflow, Clock, Plug, UserCheck, Hand, MapPin, Info,
   Sparkles, Send, Loader, Wand2, LayoutTemplate, Cpu,
 } from 'lucide-react';
@@ -75,6 +76,12 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
         <Box title="Expected outputs" icon={PackageCheck} items={bp.outputs} />
         <Box title="Output destinations" icon={MapPin} items={bp.destinations.map(d => d.label)} />
       </div>
+
+      {/* The look, as chosen or decided — changeable here by saying so
+          ("make the posts minimal", "use the luxury colours"). */}
+      {bp.design.length > 0 && (
+        <Box title="Design" icon={Palette} items={bp.design.map(d => `${d.label}: ${d.value}`)} />
+      )}
 
       <div className="np-bp-box">
         <h4><Workflow size={13} /> Workflows</h4>

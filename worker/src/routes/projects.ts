@@ -22,7 +22,9 @@ import { body, fail, json } from '../lib/http';
 import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey, aiBudget } from '../lib/ai';
-import { readSite } from '../lib/readSite';
+import { readSite, fetchPage } from '../lib/readSite';
+import { logoFromPage, fetchImage } from '../lib/brandLogo';
+import { rateLimit } from '../lib/rateLimit';
 import { ensureProjectPipeline } from '../lib/projectPipeline';
 import { sanitiseBrief } from '../lib/projectBrief';
 
@@ -279,6 +281,39 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
    *    so. A field the source did not answer comes back empty rather than
    *    filled with something that reads well.
    */
+  /**
+   * The logo on a client's website, as an image the browser can shrink.
+   *
+   * Separate from `read_url` because it needs no AI: a workspace with no key
+   * can still have its logo imported, and a page too thin to describe the
+   * business usually still has its logo in the header. `url` may also be the
+   * image itself, for somebody who pastes the logo's address.
+   *
+   * Returned, not saved — like the profile, the customer sees it first. It
+   * comes back as a data URL because the browser turns it into a small PNG
+   * before it is stored (see `shrinkLogo`), and it cannot draw a cross-origin
+   * image onto a canvas and read it back.
+   */
+  if (act === 'read_logo') {
+    const limit = await rateLimit(env, { what: 'read-logo', who: accountId, max: 40, windowSeconds: 3600 });
+    if (!limit.allowed) return fail('That is a lot of logo lookups in an hour. Try again shortly, or upload the logo instead.', 429);
+    const raw = String(d.url ?? '').trim();
+    const target = /^https?:\/\//i.test(raw) ? raw : raw ? `https://${raw}` : '';
+    if (!target) return fail('Give the website address first.');
+    if (/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(target)) {
+      const img = await fetchImage(target);
+      if (!img.ok) return fail(img.error);
+      return json({ success: true, logo: img.dataUrl, from: img.url });
+    }
+    const page = await fetchPage(target);
+    if (!page.ok) return fail(page.error);
+    const found = await logoFromPage(page.html, page.url);
+    if (!found.ok) {
+      return fail(`${found.error} Upload the logo instead — a PNG or SVG with a transparent background works best.`, 200, { code: 'not_found' });
+    }
+    return json({ success: true, logo: found.dataUrl, from: found.url });
+  }
+
   if (act === 'read_url' || act === 'read_text') {
     const overBudget = await aiBudget(env, accountId);
     if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });

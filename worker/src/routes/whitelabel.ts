@@ -61,6 +61,22 @@ const RESERVED = new Set([
   'localhost',
 ]);
 
+/**
+ * Subdomain names nobody may claim, whatever the rest of the address.
+ *
+ * `testing` is the staging site's own address — a reseller holding it would be
+ * served by whichever Worker route won. The rest are names a phishing page
+ * would choose: `login.protectedcentral.com` asking for a password looks like
+ * us to everybody, including our own customers. (SECURITY.md 3b.7.)
+ */
+const RESERVED_SLUGS = new Set([
+  'testing', 'staging', 'app', 'www', 'api', 'admin', 'administrator', 'root', 'owner',
+  'login', 'signin', 'sign-in', 'signup', 'sign-up', 'auth', 'oauth', 'sso', 'id', 'account', 'accounts',
+  'password', 'reset', 'verify', 'secure', 'security', 'trust', 'support', 'help', 'status', 'docs',
+  'billing', 'pay', 'payment', 'payments', 'checkout', 'invoice', 'invoices',
+  'mail', 'email', 'smtp', 'imap', 'webmail', 'mx', 'dashboard', 'portal', 'protectedcentral', 'protected-central',
+]);
+
 /** The suffix a free subdomain lives under. */
 const SUBDOMAIN_SUFFIX = 'protectedcentral.com';
 
@@ -209,6 +225,7 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
     if (kind === 'subdomain') {
       const slug = String(d.slug ?? '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '');
       if (slug.length < 3) return fail('Pick a name of at least three letters.');
+      if (RESERVED_SLUGS.has(slug)) return fail('That name is reserved. Try your business name.');
       hostname = `${slug}.${SUBDOMAIN_SUFFIX}`;
     } else {
       hostname = cleanHost(d.hostname);

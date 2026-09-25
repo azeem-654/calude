@@ -177,6 +177,11 @@ id. The rules that closed those holes:
   (`manageable()` in routes/auth.ts). Every sign-up is an "agency".
 - **Sessions are stored as `sessionKey(token)`**, never the raw token; delete
   and compare with `sessionKeys()`.
+- **Install mail (sign-in and sign-up codes) goes only through a mailbox in a
+  workspace the install owner owns** (`installMailbox` in routes/auth.ts) —
+  never a customer's, whose Sent folder would then hold other people's codes.
+  Password sign-up proves the address with a code before the account exists.
+  `npm run test:signup` (fresh local D1) covers both.
 - Record security events with `recordAuthEvent` — never a secret in `detail`.
 - **AI from the browser goes through `/api/ai.php`** (`aiFetch` in
   `src/lib/gemini.ts`), never to Google directly; every server route that
@@ -218,7 +223,7 @@ whose assets 404.
 
 Both typecheck, build, apply D1 migrations and then deploy — migrations first,
 so a Worker can never reach a database that lacks a column it expects. Staging
-also runs `test:moderation`, `test:prospects`, `test:domains`, `test:hosts`, `test:intake` and `test:autopilot` (among others); the live deploy does not,
+also runs `test:moderation`, `test:prospects`, `test:domains`, `test:hosts`, `test:intake`, `test:design` and `test:autopilot` (among others); the live deploy does not,
 because its job is to publish what has already been rehearsed.
 
 `main` is only ever moved by **Actions → Promote testing to live**, which
@@ -287,12 +292,26 @@ about mailboxes. The judgement lives in pure modules:
   trade is known; the new wizard's set-up steps become `launchSteps` the same way.
 
 **`crm_projects.brief`** holds the approved blueprint and is shown on the
-project's Overview. The server reads exactly one field of it:
-**`plannerChannels`**, which `planNext` uses to drop plays in other channels —
-every play carries `channels`. `null` (every project older than the brief)
-plans exactly as before; `[]` means the project's own workflows do all the work.
-A project built from the wizard is `general` far more often now, so without this
-a social-only project would be planned email sequences and a "no mailbox" error.
+project's Overview. The server reads two fields of it. **`plannerChannels`**,
+which `planNext` uses to drop plays in other channels — every play carries
+`channels`. `null` (every project older than the brief) plans exactly as
+before; `[]` means the project's own workflows do all the work. A project built
+from the wizard is `general` far more often now, so without this a social-only
+project would be planned email sequences and a "no mailbox" error. And
+**`design.page`**, the layout and colours the planner's website and funnel plays
+build in (`pageDesignOf` in `lib/designLayouts.ts`); absent, pages come out as
+they always did.
+
+**Design** — `services/designOptions.ts` is the catalogue (layouts per kind,
+themes, `resolveTheme`); `lib/designLayouts.ts` on the Worker draws it (posts,
+pages, email frames, article shapes). Design questions are not in any solution's
+list: `designQuestions` adds them from the workflows the answers would build, so
+a layout is only asked for something the project makes. Themes are resolved to
+colours on the client and sent as colours — one palette table — and the text
+colour is always computed from the background. `npm run test:design` fails if
+the client offers a layout the server cannot draw. The logo lives on the
+portfolio (`profile.logoUrl`, a ≤320px PNG made in the browser); posts and
+emails carry a **signed** `/api/logo.php` address instead of the data URL.
 
 The build (`newProject/buildRunner.ts`) performs real operations and the bar is
 their weighted share. Content-agent workflows (scheduled, only `ai` steps,

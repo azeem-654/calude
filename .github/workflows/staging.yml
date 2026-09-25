@@ -134,6 +134,12 @@ jobs:
       - name: Merge fields
         run: npm run test:merge
 
+      # The design step: a layout is only asked for what the project makes,
+      # every layout offered is one the server can draw, and plain email is
+      # left exactly as it was written.
+      - name: Test the design step
+        run: npm run test:design
+
       - name: Build
         run: npm run build
         env:

@@ -161,6 +161,12 @@ export const setGuardrail = (id: string, key: string, value: 'off' | 'approval' 
  */
 export const readPortfolioFromUrl = (url: string) => call('read_url', { url });
 
+/**
+ * The logo on a website, as a data URL for the browser to shrink.
+ * Needs no AI key — see `read_logo` in worker/src/routes/projects.ts.
+ */
+export const readLogoFromUrl = (url: string) => call('read_logo', { url }) as Promise<Reply & { logo?: string; from?: string; code?: string }>;
+
 /** The same, from something pasted rather than fetched — an article, a brochure. */
 export const readPortfolioFromText = (text: string) => call('read_text', { text });
 export const deletePortfolio = (id: string) => call('delete_portfolio', { id });

@@ -63,6 +63,7 @@ import { runEngageDispatch } from './engageDispatch';
 import { runAutomations } from './lib/automationEngine';
 import { runProjectAgents } from './lib/projectAgents';
 import { runHousekeeping } from './lib/housekeeping';
+import { handleLogo } from './lib/brandLogo';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -162,6 +163,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/reviews-fetch.php': handleReviewsFetch,
   '/api/yt-thumb.php': (req) => handleYtThumb(req),
   '/api/img-proxy.php': (req) => handleImgProxy(req),
+  /* A client's logo, for emails and saved posts that cannot carry it inline.
+     Public by necessity — a mail client has no session — so every address is
+     signed. See lib/brandLogo.ts. */
+  '/api/logo.php': handleLogo,
 
   '/api/diagnostics.php': handleDiagnostics,
   '/api/install.php': async () => handleInstall(),

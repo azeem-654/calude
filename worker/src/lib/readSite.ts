@@ -104,9 +104,25 @@ export function readable(html: string): { title: string; text: string } {
   return { title, text: desc ? `${desc}\n${body}` : body };
 }
 
-export async function readSite(raw: string): Promise<SiteText> {
+export interface SitePage {
+  ok: boolean;
+  /** Where it ended up, after redirects. Relative links resolve against this. */
+  url: string;
+  html: string;
+  error: string;
+}
+
+/**
+ * Fetch a page's HTML, fenced — every hop checked, the body read to a cap.
+ *
+ * Split out of `readSite` so the logo finder can look at the markup of a page
+ * that has too few words to describe a business (a landing page that is all
+ * pictures still has a logo on it).
+ */
+export async function fetchPage(raw: string): Promise<SitePage> {
   const problem = urlProblem(raw);
-  if (problem) return no(problem);
+  const none = (error: string, url = ''): SitePage => ({ ok: false, url, html: '', error });
+  if (problem) return none(problem);
 
   let url = new URL(raw.trim()).toString();
 
@@ -125,73 +141,96 @@ export async function readSite(raw: string): Promise<SiteText> {
         },
       });
     } catch (e) {
-      return no(`That page could not be reached: ${e instanceof Error ? e.message : String(e)}`, url);
+      return none(`That page could not be reached: ${e instanceof Error ? e.message : String(e)}`, url);
     }
 
     if (res.status >= 300 && res.status < 400) {
       const next = res.headers.get('location');
-      if (!next) return no('That address redirects to nowhere.', url);
-      if (hop === MAX_HOPS) return no('That address redirects too many times.', url);
+      if (!next) return none('That address redirects to nowhere.', url);
+      if (hop === MAX_HOPS) return none('That address redirects too many times.', url);
       const resolved = new URL(next, url).toString();
       const p = urlProblem(resolved);
-      if (p) return no(`That address redirects somewhere it should not: ${p}`, url);
+      if (p) return none(`That address redirects somewhere it should not: ${p}`, url);
       url = resolved;
       continue;
     }
 
     if (res.status === 403 || res.status === 401) {
-      return no('That site refused to be read automatically. Describe the client by hand instead.', url);
+      return none('That site refused to be read automatically. Describe the client by hand instead.', url);
     }
-    if (!res.ok) return no(`That page answered ${res.status}.`, url);
+    if (!res.ok) return none(`That page answered ${res.status}.`, url);
 
     const type = res.headers.get('content-type') ?? '';
     if (type && !/text\/html|application\/xhtml|text\/plain/i.test(type)) {
-      return no(`That address is a ${type.split(';')[0]}, not a web page.`, url);
+      return none(`That address is a ${type.split(';')[0]}, not a web page.`, url);
     }
 
-    /* Read to a cap rather than res.text(): a body with no content-length that
-       never ends would otherwise run until the request is killed. */
-    const reader = res.body?.getReader();
-    if (!reader) return no('That page sent nothing back.', url);
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    while (total < MAX_BYTES) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) { chunks.push(value); total += value.length; }
-    }
-    void reader.cancel().catch(() => {});
-
-    const buf = new Uint8Array(total);
-    let at = 0;
-    for (const c of chunks) { buf.set(c.subarray(0, Math.min(c.length, total - at)), at); at += c.length; }
+    const buf = await readCapped(res, MAX_BYTES);
+    if (!buf) return none('That page sent nothing back.', url);
     const html = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(buf);
-
-    const { title, text } = readable(html);
-    /*
-     * Forty words, counted the same way the paste path counts them.
-     *
-     * The bar here used to be sixty *characters* — about ten words — while
-     * pasting the same content by hand demanded forty. So a page that rendered
-     * a nav and a tagline server-side and everything else in the browser sailed
-     * through the URL route and was refused through the paste route, and the
-     * model was handed fifteen words and asked for seven fields about a
-     * business. It answered, of course. That is the failure this whole file
-     * exists to avoid, and the looser of two thresholds for the same job was
-     * where it got in.
-     *
-     * Modern marketing sites built in the browser land here often. Saying so,
-     * with somewhere else to go, is worth more than a confident profile of a
-     * company nobody read anything about.
-     */
-    if (text.split(/\s+/).filter(Boolean).length < 40) {
-      return no(
-        'There were almost no words on that page — it is probably built in the browser rather than sent as text. Try their /about page, paste the text in by hand, or describe the client yourself.',
-        url,
-      );
-    }
-    return { ok: true, url, title, text: text.slice(0, 12_000), error: '' };
+    return { ok: true, url, html, error: '' };
   }
 
-  return no('That address redirects too many times.', url);
+  return none('That address redirects too many times.', url);
+}
+
+/**
+ * A response body, read to at most `cap` bytes.
+ *
+ * Not res.text() or arrayBuffer(): a body with no content-length that never
+ * ends would otherwise run until the request is killed. Null when there was no
+ * body at all.
+ */
+export async function readCapped(res: Response, cap: number): Promise<Uint8Array | null> {
+  const reader = res.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (total < cap) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) { chunks.push(value); total += value.length; }
+  }
+  void reader.cancel().catch(() => {});
+  const size = Math.min(total, cap);
+  const buf = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    if (at >= size) break;
+    const part = c.subarray(0, Math.min(c.length, size - at));
+    buf.set(part, at);
+    at += part.length;
+  }
+  return buf;
+}
+
+export async function readSite(raw: string): Promise<SiteText> {
+  const page = await fetchPage(raw);
+  if (!page.ok) return no(page.error, page.url);
+  const url = page.url;
+
+  const { title, text } = readable(page.html);
+  /*
+   * Forty words, counted the same way the paste path counts them.
+   *
+   * The bar here used to be sixty *characters* — about ten words — while
+   * pasting the same content by hand demanded forty. So a page that rendered
+   * a nav and a tagline server-side and everything else in the browser sailed
+   * through the URL route and was refused through the paste route, and the
+   * model was handed fifteen words and asked for seven fields about a
+   * business. It answered, of course. That is the failure this whole file
+   * exists to avoid, and the looser of two thresholds for the same job was
+   * where it got in.
+   *
+   * Modern marketing sites built in the browser land here often. Saying so,
+   * with somewhere else to go, is worth more than a confident profile of a
+   * company nobody read anything about.
+   */
+  if (text.split(/\s+/).filter(Boolean).length < 40) {
+    return no(
+      'There were almost no words on that page — it is probably built in the browser rather than sent as text. Try their /about page, paste the text in by hand, or describe the client yourself.',
+      url,
+    );
+  }
+  return { ok: true, url, title, text: text.slice(0, 12_000), error: '' };
 }

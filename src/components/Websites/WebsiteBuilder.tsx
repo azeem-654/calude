@@ -123,7 +123,9 @@ function BlockRender({ block }: { block: FunnelBlock }) {
   switch (block.type) {
     case 'navbar': return (
       <nav style={{ ...bg, padding: '0 40px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', position: 'relative', zIndex: 10 }}>
-        <span style={{ fontWeight: 900, fontSize: 20, color: s.textColor ?? '#0f172a' }}>{s.navLogo ?? 'MySite'}</span>
+        {s.navLogoImage
+          ? <img src={s.navLogoImage} alt={s.navLogo ?? ''} style={{ height: 40, width: 'auto', maxWidth: 180, objectFit: 'contain' }} />
+          : <span style={{ fontWeight: 900, fontSize: 20, color: s.textColor ?? '#0f172a' }}>{s.navLogo ?? 'MySite'}</span>}
         <div style={{ display: 'flex', gap: 24 }}>{(s.navLinks ?? []).map((l, i) => <a key={i} href={l.url} style={{ color: s.textColor ?? '#0f172a', textDecoration: 'none', fontSize: 14, fontWeight: 500 }}>{l.label}</a>)}</div>
         {s.buttonText && <button style={{ padding: '8px 18px', background: s.buttonColor ?? '#6366f1', color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{s.buttonText}</button>}
       </nav>

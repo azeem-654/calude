@@ -300,6 +300,8 @@ export interface FunnelBlock {
     faqItems?: { q: string; a: string }[];
     galleryImages?: string[];
     navLogo?: string;
+    /** An image to show instead of the `navLogo` text — the client's logo. */
+    navLogoImage?: string;
     navLinks?: { label: string; url: string }[];
     footerColumns?: { heading: string; links: { label: string; url: string }[] }[];
     footerCopyright?: string;

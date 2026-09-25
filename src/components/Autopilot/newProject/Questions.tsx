@@ -15,9 +15,20 @@ import { GROUP_TITLE, type Question } from '../../../services/projectSolutions';
 import type { Attachment, IntakeState, KnownSource, Screen, WorkspaceFacts } from '../../../services/projectIntake';
 import { readAttachment } from './attachments';
 import { MANUAL_FIELDS, PROFILE_FIELDS, profileSource, type ProfileCheck } from './questionRules';
+import { LayoutField, ThemeField, ColourField, LogoField, type LogoFieldState } from './DesignFields';
+import { aiChoice } from '../../../services/projectIntake';
+import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
 
-export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile }: {
+/** What the design questions need beyond the answers: the logo and how to get one. */
+export interface DesignHooks {
+  logo: LogoFieldState;
+  onFind: (url: string) => void;
+  onFile: (f: File) => void;
+}
+
+export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design }: {
   screen: Screen;
+  design: DesignHooks;
   /** The business as read so far, and the two ways to change it. */
   profile: ProfileCheck;
   onProfile: (patch: Record<string, string>) => void;
@@ -31,16 +42,32 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
   index: number;
   total: number;
 }) {
+  /*
+   * "Let AI decide" for the whole screen, not only per question.
+   *
+   * A design screen is three or four decisions somebody may not want to make
+   * at all; answering each with the same button is a chore. Only questions
+   * still open are filled, so pressing it never overrides a choice already
+   * made on this screen.
+   */
+  const open = screen.questions.filter(q => !state.known[q.id] && aiChoice(q) !== null && aiChoice(q) !== 'detect');
   return (
     <div style={{ display: 'grid', gap: 24 }}>
-      <div>
-        <span style={{ fontSize: 12, fontWeight: 800, color: '#8b93a3', letterSpacing: '0.05em' }}>
-          {index + 1} OF {total}
-        </span>
-        <h2 className="wz-title" style={{ marginTop: 4 }}>{GROUP_TITLE[screen.group]}</h2>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#8b93a3', letterSpacing: '0.05em' }}>
+            {index + 1} OF {total}
+          </span>
+          <h2 className="wz-title" style={{ marginTop: 4 }}>{GROUP_TITLE[screen.group]}</h2>
+        </div>
+        {open.length > 1 && (
+          <button type="button" className="np-opt" data-ai="1" onClick={() => open.forEach(q => answer(q.id, aiChoice(q), 'default'))}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI decide all of these</span>
+          </button>
+        )}
       </div>
       {screen.questions.map(q => (
-        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} />
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} />
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
@@ -130,8 +157,9 @@ function ProfileFound({ state, files, profile, onProfile, onRead }: {
   );
 }
 
-function Field({ q, state, ws, files, answer, onFiles, onLink }: {
+function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
   q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
+  design: DesignHooks;
   answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
   onFiles: (atts: Attachment[]) => void;
   onLink: (url: string) => void;
@@ -222,6 +250,52 @@ function Field({ q, state, ws, files, answer, onFiles, onLink }: {
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  /* ── Design ── */
+  const said = (id: string) => { const v = state.known[id]?.value; return String(Array.isArray(v) ? v[0] ?? '' : v ?? ''); };
+  const palette = resolveTheme(said('theme') || DEFAULT_THEME, said('brandColor'), said('designStyle'));
+  const logoShown = said('logo') === 'none' ? '' : design.logo.logo.dataUrl;
+  if (q.type === 'layout') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <LayoutField kind={KIND_OF[q.id] ?? 'social'} value={vals[0] ?? ''} byAi={byAi} aiValue={String(aiValue ?? '')}
+          onPick={v => answer(q.id, v, 'you')} onAi={() => answer(q.id, byAi ? null : aiValue ?? null, 'default')}
+          palette={palette} logo={logoShown} />
+        {skip}
+      </div>
+    );
+  }
+  if (q.type === 'theme') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <ThemeField value={vals[0] ?? ''} byAi={byAi} brandColor={said('brandColor')} words={said('designStyle')}
+          onPick={v => answer(q.id, v, 'you')} onAi={() => answer(q.id, byAi ? null : aiValue ?? null, 'default')} />
+      </div>
+    );
+  }
+  if (q.type === 'logo') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <LogoField value={vals[0] ?? ''} byAi={byAi} st={design.logo}
+          onFind={url => { answer(q.id, 'site', 'you'); design.onFind(url); }}
+          onFile={f => { answer(q.id, 'upload', 'you'); design.onFile(f); }}
+          onNone={() => answer(q.id, 'none', 'you')}
+          onAi={() => answer(q.id, byAi ? null : 'auto', 'default')} />
+      </div>
+    );
+  }
+  if (q.id === 'brandColor') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <ColourField value={String(val ?? '')} placeholder={q.placeholder} onChange={v => answer(q.id, v, 'you')} />
+        {skip}
       </div>
     );
   }

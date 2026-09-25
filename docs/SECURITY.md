@@ -1,6 +1,6 @@
 # Security and privacy: audit and status
 
-Last reviewed **2026-09-25**. This file is the record behind the public Trust
+Last reviewed **2026-09-25** (third pass). This file is the record behind the public Trust
 Center (`/security`) and Settings → Security & Privacy. Every customer-facing
 security sentence must be traceable to something in "What customers can be told"
 below. When a protection changes, change this file, the Trust Center and the
@@ -81,6 +81,15 @@ against A and the install owner.
 | Resend/Mailtrap keys checked from the browser. | `validate-key.php` checks them on the server. |
 | No copy of the database outside D1. | `.github/workflows/backup.yml`: nightly `d1 export`, gzip, GPG AES-256 with `BACKUP_PASSPHRASE`, kept 30 days as an artifact. **Takes effect once the owner sets the passphrase** (OWNER-CHECKLIST 14); without it the job warns and uploads nothing. |
 
+## 3a. Fixed on 2026-09-25 (third pass)
+
+| Was | Now |
+|---|---|
+| **Sign-in codes were sent through the first mailbox on the install, whoever owned it.** A customer on Gmail would have had every sign-in code — the install owner's included — in their Sent folder: an account-takeover path for any customer who connected a mailbox. | `installMailbox()` in `routes/auth.ts` only uses a mailbox in a workspace the install owner owns. With none, codes are refused by name. `npm run test:signup`. |
+| **Password sign-up never proved the address.** Anybody could register any address, fill the install with throwaway accounts, or squat an address before its owner arrived (undone only later, by `completeSignIn`). | Sign-up posts a six-digit code and creates nothing until it comes back; same limits, guess counting and audit as the code sign-in; the account is stamped `email_verified_at`. On an install with no owner mailbox it falls back to the old path rather than refusing every sign-up (OWNER-CHECKLIST 15). |
+| New in this pass: logo import fetches a URL a customer types. | Same fence as page reading (`urlProblem` on every hop, capped body, image types only; SVG with script refused, and SVG is never served back). Rate-limited per workspace. |
+| New in this pass: `/api/logo.php` is public (mail clients have no session). | Every address is HMAC-signed per portfolio (`lib/brandLogo.ts`); unsigned or wrong → 404. Raster only, `nosniff`, `default-src 'none'`. |
+
 ## 3b. Remaining risks
 
 **HIGH**
@@ -101,8 +110,8 @@ against A and the install owner.
 4. `__agency__` reserved bucket is shared between agencies on routes other
    than `data.php`. 5. Chat widget `agent_id` is not ownership-checked (shows
    another agent's name/avatar). 6. `shop.php list` can reveal another
-   tenant's project name. 7. Any tenant can claim free subdomains such as
-   `admin.` / `login.` (reserve more names). 8. `Access-Control-Allow-Origin:
+   tenant's project name. 7. ~~Any tenant can claim free subdomains such as
+   `admin.` / `login.`~~ — reserved, with `testing.` and ~45 others (2026-09-25). 8. `Access-Control-Allow-Origin:
    *` on the API (no cookies, so low impact). 9. The offline "local users"
    fallback keeps plaintext passwords in `localStorage`. 10. Workspace ids
    (`acct-<timestamp>`) are guessable — fine, because the server checks, but

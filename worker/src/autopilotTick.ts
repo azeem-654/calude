@@ -28,6 +28,8 @@ import { loadSmsConfig, sendSms } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
 import { ensureProjectPipeline } from './lib/projectPipeline';
 import { focusOf } from './lib/projectBrief';
+import { pageBlocks, pageDesignOf } from './lib/designLayouts';
+import { logoAddress } from './lib/brandLogo';
 import {
   createMailbox, credsForMode, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
@@ -1193,45 +1195,28 @@ async function carryOutWrite(
     };
   }
 
-  if (what === 'landing') {
+  if (what === 'landing' || what === 'website') {
     const r = await writeLandingPage(apiKey, brand);
     if (!r.ok || !r.value) return { ok: false, detail: r.error };
     const v = r.value;
-    const id = `fn-${crypto.randomUUID()}`;
-    await push(FUNNELS_KEY, {
-      id, name: v.headline.slice(0, 90), status: 'draft', source, createdAt: now,
-      steps: [{
-        id: `st-${crypto.randomUUID()}`, type: 'landing', name: v.headline.slice(0, 90),
-        headline: v.headline, subheadline: v.subhead,
-        bullets: v.bullets, ctaText: v.cta,
-        sections: v.sections,
-      }],
-    });
-    return {
-      ok: true,
-      detail: `Drafted "${v.headline}". Nothing is live until you publish it.`,
-      link: { kind: 'funnel', id, label: v.headline.slice(0, 60), route: '/funnels' },
-    };
-  }
-
-  if (what === 'website') {
-    const r = await writeLandingPage(apiKey, brand);
-    if (!r.ok || !r.value) return { ok: false, detail: r.error };
-    const v = r.value;
-    const id = `ws-${crypto.randomUUID()}`;
+    const funnel = what === 'landing';
+    const id = `${funnel ? 'fn' : 'ws'}-${crypto.randomUUID()}`;
 
     /*
-     * A real site, with a form on it that really collects.
+     * A real page, with a form on it that really collects.
      *
      * ── Why the form is made here and not left to the customer ──
      *
      * A page with a contact form is the whole point of a services website, and
      * a form block that is not bound to an engagement form collects nothing —
-     * it says so on the page, correctly, but a site Autopilot built that cannot
-     * take an enquiry is a site that has not done its job. So the form is
+     * it says so on the page, correctly, but a page Autopilot built that cannot
+     * take an enquiry is a page that has not done its job. So the form is
      * created first, live, and the block is bound to it. Everything that
      * follows — the contact, the deal, the workflow listening for this form —
      * is then the path that already exists and is already tested.
+     *
+     * Funnels get one too. The landing step used to be saved as a headline and
+     * bullets with no blocks, which the funnel builder draws as an empty page.
      */
     const formId = `for-${crypto.randomUUID()}`;
     const slug = `${(brand.companyName || 'enquiry').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'enquiry'}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1248,46 +1233,61 @@ async function carryOutWrite(
            submit_label, success_message, create_person, status, created_at, updated_at)
          VALUES (?,?,?,?,?,?,?,?,?,1,'live',?,?)`,
       ).bind(
-        formId, accountId, `${brand.companyName || 'Website'} enquiries`.slice(0, 120), slug,
+        formId, accountId, `${brand.companyName || (funnel ? 'Funnel' : 'Website')} enquiries`.slice(0, 120), slug,
         v.headline.slice(0, 160), '', JSON.stringify(fields),
         'Send', 'Thank you — we will come back to you shortly.', now, now,
       ).run();
       formSlug = slug;
     } catch {
-      /* A slug collision or a missing table must not lose the whole site. The
+      /* A slug collision or a missing table must not lose the whole page. The
          block renders unbound and says on the page that it cannot take an
          enquiry, which is the honest fallback rather than a silent one. */
       formSlug = '';
     }
 
-    const block = (type: string, content: string, settings: Record<string, unknown>) =>
-      ({ id: `bl-${crypto.randomUUID()}`, type, content, settings });
-
-    await push(WEBSITES_KEY, {
-      id, name: brand.companyName || v.headline.slice(0, 60), status: 'draft', source, createdAt: now,
-      pages: [{
-        id: `pg-${crypto.randomUUID()}`, name: 'Home', type: 'landing',
-        blocks: [
-          block('navbar', '', { navLogo: brand.companyName || 'Home', buttonText: v.cta }),
-          block('hero', v.headline, { subheading: v.subhead, buttonText: v.cta, bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)' }),
-          /* The bullets become the "what we do" row, which is the section a
-             visitor reads to decide whether this business does their thing. */
-          block('features', 'What we do', {
-            featureItems: v.bullets.slice(0, 6).map(b => ({ icon: '✓', title: b.slice(0, 60), desc: '' })),
-          }),
-          ...v.sections.slice(0, 3).map(sec => block('columns', sec.heading, { subheading: sec.body })),
-          block('form', 'Get in touch', { formSlug, formFields: fields.map(f => ({ label: f.label, type: f.type, required: f.required })) }),
-          block('footer', '', { navLogo: brand.companyName || '' }),
-        ],
-      }],
+    /* The layout, colours and logo chosen in the wizard; null for a project
+       made before the design step, which draws exactly what it always drew. */
+    const design = pageDesignOf(run.brief);
+    let logoSrc = '';
+    if (design?.logo && run.portfolio_id) {
+      const row = await env.DB.prepare('SELECT profile FROM crm_portfolios WHERE id = ? AND account_id = ?')
+        .bind(run.portfolio_id, accountId).first<{ profile: string }>().catch(() => null);
+      const logo = String(parse<Record<string, unknown>>(row?.profile ?? '', {}).logoUrl ?? '');
+      logoSrc = logo ? await logoAddress(env, run.portfolio_id, logo).catch(() => '') : '';
+    }
+    const blocks = pageBlocks(v, design, {
+      company: brand.companyName, formSlug, logoSrc,
+      fields: fields.map(f => ({ label: f.label, type: f.type, required: f.required })),
     });
+    const name = funnel ? v.headline.slice(0, 90) : brand.companyName || v.headline.slice(0, 60);
 
+    if (funnel) {
+      await push(FUNNELS_KEY, {
+        id, name, status: 'draft', source, createdAt: now,
+        steps: [{
+          id: `st-${crypto.randomUUID()}`, type: 'landing', name: v.headline.slice(0, 90), slug: 'start',
+          headline: v.headline, subheadline: v.subhead,
+          bullets: v.bullets, ctaText: v.cta,
+          sections: v.sections,
+          blocks, visitors: 0, conversions: 0,
+        }],
+      });
+    } else {
+      await push(WEBSITES_KEY, {
+        id, name, status: 'draft', source, createdAt: now,
+        pages: [{ id: `pg-${crypto.randomUUID()}`, name: 'Home', type: 'landing', blocks }],
+      });
+    }
+
+    const label = funnel ? v.headline : brand.companyName || v.headline;
     return {
       ok: true,
       detail: formSlug
-        ? `Built "${brand.companyName || v.headline}" with an enquiry form that collects into your contacts. It is a draft until you publish it.`
-        : `Built "${brand.companyName || v.headline}". The enquiry form could not be connected, so it says so on the page — make one in Customer Engagement → Forms and pick it in the builder.`,
-      link: { kind: 'website', id, label: (brand.companyName || v.headline).slice(0, 60), route: '/websites' },
+        ? `Built "${label}" with an enquiry form that collects into your contacts. It is a draft until you publish it.`
+        : `Built "${label}". The enquiry form could not be connected, so it says so on the page — make one in Customer Engagement → Forms and pick it in the builder.`,
+      link: funnel
+        ? { kind: 'funnel', id, label: v.headline.slice(0, 60), route: '/funnels' }
+        : { kind: 'website', id, label: label.slice(0, 60), route: '/websites' },
     };
   }
 

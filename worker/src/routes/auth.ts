@@ -146,23 +146,42 @@ async function sha256Hex(input: string): Promise<string> {
  * that will never receive anything is the worst outcome here, and it is the
  * one that happens silently if this returns success on a dead SMTP password.
  */
-async function sendLoginCode(env: Env, email: string, code: string): Promise<{ ok: boolean; error: string }> {
-  const row = await env.DB.prepare(
-    `SELECT smtp_host AS host, smtp_port AS port, smtp_encryption AS encryption,
-            smtp_username AS username, smtp_password AS password,
-            from_email AS fromEmail, from_name AS fromName
-     FROM crm_mailbox_accounts
-     WHERE smtp_host != '' AND smtp_username != ''
-     ORDER BY is_primary DESC, created_at LIMIT 1`,
+/**
+ * The mailbox sign-in codes go out from: one in a workspace the install owner
+ * owns, and never anybody else's.
+ *
+ * This used to take the first mailbox on the install, whoever it belonged to.
+ * A customer who connected a Gmail account would then have been the sender of
+ * every sign-in code — and Gmail files what it sends over SMTP in the Sent
+ * folder, so that customer's mailbox held a live code for whoever signed in
+ * next, the install owner included. A code in somebody else's Sent folder is a
+ * password in somebody else's hands.
+ */
+async function installMailbox(env: Env) {
+  return env.DB.prepare(
+    `SELECT m.smtp_host AS host, m.smtp_port AS port, m.smtp_encryption AS encryption,
+            m.smtp_username AS username, m.smtp_password AS password,
+            m.from_email AS fromEmail, m.from_name AS fromName
+     FROM crm_mailbox_accounts m
+     WHERE m.smtp_host != '' AND m.smtp_username != ''
+       AND m.account_id IN (
+         SELECT w.account_id FROM crm_workspaces w
+         JOIN crm_users u ON u.email = w.owner_email
+         WHERE u.account_id IS NULL AND u.role = 'agency')
+     ORDER BY m.is_primary DESC, m.created_at LIMIT 1`,
   ).first<{
     host: string; port: number; encryption: string; username: string;
     password: string; fromEmail: string; fromName: string;
-  }>();
+  }>().catch(() => null);
+}
+
+async function sendLoginCode(env: Env, email: string, code: string): Promise<{ ok: boolean; error: string }> {
+  const row = await installMailbox(env);
 
   if (!row?.host) {
     return {
       ok: false,
-      error: 'This app cannot send sign-in codes yet — no mailbox is connected. Use your password, or ask the owner to connect one.',
+      error: 'This app cannot send sign-in codes yet — the owner has not connected a mailbox to send them from. Use your password, or try again later.',
     };
   }
 
@@ -303,6 +322,135 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, re
   await sweepSessions(env.DB);
   const token = await issueSession(env, user.email, req, method);
   return json({ success: true, token, user: publicUser(user), workspaces: await ownedWorkspaces(env, user.email) });
+}
+
+/* ── Emailed codes, shared by sign-in and sign-up ─────────────────────────── */
+
+/**
+ * Mint a six-digit code for an address and post it. Null when it went; a
+ * refusal to return otherwise.
+ *
+ * Shared by the code sign-in and by password sign-up, which now proves the
+ * address before the account exists. Both brakes below apply to both paths,
+ * so sign-up cannot be used to mail a stranger a hundred codes either.
+ */
+async function issueCode(env: Env, email: string, ip: string): Promise<Response | null> {
+  /*
+   * Two brakes, and they answer different attacks.
+   *
+   * Per address stops somebody being mailed a hundred codes because an
+   * attacker knows their address — which is harassment even when it never
+   * works. Per connection stops one machine minting live codes for a
+   * thousand addresses and playing the odds against a six-digit space.
+   */
+  const since = Math.floor(Date.now() / 1000) - 3600;
+  const perEmail = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM crm_login_codes WHERE email = ? AND expires_at > ?",
+  ).bind(email, since).first<{ n: number }>();
+  if ((perEmail?.n ?? 0) >= 5) {
+    return fail('Too many codes have been sent to that address. Try again in a few minutes.', 429);
+  }
+  const perIp = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM crm_signup_attempts WHERE ip = ? AND created_at > ?',
+  ).bind(`code:${ip}`, since).first<{ n: number }>();
+  if ((perIp?.n ?? 0) >= 20) {
+    return fail('Too many sign-in attempts from this connection. Try again in an hour.', 429);
+  }
+
+  /*
+   * Six digits from crypto randomness, not Math.random.
+   *
+   * The modulo here is over 900000 on a 32-bit draw, which is a bias of
+   * about one part in five thousand — far below anything that helps a
+   * guesser, and worth the simplicity over rejection sampling.
+   */
+  const buf = crypto.getRandomValues(new Uint32Array(1));
+  const code = String(100000 + (buf[0] % 900000));
+  const hash = await sha256Hex(`${code}:${email}`);
+  const expires = Math.floor(Date.now() / 1000) + 600;
+
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO crm_login_codes (code_hash, email, attempts, expires_at, used_at, created_at) VALUES (?,?,0,?,NULL,?)',
+  ).bind(hash, email, expires, nowIso()).run();
+  await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
+    .bind(`code:${ip}`, Math.floor(Date.now() / 1000)).run();
+
+  const sent = await sendLoginCode(env, email, code);
+  /* A send that genuinely failed is reported, because a customer staring at
+     an inbox that will never receive anything is worse than knowing. */
+  if (!sent.ok) return fail(sent.error, 200, { code: 'send_failed' });
+  return null;
+}
+
+/**
+ * Check a code for an address and spend it. Null when it was right; a refusal
+ * to return otherwise.
+ */
+async function consumeCode(env: Env, email: string, typed: string, req: Request): Promise<Response | null> {
+  const code = typed.replace(/\D/g, '');
+  if (code.length !== 6) return fail('Enter the six-digit code from your email.');
+
+  /*
+   * Looked up by **address**, not by the hash of what was typed.
+   *
+   * The first version keyed this on the code hash, which made the attempts
+   * counter decorative: a wrong guess hashes to something else, so no row came
+   * back, so nothing was incremented. Five guesses, five hundred thousand
+   * guesses — the counter never moved and the real code still worked
+   * afterwards. Proven by testing it: five wrong answers followed by the right
+   * one signed straight in.
+   *
+   * Finding the live code for the address first is what makes a wrong guess
+   * cost something. The comparison is then done in constant time against the
+   * stored hash, so keying by email gives away nothing that keying by hash
+   * protected.
+   */
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(
+    `SELECT code_hash AS codeHash, attempts FROM crm_login_codes
+     WHERE email = ? AND used_at IS NULL AND expires_at > ?
+     ORDER BY created_at DESC LIMIT 1`,
+  ).bind(email, now).first<{ codeHash: string; attempts: number }>();
+
+  /*
+   * One message for every way this can fail — wrong, expired, spent, never
+   * asked for, or out of guesses. Telling them apart tells somebody guessing
+   * which of their attempts was close, and tells somebody holding an old email
+   * that the code was once real.
+   */
+  const refuse = () => fail('That code is wrong or has expired. Ask for a new one.', 401);
+
+  if (!row || row.attempts >= 5) return refuse();
+
+  /*
+   * A ceiling across codes, not just within one. Five guesses a code and five
+   * codes an hour still allowed about twenty-five guesses an hour at any
+   * address, from any number of networks — around one in five odds of
+   * guessing a six-digit code within a year of trying. Twenty wrong guesses
+   * in a day stops the address being guessed at until tomorrow.
+   */
+  const dayFails = await env.DB.prepare('SELECT hits, window_start AS start FROM crm_rate_limits WHERE bucket = ?')
+    .bind(`code-fail:${email}`.slice(0, 200)).first<{ hits: number; start: string }>();
+  if (dayFails && dayFails.hits >= 20 && Date.parse(dayFails.start) > Date.now() - 86_400_000) {
+    return fail('Too many wrong codes for this address today. Try again tomorrow, or sign in with your password.', 429);
+  }
+
+  const typedHash = await sha256Hex(`${code}:${email}`);
+  if (!timingSafeEqual(typedHash, row.codeHash)) {
+    /* The guess costs one of five, whatever it was — and one of twenty today. */
+    await env.DB.prepare('UPDATE crm_login_codes SET attempts = attempts + 1 WHERE code_hash = ?')
+      .bind(row.codeHash).run();
+    await rateLimit(env, { what: 'code-fail', who: email, max: 20, windowSeconds: 86_400 });
+    await recordAuthEvent(env, { email, kind: 'login_failed', detail: 'Wrong emailed code', ...origin(req) });
+    return refuse();
+  }
+  const hash = row.codeHash;
+
+  /* Spent before a session exists. A crash between the two costs somebody one
+     code; the other order would leave a code good for a second sign-in. */
+  await env.DB.prepare('UPDATE crm_login_codes SET used_at = ? WHERE code_hash = ?')
+    .bind(nowIso(), hash).run();
+  return null;
 }
 
 /* ── Who may manage whom ──────────────────────────────────────────────────
@@ -521,6 +669,38 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
        they just typed as their own, so this tells them nothing about anyone. */
     if (taken) return fail('That email already has an account. Sign in instead, or use another address.');
 
+    /*
+     * ── Prove the address before the account exists ──
+     *
+     * A password sign-up used to create the account on the spot for whatever
+     * address was typed. That let anybody register a stranger's address first
+     * (the pre-hijack that `completeSignIn` now undoes after the fact), fill
+     * the install with throwaway accounts, and point workspaces' mail at
+     * addresses nobody owns. So the first call posts a six-digit code and
+     * stops; the account is made only when the second call brings the code
+     * back — the same code, limits and guess counting as the code sign-in.
+     *
+     * An install with no mailbox of the owner's cannot send a code, and
+     * refusing every sign-up there would be the product broken rather than
+     * secured. There the account is made unproved, exactly as before, and
+     * `completeSignIn` still clears its password the first time the real owner
+     * of the address proves it. OWNER-CHECKLIST says to connect the mailbox.
+     */
+    let proved = false;
+    const typed = String(d.code ?? '').trim();
+    if (typed) {
+      const refused = await consumeCode(env, lower, typed, req);
+      if (refused) return refused;
+      proved = true;
+    } else if ((await installMailbox(env))?.host) {
+      const refused = await issueCode(env, lower, ip);
+      if (refused) return refused;
+      return json({
+        success: true, needsCode: true,
+        message: `We sent a six-digit code to ${lower}. Enter it to finish creating your account — it expires in ten minutes.`,
+      });
+    }
+
     /* Their own workspace, from the start. `bootstrap` leaves account_id null
        for the original owner and that is grandfathered, but null cannot be a
        tenant boundary for more than one person. */
@@ -533,6 +713,11 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     await env.DB.prepare(
       'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
     ).bind(accountId, lower, nowIso()).run();
+
+    if (proved) {
+      try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), lower).run(); }
+      catch { /* before 0049 */ }
+    }
 
     /* Recorded here, where an account actually came into existence. */
     await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
@@ -574,126 +759,20 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
 
     if (action === 'request_code') {
-      /*
-       * Two brakes, and they answer different attacks.
-       *
-       * Per address stops somebody being mailed a hundred codes because an
-       * attacker knows their address — which is harassment even when it never
-       * works. Per connection stops one machine minting live codes for a
-       * thousand addresses and playing the odds against a six-digit space.
-       */
-      const since = Math.floor(Date.now() / 1000) - 3600;
-      const perEmail = await env.DB.prepare(
-        "SELECT COUNT(*) AS n FROM crm_login_codes WHERE email = ? AND expires_at > ?",
-      ).bind(email, since).first<{ n: number }>();
-      if ((perEmail?.n ?? 0) >= 5) {
-        return fail('Too many codes have been sent to that address. Try again in a few minutes.', 429);
-      }
-      const perIp = await env.DB.prepare(
-        'SELECT COUNT(*) AS n FROM crm_signup_attempts WHERE ip = ? AND created_at > ?',
-      ).bind(`code:${ip}`, since).first<{ n: number }>();
-      if ((perIp?.n ?? 0) >= 20) {
-        return fail('Too many sign-in attempts from this connection. Try again in an hour.', 429);
-      }
-
-      /*
-       * Six digits from crypto randomness, not Math.random.
-       *
-       * The modulo here is over 900000 on a 32-bit draw, which is a bias of
-       * about one part in five thousand — far below anything that helps a
-       * guesser, and worth the simplicity over rejection sampling.
-       */
-      const buf = crypto.getRandomValues(new Uint32Array(1));
-      const code = String(100000 + (buf[0] % 900000));
-      const hash = await sha256Hex(`${code}:${email}`);
-      const expires = Math.floor(Date.now() / 1000) + 600;
-
-      await env.DB.prepare(
-        'INSERT OR REPLACE INTO crm_login_codes (code_hash, email, attempts, expires_at, used_at, created_at) VALUES (?,?,0,?,NULL,?)',
-      ).bind(hash, email, expires, nowIso()).run();
-      await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
-        .bind(`code:${ip}`, Math.floor(Date.now() / 1000)).run();
-
-      const sent = await sendLoginCode(env, email, code);
-
+      const refused = await issueCode(env, email, ip);
+      if (refused) return refused;
       /*
        * The same answer whether or not the address has an account.
        *
        * A sign-in form that says "no account here" is a form that tells anybody
        * which of a list of addresses is registered. Sign-up is different and
        * says so plainly — but this is the sign-in path, and it stays quiet.
-       *
-       * A send that genuinely failed is reported, because a customer staring at
-       * an inbox that will never receive anything is worse than knowing.
        */
-      if (!sent.ok) return fail(sent.error, 200, { code: 'send_failed' });
       return json({ success: true, message: `If that address has an account, a code is on its way to ${email}.` });
     }
 
-    /* ── verify ── */
-    const code = String(d.code ?? '').replace(/\D/g, '');
-    if (code.length !== 6) return fail('Enter the six-digit code from your email.');
-
-    /*
-     * Looked up by **address**, not by the hash of what was typed.
-     *
-     * The first version keyed this on the code hash, which made the attempts
-     * counter decorative: a wrong guess hashes to something else, so no row came
-     * back, so nothing was incremented. Five guesses, five hundred thousand
-     * guesses — the counter never moved and the real code still worked
-     * afterwards. Proven by testing it: five wrong answers followed by the right
-     * one signed straight in.
-     *
-     * Finding the live code for the address first is what makes a wrong guess
-     * cost something. The comparison is then done in constant time against the
-     * stored hash, so keying by email gives away nothing that keying by hash
-     * protected.
-     */
-    const now = Math.floor(Date.now() / 1000);
-    const row = await env.DB.prepare(
-      `SELECT code_hash AS codeHash, attempts FROM crm_login_codes
-       WHERE email = ? AND used_at IS NULL AND expires_at > ?
-       ORDER BY created_at DESC LIMIT 1`,
-    ).bind(email, now).first<{ codeHash: string; attempts: number }>();
-
-    /*
-     * One message for every way this can fail — wrong, expired, spent, never
-     * asked for, or out of guesses. Telling them apart tells somebody guessing
-     * which of their attempts was close, and tells somebody holding an old email
-     * that the code was once real.
-     */
-    const refuse = () => fail('That code is wrong or has expired. Ask for a new one.', 401);
-
-    if (!row || row.attempts >= 5) return refuse();
-
-    /*
-     * A ceiling across codes, not just within one. Five guesses a code and five
-     * codes an hour still allowed about twenty-five guesses an hour at any
-     * address, from any number of networks — around one in five odds of
-     * guessing a six-digit code within a year of trying. Twenty wrong guesses
-     * in a day stops the address being guessed at until tomorrow.
-     */
-    const dayFails = await env.DB.prepare('SELECT hits, window_start AS start FROM crm_rate_limits WHERE bucket = ?')
-      .bind(`code-fail:${email}`.slice(0, 200)).first<{ hits: number; start: string }>();
-    if (dayFails && dayFails.hits >= 20 && Date.parse(dayFails.start) > Date.now() - 86_400_000) {
-      return fail('Too many wrong codes for this address today. Try again tomorrow, or sign in with your password.', 429);
-    }
-
-    const typedHash = await sha256Hex(`${code}:${email}`);
-    if (!timingSafeEqual(typedHash, row.codeHash)) {
-      /* The guess costs one of five, whatever it was — and one of twenty today. */
-      await env.DB.prepare('UPDATE crm_login_codes SET attempts = attempts + 1 WHERE code_hash = ?')
-        .bind(row.codeHash).run();
-      await rateLimit(env, { what: 'code-fail', who: email, max: 20, windowSeconds: 86_400 });
-      await recordAuthEvent(env, { email, kind: 'login_failed', detail: 'Wrong emailed code', ...origin(req) });
-      return refuse();
-    }
-    const hash = row.codeHash;
-
-    /* Spent before a session exists. A crash between the two costs somebody one
-       code; the other order would leave a code good for a second sign-in. */
-    await env.DB.prepare('UPDATE crm_login_codes SET used_at = ? WHERE code_hash = ?')
-      .bind(nowIso(), hash).run();
+    const refused = await consumeCode(env, email, String(d.code ?? ''), req);
+    if (refused) return refused;
 
     /* A first-time address becomes an account here: the code proves they hold
        the mailbox, which is what a password reset proves and more than a

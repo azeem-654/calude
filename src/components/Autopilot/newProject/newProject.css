@@ -128,6 +128,31 @@
   font: inherit; font-size: 15px; outline: none; background: #fff;
 }
 .np-input:focus { border-color: #5b46e5; }
+
+/* ── Design: layouts, colours, the logo ──
+   Pictures in a grid that wraps, so a phone gets two across and a desktop
+   four; `min()` keeps a single column from overflowing a 320px screen. */
+.np-design-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); }
+.np-design-grid[data-size='small'] { grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); }
+@media (max-width: 520px) {
+  .np-design-grid, .np-design-grid[data-size='small'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.np-design {
+  display: grid; gap: 7px; align-content: start; padding: 8px 8px 10px; min-width: 0;
+  border-radius: 14px; border: 1.5px solid #e6e9f0; background: #fff; cursor: pointer; font: inherit; text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.np-design:hover { border-color: #c9c2fa; }
+.np-design[aria-pressed='true'] { border-color: #5b46e5; background: #f8f7ff; box-shadow: 0 0 0 3px #ebe8ff; }
+.np-design-pic { display: block; width: 100%; min-width: 0; }
+.np-logo-well {
+  width: 76px; height: 76px; border-radius: 16px; border: 1.5px solid #e6e9f0; flex-shrink: 0;
+  display: grid; place-items: center; overflow: hidden;
+  /* A checkerboard, so a white logo on transparency is visible rather than lost. */
+  background: repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 14px 14px;
+}
+.np-logo-well[data-empty='1'] { background: #f8fafc; border-style: dashed; }
+.np-logo-well img { max-width: 84%; max-height: 84%; object-fit: contain; }
 .np-skip { border: none; background: none; color: #6b7280; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 2px; text-decoration: underline; text-underline-offset: 3px; }
 
 .np-known { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: #f7f8fb; }
