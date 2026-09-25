@@ -566,7 +566,9 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
    * idea of what a new account looks like.
    */
   if (action === 'request_code' || action === 'verify_code') {
-    const email = addr(d.email) ?? '';
+    /* Lower-cased: "Azeem@" and "azeem@" are one mailbox, and treating them as
+       two split the per-address limits and made a second account. */
+    const email = (addr(d.email) ?? '').toLowerCase();
     if (!email) return fail('Enter your email address.');
 
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
@@ -664,11 +666,26 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
 
     if (!row || row.attempts >= 5) return refuse();
 
+    /*
+     * A ceiling across codes, not just within one. Five guesses a code and five
+     * codes an hour still allowed about twenty-five guesses an hour at any
+     * address, from any number of networks — around one in five odds of
+     * guessing a six-digit code within a year of trying. Twenty wrong guesses
+     * in a day stops the address being guessed at until tomorrow.
+     */
+    const dayFails = await env.DB.prepare('SELECT hits, window_start AS start FROM crm_rate_limits WHERE bucket = ?')
+      .bind(`code-fail:${email}`.slice(0, 200)).first<{ hits: number; start: string }>();
+    if (dayFails && dayFails.hits >= 20 && Date.parse(dayFails.start) > Date.now() - 86_400_000) {
+      return fail('Too many wrong codes for this address today. Try again tomorrow, or sign in with your password.', 429);
+    }
+
     const typedHash = await sha256Hex(`${code}:${email}`);
     if (!timingSafeEqual(typedHash, row.codeHash)) {
-      /* The guess costs one of five, whatever it was. */
+      /* The guess costs one of five, whatever it was — and one of twenty today. */
       await env.DB.prepare('UPDATE crm_login_codes SET attempts = attempts + 1 WHERE code_hash = ?')
         .bind(row.codeHash).run();
+      await rateLimit(env, { what: 'code-fail', who: email, max: 20, windowSeconds: 86_400 });
+      await recordAuthEvent(env, { email, kind: 'login_failed', detail: 'Wrong emailed code', ...origin(req) });
       return refuse();
     }
     const hash = row.codeHash;

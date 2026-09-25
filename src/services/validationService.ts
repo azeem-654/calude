@@ -70,56 +70,23 @@ function getApiKeySuggestions(type: string, error: string): string[] {
 }
 
 export async function validateResend(apiKey: string): Promise<ValidationResult> {
-  if (!apiKey?.trim()) {
+  if (!apiKey.trim()) {
     return { success: false, message: 'API key is required', suggestions: ['Enter your Resend API key from resend.com/api-keys'] };
   }
-  if (!apiKey.startsWith('re_')) {
+  if (!apiKey.trim().startsWith('re_')) {
     return { success: false, message: 'Invalid API key format', suggestions: ['Resend API keys start with "re_" — double-check your key from resend.com/api-keys'], errorCode: 'format' };
   }
-  try {
-    const res = await fetch('https://api.resend.com/domains', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (res.ok) {
-      return { success: true, message: 'Resend API key is valid and active', suggestions: [] };
-    }
-    const body = await res.json().catch(() => ({}));
-    const msg = body.message || body.name || `HTTP ${res.status}`;
-    return { success: false, message: `Resend authentication failed: ${msg}`, suggestions: getApiKeySuggestions('Resend', msg), errorCode: String(res.status) };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `Connection error: ${msg}`, suggestions: getApiKeySuggestions('Resend', msg) };
-  }
+  /* Checked by our server, not from this page: a key sent from the browser to
+     a third party is a key any script on the page could have read on the way. */
+  return checkKeyOnServer('resend', 'Resend', apiKey.trim());
 }
 
 export async function validateMailtrap(apiKey: string, inboxId: string): Promise<ValidationResult> {
-  if (!apiKey?.trim()) {
+  void inboxId;
+  if (!apiKey.trim()) {
     return { success: false, message: 'API key is required', suggestions: ['Find your Mailtrap API key at mailtrap.io/api-tokens'] };
   }
-  if (!inboxId?.trim()) {
-    return { success: false, message: 'Inbox ID is required', suggestions: ['Find your Inbox ID in the Mailtrap dashboard under your inbox settings'] };
-  }
-  try {
-    const res = await fetch(`https://sandbox.api.mailtrap.io/api/send/${inboxId}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: { email: 'test@example.com', name: 'CRM Test' },
-        to: [{ email: 'validation@test.com', name: 'Test' }],
-        subject: 'Connection Test',
-        html: '<p>Test</p>',
-      }),
-    });
-    if (res.ok) {
-      return { success: true, message: 'Mailtrap connection verified — test email sent to sandbox', suggestions: [] };
-    }
-    const body = await res.json().catch(() => ({}));
-    const msg = (body.errors || []).join(', ') || body.message || `HTTP ${res.status}`;
-    return { success: false, message: `Mailtrap error: ${msg}`, suggestions: getApiKeySuggestions('Mailtrap', msg), errorCode: String(res.status) };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `Connection error: ${msg}`, suggestions: getApiKeySuggestions('Mailtrap', msg) };
-  }
+  return checkKeyOnServer('mailtrap', 'Mailtrap', apiKey.trim());
 }
 
 /**
@@ -127,7 +94,7 @@ export async function validateMailtrap(apiKey: string, inboxId: string): Promise
  * neither provider sends CORS headers, so a request from the page is refused
  * before it is sent.
  */
-async function checkKeyOnServer(provider: 'openai' | 'apollo', label: string, apiKey: string): Promise<ValidationResult> {
+async function checkKeyOnServer(provider: 'openai' | 'apollo' | 'resend' | 'mailtrap', label: string, apiKey: string): Promise<ValidationResult> {
   try {
     const res = await fetch(`${API_BASE}/api/validate-key.php`, {
       method: 'POST',

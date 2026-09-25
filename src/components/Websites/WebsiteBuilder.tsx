@@ -1,4 +1,5 @@
 import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
+import { aiFetch } from '../../lib/gemini';
 import FormPicker from '../shared/FormPicker';
 import type { CSSProperties } from 'react';
 import { Globe, Search, Smartphone, Tablet, Monitor, Undo2, Redo2 } from 'lucide-react';
@@ -342,24 +343,21 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
   const [aiPrompt, setAiPrompt] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
 
+  /* Written by the server's AI (/api/ai.php), like every other AI feature.
+     This used to call OpenAI from the page with a key read from storage that
+     nothing ever wrote, so the button could only ever say "add your key". */
   async function generateAiContent() {
-    const apiKey = localStorage.getItem('openai_api_key') || localStorage.getItem('crm_openai_key') || localStorage.getItem('settings_openai');
-    if (!apiKey) { alert('Add your OpenAI API key in Settings → API Validation first.'); return; }
     setAiLoading(true);
     try {
-      const systemPrompt = `You are a professional copywriter. Write compelling website copy for a ${block.type} section. Be concise, benefit-focused, and conversion-optimized. Return only the text, no quotes or explanations.`;
-      const userPrompt = aiPrompt || `Write a great ${block.type} headline/text for a professional website.`;
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], max_tokens: 200 }),
-      });
-      const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-      const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+      const prompt = `You are a professional copywriter. Write compelling website copy for a ${block.type} section. Be concise, benefit-focused and conversion-oriented. Return only the text, no quotes or explanations.\n\n${aiPrompt || `Write a strong ${block.type} headline or text for a professional website.`}`;
+      const res = await aiFetch({ body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 300 } }) });
+      const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
+      if (!res.ok) { alert(data.error?.message ?? 'The AI could not write that just now.'); return; }
+      const text = (data.candidates?.[0]?.content?.parts ?? []).map(x => x.text ?? '').join('').trim();
       if (text) onChange({ ...block, content: text });
       setShowAiInput(false);
       setAiPrompt('');
-    } catch { alert('Failed to generate content. Check your API key.'); }
+    } catch { alert('Could not reach the AI. Try again in a moment.'); }
     finally { setAiLoading(false); }
   }
 

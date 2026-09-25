@@ -1,6 +1,6 @@
 # Security and privacy: audit and status
 
-Last reviewed **2026-09-24**. This file is the record behind the public Trust
+Last reviewed **2026-09-25**. This file is the record behind the public Trust
 Center (`/security`) and Settings → Security & Privacy. Every customer-facing
 security sentence must be traceable to something in "What customers can be told"
 below. When a protection changes, change this file, the Trust Center and the
@@ -67,59 +67,46 @@ against A and the install owner.
 | `localtunnel` (vulnerable axios) shipped as a production dependency; `react-router-dom` open-redirect advisory. | Removed / upgraded. `npm audit --omit=dev`: 0. |
 | No restore point before live migrations. | `deploy.yml` records a D1 Time Travel bookmark before migrating. |
 
-## 3. Remaining risks — not yet fixed, in order
+## 3. Fixed on 2026-09-25 (second pass)
+
+| Was | Now |
+|---|---|
+| **The credential key lived in the same database as the credentials** — one export held both. | `installSecret` wraps every install secret with `CREDENTIAL_WRAP_KEY`, a Cloudflare secret the database never sees (`wrapped:v1.…`). Existing values are wrapped in place on first use; a wrong or missing key **refuses** (500 with a reference) rather than generating a new secret and orphaning every credential. Tested both ways locally. **Takes effect once the owner sets the secret** (OWNER-CHECKLIST 13). |
+| Nine tools called Gemini from the browser with a key in `localStorage`. | `/api/ai.php` proxies them with the operator's key, the model chosen server-side, a size cap and the per-workspace budget; `aiFetch()` returns the same response shape, so the parsers did not change. The website builder's never-working OpenAI button now uses it too. **Exception:** AI Shorts' video analysis still uploads the video from the browser with the customer's own key (too large for a Worker request). |
+| No AI budget outside the wizard. | `aiBudget()` — 120 an hour, 800 a day per workspace — on aiwrite, page reading, product ideas, Autopilot writing and the proxy. |
+| Twilio inbound SMS unsigned (forged STOP). | `X-Twilio-Signature` verified (HMAC-SHA1 over URL + sorted fields, keyed with the workspace's auth token); unsigned deliveries are ignored. |
+| Hand-written email sanitiser. | DOMPurify, with this file's allow-lists and URL/style rules as hooks. `test/emailHtml.e2e.mjs`: 13 payloads in Chromium, including mutation-XSS. |
+| Session token in query strings (logged). | `Authorization: Bearer` header (`bearer()`); the query form is still read for old bundles. The opt-out sync also never sent a token and read the wrong response field — fixed, so link opt-outs now reach the browser's suppression list. |
+| ~25 emailed-code guesses an hour per address. | Plus 20 wrong codes per address per day; every wrong code is in the audit log; addresses lower-cased. |
+| Resend/Mailtrap keys checked from the browser. | `validate-key.php` checks them on the server. |
+| No copy of the database outside D1. | `.github/workflows/backup.yml`: nightly `d1 export`, gzip, GPG AES-256 with `BACKUP_PASSPHRASE`, kept 30 days as an artifact. **Takes effect once the owner sets the passphrase** (OWNER-CHECKLIST 14); without it the job warns and uploads nothing. |
+
+## 3b. Remaining risks
 
 **HIGH**
 
-1. **The key that encrypts customer credentials lives in the same database as
-   the credentials** (`crm_meta` `mailbox_key`). A full export of the live D1
-   contains both. Fix: wrap that key with a Worker secret
-   (`wrangler secret put CREDENTIAL_WRAP_KEY`) and re-encrypt once. Needs a
-   careful migration; do it before any third party is given database access.
-2. **Nine older tools call Gemini from the browser** with a key saved in
-   Settings → AI Engine (`crm_gemini_key`, in `localStorage`, shared by every
-   workspace opened in that browser): review replies, inbox drafts, Social
-   Creator, AI Shorts, SEO profile, blog planner and writer, pipeline AI,
-   strategy (`src/lib/gemini.ts`, `src/services/*`). Move each to
-   `/api/aiwrite.php` and delete the browser path and the stored key. The
-   public pages say this honestly until then.
-3. **The session token is in `localStorage`**, so any successful XSS could take
-   it. The new CSP removes most XSS routes; an `HttpOnly` cookie session would
-   remove the rest (bigger change: every `token` in a request body).
+1. **The session token is in `localStorage`**, so a successful XSS could take
+   it. The CSP and DOMPurify remove most routes to one; an `HttpOnly` cookie
+   session would remove the rest (every `token` in a request body changes).
 
 **MEDIUM**
 
-4. Roles are Owner and Member (`client`) only. A Member can change the
+2. Roles are Owner and Member (`client`) only. A Member can change the
    workspace's storefront payout key, mailbox and calendar. Decide which
    money/credential actions should be Owner-only; add Admin/Viewer if needed.
-5. Twilio inbound SMS (`sms-inbound.php`) does not verify
-   `X-Twilio-Signature` — anyone can forge a STOP and opt a contact out.
-6. The email HTML sanitiser is hand-written; replace with DOMPurify.
-7. AI generation endpoints other than intake (`aiwrite.php`, `read_url`,
-   product ideas, Autopilot instructions) have no per-workspace rate limit, so a
-   free sign-up could spend the operator's AI quota.
-8. `track.php?events=1` and `unsubscribe.php?list=1` take the session token in
-   the query string, which reaches request logs. Move to a POST body.
-9. Emailed sign-in codes are 6 digits with 5 tries per code and 5 codes per
-   hour — about 25 guesses an hour per address. Add a daily failure cap.
-10. Backups are Cloudflare D1 Time Travel only (7 days on the Free plan, 30 on
-    Workers Paid). Add a scheduled `wrangler d1 export` to R2 for an
-    independent copy. Uploaded images are data URLs inside D1, so they are
-    covered by the same backup.
+3. AI Shorts video analysis uses a customer key from `localStorage`.
 
 **LOW**
 
-11. `__agency__` reserved bucket is shared between agencies on routes other
-    than `data.php`. 12. Chat widget `agent_id` is not ownership-checked (shows
-    another agent's name/avatar). 13. `shop.php list` can reveal another
-    tenant's project name. 14. Any tenant can claim free subdomains such as
-    `admin.` / `login.` (reserve more names). 15. `Access-Control-Allow-Origin:
-    *` on the API (no cookies, so low impact). 16. The offline "local users"
-    fallback keeps plaintext passwords in `localStorage`. 17. Workspace ids
-    (`acct-<timestamp>`) are guessable — fine, because the server checks, but
-    never treat one as a secret.
-
----
+4. `__agency__` reserved bucket is shared between agencies on routes other
+   than `data.php`. 5. Chat widget `agent_id` is not ownership-checked (shows
+   another agent's name/avatar). 6. `shop.php list` can reveal another
+   tenant's project name. 7. Any tenant can claim free subdomains such as
+   `admin.` / `login.` (reserve more names). 8. `Access-Control-Allow-Origin:
+   *` on the API (no cookies, so low impact). 9. The offline "local users"
+   fallback keeps plaintext passwords in `localStorage`. 10. Workspace ids
+   (`acct-<timestamp>`) are guessable — fine, because the server checks, but
+   never treat one as a secret.
 
 ## 4. Tenant isolation test result
 
@@ -154,7 +141,8 @@ endpoint. Key order: workspace key → install key → `env.AI_API_KEY`.
 | Chat assistant (`agentBrain`) | last 14 turns + knowledge base | answer the visitor |
 | Form summaries (`engageDispatch`) | the submission (≤3,000 chars) | summarise for the owner |
 | Moderation | outgoing message text (≤6,000 chars) | abuse screening |
-| Browser tools (see 3.2) | review text, email being replied to, briefs | legacy |
+| Older tools via `/api/ai.php` | review text, email being replied to, briefs | same key, server-side |
+| AI Shorts video (browser) | the uploaded video | the customer's own key |
 
 Contact lists are not sent (placeholders like `{{firstName}}`). **Training:**
 on a Gemini key whose Google Cloud project has billing enabled, Google's terms
@@ -176,8 +164,8 @@ True today, and said on `/security`, the home page and Settings:
   and never returned to a browser.
 - No staff login that can open a workspace as the customer.
 - Export your data; delete your account and workspaces.
-- AI receives what the task needs, not the workspace; which provider; that a
-  few older tools call it from the browser with the customer's own key.
+- AI receives what the task needs, not the workspace; which provider; that
+  AI calls are made from the server except AI Shorts' video upload.
 - Point-in-time restore via D1 Time Travel; a restore point before every
   release that changes the database.
 - Card details go to Stripe's/Creem's pages, never our servers.
@@ -192,16 +180,15 @@ True today, and said on `/security`, the home page and Settings:
 - "Daily backups" or a specific backup frequency — only Time Travel exists.
 - "Encrypted at rest" for all data — true for connected credentials; for the
   rest, say it is stored on Cloudflare's infrastructure.
-- "All AI calls are made from our server" — not until 3.2 is done.
+- "All AI calls are made from our server" — AI Shorts' video upload is the exception; say so.
+- "Nightly encrypted backups" — only once BACKUP_PASSPHRASE is set and a run has succeeded.
 
 ## 9. Recommended next
 
-1. Wrap the credential key with a Worker secret (3.1).
-2. Move the browser Gemini calls to the server (3.2).
-3. Per-workspace AI rate limits (3.7); Twilio signature (3.5).
-4. Owner-only money/credential actions and an Admin/Viewer role (3.4).
-5. Scheduled D1 export to R2 (3.10).
-6. HttpOnly cookie sessions (3.3).
+1. Owner sets CREDENTIAL_WRAP_KEY and BACKUP_PASSPHRASE (OWNER-CHECKLIST 13–14).
+2. Owner-only money/credential actions and an Admin/Viewer role (3b.2).
+3. HttpOnly cookie sessions (3b.1).
+4. AI Shorts video analysis through the server (a resumable upload proxy).
 7. Support access, when it is built: off by default, time-boxed, every use in
    the customer's activity log (`security.php` already reports it as off, and
    there is no mechanism to switch on).

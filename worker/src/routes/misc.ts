@@ -346,6 +346,24 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
  * — replying with text here would send a second message to somebody who may
  * have just asked us to stop.
  */
+async function twilioSigned(authToken: string, given: string, url: string, origin: string | undefined, form: FormData): Promise<boolean> {
+  const fields = [...form.entries()].map(([k, v]) => [k, String(v)] as const).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const tail = fields.map(([k, v]) => `${k}${v}`).join('');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(authToken), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const u = new URL(url);
+  const candidates = new Set([url, origin ? `${origin.replace(/\/$/, '')}${u.pathname}${u.search}` : url]);
+  for (const c of candidates) {
+    const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(c + tail)));
+    const want = btoa(String.fromCharCode(...mac));
+    if (want.length === given.length) {
+      let diff = 0;
+      for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ given.charCodeAt(i);
+      if (diff === 0) return true;
+    }
+  }
+  return false;
+}
+
 export async function handleSmsInbound(req: Request, env: Env): Promise<Response> {
   const form = await req.formData().catch(() => null);
   const twiml = () => new Response('<?xml version="1.0" encoding="UTF-8"?><Response/>', {
@@ -361,6 +379,22 @@ export async function handleSmsInbound(req: Request, env: Env): Promise<Response
   const owner = await env.DB.prepare('SELECT account_id FROM crm_sms_config WHERE from_number = ?')
     .bind(to).first<{ account_id: string }>();
   if (!owner) return twiml();
+
+  /*
+   * Only Twilio's own deliveries are acted on.
+   *
+   * This address is public, and it used to take any POST naming a number — so
+   * anyone could opt a workspace's contacts out of texts by posting "STOP" as
+   * them. Twilio signs every webhook: HMAC-SHA1, keyed with the account's auth
+   * token, over the URL it called followed by every form field sorted by name.
+   * The URL is tried as received and on the app's own origin, because a proxy
+   * in front can change what the Worker sees.
+   */
+  const cfg = await loadSmsConfig(env, owner.account_id);
+  const given = req.headers.get('X-Twilio-Signature') ?? '';
+  if (!cfg?.authToken || !given || !(await twilioSigned(cfg.authToken, given, req.url, env.APP_ORIGIN, form))) {
+    return twiml();
+  }
 
   if (isStopMessage(text)) {
     await recordOptOut(env, owner.account_id, from, 'reply');

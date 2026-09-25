@@ -78,7 +78,7 @@ const SECTIONS: { id: string; icon: typeof Lock; title: string; lead: string; po
       'Replying to email and chat: the message being answered, with your business profile.',
       'Screening outgoing messages for abuse: the text of that message.',
       'Your contact list is not sent — messages are written with placeholders that are filled in on our side.',
-      'Most AI features are called from our server with the platform’s key. A few older tools — review replies, inbox drafts, AI Shorts and some content planners — call Gemini directly from your browser when you have saved your own AI key in Settings → AI Engine. We are moving those to the server.',
+      'AI calls are made from our server, never from your browser — with one exception: analysing a video in AI Shorts uploads the video to Google directly from your browser, using an AI key you have saved yourself.',
       'Whether Google may use this data to improve its models depends on the plan of the AI key in use: Google’s terms say paid-plan prompts are not used that way, and free-tier prompts may be.',
     ],
   },

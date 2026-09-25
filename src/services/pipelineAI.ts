@@ -26,11 +26,10 @@
  * silently deleting somebody's opportunities to tidy up a board would be the
  * worst bug this file could have.
  */
-import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
+import { aiAvailable, aiFetch } from '../lib/gemini';
 import type { Deal, Pipeline, Stage } from '../types';
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
-const MODEL = DEFAULT_TEXT_MODEL;
 
 /* ── The brief ─────────────────────────────────────────────────────────── */
 
@@ -245,7 +244,7 @@ export function readPlan(raw: RawPlan): { summary: string; stages: PlannedStage[
 
 export async function planPipeline(brief: ProjectBrief): Promise<PipelinePlan> {
   const fallback = rulesPlan(brief);
-  const key = getGeminiKey();
+  const key = aiAvailable();
   if (!key) {
     return { ...fallback, note: 'Built without an AI model — writing is unavailable at the moment. Every stage below comes from what you wrote and from how sales pipelines are normally laid out.' };
   }
@@ -279,9 +278,7 @@ Return JSON only:
 }`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-      {
+    const res = await aiFetch({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

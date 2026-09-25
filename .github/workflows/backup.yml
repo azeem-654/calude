@@ -1,0 +1,90 @@
+# A copy of the live database that does not live in the database.
+#
+# Cloudflare D1 Time Travel can put the database back to any minute in its
+# retention window, and a restore point is written before every release
+# (deploy.yml). But Time Travel is the same service as the thing it protects:
+# a deleted database, a lost Cloudflare account or a window that has passed
+# takes it with it. This keeps a second, independent copy — every night, the
+# whole database exported, encrypted, and kept here for 30 days.
+#
+# Encrypted before it leaves the runner. The export holds every customer's
+# records (and their connected-service credentials, which are themselves
+# encrypted). An artifact on this repository can be downloaded by anybody with
+# read access to it, so without the passphrase the file is useless — and
+# without the BACKUP_PASSPHRASE secret this job refuses to upload anything.
+#
+# Restoring (docs/SECURITY.md has the full steps):
+#   gpg --decrypt crmpro-<date>.sql.gz.gpg | gunzip > restore.sql
+#   npx wrangler d1 execute <a new database> --remote --file restore.sql
+#
+# The passphrase is the only way into these files. Keep a copy of it
+# somewhere other than GitHub.
+
+name: Back up the live database
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the secrets are present
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::error::CLOUDFLARE_API_TOKEN is not set."; exit 1; fi
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::warning::No BACKUP_PASSPHRASE repository secret, so no backup was taken. Add one (a long random phrase) under Settings → Secrets and variables → Actions."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.SKIP != '1'
+
+      - uses: actions/setup-node@v4
+        if: env.SKIP != '1'
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install wrangler
+        if: env.SKIP != '1'
+        run: npm ci --no-audit --no-fund
+
+      - name: Export, compress and encrypt
+        if: env.SKIP != '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y-%m-%d)
+          npx wrangler d1 export crmpro --remote --output "crmpro-$STAMP.sql"
+          test -s "crmpro-$STAMP.sql"
+          gzip -9 "crmpro-$STAMP.sql"
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "crmpro-$STAMP.sql.gz.gpg" "crmpro-$STAMP.sql.gz"
+          # The plain copy never outlives this step.
+          shred -u "crmpro-$STAMP.sql.gz" 2>/dev/null || rm -f "crmpro-$STAMP.sql.gz"
+          sha256sum "crmpro-$STAMP.sql.gz.gpg" | tee "crmpro-$STAMP.sha256"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+
+      - name: Keep it for 30 days
+        if: env.SKIP != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: crmpro-${{ env.STAMP }}
+          path: |
+            crmpro-${{ env.STAMP }}.sql.gz.gpg
+            crmpro-${{ env.STAMP }}.sha256
+          retention-days: 30
+          if-no-files-found: error

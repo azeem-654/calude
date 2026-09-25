@@ -43,3 +43,4 @@ public/api/data/*
 
 # Wrangler's local state — a local D1 database and cached build output.
 .wrangler/
+.dev.vars

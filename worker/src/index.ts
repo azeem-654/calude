@@ -13,6 +13,8 @@
  * with no way to tell which of them broke something. The suffix is a URL, not
  * a language.
  */
+import { useWrapKey } from './lib/db';
+import { handleAi } from './routes/ai';
 import { handleSecurity } from './routes/security';
 import { corsHeaders, json, preflight } from './lib/http';
 import type { Env } from './lib/db';
@@ -67,6 +69,7 @@ type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Respon
 const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
   '/api/security.php': handleSecurity,
+  '/api/ai.php': handleAi,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot
      send. */
@@ -166,6 +169,7 @@ const ROUTES: Record<string, Handler> = {
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    await useWrapKey(env);
     const url = new URL(req.url);
 
     /*
@@ -253,6 +257,7 @@ export default {
    * and sequence follow-ups now go out on their own.
    */
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    await useWrapKey(env);
     ctx.waitUntil((async () => {
       const started = Date.now();
 

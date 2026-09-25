@@ -178,6 +178,13 @@ id. The rules that closed those holes:
 - **Sessions are stored as `sessionKey(token)`**, never the raw token; delete
   and compare with `sessionKeys()`.
 - Record security events with `recordAuthEvent` — never a secret in `detail`.
+- **AI from the browser goes through `/api/ai.php`** (`aiFetch` in
+  `src/lib/gemini.ts`), never to Google directly; every server route that
+  spends the AI key calls `aiBudget()` first. Models are chosen by
+  `modelsFor()` from what the key lists — never hard-code a model id.
+- **Install secrets are wrapped** by `CREDENTIAL_WRAP_KEY` when it is set
+  (`installSecret` in lib/db.ts). Never make it regenerate on a failed
+  unwrap: that would orphan every stored credential.
 - Customer-facing security wording must match docs/SECURITY.md §7, and never
   anything in §8. `npm run test:security` (needs `wrangler dev`) is the
   two-tenant attack suite; extend it with every new route that takes an id.

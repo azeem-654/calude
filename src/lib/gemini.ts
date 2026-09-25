@@ -24,8 +24,51 @@ export function setGeminiKey(key: string) {
   } catch { /* storage blocked */ }
 }
 
+/**
+ * Is AI available to this page?
+ *
+ * Text AI now runs on the server (/api/ai.php) with the operator's key, so a
+ * signed-in session is enough — no key in the browser. Only AI Shorts' video
+ * upload still needs a key of the customer's own, via `getGeminiKey`.
+ */
+export function aiAvailable(): string {
+  try {
+    const s = JSON.parse(localStorage.getItem('crm_session') || 'null') as { backend?: string; token?: string } | null;
+    return s?.backend === 'php' && s.token ? 'server' : '';
+  } catch { return ''; }
+}
+
 export function hasGeminiKey() {
-  return !!getGeminiKey();
+  return !!aiAvailable() || !!getGeminiKey();
+}
+
+/**
+ * A Gemini generateContent call, made by the server.
+ *
+ * Takes the same request body the callers always built and returns something
+ * shaped like the `fetch` Response they already handled — `ok`, `status`,
+ * `json()`, `text()` — with Gemini's own response inside, so moving the call
+ * off the page did not mean rewriting every parser.
+ */
+export async function aiFetch(init: RequestInit | string): Promise<Response> {
+  const bodyText = typeof init === 'string' ? init : String(init.body ?? '{}');
+  let request: unknown = {};
+  try { request = JSON.parse(bodyText); } catch { request = {}; }
+  let session: { token?: string } | null = null;
+  try { session = JSON.parse(localStorage.getItem('crm_session') || 'null'); } catch { session = null; }
+  const accountId = (() => { try { return localStorage.getItem('crm_active_account') || ''; } catch { return ''; } })();
+  const base = (import.meta.env.DEV ? 'http://localhost:8787' : '');
+  try {
+    const r = await fetch(`${base}/api/ai.php`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate', token: session?.token, accountId, request }),
+    });
+    const data = await r.json() as { success?: boolean; response?: unknown; error?: string };
+    if (data.success) return new Response(JSON.stringify(data.response ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ error: { message: data.error ?? 'The AI could not answer.' } }), { status: r.status >= 400 ? r.status : 502 });
+  } catch {
+    return new Response(JSON.stringify({ error: { message: 'Could not reach the server.' } }), { status: 503 });
+  }
 }
 
 /*
@@ -128,10 +171,10 @@ async function postGeminiWithFallback(
   for (const model of models) {
     const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      const res = await fetch(
-        `${BASE}/v1beta/models/${model}:generateContent?key=${getGeminiKey()}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-      );
+      /* Through the server, which chooses the model itself (lib/ai.ts
+         modelsFor); `model` here only paces the retries. */
+      void model;
+      const res = await aiFetch({ body: JSON.stringify(body) });
       if (res.ok) return await res.json();
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);

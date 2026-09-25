@@ -29,6 +29,8 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 10 | **Confirm billing is enabled on the Google Cloud project behind the AI key** | console.cloud.google.com → Billing | What the Trust Center may say about AI training. On a free-tier key Google may use prompts to improve its products; on a paid one its terms say it does not |
 | 11 | **Confirm the Cloudflare plan** (Workers Paid gives D1 Time Travel 30 days; Free gives 7) | Cloudflare → Billing | How far back the database can be restored. See docs/SECURITY.md §3.10 |
 | 12 | **Have a Privacy Policy and Terms of Service written** | a lawyer; a factual draft is in `docs/PRIVACY-POLICY-DRAFT.md` | Launching to the public. Only the Acceptable Use policy (`/terms`) exists today |
+| 13 | **Set `CREDENTIAL_WRAP_KEY`** on both Workers — a long random string, different for each, **never changed afterwards** | Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets → Add → type *Secret* | Encrypting the key that encrypts every stored password and API key. Until it is set, a database export contains both. See 23 |
+| 14 | **Add the repository secret `BACKUP_PASSPHRASE`** — a long random phrase, also kept somewhere outside GitHub | GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret | The nightly encrypted database backup (`backup.yml`). Without it the job warns and takes nothing |
 
 **Done, and no longer on the list:**
 
@@ -740,6 +742,41 @@ attack suite). Yours to do:
 Everything customers are told about security is in docs/SECURITY.md §7, and
 what they must **not** be told is §8 — no "end-to-end encrypted", no
 certifications, no "never used for AI training" until item 10 is confirmed.
+
+
+### 23. The two secrets that finish the security work — do both once
+
+**`CREDENTIAL_WRAP_KEY` (item 13).** Every mailbox password, API key and
+payment key is encrypted in the database with an install key. That install
+key used to sit in the same database. With this secret set, it is stored
+encrypted under a key Cloudflare keeps outside the database, so an export of
+the database on its own opens nothing.
+
+1. Make a long random value — for example a password manager's 40-character
+   generator. Make a **different** one for staging.
+2. Cloudflare → Workers & Pages → **crmpro** → Settings → **Variables and
+   Secrets** → **Add** → Type **Secret**, name `CREDENTIAL_WRAP_KEY`, paste the
+   value, **Deploy**. Do the same on **crmpro-staging** with its own value.
+3. Save both values in your password manager. **Never change or delete them.**
+   The app refuses to run the parts that need credentials if the key is wrong
+   or missing — it will not quietly make a new one, because that would lose
+   every connected mailbox and key at once — so a changed key means putting the
+   old one back.
+
+Nothing else needs doing: the first request after it is set wraps the stored
+key in place.
+
+**`BACKUP_PASSPHRASE` (item 14).** GitHub → Settings → Secrets and variables →
+Actions → **New repository secret**, name `BACKUP_PASSPHRASE`, a long random
+phrase. Keep a copy outside GitHub — it is the only way to open a backup. Then
+Actions → **Back up the live database** → **Run workflow** once to check it
+works; after that it runs every night at 03:17 UTC and keeps 30 days.
+
+To restore from one: download the artifact, then
+`gpg --decrypt crmpro-<date>.sql.gz.gpg | gunzip > restore.sql` and
+`npx wrangler d1 execute <new database> --remote --file restore.sql`.
+Once a backup has run successfully, the Trust Center may say "an encrypted
+copy of the database is taken every night" — not before (docs/SECURITY.md §8).
 
 ## Done
 

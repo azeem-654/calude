@@ -33,10 +33,12 @@
     "test:wizard": "node test/newProject.e2e.mjs",
     "test:security": "node test/security.e2e.mjs",
     "test:models": "npx --yes tsx worker/test/models.test.mts",
-    "test:merge": "npx --yes tsx worker/test/mergeFields.test.mts"
+    "test:merge": "npx --yes tsx worker/test/mergeFields.test.mts",
+    "test:html": "node test/emailHtml.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
+    "dompurify": "^3.4.16",
     "lucide-react": "^1.16.0",
     "qrcode-generator": "^1.5.2",
     "react": "^19.2.6",

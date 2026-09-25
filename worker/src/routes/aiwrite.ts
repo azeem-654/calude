@@ -28,7 +28,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, dataGet, userFromToken, type Env } from '../lib/db';
-import { askGemini, loadAiKey } from '../lib/ai';
+import { askGemini, loadAiKey, aiBudget } from '../lib/ai';
 import {
   writeCampaign, writeSequence, writeAutomation,
   AUTOMATION_NODE_TYPES, type Brand,
@@ -135,6 +135,8 @@ export async function handleAiWrite(req: Request, env: Env): Promise<Response> {
   if (!/^[A-Za-z0-9_.\-]{1,64}$/.test(accountId)) return fail('A valid workspace is required.');
   if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
 
+  const overBudget = await aiBudget(env, accountId);
+  if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
   const key = await loadAiKey(env, accountId);
   if (!key) {
     return fail(

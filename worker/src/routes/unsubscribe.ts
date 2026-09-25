@@ -13,7 +13,7 @@
  * all, so the address has to be trustworthy on its own — otherwise anyone can
  * unsubscribe anyone by editing a query string.
  */
-import { addr, fail, json } from '../lib/http';
+import { addr, fail, json, bearer } from '../lib/http';
 import { canAccess, installSecret, nowIso, requireSessionForSocket, userFromToken, type Env } from '../lib/db';
 import { signAddress } from '../lib/crypto';
 import { timingSafeEqual } from '../lib/crypto';
@@ -68,7 +68,7 @@ export async function handleUnsubscribe(req: Request, env: Env): Promise<Respons
 
   /* ── The app reading opt-outs back into its suppression list ── */
   if (q.get('list')) {
-    const user = await userFromToken(env.DB, q.get('token') ?? undefined);
+    const user = await userFromToken(env.DB, bearer(req));
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
     if (!(await canAccess(env.DB, user, account))) return fail('That workspace is not yours to read.', 403);
     const since = q.get('since') || '1970-01-01T00:00:00.000Z';
@@ -80,7 +80,7 @@ export async function handleUnsubscribe(req: Request, env: Env): Promise<Respons
 
   /* ── The sender asking for a signed URL to put in a footer ── */
   if (q.get('sign')) {
-    const gate = await requireSessionForSocket(env.DB, q.get('token') ?? undefined);
+    const gate = await requireSessionForSocket(env.DB, bearer(req));
     if ('denied' in gate) return gate.denied;
     /* Only for your own workspace. A signed opt-out is an instruction to stop
        mailing someone, and signing one for another workspace let anyone

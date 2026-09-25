@@ -17,7 +17,7 @@
  * guess. Reading the events back is what needs the session, and does.
  */
 import { trackedLinkValid } from '../lib/trackSign';
-import { corsHeaders, fail, json } from '../lib/http';
+import { corsHeaders, fail, json, bearer } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { dataGet } from '../lib/db';
 import { enrolOnEvent } from '../lib/automationEngine';
@@ -119,7 +119,7 @@ export async function handleTrack(req: Request, env: Env): Promise<Response> {
   /* ── Sync: the only branch that reads anything back, so the only one that
         needs to prove who is asking. ── */
   if (url.searchParams.get('events')) {
-    const token = url.searchParams.get('token') ?? undefined;
+    const token = bearer(req);
     const user = await userFromToken(env.DB, token);
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
     if (!(await canAccess(env.DB, user, account))) return fail('That workspace is not yours to read.', 403);

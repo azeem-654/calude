@@ -10,6 +10,11 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  /**
+   * Wraps the install secrets in crm_meta (see installSecret). A Cloudflare
+   * secret; once set, never change it.
+   */
+  CREDENTIAL_WRAP_KEY?: string;
   /** Optional. Set with `wrangler secret put` when a customer wants Stripe. */
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
@@ -111,14 +116,93 @@ export async function metaPut(db: D1Database, key: string, value: string): Promi
  * trap. `INSERT OR IGNORE` makes the race between two simultaneous first
  * requests harmless — whichever lands first wins and both read the same value.
  */
+/*
+ * ── Wrapping: the install secrets, encrypted by a key the database never sees ──
+ *
+ * These secrets used to sit in `crm_meta` as they are — including
+ * `mailbox_key`, which encrypts every stored mailbox password, API key and
+ * payment key. So one export of the database was both the locked box and its
+ * key.
+ *
+ * With `CREDENTIAL_WRAP_KEY` set as a Cloudflare secret (never in the
+ * database, never in the repository), each value is stored as
+ * `wrapped:v1.…` — AES-GCM under that key — and unwrapped here in memory.
+ * The first time a Worker with the key meets an unwrapped value it wraps it
+ * in place; nothing else changes, because the secret itself is the same and
+ * everything encrypted with it still decrypts.
+ *
+ * Refusing, never regenerating: a wrapped value that cannot be opened (the
+ * key was changed or removed) throws. Generating a fresh secret instead would
+ * silently orphan every credential in the database, which is the one outcome
+ * worse than an error. The key must therefore never be changed once set —
+ * OWNER-CHECKLIST says so beside the instruction to set it.
+ */
+let wrapKeyHex: string | null = null;
+const unwrapped = new Map<string, string>();
+
+/** Called at the top of every request and tick with that invocation's env. */
+export async function useWrapKey(env: Env): Promise<void> {
+  const raw = String(env.CREDENTIAL_WRAP_KEY ?? '').trim();
+  if (!raw) { wrapKeyHex = null; return; }
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  wrapKeyHex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function wrapKey(): Promise<CryptoKey> {
+  const bytes = new Uint8Array((wrapKeyHex ?? '').match(/../g)!.map(h => parseInt(h, 16)));
+  return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+const unb64 = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function wrap(plain: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await wrapKey(), new TextEncoder().encode(plain)));
+  return `wrapped:v1.${b64(iv)}.${b64(ct)}`;
+}
+
+async function unwrap(stored: string, key: string): Promise<string> {
+  if (!wrapKeyHex) throw new Error(`Install secret "${key}" is wrapped but CREDENTIAL_WRAP_KEY is not set on this Worker.`);
+  const [, iv, ct] = stored.slice('wrapped:'.length).split('.');
+  try {
+    const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) as BufferSource }, await wrapKey(), unb64(ct) as BufferSource);
+    return new TextDecoder().decode(out);
+  } catch {
+    throw new Error(`Install secret "${key}" could not be unwrapped — CREDENTIAL_WRAP_KEY is not the key it was wrapped with.`);
+  }
+}
+
 export async function installSecret(db: D1Database, key: string): Promise<string> {
+  const cacheKey = `${wrapKeyHex ?? '-'}:${key}`;
+  const cached = unwrapped.get(cacheKey);
+  if (cached) return cached;
+
   const existing = await metaGet(db, key);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.startsWith('wrapped:')) {
+      const plain = await unwrap(existing, key);
+      unwrapped.set(cacheKey, plain);
+      return plain;
+    }
+    if (wrapKeyHex) {
+      /* Wrapped in place, only if nobody changed it in between. */
+      await db.prepare('UPDATE crm_meta SET v = ?, updated_at = ? WHERE k = ? AND v = ?')
+        .bind(await wrap(existing), nowIso(), key, existing).run();
+    }
+    unwrapped.set(cacheKey, existing);
+    return existing;
+  }
+
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const secret = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
   await db.prepare('INSERT OR IGNORE INTO crm_meta (k, v, updated_at) VALUES (?, ?, ?)')
-    .bind(key, secret, nowIso()).run();
-  return (await metaGet(db, key)) ?? secret;
+    .bind(key, wrapKeyHex ? await wrap(secret) : secret, nowIso()).run();
+  /* Whichever of two simultaneous first requests won. */
+  const now = await metaGet(db, key);
+  const plain = !now ? secret : now.startsWith('wrapped:') ? await unwrap(now, key) : now;
+  unwrapped.set(cacheKey, plain);
+  return plain;
 }
 
 /* ── Users and sessions ──────────────────────────────────────────────────── */

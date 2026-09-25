@@ -21,7 +21,7 @@
 import { body, fail, json } from '../lib/http';
 import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { gate as contentGate } from '../lib/contentGate';
-import { askGemini, loadAiKey } from '../lib/ai';
+import { askGemini, loadAiKey, aiBudget } from '../lib/ai';
 import { readSite } from '../lib/readSite';
 import { ensureProjectPipeline } from '../lib/projectPipeline';
 import { sanitiseBrief } from '../lib/projectBrief';
@@ -280,6 +280,8 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
    *    filled with something that reads well.
    */
   if (act === 'read_url' || act === 'read_text') {
+    const overBudget = await aiBudget(env, accountId);
+    if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const key = await loadAiKey(env, accountId);
     if (!key) {
       return fail('No AI key is connected to this workspace, so nothing can be read into a portfolio. Add one under Settings \u2192 AI Engine, or fill the client in by hand.');

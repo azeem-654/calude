@@ -16,6 +16,7 @@
  */
 import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
+import { rateLimit } from './rateLimit';
 
 const BASE = 'https://generativelanguage.googleapis.com';
 
@@ -450,4 +451,20 @@ Reply with JSON only, in exactly this shape:
     return { ok: false, findings: [], sources: [], error: friendly(res.status, lastError) };
   }
   return { ok: false, findings: [], sources: [], error: friendly(0, lastError || 'every model failed') };
+}
+
+/**
+ * One AI budget per workspace, shared by every route that spends the key.
+ *
+ * Only the New Project wizard had a limit; writing, product ideas, page
+ * reading and workflow building had none, so any free sign-up could run the
+ * operator's AI quota down in a loop. `null` means go ahead; otherwise the
+ * sentence to show.
+ */
+export async function aiBudget(env: Env, accountId: string): Promise<string | null> {
+  for (const [what, max, windowSeconds] of [['ai-hour', 120, 3600], ['ai-day', 800, 86_400]] as const) {
+    const v = await rateLimit(env, { what, who: accountId, max, windowSeconds });
+    if (!v.allowed) return `That is a lot of AI requests for one workspace — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`;
+  }
+  return null;
 }

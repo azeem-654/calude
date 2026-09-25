@@ -93,7 +93,27 @@ export async function handleValidateKey(req: Request, env: Env): Promise<Respons
       return json({ success: false, provider: 'apollo', status: r.status, message: msg, error: msg });
     }
 
-    return fail(`"${provider}" is not a key this app can test. Testable keys: OpenAI, Apollo.io.`);
+    /* Both were checked from the browser, with the customer's key sent from
+       the page. Every third-party call is the Worker's. */
+    if (provider === 'resend') {
+      const r = await fetch('https://api.resend.com/domains', { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) });
+      if (r.ok) {
+        let n = 0;
+        try { n = ((await r.json()) as { data?: unknown[] }).data?.length ?? 0; } catch { /* the 200 is the answer */ }
+        return json({ success: true, provider, message: n ? `Key is valid — ${n} domain${n === 1 ? '' : 's'} on this account.` : 'Key is valid. Add and verify a sending domain in Resend next.' });
+      }
+      const msg = explain('Resend', r.status, await r.text());
+      return json({ success: false, provider, status: r.status, message: msg, error: msg });
+    }
+
+    if (provider === 'mailtrap') {
+      const r = await fetch('https://mailtrap.io/api/accounts', { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) });
+      if (r.ok) return json({ success: true, provider, message: 'Key is valid — Mailtrap recognised this account.' });
+      const msg = explain('Mailtrap', r.status, await r.text());
+      return json({ success: false, provider, status: r.status, message: msg, error: msg });
+    }
+
+    return fail(`"${provider}" is not a key this app can test. Testable keys: OpenAI, Apollo.io, Resend, Mailtrap.`);
   } catch (e) {
     const timedOut = e instanceof Error && e.name === 'TimeoutError';
     const msg = timedOut

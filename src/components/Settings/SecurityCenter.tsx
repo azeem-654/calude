@@ -356,7 +356,7 @@ export default function SecurityCenter() {
             <div>
               <b style={{ fontSize: 13.5 }}>What AI receives</b>
               <p style={SUB}>
-                AI features use Google’s Gemini, mostly called from our server (a few older tools call it from your browser if you saved your own key under AI Engine). It receives what the task in front of it needs:
+                AI features use Google’s Gemini, called from our server (the one exception is AI Shorts’ video analysis, which uploads the video from your browser with a key you saved yourself). It receives what the task in front of it needs:
                 your business profile and your request when writing a post or planning a project; the files, pages or voice
                 note you give the New Project wizard; the text of an incoming email when drafting a reply to it; a visitor’s
                 chat when the chat assistant answers; a form submission when it is summarised for you; and the text of a

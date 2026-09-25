@@ -26,7 +26,7 @@ export function corsHeaders(origin = '*'): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Vary': 'Origin',
     /* An API answer is data. Told not to guess otherwise, a browser will never
        run one as a script or render one as a page, whatever is inside it. */
@@ -75,4 +75,19 @@ export function addr(value: unknown): string | null {
 /** A header value that cannot span two lines. */
 export function headerSafe(value: unknown, max = 300): string {
   return String(value ?? '').replace(/[\r\n\0]/g, ' ').trim().slice(0, max);
+}
+
+/**
+ * The session token from the `Authorization: Bearer` header, falling back to
+ * a `token` query parameter for a bundle older than the header.
+ *
+ * GET requests used to carry the token in the address, and addresses are
+ * written to request logs — so every sync left a working session token in a
+ * log line. New code sends the header.
+ */
+export function bearer(req: Request, url?: URL): string | undefined {
+  const h = req.headers.get('Authorization') ?? '';
+  const m = /^Bearer\s+(\S+)$/i.exec(h);
+  if (m) return m[1];
+  return (url ?? new URL(req.url)).searchParams.get('token') ?? undefined;
 }

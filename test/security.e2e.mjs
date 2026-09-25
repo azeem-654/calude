@@ -120,7 +120,7 @@ const portal = await api('stripe-portal.php', { token: B.token, accountId: A.acc
 check("B cannot open A's billing portal", !portal.ok, JSON.stringify(portal.data));
 const diag = await api('diagnostics.php', { token: B.token });
 check('A customer cannot read install-wide diagnostics', !diag.ok && diag.status === 403, JSON.stringify(diag.data).slice(0, 100));
-const unsub = await fetch(`${BASE}/api/unsubscribe.php?sign=1&token=${B.token}&a=${A.acct}&e=x@example.test`);
+const unsub = await fetch(`${BASE}/api/unsubscribe.php?sign=1&a=${A.acct}&e=x@example.test`, { headers: { Authorization: `Bearer ${B.token}` } });
 check("B cannot sign opt-outs for A's contacts", unsub.status === 403, String(unsub.status));
 const click = await fetch(`${BASE}/api/track.php?c=e1&a=${A.acct}&u=${encodeURIComponent('https://evil.example/login')}`, { redirect: 'manual' });
 check('An unsigned tracked link does not redirect', click.status === 200 && !click.headers.get('location'), `${click.status} ${click.headers.get('location')}`);

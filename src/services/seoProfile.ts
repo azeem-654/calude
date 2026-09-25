@@ -17,7 +17,7 @@
  * starts with what it has.
  */
 import { extractPhrases, extractSentences } from './campaignAnalysis';
-import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
+import { aiAvailable, aiFetch } from '../lib/gemini';
 import { newId } from './blogAutomation';
 import type {
   Keyword, MoneyPage, PortfolioItem, SearchIntent, SeoProfile, TopicCluster, VoiceProfile,
@@ -328,7 +328,6 @@ export function distilFromText(items: PortfolioItem[]): DistilledProfile {
 /* ── The AI reader ── */
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
-const MODEL = DEFAULT_TEXT_MODEL;
 
 interface RawProfile {
   offering?: string;
@@ -353,7 +352,7 @@ interface RawProfile {
  * actually sells, and which topics group together — is what we keep.
  */
 export async function distilWithAI(items: PortfolioItem[]): Promise<DistilledProfile> {
-  const key = getGeminiKey();
+  const key = aiAvailable();
   const corpus = ALL_TEXT(items);
 
   if (!key) {
@@ -389,9 +388,7 @@ Give 3 to 6 clusters. Keywords must be phrases a real person would search for,
 not slogans. Prefer specific long-tail phrases over one-word terms.`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-      {
+    const res = await aiFetch({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -17,7 +17,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, dataGet, nowIso, userFromToken, type Env } from '../lib/db';
-import { loadAiKey } from '../lib/ai';
+import { aiBudget, loadAiKey } from '../lib/ai';
 import { AUTOMATION_NODE_TYPES, understandInstruction, writeAutomation, type Brand } from '../lib/autopilotWrite';
 import {
   deletePublishTarget, loadPublishTarget, notePublishResult,
@@ -375,6 +375,8 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       );
     }
 
+    const overBudget = await aiBudget(env, accountId);
+    if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const apiKey = await loadAiKey(env, accountId);
     if (!apiKey) {
       return fail('No AI key is connected, so this cannot read an instruction yet. Settings → AI Engine.', 400);
@@ -719,6 +721,8 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       );
     }
 
+    const overBudget = await aiBudget(env, accountId);
+    if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const apiKey = await loadAiKey(env, accountId);
     if (!apiKey) return fail('No AI key is connected yet. Settings → AI Engine.', 400);
 

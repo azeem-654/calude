@@ -19,7 +19,7 @@
  * A generator that believes it put the keyword in the first paragraph and did
  * not is exactly the failure the checks exist to catch.
  */
-import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
+import { aiAvailable, aiFetch } from '../lib/gemini';
 import type {
   Article, ArticleSeo, BlogProject, MonthPlan, PlannedPost, SeoCheck,
 } from '../types/blogAutomation';
@@ -658,7 +658,6 @@ function composed(post: PlannedPost, project: BlogProject, prefix = ''): Article
 /* ── The AI pass ── */
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
-const MODEL = DEFAULT_TEXT_MODEL;
 
 /**
  * Write one post.
@@ -669,7 +668,7 @@ const MODEL = DEFAULT_TEXT_MODEL;
  * a blog that fabricates a price or a guarantee is worse than no blog.
  */
 export async function writeWithAI(post: PlannedPost, project: BlogProject): Promise<Article> {
-  const key = getGeminiKey();
+  const key = aiAvailable();
   if (!key) return composed(post, project);
 
   const page = project.moneyPages.find(m => m.id === post.moneyPageId);
@@ -701,9 +700,7 @@ ${page?.url ? `- Include exactly one link to ${page.url}, with anchor text descr
   specific fact would be needed, write the sentence so the reader is told to ask.`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-      {
+    const res = await aiFetch({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

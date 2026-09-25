@@ -22,6 +22,7 @@
  * will run a script — most will not — but because the same body is shown back
  * inside this app, where it would.
  */
+import DOMPurify from 'dompurify';
 
 /**
  * Does this body already contain markup?
@@ -103,54 +104,45 @@ export function sanitizeEmailHtml(html: string): string {
       .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
   }
 
-  const doc = new DOMParser().parseFromString(`<div id="crm-root">${html}</div>`, 'text/html');
-  const root = doc.getElementById('crm-root');
-  if (!root) return '';
-
-  const walk = (node: Element) => {
-    for (const child of Array.from(node.children)) {
-      const tag = child.tagName.toLowerCase();
-
-      if (DROP_WHOLE.has(tag)) { child.remove(); continue; }
-
-      if (!ALLOWED_TAGS.has(tag)) {
-        /* Keep the words, drop the wrapper — an unknown element should not take
-           a paragraph of real content with it. */
-        const span = doc.createElement('span');
-        span.innerHTML = child.innerHTML;
-        child.replaceWith(span);
-        walk(span);
-        continue;
-      }
-
-      for (const attr of Array.from(child.attributes)) {
-        const name = attr.name.toLowerCase();
-        const allowed = TAG_ATTRS[tag];
-
-        if (name.startsWith('on')) { child.removeAttribute(attr.name); continue; }
-
-        if (name === 'href' || name === 'src') {
-          const url = allowed?.has(name) ? safeUrl(attr.value) : null;
-          if (url === null) child.removeAttribute(attr.name);
-          else child.setAttribute(name, url);
-          continue;
-        }
-
-        if (name === 'style') { child.setAttribute('style', safeStyle(attr.value)); continue; }
-
-        if (!GLOBAL_ATTRS.has(name) && !allowed?.has(name)) child.removeAttribute(attr.name);
-      }
-
-      /* A link that opens elsewhere must not hand the opener over with it. */
-      if (tag === 'a' && child.getAttribute('target') === '_blank') {
-        child.setAttribute('rel', 'noopener noreferrer');
-      }
-
-      walk(child);
+  /*
+   * DOMPurify does the parsing and the stripping.
+   *
+   * This walked the DOM by hand, and a hand-written sanitiser that re-parses
+   * (`span.innerHTML = child.innerHTML`) is exactly where mutation-XSS lives —
+   * markup that is harmless as parsed once and dangerous as parsed twice.
+   * DOMPurify is built and fuzzed for that. The allow-lists and the URL and
+   * style rules are this file's own, applied through its hooks, so what an
+   * email may contain has not changed; only who enforces it.
+   */
+  const allAttrs = new Set<string>([...GLOBAL_ATTRS, ...Object.values(TAG_ATTRS).flatMap(a => [...a])]);
+  DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    const tag = node.nodeName.toLowerCase();
+    const name = data.attrName.toLowerCase();
+    if (name === 'href' || name === 'src') {
+      const url = TAG_ATTRS[tag]?.has(name) ? safeUrl(data.attrValue) : null;
+      if (url === null) data.keepAttr = false; else data.attrValue = url;
+      return;
     }
-  };
-  walk(root);
-  return root.innerHTML;
+    if (name === 'style') { data.attrValue = safeStyle(data.attrValue); return; }
+    if (!GLOBAL_ATTRS.has(name) && !TAG_ATTRS[tag]?.has(name)) data.keepAttr = false;
+  });
+  DOMPurify.addHook('afterSanitizeAttributes', node => {
+    /* A link that opens elsewhere must not hand the opener over with it. */
+    if (node.nodeName.toLowerCase() === 'a' && node.getAttribute('target') === '_blank') node.setAttribute('rel', 'noopener noreferrer');
+  });
+  try {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [...ALLOWED_TAGS],
+      ALLOWED_ATTR: [...allAttrs],
+      FORBID_TAGS: [...DROP_WHOLE],
+      ALLOW_DATA_ATTR: false,
+      /* Unknown elements lose the wrapper and keep their words, as before. */
+      KEEP_CONTENT: true,
+    });
+  } finally {
+    DOMPurify.removeHook('uponSanitizeAttribute');
+    DOMPurify.removeHook('afterSanitizeAttributes');
+  }
 }
 
 /**

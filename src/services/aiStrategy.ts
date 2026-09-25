@@ -21,11 +21,10 @@
  * claim than "the word 'multi-location' appeared in your sentence", and a user
  * deciding how much to trust the plan needs to know which one happened.
  */
-import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
+import { aiAvailable, aiFetch } from '../lib/gemini';
 import type { AIChannel, AIStrategy } from '../types/aiSalesAgent';
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
-const MODEL = DEFAULT_TEXT_MODEL;
 
 /** Sensible when the objective is silent, and always declared as a default. */
 export const DEFAULTS = {
@@ -307,7 +306,7 @@ const strList = (v: unknown, max = 8): string[] =>
  */
 export async function proposeStrategy(objective: string): Promise<ProposalResult> {
   const fallback = fallbackStrategy(objective);
-  const key = getGeminiKey();
+  const key = aiAvailable();
   if (!key) {
     return { strategy: fallback, note: 'Planned without an AI model — no Gemini key is set in Settings. Every number below came from your sentence or from a stated default.' };
   }
@@ -340,9 +339,7 @@ The rationale must be reasons a business owner would find useful, not a
 restatement of the plan. Mention the trade-off in any channel you chose.`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-      {
+    const res = await aiFetch({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

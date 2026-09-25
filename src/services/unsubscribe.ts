@@ -42,7 +42,8 @@ export async function unsubscribeUrl(email: string, campaignId = ''): Promise<st
   if (!signature) {
     try {
       const res = await fetch(
-        `${endpoint()}?sign=1&e=${encodeURIComponent(address)}&a=${encodeURIComponent(account)}&token=${encodeURIComponent(getSession()?.token ?? '')}`,
+        `${endpoint()}?sign=1&e=${encodeURIComponent(address)}&a=${encodeURIComponent(account)}`,
+        { headers: { Authorization: `Bearer ${getSession()?.token ?? ''}` } },
       );
       const data = await res.json() as { success?: boolean; signature?: string };
       if (!data?.success || !data.signature) return null;
@@ -91,9 +92,15 @@ export async function syncUnsubscribes(): Promise<number> {
 
   let entries: UnsubEntry[];
   try {
-    const res = await fetch(`${endpoint()}?list=1&a=${encodeURIComponent(account)}&since=${encodeURIComponent(since)}`);
-    const data = await res.json() as { entries?: UnsubEntry[] };
-    entries = Array.isArray(data?.entries) ? data.entries : [];
+    /* It sent no token at all, so the server refused every sync and opt-outs
+       made by clicking a link never reached this browser's suppression list. */
+    const res = await fetch(`${endpoint()}?list=1&a=${encodeURIComponent(account)}&since=${encodeURIComponent(since)}`,
+      { headers: { Authorization: `Bearer ${getSession()?.token ?? ''}` } });
+    /* The server answers `unsubscribes` rows ({email, campaignId, at}); this
+       read `entries`, which it never sends. Both are accepted. */
+    const data = await res.json() as { entries?: UnsubEntry[]; unsubscribes?: { email: string; campaignId?: string; at: string }[] };
+    entries = Array.isArray(data?.entries) ? data.entries
+      : (data?.unsubscribes ?? []).map(u => ({ email: u.email, account, campaign: u.campaignId || undefined, at: u.at, source: 'link' }));
   } catch {
     return 0;
   }

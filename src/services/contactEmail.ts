@@ -221,9 +221,11 @@ export async function syncTracking(): Promise<number> {
 
   let events: { emailId: string; kind: string; url?: string; at: string }[] = [];
   try {
+    /* The token in a header, not the address: addresses are logged. */
     const res = await fetch(
       `${base}/api/track.php?events=1&a=${encodeURIComponent(account)}`
-      + `&since=${encodeURIComponent(since)}&token=${encodeURIComponent(token)}`,
+      + `&since=${encodeURIComponent(since)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
     );
     if (!res.ok) {
       /* Said once, to the console, rather than silently. A permanently empty

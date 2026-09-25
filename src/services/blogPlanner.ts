@@ -20,7 +20,7 @@
  * All three are enforced when the plan is built and re-checked afterwards by
  * `auditPlan`, so a hand-edited plan cannot silently break them either.
  */
-import { getGeminiKey, DEFAULT_TEXT_MODEL } from '../lib/gemini';
+import { aiAvailable, aiFetch } from '../lib/gemini';
 import { newId } from './blogAutomation';
 import { inlinePhrase } from './blogWriter';
 import type {
@@ -381,7 +381,6 @@ export function reflow(plan: MonthPlan, now = new Date()): MonthPlan {
 /* ── The AI pass ── */
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
-const MODEL = DEFAULT_TEXT_MODEL;
 
 interface RawPost {
   keyword?: string;
@@ -399,7 +398,7 @@ interface RawPost {
  * a model that cannot see the whole plan.
  */
 export async function enrichPlanWithAI(plan: MonthPlan, project: BlogProject): Promise<MonthPlan> {
-  const key = getGeminiKey();
+  const key = aiAvailable();
   if (!key) {
     return { ...plan, note: 'No Gemini key configured — titles and outlines written from the keywords. Add a key in Settings → AI for sharper ones.' };
   }
@@ -422,9 +421,7 @@ keyword or a close variant, and must not promise a number the business has not
 given you.`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-      {
+    const res = await aiFetch({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

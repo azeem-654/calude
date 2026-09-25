@@ -15,7 +15,7 @@
 import { body, fail, json } from '../lib/http';
 import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { gate as contentGate } from '../lib/contentGate';
-import { askGemini, loadAiKey } from '../lib/ai';
+import { askGemini, loadAiKey, aiBudget } from '../lib/ai';
 import { storefrontCurrency, storefrontLabel, storefrontReady } from './storefront';
 import { supplierReady } from './supplier';
 import { cleanSlug } from './shop';
@@ -302,6 +302,8 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
 
   /* ── Ideas ── */
   if (act === 'suggest_ideas') {
+    const overBudget = await aiBudget(env, accountId);
+    if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const apiKey = await loadAiKey(env, accountId);
     if (!apiKey) {
       return fail('Writing is unavailable on this installation at the moment, so the ideas cannot be written. This is not something you need a key for.');
