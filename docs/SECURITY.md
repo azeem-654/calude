@@ -98,7 +98,12 @@ against A and the install owner.
    session is an `HttpOnly; SameSite=Lax` cookie (`Secure` on https); the page
    keeps the placeholder `"cookie"`, which the Worker swaps for the cookie on
    same-origin requests only (`lib/session.ts`). Old sessions move over on
-   the next page load (`adopt_cookie`). `test/cookieSession.e2e.mjs`, 13 checks.
+   the next page load (`adopt_cookie`). A session lasts 30 days from last
+   use, renewed at most once a day (`userFromToken`); the cookie is kept 400
+   days so the server, not the cookie, decides when it ends. A page whose
+   session the server has ended (revoked, expired, signed out elsewhere) says
+   so on the sign-in screen rather than failing calls. `npm run test:cookies`,
+   19 checks.
 
 **MEDIUM**
 

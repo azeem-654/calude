@@ -182,7 +182,11 @@ id. The rules that closed those holes:
   (lib/session.ts) swaps it in for same-origin JSON requests before any route
   runs. Routes keep reading `d.token`. A GET that needs a session uses
   `bearer()`, which understands the placeholder. Tests may still send real
-  tokens.
+  tokens. A session lasts 30 days **from last use** (`userFromToken` renews
+  it); the cookie outlives it on purpose. `checkSession` on the client turns
+  a 401 into the sign-in screen with a reason — never treat an offline or a
+  500 as signed out. `npm run test:cookies` covers sign-up, reload, reopening
+  the browser, renewal and an ended session.
 - **Install mail (sign-in and sign-up codes) goes only through a mailbox in a
   workspace the install owner owns** (`installMailbox` in routes/auth.ts) —
   never a customer's, whose Sent folder would then hold other people's codes.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader, UserPlus, AlertTriangle } from 'lucide-react';
-import { login, bootstrap, register, hasAnyUser, authStatus, requestLoginCode, verifyLoginCode, googleStart } from '../../services/auth';
+import { login, bootstrap, register, hasAnyUser, authStatus, requestLoginCode, verifyLoginCode, googleStart, SIGNED_OUT_REASON } from '../../services/auth';
 import { activeBranding } from '../../services/tenancy';
 import { passwordProblem, passwordStrength } from '../../services/password';
 import { LogoMark } from '../shared/Logo';
@@ -81,7 +81,15 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  /* A session the server ended arrives here with its reason (checkSession in
+     auth.ts), said once, so nobody wonders whether they did something wrong. */
+  const [notice, setNotice] = useState(() => {
+    try {
+      const why = sessionStorage.getItem(SIGNED_OUT_REASON) ?? '';
+      sessionStorage.removeItem(SIGNED_OUT_REASON);
+      return why;
+    } catch { return ''; }
+  });
   const [checking, setChecking] = useState(true);
   const [testLogin, setTestLogin] = useState<{ username: string } | null>(null);
 

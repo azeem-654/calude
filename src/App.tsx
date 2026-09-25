@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
 import LoginScreen from './components/Auth/LoginScreen';
-import { getSession } from './services/auth';
+import { checkSession, getSession } from './services/auth';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
@@ -281,6 +281,39 @@ export default function App() {
       setActiveAccountId(session.user.accountId);
     }
   }, [session]);
+
+  /*
+   * The stored session, checked with the server — at start and whenever the
+   * tab comes back after a while. A session the server has ended goes back to
+   * the sign-in screen with the reason; anything short of a definite "no"
+   * (offline, a server fault) leaves it alone. See checkSession in auth.ts.
+   */
+  useEffect(() => {
+    if (!session || session.backend !== 'php') return;
+    let last = 0;
+    const check = () => {
+      if (Date.now() - last < 5 * 60_000) return;
+      last = Date.now();
+      void checkSession().then(r => {
+        if (r === 'ok') { setSession(getSession()); return; }
+        if (r !== 'ended') return;
+        /* On the app host a signed-out page is the sign-in screen at the same
+           address, so signing back in lands where they were. Anywhere else a
+           signed-out "/" is the marketing page, which would read as having
+           been thrown out of the product — go to sign-in, where the reason is. */
+        if (!isAppHost() && !/\/login$/.test(location.pathname)) {
+          location.replace(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/login`);
+          return;
+        }
+        setSession(null);
+      });
+    };
+    check();
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per signed-in session, not per user-object change
+  }, [session?.user.email]);
 
   /* Signing in at /login leaves that address in the bar, and it is not a route
      the signed-in app has. Put the workspace root back before the tree swaps. */

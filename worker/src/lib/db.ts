@@ -253,15 +253,32 @@ export async function sessionKeys(raw: string): Promise<[string, string]> {
   return [await sessionKey(raw), raw];
 }
 
+/** How long an unused session lives (sliding — see userFromToken). */
+export const SESSION_TTL = 30 * 86_400;
+
 export async function userFromToken(db: D1Database, token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   const [hashed, raw] = await sessionKeys(token);
+  const now = Math.floor(Date.now() / 1000);
   const row = await db.prepare(
-    `SELECT u.email, u.name, u.role, u.account_id AS accountId, s.token AS sk, s.last_seen_at AS seen
+    `SELECT u.email, u.name, u.role, u.account_id AS accountId, s.token AS sk, s.last_seen_at AS seen, s.expires_at AS exp
        FROM crm_sessions s JOIN crm_users u ON u.email = s.email
       WHERE s.token IN (?, ?) AND s.expires_at > ?`,
-  ).bind(hashed, raw, Math.floor(Date.now() / 1000)).first<SessionUser & { sk: string; seen: string | null }>();
+  ).bind(hashed, raw, now).first<SessionUser & { sk: string; seen: string | null; exp: number }>();
   if (!row) return null;
+  /*
+   * A session lasts while it is used.
+   *
+   * It used to end a fixed 30 days after signing in, however busy somebody
+   * was — so the most active customers were the ones signed out mid-task. Now
+   * it runs 30 days from the last use: once a day at most, a session used with
+   * fewer than 29 days left is pushed back out to 30. Thirty days untouched
+   * still ends it, which is what an idle limit is for.
+   */
+  if (row.exp - now < SESSION_TTL - 86_400) {
+    try { await db.prepare('UPDATE crm_sessions SET expires_at = ? WHERE token = ?').bind(now + SESSION_TTL, row.sk).run(); }
+    catch { /* the session still works until its old expiry */ }
+  }
   /* "Last active", for the list of signed-in devices. Written at most every
      ten minutes: every API call reads the session, and turning each of those
      into a write would be most of this database's writes. */

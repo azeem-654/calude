@@ -168,12 +168,45 @@ export async function authStatus(): Promise<AuthStatus> {
   return { initialised: hasAnyUser(), writable: true, backend: 'local', testLogin: null, google: false };
 }
 
-async function php(action: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: Record<string, unknown> } | null> {
+async function php(action: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: Record<string, unknown>; status: number } | null> {
   try {
     const r = await fetch(`${API_BASE}/api/auth.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...body }) });
     const data = await r.json();
-    return { ok: !!data.success, data };
+    return { ok: !!data.success, data, status: r.status };
   } catch { return null; }  // endpoint unreachable → caller uses local fallback
+}
+
+/**
+ * Is the session this page believes in still a session?
+ *
+ * The page used to take a stored session on trust. When the server's had
+ * ended — thirty days idle, signed out on another device, a password change —
+ * the app kept drawing itself as signed in while every request was refused,
+ * which looks like a broken product rather than "please sign in again".
+ *
+ * Asked at start-up and when the tab comes back into view. Only a definite
+ * "not authorised" from the server signs the page out; a network failure or a
+ * server error leaves the session alone, because being offline is not being
+ * signed out. The reason is left for the sign-in screen to say.
+ */
+export const SIGNED_OUT_REASON = 'crm_signed_out_reason';
+export async function checkSession(): Promise<'ok' | 'ended' | 'unknown'> {
+  const s = getSession();
+  if (!s || s.backend !== 'php') return 'unknown';
+  const res = await php('me', { token: s.token });
+  if (!res) return 'unknown';
+  if (res.ok && res.data.user) {
+    /* The name or role may have been changed elsewhere; the token stays. */
+    const user = res.data.user as AuthUser;
+    if (JSON.stringify(user) !== JSON.stringify(s.user)) setSession({ ...s, user });
+    return 'ok';
+  }
+  if (res.status === 401) {
+    setSession(null);
+    try { sessionStorage.setItem(SIGNED_OUT_REASON, 'Your session ended — sign in again to carry on where you left off.'); } catch { /* storage off */ }
+    return 'ended';
+  }
+  return 'unknown';
 }
 
 /* ── Bootstrap: create the first (agency) owner ── */

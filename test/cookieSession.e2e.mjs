@@ -89,6 +89,51 @@ const b = await pw.chromium.launch();
   await ctx.close();
 }
 
+/* 4 · Signing up through the form keeps you signed in — across a reload and
+   a browser closed and opened again. */
+{
+  execSync('npx wrangler d1 execute crmpro --local --command "DELETE FROM crm_signup_attempts"', { stdio: 'ignore' });
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
+  const p = await ctx.newPage();
+  const signupEmail = `stay-${Date.now()}@example.test`;
+  await p.goto(`${B}/login`, { waitUntil: 'networkidle' });
+  await p.getByRole('button', { name: 'Create one' }).click();
+  await p.locator('input[placeholder="Your name"]').fill('Stay Signedin');
+  await p.locator('input[placeholder="Email address"]').fill(signupEmail);
+  await p.locator('input[placeholder="Password"]').fill(pw1);
+  await p.locator('input[placeholder="Confirm password"]').fill(pw1);
+  const consent = p.locator('input[type=checkbox]');
+  if (await consent.count()) await consent.first().check();
+  await p.getByRole('button', { name: /^(Continue|Create account)/ }).click();
+  await p.waitForTimeout(2500);
+  const inApp = async (page) => (await page.locator('input[placeholder="Password"]').count()) === 0 && (await page.getByText(/Dashboard|AI Autopilot/).count()) > 0;
+  ok('signed up and in the app', await inApp(p));
+  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(1500);
+  ok('still signed in after a reload', await inApp(p));
+  const state = await ctx.storageState();
+  await ctx.close();
+  const again = await b.newContext({ viewport: { width: 1280, height: 900 }, storageState: state });
+  const p2 = await again.newPage();
+  await p2.goto(`${B}/`, { waitUntil: 'networkidle' }); await p2.waitForTimeout(1500);
+  ok('still signed in after closing and reopening the browser', await inApp(p2));
+  ok('the cookie is kept for longer than the session (the server decides)', (state.cookies.find(c => c.name === 'pc_session')?.expires ?? 0) > Date.now() / 1000 + 300 * 86400);
+
+  /* 5 · A session in use is renewed. */
+  const q = sql => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --json --command ${JSON.stringify(sql)}`, { encoding: 'utf8' }))[0].results;
+  const soon = Math.floor(Date.now() / 1000) + 2 * 86400;
+  q(`UPDATE crm_sessions SET expires_at = ${soon} WHERE email = '${signupEmail}'`);
+  await p2.evaluate(async () => { await fetch('/api/auth.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', token: 'cookie' }) }); });
+  const exp = q(`SELECT MAX(expires_at) AS e FROM crm_sessions WHERE email = '${signupEmail}'`)[0].e;
+  ok('a session in use is pushed back out to 30 days', exp > Date.now() / 1000 + 29 * 86400, String(exp - Date.now() / 1000));
+
+  /* 6 · A session the server ended goes to sign-in, and says why. */
+  q(`DELETE FROM crm_sessions WHERE email = '${signupEmail}'`);
+  await p2.reload({ waitUntil: 'networkidle' }); await p2.waitForTimeout(2000);
+  ok('an ended session returns to the sign-in screen', (await p2.locator('input[placeholder="Password"]').count()) > 0);
+  ok('…with the reason', (await p2.getByText(/Your session ended/).count()) > 0);
+  await again.close();
+}
+
 await b.close();
 console.log(fail ? `\n${fail} failed` : '\nAll passed');
 process.exit(fail ? 1 : 0);

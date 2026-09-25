@@ -26,7 +26,12 @@
  */
 
 export const COOKIE = 'pc_session';
-const MAX_AGE = 30 * 86_400;
+/* The cookie outlives any session it can carry — 400 days is the most a
+   browser will keep one. When a session ends is the server's decision (30
+   days after last use, lib/db.ts); a cookie that expired first would sign an
+   active person out on a date fixed at sign-in, which is what the sliding
+   session exists to stop. */
+const MAX_AGE = 400 * 86_400;
 const PLACEHOLDER = '"token":"cookie"';
 
 export function cookieToken(req: Request): string {
