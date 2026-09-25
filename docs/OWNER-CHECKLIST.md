@@ -28,7 +28,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 9 | **Create the mailbox `security@protectedcentral.com`** (or an alias to yours) | your mail host | The Trust Center and `/.well-known/security.txt` publish it as the place to report vulnerabilities; until it exists those reports bounce |
 | 10 | **Confirm billing is enabled on the Google Cloud project behind the AI key** | console.cloud.google.com → Billing | What the Trust Center may say about AI training. On a free-tier key Google may use prompts to improve its products; on a paid one its terms say it does not |
 | 11 | **Confirm the Cloudflare plan** (Workers Paid gives D1 Time Travel 30 days; Free gives 7) | Cloudflare → Billing | How far back the database can be restored. See docs/SECURITY.md §3.10 |
-| 12 | **Have a Privacy Policy and Terms of Service written** | a lawyer; a factual draft is in `docs/PRIVACY-POLICY-DRAFT.md` | Launching to the public. Only the Acceptable Use policy (`/terms`) exists today |
+| 12 | **Have a lawyer review the Privacy Policy and Terms of Service** — now published at /privacy and /terms-of-service, written from what the software does (`src/components/Site/legalText.ts`); create `privacy@protectedcentral.com` | a lawyer; your mail host | Launching to the public. Only the Acceptable Use policy (`/terms`) exists today |
 | 13 | **Set `CREDENTIAL_WRAP_KEY`** on both Workers — a long random string, different for each, **never changed afterwards** | Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets → Add → type *Secret* | Encrypting the key that encrypts every stored password and API key. Until it is set, a database export contains both. See 23 |
 | 15 | **Connect a mailbox in your own workspace** (signed in as azeem@protectedcentral.com — Settings → Email & SMS) | app.protectedcentral.com and testing.protectedcentral.com | Emailed sign-in codes, **and the new sign-up check** that proves a new customer owns their email address. Until it exists, sign-up falls back to the old unproved way and code sign-in says it is unavailable. See 24 |
 | 14 | **Add the repository secret `BACKUP_PASSPHRASE`** — a long random phrase, also kept somewhere outside GitHub | GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret | The nightly encrypted database backup (`backup.yml`). Without it the job warns and takes nothing |
@@ -573,8 +573,14 @@ want to own this:
      add it later
    - *Authorised domains*: `protectedcentral.com`
    - *Developer contact*: your address
-   - Home page / privacy policy / terms links: `https://protectedcentral.com`,
-     and the privacy and terms pages once they exist (item 12)
+   - *Application home page*: `https://protectedcentral.com`
+   - *Application privacy policy link*: `https://protectedcentral.com/privacy`
+   - *Application terms of service link*: `https://protectedcentral.com/terms-of-service`
+   Both pages exist (2026-09-25), are public, and are linked from the home
+   page's footer, which Google checks. The privacy policy names the exact
+   scopes and carries Google's Limited Use statement. **Create the mailbox
+   `privacy@protectedcentral.com`** (or an alias) — both pages give it as the
+   contact, and Google's reviewers may write to it.
 3. **Data access / Scopes** → add **only** `openid`, `.../auth/userinfo.email`
    and `.../auth/userinfo.profile`. Nothing else.
 4. **Audience** → **Publish app** (move it from *Testing* to *In production*).

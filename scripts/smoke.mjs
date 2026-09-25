@@ -106,7 +106,10 @@ try {
   await p.locator('input[placeholder="Confirm password"]').fill(PASSWORD);
   const consent = p.locator('input[type=checkbox]');
   if (await consent.count()) await consent.first().check();
-  await p.getByRole('button', { name: 'Create account' }).click();
+  /* "Continue" since sign-up proves the address with a code. With no install
+     mailbox (a local database) there is nothing to send it through, and the
+     account is made straight away; npm run test:signup covers the code path. */
+  await p.getByRole('button', { name: /^(Continue|Create account)/ }).click();
   await p.waitForTimeout(2500);
 
   const screen = await p.evaluate(() => document.body.innerText);

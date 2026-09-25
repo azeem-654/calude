@@ -8,6 +8,7 @@
  * are preserved exactly — `message` and `error` are both emitted on failure so
  * neither caller breaks.
  */
+import { cookieToken, sameOrigin } from './session';
 
 export function json(body: unknown, status = 200, extra: HeadersInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -88,6 +89,9 @@ export function headerSafe(value: unknown, max = 300): string {
 export function bearer(req: Request, url?: URL): string | undefined {
   const h = req.headers.get('Authorization') ?? '';
   const m = /^Bearer\s+(\S+)$/i.exec(h);
-  if (m) return m[1];
+  /* "cookie" is the browser app's placeholder: the real token is the
+     HttpOnly session cookie (lib/session.ts), used only from this site. */
+  if (m && m[1] !== 'cookie') return m[1];
+  if (m && sameOrigin(req)) return cookieToken(req) || undefined;
   return (url ?? new URL(req.url)).searchParams.get('token') ?? undefined;
 }

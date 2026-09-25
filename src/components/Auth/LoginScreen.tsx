@@ -315,9 +315,17 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
                   {/* A new tab, deliberately. Navigating away from a half-filled
                       sign-up form to read the terms loses the form, which is how
                       a terms link becomes a link nobody follows. */}
+                  <a href="/terms-of-service" target="_blank" rel="noopener noreferrer"
+                    style={{ color: INK, fontWeight: 700 }} onClick={e => e.stopPropagation()}>
+                    terms of service
+                  </a>{' '}and{' '}
                   <a href="/terms" target="_blank" rel="noopener noreferrer"
                     style={{ color: INK, fontWeight: 700 }} onClick={e => e.stopPropagation()}>
                     acceptable use policy
+                  </a>, and have read the{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer"
+                    style={{ color: INK, fontWeight: 700 }} onClick={e => e.stopPropagation()}>
+                    privacy policy
                   </a>.
                 </span>
               </label>
@@ -391,9 +399,11 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
                       when the account is created. */}
                   <p style={{ margin: '2px 0 0', fontSize: 11, color: MUTED, lineHeight: 1.55, textAlign: 'center' }}>
                     By continuing you agree to the{' '}
+                    <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>terms of service</a>{' '}and{' '}
                     <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>
                       acceptable use policy
-                    </a>.
+                    </a>, and have read the{' '}
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>privacy policy</a>.
                   </p>
                   <button type="button" disabled={busy} onClick={() => void sendCode()} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',

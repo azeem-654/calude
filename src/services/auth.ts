@@ -44,9 +44,39 @@ export function sessionToken(): string {
   return getSession()?.token ?? '';
 }
 
+/**
+ * The token itself is not kept here any more.
+ *
+ * The server sets it as an HttpOnly cookie that no script on this page can
+ * read (worker/src/lib/session.ts), and every request that used to carry the
+ * token now carries the placeholder "cookie", which the Worker swaps for the
+ * cookie on its way in. So a script that got onto the page — the thing the CSP
+ * and the sanitiser exist to stop — finds nothing worth stealing here.
+ *
+ * Two exceptions keep the real token: the Vite dev server, which is a
+ * different origin from the Worker and so never sees its cookie; and the
+ * offline "local" backend, which has no server at all.
+ */
+export const COOKIE_TOKEN = 'cookie';
+const keepsToken = () => import.meta.env.DEV;
+
 function setSession(s: Session | null) {
-  if (s) window.localStorage.setItem(SESSION_KEY, JSON.stringify(s));
-  else window.localStorage.removeItem(SESSION_KEY);
+  if (s) {
+    const stored = s.backend === 'php' && !keepsToken() ? { ...s, token: COOKIE_TOKEN } : s;
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
+  } else window.localStorage.removeItem(SESSION_KEY);
+}
+
+/**
+ * A browser signed in before sessions moved to the cookie still has the real
+ * token in storage. Hand it to the server once — the answer sets the cookie —
+ * then forget it. Run at start-up; does nothing for anyone already moved.
+ */
+export async function moveSessionToCookie(): Promise<void> {
+  const s = getSession();
+  if (!s || s.backend !== 'php' || !s.token || s.token === COOKIE_TOKEN || keepsToken()) return;
+  const res = await php('adopt_cookie', { token: s.token });
+  if (res?.ok) setSession(s);
 }
 
 /* ── Local fallback store ── */

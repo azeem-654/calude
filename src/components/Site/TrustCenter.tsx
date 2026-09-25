@@ -199,6 +199,8 @@ export default function TrustCenter() {
 
         <div className="tc-cta">
           <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free <ArrowRight size={15} /></a>
+          <a className="dc-btn dc-btn-outline dc-btn-lg" href="/privacy">Privacy policy</a>
+          <a className="dc-btn dc-btn-outline dc-btn-lg" href="/terms-of-service">Terms of service</a>
           <a className="dc-btn dc-btn-outline dc-btn-lg" href="/terms">Acceptable use policy</a>
         </div>
       </main>

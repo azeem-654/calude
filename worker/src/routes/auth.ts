@@ -547,6 +547,14 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     });
   }
 
+  /* A browser that signed in before sessions moved to a cookie hands its
+     token over once; the answer sets the cookie (lib/session.ts), and the
+     page then forgets the token. Nobody is signed out by the change. */
+  if (action === 'adopt_cookie') {
+    const who = await userFromToken(env.DB, d.token);
+    return who ? json({ success: true, token: d.token }) : fail('Not authorised.', 401);
+  }
+
   if (action === 'me') {
     const user = await userFromToken(env.DB, d.token);
     return user ? json({ success: true, user }) : fail('Not authorised.', 401);

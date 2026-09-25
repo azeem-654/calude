@@ -35,6 +35,7 @@
     "test:models": "npx --yes tsx worker/test/models.test.mts",
     "test:merge": "npx --yes tsx worker/test/mergeFields.test.mts",
     "test:html": "node test/emailHtml.e2e.mjs",
+    "test:cookies": "node test/cookieSession.e2e.mjs",
     "test:design": "npx --yes tsx test/design.test.mts",
     "test:signup": "node test/signup.e2e.mjs"
   },

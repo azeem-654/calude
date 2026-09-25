@@ -608,6 +608,8 @@ export default function SiteHome() {
             <a href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
             <a href={appHref('/signup')} {...cross(appHref('/signup'))}>Create an account</a>
             <a href="/security">Security &amp; privacy</a>
+            <a href="/privacy">Privacy policy</a>
+            <a href="/terms-of-service">Terms of service</a>
             <a href="/terms">Acceptable use</a>
           </div>
         </div>

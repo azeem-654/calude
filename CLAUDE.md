@@ -177,6 +177,12 @@ id. The rules that closed those holes:
   (`manageable()` in routes/auth.ts). Every sign-up is an "agency".
 - **Sessions are stored as `sessionKey(token)`**, never the raw token; delete
   and compare with `sessionKeys()`.
+- **The browser never holds the session token.** It is an HttpOnly cookie;
+  the page sends the placeholder `token: "cookie"` and `withCookieToken`
+  (lib/session.ts) swaps it in for same-origin JSON requests before any route
+  runs. Routes keep reading `d.token`. A GET that needs a session uses
+  `bearer()`, which understands the placeholder. Tests may still send real
+  tokens.
 - **Install mail (sign-in and sign-up codes) goes only through a mailbox in a
   workspace the install owner owns** (`installMailbox` in routes/auth.ts) —
   never a customer's, whose Sent folder would then hold other people's codes.

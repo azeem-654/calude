@@ -94,9 +94,11 @@ against A and the install owner.
 
 **HIGH**
 
-1. **The session token is in `localStorage`**, so a successful XSS could take
-   it. The CSP and DOMPurify remove most routes to one; an `HttpOnly` cookie
-   session would remove the rest (every `token` in a request body changes).
+1. ~~The session token is in `localStorage`~~ — **fixed 2026-09-25.** The
+   session is an `HttpOnly; SameSite=Lax` cookie (`Secure` on https); the page
+   keeps the placeholder `"cookie"`, which the Worker swaps for the cookie on
+   same-origin requests only (`lib/session.ts`). Old sessions move over on
+   the next page load (`adopt_cookie`). `test/cookieSession.e2e.mjs`, 13 checks.
 
 **MEDIUM**
 
@@ -167,7 +169,8 @@ True today, and said on `/security`, the home page and Settings:
 - Passwords are stored as salted PBKDF2-SHA-256 hashes.
 - Optional 2-step sign-in with an authenticator app.
 - Password-guessing limits; emailed-code and Google sign-in.
-- Session tokens stored hashed; see and sign out every device.
+- Session tokens stored hashed, and kept in the browser only in a cookie page
+  scripts cannot read; see and sign out every device.
 - Security activity log, 180 days.
 - HTTPS everywhere with HSTS; connected credentials encrypted with AES-256-GCM
   and never returned to a browser.

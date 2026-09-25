@@ -13,6 +13,7 @@
  * with no way to tell which of them broke something. The suffix is a URL, not
  * a language.
  */
+import { withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
 import { handleSecurity } from './routes/security';
@@ -237,7 +238,17 @@ export default {
     }
 
     try {
-      return await handler(req, env, ctx);
+      /* The session cookie stands in for the token the page no longer holds
+         (lib/session.ts). Webhooks are signed over their raw bodies and carry
+         no cookie, so they are left exactly as they arrived. */
+      const webhook = /webhook|sms-inbound/.test(url.pathname);
+      const inbound = webhook ? req : await withCookieToken(req);
+      if (url.pathname === '/api/auth.php') {
+        let action = '';
+        try { action = String((JSON.parse(await inbound.clone().text()) as { action?: string }).action ?? ''); } catch { action = ''; }
+        return await withSessionCookie(inbound, await handler(inbound, env, ctx), action);
+      }
+      return await handler(inbound, env, ctx);
     } catch (e) {
       /* A thrown error must not become a 500 with a stack trace in it: the
          client shows `message` to the customer, and a database error string is

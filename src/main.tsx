@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installTenantStorage } from './services/tenancy'
+import { moveSessionToCookie } from './services/auth'
 import { initTheme } from './services/theme'
 import { applyMotion, watchNewStylesheets, watchSystemMotion } from './services/motion'
 
@@ -19,6 +20,8 @@ initTheme();
 applyMotion();
 watchNewStylesheets();
 watchSystemMotion();
+// A session from before HttpOnly cookies moves onto one, once (services/auth.ts).
+void moveSessionToCookie();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

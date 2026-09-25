@@ -44,6 +44,7 @@ import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
 import PolicyPage from './components/Site/PolicyPage';
 import TrustCenter from './components/Site/TrustCenter';
+import LegalPage from './components/Site/LegalPage';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
 import { LogoMark } from './components/shared/Logo';
@@ -59,10 +60,12 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (location.pathname === '/security') {
+  if (['/security', '/privacy', '/terms-of-service'].includes(location.pathname)) {
     return (
       <Routes>
         <Route path="/security" element={<TrustCenter />} />
+        <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+        <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
       </Routes>
     );
   }
@@ -165,6 +168,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/moderation" element={<ReviewQueue />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
+          <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           {/*
            * Every other Routes block in this file has a catch-all; this one did
            * not, and the result was a screen that looked broken rather than
@@ -354,6 +359,8 @@ export default function App() {
               screen is a policy nobody has read. */}
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
+          <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="*" element={<SiteHome />} />
         </Routes>
       </BrowserRouter>
@@ -380,6 +387,8 @@ export default function App() {
               one can actually do is still the server's call. */}
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
+          <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
           <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
           <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />
