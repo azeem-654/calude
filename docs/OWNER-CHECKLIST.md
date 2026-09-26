@@ -21,7 +21,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 2 | **Attach a wildcard Worker route** for `*.protectedcentral.com` | Cloudflare → Workers → Routes | Reseller subdomains resolve |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
-| 5 | **Add the Calendar scope** to your Google client | console.cloud.google.com | Google Meet links on bookings, and the assistant offering real times |
+| 5 | **Add the Calendar scope** to your Google client, then **connect your calendar** in Customer Engagement → Meetings | console.cloud.google.com, then the app | Google Meet links on bookings, the assistant offering real times, and the "Switch to Google Meet" button in Live help |
 | 6 | *Optional* — **choose a voice provider** | — | AI voice. Nothing else; the rest of Customer Engagement works without it |
 | 7 | **Create a Google OAuth client** for "Sign up / Continue with Google" — ten minutes, step by step in 17 | console.cloud.google.com, then Settings → Security | The Google button on sign-in *and* sign-up. The code is built and live; it only appears once the client is saved. Do it on both sites |
 | 8 | **Turn on 2-step sign-in for azeem@protectedcentral.com** | app → Settings → Security & Privacy → 2-step sign-in → Turn on | The owner account can connect payments and change settings for everyone; a password alone should not be enough. See 22 |
@@ -32,6 +32,8 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 13 | **Set `CREDENTIAL_WRAP_KEY`** on both Workers — a long random string, different for each, **never changed afterwards** | Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets → Add → type *Secret* | Encrypting the key that encrypts every stored password and API key. Until it is set, a database export contains both. See 23 |
 | 15 | **Connect a mailbox in your own workspace** (signed in as azeem@protectedcentral.com — Settings → Email & SMS) | app.protectedcentral.com and testing.protectedcentral.com | Emailed sign-in codes, **and the new sign-up check** that proves a new customer owns their email address. Until it exists, sign-up falls back to the old unproved way and code sign-in says it is unavailable. See 24 |
 | 14 | **Add the repository secret `BACKUP_PASSPHRASE`** — a long random phrase, also kept somewhere outside GitHub | GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret | The nightly encrypted database backup (`backup.yml`). Without it the job warns and takes nothing |
+| 16 | **Switch on the help button** — the small round button in the bottom-right corner of the app. Signed in as azeem@protectedcentral.com: Customer Engagement → Widgets → New; tick *Chat*, *Share your screen*, *Raise and check a ticket*; tick **Use as the help button inside Protected Central**; pick an AI agent if you have one; **Save and make it live**. Do it on both sites | app.protectedcentral.com and testing.protectedcentral.com | Your customers seeing any help button at all, and live screen sharing. Until it exists they see nothing; you see a dashed round placeholder that links here. See 25 |
+| 17 | *Optional* — **Give screen sharing a relay** so it works through strict office firewalls: create a TURN key and add `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` as secrets on both Workers | Cloudflare → Realtime → TURN Server → Create; then Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets | Screen sharing for the few customers whose network refuses a direct connection. Without it those calls can still switch to Google Meet once item 5 is done. See 25 |
 
 **Done, and no longer on the list:**
 
@@ -70,6 +72,9 @@ the real state rather than remembering what you told it.
 5. **Forms** — the address is `/f/<slug>`. Submissions appear under
    **Submissions** and become contacts.
 6. **Meetings** — connect a Google Calendar (see below) for Meet links.
+7. **Live help** — tick *Share your screen* on a widget. Requests then appear
+   under **Live help**, and a dark "waiting to share their screen" pill
+   follows you round the app until somebody joins. See 25.
 
 Protected Central itself is configured exactly the same way, in its own
 workspace. There is no separate support system and no special code path.
@@ -873,6 +878,51 @@ you next need it.
 
 Checks you can run: `npm run test:design` (68, no server needed) and
 `npm run test:signup` (16, needs a fresh local database — see the file).
+
+### 25. Live help: customers share their screen with you — added 2026-09-26
+
+**What it is.** A customer presses the round button (or the chat widget on
+their own website), picks **Share your screen**, and chooses a screen, window
+or tab. You see it in **Customer Engagement → Live help** — and as a pill
+anywhere in the app — press **Join**, and you are looking at their screen and
+talking to them, with a small chat alongside. Click on their screen to point:
+a ring appears in the same place on their page when what they shared is the
+tab the chat is in. Either side can end it.
+
+**What it is not.** You can see and point; you cannot click or type on their
+computer. That needs software installed on their machine, which is what
+products like Upscope or Cobrowse.io sell — say the word if that becomes
+necessary.
+
+**How it works.** The picture goes directly between the two browsers
+(WebRTC, which is always encrypted). The app only passes the two browsers'
+introductions to each other; it never receives the picture, and nothing is
+recorded. When the relay in item 17 is used, it carries the encrypted traffic
+without being able to read it. A request from a signed-in customer arrives marked **SIGNED IN**
+with their workspace, proved by their session; from somebody's website it is
+only what they typed, and the screen says so.
+
+**What it needs from you:**
+
+1. **Item 16** — the help button widget, on both sites. Nothing else is needed
+   for it to work on most networks.
+2. **Item 5** — a connected Google Calendar in the same workspace, so a call
+   that cannot connect directly (or a customer on a phone, which cannot share
+   a screen from a web page) can be moved to Google Meet with one button. The
+   Meet link appears on the customer's screen by itself.
+3. **Item 17, optional** — the TURN relay. Cloudflare's TURN is free up to a
+   generous monthly allowance and then billed per gigabyte relayed; only calls
+   that cannot connect directly use it.
+4. **Item 15** — a mailbox, if you want an email as well when somebody is
+   waiting. The app shows it within seconds either way; the email follows
+   within five minutes.
+
+Any customer of yours can switch the same thing on for *their* customers: it is
+the *Share your screen* tick on their own widget. It works on computers, not
+phones.
+
+`npm run test:livehelp` drives two real browsers through a whole session
+(needs `wrangler dev`).
 
 ## Done
 

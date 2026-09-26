@@ -359,6 +359,28 @@ capability `needs` strings stopped mentioning it in the same commit that added
 the fallback — removing the ask before supplying the thing would have been a
 promise the product could not keep.
 
+## Support — the help button, tickets and live help
+
+Protected Central answers its own customers with its own Customer Engagement
+module; there is no second support system. The round button in the app's
+corner (`shared/HelpLauncher.tsx`) is `public/widget.js` pointed at the install
+owner's widget marked `in_app` (`engage.php` `house`; a tenant ticking the same
+box is ignored). The widget draws whatever its `features` name — chat, ticket
+(raise and check), meeting, **screen**.
+
+**Live help** is screen sharing over WebRTC: the picture goes browser to
+browser, and `crm_live_sessions` holds only the handshake (one SDP each way,
+exchanged whole — no trickle) and who/when. Public side is `engage.php
+live_*` (proved by `share_key`), business side `engagement.php live_*`
+(workspace-checked; first `live_answer` wins in one UPDATE). ICE servers come
+from `lib/liveHelp.ts` — STUN, plus Cloudflare TURN when `TURN_KEY_ID` /
+`TURN_KEY_API_TOKEN` are set. `live_meet` is the fallback: a Google Meet made
+now from the workspace's connected calendar. On this install's own origin the
+widget sends the cookie placeholder, so a signed-in customer's request is
+stamped `verified_email` from their session — never from the body. Viewing
+only; nobody can click on the customer's machine, and the screens say so.
+`npm run test:livehelp` drives two real browsers through a session.
+
 ## Verifying a change
 
 The app is a single-page product with a lot of state; a typecheck proves very

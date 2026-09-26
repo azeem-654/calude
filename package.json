@@ -38,7 +38,8 @@
     "test:cookies": "node test/cookieSession.e2e.mjs",
     "test:design": "npx --yes tsx test/design.test.mts",
     "test:signup": "node test/signup.e2e.mjs",
-    "test:google": "node test/googleSignIn.e2e.mjs"
+    "test:google": "node test/googleSignIn.e2e.mjs",
+    "test:livehelp": "node test/liveHelp.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

@@ -25,7 +25,7 @@ import { routeLeads, type ArrivingLead } from './leadRouting';
 export interface EngageCounts {
   openConversations: number; waitingOnHuman: number; openTickets: number;
   newSubmissions: number; people: number; liveAgents: number;
-  liveWidgets: number; liveForms: number;
+  liveWidgets: number; liveForms: number; liveWaiting?: number;
 }
 
 export interface Conversation {
@@ -72,6 +72,18 @@ export interface Widget {
   id: string; name: string; agent_id: string; public_key: string; allowed_hosts: string;
   title: string; subtitle: string; welcome: string; launcher: string; accent: string;
   position: string; features: string; status: string; show_branding: number;
+  booking_slug?: string; in_app?: number;
+}
+
+/** One request to share a screen, as the business side sees it. */
+export interface LiveSession {
+  id: string; name: string; email: string; topic: string; pageUrl: string;
+  /* Proved by a session on this install's own origin; blank on anybody's
+     website, where name and email are only what was typed. */
+  verifiedEmail: string; verifiedAccount: string;
+  status: 'waiting' | 'live' | 'ended'; endedReason: string; sharerState: string;
+  agentEmail: string; agentName: string; meetUrl: string; ready: number;
+  createdAt: string; joinedAt: string | null; endedAt: string | null;
 }
 
 export interface CapturedPerson {
@@ -113,6 +125,15 @@ export const setTicket = (id: string, patch: Record<string, unknown>) => call('s
 export const createTicket = (patch: Record<string, unknown>) => call('create_ticket', patch);
 
 export const listSubmissions = () => call('submissions');
+
+/* Live help. The picture goes browser to browser; these carry the handshake
+   and the state. See worker/src/lib/liveHelp.ts. */
+export const liveSessions = () => call('live_sessions');
+export const liveWaiting = () => call('live_waiting');
+export const liveSession = (id: string) => call('live_session', { id });
+export const liveAnswer = (id: string, sdp: string) => call('live_answer', { id, sdp });
+export const liveEnd = (id: string) => call('live_end', { id });
+export const liveMeet = (id: string) => call('live_meet', { id });
 
 /**
  * Who was sent what, and what happened.
@@ -221,6 +242,12 @@ export async function mergeCaptured(): Promise<{ added: number; matched: number;
       phone: p.phone || '',
       company: p.company || '',
       status: 'lead',
+      /* The fields every contact screen reads without checking. Leaving them
+         out made the first capture a workspace pulled in crash the dashboard
+         ("reading 'length'" of the missing tags) for good. */
+      tags: [],
+      value: 0,
+      lastActivity: p.createdAt || new Date().toISOString(),
       /* Stamped with where it came from, the same way every generated record in
          this app is, so a list full of captures can still be traced back. */
       source: `engagement:${p.source || 'capture'}`,

@@ -13,6 +13,8 @@ import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { cleanSlug, publicKey, recordEvent, rid } from '../lib/engagement';
 import { voiceStatus } from '../lib/voice';
 import { enrolOnEvent } from '../lib/automationEngine';
+import { cleanSdp, iceServers, offersScreen, sweepLive } from '../lib/liveHelp';
+import { createEvent } from '../lib/googleCalendar';
 
 interface Req {
   token?: string;
@@ -37,6 +39,8 @@ interface Req {
   runId?: string;
   /* Forms, agents, knowledge, widgets — saved whole */
   record?: Record<string, unknown>;
+  /* Live help — the answering browser's half of the handshake */
+  sdp?: string;
 }
 
 const s = (v: unknown, max = 400) => String(v ?? '').trim().slice(0, max);
@@ -82,6 +86,7 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
         liveAgents: await one("SELECT count(*) AS n FROM crm_ai_agents WHERE account_id = ? AND status = 'live'"),
         liveWidgets: await one("SELECT count(*) AS n FROM crm_widgets WHERE account_id = ? AND status = 'live'"),
         liveForms: await one("SELECT count(*) AS n FROM crm_forms WHERE account_id = ? AND status = 'live'"),
+        liveWaiting: await one("SELECT count(*) AS n FROM crm_live_sessions WHERE account_id = ? AND status = 'waiting'"),
       },
       /* The one number that is a judgement rather than a count: how often the
          assistant finished the job. Escalations over conversations, inverted. */
@@ -302,7 +307,7 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     widget: {
       table: 'crm_widgets',
       cols: ['name', 'agent_id', 'allowed_hosts', 'title', 'subtitle', 'welcome', 'launcher', 'accent',
-        'position', 'offline_text', 'consent_text', 'features', 'form_id', 'booking_slug', 'show_branding', 'status'],
+        'position', 'offline_text', 'consent_text', 'features', 'form_id', 'booking_slug', 'show_branding', 'in_app', 'status'],
     },
     voice_agent: {
       table: 'crm_voice_agents',
@@ -346,6 +351,10 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
         values[col] = (asText === '[]' && col === 'features') ? '["chat"]' : asText;
       } else if (col === 'create_person' || col === 'ai_triage' || col === 'show_branding' || col === 'record_calls') {
         values[col] = raw === false || raw === 0 ? 0 : 1;
+      } else if (col === 'in_app') {
+        /* Off unless asked for, the opposite of the flags above: switching a
+           widget into the corner of every customer's app is not a default. */
+        values[col] = raw === true || raw === 1 || raw === '1' ? 1 : 0;
       } else if (col === 'status') {
         const ok = new Set(['draft', 'live', 'published', 'archived']);
         values[col] = ok.has(String(raw)) ? String(raw) : 'draft';
@@ -634,6 +643,145 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     ).bind(accountId).all<{ status: string; n: number }>();
 
     return json({ success: true, entries: results ?? [], totals: totals.results ?? [] });
+  }
+
+  /* ── Live help: watching somebody's screen ───────────────────────────── */
+  /*
+   * The answering side. A request arrives from a widget (engage.ts); whoever
+   * joins first writes the answer, and from then on the two browsers talk
+   * directly. Everything is scoped to the checked workspace like the rest of
+   * this route, and the share key and descriptions never leave it except to
+   * the one person joining.
+   */
+  if (act === 'live_sessions') {
+    await sweepLive(env, accountId);
+    const { results } = await env.DB.prepare(
+      `SELECT id, name, email, topic, page_url AS pageUrl, verified_email AS verifiedEmail,
+              verified_account AS verifiedAccount, status, ended_reason AS endedReason,
+              sharer_state AS sharerState, agent_email AS agentEmail, agent_name AS agentName,
+              meet_url AS meetUrl, (offer != '') AS ready,
+              created_at AS createdAt, joined_at AS joinedAt, ended_at AS endedAt
+       FROM crm_live_sessions WHERE account_id = ? ORDER BY created_at DESC LIMIT 60`,
+    ).bind(accountId).all();
+    const { results: widgets } = await env.DB.prepare(
+      "SELECT features FROM crm_widgets WHERE account_id = ? AND status = 'live'",
+    ).bind(accountId).all<{ features: string }>();
+    const meet = await env.DB.prepare(
+      "SELECT 1 AS ok FROM crm_calendar_connections WHERE account_id = ? AND status = 'connected' LIMIT 1",
+    ).bind(accountId).first();
+    return json({
+      success: true, sessions: results ?? [],
+      /* Said rather than implied by an empty list: "nobody has asked" and
+         "nobody can ask" are different, and only one is fixed on this screen. */
+      enabled: (widgets ?? []).some(w => offersScreen(w.features)),
+      relay: !!(env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN),
+      meetReady: !!meet,
+    });
+  }
+
+  /* The app-wide alert asks this every half minute from every open tab, so it
+     is a read and nothing else — no sweep. A request whose page stopped asking
+     is left out by its heartbeat rather than by closing it here. */
+  if (act === 'live_waiting') {
+    const cut = new Date(Date.now() - 3 * 60_000).toISOString();
+    const row = await env.DB.prepare(
+      "SELECT count(*) AS n FROM crm_live_sessions WHERE account_id = ? AND status = 'waiting' AND seen_at >= ?",
+    ).bind(accountId, cut).first<{ n: number }>();
+    const { results: widgets } = await env.DB.prepare(
+      "SELECT features FROM crm_widgets WHERE account_id = ? AND status = 'live'",
+    ).bind(accountId).all<{ features: string }>();
+    return json({ success: true, waiting: Number(row?.n ?? 0), enabled: (widgets ?? []).some(w => offersScreen(w.features)) });
+  }
+
+  if (act === 'live_session') {
+    const row = await env.DB.prepare(
+      `SELECT id, name, email, topic, status, offer, answer, agent_email AS agentEmail,
+              sharer_state AS sharerState, meet_url AS meetUrl, ended_reason AS endedReason
+       FROM crm_live_sessions WHERE id = ? AND account_id = ?`,
+    ).bind(s(d.id, 80), accountId).first<Record<string, string>>();
+    if (!row) return fail('That session could not be found.', 404);
+    /* The ICE servers are minted only for somebody about to join — a TURN
+       credential is a small bill, and a list screen refreshing every few
+       seconds would mint one each time. */
+    const ice = row.status === 'waiting' && row.offer ? await iceServers(env) : { servers: [], relay: false };
+    return json({ success: true, session: row, iceServers: ice.servers, relay: ice.relay });
+  }
+
+  if (act === 'live_answer') {
+    const sdp = cleanSdp(d.sdp);
+    if (!sdp) return fail('That connection description was not usable.', 422);
+    /* First to join wins, in one statement. Two people pressing Join at once
+       must not both believe they are connected while one of them is looking at
+       nothing. */
+    const res = await env.DB.prepare(
+      `UPDATE crm_live_sessions
+       SET answer = ?, status = 'live', agent_email = ?, agent_name = ?, joined_at = ?, updated_at = ?
+       WHERE id = ? AND account_id = ? AND status = 'waiting' AND answer = '' AND offer != ''`,
+    ).bind(sdp, who, user?.name ?? '', now, now, s(d.id, 80), accountId).run();
+    if (!res.meta.changes) {
+      return fail('Somebody else has joined this one already, or they have left.', 409, { code: 'taken' });
+    }
+    await recordEvent(env, accountId, {
+      kind: 'live.joined', refId: s(d.id, 80), summary: `${user?.name || who} joined a screen share`,
+    });
+    return json({ success: true });
+  }
+
+  if (act === 'live_end') {
+    await env.DB.prepare(
+      `UPDATE crm_live_sessions SET status = 'ended', ended_reason = 'agent', ended_at = ?, updated_at = ?
+       WHERE id = ? AND account_id = ? AND status != 'ended'`,
+    ).bind(now, now, s(d.id, 80), accountId).run();
+    return json({ success: true });
+  }
+
+  /*
+   * The fallback: a Google Meet, made now, for this session.
+   *
+   * For the networks a direct connection cannot cross, and for anybody on a
+   * phone — mobile browsers cannot share a screen from a web page, and the Meet
+   * app can. Needs a connected calendar on this workspace; without one it says
+   * so by name rather than handing back a link to nowhere.
+   */
+  if (act === 'live_meet') {
+    const row = await env.DB.prepare(
+      `SELECT id, name, email, verified_email AS verifiedEmail, topic, meet_url AS meetUrl, status
+       FROM crm_live_sessions WHERE id = ? AND account_id = ?`,
+    ).bind(s(d.id, 80), accountId).first<Record<string, string>>();
+    if (!row) return fail('That session could not be found.', 404);
+    if (row.meetUrl) return json({ success: true, meetUrl: row.meetUrl });
+    if (row.status === 'ended') return fail('That session has ended.', 409);
+
+    const conn = await env.DB.prepare(
+      "SELECT owner_email AS ownerEmail FROM crm_calendar_connections WHERE account_id = ? AND status = 'connected' LIMIT 1",
+    ).bind(accountId).first<{ ownerEmail: string }>();
+    if (!conn) {
+      return fail('No Google Calendar is connected on this workspace, so a Meet cannot be made. Connect one under Meetings.', 200, { code: 'no-calendar' });
+    }
+
+    /* UTC wall-clock with the zone named, the same contract the booking path
+       uses; "now" is the same instant in every zone. */
+    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19);
+    const start = Date.now();
+    const guest = row.verifiedEmail || row.email;
+    const ev = await createEvent(env, accountId, {
+      ownerEmail: conn.ownerEmail,
+      summary: `Live help — ${row.name || guest || 'a customer'}`,
+      description: row.topic || 'Screen-sharing support session.',
+      startIso: iso(start), endIso: iso(start + 30 * 60_000), timezone: 'UTC',
+      guestEmail: guest || undefined, guestName: row.name || undefined,
+    });
+    if (!ev.ok || !ev.data?.meetingUrl) {
+      return fail(ev.error || 'Google made the event but gave it no Meet link.', 200, { code: 'meeting' });
+    }
+    await env.DB.prepare('UPDATE crm_live_sessions SET meet_url = ?, updated_at = ? WHERE id = ? AND account_id = ?')
+      .bind(ev.data.meetingUrl, now, row.id, accountId).run();
+    await recordEvent(env, accountId, {
+      kind: 'meeting.created', refId: row.id,
+      summary: `Google Meet made for ${row.name || guest || 'a live-help session'}`,
+      detail: { meetingUrl: ev.data.meetingUrl },
+    });
+    return json({ success: true, meetUrl: ev.data.meetingUrl });
   }
 
   /* ── Settings ─────────────────────────────────────────────────────────── */

@@ -21,7 +21,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   MessageSquare, Ticket as TicketIcon, FileText, Bot, BookOpen, Code2,
   Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic,
-  Inbox, CalendarCheck, Send,
+  Inbox, CalendarCheck, Send, Monitor,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -37,18 +37,22 @@ import EngageSetup from './EngageSetup';
 import EngageSubmissions from './EngageSubmissions';
 import EngageMeetings from './EngageMeetings';
 import EngageDelivery from './EngageDelivery';
+import EngageLive from './EngageLive';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
 const LINE = '#e6e9f0';
 const ACCENT = '#5b46e5';
 
-type Tab = 'overview' | 'inbox' | 'tickets' | 'forms' | 'submissions' | 'agents'
+type Tab = 'overview' | 'inbox' | 'live' | 'tickets' | 'forms' | 'submissions' | 'agents'
   | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'delivery' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'inbox', label: 'Conversations', icon: MessageSquare },
+  /* Next to conversations: somebody waiting to share their screen is a chat
+     that needs a person, only more urgently. */
+  { id: 'live', label: 'Live help', icon: Monitor },
   { id: 'tickets', label: 'Tickets', icon: TicketIcon },
   { id: 'forms', label: 'Forms', icon: FileText },
   { id: 'submissions', label: 'Submissions', icon: Inbox },
@@ -175,6 +179,7 @@ export default function Engagement() {
         {TABS.map(({ id, label, icon: Ic }) => {
           const on = tab === id;
           const badge = id === 'inbox' ? (counts?.waitingOnHuman ?? 0)
+            : id === 'live' ? (counts?.liveWaiting ?? 0)
             : id === 'tickets' ? (counts?.openTickets ?? 0)
               : id === 'submissions' ? (counts?.newSubmissions ?? 0) : 0;
           return (
@@ -203,6 +208,8 @@ export default function Engagement() {
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))' }}>
             {stat('Waiting on a person', counts?.waitingOnHuman ?? 0,
               'Somebody is sitting in front of a chat window', true)}
+            {stat('Waiting to share a screen', counts?.liveWaiting ?? 0,
+              'Open Live help to join them', true)}
             {stat('Open conversations', counts?.openConversations ?? 0)}
             {stat('Open tickets', counts?.openTickets ?? 0)}
             {stat('New submissions', counts?.newSubmissions ?? 0)}
@@ -290,6 +297,7 @@ export default function Engagement() {
       )}
 
       {tab === 'inbox' && <EngageInbox conversations={conversations} onChange={() => void refresh()} />}
+      {tab === 'live' && <EngageLive onChange={() => void refresh()} />}
       {tab === 'tickets' && <EngageTickets tickets={tickets} onChange={() => void refresh()} />}
       {tab === 'forms' && <EngageBuilder kind="form" onChange={() => void refresh()} />}
       {tab === 'submissions' && <EngageSubmissions />}

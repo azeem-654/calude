@@ -43,6 +43,7 @@ import ShotReel from './ShotReel';
 import WorksWith from '../shared/WorksWith';
 import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
+import HelpLauncher from '../shared/HelpLauncher';
 import './site.css';
 
 type Reel = keyof typeof REELS;
@@ -328,6 +329,9 @@ export default function SiteHome() {
 
   return (
     <div className="dc">
+      {/* The same help button as inside the app, for somebody deciding whether
+          to sign up: a question before buying is the one most worth answering. */}
+      <HelpLauncher signedIn={false} />
       {/* The sky everything else is translucent over. */}
       <Starfield />
 

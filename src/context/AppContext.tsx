@@ -166,8 +166,32 @@ function loadDefaultPipelines(): Pipeline[] {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+/**
+ * Contacts as the screens expect them.
+ *
+ * Every contact screen reads `tags`, `value` and `lastActivity` without
+ * checking, as the type promises. Captures merged from forms and chat were
+ * written without them until 2026-09-26, and one such row was enough to crash
+ * the dashboard on every load. Repaired on the way in, so a workspace that
+ * already holds them recovers without anybody touching the data.
+ */
+function loadContacts(): Contact[] {
+  const list = loadLS<Contact[]>('crm_contacts', []);
+  if (!Array.isArray(list)) return [];
+  return list.filter(Boolean).map(c => (
+    Array.isArray(c.tags) && typeof c.value === 'number' && typeof c.lastActivity === 'string'
+      ? c
+      : {
+        ...c,
+        tags: Array.isArray(c.tags) ? c.tags : [],
+        value: typeof c.value === 'number' ? c.value : Number(c.value) || 0,
+        lastActivity: typeof c.lastActivity === 'string' ? c.lastActivity : (c.createdAt ?? ''),
+      }
+  ));
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [contacts, setContacts]         = useState<Contact[]>(()      => loadLS('crm_contacts',      []));
+  const [contacts, setContacts]         = useState<Contact[]>(()      => loadContacts());
   const [conversations, setConversations] = useState<Conversation[]>(() => loadLS('crm_conversations', []));
   const [appointments, setAppointments] = useState<Appointment[]>(()  => loadLS('crm_appointments',  []));
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => loadLS('crm_calendar_events', []));
@@ -190,7 +214,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       notify(message, 'error');
       // serverData has already written the server's copy back to storage; pull
       // it into React state so the screen stops showing the refused edit.
-      if (keys.includes('crm_contacts')) setContacts(loadLS<Contact[]>('crm_contacts', []));
+      if (keys.includes('crm_contacts')) setContacts(loadContacts());
     });
     return () => onServerRejection(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -213,7 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const onRefresh = () => {
-      setContacts(loadLS<Contact[]>('crm_contacts', []));
+      setContacts(loadContacts());
       setCampaigns(loadLS<Campaign[]>('crm_campaigns', []));
       setSequences(loadLS<EmailSequence[]>('crm_sequences', []));
       setAutomations(loadLS<Automation[]>('crm_automations', []));

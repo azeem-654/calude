@@ -27,6 +27,10 @@ const NOTIFY: Record<string, { subject: (s: string) => string; setting: string }
   'conversation.created': { subject: () => 'Somebody has started a chat', setting: 'notify_new_conversation' },
   'conversation.escalated': { subject: () => 'A chat needs a person', setting: 'notify_new_conversation' },
   'ticket.created': { subject: s => `New ticket — ${s}`, setting: 'notify_new_ticket' },
+  /* Under the conversation setting: somebody waiting to show their screen is a
+     chat that needs a person, only more so. The email is the backstop — the
+     app itself shows a waiting request within seconds. */
+  'live.requested': { subject: () => 'Somebody is waiting to share their screen', setting: 'notify_new_conversation' },
   'form.submitted': { subject: s => `Form: ${s}`, setting: 'notify_new_submission' },
 };
 

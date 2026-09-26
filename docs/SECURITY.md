@@ -186,6 +186,11 @@ True today, and said on `/security`, the home page and Settings:
 - Point-in-time restore via D1 Time Travel; a restore point before every
   release that changes the database.
 - Card details go to Stripe's/Creem's pages, never our servers.
+- Live help (screen sharing): the picture goes between the two browsers,
+  encrypted by WebRTC; it is not recorded and the app never receives it. A
+  TURN relay, when one is used, carries encrypted traffic it cannot read. The
+  person helping can see and point, not control. Said in the widget and on
+  Customer Engagement → Live help. Do not call it "end-to-end encrypted" (§8).
 
 ## 8. Claims we must NOT make
 

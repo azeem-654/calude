@@ -45,6 +45,13 @@ export interface Env {
    * which is right for the live app and wrong to arrive at by accident.
    */
   SELF_SERVE_SIGNUP?: string;
+  /**
+   * Cloudflare Realtime TURN key, for live help (lib/liveHelp.ts). Optional:
+   * without it screen sharing connects directly, which most networks allow
+   * and a strict corporate firewall does not. Both are Cloudflare secrets.
+   */
+  TURN_KEY_ID?: string;
+  TURN_KEY_API_TOKEN?: string;
 }
 
 /**

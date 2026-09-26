@@ -72,6 +72,9 @@ let whiteLabelled = false;
 /** Called once at boot, by the resolver. */
 export function markWhiteLabelHost(on: boolean): void { whiteLabelled = on; }
 
+/** A reseller's own address — where Protected Central does not speak as itself. */
+export const isWhiteLabelHost = (): boolean => whiteLabelled;
+
 /** True on protectedcentral.com (or www), where only the marketing site exists. */
 export const isMarketingHost = (): boolean => !whiteLabelled && MARKETING_HOSTS.has(host());
 

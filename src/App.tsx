@@ -48,6 +48,7 @@ import LegalPage from './components/Site/LegalPage';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
 import { LogoMark } from './components/shared/Logo';
+import HelpLauncher from './components/shared/HelpLauncher';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -123,6 +124,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <StandingBanner />
       <IconRail />
       <DueWorkRunner />
+      <HelpLauncher />
       {/* The 62px is the floating icon rail's width. The rail is hidden below
           760px (see index.css), so on a phone that padding was 62px of nothing
           shoving every screen off-centre to the right; `app-main` takes it back

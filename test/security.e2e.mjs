@@ -125,6 +125,27 @@ check("B cannot sign opt-outs for A's contacts", unsub.status === 403, String(un
 const click = await fetch(`${BASE}/api/track.php?c=e1&a=${A.acct}&u=${encodeURIComponent('https://evil.example/login')}`, { redirect: 'manual' });
 check('An unsigned tracked link does not redirect', click.status === 200 && !click.headers.get('location'), `${click.status} ${click.headers.get('location')}`);
 
+console.log("\nLive help — B against A's screen-sharing sessions");
+{
+  const w = await api('engagement.php', { action: 'save_widget', token: A.token, accountId: A.acct, record: { name: 'A help', features: ['screen'], status: 'live', inApp: true } });
+  const key = w.data.item?.public_key;
+  const st = await api('engage.php', { action: 'live_start', widgetKey: key, name: 'Visitor' }, { ip: '10.7.0.1' });
+  const sid = st.data.sessionId;
+  await api('engage.php', { action: 'live_offer', sessionId: sid, shareKey: st.data.shareKey, sdp: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\n' }, { ip: '10.7.0.1' });
+  const peek = await api('engagement.php', { action: 'live_session', token: B.token, accountId: B.acct, id: sid });
+  check("B cannot read A's live session by id", !peek.ok && peek.status === 404, JSON.stringify(peek.data));
+  const join = await api('engagement.php', { action: 'live_answer', token: B.token, accountId: B.acct, id: sid, sdp: 'v=0\r\no=- 9 2 IN IP4 127.0.0.1\r\ns=-\r\n' });
+  const after = d1rows(`SELECT status, answer FROM crm_live_sessions WHERE id = '${sid}'`)[0];
+  check("B cannot join A's live session by id", !join.ok && after?.status === 'waiting' && after?.answer === '', JSON.stringify([join.data, after]));
+  const named = await api('engagement.php', { action: 'live_sessions', token: B.token, accountId: A.acct });
+  check("B cannot list A's live sessions by naming the workspace", !named.ok && named.status === 403, JSON.stringify(named.data).slice(0, 120));
+  const poll = await api('engage.php', { action: 'live_poll', sessionId: sid, shareKey: 'a'.repeat(36) }, { ip: '10.7.0.2' });
+  check('A session id without its share key reads nothing', poll.status === 404, JSON.stringify(poll.data));
+  const house = await api('engage.php', { action: 'house' });
+  check("A customer's widget cannot become the app's own help button", house.data.widgetKey !== key, 'house key is a tenant widget');
+  await api('engagement.php', { action: 'live_end', token: A.token, accountId: A.acct, id: sid });
+}
+
 console.log('\nSessions and passwords');
 const row = d1rows(`SELECT token FROM crm_sessions WHERE email = '${A.email}' ORDER BY created_at DESC LIMIT 1`)[0];
 check('Sessions are stored as a hash, not the token', !!row && row.token.startsWith('h:') && row.token !== A.token, row?.token?.slice(0, 6));

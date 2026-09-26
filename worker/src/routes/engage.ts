@@ -23,7 +23,7 @@
  *    creates rows for anonymous callers.
  */
 import { body, fail, json } from '../lib/http';
-import { nowIso, type Env } from '../lib/db';
+import { nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
 import { gate as contentGate } from '../lib/contentGate';
 import {
@@ -32,6 +32,7 @@ import {
 import { think, type AgentConfig, type Turn } from '../lib/agentBrain';
 import { runTool } from '../lib/agentTools';
 import { enrolOnEvent } from '../lib/automationEngine';
+import { cleanSdp, iceServers, offersScreen, SEEN_EVERY_MS, WAIT_MINUTES } from '../lib/liveHelp';
 
 interface Req {
   action?: string;
@@ -53,6 +54,17 @@ interface Req {
   answers?: Record<string, unknown>;
   context?: Record<string, unknown>;
   consent?: boolean;
+
+  /* Live help. `token` is only ever the cookie placeholder, swapped for the
+     real session by withCookieToken when — and only when — the widget is on
+     this install's own origin. On anybody else's site it stays "cookie" and
+     resolves to nobody. */
+  token?: string;
+  sessionId?: string;
+  shareKey?: string;
+  sdp?: string;
+  state?: string;
+  reason?: string;
 }
 
 const MAX_BODY = 4000;
@@ -111,8 +123,14 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
   };
 
   /* One budget for the whole public surface. Generous for a person using a chat
-     window, nowhere near enough to fill a workspace's inbox with rubbish. */
-  const limit = await rateLimit(env, { what: 'engage', who: ip, max: 60, windowSeconds: 600 });
+     window, nowhere near enough to fill a workspace's inbox with rubbish.
+
+     Except the live-help poll, which has its own. A person waiting for support
+     asks every few seconds and creates nothing by asking; charging that to the
+     shared budget would lock them out of their own session in ten minutes. */
+  const limit = act === 'live_poll'
+    ? await rateLimit(env, { what: 'engage-live', who: ip, max: 600, windowSeconds: 600 })
+    : await rateLimit(env, { what: 'engage', who: ip, max: 60, windowSeconds: 600 });
   if (!limit.allowed) {
     return withCors(fail('Too many requests from this connection. Try again shortly.', 429));
   }
@@ -144,6 +162,24 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
          ticket, and saying so beats a chat box that answers nothing. */
       agent: agent ? { name: agent.name, greeting: agent.greeting, avatarUrl: agent.avatarUrl } : null,
     }));
+  }
+
+  /* ── Which widget is the help button inside this app ──
+     The install owner's, and only theirs: the round button in the corner of
+     Protected Central is Protected Central answering its own customers, with
+     the same widget any customer puts on their own site. A tenant ticking the
+     same box on their workspace changes nothing here. Answers with a key that
+     is public anyway, or with nothing. */
+  if (act === 'house') {
+    const w = await env.DB.prepare(
+      `SELECT public_key AS publicKey FROM crm_widgets
+       WHERE in_app = 1 AND status = 'live' AND account_id IN (
+         SELECT ws.account_id FROM crm_workspaces ws
+         JOIN crm_users u ON u.email = ws.owner_email
+         WHERE u.account_id IS NULL AND u.role = 'agency')
+       ORDER BY updated_at DESC LIMIT 1`,
+    ).first<{ publicKey: string }>().catch(() => null);
+    return withCors(json({ success: true, widgetKey: w?.publicKey ?? '' }));
   }
 
   /* ── Start a conversation ── */
@@ -449,7 +485,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       return withCors(fail('This is not enabled for this website.', 403));
     }
     const accountId = String(w.accountId);
-    const email = cleanEmail(d.email);
+    const email = cleanEmail(d.email) || (await signedIn(env, d.token))?.email || '';
     if (!email) return withCors(fail('Enter an email address so we can reply.'));
     const subject = String(d.subject ?? '').trim().slice(0, 200);
     if (!subject) return withCors(fail('Say what it is about.'));
@@ -458,8 +494,11 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const tGate = await contentGate(env, accountId, 'form', `${subject}\n${text}`);
     if (!tGate.ok) return withCors(fail(tGate.message, 422, { code: 'blocked' }));
 
+    /* A signed-in customer of this install raising one from the app is who
+       their session says, whatever the form was filled in with. */
+    const me = await signedIn(env, d.token);
     const person = await upsertPerson(env, accountId, {
-      email, name: d.name, phone: d.phone, source: 'ticket', context: d.context,
+      email: me?.email || email, name: d.name || me?.name, phone: d.phone, source: 'ticket', context: d.context,
     });
     const reference = await nextTicketRef(env, accountId);
     const key = guestKey();
@@ -505,5 +544,164 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     return withCors(json({ success: true, ticket: t, messages: results ?? [] }));
   }
 
+  /* ══ Live help: sharing a screen with the business ══════════════════════
+   *
+   * This side is the person sharing. They ask; somebody at the business sees
+   * the request in Customer Engagement → Live help and joins; the two
+   * browsers then talk directly. What passes through here is the handshake
+   * and the state, never the picture.
+   */
+  if (act === 'live_start') {
+    const w = await widgetFor(env, String(d.widgetKey ?? ''));
+    if (!w || w.status !== 'live') return withCors(fail('Support is not available here.', 404));
+    if (!hostAllowed(String(w.allowedHosts ?? ''), origin)) {
+      return withCors(fail('This is not enabled for this website.', 403));
+    }
+    if (!offersScreen(w.features)) {
+      return withCors(fail('Screen sharing is not switched on for this chat.', 403, { code: 'off' }));
+    }
+    /* On top of the shared budget: each request is a row and an alert to a
+       real person, so a handful an hour from one address is plenty. */
+    const starts = await rateLimit(env, { what: 'live-start', who: ip, max: 6, windowSeconds: 3600 });
+    if (!starts.allowed) return withCors(fail('Too many requests from this connection. Try again later.', 429));
+
+    const accountId = String(w.accountId);
+    const me = await signedIn(env, d.token);
+    const name = String(d.name ?? '').trim().slice(0, 120) || me?.name || '';
+    const email = cleanEmail(d.email) || me?.email || '';
+    const topic = String(d.subject ?? '').trim().slice(0, 500);
+    if (topic) {
+      const g = await contentGate(env, accountId, 'chat', topic);
+      if (!g.ok) return withCors(fail(g.message, 422, { code: 'blocked' }));
+    }
+
+    let personId = '';
+    if (email) {
+      const person = await upsertPerson(env, accountId, {
+        email, name, source: 'live', context: d.context,
+      });
+      personId = person.id;
+    }
+
+    const id = rid('live');
+    const key = publicKey();
+    const now = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO crm_live_sessions
+       (id, account_id, widget_id, conversation_id, person_id, name, email, topic, page_url,
+        verified_email, verified_account, share_key, seen_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).bind(
+      id, accountId, String(w.id), String(d.conversationId ?? '').slice(0, 80), personId,
+      name, email, topic, String(d.context?.page ?? '').slice(0, 400),
+      me?.email ?? '', await provenWorkspace(env, me, d.context?.workspace),
+      key, now, now, now,
+    ).run();
+
+    await recordEvent(env, accountId, {
+      kind: 'live.requested', personId, refId: id,
+      summary: `${name || email || 'A visitor'} wants to share their screen${topic ? ` — ${topic.slice(0, 80)}` : ''}`,
+    });
+
+    const ice = await iceServers(env);
+    return withCors(json({
+      success: true, sessionId: id, shareKey: key,
+      iceServers: ice.servers, relay: ice.relay,
+    }));
+  }
+
+  if (['live_offer', 'live_poll', 'live_end'].includes(act)) {
+    const row = await env.DB.prepare(
+      `SELECT id, account_id AS accountId, share_key AS shareKey, status, ended_reason AS endedReason,
+              answer, meet_url AS meetUrl, agent_name AS agentName, sharer_state AS sharerState,
+              seen_at AS seenAt, created_at AS createdAt
+       FROM crm_live_sessions WHERE id = ?`,
+    ).bind(String(d.sessionId ?? '').slice(0, 80)).first<Record<string, string>>();
+    /* One answer for "no such session" and "wrong key", as for conversations. */
+    if (!row || !d.shareKey || row.shareKey !== String(d.shareKey)) {
+      return withCors(fail('That session could not be found.', 404));
+    }
+    const now = nowIso();
+
+    if (act === 'live_offer') {
+      if (row.status !== 'waiting') return withCors(fail('This session has already started or ended.', 409));
+      const sdp = cleanSdp(d.sdp);
+      if (!sdp) return withCors(fail('That connection description was not usable.', 422));
+      await env.DB.prepare(
+        "UPDATE crm_live_sessions SET offer = ?, updated_at = ?, seen_at = ? WHERE id = ? AND status = 'waiting' AND answer = ''",
+      ).bind(sdp, now, now, row.id).run();
+      return withCors(json({ success: true }));
+    }
+
+    if (act === 'live_end') {
+      if (row.status !== 'ended') {
+        const reason = d.reason === 'failed' ? 'failed' : 'sharer';
+        await env.DB.prepare(
+          "UPDATE crm_live_sessions SET status = 'ended', ended_reason = ?, sharer_state = ?, ended_at = ?, updated_at = ? WHERE id = ? AND status != 'ended'",
+        ).bind(reason, reason === 'failed' ? 'failed' : row.sharerState, now, now, row.id).run();
+      }
+      return withCors(json({ success: true }));
+    }
+
+    /* live_poll. Nobody has picked it up in time: said, and ended, here rather
+       than left for a sweep that only runs when the business looks. */
+    let status = row.status;
+    let endedReason = row.endedReason;
+    if (status === 'waiting' && Date.parse(row.createdAt) < Date.now() - WAIT_MINUTES * 60_000) {
+      await env.DB.prepare(
+        "UPDATE crm_live_sessions SET status = 'ended', ended_reason = 'expired', ended_at = ?, updated_at = ? WHERE id = ? AND status = 'waiting'",
+      ).bind(now, now, row.id).run();
+      status = 'ended';
+      endedReason = 'expired';
+    }
+
+    /* The heartbeat is written only now and then, and when the connection
+       state actually changes — a poll every few seconds that wrote every time
+       would be a database write every few seconds for every waiting person. */
+    const state = ['new', 'connecting', 'connected', 'failed'].includes(String(d.state)) ? String(d.state) : row.sharerState;
+    const stale = Date.parse(row.seenAt) < Date.now() - SEEN_EVERY_MS;
+    if (status !== 'ended' && (stale || state !== row.sharerState)) {
+      await env.DB.prepare('UPDATE crm_live_sessions SET seen_at = ?, sharer_state = ? WHERE id = ?')
+        .bind(now, state, row.id).run();
+    }
+
+    return withCors(json({
+      success: true, status, endedReason,
+      answer: row.answer || '', meetUrl: row.meetUrl || '', agentName: row.agentName || '',
+    }));
+  }
+
   return withCors(fail('Unknown action.', 400));
+}
+
+/**
+ * The signed-in person behind a request, when there is one.
+ *
+ * Only ever true on this install's own origin: the page sends the cookie
+ * placeholder, and withCookieToken swaps in the real session only for a
+ * same-origin request carrying the cookie. A widget on a stranger's site sends
+ * the same placeholder and gets nobody — so an identity found here was proved,
+ * not typed.
+ */
+async function signedIn(env: Env, token: unknown) {
+  const t = String(token ?? '');
+  if (!t || t === 'cookie') return null;
+  return userFromToken(env.DB, t).catch(() => null);
+}
+
+/**
+ * The workspace a signed-in sharer was using, if it is really theirs.
+ *
+ * The page says which one; the database decides whether to believe it. Read
+ * only — `workspaceAccess` would claim an unowned id for them, and asking for
+ * help must not be a way of creating a workspace.
+ */
+async function provenWorkspace(env: Env, me: SessionUser | null, claimed: unknown): Promise<string> {
+  if (!me) return '';
+  const ws = String(claimed ?? '').slice(0, 80);
+  if (!ws) return me.accountId ?? '';
+  if (me.accountId === ws) return ws;
+  const row = await env.DB.prepare('SELECT 1 AS ok FROM crm_workspaces WHERE account_id = ? AND owner_email = ?')
+    .bind(ws, me.email).first<{ ok: number }>().catch(() => null);
+  return row ? ws : '';
 }

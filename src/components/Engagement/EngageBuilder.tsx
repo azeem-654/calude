@@ -27,7 +27,7 @@ type Kind = 'form' | 'agent' | 'article' | 'widget' | 'voice_agent';
 interface FieldSpec {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'tags' | 'fields' | 'check';
+  type: 'text' | 'textarea' | 'select' | 'tags' | 'fields' | 'check' | 'agent';
   hint?: string;
   options?: { id: string; label: string }[];
   rows?: number;
@@ -39,6 +39,15 @@ const TOOL_OPTIONS = [
   { id: 'getAvailableMeetingSlots', label: 'Offer your real booking times' },
   { id: 'createTicket', label: 'Open a ticket for them' },
   { id: 'handoffToHuman', label: 'Hand over to a person' },
+];
+
+/* What a widget offers a visitor. Chat alone opens straight into the chat, as
+   widgets always have; anything more puts a short menu in front of it. */
+const FEATURE_OPTIONS = [
+  { id: 'chat', label: 'Chat' },
+  { id: 'screen', label: 'Share your screen' },
+  { id: 'ticket', label: 'Raise and check a ticket' },
+  { id: 'meeting', label: 'Book a call (needs a booking page below)' },
 ];
 
 const SPECS: Record<Kind, { title: string; blurb: string; nameKey: string; fields: FieldSpec[]; note?: string }> = {
@@ -104,6 +113,10 @@ const SPECS: Record<Kind, { title: string; blurb: string; nameKey: string; field
       ] },
       { key: 'allowedHosts', label: 'Only on these websites', type: 'text', hint: 'Comma separated, e.g. acme.com. Left blank it works anywhere, which is fine while testing and worth tightening once you are live.' },
       { key: 'consentText', label: 'Consent wording', type: 'text' },
+      { key: 'agentId', label: 'AI agent that answers the chat', type: 'agent', hint: 'With none, the chat takes their message and tells them a person will reply.' },
+      { key: 'features', label: 'What it offers', type: 'tags', options: FEATURE_OPTIONS, hint: 'Screen sharing arrives in Live help; somebody there joins and sees what they share. It works on computers — phones cannot share a screen from a web page.' },
+      { key: 'bookingSlug', label: 'Booking page for "Book a call"', type: 'text', hint: 'The end of your booking link: for /book/intro-call, type intro-call.' },
+      { key: 'inApp', label: 'Use as the help button inside Protected Central', type: 'check', hint: 'Only on the install owner’s workspace: the round button in the corner of the app, for your own customers. Anywhere else this is ignored.' },
     ],
   },
   voice_agent: {
@@ -138,6 +151,15 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
   }, [kind]);
 
   useEffect(() => { void load(); setDraft(null); }, [load]);
+
+  /* A widget names the agent that answers it. Without this choice on the
+     screen a widget made here had no agent at all, and its chat could only
+     ever say that a colleague would reply. */
+  const [agents, setAgents] = useState<Record<string, unknown>[]>([]);
+  useEffect(() => {
+    if (kind !== 'widget') return;
+    void listOf('agent').then(r => setAgents(r.success ? (r.items ?? []) as Record<string, unknown>[] : []));
+  }, [kind]);
 
   const val = (k: string): string => {
     const d = draft ?? {};
@@ -207,9 +229,22 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
                   <select style={inp} value={val(f.key)} onChange={e => set(f.key, e.target.value)}>
                     {(f.options ?? []).map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                   </select>
+                ) : f.type === 'agent' ? (
+                  <select style={inp} value={val(f.key)} onChange={e => set(f.key, e.target.value)}>
+                    <option value="">None — a person replies</option>
+                    {agents.map(a => <option key={String(a.id)} value={String(a.id)}>
+                      {String(a.name ?? 'Agent')}{a.status === 'live' ? '' : ' (draft — will not answer)'}
+                    </option>)}
+                  </select>
+                ) : f.type === 'check' ? (
+                  <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: INK }}>
+                    <input type="checkbox" checked={val(f.key) === '1' || val(f.key) === 'true'}
+                      onChange={e => set(f.key, e.target.checked ? 1 : 0)} />
+                    {val(f.key) === '1' || val(f.key) === 'true' ? 'Yes' : 'No'}
+                  </span>
                 ) : f.type === 'tags' ? (
                   <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {TOOL_OPTIONS.map(t => {
+                    {(f.options ?? TOOL_OPTIONS).map(t => {
                       let on = false;
                       try { on = (JSON.parse(val(f.key) || '[]') as string[]).includes(t.id); } catch { on = false; }
                       return (
