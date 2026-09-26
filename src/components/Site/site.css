@@ -135,6 +135,7 @@
 
 .dc-lead-l { animation: dc-in-l 1s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .dc-lead-r { animation: dc-in-r 1s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.dc-lead-0 { animation: dc-in-up 0.8s 0.02s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .dc-lead-1 { animation: dc-in-up 0.85s 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .dc-lead-2 { animation: dc-in-up 0.85s 0.72s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .dc-lead-3 { animation: dc-in-rise 1.25s 0.88s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -1523,3 +1524,132 @@
 
 /* The note that the screens are a sample, under the hero reel. */
 .dc-sample-note { margin-top: 12px; font-size: 12px; color: var(--muted); text-align: center; }
+
+/* ── The hero stage: AI Autopilot working ─────────────────────────────────
+   The real Autopilot screens (the reel) with a request being typed over their
+   top edge, the orb that takes it, and the things it does surfacing at the
+   sides (shared/AutopilotScene). The sparks and the scan line are the only
+   parts drawn here; everything moving is inside a no-preference block, so the
+   still version is the same picture holding its breath. */
+
+.dc .dc-ai-pill {
+  margin: 0 auto 22px;
+  text-decoration: none;
+  font-size: 12.5px;
+  background: linear-gradient(100deg, rgba(200, 242, 77, 0.10), rgba(143, 217, 196, 0.16), rgba(200, 242, 77, 0.10));
+  background-size: 220% 100%;
+}
+.dc .dc-ai-pill:hover { border-color: rgba(200, 242, 77, 0.6); }
+
+.dc-hero-stage {
+  position: relative;
+  max-width: 1080px;
+  margin: clamp(46px, 6vw, 70px) auto 0;
+}
+.dc-hero-stage .dc-hero-shot { margin: 0; }
+
+.dc-hero-prompt.aps-prompt {
+  position: relative;
+  z-index: 3;
+  width: min(600px, 100%);
+  margin: 0 auto -26px;
+  background: rgba(14, 19, 24, 0.86);
+  border-color: rgba(200, 242, 77, 0.35);
+  box-shadow: 0 0 0 6px rgba(200, 242, 77, 0.06), 0 24px 50px -18px rgba(0, 0, 0, 0.9);
+}
+.dc-hero-prompt .aps-prompt-text { font-size: 14.5px; }
+
+.dc-hero-orb {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: -38px;
+  transform: translateX(-50%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* A line of light passing down the screen: the page being read. */
+.dc-hero-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 90px;
+  background: linear-gradient(180deg, transparent, rgba(200, 242, 77, 0.10) 70%, rgba(200, 242, 77, 0.55) 99%, transparent);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.dc-hero-chips.aps-chips { inset: 0; z-index: 4; }
+.dc-hero-chips .aps-chip-0 { left: -7%; top: 16%; }
+.dc-hero-chips .aps-chip-1 { right: -7%; top: 28%; left: auto; }
+.dc-hero-chips .aps-chip-2 { left: -5%; bottom: 20%; top: auto; }
+.dc-hero-chips .aps-chip-3 { right: -5%; bottom: 10%; left: auto; top: auto; }
+
+.dc-hero-sparks { position: absolute; inset: -60px -40px 30%; pointer-events: none; }
+.dc-hero-sparks i {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 10px var(--lime);
+  opacity: 0.5;
+}
+.dc-hero-sparks i:nth-child(odd) { background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+.dc-hero-sparks i:nth-child(1)  { left: 4%;  top: 62%; }
+.dc-hero-sparks i:nth-child(2)  { left: 12%; top: 30%; }
+.dc-hero-sparks i:nth-child(3)  { left: 21%; top: 78%; }
+.dc-hero-sparks i:nth-child(4)  { left: 30%; top: 12%; }
+.dc-hero-sparks i:nth-child(5)  { left: 38%; top: 54%; }
+.dc-hero-sparks i:nth-child(6)  { left: 46%; top: 24%; }
+.dc-hero-sparks i:nth-child(7)  { left: 55%; top: 70%; }
+.dc-hero-sparks i:nth-child(8)  { left: 63%; top: 8%; }
+.dc-hero-sparks i:nth-child(9)  { left: 70%; top: 44%; }
+.dc-hero-sparks i:nth-child(10) { left: 78%; top: 82%; }
+.dc-hero-sparks i:nth-child(11) { left: 85%; top: 18%; }
+.dc-hero-sparks i:nth-child(12) { left: 92%; top: 58%; }
+.dc-hero-sparks i:nth-child(13) { left: 97%; top: 34%; }
+.dc-hero-sparks i:nth-child(14) { left: 8%;  top: 92%; }
+
+.dc-works {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(34px, 5vw, 54px) clamp(16px, 4vw, 44px) 0;
+}
+.dc-works .ww-title { margin-bottom: 10px; font-size: 12.5px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .dc .dc-ai-pill { animation: dc-in-up 0.8s 0.02s cubic-bezier(0.22, 1, 0.36, 1) both, dc-slide-bg 8s linear 1s infinite; }
+  .dc-hero-scan { animation: dc-scan 6.5s cubic-bezier(0.45, 0, 0.3, 1) 2.2s infinite; }
+  .dc-hero-sparks i { animation: dc-spark 7s ease-in-out infinite; }
+  .dc-hero-sparks i:nth-child(3n)   { animation-duration: 9s; animation-delay: -2s; }
+  .dc-hero-sparks i:nth-child(3n+1) { animation-duration: 8s; animation-delay: -5s; }
+  .dc-hero-sparks i:nth-child(4n)   { animation-delay: -3.5s; }
+}
+@keyframes dc-scan {
+  0% { transform: translateY(-90px); opacity: 0; }
+  10% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translateY(640px); opacity: 0; }
+}
+@keyframes dc-spark {
+  0%, 100% { transform: translateY(0) scale(0.6); opacity: 0.15; }
+  50% { transform: translateY(-26px) scale(1.2); opacity: 0.85; }
+}
+
+@media (max-width: 1180px) {
+  .dc-hero-chips .aps-chip-0 { left: 2%; }
+  .dc-hero-chips .aps-chip-1 { right: 2%; }
+  .dc-hero-chips .aps-chip-2 { left: 2%; }
+  .dc-hero-chips .aps-chip-3 { right: 2%; }
+}
+@media (max-width: 720px) {
+  .dc-ai-pill-more { display: none; }
+  .dc-hero-chips { display: none; }
+  .dc-hero-orb { display: none; }
+  .dc-hero-prompt.aps-prompt { margin-bottom: 12px; }
+  .dc-hero-prompt .aps-prompt-text { font-size: 13px; min-height: 2.8em; }
+}

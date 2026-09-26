@@ -186,7 +186,11 @@ id. The rules that closed those holes:
   it); the cookie outlives it on purpose. `checkSession` on the client turns
   a 401 into the sign-in screen with a reason — never treat an offline or a
   500 as signed out. `npm run test:cookies` covers sign-up, reload, reopening
-  the browser, renewal and an ended session.
+  the browser, renewal and an ended session. The sign-in screen offers
+  **"Continue as …"** from `pc_last_signin` (name, address and method only —
+  `pc_`, not `crm_`, so the tenant patch leaves it alone); for a Google account
+  it passes the address to Google as `login_hint`, which the server accepts
+  only if it looks like an address. `test:google` covers it.
 - **Install mail (sign-in and sign-up codes) goes only through a mailbox in a
   workspace the install owner owns** (`installMailbox` in routes/auth.ts) —
   never a customer's, whose Sent folder would then hold other people's codes.
@@ -421,6 +425,12 @@ that could not run reports that rather than declaring the records missing; a
 partial failure is reported as partial. Plausible success with nothing behind it
 is worse than no feature, because the customer finds out when their mail
 bounces.
+
+**Logos say only what is true.** `shared/WorksWith.tsx` is the logo strip on
+the sign-in screen and the site, in two labelled rows: *connects to* (the code
+calls it) and *writes for* (the social creator has its format). It is not a
+partner list — none of those companies has an agreement with us — and a name
+goes on it when the integration exists, not when it is wanted.
 
 Generated records carry a `source` stamp (`src/types/provenance.ts`) naming what
 created them, so a list full of generated rows can still be traced back.

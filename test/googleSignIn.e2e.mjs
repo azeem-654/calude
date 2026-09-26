@@ -46,6 +46,8 @@ const fakeGoogle = async (ctx, seen) => {
     const u = new URL(route.request().url());
     seen.state = u.searchParams.get('state') ?? '';
     seen.redirect = u.searchParams.get('redirect_uri') ?? '';
+    seen.hint = u.searchParams.get('login_hint') ?? '';
+    seen.prompt = u.searchParams.get('prompt') ?? '';
     route.fulfill({ status: 302, headers: { location: `${seen.redirect}?code=e2e-fake-code&state=${encodeURIComponent(seen.state)}&scope=email` } });
   });
 };
@@ -92,6 +94,7 @@ let strayUrl = '';
   await btn.click();
   await p.waitForURL(/\/auth\/google\?/, { timeout: 15000 });
   ok('Google is sent back to this app', seen.redirect === `${B}/auth/google`, seen.redirect);
+  ok('with no account named, Google shows its chooser', seen.prompt === 'select_account' && !seen.hint, JSON.stringify(seen));
   const res = await finish;
   ok('the callback hands the code to the server', !!res, 'google_finish was never called');
   const body = res ? await res.json() : {};
@@ -118,6 +121,33 @@ let strayUrl = '';
   ok('a sign-in started elsewhere is refused', (await p.locator('body').innerText()).includes(NOT_OURS));
   ok('…before the code is sent anywhere', !called);
   await ctx.close();
+}
+
+/* 4 · "Continue as …": the account this browser used last is offered, and
+      pressing it names that account to Google instead of the chooser. */
+{
+  const ctx = await b.newContext();
+  await ctx.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('pc_last_signin', JSON.stringify({ email: 'azeem@example.test', name: 'Azeem', method: 'google' }));
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  const seen = {};
+  await fakeGoogle(ctx, seen);
+  const p = await ctx.newPage();
+  await p.goto(`${B}/login`, { waitUntil: 'networkidle' });
+  const last = p.getByRole('button', { name: /Continue as Azeem/ });
+  ok('the last account is offered by name', await last.count() > 0);
+  await last.click();
+  await p.waitForURL(/\/auth\/google\?/, { timeout: 15000 }).catch(() => {});
+  ok('Google is told which account', seen.hint === 'azeem@example.test' && !seen.prompt, JSON.stringify(seen));
+  await ctx.close();
+
+  /* A hint that is not an address is dropped, and the chooser comes back. */
+  const r = await api({ action: 'google_start', hint: 'not an address' });
+  const u = new URL(r.url);
+  ok('a malformed hint is ignored', !u.searchParams.get('login_hint') && u.searchParams.get('prompt') === 'select_account', r.url);
 }
 
 await b.close();

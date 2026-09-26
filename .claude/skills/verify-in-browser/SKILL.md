@@ -36,7 +36,7 @@ p.on('pageerror', e => errs.push(String(e).slice(0, 180)));
 
 await p.goto('http://localhost:8787/login', { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(1200);
-await p.fill('input[placeholder="Email or username"]', EMAIL);
+await p.getByLabel('Email or username').fill(EMAIL);
 await p.fill('input[type="password"]', PASSWORD);
 await p.getByRole('button', { name: 'Sign in' }).click();
 await p.waitForTimeout(2800);

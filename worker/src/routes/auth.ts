@@ -49,6 +49,8 @@ interface AuthBody {
   code?: string;
   /** The signed state Google hands back with the code. */
   state?: string;
+  /** google_start: the remembered address, passed to Google as login_hint. */
+  hint?: string;
   clientId?: string;
   clientSecret?: string;
   token?: string;
@@ -829,7 +831,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     if (canonical !== reqOrigin) {
       return fail('Google sign-in is not available on this address. Use your email address instead.');
     }
-    const url = await authorizeUrl(env, canonical);
+    const url = await authorizeUrl(env, canonical, String(d.hint ?? '').trim().slice(0, 254));
     if (!url) return fail('Google sign-in is not set up on this installation.');
     return json({ success: true, url });
   }

@@ -40,6 +40,8 @@ import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
 import ShotReel from './ShotReel';
+import WorksWith from '../shared/WorksWith';
+import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
 import './site.css';
 
@@ -350,10 +352,18 @@ export default function SiteHome() {
         </div>
       </header>
 
-      {/* ── Hero ── */}
+      {/* ── Hero ──
+             AI Autopilot, working, is the first thing anybody sees: a request
+             being typed, the real Autopilot screens underneath it, and the
+             things it does surfacing around them. The screens are photographs
+             of the product (reels.ts); the prompt and the events are an
+             illustration and say nothing about anybody's results. ── */}
       <section className="dc-hero" id="top">
         <div className="dc-hero-glow" aria-hidden="true" />
         <div className="dc-hero-inner">
+          <a className="dc-eyebrow dc-ai-pill dc-lead-0" href="#autopilot">
+            <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — describe it, and it builds and runs it</span> <ArrowRight size={14} />
+          </a>
           <h1 className="dc-split">
             <span className="dc-lead-l">Run your agency</span>
             <i aria-hidden="true" />
@@ -370,17 +380,30 @@ export default function SiteHome() {
             </a>
             <a className="dc-btn dc-btn-outline dc-btn-lg" href="#autopilot">See how it works</a>
           </div>
-          {/* The hero's reel is the one that loads eagerly — it is the first
-              thing anybody sees, and waiting for it to be scrolled to would
-              mean it never starts. */}
-          <div className="dc-hero-shot dc-lead-3">
-            <ShotReel shots={REELS.dashboard} label="Protected Central" eager />
+          <div className="dc-hero-stage dc-lead-3">
+            <div className="dc-hero-sparks" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
+            <div className="dc-hero-orb" aria-hidden="true"><AiOrb size={120} /></div>
+            <TypedPrompt className="dc-hero-prompt" />
+            {/* The hero's reel is the one that loads eagerly — it is the first
+                thing anybody sees, and waiting for it to be scrolled to would
+                mean it never starts. */}
+            <div className="dc-hero-shot">
+              <ShotReel shots={REELS.autopilot} label="AI Autopilot" eager />
+              <span className="dc-hero-scan" aria-hidden="true" />
+            </div>
+            <EventChips className="dc-hero-chips" />
           </div>
           {/* The figures in every screen on this page are example data. Said
               once, plainly, where the first of them appears. */}
           <p className="dc-sample-note">Screens show a sample workspace with example data.</p>
         </div>
       </section>
+
+      {/* ── What it connects to, and what it writes for. Two rows, labelled,
+             because they are two different claims (WorksWith.tsx). ── */}
+      <div className="dc-works">
+        <WorksWith title="Works with the tools you already use" />
+      </div>
 
       {/* ── The band under the hero.
              Where a site of this shape prints a star rating, this prints
@@ -413,7 +436,10 @@ export default function SiteHome() {
             </div>
           </div>
           <div className="dc-show-reel">
-            <ShotReel shots={REELS.autopilot} label="AI Autopilot" />
+            {/* The hero shows these from the first; here they start from the
+                board it all runs from, so the same reel is not seen twice in
+                the same order. */}
+            <ShotReel shots={[...REELS.autopilot].reverse()} label="AI Autopilot" />
           </div>
         </div>
       </section>

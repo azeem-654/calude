@@ -47,6 +47,8 @@ export interface SecurityOverview {
     integrations: { key: string; label: string; connected: number }[];
   } | null;
   supportAccess: { enabled: boolean; note: string };
+  /** Install owner only: is CREDENTIAL_WRAP_KEY set, and how many install secrets it protects. */
+  install?: { wrapKeySet: boolean; wrapped: number } | null;
 }
 
 async function call<T = Record<string, unknown>>(action: string, extra: Record<string, unknown> = {}): Promise<{ ok: boolean; data: T & { error?: string; message?: string } }> {

@@ -182,6 +182,14 @@ export default function SecurityCenter() {
     { ok: true, label: `${ov.sessions.length} signed-in device${ov.sessions.length === 1 ? '' : 's'}`, icon: Monitor },
     { ok: ov.account.passwordSet || ov.account.emailVerified, label: ov.account.passwordSet ? 'Password set' : 'Signs in by email code or Google', icon: KeyRound },
     { ok: true, label: 'Workspace access-controlled', icon: Lock },
+    /* Set in Cloudflare, so this is the only place the owner can see it took. */
+    ...(ov.install ? [{
+      ok: ov.install.wrapKeySet && ov.install.wrapped > 0,
+      label: !ov.install.wrapKeySet ? 'Stored-key protection off — set CREDENTIAL_WRAP_KEY'
+        : ov.install.wrapped > 0 ? 'Stored keys protected by CREDENTIAL_WRAP_KEY'
+          : 'CREDENTIAL_WRAP_KEY set — protects keys from their next use',
+      icon: KeyRound,
+    }] : []),
   ];
 
   const doExport = async () => {

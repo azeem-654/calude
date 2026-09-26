@@ -153,7 +153,7 @@ export async function checkState(env: Env, state: string): Promise<boolean> {
 }
 
 /** The address to send somebody to. Null when Google is not configured. */
-export async function authorizeUrl(env: Env, origin: string): Promise<string | null> {
+export async function authorizeUrl(env: Env, origin: string, hint = ''): Promise<string | null> {
   const creds = await googleCreds(env);
   if (!creds) return null;
   const params = new URLSearchParams({
@@ -162,11 +162,20 @@ export async function authorizeUrl(env: Env, origin: string): Promise<string | n
     response_type: 'code',
     scope: SCOPES,
     state: await makeState(env),
+  });
+  if (/^[^\s@]{1,64}@[^\s@]{1,190}$/.test(hint)) {
+    /* "Continue as …": the page named the account, so Google goes straight to
+       it. The chooser's reason for existing — being handed whichever account
+       the browser prefers — does not arise when the account is named. A hint
+       is only a suggestion; Google still decides who is signed in, and the
+       verified address it returns is the only one the server believes. */
+    params.set('login_hint', hint);
+  } else {
     /* Always show the chooser. Without it, somebody signed into two Google
        accounts is silently given whichever one the browser prefers, and finds
        out when the wrong name is in the corner of the app. */
-    prompt: 'select_account',
-  });
+    params.set('prompt', 'select_account');
+  }
   return `${AUTH_URL}?${params.toString()}`;
 }
 

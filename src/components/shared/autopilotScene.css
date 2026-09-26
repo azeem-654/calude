@@ -1,0 +1,256 @@
+/* AI Autopilot, animated (AutopilotScene.tsx).
+
+   Written for a dark ground in the site's colours — lime #c8f24d, mint
+   #8fd9c4 — and self-contained, so the sign-in panel and the public site can
+   both use it. Every keyframe is inside `prefers-reduced-motion:
+   no-preference`; outside it the scene is a still picture, with two of the
+   four event chips shown so it still says what happens. */
+
+.aps {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #eef3ec;
+}
+
+.aps-glow {
+  position: absolute;
+  width: 70%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+}
+.aps-glow-a { left: -10%; top: -12%; background: radial-gradient(circle, rgba(200, 242, 77, 0.30), transparent 65%); }
+.aps-glow-b { right: -14%; bottom: -8%; background: radial-gradient(circle, rgba(143, 217, 196, 0.26), transparent 65%); }
+
+/* A faint grid, like the canvas the workflows are drawn on. */
+.aps-grid {
+  position: absolute;
+  inset: -40px;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 20%, transparent 72%);
+          mask-image: radial-gradient(circle at 50% 45%, #000 20%, transparent 72%);
+}
+
+.aps-stack {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+  width: min(420px, 86%);
+}
+
+/* ── The orb ── */
+.aps-orb { position: relative; display: grid; place-items: center; }
+.aps-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(200, 242, 77, 0.35);
+}
+.aps-ring-1 { border-style: dashed; }
+.aps-ring-2 { inset: 14%; border-color: rgba(143, 217, 196, 0.4); border-top-color: #c8f24d; }
+.aps-ring-3 { inset: 28%; border-color: rgba(200, 242, 77, 0.2); box-shadow: 0 0 40px rgba(200, 242, 77, 0.25) inset; }
+.aps-core {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #1d2519, #070a0e 70%);
+  box-shadow: 0 0 0 1px rgba(200, 242, 77, 0.35), 0 0 36px rgba(200, 242, 77, 0.35);
+}
+.aps-orbit { position: absolute; inset: 0; }
+.aps-orbit i {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  background: #0e1318;
+  border: 1px solid rgba(200, 242, 77, 0.45);
+  color: #c8f24d;
+}
+.aps-orbit i:nth-child(1) { left: 50%; top: 0; }
+.aps-orbit i:nth-child(2) { left: 100%; top: 50%; }
+.aps-orbit i:nth-child(3) { left: 50%; top: 100%; }
+.aps-orbit i:nth-child(4) { left: 0; top: 50%; }
+
+/* ── The prompt ── */
+.aps-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+  text-align: left;
+}
+.aps-prompt-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #d6f96f, #8fd9c4);
+  color: #0f1210;
+}
+.aps-prompt-text { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; color: #f2f5f1; }
+.aps-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: #c8f24d;
+}
+.aps-prompt-go {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: #c8f24d;
+  color: #0f1210;
+  font-weight: 800;
+}
+
+/* ── The stages ── */
+.aps-flow {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+.aps-flow-line {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 15px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  border-radius: 2px;
+}
+.aps-flow-line i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 28%;
+  background: linear-gradient(90deg, transparent, #c8f24d, transparent);
+}
+.aps-stage { position: relative; display: grid; justify-items: center; gap: 6px; width: 25%; }
+.aps-stage small { font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, 0.62); letter-spacing: 0.02em; }
+.aps-stage-dot {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #0e1318;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.7);
+}
+/* Still picture: the first two stages done. */
+.aps-stage-0 .aps-stage-dot,
+.aps-stage-1 .aps-stage-dot { background: #c8f24d; border-color: #c8f24d; color: #0f1210; }
+
+/* ── The events ── */
+.aps-chips { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.aps-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 250px;
+  padding: 9px 12px 9px 9px;
+  border-radius: 14px;
+  background: rgba(14, 19, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 16px 34px -14px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+  text-align: left;
+}
+.aps-chip b { display: block; font-size: 12.5px; color: #fff; }
+.aps-chip small { display: block; font-size: 11px; color: rgba(255, 255, 255, 0.6); line-height: 1.35; }
+.aps-chip-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: rgba(200, 242, 77, 0.14);
+  color: #c8f24d;
+}
+.aps-chip-tick { flex-shrink: 0; color: #8fd9c4; }
+.aps-chip-0 { left: 6%; top: 9%; }
+.aps-chip-1 { right: 5%; top: 30%; }
+.aps-chip-2 { left: 5%; bottom: 12%; }
+.aps-chip-3 { right: 7%; bottom: 26%; }
+.aps-chip-1, .aps-chip-3 { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .aps-glow-a { animation: aps-float-a 14s ease-in-out infinite alternate; }
+  .aps-glow-b { animation: aps-float-b 17s ease-in-out infinite alternate; }
+  .aps-grid { animation: aps-grid 24s linear infinite; }
+  .aps-ring-1 { animation: aps-spin 26s linear infinite; }
+  .aps-ring-2 { animation: aps-spin 9s linear infinite reverse; }
+  .aps-ring-3 { animation: aps-breathe 3.6s ease-in-out infinite; }
+  .aps-core { animation: aps-breathe 3.6s ease-in-out infinite; }
+  .aps-orbit { animation: aps-spin 18s linear infinite; }
+  .aps-orbit i { animation: aps-spin 18s linear infinite reverse; }
+  .aps-caret { animation: aps-blink 1s steps(1) infinite; }
+  .aps-flow-line i { animation: aps-pulse-run 2.4s cubic-bezier(0.45, 0, 0.2, 1) infinite; }
+
+  .aps-stage-0 .aps-stage-dot,
+  .aps-stage-1 .aps-stage-dot { background: #0e1318; border-color: rgba(255, 255, 255, 0.18); color: rgba(255, 255, 255, 0.7); }
+  .aps-stage .aps-stage-dot { animation: aps-stage-lit 9.6s ease-in-out infinite; }
+  .aps-stage-1 .aps-stage-dot { animation-delay: 1.2s; }
+  .aps-stage-2 .aps-stage-dot { animation-delay: 2.4s; }
+  .aps-stage-3 .aps-stage-dot { animation-delay: 3.6s; }
+
+  .aps-chip-1, .aps-chip-3 { display: flex; }
+  .aps-chip { opacity: 0; animation: aps-chip 16s ease-in-out infinite; }
+  .aps-chip-1 { animation-delay: 4s; }
+  .aps-chip-2 { animation-delay: 8s; }
+  .aps-chip-3 { animation-delay: 12s; }
+}
+
+@keyframes aps-spin { to { transform: rotate(360deg); } }
+@keyframes aps-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes aps-blink { 50% { opacity: 0; } }
+@keyframes aps-float-a { to { transform: translate(12%, 10%) scale(1.1); } }
+@keyframes aps-float-b { to { transform: translate(-10%, -12%) scale(1.15); } }
+@keyframes aps-grid { to { transform: translate(40px, 40px); } }
+@keyframes aps-pulse-run { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
+@keyframes aps-stage-lit {
+  0%, 8% { background: #0e1318; border-color: rgba(255, 255, 255, 0.18); color: rgba(255, 255, 255, 0.7); box-shadow: none; }
+  14%, 70% { background: #c8f24d; border-color: #c8f24d; color: #0f1210; box-shadow: 0 0 18px rgba(200, 242, 77, 0.55); }
+  82%, 100% { background: #0e1318; border-color: rgba(255, 255, 255, 0.18); color: rgba(255, 255, 255, 0.7); box-shadow: none; }
+}
+@keyframes aps-chip {
+  0% { opacity: 0; transform: translateY(12px) scale(0.96); }
+  4%, 26% { opacity: 1; transform: none; }
+  32%, 100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+}

@@ -64,7 +64,47 @@ function setSession(s: Session | null) {
   if (s) {
     const stored = s.backend === 'php' && !keepsToken() ? { ...s, token: COOKIE_TOKEN } : s;
     window.localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
+    if (s.user?.email) rememberSignIn(s.user);
   } else window.localStorage.removeItem(SESSION_KEY);
+}
+
+/* ── "Continue as …" ─────────────────────────────────────────────────────────
+ *
+ * The last account this browser signed in with, so the sign-in screen can
+ * offer it as one button — the way Google's own button does. Only the name,
+ * the address and how they signed in: nothing that signs anybody in. Pressing
+ * it still goes through Google or asks for the password; it saves typing, not
+ * a step.
+ *
+ * `pc_`, not `crm_`: installTenantStorage would file a `crm_` key under the
+ * active workspace, and this has to be readable before there is one. It is
+ * kept across sign-out, which is the point of it, and "Not you?" on the
+ * sign-in screen removes it.
+ */
+export type SignInMethod = 'google' | 'password' | 'code';
+export interface LastSignIn { email: string; name: string; method: SignInMethod }
+const LAST_KEY = 'pc_last_signin';
+/* Set by whichever path is signing in, and read when the session lands —
+   which for an account with 2-step on is a screen later, in the same page. */
+let signingInWith: SignInMethod | null = null;
+
+export function lastSignIn(): LastSignIn | null {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(LAST_KEY) ?? 'null') as LastSignIn | null;
+    return v && typeof v.email === 'string' && v.email.includes('@') ? v : null;
+  } catch { return null; }
+}
+
+function rememberSignIn(user: AuthUser) {
+  const prev = lastSignIn();
+  /* A refreshed session (checkSession) carries no method; keep the one the
+     person actually used rather than relabelling a Google account "password". */
+  const method = signingInWith ?? (prev?.email === user.email ? prev.method : 'password');
+  try { window.localStorage.setItem(LAST_KEY, JSON.stringify({ email: user.email, name: user.name || '', method })); } catch { /* storage off */ }
+}
+
+export function forgetSignIn() {
+  try { window.localStorage.removeItem(LAST_KEY); } catch { /* storage off */ }
 }
 
 /**
@@ -285,6 +325,7 @@ const ticketOf = (data: Record<string, unknown>): string | undefined =>
   data.mfaRequired ? String(data.ticket ?? '') : undefined;
 
 export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string; mfaTicket?: string }> {
+  signingInWith = 'password';
   const res = await php('login', { email, password });
   if (res) {
     const mfaTicket = ticketOf(res.data);
@@ -383,6 +424,7 @@ export async function requestLoginCode(email: string): Promise<{ ok: boolean; me
 
 /** Exchange the six digits for a session. Creates the account if it is new. */
 export async function verifyLoginCode(email: string, code: string): Promise<{ ok: boolean; error: string; mfaTicket?: string }> {
+  signingInWith = 'code';
   const res = await php('verify_code', { email, code });
   if (!res) return { ok: false, error: 'Could not reach the server.' };
   const mfaTicket = ticketOf(res.data);
@@ -399,8 +441,10 @@ export async function verifyLoginCode(email: string, code: string): Promise<{ ok
  * state the browser must not be able to mint, and the client id, which the
  * browser has no other reason to hold.
  */
-export async function googleStart(): Promise<{ ok: boolean; url: string; error: string }> {
-  const res = await php('google_start', {});
+export async function googleStart(hint = ''): Promise<{ ok: boolean; url: string; error: string }> {
+  /* `hint` is the remembered address: Google then goes straight to that
+     account instead of the chooser. */
+  const res = await php('google_start', hint ? { hint } : {});
   if (!res) return { ok: false, url: '', error: 'Could not reach the server.' };
   if (!res.ok) return { ok: false, url: '', error: String(res.data.error ?? 'Google sign-in is not available.') };
   const url = String(res.data.url ?? '');
@@ -423,6 +467,7 @@ export function googleStateIsOurs(state: string): boolean {
 
 /** Hand Google's code back to the Worker, which swaps it and issues a session. */
 export async function googleFinish(code: string, state: string): Promise<{ ok: boolean; error: string; mfaTicket?: string }> {
+  signingInWith = 'google';
   const res = await php('google_finish', { code, state });
   if (!res) return { ok: false, error: 'Could not reach the server.' };
   const mfaTicket = ticketOf(res.data);

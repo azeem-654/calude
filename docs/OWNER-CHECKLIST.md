@@ -817,6 +817,19 @@ the database on its own opens nothing.
 Nothing else needs doing: the first request after it is set wraps the stored
 key in place.
 
+4. **Check it took.** Signed in as azeem@protectedcentral.com, open
+   **Settings → Security & Privacy**. The row of status pills at the top now
+   has one for this (only the install owner sees it):
+   - *Stored-key protection off* — the secret is not reaching the Worker. Check
+     the name is exactly `CREDENTIAL_WRAP_KEY` and that you pressed Deploy.
+   - *CREDENTIAL_WRAP_KEY set — protects keys from their next use* — set; the
+     stored keys are wrapped the next time something uses them (sending mail,
+     a Google sign-in). Reload after a few minutes of normal use.
+   - *Stored keys protected by CREDENTIAL_WRAP_KEY* — done.
+
+   If a mailbox or payment then says it cannot read its credentials, the key
+   in Cloudflare is not the one it was wrapped with: put the saved value back.
+
 **`BACKUP_PASSPHRASE` (item 14).** GitHub → Settings → Secrets and variables →
 Actions → **New repository secret**, name `BACKUP_PASSPHRASE`, a long random
 phrase. Keep a copy outside GitHub — it is the only way to open a backup. Then

@@ -22,7 +22,7 @@
  * not legal advice; docs/OWNER-CHECKLIST.md asks for a lawyer's review.
  */
 
-export const LEGAL_UPDATED = '25 September 2026';
+export const LEGAL_UPDATED = '26 September 2026';
 export const PRIVACY_CONTACT = 'privacy@protectedcentral.com';
 
 export interface LegalSection { id: string; title: string; body: string[]; list?: string[] }
@@ -109,7 +109,7 @@ export const PRIVACY: LegalSection[] = [
   {
     id: 'cookies', title: 'Cookies and browser storage',
     body: [
-      'We use one essential cookie to keep you signed in, marked so that page scripts cannot read it, and the browser\'s local storage for your workspace preferences. We do not use advertising or third-party tracking cookies. Emails sent through the platform may include open and click tracking for the sender\'s reports.',
+      'We use one essential cookie to keep you signed in, marked so that page scripts cannot read it, and the browser\'s local storage for your workspace preferences. After you sign in, that browser also remembers the name and email address of the account you used, so the sign-in screen can offer "Continue as" next time; choose "Not you? Use another account" there to remove it. We do not use advertising or third-party tracking cookies. Emails sent through the platform may include open and click tracking for the sender\'s reports.',
     ],
   },
   {

@@ -141,6 +141,13 @@ export async function handleSecurity(req: Request, env: Env): Promise<Response> 
       sessions,
       events,
       workspace,
+      /* The install owner only: whether the key that encrypts every stored
+         credential is itself protected (CREDENTIAL_WRAP_KEY, lib/db.ts). The
+         owner sets it in Cloudflare and has no other way to see it took. */
+      install: isOwner(user) ? {
+        wrapKeySet: !!String(env.CREDENTIAL_WRAP_KEY ?? '').trim(),
+        wrapped: Number((await one<{ n: number }>(env, "SELECT COUNT(*) AS n FROM crm_meta WHERE v LIKE 'wrapped:%'"))?.n ?? 0),
+      } : null,
       /* Said by the server so the page cannot drift from what is true. */
       supportAccess: {
         enabled: false,

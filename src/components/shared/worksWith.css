@@ -1,0 +1,71 @@
+/* The "Works with" strip (WorksWith.tsx). Always on a dark ground: the sign-in
+   panel and the public site are both dark, and single-colour marks read best
+   as light on dark. */
+
+.ww { display: grid; gap: 10px; width: 100%; color: rgba(255, 255, 255, 0.86); }
+.ww-title {
+  margin: 0 0 2px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c8f24d;
+}
+.ww-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ww-label {
+  flex-shrink: 0;
+  width: 78px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+.ww-window {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  /* Fade at both ends, so logos arrive and leave rather than being cut. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.ww-track { display: none; width: max-content; }
+.ww-static { display: flex; flex-wrap: wrap; justify-content: center; }
+.ww-copy { display: flex; flex-shrink: 0; }
+.ww-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 22px;
+  white-space: nowrap;
+  opacity: 0.78;
+  transition: opacity 0.2s, color 0.2s;
+}
+.ww-item:hover { opacity: 1; color: #fff; }
+.ww-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.ww-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.ww-compact .ww-item { padding: 4px 16px; }
+.ww-compact .ww-name { font-size: 13.5px; }
+.ww-compact .ww-item svg { width: 18px; height: 18px; }
+.ww-compact .ww-label { width: 84px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ww-static { display: none; }
+  .ww-track { display: flex; }
+  .ww-track { animation: ww-slide 38s linear infinite; }
+  .ww-track.ww-rev { animation-direction: reverse; animation-duration: 44s; }
+  .ww-window:hover .ww-track { animation-play-state: paused; }
+}
+@keyframes ww-slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+@media (max-width: 520px) {
+  .ww .ww-row { flex-direction: column; align-items: stretch; gap: 2px; }
+  .ww .ww-label { width: auto; text-align: center; }
+}

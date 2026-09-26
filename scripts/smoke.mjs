@@ -100,10 +100,10 @@ try {
   await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
   await p.getByRole('button', { name: 'Create one' }).click();
   await p.waitForTimeout(400);
-  await p.locator('input[placeholder="Your name"]').fill('Dave Pike');
-  await p.locator('input[placeholder="Email address"]').fill(EMAIL);
-  await p.locator('input[placeholder="Password"]').fill(PASSWORD);
-  await p.locator('input[placeholder="Confirm password"]').fill(PASSWORD);
+  await p.getByLabel('Full name').fill('Dave Pike');
+  await p.getByLabel('Email address').fill(EMAIL);
+  await p.getByLabel('Password', { exact: true }).fill(PASSWORD);
+  await p.getByLabel('Confirm password').fill(PASSWORD);
   const consent = p.locator('input[type=checkbox]');
   if (await consent.count()) await consent.first().check();
   /* "Continue" since sign-up proves the address with a code. With no install
@@ -159,8 +159,8 @@ try {
   const errs2 = watch(q);
 
   await q.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
-  await q.locator('input[placeholder="Email or username"]').fill(EMAIL);
-  await q.locator('input[placeholder="Password"]').fill(PASSWORD);
+  await q.getByLabel('Email or username').fill(EMAIL);
+  await q.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await q.getByRole('button', { name: 'Sign in' }).click();
   await q.waitForTimeout(6000);
 
