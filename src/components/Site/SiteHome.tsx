@@ -406,7 +406,7 @@ export default function SiteHome() {
       {/* ── What it connects to, and what it writes for. Two rows, labelled,
              because they are two different claims (WorksWith.tsx). ── */}
       <div className="dc-works">
-        <WorksWith title="Works with the tools you already use" />
+        <WorksWith title="Integrations, and the tools we build with" />
       </div>
 
       {/* ── The band under the hero.

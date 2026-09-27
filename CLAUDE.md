@@ -230,6 +230,13 @@ whose assets 404.
 
 **Work lands on `staging`. `main` is what customers are using.**
 
+**Push finished work to `staging` without being asked.** A session's own
+branch is where it develops; once the typecheck and the relevant tests pass,
+the same commits go to `staging` too (`git push origin HEAD:staging`, a
+fast-forward — if it is not one, merge `origin/staging` in first), so the owner
+can see them on testing.protectedcentral.com. The owner should never have to
+ask for that. Promotion to `main` is the step that waits for them.
+
 | Branch | Workflow | Worker | Database | Address |
 |---|---|---|---|---|
 | `staging` | `staging.yml`, on push | `crmpro-staging` | `crmpro-staging` | testing.protectedcentral.com |
@@ -449,10 +456,12 @@ is worse than no feature, because the customer finds out when their mail
 bounces.
 
 **Logos say only what is true.** `shared/WorksWith.tsx` is the logo strip on
-the sign-in screen and the site, in two labelled rows: *connects to* (the code
-calls it) and *writes for* (the social creator has its format). It is not a
-partner list — none of those companies has an agreement with us — and a name
-goes on it when the integration exists, not when it is wanted.
+the sign-in screen and the site, in three labelled rows: *connects to* (the
+code calls it), *writes for* (the social creator has its format) and *built
+with* (the tools the owner used to make the product, as the owner lists them).
+It is not a partner list — none of those companies has an agreement with us —
+and a name goes on the first two rows when the integration exists, not when it
+is wanted. A *built with* name that gets integrated moves up a row.
 
 Generated records carry a `source` stamp (`src/types/provenance.ts`) naming what
 created them, so a list full of generated rows can still be traced back.

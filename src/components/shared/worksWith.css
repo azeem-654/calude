@@ -2,7 +2,17 @@
    panel and the public site are both dark, and single-colour marks read best
    as light on dark. */
 
-.ww { display: grid; gap: 10px; width: 100%; color: rgba(255, 255, 255, 0.86); }
+/* Two columns sized to the longest label, so a label can never run into the
+   logos beside it; each row's own box is dissolved into the grid. */
+.ww {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 8px;
+  width: 100%;
+  color: rgba(255, 255, 255, 0.86);
+}
 .ww-title {
   margin: 0 0 2px;
   text-align: center;
@@ -11,11 +21,10 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #c8f24d;
+  grid-column: 1 / -1;
 }
-.ww-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ww-row { display: contents; }
 .ww-label {
-  flex-shrink: 0;
-  width: 78px;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -54,7 +63,6 @@
 .ww-compact .ww-item { padding: 4px 16px; }
 .ww-compact .ww-name { font-size: 13.5px; }
 .ww-compact .ww-item svg { width: 18px; height: 18px; }
-.ww-compact .ww-label { width: 84px; }
 
 @media (prefers-reduced-motion: no-preference) {
   .ww-static { display: none; }
@@ -66,6 +74,6 @@
 @keyframes ww-slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 @media (max-width: 520px) {
-  .ww .ww-row { flex-direction: column; align-items: stretch; gap: 2px; }
-  .ww .ww-label { width: auto; text-align: center; }
+  .ww { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+  .ww .ww-label { text-align: center; margin-top: 6px; }
 }

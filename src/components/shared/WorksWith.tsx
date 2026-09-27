@@ -11,11 +11,14 @@
  * posts cut to each platform's canvas and limits. Each row is labelled with
  * which it is, so nothing here needs an asterisk.
  *
- * A company goes on this list when the code talks to it (or, for the second
- * row, when the social creator has a format for it) — not before. Groq,
- * OpenAI, Anthropic, Zapier and Slack were asked for and are not here for that
- * reason: nothing in the app calls them yet. Adding one is a line below once
- * something does.
+ * A company goes on the first two rows when the code talks to it (or, for
+ * the second, when the social creator has a format for it) — not before.
+ *
+ * The third row, *built with*, is the tools the owner used to make Protected
+ * Central, as the owner lists them. It is its own row, and not "partners" or
+ * "integrations", because the product does not call any of them: a visitor
+ * reading "Slack" under "connects to" would go looking for the Slack setting
+ * and not find it. When one of them is integrated, it moves up a row.
  *
  * ── Motion ──
  *
@@ -41,6 +44,14 @@ const WRITES_FOR: Brand[] = [
   { id: 'linkedin', name: 'LinkedIn', role: 'Company posts' },
   { id: 'youtube', name: 'YouTube', role: 'Titles & descriptions' },
   { id: 'pinterest', name: 'Pinterest', role: 'Pins' },
+];
+
+const BUILT_WITH: Brand[] = [
+  { id: 'anthropic', name: 'Anthropic', role: 'Claude, used to write and review the code' },
+  { id: 'openai', name: 'OpenAI', role: 'Used in building Protected Central' },
+  { id: 'groq', name: 'Groq', role: 'Used in building Protected Central' },
+  { id: 'zapier', name: 'Zapier', role: 'Used in building Protected Central' },
+  { id: 'slack', name: 'Slack', role: 'Used in building Protected Central' },
 ];
 
 function Mark({ b }: { b: Brand }) {
@@ -84,12 +95,13 @@ function Row({ label, items, reverse }: { label: string; items: Brand[]; reverse
   );
 }
 
-export default function WorksWith({ title = 'Works with', compact = false }: { title?: string; compact?: boolean }) {
+export default function WorksWith({ title = 'Integrations & tools', compact = false }: { title?: string; compact?: boolean }) {
   return (
     <section className={`ww${compact ? ' ww-compact' : ''}`} aria-label={title}>
       {title && <p className="ww-title">{title}</p>}
       <Row label="Connects to" items={CONNECTS} />
       <Row label="Writes for" items={WRITES_FOR} reverse />
+      <Row label="Built with" items={BUILT_WITH} />
     </section>
   );
 }
