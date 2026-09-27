@@ -16,14 +16,11 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 | # | What | Where | Blocks |
 |---|---|---|---|
-| 0 | **URGENT — add a route for `testing.protectedcentral.com/*` to `crmpro-staging`** | Cloudflare → Workers → crmpro-staging → Domains & Routes | The testing site being the testing site. See "The wildcard route swallowed testing" below |
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
-| 2 | **Attach a wildcard Worker route** for `*.protectedcentral.com` | Cloudflare → Workers → Routes | Reseller subdomains resolve |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
 | 5 | **Add the Calendar scope** to your Google client, then **connect your calendar** in Customer Engagement → Meetings | console.cloud.google.com, then the app | Google Meet links on bookings, the assistant offering real times, and the "Switch to Google Meet" button in Live help |
 | 6 | *Optional* — **choose a voice provider** | — | AI voice. Nothing else; the rest of Customer Engagement works without it |
-| 7 | **Create a Google OAuth client** for "Sign up / Continue with Google" — ten minutes, step by step in 17 | console.cloud.google.com, then Settings → Security | The Google button on sign-in *and* sign-up. The code is built and live; it only appears once the client is saved. Do it on both sites |
 | 8 | **Turn on 2-step sign-in for azeem@protectedcentral.com** | app → Settings → Security & Privacy → 2-step sign-in → Turn on | The owner account can connect payments and change settings for everyone; a password alone should not be enough. See 22 |
 | 9 | **Create the mailbox `security@protectedcentral.com`** (or an alias to yours) | your mail host | The Trust Center and `/.well-known/security.txt` publish it as the place to report vulnerabilities; until it exists those reports bounce |
 | 10 | **Confirm billing is enabled on the Google Cloud project behind the AI key** | console.cloud.google.com → Billing | What the Trust Center may say about AI training. On a free-tier key Google may use prompts to improve its products; on a paid one its terms say it does not |
@@ -37,6 +34,14 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 **Done, and no longer on the list:**
 
+- Item 0 — testing.protectedcentral.com answers from `crmpro-staging` (its
+  status reports `appOrigin: https://testing.protectedcentral.com`). Checked
+  2026-09-27.
+- Item 2 — the `*.protectedcentral.com` wildcard route: an unregistered
+  subdomain answers 200. Checked 2026-09-27.
+- Item 7 — the Google OAuth client: "Continue with Google" is on for both
+  app.protectedcentral.com and testing.protectedcentral.com. Checked
+  2026-09-27. Its consent screen still needs the Calendar scope for item 5.
 - Attaching testing.protectedcentral.com to the staging Worker — 2026-09-16.
 - Revoking the Creem key that was pasted into a chat, and reissuing — 2026-09-18.
 - Confirming the billing webhook — 2026-09-18.
