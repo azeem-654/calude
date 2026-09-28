@@ -13,6 +13,8 @@ import { hashPassword, newToken, timingSafeEqual, verifyPassword } from '../lib/
 import { decryptSecret } from '../lib/crypto';
 import { hasAnyUser, hasInstallOwner, installSecret, nowIso, sessionKey, sessionKeys, signupsClosed, sweepSessions, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
 import { readTicket, signTicket, verifyTotp } from '../lib/totp';
+import { CAN_SEND_SQL, canSend, deliver, fromAddressOf } from '../lib/deliver';
+import { loadMailboxById, type Mailbox } from './mailbox';
 import {
   authorizeUrl, checkState, exchangeCode, googleCreds, saveGoogleCreds, redirectUri, signInOrigin,
 } from '../lib/googleAuth';
@@ -159,47 +161,40 @@ async function sha256Hex(input: string): Promise<string> {
  * next, the install owner included. A code in somebody else's Sent folder is a
  * password in somebody else's hands.
  */
-async function installMailbox(env: Env) {
-  return env.DB.prepare(
-    `SELECT m.smtp_host AS host, m.smtp_port AS port, m.smtp_encryption AS encryption,
-            m.smtp_username AS username, m.smtp_password AS password,
-            m.from_email AS fromEmail, m.from_name AS fromName
+async function installMailbox(env: Env): Promise<Mailbox | null> {
+  /* Any mailbox that can send — its own SMTP server or a provider's API. This
+     asked for `smtp_host` alone, so an owner whose mailbox sends through Brevo
+     had "no mailbox", no sign-in codes and no proved sign-ups.
+
+     And only one that has passed "Save & validate". Sign-up waits on this
+     mailbox, so a key pasted in and never proved — or proved wrong — would
+     otherwise stop every new customer at "we could not send the code". Until
+     one validates, sign-up works the older, unproved way, as it did before
+     any mailbox existed. */
+  const row = await env.DB.prepare(
+    `SELECT m.id, m.account_id AS accountId
      FROM crm_mailbox_accounts m
-     WHERE m.smtp_host != '' AND m.smtp_username != ''
+     WHERE ${CAN_SEND_SQL} AND m.out_verified_at IS NOT NULL
        AND m.account_id IN (
          SELECT w.account_id FROM crm_workspaces w
          JOIN crm_users u ON u.email = w.owner_email
          WHERE u.account_id IS NULL AND u.role = 'agency')
      ORDER BY m.is_primary DESC, m.created_at LIMIT 1`,
-  ).first<{
-    host: string; port: number; encryption: string; username: string;
-    password: string; fromEmail: string; fromName: string;
-  }>().catch(() => null);
+  ).first<{ id: string; accountId: string }>().catch(() => null);
+  if (!row) return null;
+  const mb = await loadMailboxById(env, row.accountId, row.id).catch(() => null);
+  return canSend(mb) ? mb : null;
 }
 
 async function sendLoginCode(env: Env, email: string, code: string): Promise<{ ok: boolean; error: string }> {
-  const row = await installMailbox(env);
-
-  if (!row?.host) {
+  const mb = await installMailbox(env);
+  if (!mb) {
     return {
       ok: false,
       error: 'This app cannot send sign-in codes yet — the owner has not connected a mailbox to send them from. Use your password, or try again later.',
     };
   }
 
-  const { installSecret } = await import('../lib/db');
-  const { decryptSecret } = await import('../lib/crypto');
-  const { buildMime } = await import('../lib/mime');
-  const { smtpSend } = await import('../lib/smtp');
-
-  let password = '';
-  try {
-    password = await decryptSecret(await installSecret(env.DB, 'mailbox_key'), row.password);
-  } catch {
-    return { ok: false, error: 'Could not send a code just now. Try again shortly.' };
-  }
-
-  const from = row.fromEmail || row.username;
   /* Plain, short, and with the code big enough to read on a phone without
      zooming — this is read in a notification shade more often than in an inbox. */
   const html = `
@@ -212,30 +207,17 @@ async function sendLoginCode(env: Env, email: string, code: string): Promise<{ o
       </p>
     </div>`;
 
-  const mime = buildMime({
-    fromName: row.fromName || 'Sign in',
-    fromEmail: from,
+  /* The mailbox's own route and settings (lib/deliver) — its encryption, its
+     port, or its provider — rather than a copy of them made here. */
+  const sent = await deliver(mb, {
+    fromName: mb.from.name || 'Sign in',
+    fromEmail: fromAddressOf(mb),
     to: email,
     subject: `${code} is your sign-in code`,
     html,
-  }, row.host);
-
-  /*
-   * The mailbox's own encryption, not a guess.
-   *
-   * This said `encryption: 'tls'` regardless of what the mailbox was configured
-   * with, which is wrong for every SSL-on-465 mailbox and every relay that
-   * wants none. The port ladder inside smtpSend would often paper over it and
-   * sometimes not, which is the worst kind of wrong — it works until somebody's
-   * particular host is the exception.
-   */
-  const encryption = row.encryption === 'ssl' ? 'ssl' : row.encryption === 'none' ? 'none' : 'tls';
-  const sent = await smtpSend(
-    { host: row.host, port: row.port, encryption, username: row.username, password },
-    { from, to: email, mime },
-  );
-  /* The SMTP server's own words are not shown: they name a host and a mailbox
-     that belong to the operator, to somebody who has not signed in yet. */
+  });
+  /* The server's own words are not shown: they name a host and a mailbox that
+     belong to the operator, to somebody who has not signed in yet. */
   return sent.ok
     ? { ok: true, error: '' }
     : { ok: false, error: 'We could not send the code just now. Try again in a moment.' };
@@ -702,7 +684,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
       const refused = await consumeCode(env, lower, typed, req);
       if (refused) return refused;
       proved = true;
-    } else if ((await installMailbox(env))?.host) {
+    } else if (await installMailbox(env)) {
       const refused = await issueCode(env, lower, ip);
       if (refused) return refused;
       return json({

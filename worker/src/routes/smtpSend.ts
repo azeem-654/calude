@@ -10,6 +10,8 @@
  * PHP — each of them was a real bug there before it was a rule.
  */
 import { signTrackedLinks } from '../lib/trackSign';
+import { deliver, sendsViaApi } from '../lib/deliver';
+import { providerLabel, verifyProvider } from '../lib/providerApi';
 import { addr, body, fail, headerSafe, json } from '../lib/http';
 import { diagnose } from '../lib/mailDiagnosis';
 import { requireSessionForSocket, denyForeignWorkspace, type Env } from '../lib/db';
@@ -101,6 +103,35 @@ export async function handleSmtpSend(
 
   if (!host && d.accountId) {
     const mb = await loadMailbox(env, String(d.accountId));
+    /* A mailbox that sends through a provider has no SMTP server to sign in
+       to. Whichever route the page chose, the mailbox's own setting decides
+       (lib/deliver) — a page that guessed SMTP from a stale cache must not be
+       told there is no mail server when there is a working Brevo key. */
+    if (mb && sendsViaApi(mb)) {
+      if (opts.forceVerify || d.verifyOnly) {
+        const v = await verifyProvider(mb.provider, mb.from.email);
+        return json({ success: v.ok, transport: 'api', message: v.warning ? `${v.message} ${v.warning}` : v.message, error: v.ok ? undefined : v.message });
+      }
+      const toApi = addr(d.to);
+      if (!toApi) return fail(String(d.to ?? '').trim() ? `"${d.to}" is not a valid email address` : 'Recipient address is required');
+      const fromApi = addr(d.fromEmail) ?? addr(mb.from.email);
+      if (!fromApi) return fail('This mailbox has no From address. Add one in Settings → Email & SMS.');
+      const replyApi = String(d.replyTo ?? mb.from.replyTo ?? '').trim();
+      if (replyApi && !addr(replyApi)) return fail(`"${replyApi}" is not a valid reply-to address`);
+      let unsubApi = String(d.unsubscribeUrl ?? '').trim();
+      if (unsubApi) { try { if (!/^https?:$/.test(new URL(unsubApi).protocol)) unsubApi = ''; } catch { unsubApi = ''; } }
+      const r = await deliver(mb, {
+        fromName: headerSafe(d.fromName ?? mb.from.name ?? 'CRM', 120),
+        fromEmail: fromApi, to: toApi,
+        subject: headerSafe(d.subject ?? '', 300),
+        html: await signTrackedLinks(env, String(d.html ?? '')),
+        replyTo: replyApi || undefined,
+        unsubscribeUrl: unsubApi || undefined,
+      });
+      return json(r.ok
+        ? { success: true, transport: 'api', id: r.id, message: `Accepted by ${providerLabel(mb.provider.name)} over HTTPS.` }
+        : { success: false, transport: 'api', message: r.error, error: r.error });
+    }
     if (!mb || !mb.smtp.host) {
       return fail('This workspace has no mail server set up yet. Add one in Settings → Email & SMS.');
     }

@@ -37,8 +37,7 @@ import {
 import { loadAiKey } from './lib/ai';
 import { createPayLink, storefrontReady } from './routes/storefront';
 import { draftAtSupplier, supplierReady } from './routes/supplier';
-import { buildMime } from './lib/mime';
-import { smtpSend } from './lib/smtp';
+import { canSend, cannotSendReason, deliver, fromAddressOf } from './lib/deliver';
 import {
   writeBlogPost, writeLandingPage, writeSequence, writeShortScript, writeSocialPosts, type Brand,
 } from './lib/autopilotWrite';
@@ -170,7 +169,7 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     /* "Can send" means validated, not filled in. Planning a campaign around a
        host somebody typed is how a workspace ends up with a queue of messages
        that will never leave. */
-    canEmail: !!mailbox?.smtp.host,
+    canEmail: canSend(mailbox),
     canSms: !!sms?.accountSid && !!sms.fromNumber,
     pool: await poolFor(env, accountId, run),
     content: await contentFor(env, accountId),
@@ -756,15 +755,13 @@ async function carryOutReminders(
       const r = await sendSms(env, sms, phone, text, accountId);
       ok = r.ok;
       why = r.error;
-    } else if (email && mb?.smtp.host) {
-      const fromEmail = mb.from.email || mb.smtp.username;
-      const mime = buildMime({
-        fromName: mb.from.name || company, fromEmail, to: email,
+    } else if (email && canSend(mb)) {
+      const r = await deliver(mb, {
+        fromName: mb.from.name || company, fromEmail: fromAddressOf(mb), to: email,
         subject: `Reminder: your appointment tomorrow at ${when}`,
         html: `<p>Hi ${esc(who)},</p><p>Just a reminder of your appointment with ${esc(company)} <strong>tomorrow at ${esc(when)}</strong>.</p><p>If that no longer suits, reply to this message and we will move it.</p><p>${esc(company)}</p>`,
         replyTo: mb.from.replyTo || undefined,
-      }, mb.smtp.host);
-      const r = await smtpSend(mb.smtp, { from: fromEmail, to: email, mime });
+      });
       ok = r.ok;
       why = r.error;
     } else {
@@ -818,7 +815,7 @@ async function carryOutBuyerEmail(
   const chasing = effect.type === 'chase_payment';
 
   const mb = await loadMailbox(env, accountId);
-  if (!mb?.smtp.host) return { ok: false, detail: 'No mailbox is connected, so nothing could be sent.' };
+  if (!canSend(mb)) return { ok: false, detail: cannotSendReason(mb) };
 
   const origin = env.APP_ORIGIN ?? '';
   if (chasing && !origin) {
@@ -830,7 +827,7 @@ async function carryOutBuyerEmail(
 
   const profile = parse<{ companyName?: string }>(await dataGet(env.DB, accountId, ONBOARDING_KEY), {});
   const company = profile.companyName || mb.from.name || 'us';
-  const fromEmail = mb.from.email || mb.smtp.username;
+  const fromEmail = fromAddressOf(mb);
 
   let sent = 0;
   let skipped = 0;
@@ -875,12 +872,10 @@ async function carryOutBuyerEmail(
       ].join('');
     }
 
-    const mime = buildMime({
+    const r = await deliver(mb, {
       fromName: mb.from.name || company, fromEmail, to: o.email, subject, html: await signTrackedLinks(env, html),
       replyTo: mb.from.replyTo || undefined,
-    }, mb.smtp.host);
-
-    const r = await smtpSend(mb.smtp, { from: fromEmail, to: o.email, mime });
+    });
     if (!r.ok) { failures.push(`${o.email}: ${r.error.slice(0, 120)}`); continue; }
 
     /* Stamped only after the send succeeded. Stamping first would lose a

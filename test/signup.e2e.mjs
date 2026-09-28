@@ -95,6 +95,14 @@ check("…nor the owner's sign-in code", !r.success && mail.length === 0, JSON.s
 
 r = await api('mailbox.php', { token: owner.token, accountId: 'acct-owner-signup', action: 'save', smtp: SMTP, from: { email: 'hello@owner.test', name: 'Owner Co' } });
 check("the owner connects a mailbox in their own workspace", r.success, JSON.stringify(r));
+const ownerBox = r.id;
+
+/* Saved is not proved. Sign-up waits on this mailbox, so one that has never
+   passed "Save & validate" must not be able to stop every new customer. */
+r = await api('auth.php', { action: 'register', email: 'unproved@signup.test', password: 'Hq4#vL8!mTz2wE', name: 'Unproved' }, '10.7.1.5');
+check('an owner mailbox not yet validated does not gate sign-up', r.success && !r.needsCode && !!r.token, JSON.stringify(r));
+r = await api('mailbox.php', { token: owner.token, accountId: 'acct-owner-signup', action: 'test_outgoing', id: ownerBox });
+check('the owner validates it', r.success, JSON.stringify(r));
 
 mail.length = 0;
 const pw = 'Gv7&hN2!cXe9rK';

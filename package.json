@@ -39,6 +39,7 @@
     "test:design": "npx --yes tsx test/design.test.mts",
     "test:signup": "node test/signup.e2e.mjs",
     "test:google": "node test/googleSignIn.e2e.mjs",
+    "test:forms": "node test/formContract.e2e.mjs",
     "test:livehelp": "node test/liveHelp.e2e.mjs"
   },
   "dependencies": {

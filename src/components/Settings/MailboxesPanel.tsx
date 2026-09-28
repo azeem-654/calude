@@ -66,9 +66,11 @@ const inp: React.CSSProperties = {
 };
 const lbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 };
 
-function Field({ label, value, onChange, placeholder, type = 'text', hint }: {
+function Field({ label, value, onChange, placeholder, type = 'text', hint, field }: {
   label: string; value: string; onChange: (v: string) => void;
   placeholder?: string; type?: string; hint?: string;
+  /** The name the server uses when it asks for this box (services/fieldGuard.ts). */
+  field?: string;
 }) {
   const [show, setShow] = useState(false);
   const isPass = type === 'password';
@@ -81,6 +83,8 @@ function Field({ label, value, onChange, placeholder, type = 'text', hint }: {
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
+          data-field={field}
+          aria-label={label}
           style={{ ...inp, paddingRight: isPass ? 36 : 11 }}
         />
         {isPass && (
@@ -139,8 +143,12 @@ interface SectionProps {
   draft: MailboxDraft;
   record?: MailboxRecord;
   onChange: (d: MailboxDraft) => void;
-  onSaved: (list: MailboxRecord[], id?: string) => void;
+  onSaved: (list: MailboxRecord[], id?: string, result?: SectionResult) => void;
+  /** What the last press said, carried across the add form becoming a saved card. */
+  initialResult?: SectionResult | null;
 }
+
+type SectionResult = { ok: boolean; message: string; diagnosis?: Diagnosis };
 
 /**
  * One direction of one mailbox.
@@ -150,9 +158,9 @@ interface SectionProps {
  * password — and validating is a network round-trip to somebody else's server
  * that should happen when asked, not on a timer.
  */
-function DirectionSection({ direction, draft, record, onChange, onSaved }: SectionProps) {
+function DirectionSection({ direction, draft, record, onChange, onSaved, initialResult }: SectionProps) {
   const [busy, setBusy] = useState<'save' | 'validate' | null>(null);
-  const [result, setResult] = useState<{ ok: boolean; message: string; diagnosis?: Diagnosis } | null>(null);
+  const [result, setResult] = useState<SectionResult | null>(initialResult ?? null);
 
   const out = direction === 'outgoing';
   const status = out ? record?.outgoing : record?.incoming;
@@ -176,18 +184,26 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
     const r = await saveMailboxRecord(draft);
     if (!r.success) { setBusy(null); setResult({ ok: false, message: r.error ?? 'Could not save.' }); return; }
     const id = r.id ?? draft.id;
-    onSaved(r.mailboxes ?? [], id);
-    if (!id) { setBusy(null); return; }
+    if (!id) { setBusy(null); onSaved(r.mailboxes ?? []); return; }
+    /* A new mailbox is not handed over until it has been validated. Handing
+       it over closes the add form — this component — so the answer used to
+       arrive after the box that shows it had gone, and "Save & validate" on
+       a new mailbox said nothing at all. The answer now travels with it and
+       the saved card opens showing it. */
+    const isNew = !draft.id;
+    if (!isNew) onSaved(r.mailboxes ?? [], id);
 
     setBusy('validate');
     const v = out ? await validateOutgoing(id) : await validateIncoming(id);
     setBusy(null);
-    if (v.mailboxes) onSaved(v.mailboxes, id);
-    setResult({
+    const said: SectionResult = {
       ok: !!v.success,
       message: v.message ?? v.error ?? (v.success ? 'Validated.' : 'Validation failed.'),
       diagnosis: v.diagnosis,
-    });
+    };
+    if (isNew) { onSaved(v.mailboxes ?? r.mailboxes ?? [], id, said); return; }
+    if (v.mailboxes) onSaved(v.mailboxes, id);
+    setResult(said);
   };
 
   return (
@@ -233,6 +249,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
           <div style={{ display: 'grid', gap: 10 }}>
             <Field
               label="API key"
+              field="provider.key"
               type="password"
               value={draft.provider.key}
               placeholder={record?.provider.hasKey ? 'Stored — leave blank to keep it' : ''}
@@ -240,19 +257,19 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
               onChange={v => onChange({ ...draft, provider: { ...draft.provider, key: v } })}
             />
             {draft.provider.name === 'mailjet' && (
-              <Field label="API secret" type="password" value={draft.provider.secret}
+              <Field label="API secret" field="provider.secret" type="password" value={draft.provider.secret}
                 placeholder={record?.provider.hasSecret ? 'Stored — leave blank to keep it' : ''}
                 onChange={v => onChange({ ...draft, provider: { ...draft.provider, secret: v } })} />
             )}
             {draft.provider.name === 'mailgun' && (
-              <Field label="Sending domain" value={draft.provider.domain} placeholder="mg.yourdomain.com"
+              <Field label="Sending domain" field="provider.domain" value={draft.provider.domain} placeholder="mg.yourdomain.com"
                 hint="The domain you verified with Mailgun."
                 onChange={v => onChange({ ...draft, provider: { ...draft.provider, domain: v } })} />
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <Field label="From name" value={draft.from.name} placeholder="Wild West Corp"
+              <Field label="From name" field="from.name" value={draft.from.name} placeholder="Wild West Corp"
                 onChange={v => onChange({ ...draft, from: { ...draft.from, name: v } })} />
-              <Field label="From address" value={draft.from.email} placeholder="support@yourdomain.com"
+              <Field label="From address" field="from.email" value={draft.from.email} placeholder="support@yourdomain.com"
                 hint="Providers refuse to send from a domain you have not verified with them."
                 onChange={v => onChange({ ...draft, from: { ...draft.from, email: v } })} />
             </div>
@@ -262,6 +279,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
           <Field
             label={out ? 'SMTP host' : 'IMAP host'}
+            field={out ? 'smtp.host' : 'imap.host'}
             value={out ? draft.smtp.host : draft.imap.host}
             placeholder={out ? 'smtp.yourdomain.com' : 'imap.yourdomain.com'}
             onChange={v => onChange(out
@@ -270,6 +288,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
           />
           <Field
             label="Port"
+            field={out ? 'smtp.port' : 'imap.port'}
             value={String(out ? draft.smtp.port : draft.imap.port)}
             onChange={v => onChange(out
               ? { ...draft, smtp: { ...draft.smtp, port: v } }
@@ -301,6 +320,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Field
             label="Username"
+            field={out ? 'smtp.username' : 'imap.username'}
             value={out ? draft.smtp.username : draft.imap.username}
             placeholder="you@yourdomain.com or a provider login"
             hint={out ? 'Not always an email address — Resend uses "resend", SendGrid uses "apikey".' : undefined}
@@ -310,6 +330,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
           />
           <Field
             label="Password or API key"
+            field={out ? 'smtp.password' : 'imap.password'}
             type="password"
             value={out ? draft.smtp.password : draft.imap.password}
             placeholder={
@@ -330,15 +351,15 @@ function DirectionSection({ direction, draft, record, onChange, onSaved }: Secti
 
         {out ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="From name" value={draft.from.name} placeholder="Wild West Corp"
+            <Field label="From name" field="from.name" value={draft.from.name} placeholder="Wild West Corp"
               onChange={v => onChange({ ...draft, from: { ...draft.from, name: v } })} />
-            <Field label="From address" value={draft.from.email} placeholder="support@yourdomain.com"
+            <Field label="From address" field="from.email" value={draft.from.email} placeholder="support@yourdomain.com"
               hint="Most servers refuse to send as an address you did not sign in as."
               onChange={v => onChange({ ...draft, from: { ...draft.from, email: v } })} />
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Folder" value={draft.imap.folder} placeholder="INBOX"
+            <Field label="Folder" field="imap.folder" value={draft.imap.folder} placeholder="INBOX"
               hint="INBOX unless you collect replies somewhere else."
               onChange={v => onChange({ ...draft, imap: { ...draft.imap, folder: v } })} />
           </div>
@@ -378,6 +399,9 @@ export default function MailboxesPanel() {
   const [list, setList] = useState<MailboxRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  /* The answer to a new mailbox's first "Save & validate", keyed by id and
+     direction, for the card it becomes. */
+  const [firstResult, setFirstResult] = useState<Record<string, SectionResult>>({});
   const [drafts, setDrafts] = useState<Record<string, MailboxDraft>>({});
   /* A mailbox being added has no id yet, so it needs a key of its own. */
   const [adding, setAdding] = useState<MailboxDraft | null>(null);
@@ -405,7 +429,8 @@ export default function MailboxesPanel() {
     return () => { live = false; };
   }, []);
 
-  const afterSave = (mailboxes: MailboxRecord[], id?: string) => {
+  const afterSave = (mailboxes: MailboxRecord[], id?: string, result?: SectionResult, direction?: Direction) => {
+    if (id && result && direction) setFirstResult(p => ({ ...p, [`${id}:${direction}`]: result }));
     setList(mailboxes);
     cacheMailboxes(mailboxes);
     setDrafts(prev => {
@@ -509,9 +534,9 @@ export default function MailboxesPanel() {
                     onChange={e => setDrafts(p => ({ ...p, [m.id]: { ...draft, label: e.target.value } }))}
                     style={{ ...inp, maxWidth: 320 }} />
                 </div>
-                <DirectionSection direction="outgoing" draft={draft} record={m}
+                <DirectionSection direction="outgoing" draft={draft} record={m} initialResult={firstResult[`${m.id}:outgoing`]}
                   onChange={d => setDrafts(p => ({ ...p, [m.id]: d }))} onSaved={afterSave} />
-                <DirectionSection direction="incoming" draft={draft} record={m}
+                <DirectionSection direction="incoming" draft={draft} record={m} initialResult={firstResult[`${m.id}:incoming`]}
                   onChange={d => setDrafts(p => ({ ...p, [m.id]: d }))} onSaved={afterSave} />
               </div>
             )}
@@ -534,8 +559,8 @@ export default function MailboxesPanel() {
                 onChange={e => setAdding({ ...adding, label: e.target.value })}
                 style={{ ...inp, maxWidth: 320 }} />
             </div>
-            <DirectionSection direction="outgoing" draft={adding} onChange={setAdding} onSaved={afterSave} />
-            <DirectionSection direction="incoming" draft={adding} onChange={setAdding} onSaved={afterSave} />
+            <DirectionSection direction="outgoing" draft={adding} onChange={setAdding} onSaved={(l, id, r) => afterSave(l, id, r, 'outgoing')} />
+            <DirectionSection direction="incoming" draft={adding} onChange={setAdding} onSaved={(l, id, r) => afterSave(l, id, r, 'incoming')} />
             <div>
               <button onClick={() => setAdding(null)}
                 style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${LINE}`, background: '#fff', color: INK, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>

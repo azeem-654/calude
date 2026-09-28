@@ -17,8 +17,7 @@
 import { nowIso, type Env } from './lib/db';
 import { askGemini, loadAiKey } from './lib/ai';
 import { loadMailbox } from './routes/mailbox';
-import { buildMime } from './lib/mime';
-import { smtpSend } from './lib/smtp';
+import { canSend, deliver, fromAddressOf } from './lib/deliver';
 
 export interface DispatchReport { seen: number; notified: number; failed: number; notes: string[] }
 
@@ -146,7 +145,7 @@ export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
     if (!to.length) { await mark(env, ev.id); continue; }
 
     const box = await loadMailbox(env, ev.accountId).catch(() => null);
-    if (!box) {
+    if (!canSend(box)) {
       /* Left undispatched on purpose: a workspace that connects a mailbox
          tomorrow should get today's notifications, not discover they were
          thrown away while it was being set up. */
@@ -158,11 +157,11 @@ export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
     /* The workspace's own mailbox, exactly as the digest sends: the notification
        comes from the business, not from the platform, so a reply goes where the
        person replying expects it to. */
-    const fromEmail = box.from.email;
+    const fromEmail = fromAddressOf(box);
     let sentAny = false;
     for (const address of to) {
       try {
-        const mime = buildMime({
+        const res = await deliver(box, {
           fromEmail,
           fromName: settings.business || box.from.name || 'Customer Engagement',
           to: address,
@@ -171,8 +170,7 @@ export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
             + (extra ? `<p style="color:#334155">${escapeHtml(extra)}</p>` : '')
             + '<p style="color:#64748b;font-size:13px">Open Customer Engagement to pick it up.</p>',
           replyTo: box.from.replyTo || undefined,
-        }, box.smtp.host);
-        const res = await smtpSend(box.smtp, { from: fromEmail, to: address, mime });
+        });
         if (res.ok) sentAny = true;
         else report.notes.push(`${address}: ${res.error.slice(0, 120)}`);
       } catch (e) {

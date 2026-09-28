@@ -44,6 +44,7 @@ import { handleShop } from './routes/shop';
 import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
+import { handleUiReport } from './routes/uireport';
 import { handleValidateKey } from './routes/validateKey';
 import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
@@ -71,6 +72,7 @@ type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Respon
 const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
   '/api/security.php': handleSecurity,
+  '/api/uireport.php': handleUiReport,
   '/api/ai.php': handleAi,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot

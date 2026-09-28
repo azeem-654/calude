@@ -39,8 +39,7 @@ import { dataGet } from './db';
 import { logDelivery } from './deliveryLog';
 import { loadMailbox } from '../routes/mailbox';
 import { loadSmsConfig, sendSms } from './sms';
-import { smtpSend } from './smtp';
-import { buildMime } from './mime';
+import { canSend, cannotSendReason, deliver, fromAddressOf } from './deliver';
 import { wrapEmail } from './designLayouts';
 import { logoAddress } from './brandLogo';
 
@@ -460,7 +459,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
       } else if (node.type === 'send_email') {
         if (!mailboxLoaded) { mailbox = await loadMailbox(env, accountId); mailboxLoaded = true; }
         const to = (contact.email ?? '').trim();
-        const canEmail = !!mailbox?.smtp.host && !(mailbox.smtp.username && !mailbox.smtp.password);
+        const canEmail = canSend(mailbox);
         if (!to) {
           await log(env, accountId, run.id, node.id, node.type, 'skipped', `${contact.name ?? contact.id} has no email address.`);
         } else if (!canEmail) {
@@ -468,8 +467,9 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
              carries on: the tags and tasks after this step are still worth
              doing, and stopping would make one missing setting look like a
              broken automation. */
-          await log(env, accountId, run.id, node.id, node.type, 'skipped', 'No mail server is connected to this workspace.');
-          report.notes.push(`"${a.name}" wanted to send an email but no mail server is connected.`);
+          const why = cannotSendReason(mailbox);
+          await log(env, accountId, run.id, node.id, node.type, 'skipped', why);
+          report.notes.push(`"${a.name}" wanted to send an email: ${why}`);
         } else {
           /* The business fields are read once per graph per tick, not per
              email: the same project, the same booking page. */
@@ -485,12 +485,11 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
             if (!logoCache.has(bizKey)) logoCache.set(bizKey, cfg('logo') === 'off' ? '' : await emailLogoFor(env, accountId, a.projectId));
             html = wrapEmail(html, cfg, { company: biz.myCompany || mailbox!.from.name || '', logoSrc: logoCache.get(bizKey) ?? '' });
           }
-          const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
-          const mime = buildMime({
+          const fromEmail = fromAddressOf(mailbox!);
+          const r = await deliver(mailbox!, {
             fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: await signTrackedLinks(env, html),
             replyTo: mailbox!.from.replyTo || undefined,
-          }, mailbox!.smtp.host);
-          const r = await smtpSend(mailbox!.smtp, { from: fromEmail, to, mime });
+          });
           /* The same per-recipient row every other send writes, so "did that
              reach them" is answered in one place whatever produced it. */
           await logDelivery(env, accountId, {

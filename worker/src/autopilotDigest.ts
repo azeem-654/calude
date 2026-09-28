@@ -18,8 +18,7 @@
  */
 import { dataGet, dataPut, nowIso, type Env } from './lib/db';
 import { loadMailbox } from './routes/mailbox';
-import { buildMime } from './lib/mime';
-import { smtpSend } from './lib/smtp';
+import { canSend, deliver, fromAddressOf } from './lib/deliver';
 
 export interface DigestReport { sent: number; skipped: number; failed: number; notes: string[] }
 
@@ -189,7 +188,7 @@ export async function runDigests(env: Env): Promise<DigestReport> {
     if (!owner?.owner_email) { report.skipped++; continue; }
 
     const mb = await loadMailbox(env, accountId);
-    if (!mb?.smtp.host) {
+    if (!canSend(mb)) {
       /* Not a failure worth a note every five minutes: a workspace with no
          mailbox already has a louder problem, and Autopilot has already said
          so in the ledger. */
@@ -235,14 +234,11 @@ export async function runDigests(env: Env): Promise<DigestReport> {
       `</div>`,
     ].filter(Boolean).join('');
 
-    const fromEmail = mb.from.email || mb.smtp.username;
-    const mime = buildMime({
-      fromName: mb.from.name || 'Autopilot', fromEmail,
+    const sent = await deliver(mb, {
+      fromName: mb.from.name || 'Autopilot', fromEmail: fromAddressOf(mb),
       to: owner.owner_email, subject, html,
       replyTo: mb.from.replyTo || undefined,
-    }, mb.smtp.host);
-
-    const sent = await smtpSend(mb.smtp, { from: fromEmail, to: owner.owner_email, mime });
+    });
     if (!sent.ok) {
       report.failed++;
       report.notes.push(`digest to ${owner.owner_email} failed — ${sent.error.slice(0, 120)}`);

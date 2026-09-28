@@ -24,8 +24,7 @@ import { dataGet, dataPut } from './lib/db';
 import { logDelivery } from './lib/deliveryLog';
 import { loadMailbox } from './routes/mailbox';
 import { loadSmsConfig, sendSms } from './lib/sms';
-import { smtpSend } from './lib/smtp';
-import { buildMime } from './lib/mime';
+import { canSend, cannotSendReason, CAN_SEND_SQL, deliver, fromAddressOf } from './lib/deliver';
 
 /* Keys the browser syncs up. Same names it uses locally. */
 const ENROLL_KEY = 'crm_sequence_enrollments';
@@ -132,7 +131,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
    * skipped because its SMTP was blank. Each step now checks what *it* needs,
    * and says so per step.
    */
-  const canEmail = !!mailbox?.smtp.host && !(mailbox.smtp.username && !mailbox.smtp.password);
+  const canEmail = canSend(mailbox);
   const canSms = !!sms?.accountSid && !!sms.fromNumber;
 
   if (!canEmail && !canSms) {
@@ -142,9 +141,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     note(report, accountId, `${due.length} message(s) due, but this workspace has no mail server and no SMS sender set up.`);
     return;
   }
-  if (mailbox?.smtp.host && mailbox.smtp.username && !mailbox.smtp.password) {
-    note(report, accountId, 'The stored mailbox password could not be read back. Enter it again in Settings → Email.');
-  }
+  if (mailbox && !canEmail) note(report, accountId, cannotSendReason(mailbox));
 
   let touched = false;
   let sentHere = 0;
@@ -207,16 +204,14 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
         note(report, accountId, `${target} has opted out, so the text was not sent.`);
       }
     } else {
-      const fromEmail = mailbox!.from.email || mailbox!.smtp.username;
-      const mime = buildMime({
+      const r = await deliver(mailbox!, {
         fromName: mailbox!.from.name || 'CRM',
-        fromEmail,
+        fromEmail: fromAddressOf(mailbox!),
         to: target,
         subject,
         html: await signTrackedLinks(env, html),
         replyTo: mailbox!.from.replyTo || undefined,
-      }, mailbox!.smtp.host);
-      const r = await smtpSend(mailbox!.smtp, { from: fromEmail, to: target, mime });
+      });
       out = { ok: r.ok, error: r.error };
     }
 
@@ -326,7 +321,7 @@ export async function runScheduledSends(env: Env): Promise<TickReport> {
    * mailboxes there and left the old table frozen behind them.
    */
   const { results } = await env.DB.prepare(
-    `SELECT account_id FROM crm_mailbox_accounts WHERE smtp_host != ''
+    `SELECT account_id FROM crm_mailbox_accounts WHERE ${CAN_SEND_SQL}
      UNION
      SELECT account_id FROM crm_sms_config WHERE from_number != '' AND account_sid != ''
      LIMIT 500`,
@@ -468,7 +463,7 @@ async function runDueSchedules(env: Env, report: TickReport): Promise<void> {
        * per started schedule buys the customer the sentence that answers it.
        */
       const hasMail = await env.DB.prepare(
-        "SELECT 1 AS n FROM crm_mailboxes WHERE account_id = ? AND smtp_host != ''",
+        `SELECT 1 AS n FROM crm_mailbox_accounts WHERE account_id = ? AND ${CAN_SEND_SQL}`,
       ).bind(row.account_id).first<{ n: number }>();
       if (!hasMail) {
         note(report, row.account_id, `"${row.label}" is enrolled and on, but nothing can send until a mail server is set up in Settings → Email.`);

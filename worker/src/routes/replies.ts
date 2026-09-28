@@ -16,8 +16,7 @@ import { canAccess, installSecret, nowIso, userFromToken, type Env } from '../li
 import { encryptSecret } from '../lib/crypto';
 import { loadAiKey, verifyAiKey } from '../lib/ai';
 import { loadMailboxById } from './mailbox';
-import { smtpSend } from '../lib/smtp';
-import { buildMime } from '../lib/mime';
+import { canSend, cannotSendReason, deliver, fromAddressOf } from '../lib/deliver';
 
 interface Body {
   token?: string;
@@ -145,24 +144,21 @@ export async function handleReplies(req: Request, env: Env): Promise<Response> {
     }
 
     const mb = await loadMailboxById(env, accountId, row.mailbox_id);
-    if (!mb?.smtp.host) return fail('The mailbox this reply belongs to is no longer connected.');
+    if (!mb) return fail('The mailbox this reply belongs to is no longer connected.');
+    if (!canSend(mb)) return fail(cannotSendReason(mb));
 
     /* What the approver saw, unless they edited it. Sending anything other than
        the words on their screen would make the approval meaningless. */
     const subject = String(d.subject ?? row.subject);
     const text = String(d.body ?? row.body);
-    const fromEmail = mb.from.email || mb.smtp.username;
-
-    const mime = buildMime({
+    const sent = await deliver(mb, {
       fromName: mb.from.name || 'Support',
-      fromEmail,
+      fromEmail: fromAddressOf(mb),
       to: row.to_email,
       subject,
       html: text.replace(/\n/g, '<br>'),
       replyTo: mb.from.replyTo || undefined,
-    }, mb.smtp.host);
-
-    const sent = await smtpSend(mb.smtp, { from: fromEmail, to: row.to_email, mime });
+    });
     await env.DB.prepare(
       'UPDATE crm_reply_drafts SET status = ?, subject = ?, body = ?, detail = ?, acted_at = ? WHERE id = ?',
     ).bind(sent.ok ? 'sent' : 'failed', subject, text, sent.ok ? '' : sent.error, nowIso(), id).run();

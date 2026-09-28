@@ -25,6 +25,8 @@ import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { smtpVerify, type Encryption } from '../lib/smtp';
 import { imapFetch } from '../lib/imap';
 import { diagnose } from '../lib/mailDiagnosis';
+import { verifyProvider } from '../lib/providerApi';
+import { sendsViaApi } from '../lib/deliver';
 
 const SECRET_KEY = 'mailbox_key';
 
@@ -250,16 +252,16 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
   if (d.action === 'save') {
     const smtp = d.smtp ?? {};
     const host = String(smtp.host ?? '').trim();
-    if (host && !HOST_OK.test(host)) return fail(`"${host}" is not a valid mail server name.`);
+    if (host && !HOST_OK.test(host)) return fail(`"${host}" is not a valid mail server name.`, 200, { field: 'smtp.host' });
 
     const fromEmail = String(d.from?.email ?? '').trim();
-    if (fromEmail && !addr(fromEmail)) return fail(`"${fromEmail}" is not a valid sending address.`);
+    if (fromEmail && !addr(fromEmail)) return fail(`"${fromEmail}" is not a valid sending address.`, 200, { field: 'from.email' });
     const replyTo = String(d.from?.replyTo ?? '').trim();
-    if (replyTo && !addr(replyTo)) return fail(`"${replyTo}" is not a valid reply-to address.`);
+    if (replyTo && !addr(replyTo)) return fail(`"${replyTo}" is not a valid reply-to address.`, 200, { field: 'from.replyTo' });
 
     const imap = d.imap ?? {};
     const imapHost = String(imap.host ?? '').trim();
-    if (imapHost && !HOST_OK.test(imapHost)) return fail(`"${imapHost}" is not a valid mailbox host.`);
+    if (imapHost && !HOST_OK.test(imapHost)) return fail(`"${imapHost}" is not a valid mailbox host.`, 200, { field: 'imap.host' });
 
     const wantedId = String(d.id ?? '').trim();
     const existing = wantedId
@@ -392,7 +394,7 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
 
     if (INCOMING.has(d.action ?? '')) {
       if (!mb.imap.host || !mb.imap.username) {
-        return fail('Add your incoming mail server (IMAP) details first — host and username at least.');
+        return fail('Add your incoming mail server (IMAP) details first — host and username at least.', 200, { field: mb.imap.host ? 'imap.username' : 'imap.host' });
       }
       const r = await imapFetch({ ...mb.imap, folder: mb.imap.folder }, 1);
       await env.DB.prepare(
@@ -414,9 +416,28 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
       });
     }
 
-    if (!mb.smtp.host) return fail('Add your outgoing mail server (SMTP) host first.');
+    /* A provider mailbox has no SMTP server — the form does not even show
+       the field — so it is proved through the provider's own API. This used
+       to fall through to the SMTP check below and demand a host nobody could
+       type in. */
+    if (sendsViaApi(mb)) {
+      const v = await verifyProvider(mb.provider, mb.from.email);
+      await env.DB.prepare(
+        `UPDATE ${TABLE} SET out_verified_at = ?, out_verified_port = NULL, out_last_error = ?, updated_at = ? WHERE id = ?`,
+      ).bind(v.ok ? nowIso() : null, v.ok ? (v.warning ?? '') : v.message, nowIso(), mb.id).run();
+      if (!v.ok) return fail(v.message, 200, { direction: 'outgoing', field: v.field, mailboxes: await listAll() });
+      return json({
+        success: v.ok,
+        direction: 'outgoing',
+        message: `${v.message}${v.warning ? ` ${v.warning}` : ' This mailbox can send.'}`,
+        warning: v.warning,
+        mailboxes: await listAll(),
+      });
+    }
+
+    if (!mb.smtp.host) return fail('Add your outgoing mail server (SMTP) host first.', 200, { field: 'smtp.host' });
     if (mb.smtp.username && !mb.smtp.password) {
-      return fail('The saved password could not be read back. Enter it again and save.');
+      return fail('The saved password could not be read back. Enter it again and save.', 200, { field: 'smtp.password' });
     }
 
     const r = await smtpVerify(mb.smtp);

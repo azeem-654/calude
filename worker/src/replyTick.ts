@@ -19,8 +19,7 @@
 import { dataGet, nowIso, type Env } from './lib/db';
 import { loadMailboxes, type Mailbox } from './routes/mailbox';
 import { imapFetch } from './lib/imap';
-import { smtpSend } from './lib/smtp';
-import { buildMime } from './lib/mime';
+import { deliver, fromAddressOf } from './lib/deliver';
 import { askGemini, loadAiKey } from './lib/ai';
 import {
   classify, matchRule, needsEscalation, replyPrompt, shouldRefuse,
@@ -253,17 +252,14 @@ async function doMailbox(
     }
 
     /* ── Actually send ── */
-    const fromEmail = mb.from.email || mb.smtp.username;
-    const mime = buildMime({
+    const sent = await deliver(mb, {
       fromName: mb.from.name || p.companyName || 'Support',
-      fromEmail,
+      fromEmail: fromAddressOf(mb),
       to: msg.from,
       subject: drafted.subject,
       html: drafted.body.replace(/\n/g, '<br>'),
       replyTo: mb.from.replyTo || undefined,
-    }, mb.smtp.host);
-
-    const sent = await smtpSend(mb.smtp, { from: fromEmail, to: msg.from, mime });
+    });
     if (sent.ok) {
       await markSeen(env, accountId, mb.id, msg.uid, 'replied');
       approvedCount++;

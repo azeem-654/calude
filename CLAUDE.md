@@ -130,6 +130,37 @@ supplier orders are bring-your-own only: a number carries a licensing and
 porting obligation, and a supplier order makes the buyer of record liable for
 the chargeback and the customs declaration.
 
+## Sending email — one door
+
+A mailbox sends either through **its own SMTP server** or through a
+**provider's API** (Brevo, Resend, SendGrid, Mailgun, Mailjet, Postmark — the
+choice on the mailbox form). Every server-side sender goes through
+`lib/deliver.ts`: `canSend(mb)` for "can this workspace email", `deliver(mb,
+msg)` to send, `CAN_SEND_SQL` in queries that pick workspaces. **Never call
+`smtpSend` or test `mb.smtp.host` from a sender** — that is how every provider
+mailbox was silently treated as "no mailbox" by the cron, Autopilot, replies,
+digests, automations and sign-in codes, and why "Save & validate" asked Brevo
+users for an SMTP host their form did not show. Providers live in
+`lib/providerApi.ts` (`sendViaProvider`, and `verifyProvider`, which proves a
+key read-only and, where the provider can say, that the From address will be
+accepted). Sign-in codes and sign-up proofs use the owner's mailbox only once
+it has passed validation (`out_verified_at`), so a pasted, unproved key cannot
+stop every new customer at "we could not send the code".
+
+## Forms ask only for what they show
+
+A refusal about a particular box names it — `fail(msg, 200, { field:
+'smtp.host' })` — and the input carries `data-field="smtp.host"`.
+`services/fieldGuard.ts` checks, after any refused `/api/*.php` call, that the
+named box is on screen; if not, it is a **dead end**: logged, kept on
+`window.__deadEnds`, and reported to `/api/uireport.php`, which the install
+owner sees under Settings → API Validation → **Screen checks**. It costs
+nothing on success. `npm run test:forms` (fresh D1, like `test:google`) picks
+every option of every choice on the mailbox form, validates empty and filled,
+sweeps the validate buttons on the Settings tabs, and plants a dead end to
+prove the guard catches one. **When you add a form or a refusal, tag both
+ends, and add the form to that test.**
+
 ## Multi-tenancy — read this before touching storage
 
 `installTenantStorage()` patches `localStorage` so every `crm_*` key is

@@ -43,7 +43,12 @@ export function preflight(req: Request): Response | null {
 
 /** Failure, in the shape both generations of client code understand. */
 export function fail(message: string, status = 200, extra: Record<string, unknown> = {}): Response {
-  return json({ success: false, error: message, message, ...extra }, status);
+  const res = json({ success: false, error: message, message, ...extra }, status);
+  /* A refusal about one form box says which in a header too, so the page's
+     guard (src/services/fieldGuard.ts) can check that box is on screen
+     without reading every answer's body to find out. */
+  if (typeof extra.field === 'string' && /^[\w.\-]{1,80}$/.test(extra.field)) res.headers.set('X-Refused-Field', extra.field);
+  return res;
 }
 
 export function ok(extra: Record<string, unknown> = {}): Response {

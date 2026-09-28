@@ -25,6 +25,7 @@ import MailboxesPanel from './MailboxesPanel';
 import OperatorPayments from './OperatorPayments';
 import { cachedPrimary } from '../../services/mailboxStore';
 import DiagnosticsCard from './DiagnosticsCard';
+import ScreenChecksCard from './ScreenChecksCard';
 import DeliveryCheck from './DeliveryCheck';
 import RouteCheck from './RouteCheck';
 import SecurityPanel from './SecurityPanel';
@@ -1201,7 +1202,12 @@ export default function Settings() {
               <ProspectSearchCard />
             </>
           )}
-          {activeTab === 'api-validation' && <IntegrationsTab />}
+          {activeTab === 'api-validation' && (
+            <>
+              {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <ScreenChecksCard />}
+              <IntegrationsTab />
+            </>
+          )}
 
           {activeTab === 'profile' && (
             <>
