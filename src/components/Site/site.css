@@ -1720,9 +1720,8 @@
  * so the top and bottom of the ad — the lines it is there to say — were off
  * screen. Now the height is the smaller of the two, and the film is fitted
  * inside (object-fit: contain) on the same near-black it fades to, so a
- * shape mismatch shows as a dark band rather than a crop. A screen that is
- * portrait-shaped gets the square cut, which is the same ad without the
- * blurred sides.
+ * shape mismatch shows as a dark band rather than a crop. Every screen gets
+ * the same 16:9 film, whole — on a phone, as wide as the screen.
  */
 .dc-film {
   position: relative;
@@ -1747,12 +1746,6 @@
 }
 @supports (height: 100svh) {
   .dc-film-frame { height: min(56.25vw, calc(100svh - 80px)); }
-}
-@media (max-aspect-ratio: 4/3) {
-  .dc-film-frame { height: min(100vw, calc(100vh - 80px)); }
-  @supports (height: 100svh) {
-    .dc-film-frame { height: min(100vw, calc(100svh - 80px)); }
-  }
 }
 .dc-film-sound {
   position: absolute;
