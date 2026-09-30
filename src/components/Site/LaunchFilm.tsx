@@ -5,7 +5,9 @@
  * (public/site/launch/, each as WebM and MP4). Two shapes of them, because one shape does not fit both
  * screens: the 16:9 cut is the wide one, and on a phone its centre square —
  * where every line of the ad sits — would be a third of the screen tall. So a
- * narrow screen gets the 1:1 cut, chosen once at mount, and never both.
+ * portrait-shaped screen (narrower than 4:3) gets the 1:1 cut, chosen once at
+ * mount, and never both. Either way it is fitted inside the window's height
+ * (site.css), so no part of it is ever off screen.
  *
  * ── How it plays ──
  *
@@ -33,7 +35,7 @@ export default function LaunchFilm() {
   const video = useRef<HTMLVideoElement | null>(null);
   /* Read once. Swapping files on a resize would restart the film under somebody
      rotating their phone. */
-  const [square] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches);
+  const [square] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-aspect-ratio: 4/3)').matches);
   const [armed, setArmed] = useState(false);
   const [sound, setSound] = useState(false);
 
@@ -72,6 +74,9 @@ export default function LaunchFilm() {
     if (!v) return;
     v.muted = false;
     v.currentTime = 0;
+    /* All of it on screen before it speaks: the frame is sized to fit under
+       the nav, and this lines it up there. */
+    wrap.current?.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
     /* The captions stay available from the controls, but with the voice
        audible they would say everything twice. */
     for (const t of Array.from(v.textTracks)) t.mode = 'hidden';
@@ -107,6 +112,11 @@ export default function LaunchFilm() {
       </div>
       <div className="dc-film-foot">
         <p>Protected Central in 55 seconds. Screens show a demo workspace with example data.</p>
+        {!sound && (
+          <button type="button" className="dc-film-sound" onClick={withSound}>
+            <Volume2 size={16} /> Watch with sound
+          </button>
+        )}
         <a className="dc-btn dc-btn-primary" href={signup} {...(isCrossOrigin(signup) ? { rel: 'noopener' } : {})}>
           Start your 7-day free trial <ArrowRight size={15} />
         </a>

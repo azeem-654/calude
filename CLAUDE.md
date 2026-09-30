@@ -466,7 +466,11 @@ import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 Build with `VITE_BASE=/`, run `npx wrangler dev --local`, then drive
 `http://localhost:8787` — the same Worker and a real D1, so the API is exercised
 too. Worth checking on every UI change: 390px and 1280px, horizontal overflow of
-the document, and `pageerror`.
+the document, and `pageerror`. For the public site, `npm run test:sitefit`
+drives fourteen window sizes (a 1340×590 laptop, 4K, tablets, phones upright
+and on their side) and fails if the hero's picture or the launch film does not
+fit on the screen — size things on the site by the window's height as well as
+its width.
 
 Recurring traps when writing those checks:
 

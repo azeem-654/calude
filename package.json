@@ -41,7 +41,8 @@
     "test:signup": "node test/signup.e2e.mjs",
     "test:google": "node test/googleSignIn.e2e.mjs",
     "test:forms": "node test/formContract.e2e.mjs",
-    "test:livehelp": "node test/liveHelp.e2e.mjs"
+    "test:livehelp": "node test/liveHelp.e2e.mjs",
+    "test:sitefit": "node test/siteFit.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

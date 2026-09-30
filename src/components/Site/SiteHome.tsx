@@ -24,7 +24,7 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
@@ -328,6 +328,21 @@ export default function SiteHome() {
   const showHead = useReveal<HTMLDivElement>();
   const showList = useRevealGroup<HTMLDivElement>('.dc-show-item');
 
+  /* Whether the chips beside the hero's picture have room to sit beside it.
+     Measured, not guessed from a breakpoint: the picture's width depends on
+     the window's height as well as its width (site.css), so no single media
+     query can say where its edges are. */
+  const stage = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const fit = () => { el.dataset.chips = el.getBoundingClientRect().left >= 200 ? 'out' : 'off'; };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div className="dc">
       {/* The same help button as inside the app, for somebody deciding whether
@@ -385,7 +400,7 @@ export default function SiteHome() {
             </a>
             <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 55-second tour</a>
           </div>
-          <div className="dc-hero-stage dc-lead-3">
+          <div className="dc-hero-stage dc-lead-3" ref={stage} data-chips="off">
             <div className="dc-hero-sparks" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
             <div className="dc-hero-orb" aria-hidden="true"><AiOrb size={120} /></div>
             <TypedPrompt className="dc-hero-prompt" />
