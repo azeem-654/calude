@@ -79,7 +79,12 @@ export function explain(provider: string, status: number, text: string, doing = 
   if (!detail) detail = text.replace(/<[^>]*>/g, '').trim().slice(0, 240);
   if (detail && !/[.!?]$/.test(detail)) detail += '.';
 
-  const hint = status === 401 || status === 403
+  const brevo = provider === 'brevo' || provider === 'sendinblue';
+  const hint = (status === 401 || status === 403) && brevo && /unrecogni[sz]ed ip/i.test(text)
+    ? ' Your Brevo account only accepts API calls from listed IP addresses, and this app sends from Cloudflare\'s. Brevo → Security → Authorised IPs → turn the restriction off for API keys.'
+    : (status === 401 || status === 403) && brevo
+    ? ' Brevo did not recognise this as an API key. Use one from Brevo → SMTP & API → API Keys (it starts "xkeysib-") — not the SMTP key, and not a key from a different Brevo account.'
+    : status === 401 || status === 403
     ? ' The key was rejected — check you copied the whole thing, and that it is an API key with permission to send rather than a read-only one.'
     : status === 400 || status === 422
       ? ' Usually the sending address: most providers will only send from a domain you have verified with them.'
@@ -89,16 +94,44 @@ export function explain(provider: string, status: number, text: string, doing = 
   return `${providerLabel(provider)} ${doing} (HTTP ${status}). ${detail}${hint}`.replace(/\s+\./g, '.');
 }
 
+/**
+ * The key as the provider expects it, or a sentence saying why it is not one.
+ *
+ * Brevo's "SMTP & API" page shows two keys side by side, and the SMTP one
+ * (`xsmtpsib-…`) opens on the tab people land on. Pasted here it is refused
+ * as "Key not found", which reads as a typo and sends people to copy the same
+ * wrong key again. Its newer MCP-enabled keys are a base64 wrapper round the
+ * real `xkeysib-` key, which the REST API also refuses. And a key copied out
+ * of an email or a password manager arrives with a line break or quotes in
+ * it. None of these needs a round trip to find out.
+ */
+export function normaliseKey(provider: string, raw: string): { key: string } | { error: string } {
+  let k = raw.replace(/\s+/g, '').replace(/^(api-key|apikey|bearer)[:=]?/i, '').replace(/^["'`]|["'`]$/g, '');
+  if (provider !== 'brevo' && provider !== 'sendinblue') return { key: k };
+  if (/^xsmtpsib-/i.test(k)) {
+    return { error: 'That is a Brevo SMTP key (it starts "xsmtpsib-"), which only works for SMTP logins. This mailbox sends through Brevo\'s API, so it needs an API key: Brevo → SMTP & API → API Keys tab → Generate a new API key. It starts "xkeysib-".' };
+  }
+  if (!/^xkeysib-/i.test(k)) {
+    try {
+      const inner = (JSON.parse(atob(k)) as { api_key?: unknown }).api_key;
+      if (typeof inner === 'string' && /^xkeysib-/.test(inner)) k = inner;
+    } catch { /* not the wrapped form; let Brevo judge it */ }
+  }
+  return { key: k };
+}
+
 const JSON_H = { 'Content-Type': 'application/json' };
 
 /** Send one message through the provider. The caller has already gated the content. */
 export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promise<ProviderResult> {
   const provider = p.name.toLowerCase();
-  const apiKey = p.key.trim();
   const apiSecret = p.secret.trim();
   const domain = p.domain.trim();
   const bad = (error: string): ProviderResult => ({ ok: false, status: 0, error, id: '' });
-  if (!apiKey) return bad(`No ${providerLabel(provider)} API key is saved. Add it in Settings → Email & SMS → Mailboxes.`);
+  if (!p.key.trim()) return bad(`No ${providerLabel(provider)} API key is saved. Add it in Settings → Email & SMS → Mailboxes.`);
+  const nk = normaliseKey(provider, p.key);
+  if ('error' in nk) return bad(nk.error);
+  const apiKey = nk.key;
 
   const fromName = m.fromName || 'CRM';
   const fromEmail = m.fromEmail;
@@ -246,8 +279,10 @@ const domainOf = (email: string) => email.split('@')[1]?.toLowerCase() ?? '';
 export async function verifyProvider(p: ProviderCreds, fromEmail: string): Promise<VerifyResult> {
   const provider = p.name.toLowerCase();
   const label = providerLabel(provider);
-  const key = p.key.trim();
-  if (!key) return { ok: false, message: `Paste your ${label} API key, then validate.`, field: 'provider.key' };
+  if (!p.key.trim()) return { ok: false, message: `Paste your ${label} API key, then validate.`, field: 'provider.key' };
+  const nk = normaliseKey(provider, p.key);
+  if ('error' in nk) return { ok: false, message: nk.error, field: 'provider.key' };
+  const key = nk.key;
   if (!fromEmail.includes('@')) return { ok: false, message: 'Add the From address this mailbox sends as, then validate.', field: 'from.email' };
   const dom = domainOf(fromEmail);
   const accepted = `${label} accepted the key.`;

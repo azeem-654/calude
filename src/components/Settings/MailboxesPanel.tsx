@@ -211,7 +211,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved, initial
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', color: INK }}>{out ? <Mail size={16} /> : <Inbox size={16} />}</span>
         <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: INK }}>
-          {out ? 'Outgoing mail (SMTP)' : 'Incoming mail (IMAP)'}
+          {out ? (draft.provider.name && draft.provider.name !== 'smtp' ? 'Outgoing mail' : 'Outgoing mail (SMTP)') : 'Incoming mail (IMAP)'}
         </h4>
         {record && <StatusChip verifiedAt={status?.verifiedAt ?? null} lastError={status?.lastError ?? ''} />}
       </div>
@@ -253,7 +253,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved, initial
               type="password"
               value={draft.provider.key}
               placeholder={record?.provider.hasKey ? 'Stored — leave blank to keep it' : ''}
-              hint={record?.provider.hasKey ? 'A key is saved. Leaving this empty keeps it.' : 'From your provider dashboard. It is stored encrypted and never sent back to this page.'}
+              hint={`${draft.provider.name === 'brevo' ? 'Brevo → SMTP & API → API Keys tab; it starts "xkeysib-" (the SMTP key will not work here). ' : ''}${record?.provider.hasKey ? 'A key is saved. Leaving this empty keeps it.' : 'From your provider dashboard. It is stored encrypted and never sent back to this page.'}`}
               onChange={v => onChange({ ...draft, provider: { ...draft.provider, key: v } })}
             />
             {draft.provider.name === 'mailjet' && (

@@ -131,6 +131,9 @@ jobs:
       - name: Gemini model choice
         run: npm run test:models
 
+      - name: Provider keys (Brevo SMTP key refused before sending)
+        run: npm run test:provider-key
+
       - name: Merge fields
         run: npm run test:merge
 
