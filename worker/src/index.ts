@@ -46,6 +46,7 @@ import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleUiReport } from './routes/uireport';
 import { handleCustomers } from './routes/customers';
+import { handleTrialOptout, runTrialMail } from './lib/trialMail';
 import { handleValidateKey } from './routes/validateKey';
 import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
@@ -76,6 +77,9 @@ const ROUTES: Record<string, Handler> = {
   '/api/uireport.php': handleUiReport,
   /* Who signed up, their trial, and the owner's messages to them. */
   '/api/customers.php': handleCustomers,
+  /* "Stop these emails" under a trial email. Signed, and a GET only shows a
+     button — see lib/trialMail.ts. */
+  '/api/trial-optout.php': handleTrialOptout,
   '/api/ai.php': handleAi,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot
@@ -346,6 +350,15 @@ export default {
       const digest = await runDigests(env);
 
       /*
+       * The install owner's own mail about their trial customers: the day 1, 3
+       * and 5 emails to people who have not started, then the owner's morning
+       * digest, which reports on them — so it goes second. After the customers'
+       * digests because nothing here is waiting on a person the way their
+       * Autopilot queue is. Both gate themselves (every half hour, once a day).
+       */
+      const trialMail = await runTrialMail(env);
+
+      /*
        * Telling somebody an engagement event happened.
        *
        * After the digest and before the housekeeping. It sends mail, so it
@@ -409,6 +422,9 @@ export default {
           drafted: replies.drafted, refused: replies.refused, failed: replies.failed,
         },
         digest: { sent: digest.sent, skipped: digest.skipped, failed: digest.failed },
+        /* Counts only: the addresses are the owner's business, and the owner's
+           digest names them. */
+        trialMail: { nudged: trialMail.nudged, failed: trialMail.failed, skipped: trialMail.skipped, digest: trialMail.digest, notes: trialMail.notes.slice(0, 3) },
         /* `skipped` kept separate from `produced` on purpose: a feed with
            nothing new in it is the ordinary case, and folding it into a
            success count would make a quiet week look like a busy one. */

@@ -15,13 +15,13 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  CalendarCheck, CheckCircle2, Clock, LifeBuoy, Loader, Mail, RefreshCw, Rocket, Send, ShieldAlert,
-  Sparkles, UserPlus, Users,
+  CalendarCheck, CheckCircle2, Clock, Inbox, LifeBuoy, Loader, Mail, MailCheck, RefreshCw, Rocket, Send,
+  ShieldAlert, Sparkles, UserPlus, Users,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isInstallOwner } from '../../services/moderation';
 import {
-  loadSignups, messageCustomers, saveCustomerSettings, type CustomerSettings, type Signup,
+  loadSignups, messageCustomers, saveCustomerSettings, sendDigestNow, type CustomerSettings, type Signup,
 } from '../../services/customers';
 
 const INK = '#17191c';
@@ -105,6 +105,7 @@ export default function Signups() {
   const [linkLabel, setLinkLabel] = useState('');
   const [alsoEmail, setAlsoEmail] = useState(true);
   const [sending, setSending] = useState(false);
+  const [digestBusy, setDigestBusy] = useState(false);
 
   const apply = useCallback((r: Awaited<ReturnType<typeof loadSignups>>) => {
     setLoading(false);
@@ -169,11 +170,26 @@ export default function Signups() {
   const saveSettings = async () => {
     if (!settings) return;
     setSavingSettings(true);
-    const r = await saveCustomerSettings(settings);
+    /* The digest's hour is the owner's own, so the zone is this browser's —
+       asked of it at the moment they save, not typed in. */
+    let tz = settings.digestTz;
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch { /* keep the stored one */ }
+    const r = await saveCustomerSettings({ ...settings, digestTz: tz });
     setSavingSettings(false);
     if (!r.ok) { addNotification(r.error || 'Could not save.', 'error'); return; }
     if (r.settings) setSettings(r.settings);
     addNotification('Saved.', 'success');
+  };
+
+  const digestNow = async () => {
+    setDigestBusy(true);
+    const r = await sendDigestNow();
+    setDigestBusy(false);
+    addNotification(r.ok ? `Sent to ${r.to}. Check your inbox.` : (r.error || 'Could not send.'), r.ok ? 'success' : 'error');
+  };
+  const setNudge = (day: number, patch: Partial<{ subject: string; body: string }>) => {
+    if (!settings) return;
+    setSettings({ ...settings, nudges: settings.nudges.map(n => (n.day === day ? { ...n, ...patch } : n)) });
   };
 
   const stat = (icon: typeof Users, label: string, n: number, tone = INK) => {
@@ -212,45 +228,6 @@ export default function Signups() {
         {stat(Rocket, 'Not started', counts.stalled ?? 0, '#9a3412')}
         {stat(CheckCircle2, 'Paying', counts.paid ?? 0, '#065f46')}
       </div>
-
-      {/* ── Kickoff call and the welcome ── */}
-      {settings && (
-        <section style={PANEL}>
-          <h2 style={H2}><CalendarCheck size={16} /> Kickoff call &amp; welcome</h2>
-          <p style={{ margin: '4px 0 12px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-            Your booking link goes on every trial customer&rsquo;s trial bar, their help card, and the welcome
-            they find when they first sign in. Use one of your own booking pages (Booking pages → copy link) or any
-            calendar link.
-          </p>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <label style={LABEL}>
-              <span>Kickoff call booking link</span>
-              <input data-field="kickoffUrl" style={INPUT} placeholder="https://app.protectedcentral.com/book/kickoff"
-                value={settings.kickoffUrl} onChange={e => setSettings({ ...settings, kickoffUrl: e.target.value })} />
-            </label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
-              <input type="checkbox" checked={settings.welcomeOn} onChange={e => setSettings({ ...settings, welcomeOn: e.target.checked })} />
-              Show every new sign-up a welcome message inside the app
-            </label>
-            {settings.welcomeOn && (
-              <>
-                <label style={LABEL}>
-                  <span>Welcome headline</span>
-                  <input style={INPUT} value={settings.welcomeTitle} onChange={e => setSettings({ ...settings, welcomeTitle: e.target.value })} />
-                </label>
-                <label style={LABEL}>
-                  <span>Welcome message</span>
-                  <textarea style={{ ...INPUT, minHeight: 70, resize: 'vertical' }} value={settings.welcomeBody}
-                    onChange={e => setSettings({ ...settings, welcomeBody: e.target.value })} />
-                </label>
-              </>
-            )}
-            <div><button type="button" style={SOLID} disabled={savingSettings} onClick={() => void saveSettings()}>
-              {savingSettings ? <Loader size={14} className="spin" /> : null} Save
-            </button></div>
-          </div>
-        </section>
-      )}
 
       {/* ── Compose ── */}
       {composeOpen && (
@@ -347,6 +324,13 @@ export default function Signups() {
                         <Signal on={s.projects > 0} label={s.projects ? `${s.projects} project${s.projects === 1 ? '' : 's'}` : 'No project'} />
                         <Signal on={s.mailboxes > 0} label={s.mailboxes ? 'Mailbox' : 'No mailbox'} />
                         {s.helpAsked > 0 && <span style={{ ...PILL, background: '#eef2ff', color: '#3730a3' }}><LifeBuoy size={11} /> Asked for help</span>}
+                        {s.nudges.filter(n => n.status !== 'skipped').map(n => (
+                          <span key={n.step} title={`${n.status === 'sent' ? 'Sent' : 'Could not be sent'} ${new Date(n.at).toLocaleString()}`}
+                            style={{ ...PILL, background: n.status === 'sent' ? '#f3f8e6' : '#fef2f2', color: n.status === 'sent' ? '#3f4a1d' : '#991b1b' }}>
+                            <Mail size={11} /> Day {n.step} {n.status === 'sent' ? 'email' : 'failed'}
+                          </span>
+                        ))}
+                        {s.nudgesOff && <span style={{ ...PILL, background: '#f3f4f6', color: '#6b7280' }}>Opted out of emails</span>}
                       </span>
                     </td>
                     <td style={{ ...TD, textAlign: 'right' }}>
@@ -361,6 +345,127 @@ export default function Signups() {
           </div>
         )}
       </section>
+
+      {/* The settings, under the list: the list is what is read every day,
+          these are set once. */}
+      {/* ── Kickoff call and the welcome ── */}
+      {settings && (
+        <section style={PANEL}>
+          <h2 style={H2}><CalendarCheck size={16} /> Kickoff call &amp; welcome</h2>
+          <p style={{ margin: '4px 0 12px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+            Your booking link goes on every trial customer&rsquo;s trial bar, their help card, and the welcome
+            they find when they first sign in. Use one of your own booking pages (Booking pages → copy link) or any
+            calendar link.
+          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <label style={LABEL}>
+              <span>Kickoff call booking link</span>
+              <input data-field="kickoffUrl" style={INPUT} placeholder="https://app.protectedcentral.com/book/kickoff"
+                value={settings.kickoffUrl} onChange={e => setSettings({ ...settings, kickoffUrl: e.target.value })} />
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+              <input type="checkbox" checked={settings.welcomeOn} onChange={e => setSettings({ ...settings, welcomeOn: e.target.checked })} />
+              Show every new sign-up a welcome message inside the app
+            </label>
+            {settings.welcomeOn && (
+              <>
+                <label style={LABEL}>
+                  <span>Welcome headline</span>
+                  <input style={INPUT} value={settings.welcomeTitle} onChange={e => setSettings({ ...settings, welcomeTitle: e.target.value })} />
+                </label>
+                <label style={LABEL}>
+                  <span>Welcome message</span>
+                  <textarea style={{ ...INPUT, minHeight: 70, resize: 'vertical' }} value={settings.welcomeBody}
+                    onChange={e => setSettings({ ...settings, welcomeBody: e.target.value })} />
+                </label>
+              </>
+            )}
+            <div><button type="button" style={SOLID} disabled={savingSettings} onClick={() => void saveSettings()}>
+              {savingSettings ? <Loader size={14} className="spin" /> : null} Save
+            </button></div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Onboarding emails ── */}
+      {settings && (
+        <section style={PANEL}>
+          <h2 style={H2}><MailCheck size={16} /> Onboarding emails — days 1, 3 and 5</h2>
+          <p style={{ margin: '4px 0 12px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+            Sent from your mailbox to people on a trial who have <b>not made a project yet</b>. Each goes once, at the same
+            time of day they signed up. They stop the moment somebody makes a project, pays, or presses &ldquo;stop these
+            emails&rdquo;. Replies come to you. <code>{'{name}'}</code> and <code>{'{daysLeft}'}</code> are filled in; the
+            &ldquo;Start my first project&rdquo; button, your kickoff link and the opt-out link are added underneath.
+          </p>
+          {!canEmail && (
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: '#9a3412', background: '#fff7ed', borderRadius: 10, padding: '8px 12px' }}>
+              Nothing is sent until a mailbox in your own workspace passes Settings → Email &amp; SMS → Save &amp; validate.
+            </p>
+          )}
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, marginBottom: 10 }}>
+            <input type="checkbox" checked={settings.nudgesOn} onChange={e => setSettings({ ...settings, nudgesOn: e.target.checked })} />
+            Send these emails
+          </label>
+          {settings.nudgesOn && (
+            <div style={{ display: 'grid', gap: 14 }}>
+              {settings.nudges.map(n => (
+                <div key={n.day} style={{ display: 'grid', gap: 8, borderTop: `1px solid ${LINE}`, paddingTop: 12 }}>
+                  <b style={{ fontSize: 13, color: INK }}>Day {n.day}</b>
+                  <label style={LABEL}><span>Subject</span>
+                    <input style={INPUT} value={n.subject} onChange={e => setNudge(n.day, { subject: e.target.value })} />
+                  </label>
+                  <label style={LABEL}><span>Message</span>
+                    <textarea style={{ ...INPUT, minHeight: 120, resize: 'vertical' }} value={n.body} onChange={e => setNudge(n.day, { body: e.target.value })} />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 12 }}><button type="button" style={SOLID} disabled={savingSettings} onClick={() => void saveSettings()}>
+            {savingSettings ? <Loader size={14} className="spin" /> : null} Save
+          </button></div>
+        </section>
+      )}
+
+      {/* ── The owner's morning digest ── */}
+      {settings && (
+        <section style={PANEL}>
+          <h2 style={H2}><Inbox size={16} /> Daily digest</h2>
+          <p style={{ margin: '4px 0 12px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+            One email a morning: new sign-ups, trials ending in the next two days, trials that ended without paying,
+            who has not started, who went quiet, who asked for help, and how the onboarding emails went. A day with
+            none of those sends nothing.
+          </p>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+              <input type="checkbox" checked={settings.digestOn} onChange={e => setSettings({ ...settings, digestOn: e.target.checked })} />
+              Send me the digest
+            </label>
+            <label style={LABEL}><span>At</span>
+              <select style={INPUT} value={settings.digestHour} onChange={e => setSettings({ ...settings, digestHour: Number(e.target.value) })}>
+                {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{`${String(h).padStart(2, '0')}:00`}</option>)}
+              </select>
+            </label>
+            <label style={LABEL}><span>Send to (blank = your sign-in address)</span>
+              <input data-field="digestTo" type="email" style={INPUT} value={settings.digestTo} placeholder="you@company.com"
+                onChange={e => setSettings({ ...settings, digestTo: e.target.value })} />
+            </label>
+          </div>
+          <p style={{ margin: '8px 0 0', fontSize: 12.5, color: MUTED }}>
+            Time zone: {settings.digestTz} — saved from this browser when you press Save.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <button type="button" style={SOLID} disabled={savingSettings} onClick={() => void saveSettings()}>
+              {savingSettings ? <Loader size={14} className="spin" /> : null} Save
+            </button>
+            <button type="button" style={GHOST} disabled={digestBusy || !canEmail} onClick={() => void digestNow()}
+              title={canEmail ? '' : 'Needs a validated mailbox in your own workspace'}>
+              {digestBusy ? <Loader size={14} className="spin" /> : <Send size={13} />} Send me today&rsquo;s digest now
+            </button>
+          </div>
+        </section>
+      )}
+
     </div>
   );
 }

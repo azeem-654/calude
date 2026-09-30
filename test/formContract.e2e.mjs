@@ -140,10 +140,15 @@ await resetDeadEnds();
 await p.goto(`${B}/signups`, { waitUntil: 'networkidle' });
 await settle();
 await p.locator('[data-field="kickoffUrl"]').fill('ftp://not-a-booking-page');
-await p.getByRole('button', { name: 'Save', exact: true }).click();
+await p.getByRole('button', { name: 'Save', exact: true }).first().click();
 await settle();
 ok('Sign-ups: a bad booking link is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
 await p.locator('[data-field="kickoffUrl"]').fill('');
+await p.locator('[data-field="digestTo"]').fill('not-an-address@');
+await p.getByRole('button', { name: 'Save', exact: true }).last().click();
+await settle();
+ok('Sign-ups: a bad digest address is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+await p.locator('[data-field="digestTo"]').fill('');
 if (other0()) {
   await p.goto(`${B}/signups`, { waitUntil: 'networkidle' });
   await settle();

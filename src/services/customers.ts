@@ -33,11 +33,19 @@ export interface MyAccount {
   kickoffUrl: string;
 }
 
+export interface Nudge { day: number; subject: string; body: string }
+
 export interface CustomerSettings {
   kickoffUrl: string;
   welcomeOn: boolean;
   welcomeTitle: string;
   welcomeBody: string;
+  nudgesOn: boolean;
+  nudges: Nudge[];
+  digestOn: boolean;
+  digestHour: number;
+  digestTz: string;
+  digestTo: string;
 }
 
 export interface Signup {
@@ -53,7 +61,11 @@ export interface Signup {
   mailboxes: number;
   helpAsked: number;
   workspaces: number;
+  /** When they pressed "stop these emails", if they did. */
+  nudgesOff: string | null;
   trial: TrialState;
+  /** Which onboarding emails went: day 1, 3 and 5. */
+  nudges: { step: number; status: 'sent' | 'failed' | 'skipped'; at: string }[];
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
@@ -129,4 +141,10 @@ export async function messageCustomers(msg: {
     ok: true, delivered: Number(d.delivered ?? 0), emailed: Number(d.emailed ?? 0),
     emailFailed: Number(d.emailFailed ?? 0), dropped: Number(d.dropped ?? 0),
   };
+}
+
+/** Send the owner's digest now, whatever the hour — to see what it looks like. */
+export async function sendDigestNow(): Promise<{ ok: boolean; error?: string; to?: string }> {
+  const d = await call('digest_now');
+  return d.success ? { ok: true, to: String(d.to ?? '') } : { ok: false, error: String(d.error ?? d.message ?? 'Could not send.') };
 }

@@ -447,6 +447,18 @@ if the owner's mailbox is validated, by email. Links in them are https only —
 they render inside somebody else's session. The kickoff-call link and the
 automatic welcome are set there too.
 
+**Days 1, 3 and 5, and the owner's digest** (`lib/trialMail.ts`, on the cron
+after the customers' digests). A trial customer with **no project yet** gets
+one email on each of those days from the install mailbox, replies to the
+owner; making a project, paying or the signed opt-out (`/api/trial-optout.php`
+— GET shows a button, POST acts, because scanners follow links) stops them.
+Someone who first qualifies late gets only the latest due email and the
+overtaken days are written `skipped`. A step is `sent` only after the server
+accepted it; `failed` is retried hourly, three times. The owner's digest goes
+once a day at their chosen local hour and says nothing on a day with nothing
+in it. The pass gates itself to every 30 minutes (`crm_meta.trial_nudges_at`)
+— null it to test, and fire the cron as below.
+
 `shared/CornerHelp.tsx` **offers** help rather than waiting to be asked: when
 something fails on a screen (`signalTrouble` in `services/fieldGuard.ts` — a
 5xx, a dead end, a crash) and, during a trial, after 75 visible seconds on one

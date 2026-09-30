@@ -29,6 +29,8 @@ const check = (name, cond, detail = '') => {
 
 /* ── A mail server that accepts anything and remembers it ── */
 const mail = [];
+/* Set to make the sink refuse every recipient — the failure path. */
+let refuseMail = false;
 /* AUTH LOGIN sends two base64 lines after the command; the step counter
    answers each in turn. */
 const sink = net.createServer();
@@ -54,6 +56,7 @@ sink.on('connection', sock => {
       else if (u.startsWith('AUTH PLAIN')) w('235 ok');
       else if (u === 'DATA') { data = true; w('354 go'); }
       else if (u === 'QUIT') { w('221 bye'); sock.end(); }
+      else if (u.startsWith('RCPT') && refuseMail) w('550 5.7.1 refused for the test');
       else w('250 ok');
     }
   });
@@ -62,10 +65,20 @@ sink.on('connection', sock => {
 await new Promise(r => sink.listen(2525, '127.0.0.1', r));
 
 async function api(path, body, ip = '10.7.0.1') {
-  const r = await fetch(`${BASE}/api/${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify(body),
-  });
-  return r.json().catch(() => ({}));
+  /* Local dev drops the odd connection just after `wrangler d1 execute` has
+     touched the same database file (the cron checks below do that). A dropped
+     connection never reached a route, so asking again is safe. */
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(`${BASE}/api/${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify(body),
+      });
+      return await r.json().catch(() => ({}));
+    } catch (e) {
+      if (i >= 2) throw e;
+      await new Promise(res => setTimeout(res, 1000));
+    }
+  }
 }
 const SMTP = { host: '127.0.0.1', port: 2525, encryption: 'none', username: 'u', password: 'p' };
 
@@ -187,6 +200,114 @@ try {
   console.log('  (skipped the ended-trial checks: set PERSIST to the --persist-to directory to run them)');
 }
 
+console.log('\nOnboarding emails (days 1, 3, 5) and the owner\'s digest');
+/* Needs the dev server started with --test-scheduled, and PERSIST set to its
+   --persist-to directory: the cron is fired by hand and the clock is moved in
+   the rows. */
+const cronOk = (await fetch(`${BASE}/cdn-cgi/handler/scheduled`).catch(() => null))?.status === 200;
+if (!cronOk || !process.env.PERSIST) {
+  console.log('  (skipped: start wrangler dev with --test-scheduled and set PERSIST)');
+} else {
+  const { execSync: run } = await import('node:child_process');
+  const sql = cmd => run(`npx wrangler d1 execute crmpro --local --persist-to ${process.env.PERSIST} --command ${JSON.stringify(cmd)}`, { stdio: 'ignore' });
+  const rows = cmd => JSON.parse(run(`npx wrangler d1 execute crmpro --local --json --persist-to ${process.env.PERSIST} --command ${JSON.stringify(cmd)}`, { encoding: 'utf8' }))[0]?.results ?? [];
+  const ago = h => new Date(Date.now() - h * 3600e3).toISOString();
+  const fire = async () => {
+    sql("DELETE FROM crm_meta WHERE k = 'trial_nudges_at'");
+    mail.length = 0;
+    /* The local dev server occasionally drops this one request while the
+       database file is being edited beside it; asking again is harmless — the
+       gate row was cleared, so a second run does the same work once. */
+    for (let i = 0; i < 3; i++) {
+      if (await fetch(`${BASE}/cdn-cgi/handler/scheduled`).then(() => true, () => false)) break;
+      await new Promise(res => setTimeout(res, 1000));
+    }
+    await new Promise(res => setTimeout(res, 2500));
+    return mail.map(decodeMail);
+  };
+  const to = (list, who) => list.filter(m => m.to.includes(who));
+
+  /* The digest window is "now", in UTC, for this run. */
+  r = await api('customers.php', { token: owner.token, action: 'settings_save', settings: { digestHour: new Date().getUTCHours(), digestTz: 'UTC', digestTo: '' } });
+  check('the owner sets the digest to this hour', r.success, JSON.stringify(r));
+  sql("DELETE FROM crm_meta WHERE k IN ('owner_digest_day', 'owner_digest_try')");
+  /* Only one person is a day in: everybody else signed up minutes ago. */
+  sql(`UPDATE crm_users SET created_at = '${ago(25)}' WHERE email = 'new@signup.test'`);
+
+  let got = await fire();
+  let d1 = to(got, 'new@signup.test');
+  check('day 1 goes to somebody a day in with no project', d1.length === 1 && /first project/.test(d1[0]?.subject), JSON.stringify(got.map(m => [m.to, m.subject])));
+  check('…with the app, the kickoff call and a way to stop them', /\/autopilot/.test(d1[0]?.html) && d1[0]?.html.includes('cal.example/kickoff') && /trial-optout\.php/.test(d1[0]?.html), d1[0]?.html.slice(0, 300));
+  check('…and the one-click unsubscribe header mail providers want', /List-Unsubscribe:.*trial-optout/i.test(d1[0]?.head ?? ''));
+  check('nobody who signed up minutes ago is emailed', !to(got, 'unproved@signup.test').length && !to(got, 'second@signup.test').length);
+  const digest = to(got, 'owner@signup.test');
+  check('the owner gets the digest in their hour', digest.length === 1 && /^Sign-ups:/.test(digest[0]?.subject), JSON.stringify(got.map(m => [m.to, m.subject])));
+  check('…naming who has not started', /Not started/.test(digest[0]?.html) && digest[0]?.html.includes('new@signup.test'));
+  check('the email is recorded as sent', rows("SELECT status FROM crm_trial_nudges WHERE email = 'new@signup.test' AND step = 1")[0]?.status === 'sent');
+
+  got = await fire();
+  check('day 1 is not sent twice', !to(got, 'new@signup.test').length, JSON.stringify(got.map(m => [m.to, m.subject])));
+  check('the digest is not sent twice in a day', !to(got, 'owner@signup.test').length);
+
+  sql(`UPDATE crm_users SET created_at = '${ago(73)}' WHERE email = 'new@signup.test'`);
+  got = await fire();
+  d1 = to(got, 'new@signup.test');
+  check('day 3 follows on day 3', d1.length === 1 && /Stuck on anything/.test(d1[0]?.subject), JSON.stringify(got.map(m => [m.to, m.subject])));
+
+  /* Late: somebody first seen on day 5 gets day 5 alone. */
+  sql(`UPDATE crm_users SET created_at = '${ago(5.2 * 24)}' WHERE email = 'second@signup.test'`);
+  got = await fire();
+  const late = to(got, 'second@signup.test');
+  check('somebody who qualifies late gets only the latest email', late.length === 1 && /days left/.test(late[0]?.subject), JSON.stringify(late.map(m => m.subject)));
+  const secondRows = rows("SELECT step, status FROM crm_trial_nudges WHERE email = 'second@signup.test' ORDER BY step");
+  check('…and the days it overtook are closed, not sent late', JSON.stringify(secondRows) === JSON.stringify([{ step: 1, status: 'skipped' }, { step: 3, status: 'skipped' }, { step: 5, status: 'sent' }]), JSON.stringify(secondRows));
+
+  /* A project stops them. */
+  const un = await api('auth.php', { action: 'login', email: 'unproved@signup.test', password: 'Hq4#vL8!mTz2wE' }, '10.7.3.1');
+  const pf = await api('projects.php', { action: 'save_portfolio', token: un.token, accountId: un.user?.accountId, name: 'U Co', profile: { description: 'Things' } });
+  const pj = await api('projects.php', { action: 'save_project', token: un.token, accountId: un.user?.accountId, name: 'First', objective: 'More customers', portfolioId: pf.data?.id ?? pf.id });
+  sql(`UPDATE crm_users SET created_at = '${ago(25)}' WHERE email = 'unproved@signup.test'`);
+  got = await fire();
+  check('somebody who made a project is not emailed', pj.success !== false && !to(got, 'unproved@signup.test').length, JSON.stringify([pj, got.map(m => m.to)]));
+
+  /* Opting out. */
+  const link = (d1[0]?.html.match(/href="([^"]*trial-optout\.php[^"]*)"/) ?? [])[1]?.replace(/&amp;/g, '&');
+  const local = link ? link.replace(/^https?:\/\/[^/]+/, BASE) : '';
+  const view = local ? await fetch(local).then(x => x.text()) : '';
+  check('the opt-out link shows a button and does not act on its own', /Stop these emails/.test(view) && rows("SELECT nudges_off_at AS o FROM crm_users WHERE email = 'new@signup.test'")[0]?.o == null);
+  const forged = await fetch(local.replace(/s=[0-9a-f]+/, 's=00000000000000000000000000000000'), { method: 'POST' }).then(x => x.text()).catch(() => '');
+  check('a forged link does nothing', /not valid/.test(forged) && rows("SELECT nudges_off_at AS o FROM crm_users WHERE email = 'new@signup.test'")[0]?.o == null);
+  await fetch(local, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
+  sql(`UPDATE crm_users SET created_at = '${ago(121)}' WHERE email = 'new@signup.test'`);
+  got = await fire();
+  check('once opted out, day 5 does not go', !to(got, 'new@signup.test').length && rows("SELECT nudges_off_at AS o FROM crm_users WHERE email = 'new@signup.test'")[0]?.o != null);
+
+  /* A mail server that refuses: recorded as failed, not sent, retried later. */
+  refuseMail = true;
+  sql(`UPDATE crm_users SET created_at = '${ago(25)}' WHERE email = 'early@signup.test'`);
+  await fire();
+  let e = rows("SELECT status, attempts FROM crm_trial_nudges WHERE email = 'early@signup.test' AND step = 1")[0];
+  check('a refused send is recorded as failed, not sent', e?.status === 'failed' && e.attempts === 1, JSON.stringify(e));
+  refuseMail = false;
+  got = await fire();
+  check('…and is not retried within the hour', !to(got, 'early@signup.test').length);
+  sql(`UPDATE crm_trial_nudges SET at = '${ago(2)}' WHERE email = 'early@signup.test'`);
+  got = await fire();
+  e = rows("SELECT status, attempts FROM crm_trial_nudges WHERE email = 'early@signup.test' AND step = 1")[0];
+  check('…then goes on the retry', to(got, 'early@signup.test').length === 1 && e?.status === 'sent' && e.attempts === 2, JSON.stringify(e));
+
+  /* "Send me today's digest now". */
+  mail.length = 0;
+  r = await api('customers.php', { token: owner.token, action: 'digest_now' });
+  await new Promise(res => setTimeout(res, 1500));
+  check('the owner can send the digest now', r.success && mail.map(decodeMail).some(m => m.to.includes('owner@signup.test') && /^Sign-ups:/.test(m.subject)), JSON.stringify(r));
+  r = await api('customers.php', { token: quick.token, action: 'digest_now' });
+  check('a customer cannot', !r.success);
+  r = await api('customers.php', { token: owner.token, action: 'signups' });
+  const newRow = (r.signups ?? []).find(x => x.email === 'new@signup.test');
+  check('the Sign-ups list shows which emails went, and the opt-out', newRow?.nudges?.filter(n => n.status === 'sent').length === 2 && !!newRow?.nudgesOff, JSON.stringify(newRow?.nudges));
+}
+
 console.log('\nLogos');
 const res = await fetch(`${BASE}/api/logo.php?p=pf-anything&s=0000`);
 check('an unsigned logo address is a 404, not a lookup', res.status === 404);
@@ -198,3 +319,13 @@ check("logo import needs a workspace you may open", !r.success);
 sink.close();
 console.log(`\n${passes} passed, ${failures} failed.`);
 process.exit(failures ? 1 : 0);
+
+/* One captured message: headers, the decoded subject, and the base64 body. */
+function decodeMail(raw) {
+  const [head, ...rest] = raw.split(/\r?\n\r?\n/);
+  const hdr = name => (head.match(new RegExp(`^${name}:\\s*(.*)$`, 'mi')) ?? [])[1] ?? '';
+  const subject = hdr('Subject').replace(/=\?UTF-8\?B\?([^?]+)\?=/gi, (_, b) => Buffer.from(b, 'base64').toString('utf8')).replace(/\s+(?==\?)/g, '');
+  let html = rest.join('\n');
+  try { html = Buffer.from(html.replace(/\s+/g, ''), 'base64').toString('utf8'); } catch { /* not base64 */ }
+  return { head, to: hdr('To'), subject, html };
+}
