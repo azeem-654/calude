@@ -151,6 +151,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
    * for is a place somebody decides to come back later, and does not.
    */
   const [pwSignup, setPwSignup] = useState(false);
+  const [codes, setCodes] = useState(true);
 
   /* The account this browser last signed in with, offered as one button. */
   const [remembered, setRemembered] = useState<LastSignIn | null>(() => lastSignIn());
@@ -236,6 +237,11 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
       setSignupsOpen(st.signupsOpen !== false);
       setTestLogin(st.testLogin ?? null);
       setGoogle(st.google);
+      /* No way to send a code yet: sign-up opens on the password form, and the
+         code buttons are not drawn, rather than offering a path that can only
+         answer "we cannot send codes". */
+      setCodes(st.codes !== false);
+      if (st.codes === false) setPwSignup(true);
       if (!st.writable) {
         setError('This server cannot write to api/data/, so accounts cannot be saved. Set that folder to 755 in your host file manager, then reload.');
       }
@@ -589,7 +595,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
           Offered on both sign-in and sign-up, because the code proves the same
           thing either way — that they hold the mailbox — and a new address
           becomes an account on the spot. Google is already at the top. */}
-      {mode !== 'setup' && !locked && !quickSignup && (
+      {mode !== 'setup' && !locked && !quickSignup && codes && (
         <>
           <div className="au-or">or</div>
           <div className="au-alt">
@@ -613,7 +619,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
         <p className="au-switch">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button type="button" className="au-link"
-            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setRegStep('form'); setRegCode(''); setPwSignup(false); setCodeStep('off'); setCode(''); }}>
+            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setRegStep('form'); setRegCode(''); setPwSignup(!codes); setCodeStep('off'); setCode(''); }}>
             {mode === 'login' ? 'Create one' : 'Sign in'}
           </button>
         </p>

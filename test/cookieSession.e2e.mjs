@@ -98,8 +98,11 @@ const b = await pw.chromium.launch();
   const signupEmail = `stay-${Date.now()}@example.test`;
   await p.goto(`${B}/login`, { waitUntil: 'networkidle' });
   await p.getByRole('button', { name: 'Create one' }).click();
-  /* Sign-up opens on Google and an instant code; the password form is a link away. */
-  await p.getByRole('button', { name: /Sign up with a password/ }).click();
+  /* Sign-up opens on Google and an instant code, with the password form a link
+     away — or on the password form itself when the install cannot send codes. */
+  await p.waitForTimeout(600);
+  const pwLink = p.getByRole('button', { name: /Sign up with a password/ });
+  if (await pwLink.count()) await pwLink.click();
   await p.getByLabel('Full name').fill('Stay Signedin');
   await p.getByLabel('Email address').fill(signupEmail);
   await p.getByLabel('Password', { exact: true }).fill(pw1);

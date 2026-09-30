@@ -434,7 +434,8 @@ the app shows `TrialBar`'s plan screen everywhere but Plan & billing and
 Settings (export). Do not add a trial on the processor's price as well.
 
 Sign-up opens on **Google, then one email box and an instant code**; the
-password form is one link away. The code email carries a "Sign in instantly"
+password form is one link away — or is the form, when `status` answers
+`codes: false` (no validated owner mailbox, so no code could be sent). The code email carries a "Sign in instantly"
 link to `/login?email&code`, which fills the boxes and waits for **one press** —
 never auto-submits, because mail scanners open links and would spend the code.
 

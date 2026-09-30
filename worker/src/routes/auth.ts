@@ -535,6 +535,10 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     return json({
       success: true, hasOwner: owner, initialised: owner, writable: true, google,
       signupsOpen: !signupsClosed(env),
+      /* Whether an emailed code can actually be sent — the owner's mailbox,
+         validated. Sign-up opens on the code; without this it would open on a
+         button that can only fail, so the form starts on the password instead. */
+      codes: !!(await installMailbox(env)),
       /*
        * Which deployment this really is, from the Worker's own configuration.
        *

@@ -166,6 +166,12 @@ export interface AuthStatus {
    * page is worse than no button.
    */
   google: boolean;
+  /**
+   * Whether an emailed sign-in code can be sent at all (the owner's mailbox,
+   * validated). Absent on an older Worker, which is read as yes — the way the
+   * form behaved before this was asked.
+   */
+  codes?: boolean;
 }
 
 /**
@@ -186,7 +192,7 @@ export async function authStatus(): Promise<AuthStatus> {
      * already had an owner. Read both, so the screen is right whichever name
      * the server on the other end happens to use.
      */
-    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown; signupsOpen?: unknown; appOrigin?: unknown };
+    const data = res.data as { initialised?: unknown; hasOwner?: unknown; writable?: unknown; testLogin?: unknown; google?: unknown; signupsOpen?: unknown; appOrigin?: unknown; codes?: unknown };
     return {
       initialised: !!(data.initialised ?? data.hasOwner),
       writable: data.writable !== false,
@@ -203,6 +209,7 @@ export async function authStatus(): Promise<AuthStatus> {
       /* Absent on an older Worker, which means no Google — the right answer, and
          the reason this is read as a positive rather than defaulted to true. */
       google: data.google === true,
+      codes: data.codes !== false,
     };
   }
   return { initialised: hasAnyUser(), writable: true, backend: 'local', testLogin: null, google: false };
