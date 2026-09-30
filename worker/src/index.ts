@@ -45,6 +45,7 @@ import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleUiReport } from './routes/uireport';
+import { handleCustomers } from './routes/customers';
 import { handleValidateKey } from './routes/validateKey';
 import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
@@ -73,6 +74,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
   '/api/security.php': handleSecurity,
   '/api/uireport.php': handleUiReport,
+  /* Who signed up, their trial, and the owner's messages to them. */
+  '/api/customers.php': handleCustomers,
   '/api/ai.php': handleAi,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot

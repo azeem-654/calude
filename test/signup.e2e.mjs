@@ -123,6 +123,70 @@ check('and cannot be used twice', !r.success);
 r = await api('auth.php', { action: 'login', email: 'new@signup.test', password: pw }, '10.7.1.4');
 check('the new account signs in with its password', r.success);
 
+console.log('\nInstant code, the 7-day trial, and the owner\'s view');
+mail.length = 0;
+r = await api('auth.php', { action: 'request_code', email: 'quick@signup.test' }, '10.7.2.1');
+check('a new address can ask for an instant code', r.success, JSON.stringify(r));
+await new Promise(res => setTimeout(res, 300));
+/* The body is base64 (lib/mime.ts); the subject line is not. */
+const qraw = mail.join('\n');
+const qbody = qraw.split(/\r?\n\r?\n/).slice(1).join('\n').replace(/\s+/g, '');
+let qmail = qraw;
+try { qmail += Buffer.from(qbody, 'base64').toString('utf8').replace(/&amp;/g, '&'); } catch { /* not base64 */ }
+const qcode = (qmail.match(/(\d{6}) is your sign-in code/) ?? [])[1];
+check('the email carries a one-tap sign-in link with the same code', !!qcode && qmail.includes('Sign in instantly') && qmail.includes(`code=${qcode}`), qmail.slice(0, 300));
+r = await api('auth.php', { action: 'verify_code', email: 'quick@signup.test', code: qcode }, '10.7.2.1');
+check('the code makes the account and signs in', r.success && !!r.token, JSON.stringify(r));
+const quick = r;
+
+r = await api('customers.php', { token: quick.token, action: 'mine' });
+check('a new account is on a 7-day trial', r.success && r.trial?.kind === 'trial' && r.trial.daysLeft === 7, JSON.stringify(r.trial));
+check('and finds the welcome waiting', (r.notices ?? []).some(n => /trial has started/i.test(n.title)), JSON.stringify(r.notices));
+r = await api('customers.php', { token: owner.token, action: 'mine' });
+check('the owner has no trial', r.trial?.kind === 'owner', JSON.stringify(r.trial));
+r = await api('customers.php', { token: customer.token, action: 'mine' });
+check('accounts made by sign-up earlier are on it too', r.trial?.kind === 'trial', JSON.stringify(r.trial));
+
+r = await api('customers.php', { token: quick.token, action: 'signups' });
+check("a customer cannot read the owner's sign-up list", !r.success);
+r = await api('customers.php', { token: owner.token, action: 'settings_save', settings: { kickoffUrl: 'javascript:alert(1)' } });
+check('a booking link that is not https is refused', !r.success && r.field === 'kickoffUrl', JSON.stringify(r));
+r = await api('customers.php', { token: owner.token, action: 'settings_save', settings: { kickoffUrl: 'https://cal.example/kickoff' } });
+check('an https booking link is kept', r.success && r.settings.kickoffUrl === 'https://cal.example/kickoff', JSON.stringify(r));
+r = await api('customers.php', { token: owner.token, action: 'signups' });
+const row = (r.signups ?? []).find(x => x.email === 'quick@signup.test');
+check('the owner sees the new sign-up and its trial', r.success && row?.trial?.kind === 'trial', JSON.stringify(row));
+check('…but not themselves', !(r.signups ?? []).some(x => x.email === 'owner@signup.test'));
+
+mail.length = 0;
+r = await api('customers.php', { token: owner.token, action: 'message', to: ['quick@signup.test', 'stranger@nowhere.test'], title: 'Kickoff?', body: 'Book a call.', link: 'https://cal.example/kickoff', linkLabel: 'Book', email: true });
+check('a message reaches customers only, in the app and by email', r.success && r.delivered === 1 && r.dropped === 1 && r.emailed === 1, JSON.stringify(r));
+await new Promise(res => setTimeout(res, 300));
+check('…and the email went to the customer', mail.join('\n').includes('quick@signup.test') && !mail.join('\n').includes('stranger@nowhere.test'));
+r = await api('customers.php', { token: quick.token, action: 'mine' });
+const note = (r.notices ?? []).find(n => n.title === 'Kickoff?');
+check('the customer sees it with its button', note?.link === 'https://cal.example/kickoff', JSON.stringify(r.notices));
+r = await api('customers.php', { token: customer.token, action: 'read', id: note?.id });
+r = await api('customers.php', { token: quick.token, action: 'mine' });
+check("somebody else cannot close it", (r.notices ?? []).some(n => n.id === note?.id));
+await api('customers.php', { token: quick.token, action: 'read', id: note?.id });
+r = await api('customers.php', { token: quick.token, action: 'mine' });
+check('its reader can', !(r.notices ?? []).some(n => n.id === note?.id));
+
+/* The end of a trial, without waiting a week. The database is local and the
+   test owns it, so the clock is moved in the row. */
+const { execSync } = await import('node:child_process');
+const persist = process.env.PERSIST ? ` --persist-to ${process.env.PERSIST}` : '';
+try {
+  execSync(`npx wrangler d1 execute crmpro --local${persist} --command "UPDATE crm_users SET trial_ends_at = '2020-01-01T00:00:00.000Z' WHERE email = 'quick@signup.test'"`, { stdio: 'ignore' });
+  r = await api('customers.php', { token: quick.token, action: 'mine' });
+  check('an ended trial says so', r.trial?.kind === 'ended', JSON.stringify(r.trial));
+  r = await api('ai.php', { token: quick.token, accountId: quick.user.accountId, action: 'generate', request: { contents: [{ role: 'user', parts: [{ text: 'hi' }] }] } });
+  check("…and the operator's AI is refused by name", !r.success && r.code === 'trial_ended', JSON.stringify(r));
+} catch {
+  console.log('  (skipped the ended-trial checks: set PERSIST to the --persist-to directory to run them)');
+}
+
 console.log('\nLogos');
 const res = await fetch(`${BASE}/api/logo.php?p=pf-anything&s=0000`);
 check('an unsigned logo address is a 404, not a lookup', res.status === 404);

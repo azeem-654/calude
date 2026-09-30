@@ -30,6 +30,17 @@
  */
 import { sessionToken } from './auth';
 
+/**
+ * Something on this screen just went wrong for the person using it — a server
+ * error, a dead end, a crash. Whoever wants to offer help listens for it
+ * (CornerHelp.tsx); nothing here knows or cares who that is.
+ */
+export const TROUBLE_EVENT = 'pc-trouble';
+export function signalTrouble(kind: 'server' | 'dead_end' | 'crash'): void {
+  try { window.dispatchEvent(new CustomEvent(TROUBLE_EVENT, { detail: { kind, path: location.pathname } })); }
+  catch { /* no window: a test or a worker */ }
+}
+
 export interface DeadEnd { field: string; message: string; path: string; api: string; at: string }
 
 declare global { interface Window { __deadEnds?: DeadEnd[] } }
@@ -53,6 +64,7 @@ function check(field: string, message: string, api: string) {
     if (visible(el)) return;
 
     const rec: DeadEnd = { field, message: message.slice(0, 300), path: location.pathname, api, at: new Date().toISOString() };
+    signalTrouble('dead_end');
     window.__deadEnds = [...(window.__deadEnds ?? []), rec];
     console.error(`[field guard] ${api} asked for "${field}", which is not on this screen: ${rec.message}`);
 
@@ -80,6 +92,9 @@ export function installFieldGuard(): void {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const api = new URL(url, location.href).pathname;
       if (!/^\/api\/[\w-]+\.php$/.test(api) || api === '/api/uireport.php') return res;
+      /* A server error is somebody hitting a wall; the help card offers a hand
+         (CornerHelp.tsx). Only the status is looked at — nothing is read. */
+      if (res.status >= 500) signalTrouble('server');
       /* The server marks a refusal about one box with a header
          (worker/src/lib/http.ts `fail`), so nothing else is ever read. */
       const field = res.headers.get('X-Refused-Field');

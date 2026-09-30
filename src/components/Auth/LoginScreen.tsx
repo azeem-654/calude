@@ -59,8 +59,25 @@ function GoogleG() {
  */
 export type AuthIntent = 'signin' | 'signup';
 
+/**
+ * "Sign in instantly" from the code email lands on /login with the address and
+ * the code in the query (routes/auth.ts issueCode). They are put in the boxes,
+ * and one press signs in — not zero, because mail scanners open links to
+ * inspect them, and a page that spent the code by itself would spend it for
+ * the scanner and leave the person with a dead one.
+ */
+function readMagicLink(): { email: string; code: string } | null {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const email = q.get('email') ?? '';
+    const code = (q.get('code') ?? '').replace(/\D/g, '').slice(0, 6);
+    return email && code.length === 6 ? { email, code } : null;
+  } catch { return null; }
+}
+
 export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed: () => void; intent?: AuthIntent }) {
   const brand = activeBranding();
+  const [magic] = useState(readMagicLink);
   /*
    * setup    the very first account on an install; the server refuses it after
    * register an ordinary account, which anybody may create
@@ -73,7 +90,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const [mode, setMode] = useState<'login' | 'setup' | 'register'>(
     hasAnyUser() ? (intent === 'signup' ? 'register' : 'login') : 'setup',
   );
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(magic?.email ?? '');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -83,6 +100,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   /* A session the server ended arrives here with its reason (checkSession in
      auth.ts), said once, so nobody wonders whether they did something wrong. */
   const [notice, setNotice] = useState(() => {
+    if (magic) return 'Your code is filled in. Press the button to sign in.';
     try {
       const why = sessionStorage.getItem(SIGNED_OUT_REASON) ?? '';
       sessionStorage.removeItem(SIGNED_OUT_REASON);
@@ -101,9 +119,9 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
    * address still carries over (it is the same state), so somebody who typed
    * it and then gave up on remembering a password does not type it twice.
    */
-  const [view, setView] = useState<'form' | 'code'>('form');
-  const [codeStep, setCodeStep] = useState<'off' | 'sent'>('off');
-  const [code, setCode] = useState('');
+  const [view, setView] = useState<'form' | 'code'>(magic ? 'code' : 'form');
+  const [codeStep, setCodeStep] = useState<'off' | 'sent'>(magic ? 'sent' : 'off');
+  const [code, setCode] = useState(magic?.code ?? '');
   /* Set when the first step was right and the account has 2-step sign-in on. */
   const [ticket, setTicket] = useState('');
 
@@ -125,6 +143,14 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const [regStep, setRegStep] = useState<'form' | 'code'>('form');
   const [regCode, setRegCode] = useState('');
   const locked = mode === 'register' && regStep === 'code';
+
+  /*
+   * Sign-up is the quick way by default: Google, or an address and a code —
+   * nothing to invent, nothing to confirm. The password form is still there,
+   * one link away, for somebody who wants one. Every field a sign-up form asks
+   * for is a place somebody decides to come back later, and does not.
+   */
+  const [pwSignup, setPwSignup] = useState(false);
 
   /* The account this browser last signed in with, offered as one button. */
   const [remembered, setRemembered] = useState<LastSignIn | null>(() => lastSignIn());
@@ -151,12 +177,15 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
     setBusy(false);
     if (!r.ok) { setError(r.error); return; }
     setCodeStep('sent');
-    setNotice(r.message);
+    /* The server's wording is the sign-in one, which will not say whether an
+       address has an account. On the sign-up form the person just typed their
+       own address to make one, so it can simply say where the code went. */
+    setNotice(mode === 'register' ? `We sent a six-digit code to ${to}. It expires in ten minutes — check spam if it is not there in a minute.` : r.message);
   };
 
-  const enterCode = async () => {
+  const enterCode = async (typed = code) => {
     setBusy(true); setError('');
-    const r = await verifyLoginCode(email.trim(), code);
+    const r = await verifyLoginCode(email.trim(), typed);
     setBusy(false);
     if (r.mfaTicket) { setTicket(r.mfaTicket); return; }
     if (!r.ok) { setError(r.error); return; }
@@ -164,6 +193,20 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   };
 
   const strength = passwordStrength(password);
+
+  /* The link's query is taken out of the address bar at once, so the code
+     does not sit in history or travel with a screenshot. */
+  useEffect(() => {
+    if (magic) { try { window.history.replaceState(null, '', window.location.pathname); } catch { /* keep going */ } }
+  }, [magic]);
+
+  /* Six digits typed or pasted is a finished code — pressing a button after
+     that is a step that only exists to be forgotten. */
+  const typeCode = (raw: string) => {
+    const v = raw.replace(/\D/g, '').slice(0, 6);
+    setCode(v);
+    if (v.length === 6 && !busy) void enterCode(v);
+  };
 
   /* The server is the only thing that knows whether setup already happened.
      Asking it first stops a fresh browser being offered a setup form that the
@@ -253,14 +296,14 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
 
   const creating = mode !== 'login';
   const title = view === 'code'
-    ? (mode === 'register' ? 'Sign up with a code' : 'Sign in with a code')
+    ? (mode === 'register' ? 'Start your free trial' : 'Sign in with an instant code')
     : mode === 'setup' ? 'Create your owner account'
-      : mode === 'register' ? `Create your ${brand.appName} account`
+      : mode === 'register' ? 'Start your 7-day free trial'
         : `Welcome back to ${brand.appName}`;
   const sub = view === 'code'
-    ? 'We will email you a six-digit code — no password needed. A new address gets its own workspace.'
+    ? 'We email you a six-digit code — no password needed. A new address gets its own workspace and a 7-day free trial.'
     : mode === 'setup' ? 'Set up the agency owner login to get started.'
-      : mode === 'register' ? 'Your own workspace, free to start. No card needed.'
+      : mode === 'register' ? `Your own ${brand.appName} workspace in under a minute. No card needed.`
         : brand.loginHeadline;
 
   const noticeBox = notice && (
@@ -331,7 +374,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               </label>
               {noticeBox}{errorBox}
               <button type="submit" className="au-primary" disabled={busy}>
-                {busy ? <Loader size={16} className="spin" /> : <><Mail size={15} /> Email me a code</>}
+                {busy ? <Loader size={16} className="spin" /> : <><Mail size={15} /> Send my instant sign-in code</>}
               </button>
             </form>
           ) : (
@@ -340,7 +383,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               <label className="au-field au-code">
                 <span className="au-lbl">The code sent to {email.trim()}</span>
                 <input value={code} inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} placeholder="000000"
-                  onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                  onChange={e => typeCode(e.target.value)} />
               </label>
               {errorBox}
               <button type="submit" className="au-primary" disabled={busy || code.length !== 6}>
@@ -362,6 +405,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   }
 
   const offerLast = mode === 'login' && remembered;
+  const quickSignup = mode === 'register' && !pwSignup;
 
   return shell(
     <>
@@ -385,6 +429,57 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
         </div>
       )}
 
+      {/* ── Google first ──
+          The fastest way in for most people, so it is the first thing on the
+          form rather than an afterthought under it. Only when the server says
+          it will work (AuthStatus.google). */}
+      {mode !== 'setup' && !locked && google && (
+        <>
+          <button type="button" className="au-google" disabled={busy} onClick={() => void goToGoogle()}>
+            <GoogleG /> {mode === 'register' ? 'Sign up with Google' : 'Continue with Google'}
+          </button>
+          <div className="au-or">{quickSignup ? 'or with your email' : 'or'}</div>
+        </>
+      )}
+
+      {quickSignup ? (
+        <div style={{ display: 'grid', gap: 14 }}>
+          {codeStep === 'off' ? (
+            <form onSubmit={e => { e.preventDefault(); void sendCode(); }} style={{ display: 'grid', gap: 14 }}>
+              <label className="au-field">
+                <span className="au-lbl">Work email</span>
+                <input type="email" required autoComplete="email" value={email}
+                  onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
+              </label>
+              {noticeBox}{errorBox}
+              <button type="submit" className="au-primary" disabled={busy || checking}>
+                {busy || checking ? <Loader size={16} className="spin" /> : <>Get my instant sign-in code <ArrowRight size={15} /></>}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={e => { e.preventDefault(); if (code.length === 6) void enterCode(); }} style={{ display: 'grid', gap: 14 }}>
+              {noticeBox}
+              <label className="au-field au-code">
+                <span className="au-lbl">The code sent to {email.trim()}</span>
+                <input value={code} inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} placeholder="000000"
+                  onChange={e => typeCode(e.target.value)} />
+              </label>
+              {errorBox}
+              <button type="submit" className="au-primary" disabled={busy || code.length !== 6}>
+                {busy ? <Loader size={16} className="spin" /> : <>Start my free trial <ArrowRight size={15} /></>}
+              </button>
+              <span style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap', fontSize: 12.5 }}>
+                <button type="button" className="au-link" onClick={() => { setCodeStep('off'); setCode(''); setNotice(''); setError(''); }}>Use a different address</button>
+                <button type="button" className="au-link" disabled={busy} onClick={() => void sendCode()}>Send a new code</button>
+              </span>
+            </form>
+          )}
+          {agreeLine}
+          <button type="button" className="au-aside-link" onClick={() => { setPwSignup(true); setCodeStep('off'); setCode(''); setError(''); setNotice(''); }}>
+            Prefer a password? Sign up with a password instead
+          </button>
+        </div>
+      ) : (
       <form onSubmit={submit} style={{ display: 'grid', gap: 18 }}>
         {creating && (
           <label className="au-field">
@@ -488,24 +583,25 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
           {busy || checking ? <Loader size={16} className="spin" /> : <>{mode === 'login' ? 'Sign in' : locked ? 'Confirm and create account' : mode === 'register' ? 'Continue' : 'Create account'} <ArrowRight size={15} /></>}
         </button>
       </form>
+      )}
 
-      {/* ── Or: Google, or a code and no password at all ──
+      {/* ── Or: a code and no password at all ──
           Offered on both sign-in and sign-up, because the code proves the same
           thing either way — that they hold the mailbox — and a new address
-          becomes an account on the spot. */}
-      {mode !== 'setup' && !locked && (
+          becomes an account on the spot. Google is already at the top. */}
+      {mode !== 'setup' && !locked && !quickSignup && (
         <>
-          <div className="au-or">Or continue with</div>
+          <div className="au-or">or</div>
           <div className="au-alt">
-            {/* Only when the server says it will work. See AuthStatus.google. */}
-            {google && (
-              <button type="button" className="au-soft" disabled={busy} onClick={() => void goToGoogle()}>
-                <GoogleG /> {mode === 'register' ? 'Sign up with Google' : 'Continue with Google'}
+            {mode === 'register' ? (
+              <button type="button" className="au-soft" disabled={busy} onClick={() => { setPwSignup(false); setError(''); setNotice(''); }}>
+                <Mail size={16} /> Use an instant sign-in code instead
+              </button>
+            ) : (
+              <button type="button" className="au-soft" disabled={busy} onClick={() => { setView('code'); setError(''); setNotice(''); }}>
+                <Mail size={16} /> Email me an instant sign-in code
               </button>
             )}
-            <button type="button" className="au-soft" disabled={busy} onClick={() => { setView('code'); setError(''); setNotice(''); }}>
-              <Mail size={16} /> {mode === 'register' ? 'Sign up with a code' : 'Email me a code'}
-            </button>
           </div>
           {agreeLine}
         </>
@@ -517,7 +613,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
         <p className="au-switch">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button type="button" className="au-link"
-            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setRegStep('form'); setRegCode(''); }}>
+            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setRegStep('form'); setRegCode(''); setPwSignup(false); setCodeStep('off'); setCode(''); }}>
             {mode === 'login' ? 'Create one' : 'Sign in'}
           </button>
         </p>

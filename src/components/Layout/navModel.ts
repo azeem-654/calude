@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package } from 'lucide-react';
+  type LucideIcon, Package, UserPlus } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -133,6 +133,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/settings?tab=email-sms', label: 'Email & SMS setup', desc: 'Connect SMTP, Resend, Mailtrap or Twilio', icon: Send, aka: ['smtp', 'sending', 'provider', 'twilio', 'resend'] },
       { path: '/billing', label: 'Plan & billing', desc: 'Your subscription, invoices and usage', icon: CreditCard, aka: ['invoice', 'subscription', 'payment'] },
       { path: '/agency', label: 'Agency & clients', desc: 'Every sub-account you run, in one place', icon: Building2, aka: ['sub-accounts', 'white label', 'clients'], agencyOnly: true },
+      { path: '/signups', label: 'Sign-ups & trials', desc: 'Who signed up, how far they got, and a message or a kickoff call for them', icon: UserPlus, aka: ['signups', 'trial', 'customers', 'onboarding', 'kickoff', 'new users'], ownerOnly: true },
       { path: '/moderation', label: 'Content review', desc: 'Anything held before it went out, and what became of the account', icon: ShieldAlert, aka: ['moderation', 'review', 'held', 'approve', 'suspend', 'abuse', 'policy'], ownerOnly: true },
     ],
   },

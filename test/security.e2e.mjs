@@ -83,6 +83,21 @@ check("B cannot create a login inside A's workspace", !cu.ok && cu.status === 40
 const ca = await api('auth.php', { action: 'create_user', token: B.token, email: `agent-${run}@example.test`, password: 'Mole-password-1', name: 'Mole', role: 'agency', accountId: B.acct });
 check('B cannot mint an agency login', !ca.ok, JSON.stringify(ca.data));
 
+console.log('\nSign-ups and messages — the owner\'s alone');
+const su = await api('customers.php', { action: 'signups', token: B.token });
+check("B cannot read the owner's list of sign-ups", !su.ok, JSON.stringify(su.data).slice(0, 120));
+const msg = await api('customers.php', { action: 'message', token: B.token, to: [A.email], title: 'Phish', body: 'x', link: 'https://evil.example' });
+check('B cannot message other customers as the owner', !msg.ok, JSON.stringify(msg.data).slice(0, 120));
+const aMine = await api('customers.php', { action: 'mine', token: A.token });
+const aNote = (aMine.data.notices ?? [])[0];
+if (aNote) {
+  await api('customers.php', { action: 'read', token: B.token, id: aNote.id });
+  const again = await api('customers.php', { action: 'mine', token: A.token });
+  check("B cannot close A's message by id", (again.data.notices ?? []).some(n => n.id === aNote.id));
+}
+const setg = await api('customers.php', { action: 'settings_save', token: B.token, settings: { kickoffUrl: 'https://evil.example' } });
+check("B cannot change the owner's kickoff link", !setg.ok, JSON.stringify(setg.data).slice(0, 120));
+
 console.log("\nWorkspace data — B naming A's workspace");
 const all = await api('data.php', { action: 'get_all', token: B.token, accountId: A.acct });
 check("B cannot read A's workspace data", !all.ok, JSON.stringify(all.data).slice(0, 120));

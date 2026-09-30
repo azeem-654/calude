@@ -49,6 +49,9 @@ import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
 import { LogoMark } from './components/shared/Logo';
 import HelpLauncher from './components/shared/HelpLauncher';
+import TrialBar from './components/shared/TrialBar';
+import CornerHelp from './components/shared/CornerHelp';
+import Signups from './components/Agency/Signups';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -122,9 +125,11 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       {/* Above everything else, because it is the explanation for anything that
           refuses lower down the page. */}
       <StandingBanner />
+      <TrialBar />
       <IconRail />
       <DueWorkRunner />
       <HelpLauncher />
+      <CornerHelp />
       {/* The 62px is the floating icon rail's width. The rail is hidden below
           760px (see index.css), so on a phone that padding was 62px of nothing
           shoving every screen off-centre to the right; `app-main` takes it back
@@ -168,6 +173,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
               behind it — a client login that guesses the address gets a
               sentence, not a queue. */}
           <Route path="/moderation" element={<ReviewQueue />} />
+          {/* The owner's list of who signed up; the server refuses anybody else. */}
+          <Route path="/signups" element={<Signups />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />

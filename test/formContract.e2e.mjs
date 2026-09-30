@@ -57,6 +57,9 @@ await p.getByRole('button', { name: 'Sign in', exact: true }).click();
 await p.waitForTimeout(2500);
 
 const deadEnds = () => p.evaluate(() => window.__deadEnds ?? []);
+/* A customer, so the Sign-ups list has somebody to message. */
+const early = await api('auth.php', { action: 'register', email: `early-${Date.now()}@example.test`, name: 'Early', password: 'Violet-kettle-8-forms' });
+const other0 = () => !!early.token;
 const resetDeadEnds = () => p.evaluate(() => { window.__deadEnds = []; });
 const settle = async () => {
   await p.waitForLoadState('networkidle').catch(() => {});
@@ -128,6 +131,27 @@ for (const t of settingsTabs) {
   }
   const de = await deadEnds();
   ok(`Settings → ${t}: ${n} validate button(s) pressed, no dead ends`, de.length === 0, JSON.stringify(de));
+}
+
+/* ── 2b · Sign-ups & trials: the booking link and a message's button ──
+   Both refuse anything that is not https by naming their box; both boxes must
+   be on screen when they do. */
+await resetDeadEnds();
+await p.goto(`${B}/signups`, { waitUntil: 'networkidle' });
+await settle();
+await p.locator('[data-field="kickoffUrl"]').fill('ftp://not-a-booking-page');
+await p.getByRole('button', { name: 'Save', exact: true }).click();
+await settle();
+ok('Sign-ups: a bad booking link is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+await p.locator('[data-field="kickoffUrl"]').fill('');
+if (other0()) {
+  await p.goto(`${B}/signups`, { waitUntil: 'networkidle' });
+  await settle();
+  await p.getByRole('button', { name: 'Message', exact: false }).last().click();
+  await p.locator('[data-field="link"]').fill('javascript:alert(1)');
+  await p.getByRole('button', { name: 'Send', exact: true }).click();
+  await settle();
+  ok('Sign-ups: a bad message link is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
 }
 
 /* ── 3 · The guard catches what it is for ──

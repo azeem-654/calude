@@ -419,6 +419,40 @@ stamped `verified_email` from their session — never from the body. Viewing
 only; nobody can click on the customer's machine, and the screens say so.
 `npm run test:livehelp` drives two real browsers through a session.
 
+## Trials, sign-ups and keeping trial customers
+
+**Every sign-up is on a 7-day trial, no card** (`worker/src/lib/trial.ts`).
+`crm_users.trial_ends_at` is stamped where an account is created (password
+sign-up and `completeSignIn`); NULL means the account predates trials and is
+never ended. A client login follows the agency that owns its workspace. The
+install owner, a paid workspace (`active`/`trialing` billing status) or a
+`crm_plans` row that is not `default` is never on trial. **What ending it stops
+is the operator's money**: `loadAiKey` stops falling back to the operator's AI
+key, and `aiBudget` / `trialRefusal` say why by name (`/api/ai.php` answers 402
+`trial_ended`). The customer's data, mailbox and own AI key are untouched, and
+the app shows `TrialBar`'s plan screen everywhere but Plan & billing and
+Settings (export). Do not add a trial on the processor's price as well.
+
+Sign-up opens on **Google, then one email box and an instant code**; the
+password form is one link away. The code email carries a "Sign in instantly"
+link to `/login?email&code`, which fills the boxes and waits for **one press** —
+never auto-submits, because mail scanners open links and would spend the code.
+
+The install owner's **Sign-ups & trials** screen (`/signups`,
+`routes/customers.ts`) lists every customer with their trial, last visit and
+coarse signals (project made, mailbox connected, asked for help), and sends
+messages that appear in the corner of the customer's app (`crm_notices`) and,
+if the owner's mailbox is validated, by email. Links in them are https only —
+they render inside somebody else's session. The kickoff-call link and the
+automatic welcome are set there too.
+
+`shared/CornerHelp.tsx` **offers** help rather than waiting to be asked: when
+something fails on a screen (`signalTrouble` in `services/fieldGuard.ts` — a
+5xx, a dead end, a crash) and, during a trial, after 75 visible seconds on one
+screen, once per screen per day. It offers only what works: chat and screen
+sharing if the house widget has them (`ProtectedCentralChat.features()`), a call
+if a kickoff link is set.
+
 ## Verifying a change
 
 The app is a single-page product with a lot of state; a typecheck proves very

@@ -13,6 +13,8 @@ import { hashPassword, newToken, timingSafeEqual, verifyPassword } from '../lib/
 import { decryptSecret } from '../lib/crypto';
 import { hasAnyUser, hasInstallOwner, installSecret, nowIso, sessionKey, sessionKeys, signupsClosed, sweepSessions, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
 import { readTicket, signTicket, verifyTotp } from '../lib/totp';
+import { trialEndFromNow } from '../lib/trial';
+import { welcomeNewAccount } from './customers';
 import { CAN_SEND_SQL, canSend, deliver, fromAddressOf } from '../lib/deliver';
 import { loadMailboxById, type Mailbox } from './mailbox';
 import {
@@ -161,7 +163,7 @@ async function sha256Hex(input: string): Promise<string> {
  * next, the install owner included. A code in somebody else's Sent folder is a
  * password in somebody else's hands.
  */
-async function installMailbox(env: Env): Promise<Mailbox | null> {
+export async function installMailbox(env: Env): Promise<Mailbox | null> {
   /* Any mailbox that can send — its own SMTP server or a provider's API. This
      asked for `smtp_host` alone, so an owner whose mailbox sends through Brevo
      had "no mailbox", no sign-in codes and no proved sign-ups.
@@ -186,7 +188,7 @@ async function installMailbox(env: Env): Promise<Mailbox | null> {
   return canSend(mb) ? mb : null;
 }
 
-async function sendLoginCode(env: Env, email: string, code: string): Promise<{ ok: boolean; error: string }> {
+async function sendLoginCode(env: Env, email: string, code: string, link = ''): Promise<{ ok: boolean; error: string }> {
   const mb = await installMailbox(env);
   if (!mb) {
     return {
@@ -201,6 +203,7 @@ async function sendLoginCode(env: Env, email: string, code: string): Promise<{ o
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:420px;margin:0 auto;color:#17191c">
       <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Here is your sign-in code:</p>
       <p style="font-size:34px;font-weight:800;letter-spacing:0.12em;margin:0 0 14px">${code}</p>
+      ${link ? `<p style="margin:0 0 18px"><a href="${link}" style="display:inline-block;background:#17191c;color:#c8f24d;font-weight:700;font-size:15px;text-decoration:none;padding:12px 22px;border-radius:999px">Sign in instantly</a></p>` : ''}
       <p style="font-size:13px;color:#64748b;line-height:1.6;margin:0">
         It works once and expires in ten minutes. If you did not ask for it, you can ignore this —
         nobody can get in without it.
@@ -221,6 +224,14 @@ async function sendLoginCode(env: Env, email: string, code: string): Promise<{ o
   return sent.ok
     ? { ok: true, error: '' }
     : { ok: false, error: 'We could not send the code just now. Try again in a moment.' };
+}
+
+/** Every account made by signing up starts the 7-day trial (lib/trial.ts). */
+async function startTrial(env: Env, email: string): Promise<void> {
+  try { await env.DB.prepare('UPDATE crm_users SET trial_ends_at = ? WHERE email = ?').bind(trialEndFromNow(), email).run(); }
+  catch { /* before 0052: the account simply has no trial, as every older one */ }
+  /* And the owner's welcome, with the kickoff-call link, waiting inside the app. */
+  await welcomeNewAccount(env, email);
 }
 
 /**
@@ -287,6 +298,7 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, re
     ).bind(accountId, email, nowIso()).run();
     try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), email).run(); }
     catch { /* before 0049 */ }
+    await startTrial(env, email);
     user = { email, name, role: 'agency', accountId };
     /*
      * Recorded on the way in, because these two paths have no checkbox.
@@ -318,7 +330,7 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, re
  * address before the account exists. Both brakes below apply to both paths,
  * so sign-up cannot be used to mail a stranger a hundred codes either.
  */
-async function issueCode(env: Env, email: string, ip: string): Promise<Response | null> {
+async function issueCode(env: Env, email: string, ip: string, linkOrigin = ''): Promise<Response | null> {
   /*
    * Two brakes, and they answer different attacks.
    *
@@ -359,7 +371,19 @@ async function issueCode(env: Env, email: string, ip: string): Promise<Response 
   await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
     .bind(`code:${ip}`, Math.floor(Date.now() / 1000)).run();
 
-  const sent = await sendLoginCode(env, email, code);
+  /*
+   * The same code as a button, for the sign-in path: one tap in the email
+   * opens the sign-in screen with the address and code already in it. It
+   * lands on a screen with a button rather than signing in by itself, because
+   * mail scanners open links to check them — a link that spent the code on
+   * arrival would sign the scanner in and leave the person with a dead code.
+   * The code is the same one, with the same ten minutes and the same five
+   * guesses; the link carries nothing the email did not already.
+   */
+  const link = linkOrigin
+    ? `${linkOrigin}/login?${new URLSearchParams({ email, code }).toString()}`
+    : '';
+  const sent = await sendLoginCode(env, email, code, link);
   /* A send that genuinely failed is reported, because a customer staring at
      an inbox that will never receive anything is worse than knowing. */
   if (!sent.ok) return fail(sent.error, 200, { code: 'send_failed' });
@@ -710,6 +734,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
       try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), lower).run(); }
       catch { /* before 0049 */ }
     }
+    await startTrial(env, lower);
 
     /* Recorded here, where an account actually came into existence. */
     await env.DB.prepare('INSERT INTO crm_signup_attempts (ip, created_at) VALUES (?, ?)')
@@ -751,7 +776,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
 
     if (action === 'request_code') {
-      const refused = await issueCode(env, email, ip);
+      const refused = await issueCode(env, email, ip, new URL(req.url).origin);
       if (refused) return refused;
       /*
        * The same answer whether or not the address has an account.

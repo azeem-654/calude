@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { signalTrouble } from '../../services/fieldGuard';
 
 interface Props {
   children: ReactNode;
@@ -33,6 +34,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    signalTrouble('crash');
     const entry = {
       at: new Date().toISOString(),
       path: window.location.pathname + window.location.hash,

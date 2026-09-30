@@ -44,6 +44,7 @@ import WorksWith from '../shared/WorksWith';
 import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
+import LaunchFilm from './LaunchFilm';
 import './site.css';
 
 type Reel = keyof typeof REELS;
@@ -352,7 +353,7 @@ export default function SiteHome() {
         </nav>
         <div className="dc-nav-cta">
           <a className="dc-btn dc-btn-ghost" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
-          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free</a>
+          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free trial</a>
         </div>
       </header>
 
@@ -380,9 +381,9 @@ export default function SiteHome() {
           </p>
           <div className="dc-hero-cta dc-lead-2">
             <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
-              Start free <ArrowRight size={16} />
+              Start your 7-day free trial <ArrowRight size={16} />
             </a>
-            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#autopilot">See how it works</a>
+            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 55-second tour</a>
           </div>
           <div className="dc-hero-stage dc-lead-3">
             <div className="dc-hero-sparks" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
@@ -402,6 +403,11 @@ export default function SiteHome() {
           <p className="dc-sample-note">Screens show a sample workspace with example data.</p>
         </div>
       </section>
+
+      {/* ── The launch film, full length and full width: the second thing
+             anybody sees, because fifty-five seconds of the product working
+             answers more than the rest of the page can in text. ── */}
+      <LaunchFilm />
 
       {/* ── What it connects to, and what it writes for. Two rows, labelled,
              because they are two different claims (WorksWith.tsx). ── */}
@@ -571,8 +577,9 @@ export default function SiteHome() {
           <span className="dc-eyebrow">Resell it at your price</span>
           <h2>One subscription. <em>As many clients as your plan allows.</em></h2>
           <p>
-            You are billed once. What you charge your own clients is entirely yours to set, and the
-            sub-account allowance is enforced on the server rather than in the browser.
+            Every plan starts with 7 days free, and no card is asked for until you choose one. You are
+            billed once. What you charge your own clients is entirely yours to set, and the sub-account
+            allowance is enforced on the server rather than in the browser.
           </p>
         </div>
         <div className="dc-plans stagger" ref={price}>
@@ -588,7 +595,7 @@ export default function SiteHome() {
               </p>
               <ul>{p.features.map(f => <li key={f}><Check size={12} /> {f}</li>)}</ul>
               <a className={`dc-btn ${i === 1 ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={appHref('/signup')} {...cross(appHref('/signup'))}>
-                Start free <ArrowRight size={14} />
+                Try it free for 7 days <ArrowRight size={14} />
               </a>
             </div>
           ))}
@@ -599,7 +606,7 @@ export default function SiteHome() {
       <section className="dc-cta">
         <div className="dc-cta-glow" aria-hidden="true" />
         <h2>Get started with<br />Protected Central today</h2>
-        <p>Free to start. Your workspace is yours alone from the moment it exists.</p>
+        <p>Free for 7 days, no card needed. Your workspace is yours alone from the moment it exists.</p>
         <div className="dc-hero-cta">
           <a className="dc-btn dc-btn-light dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
             Create your account <ArrowUpRight size={16} />

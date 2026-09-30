@@ -28,7 +28,7 @@
  */
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
-import { loadAiKey, modelsFor } from '../lib/ai';
+import { loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 
 interface AiReq {
@@ -66,6 +66,9 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       return fail(`That is a lot of AI requests — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
     }
   }
+
+  const ended = await trialRefusal(env, accountId);
+  if (ended) return fail(ended, 402, { code: 'trial_ended' });
 
   const key = await loadAiKey(env, accountId);
   if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });

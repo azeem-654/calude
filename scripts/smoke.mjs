@@ -99,6 +99,8 @@ try {
 
   await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
   await p.getByRole('button', { name: 'Create one' }).click();
+  /* Sign-up opens on Google and an instant code; the password form is a link away. */
+  await p.getByRole('button', { name: /Sign up with a password/ }).click();
   await p.waitForTimeout(400);
   await p.getByLabel('Full name').fill('Dave Pike');
   await p.getByLabel('Email address').fill(EMAIL);

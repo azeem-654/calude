@@ -803,6 +803,9 @@
 
     root.appendChild(panel); root.appendChild(launcher);
     document.body.appendChild(root);
+    /* The widget arrives after the page; a page waiting to offer its options
+       is told rather than left polling. */
+    try { window.dispatchEvent(new Event('pc-widget-ready')); } catch (e) { /* very old browser */ }
   }
 
   function toggle() {
@@ -824,6 +827,8 @@
       if (!state.open) toggle();
       if (view && (view === 'home' || has(view === 'status' ? 'ticket' : view))) show(view);
     },
+    /* What this widget offers, so a page can name only what will work. */
+    features: function () { return state.features.slice(); },
   };
 
   /* Nothing is drawn until the server has confirmed this widget is live and

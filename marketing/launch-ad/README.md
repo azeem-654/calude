@@ -71,7 +71,10 @@ licence to clear; swap in a licensed track for the paid version if you prefer.
 
 ## Before this ad runs
 
-- **The 7-day trial must exist.** The app has no trial of its own: a trial is
-  whatever the operator's Stripe or Creem price carries. Set the subscription
-  price to a 7-day trial first, or change the offer here.
+- **The 7-day trial exists** (2026-09-30): every sign-up gets 7 days with no
+  card (`worker/src/lib/trial.ts`). Do not also put a trial on the processor's
+  price — that would make it 14.
+- The full master plays on the home page as its second section
+  (`src/components/Site/LaunchFilm.tsx`, files in `public/site/launch/`,
+  WebM and MP4, 16:9 and 1:1). Re-encode those when the master changes.
 - Re-check any screen that has changed since 2026-09-30 against the app.

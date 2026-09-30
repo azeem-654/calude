@@ -1653,3 +1653,63 @@
   .dc-hero-prompt.aps-prompt { margin-bottom: 12px; }
   .dc-hero-prompt .aps-prompt-text { font-size: 13px; min-height: 2.8em; }
 }
+
+/* ── The launch film ─────────────────────────────────────────────────────
+   Edge to edge: the section paints no gutter, so the film is as wide as the
+   window. The frame holds the aspect ratio before anything has loaded, so the
+   page below does not jump when the poster arrives. */
+
+.dc-film {
+  position: relative;
+  margin-top: clamp(40px, 6vw, 72px);
+  scroll-margin-top: 64px;
+}
+.dc-film-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #05070c;
+  border-top: 1px solid rgba(200, 242, 77, 0.18);
+  border-bottom: 1px solid rgba(200, 242, 77, 0.18);
+  overflow: hidden;
+}
+.dc .dc-film-video {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  background: #05070c;
+}
+@media (max-width: 700px) {
+  .dc-film-frame { aspect-ratio: 1 / 1; }
+}
+.dc-film-sound {
+  position: absolute;
+  left: clamp(12px, 3vw, 32px);
+  bottom: clamp(12px, 3vw, 32px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(4, 6, 10, 0.72);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font: 600 14px/1 Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+.dc-film-sound:hover { border-color: var(--lime); color: var(--lime); }
+.dc-film-sound:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.dc-film-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px clamp(16px, 4vw, 44px) 0;
+}
+.dc .dc-film-foot p { color: var(--muted); font-size: 13.5px; }
+.dc-film-video::cue { font: 600 clamp(14px, 1.6vw, 22px)/1.35 Inter, system-ui, sans-serif; background: rgba(4, 6, 10, 0.78); }

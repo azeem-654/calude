@@ -17,6 +17,7 @@
 import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
 import { rateLimit } from './rateLimit';
+import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
 
 const BASE = 'https://generativelanguage.googleapis.com';
 
@@ -122,6 +123,11 @@ export async function loadAiKey(env: Env, accountId: string): Promise<string | n
       if (plain) return plain;
     } catch { /* unreadable blob: fall through rather than fail the whole tick */ }
   }
+
+  /* The operator's key is part of what the trial gives. Once it has ended and
+     nothing is paid, it is not spent on this workspace — by a screen or by a
+     cron run, both of which arrive here (lib/trial.ts). */
+  if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended') return null;
 
   return installAiKey(env);
 }
@@ -454,6 +460,20 @@ Reply with JSON only, in exactly this shape:
 }
 
 /**
+ * Why the operator's AI is closed to this workspace, or null when it is not.
+ *
+ * Said by name, before loadAiKey would quietly answer "no key" — which reads
+ * as the install being broken rather than the trial being over. A workspace
+ * that brought its own key is not stopped: that costs the operator nothing.
+ */
+export async function trialRefusal(env: Env, accountId: string): Promise<string | null> {
+  if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind !== 'ended') return null;
+  const own = await env.DB.prepare("SELECT 1 AS n FROM crm_ai_config WHERE account_id = ? AND api_key != ''")
+    .bind(accountId).first().catch(() => null);
+  return own ? null : TRIAL_ENDED_MESSAGE;
+}
+
+/**
  * One AI budget per workspace, shared by every route that spends the key.
  *
  * Only the New Project wizard had a limit; writing, product ideas, page
@@ -462,6 +482,8 @@ Reply with JSON only, in exactly this shape:
  * sentence to show.
  */
 export async function aiBudget(env: Env, accountId: string): Promise<string | null> {
+  const ended = await trialRefusal(env, accountId);
+  if (ended) return ended;
   for (const [what, max, windowSeconds] of [['ai-hour', 120, 3600], ['ai-day', 800, 86_400]] as const) {
     const v = await rateLimit(env, { what, who: accountId, max, windowSeconds });
     if (!v.allowed) return `That is a lot of AI requests for one workspace — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`;
