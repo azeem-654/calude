@@ -26,6 +26,7 @@ import OperatorPayments from './OperatorPayments';
 import { cachedPrimary } from '../../services/mailboxStore';
 import DiagnosticsCard from './DiagnosticsCard';
 import ScreenChecksCard from './ScreenChecksCard';
+import SystemMailCard from './SystemMailCard';
 import DeliveryCheck from './DeliveryCheck';
 import RouteCheck from './RouteCheck';
 import SecurityPanel from './SecurityPanel';
@@ -404,6 +405,13 @@ function EmailSMSTab() {
         that fail separately, and tested at the very end — so a wrong password
         surfaced four screens after it was typed.
       */}
+      {/* Which of the owner's mailboxes the install writes from — sign-in
+          codes, trial emails, the digest. Owner only; the server refuses
+          anyone else (routes/systemMail.ts). */}
+      {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && (
+        <div style={{ marginBottom: 20 }}><SystemMailCard /></div>
+      )}
+
       {card(<MailboxesPanel />)}
 
       {/* Mailbox Warmup */}

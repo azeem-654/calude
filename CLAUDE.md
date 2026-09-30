@@ -147,6 +147,13 @@ accepted). Sign-in codes and sign-up proofs use the owner's mailbox only once
 it has passed validation (`out_verified_at`), so a pasted, unproved key cannot
 stop every new customer at "we could not send the code".
 
+**System email** is whatever `installMailbox` returns: the owner's chosen
+mailbox (`crm_meta.system_mailbox_id`, set on the owner-only **System email**
+card in Settings → Email & SMS, `routes/systemMail.ts`) if it is validated,
+otherwise their first validated one — a chosen mailbox that stops working
+falls back rather than silencing every code. Only mailboxes in workspaces the
+install owner owns are candidates. `npm run test:systemmail` (fresh D1).
+
 ## Forms ask only for what they show
 
 A refusal about a particular box names it — `fail(msg, 200, { field:

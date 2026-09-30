@@ -45,6 +45,7 @@ import { handleAiWrite } from './routes/aiwrite';
 import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleUiReport } from './routes/uireport';
+import { handleSystemMail } from './routes/systemMail';
 import { handleCustomers } from './routes/customers';
 import { handleTrialOptout, runTrialMail } from './lib/trialMail';
 import { handleValidateKey } from './routes/validateKey';
@@ -75,6 +76,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/auth.php': handleAuth,
   '/api/security.php': handleSecurity,
   '/api/uireport.php': handleUiReport,
+  '/api/system-mail.php': handleSystemMail,
   /* Who signed up, their trial, and the owner's messages to them. */
   '/api/customers.php': handleCustomers,
   /* "Stop these emails" under a trial email. Signed, and a GET only shows a

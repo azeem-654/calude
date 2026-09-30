@@ -11,7 +11,7 @@ import { rateLimit } from '../lib/rateLimit';
 import { origin, recordAuthEvent } from '../lib/audit';
 import { hashPassword, newToken, timingSafeEqual, verifyPassword } from '../lib/crypto';
 import { decryptSecret } from '../lib/crypto';
-import { hasAnyUser, hasInstallOwner, installSecret, nowIso, sessionKey, sessionKeys, signupsClosed, sweepSessions, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
+import { hasAnyUser, hasInstallOwner, installSecret, metaGet, nowIso, sessionKey, sessionKeys, signupsClosed, sweepSessions, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
 import { readTicket, signTicket, verifyTotp } from '../lib/totp';
 import { trialEndFromNow } from '../lib/trial';
 import { welcomeNewAccount } from './customers';
@@ -163,6 +163,30 @@ async function sha256Hex(input: string): Promise<string> {
  * next, the install owner included. A code in somebody else's Sent folder is a
  * password in somebody else's hands.
  */
+/** Every mailbox in a workspace the install owner owns — the only ones allowed to carry install mail. */
+export interface SystemCandidate {
+  id: string; accountId: string; label: string; fromEmail: string; provider: string;
+  smtpHost: string; verifiedAt: string | null; lastError: string; isPrimary: number; canSend: number;
+}
+export async function systemCandidates(env: Env): Promise<SystemCandidate[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT m.id, m.account_id AS accountId, m.label, m.from_email AS fromEmail,
+            COALESCE(m.provider, 'smtp') AS provider, m.smtp_host AS smtpHost,
+            m.out_verified_at AS verifiedAt, COALESCE(m.out_last_error, '') AS lastError,
+            m.is_primary AS isPrimary, CASE WHEN ${CAN_SEND_SQL} THEN 1 ELSE 0 END AS canSend
+     FROM crm_mailbox_accounts m
+     WHERE m.account_id IN (
+         SELECT w.account_id FROM crm_workspaces w
+         JOIN crm_users u ON u.email = w.owner_email
+         WHERE u.account_id IS NULL AND u.role = 'agency')
+     ORDER BY m.is_primary DESC, m.created_at`,
+  ).all<SystemCandidate>().catch(() => ({ results: [] as SystemCandidate[] }));
+  return results ?? [];
+}
+
+/** The owner's explicit choice (Settings → Email & SMS → System email), if any. */
+export const SYSTEM_MAILBOX_KEY = 'system_mailbox_id';
+
 export async function installMailbox(env: Env): Promise<Mailbox | null> {
   /* Any mailbox that can send — its own SMTP server or a provider's API. This
      asked for `smtp_host` alone, so an owner whose mailbox sends through Brevo
@@ -172,18 +196,16 @@ export async function installMailbox(env: Env): Promise<Mailbox | null> {
      mailbox, so a key pasted in and never proved — or proved wrong — would
      otherwise stop every new customer at "we could not send the code". Until
      one validates, sign-up works the older, unproved way, as it did before
-     any mailbox existed. */
-  const row = await env.DB.prepare(
-    `SELECT m.id, m.account_id AS accountId
-     FROM crm_mailbox_accounts m
-     WHERE ${CAN_SEND_SQL} AND m.out_verified_at IS NOT NULL
-       AND m.account_id IN (
-         SELECT w.account_id FROM crm_workspaces w
-         JOIN crm_users u ON u.email = w.owner_email
-         WHERE u.account_id IS NULL AND u.role = 'agency')
-     ORDER BY m.is_primary DESC, m.created_at LIMIT 1`,
-  ).first<{ id: string; accountId: string }>().catch(() => null);
-  if (!row) return null;
+     any mailbox existed.
+
+     The owner may name one (SYSTEM_MAILBOX_KEY). A named mailbox that is not
+     usable — deleted, moved out of the owner's workspaces, or failing
+     validation — falls back to the first usable one rather than stopping
+     every system email; the System email card says which is in use and why. */
+  const usable = (await systemCandidates(env)).filter(c => c.canSend && c.verifiedAt);
+  if (!usable.length) return null;
+  const chosen = await metaGet(env.DB, SYSTEM_MAILBOX_KEY).catch(() => null);
+  const row = usable.find(c => c.id === chosen) ?? usable[0];
   const mb = await loadMailboxById(env, row.accountId, row.id).catch(() => null);
   return canSend(mb) ? mb : null;
 }
