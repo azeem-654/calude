@@ -206,7 +206,11 @@ s1.render = (t) => {
   const ring = q(r, '#s1ring');
   const rp = lin(t, 2.25, 3.0);
   ring.style.opacity = String(rp > 0 && rp < 1 ? (1 - rp) * 0.9 : 0);
-  ring.style.transform = `translate(-50%,-50%) scale(${(1 + eo(rp) * 70).toFixed(2)})`;
+  // Grow the box, not a transform: scaling would thicken the border into a disc.
+  const d = 10 + eo(rp) * 900;
+  ring.style.width = ring.style.height = d.toFixed(1) + 'px';
+  ring.style.borderWidth = (3 - rp * 2).toFixed(2) + 'px';
+  ring.style.transform = 'translate(-50%,-50%)';
   const m = q(r, '#s1mark');
   const lp = seg(t, 2.25, 2.85, back);
   const zoom = seg(t, 3.85, 4.4, x => x * x * x * x);
@@ -216,7 +220,7 @@ s1.render = (t) => {
   m.style.transformOrigin = '50% 50.3%';
   m.style.transform = `scale(${s.toFixed(3)}) rotate(${((1 - lp) * -12).toFixed(2)}deg)`;
   const glow = document.getElementById('g4');
-  glow.style.opacity = String(seg(t, 2.25, 2.6) * (1 - seg(t, 3.4, 4.1)) * 0.35);
+  glow.style.opacity = String(seg(t, 2.25, 2.6) * (1 - seg(t, 3.4, 4.1)) * 0.75);
   const w = q(r, '#s1word');
   const wp = seg(t, 2.55, 3.05, eo5);
   w.style.opacity = String(wp * (1 - seg(t, 3.6, 3.9)));
