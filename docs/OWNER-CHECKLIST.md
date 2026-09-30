@@ -37,6 +37,11 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 **Done, and no longer on the list:**
 
+- Item 15, on the live app — support@protectedcentral.com is connected through
+  Brevo, passed validation on 2026-09-30, and is set as the System email
+  mailbox (Settings → Email & SMS → System email). The older
+  support@wildwestcorp.com mailbox stays connected but no longer sends system
+  email. Still to do on testing.protectedcentral.com if codes are wanted there.
 - Item 0 — testing.protectedcentral.com answers from `crmpro-staging` (its
   status reports `appOrigin: https://testing.protectedcentral.com`). Checked
   2026-09-27.
