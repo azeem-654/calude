@@ -91,7 +91,7 @@ why it can be tested without a database — keep it that way.
   state — "no projects" and "could not ask" look identical in a zero, and only
   one of them means the customer has nothing set up.
 
-## Money — two pots, and they are not interchangeable
+## Money — three pots, and they are not interchangeable
 
 This is the trap in this codebase most likely to cost somebody real money.
 
@@ -104,6 +104,15 @@ This is the trap in this codebase most likely to cost somebody real money.
   assumption the signed-in routes make — the price is read from the product row
   and never from the request, a draft shop 404s rather than rendering empty, and
   orders are rate-limited per address because anonymous callers create rows.
+
+- **A reseller charging their own clients.** `routes/resell.ts`, on the key in
+  `crm_reseller_billing` (per reseller), at the price the reseller set per client
+  (`crm_reseller_clients`, read back at checkout, never taken from the request).
+  Each reseller's webhook has its own address (`/api/resell-webhook.php?r=<hook_id>`)
+  and may only mark that reseller's own clients paid. No affiliate commission is
+  ever earned on it. `npm run test:resell` (fresh D1). The old agency billing
+  modal billed clients at plan prices on the *operator's* processor and kept a
+  Stripe key in the browser — that was this trap, and it is gone.
 
 Charging a subscriber's buyer on the operator's key would deposit their trading
 revenue into the operator's balance — somebody else's money, held without

@@ -5,8 +5,8 @@ import {
   MessageSquare, LogIn, Rocket, Palette, KeyRound, CreditCard, Copy, ExternalLink,
 } from 'lucide-react';
 import { createUser, getSession } from '../../services/auth';
-import { loadStripeConfig, saveStripeConfig, billingFor, updateBilling, createCheckout, saveStripeSecretToServer, serverBillingEnabled } from '../../services/billing';
-import type { StripeConfig } from '../../services/billing';
+import ResellerBilling, { STATUS_BADGE } from './ResellerBilling';
+import { resellStatus, setClientPrice, type ResellClient } from '../../services/resell';
 import { cloudStatus, isConfigured } from '../../services/serverData';
 import { Database, Cloud, HardDrive, ChevronRight } from 'lucide-react';
 import Header from '../Layout/Header';
@@ -116,6 +116,9 @@ export default function AgencyDashboard() {
   const [editAgency, setEditAgency] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   const [billFor, setBillFor] = useState<SubAccount | undefined>();
+  /* What each client has paid, from the reseller's own processor (routes/resell.ts). */
+  const [paid, setPaid] = useState<Map<string, ResellClient>>(new Map());
+  useEffect(() => { void resellStatus().then(r => { if (r.success) setPaid(new Map(r.resell.clients.map(c => [c.accountId, c]))); }).catch(() => {}); }, []);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [cloud, setCloud] = useState<'cloud' | 'local'>(cloudStatus());
 
@@ -132,6 +135,11 @@ export default function AgencyDashboard() {
     const exists = accounts.some(x => x.id === a.id);
     if (exists) {
       updateSubAccount(a.id, a);
+      /* The price is what the reseller charges this client on their own
+         account (routes/resell.ts), so a change here is saved there too — a
+         number on this screen that billing never saw was the old bug. Quiet
+         if the workspace has no server row yet; Billing sets it then. */
+      if (a.price > 0) void setClientPrice(a.id, a.price, paid.get(a.id)?.currency ?? 'USD').then(r => { if (r.success) setPaid(new Map(r.resell.clients.map(c => [c.accountId, c]))); }).catch(() => {});
       reload();
     } else {
       /* The plan's allowance is enforced in tenancy, which throws rather than
@@ -343,7 +351,7 @@ export default function AgencyDashboard() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: st.bg, color: st.color }}>{st.label}</span>
                       <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: '#f3f4f6', color: INK }}>{plan.name}</span>
-                      {(() => { const b = billingFor(a.id); if (b.status === 'none') return null; const map: Record<string, [string, string, string]> = { active: ['#e9f4e6', '#3f9142', 'Paid'], checkout_sent: ['#eceff9', '#3e63dd', 'Checkout sent'], past_due: ['#fdf5e7', '#c77414', 'Past due'], cancelled: ['#fceaea', '#e5484d', 'Cancelled'] }; const m = map[b.status]; return m ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: m[0], color: m[1] }}><CreditCard size={9} />{m[2]}</span> : null; })()}
+                      {(() => { const c = paid.get(a.id); const m = c ? STATUS_BADGE[c.status] : undefined; return m ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: m[0], color: m[1] }}><CreditCard size={9} />{m[2]}</span> : null; })()}
                       <span style={{ marginLeft: 'auto', fontSize: 15, fontWeight: 800, color: INK }}>${a.price}<span style={{ fontSize: 11, color: FAINT, fontWeight: 600 }}>/mo</span></span>
                     </div>
 
@@ -375,7 +383,7 @@ export default function AgencyDashboard() {
 
       {editing && <SubAccountModal account={editing} creating={creating} onSave={saveAccount} onClose={() => { setEditing(undefined); setCreating(false); }} />}
       {editAgency && <AgencyModal agency={agency} onSave={a => { saveAgency(a); setAgencyState(a); setEditAgency(false); }} onClose={() => setEditAgency(false)} />}
-      {billingOpen && <BillingModal account={billFor} onClose={() => { setBillingOpen(false); reload(); }} />}
+      {billingOpen && <ResellerBilling account={billFor} brand={agency.name} onClose={() => { setBillingOpen(false); reload(); void resellStatus().then(r => { if (r.success) setPaid(new Map(r.resell.clients.map(c => [c.accountId, c]))); }); }} />}
       {cloudOpen && <CloudModal current={cloud} onDone={s => setCloud(s)} onClose={() => setCloudOpen(false)} />}
     </div>
   );
@@ -448,7 +456,7 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 14 }}>
-            <div><label style={lbl}>Charged price ($/mo)</label><input style={inp} type="number" value={a.price} onChange={e => set({ price: Number(e.target.value) })} /></div>
+            <div><label style={lbl}>Your price ($/mo) — what this client pays you</label><input style={inp} type="number" value={a.price} onChange={e => set({ price: Number(e.target.value) })} /></div>
             <div>
               <label style={lbl}>Status</label>
               <select style={{ ...inp, cursor: 'pointer' }} value={a.status} onChange={e => set({ status: e.target.value as AccountStatus })}>
@@ -515,136 +523,6 @@ function AgencyModal({ agency, onSave, onClose }: { agency: { name: string; owne
   );
 }
 
-/* ── Stripe billing modal ── */
-function BillingModal({ account, onClose }: { account?: SubAccount; onClose: () => void }) {
-  const [cfg, setCfg] = useState<StripeConfig>(loadStripeConfig);
-  const [savedMsg, setSavedMsg] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState(account ? billingFor(account.id).checkoutUrl ?? '' : '');
-  const [err, setErr] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('');
-  const [srvBusy, setSrvBusy] = useState(false);
-  const [srvMsg, setSrvMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [srvEnabled, setSrvEnabled] = useState(false);
-
-  useEffect(() => { serverBillingEnabled().then(setSrvEnabled); }, []);
-
-  const saveKeys = () => { saveStripeConfig(cfg); setCfg(loadStripeConfig()); setSavedMsg('Stripe keys saved'); setTimeout(() => setSavedMsg(''), 2500); };
-
-  const saveToServer = async () => {
-    const token = getSession()?.token;
-    if (!token) { setSrvMsg({ ok: false, text: 'Sign in again to continue.' }); return; }
-    if (!cfg.secretKey) { setSrvMsg({ ok: false, text: 'Enter your Stripe secret key first.' }); return; }
-    setSrvBusy(true); setSrvMsg(null);
-    const res = await saveStripeSecretToServer(token, cfg.secretKey, webhookSecret || undefined);
-    setSrvBusy(false);
-    if (res.ok) { setSrvEnabled(true); setSrvMsg({ ok: true, text: 'Saved — clients can now subscribe & manage billing themselves.' }); }
-    else setSrvMsg({ ok: false, text: res.error || 'Could not save to server.' });
-  };
-
-  const subscribe = async () => {
-    if (!account) return;
-    setBusy(true); setErr(''); setCheckoutUrl('');
-    const res = await createCheckout({ accountId: account.id, planId: account.plan, productName: `${planById(account.plan).name} — ${account.name}`, customerEmail: account.contactEmail });
-    setBusy(false);
-    if (res.ok && res.url) setCheckoutUrl(res.url);
-    else setErr(res.error || 'Could not create checkout.');
-  };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 48px -12px rgba(16,24,40,0.28)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e9edf3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#635bff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CreditCard size={17} color="#fff" /></div>
-            <div>
-              <h2 style={{ fontSize: 17, fontWeight: 800, color: INK, margin: 0 }}>Stripe Billing</h2>
-              <p style={{ fontSize: 12, color: MUTED, margin: '1px 0 0' }}>{account ? `Subscribe ${account.name}` : 'Connect your Stripe account'}</p>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: 9, padding: 7, cursor: 'pointer', display: 'flex' }}><X size={16} color="#64748b" /></button>
-        </div>
-
-        <div style={{ padding: '20px 24px', display: 'grid', gap: 16 }}>
-          {/* Stripe keys */}
-          <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Stripe API keys</span>
-              {cfg.connected && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: '#e9f4e6', color: '#3f9142' }}>CONNECTED</span>}
-            </div>
-            <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>From your Stripe dashboard → Developers → API keys. Keys stay in your browser and are only sent to your own server.</p>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div><label style={lbl}>Secret key (sk_…)</label><input style={inp} type="password" value={cfg.secretKey} onChange={e => setCfg({ ...cfg, secretKey: e.target.value })} placeholder="sk_live_… or sk_test_…" /></div>
-              <div><label style={lbl}>Publishable key (pk_…) — optional</label><input style={inp} value={cfg.publishableKey} onChange={e => setCfg({ ...cfg, publishableKey: e.target.value })} placeholder="pk_live_…" /></div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-              <button onClick={saveKeys} style={{ padding: '8px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Save keys</button>
-              {savedMsg && <span style={{ fontSize: 12, color: '#3f9142', fontWeight: 600 }}>{savedMsg}</span>}
-            </div>
-          </div>
-
-          {/* Webhook for auto-updating status */}
-          <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>Auto-update status (webhook)</div>
-            <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 10px', lineHeight: 1.5 }}>In Stripe → Developers → Webhooks, add this endpoint so paid / past-due / cancelled updates apply automatically:</p>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input readOnly value={`${window.location.origin}${import.meta.env.BASE_URL || '/'}api/stripe-webhook.php`} style={{ ...inp, fontSize: 12, background: '#f7f8f9' }} onFocus={e => e.currentTarget.select()} />
-              <button onClick={e => { navigator.clipboard?.writeText(`${window.location.origin}${import.meta.env.BASE_URL || '/'}api/stripe-webhook.php`); (e.currentTarget as HTMLButtonElement).textContent = 'Copied'; }} style={{ padding: '0 14px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: INK }}>Copy</button>
-            </div>
-            <p style={{ fontSize: 11, color: FAINT, margin: '8px 0 0', lineHeight: 1.5 }}>Then paste the webhook signing secret into <code style={{ fontFamily: 'monospace' }}>api/config.php</code> as <code style={{ fontFamily: 'monospace' }}>'stripe_webhook_secret'</code> — or use the box below. Statuses refresh on your next login/sync.</p>
-          </div>
-
-          {/* Client self-service — store secret server-side */}
-          <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Client self-service billing</span>
-              {srvEnabled && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: '#e9f4e6', color: '#3f9142' }}>ENABLED</span>}
-            </div>
-            <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>Store your secret key securely on the server (in <code style={{ fontFamily: 'monospace' }}>config.php</code>, never exposed) so clients can subscribe and manage their own card from their <strong style={{ color: INK }}>Billing</strong> page. Requires the Cloud Database.</p>
-            <div style={{ marginBottom: 10 }}>
-              <label style={lbl}>Webhook signing secret (whsec_…) — optional</label>
-              <input style={inp} type="password" value={webhookSecret} onChange={e => setWebhookSecret(e.target.value)} placeholder="whsec_…" />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button onClick={saveToServer} disabled={srvBusy || !cfg.secretKey} style={{ padding: '8px 16px', background: cfg.secretKey ? '#635bff' : '#c7cbd1', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: cfg.secretKey ? 'pointer' : 'not-allowed' }}>{srvBusy ? 'Saving…' : 'Save secret to server'}</button>
-              {srvMsg && <span style={{ fontSize: 12, color: srvMsg.ok ? '#3f9142' : '#e5484d', fontWeight: 600 }}>{srvMsg.text}</span>}
-            </div>
-          </div>
-
-          {/* Per-account subscription */}
-          {account && (
-            <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>Subscription for {account.name}</div>
-              <p style={{ fontSize: 12, color: MUTED, margin: '0 0 12px' }}>{planById(account.plan).name} plan · <strong style={{ color: INK }}>${account.price}/mo</strong> · billed to {account.contactEmail || '(no email)'}</p>
-
-              <button onClick={subscribe} disabled={busy || !(cfg.secretKey || cfg.connected) || !account.contactEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '11px', background: ((cfg.secretKey || cfg.connected) && account.contactEmail) ? '#635bff' : '#c7cbd1', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: ((cfg.secretKey || cfg.connected) && account.contactEmail) ? 'pointer' : 'not-allowed' }}>
-                <CreditCard size={15} /> {busy ? 'Creating checkout…' : 'Create Stripe Checkout link'}
-              </button>
-              {!(cfg.secretKey || cfg.connected) && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>Add your Stripe secret key above first.</p>}
-              {!account.contactEmail && <p style={{ fontSize: 11.5, color: '#c77414', margin: '8px 0 0' }}>This client needs a contact email (set it in Edit).</p>}
-              {err && <p style={{ fontSize: 12, color: '#e5484d', margin: '8px 0 0', fontWeight: 600 }}>{err}</p>}
-
-              {checkoutUrl && (
-                <div style={{ marginTop: 12, padding: '10px 12px', background: '#f7f8f9', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: INK, marginBottom: 6 }}>Checkout link ready — send it to your client:</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input readOnly value={checkoutUrl} style={{ ...inp, fontSize: 12, background: '#fff' }} onFocus={e => e.currentTarget.select()} />
-                    <button onClick={() => navigator.clipboard?.writeText(checkoutUrl)} title="Copy" style={{ padding: '0 12px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Copy size={14} color={INK} /></button>
-                    <a href={checkoutUrl} target="_blank" rel="noreferrer" title="Open" style={{ padding: '0 12px', border: '1px solid #e6e9f0', borderRadius: 9, background: '#fff', display: 'flex', alignItems: 'center' }}><ExternalLink size={14} color={INK} /></a>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                    <button onClick={() => { updateBilling(account.id, { status: 'active' }); onClose(); }} style={{ flex: 1, padding: '7px', border: 'none', borderRadius: 8, background: '#e9f4e6', color: '#3f9142', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Mark as paid</button>
-                    <button onClick={() => { updateBilling(account.id, { status: 'checkout_sent' }); onClose(); }} style={{ flex: 1, padding: '7px', border: '1px solid #e6e9f0', borderRadius: 8, background: '#fff', color: '#5c6066', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Mark as sent</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ── Cloud database status ── */
 function CloudModal({ current, onDone, onClose }: { current: 'cloud' | 'local'; onDone: (s: 'cloud' | 'local') => void; onClose: () => void }) {

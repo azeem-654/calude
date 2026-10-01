@@ -39,6 +39,8 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 20 | **Pay affiliates once a month** — Affiliate program → Manage program shows what is payable and where each affiliate wants paying; pay them, then press **Mark paid** | app.protectedcentral.com/affiliate | Affiliates being paid. The app records commissions; it never sends money |
 | 21 | **Have the lawyer read the Affiliate Program Terms** too (`/affiliate-terms`, from `AFFILIATE_TERMS` in legalText.ts) | a lawyer | The program's promises being exactly what you mean |
 
+| 22 | *For resellers, nothing to do* — tell them where it is: **Agency & clients → Billing** connects *their own* Stripe or Creem, sets each client's monthly price, and makes the link the client pays through. The money goes to the reseller; you never hold it | — | Resellers charging their clients at their own price |
+
 **Done, and no longer on the list:**
 
 - Item 15, on the live app — support@protectedcentral.com is connected through
