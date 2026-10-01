@@ -147,13 +147,19 @@ export const sendRequests = (recipients: { name: string; email: string }[], plat
   call<{ sent: number; failed: number; failures: string[] }>('send_requests', { recipients, platform });
 
 /* ── The install owner's Places key (no workspace) ── */
+/** The owner's Google Maps key, as the server describes it: set or not, last checked, this month's use. Never the key. */
+export interface InstallKeyState {
+  set: boolean; status: string; lastError: string; checkedAt?: string | null;
+  usage?: { month: string; install: { prospects: number; reviews: number }; own: { prospects: number; reviews: number }; workspaces: number };
+}
+
 async function ownerCall(action: string, extra: Record<string, unknown> = {}) {
   try {
     const r = await fetch(`${API_BASE}/api/reputation.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: sessionToken(), action, ...extra }),
     });
-    return await r.json() as Res<{ set: boolean; status: string; lastError: string }>;
+    return await r.json() as Res<InstallKeyState>;
   } catch {
     return { success: false, error: 'Could not reach the server.', set: false, status: 'none', lastError: '' };
   }

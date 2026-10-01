@@ -17,12 +17,11 @@
  * plausible clinics with plausible addresses is indistinguishable from real data
  * right up until someone contacts them.
  */
-import { sessionToken } from './auth';
 import type { Contact } from '../types';
 import type {
   AIChannel, AILead, AIStrategy, LeadQualification, LeadSource, SignalCheck,
 } from '../types/aiSalesAgent';
-import { API_BASE } from './apiBase';
+import { googleAvailability, searchProspects } from './prospects';
 
 const LEADS_KEY = 'crm_ai_leads';
 
@@ -143,34 +142,40 @@ export interface DiscoverySource {
   search(query: string, limit: number): Promise<DiscoveryResult>;
 }
 
+/*
+ * Google Maps, through the same door as Contacts → Find businesses
+ * (/api/prospects.php), on the owner's key. It used to call a proxy that took
+ * a key in the request body and checked no workspace, which the server no
+ * longer has; the budget, the trial and the refusals by name now apply here
+ * exactly as they do there.
+ */
 export const googlePlaces: DiscoverySource = {
   id: 'google-places',
-  label: 'Google Places',
+  label: 'Google Maps',
   async search(query, limit) {
-    try {
-      const res = await fetch(`${API_BASE}/api/places-search.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'search', token: sessionToken(), query, maxResults: limit }),
-      });
-      if (res.status === 401) {
-        return { ok: false, source: 'google-places', businesses: [], error: 'Your session has expired. Sign in again and try the search.' };
-      }
-      const data = await res.json() as { success: boolean; places?: DiscoveredBusiness[]; error?: string; code?: string };
-      if (!data.success) {
-        return {
-          ok: false, source: 'google-places', businesses: [],
-          error: data.error || 'The search failed.',
-          needsSetup: data.code === 'no_key',
-        };
-      }
-      return { ok: true, source: 'google-places', businesses: data.places ?? [] };
-    } catch {
+    const r = await searchProspects({ source: 'google', query });
+    if (r.error) {
       return {
         ok: false, source: 'google-places', businesses: [],
-        error: 'Could not reach the search endpoint. This needs the PHP backend deployed — it will not work on a static preview.',
+        error: r.code === 'unauthorised' ? 'Your session has expired. Sign in again and try the search.' : r.error,
+        needsSetup: r.code === 'no_key',
       };
     }
+    return {
+      ok: true,
+      source: 'google-places',
+      businesses: r.prospects.slice(0, limit).map(p => ({
+        id: p.placeId || p.ref,
+        name: p.name,
+        address: p.address || undefined,
+        phone: p.phone || undefined,
+        website: p.website || undefined,
+        rating: p.rating ?? null,
+        ratingCount: p.ratingCount ?? null,
+        businessStatus: p.temporarilyClosed ? 'CLOSED_TEMPORARILY' : 'OPERATIONAL',
+        category: p.category || undefined,
+      })),
+    };
   },
 };
 
@@ -236,16 +241,10 @@ export function crmContacts(contacts: Contact[]): DiscoverySource {
   };
 }
 
-export async function placesStatus(): Promise<{ configured: boolean; keyHint: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/api/places-search.php`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'status', token: sessionToken() }),
-    });
-    const data = await res.json() as { configured?: boolean; keyHint?: string };
-    return { configured: !!data.configured, keyHint: data.keyHint ?? '' };
-  } catch { return { configured: false, keyHint: '' }; }
+/** Whether Google Maps can be searched for this workspace now, and why not. Spends nothing. */
+export async function placesStatus(): Promise<{ configured: boolean; reason: string }> {
+  const g = await googleAvailability();
+  return { configured: !!g?.available, reason: g?.error ?? 'Could not reach the server.' };
 }
 
 /* ── Qualification ─────────────────────────────────────────────────────── */

@@ -25,14 +25,15 @@ import { isRehearsal } from './hosts';
 
 /**
  * Built, usable on the testing site, and deliberately not offered on the live
- * one yet.
+ * one yet. Empty today.
  *
- * `prospects` — searching OpenStreetMap for businesses to approach. Held back
- * because its usefulness depends entirely on how well the customer's own town
- * is mapped, and that is worth finding out on real searches before it is a
- * button every customer presses once and judges the product by.
+ * `prospects` was here until 2026-10-01: OpenStreetMap alone was too thin in
+ * too many towns to be a button every customer presses once and judges the
+ * product by. It went live once it searched Google Maps on the owner's key,
+ * with a per-workspace budget and nothing after a trial ends (routes/prospects.ts).
+ * The name stays in `Feature` so the next held-back feature has a pattern.
  */
-const REHEARSING = new Set<string>(['prospects']);
+const REHEARSING = new Set<string>([]);
 
 export type Feature = 'prospects';
 

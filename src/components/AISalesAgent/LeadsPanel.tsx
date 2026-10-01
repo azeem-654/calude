@@ -82,7 +82,7 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
       summary: found ? `Found ${found} ${found === 1 ? 'business' : 'businesses'}` : 'Found nothing new',
       because: pool === 'crm'
         ? `Read the contacts already in this workspace, matched against “${run.query}”.${run.duplicates ? ` ${run.duplicates} were already on the list.` : ''}`
-        : `Searched Google Places for “${run.query}”.${run.duplicates ? ` ${run.duplicates} were already on the list.` : ''}`,
+        : `Searched Google Maps for “${run.query}”.${run.duplicates ? ` ${run.duplicates} were already on the list.` : ''}`,
       counts: { found, 'already known': run.duplicates },
     });
     if (found) {
@@ -97,7 +97,7 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
       linkRecord(campaign.id, {
         kind: 'lead-list',
         id: `${campaign.id}-leads`,
-        label: pool === 'crm' ? 'Prospects from your contacts' : 'Prospects from Google Places',
+        label: pool === 'crm' ? 'Prospects from your contacts' : 'Prospects from Google Maps',
       });
     }
 
@@ -108,14 +108,14 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
   };
 
   const checkKey = async () => {
-    const { configured } = await placesStatus();
+    const { configured, reason } = await placesStatus();
     if (!configured) {
       setNeedsSetup(true);
-      setProblem('No Google Places key is set on the server yet.');
+      setProblem(reason);
     } else {
       setNeedsSetup(false);
       setProblem('');
-      addNotification('A Places key is set — try the search again');
+      addNotification('Google Maps can be searched now — try the search again');
     }
   };
 
@@ -145,7 +145,7 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
       <div role="group" aria-label="Where to look for prospects"
         style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {([
-          { id: 'google-places' as const, label: 'Google Places', icon: MapPin, note: 'New local businesses. Phone and website, no email addresses.' },
+          { id: 'google-places' as const, label: 'Google Maps', icon: MapPin, note: 'New local businesses. Phone and website, no email addresses.' },
           { id: 'crm' as const, label: 'Your contacts', icon: Users, note: `${contacts.filter(c => c.email?.trim() && c.status !== 'customer').length} people here can be emailed today.` },
         ]).map(p => {
           const on = pool === p.id;
@@ -178,8 +178,9 @@ export default function LeadsPanel({ campaign, onChanged }: { campaign: AICampai
             <p style={{ margin: 0, fontSize: 12.5, color: needsSetup ? '#92400e' : '#991b1b', lineHeight: 1.55 }}>{problem}</p>
             {needsSetup && (
               <p style={{ margin: 0, fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
-                Add one in <strong>Settings → Email &amp; SMS → Prospect search</strong>. It is stored on the
-                server and never sent back to the browser, because Places bills per search.
+                The Google Maps key is provided by the owner of this app for everybody, in
+                <strong> Settings → Platform services</strong> — there is nothing for you to connect. Meanwhile
+                <strong> Your contacts</strong> works without it.
               </p>
             )}
             {needsSetup && (

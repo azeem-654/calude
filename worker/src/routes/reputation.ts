@@ -20,9 +20,10 @@ import { rateLimit } from '../lib/rateLimit';
 import { canSend, cannotSendReason } from '../lib/deliver';
 import { loadMailbox } from './mailbox';
 import {
-  NO_KEY, PLACE_ID_RE, checkWorkspace, draftReply, encryptKey, gbpAuthUrl, gbpConnect, gbpLive, gbpLocations, gbpReply,
+  PLACE_ID_RE, checkWorkspace, draftReply, encryptKey, gbpAuthUrl, gbpConnect, gbpLive, gbpLocations, gbpReply,
   installPlacesKey, loadProfile, markInstallKey, placeDetails, placesKeyFor, refreshCompetitors, saveInstallPlacesKey, searchPlaces,
 } from '../lib/reputation';
+import { KEY_RE, meterPlaces, placesUsage } from '../lib/googlePlaces';
 import { REQ_KEY, reviewLinkFor, sendReviewRequest } from '../lib/reputationTick';
 
 interface Req {
@@ -35,10 +36,6 @@ interface Req {
 /** Where Google is told to come back to. Registered once in the Google console. */
 const redirectFor = (origin: string) => `${origin}/api/reputation.php`;
 const isOwner = (u: SessionUser) => u.role === 'agency' && !u.accountId;
-/* Google's API keys are "AIza" and 35 more characters. Checked before saving,
-   so a pasted client secret or a truncated key is refused at the box rather
-   than discovered at the next check. */
-const KEY_RE = /^AIza[0-9A-Za-z_-]{35}$/;
 const PENDING_TTL_MS = 30 * 60_000;
 
 export async function handleReputation(req: Request, env: Env): Promise<Response> {
@@ -68,7 +65,14 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
       if (!r.ok) return fail(r.error ?? 'Google refused the key.', 200, { code: r.code });
     }
     const inst = await installPlacesKey(env);
-    return json({ success: true, set: !!inst, status: inst?.status ?? 'none', lastError: inst?.lastError ?? '' });
+    /* `checkedAt` is when Google last answered for it (the test, or a real
+       call marking it); the usage is this month's calls on it, so the owner
+       can see the bill coming. Neither says anything about the key itself. */
+    return json({
+      success: true, set: !!inst, status: inst?.status ?? 'none', lastError: inst?.lastError ?? '',
+      checkedAt: inst && inst.status !== 'unknown' ? inst.updatedAt : null,
+      usage: await placesUsage(env),
+    });
   }
 
   const accountId = String(d.accountId ?? '').trim();
@@ -88,8 +92,9 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     const q = String(d.query ?? '').trim().slice(0, 200);
     if (q.length < 3) return fail('Type your business name and town to search for it.', 200, { field: 'rep.search' });
     const key = await placesKeyFor(env, accountId);
-    if (!key) return fail(NO_KEY, 200, { code: 'no_key' });
+    if (!key.ok) return fail(key.error, 200, { code: key.code });
     const r = await searchPlaces(env, key.key, q);
+    if (r.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (!r.ok) return fail(r.error ?? 'Google could not search.', 200, { code: r.code });
     return json({ success: true, places: r.data ?? [] });
   }
@@ -226,8 +231,9 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     const have = await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_review_competitors WHERE account_id = ?').bind(accountId).first<{ n: number }>();
     if ((have?.n ?? 0) >= 5) return fail('Up to five competitors can be compared. Remove one first.');
     const key = await placesKeyFor(env, accountId);
-    if (!key) return fail(NO_KEY, 200, { code: 'no_key' });
+    if (!key.ok) return fail(key.error, 200, { code: key.code });
     const p = await placeDetails(env, key.key, placeId, false);
+    if (p.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (!p.ok || !p.data) return fail(p.error ?? 'Google could not find that business.', 200, { code: p.code });
     await env.DB.prepare(
       `INSERT INTO crm_review_competitors (account_id, place_id, name, rating, review_count, maps_url, updated_at) VALUES (?,?,?,?,?,?,?)
@@ -243,7 +249,7 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
   /* ── Business Profile ── */
   if (act === 'gbp_connect') {
     const creds = await googleCreds(env);
-    if (!creds) return fail('No Google client is configured for this installation, so Business Profile cannot be connected yet. The owner of this app sets it up in Settings → Security & Privacy.', 200, { code: 'no-client' });
+    if (!creds) return fail('No Google client is configured for this installation, so Business Profile cannot be connected yet. The owner of this app sets it up in Settings → Platform services.', 200, { code: 'no-client' });
     const ownerEmail = user.email.toLowerCase();
     const nonce = newToken();
     const sig = newToken().slice(0, 24);

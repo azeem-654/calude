@@ -13,6 +13,7 @@
  * list until somebody mails it.
  */
 import { harvest, overpassQuery, safeTerm, toProspect, type OsmElement } from '../src/lib/prospects';
+import { PROSPECT_FIELDS, fromPlace, type GooglePlace } from '../src/lib/googlePlaces';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -90,6 +91,38 @@ ok('a named point with no business tag is a guess, not a lead',
 {
   const many = harvest(Array.from({ length: 20 }, (_, i) => `a${i}@x.co.uk`).join(' '), 'x.co.uk');
   ok('a page listing every staff address gives five, not twenty', many.length === 5, String(many.length));
+}
+
+/* ── A Google place becomes a lead, or is dropped ──
+   The request itself (key header, field mask, body, budget, trial) is proved
+   against a mock of Places in test/platform.e2e.mjs; this is the mapping. */
+{
+  const g: GooglePlace = {
+    id: 'ChIJplumber00001', displayName: { text: 'Bob the Plumber' },
+    formattedAddress: '12 Oxford Rd, Manchester M1 5QA, UK',
+    location: { latitude: 53.47, longitude: -2.23 },
+    primaryTypeDisplayName: { text: 'Plumber' }, businessStatus: 'OPERATIONAL',
+    googleMapsUri: 'https://maps.google.com/?cid=1',
+    nationalPhoneNumber: '0161 555 0100', internationalPhoneNumber: '+44 161 555 0100',
+    websiteUri: 'https://bobtheplumber.co.uk/', rating: 4.7, userRatingCount: 88,
+  };
+  const p = fromPlace(g);
+  ok('a Google place is a lead keyed by its place id', p?.ref === 'google:ChIJplumber00001' && p.placeId === 'ChIJplumber00001' && p.source === 'google', JSON.stringify(p));
+  ok('the national phone number is preferred', p?.phone === '0161 555 0100', p?.phone);
+  ok('website, address, category, rating and Maps link come through',
+    p?.website === 'https://bobtheplumber.co.uk/' && p.address.startsWith('12 Oxford Rd') && p.category === 'Plumber'
+    && p.rating === 4.7 && p.ratingCount === 88 && p.mapsUrl === 'https://maps.google.com/?cid=1', JSON.stringify(p));
+  ok('Google never gives an email, and none is invented', p?.email === '');
+  ok('a permanently closed business is not a lead', fromPlace({ ...g, businessStatus: 'CLOSED_PERMANENTLY' }) === null);
+  ok('a temporarily closed one is, and says so', fromPlace({ ...g, businessStatus: 'CLOSED_TEMPORARILY' })?.temporarilyClosed === true);
+  ok('a place with no name is dropped', fromPlace({ ...g, displayName: { text: ' ' } }) === null);
+  ok('an id that could break out of a URL is dropped', fromPlace({ ...g, id: '../../v1/x' }) === null);
+  ok('a Maps link that is not https is not kept', fromPlace({ ...g, googleMapsUri: 'javascript:alert(1)' })?.mapsUrl === '');
+  ok('the international number is used when it is the only one',
+    fromPlace({ ...g, nationalPhoneNumber: undefined })?.phone === '+44 161 555 0100');
+  ok('the field mask asks for phone and website and no reviews',
+    PROSPECT_FIELDS.includes('places.websiteUri') && PROSPECT_FIELDS.includes('places.nationalPhoneNumber')
+    && !PROSPECT_FIELDS.includes('reviews') && PROSPECT_FIELDS.includes('nextPageToken'));
 }
 
 console.log(out.join('\n'));

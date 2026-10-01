@@ -28,9 +28,12 @@ const check = (name, cond, detail = '') => {
   else { failures++; console.log(`  ✗ ${name}${detail ? ` — ${detail}` : ''}`); }
 };
 
+/* `Connection: close`: `d1rows` blocks this process while wrangler runs, and a
+   kept-alive socket the Worker closed in the meantime would be reused after
+   it and fail as "other side closed" — a fault of the test, not the app. */
 async function api(path, body, init = {}) {
   const r = await fetch(`${BASE}/api/${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': init.ip ?? '10.0.0.1' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close', 'CF-Connecting-IP': init.ip ?? '10.0.0.1' },
     body: JSON.stringify(body), redirect: 'manual',
   });
   let data = {};
@@ -119,6 +122,20 @@ const repR = await api('reputation.php', { action: 'reviews', token: B.token, ac
 check("B cannot read A's reviews", !repR.ok, JSON.stringify(repR.data).slice(0, 120));
 const repSave = await api('reputation.php', { action: 'save_source', token: B.token, accountId: A.acct, placeId: 'ChIJforged', placeName: 'Forged' });
 check("B cannot point A's reviews at another business", !repSave.ok, JSON.stringify(repSave.data).slice(0, 120));
+/* Prospect search spends the owner's Google Maps key on the named workspace's
+   budget, so naming A's workspace must be refused before anything is spent. */
+const proS = await api('prospects.php', { action: 'search', token: B.token, accountId: A.acct, trade: 'plumber', place: 'Manchester' });
+check("B cannot search for prospects on A's workspace (and A's budget)", !proS.ok && proS.status === 403, JSON.stringify(proS.data).slice(0, 120));
+const proQ = await api('prospects.php', { action: 'search', token: B.token, accountId: A.acct, query: 'plumber in Leeds' });
+check("…nor through the AI Sales Agent's one-line search", !proQ.ok && proQ.status === 403, JSON.stringify(proQ.data).slice(0, 120));
+const proSt = await api('prospects.php', { action: 'status', token: B.token, accountId: A.acct });
+check("…nor read whether A can search", !proSt.ok && proSt.status === 403, JSON.stringify(proSt.data).slice(0, 120));
+const proC = await api('prospects.php', { action: 'contacts', token: B.token, accountId: A.acct, websites: ['https://example.com'] });
+check("…nor read websites on A's workspace", !proC.ok && proC.status === 403, JSON.stringify(proC.data).slice(0, 120));
+const oldPlaces = await api('places-search.php', { token: B.token, apiKey: 'AIzaFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAK', query: 'plumber' });
+check('the old Places proxy that took a key in the body is gone', !oldPlaces.ok && oldPlaces.status === 410, JSON.stringify(oldPlaces.data).slice(0, 120));
+const plat = await api('platform.php', { action: 'status', token: B.token });
+check("B cannot read the owner's Platform services", !plat.ok && plat.status === 403, JSON.stringify(plat.data).slice(0, 120));
 
 console.log("\nOverwriting A's records by id");
 const bpf = await api('projects.php', { action: 'save_portfolio', token: B.token, accountId: B.acct, name: 'B Co', profile: {} });
