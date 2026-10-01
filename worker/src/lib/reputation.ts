@@ -34,6 +34,10 @@ import { decryptSecret, encryptSecret, newToken } from './crypto';
 import { dataGet, installSecret, nowIso, type Env } from './db';
 import { googleCreds } from './googleAuth';
 import { aiBudget, askGemini, extractJson, loadAiKey } from './ai';
+import {
+  KEY_FAULT, PLACE_ID_RE, httpsOnly, markInstallKey, meterPlaces, placesBase, placesError, placesKeyFor,
+  type GResult, type GoogleError,
+} from './googlePlaces';
 
 export const GBP_SCOPE = 'https://www.googleapis.com/auth/business.manage';
 
@@ -41,100 +45,26 @@ export const GBP_SCOPE = 'https://www.googleapis.com/auth/business.manage';
 export const NOT_APPROVED = 'Google has not approved Business Profile API access for this app yet.';
 
 const SECRET_KEY = 'mailbox_key';
-const INSTALL_KIND = 'google_places';
 
 const base = (v: string | undefined, dflt: string) => (v || dflt).replace(/\/+$/, '');
 export const urls = (env: Env) => ({
-  places: base(env.GOOGLE_PLACES_BASE, 'https://places.googleapis.com'),
+  places: placesBase(env),
   accounts: base(env.GOOGLE_GBP_ACCOUNTS_BASE, 'https://mybusinessaccountmanagement.googleapis.com'),
   info: base(env.GOOGLE_GBP_INFO_BASE, 'https://mybusinessbusinessinformation.googleapis.com'),
   v4: base(env.GOOGLE_GBP_V4_BASE, 'https://mybusiness.googleapis.com'),
   token: env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
 });
 
-export interface GResult<T> { ok: boolean; data?: T; error?: string; code?: string }
-
-/** A Places id is base64url-ish; anything else is refused before it becomes part of a URL. */
-export const PLACE_ID_RE = /^[A-Za-z0-9_-]{6,300}$/;
-
-/* ── Keys ──────────────────────────────────────────────────────────────── */
-
-/** The install owner's Places key, decrypted. Null when none is set. */
-export async function installPlacesKey(env: Env): Promise<{ key: string; status: string; lastError: string } | null> {
-  const row = await env.DB.prepare('SELECT credentials, status, last_error AS lastError FROM crm_install_providers WHERE kind = ?')
-    .bind(INSTALL_KIND).first<{ credentials: string; status: string; lastError: string }>();
-  if (!row?.credentials) return null;
-  try {
-    const c = JSON.parse(await decryptSecret(await installSecret(env.DB, SECRET_KEY), row.credentials)) as { apiKey?: string };
-    return c.apiKey ? { key: c.apiKey, status: row.status, lastError: row.lastError } : null;
-  } catch { return null; }
-}
-
-/**
- * Store the install key. A new key starts unverified: carrying a green tick
- * across an edit would vouch for a key nobody has tried.
+/*
+ * The key, its resolution (own, then the owner's, never past an ended trial),
+ * Google's refusals and the usage meter are shared with prospect search and
+ * live in lib/googlePlaces.ts. Re-exported so this module's callers keep one
+ * import.
  */
-export async function saveInstallPlacesKey(env: Env, apiKey: string): Promise<void> {
-  const blob = await encryptSecret(await installSecret(env.DB, SECRET_KEY), JSON.stringify({ apiKey }));
-  await env.DB.prepare(
-    `INSERT INTO crm_install_providers (kind, provider, credentials, status, last_error, updated_at)
-     VALUES (?, 'google', ?, 'unknown', '', ?)
-     ON CONFLICT(kind) DO UPDATE SET credentials = excluded.credentials, status = 'unknown', last_error = '', updated_at = excluded.updated_at`,
-  ).bind(INSTALL_KIND, blob, nowIso()).run();
-}
-
-export async function markInstallKey(env: Env, ok: boolean, error = ''): Promise<void> {
-  await env.DB.prepare('UPDATE crm_install_providers SET status = ?, last_error = ?, updated_at = ? WHERE kind = ?')
-    .bind(ok ? 'ok' : 'error', error.slice(0, 300), nowIso(), INSTALL_KIND).run();
-}
-
-export const NO_KEY = 'No Google Places key is set up: this workspace has none of its own and the installation has none either. '
-  + 'Add your own under Reputation → Settings → Review sources, or ask the owner of this app to add the installation key in Settings → Integrations.';
-
-/**
- * Which key a workspace reads Google with: its own first, then the install's.
- *
- * Own first for the same reason as the AI key — somebody who brought one
- * expects their quota to be the one spent.
- */
-export async function placesKeyFor(env: Env, accountId: string): Promise<{ key: string; whose: 'workspace' | 'install' } | null> {
-  const row = await env.DB.prepare('SELECT places_key AS k FROM crm_review_sources WHERE account_id = ?')
-    .bind(accountId).first<{ k: string }>();
-  if (row?.k) {
-    try {
-      const plain = await decryptSecret(await installSecret(env.DB, SECRET_KEY), row.k);
-      if (plain) return { key: plain, whose: 'workspace' };
-    } catch { /* unreadable: fall through to the install's rather than fail */ }
-  }
-  const inst = await installPlacesKey(env);
-  return inst ? { key: inst.key, whose: 'install' } : null;
-}
-
-export const encryptKey = async (env: Env, plain: string) => encryptSecret(await installSecret(env.DB, SECRET_KEY), plain);
-
-/* ── Places API (New) ──────────────────────────────────────────────────── */
-
-interface GoogleError { error?: { code?: number; message?: string; status?: string; details?: { reason?: string; '@type'?: string }[] } }
-
-/** Google's refusal, in words that name the fix. */
-function placesError(status: number, body: GoogleError): { error: string; code: string } {
-  const e = body.error ?? {};
-  const reasons = (e.details ?? []).map(d => d.reason ?? '').join(' ');
-  const msg = e.message ?? '';
-  if (/API_KEY_INVALID/.test(reasons) || /API key not valid/i.test(msg)) {
-    return { code: 'bad_key', error: 'Google refused the Places API key — it is not a valid key. Check it was copied whole.' };
-  }
-  if (/SERVICE_DISABLED/.test(reasons) || /has not been used|is disabled/i.test(msg)) {
-    return { code: 'api_disabled', error: '"Places API (New)" is not enabled in the Google Cloud project this key belongs to. Enable it in the Google Cloud console and try again.' };
-  }
-  if (/API_KEY_SERVICE_BLOCKED|API_KEY_HTTP_REFERRER_BLOCKED|API_KEY_IP_ADDRESS_BLOCKED/.test(reasons) || /blocked/i.test(msg)) {
-    return { code: 'key_restricted', error: 'This key is restricted in a way that blocks Places API (New) from a server. Allow "Places API (New)" for the key, with no website (referrer) restriction.' };
-  }
-  if (status === 404 || e.status === 'NOT_FOUND') return { code: 'not_found', error: 'Google has no place with that ID. Search for the business again.' };
-  if (status === 429) return { code: 'quota', error: 'Google says this key is over its Places quota. Try again later or raise the quota in Google Cloud.' };
-  if (status === 403) return { code: 'denied', error: `Google refused the request: ${msg || 'permission denied'}` };
-  return { code: 'google', error: `Google Places answered ${status}${msg ? `: ${msg}` : ''}` };
-}
+export {
+  NO_KEY, PLACE_ID_RE, encryptKey, installPlacesKey, markInstallKey, placesKeyFor, saveInstallPlacesKey,
+  type GResult,
+} from './googlePlaces';
 
 async function gfetch(url: string, init: RequestInit): Promise<{ res: Response | null; body: Record<string, unknown>; netError?: string }> {
   try {
@@ -152,11 +82,6 @@ export interface IncomingReview {
   extId: string; author: string; authorPhoto: string; rating: number; content: string;
   time: string | null; link: string; reply: string; replyTime: string | null;
 }
-
-const httpsOnly = (u: unknown): string => {
-  const s = String(u ?? '');
-  return /^https:\/\//i.test(s) ? s.slice(0, 600) : '';
-};
 
 export async function searchPlaces(env: Env, key: string, query: string): Promise<GResult<PlaceSummary[]>> {
   const { res, body, netError } = await gfetch(`${urls(env).places}/v1/places:searchText`, {
@@ -658,12 +583,13 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
 
   if (!out.ok && src?.placeId) {
     const key = await placesKeyFor(env, accountId);
-    if (!key) {
-      out.code = out.code || 'no_key';
-      out.error = gbpError ? `${gbpError} ${NO_KEY}` : NO_KEY;
+    if (!key.ok) {
+      out.code = out.code || key.code;
+      out.error = gbpError ? `${gbpError} ${key.error}` : key.error;
     } else {
       const initial = !(await hadAny('google_places'));
       const p = await placeDetails(env, key.key, src.placeId, true);
+      if (p.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
       if (p.ok && p.data) {
         out.ok = true; out.via = 'google_places';
         rating = p.data.rating; count = p.data.count; mapsUrl = p.data.mapsUrl;
@@ -677,7 +603,7 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
       } else {
         out.code = p.code ?? 'google';
         out.error = gbpError ? `${gbpError} Places also failed: ${p.error}` : (p.error ?? 'Google Places could not be read.');
-        if (key.whose === 'install' && /bad_key|api_disabled|key_restricted/.test(out.code)) await markInstallKey(env, false, p.error ?? '');
+        if (key.whose === 'install' && KEY_FAULT.test(out.code)) await markInstallKey(env, false, p.error ?? '');
       }
     }
   } else if (!out.ok) {
@@ -701,11 +627,12 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
 /** Refresh every competitor's rating and count. One request each, no reviews. */
 export async function refreshCompetitors(env: Env, accountId: string): Promise<GResult<number>> {
   const key = await placesKeyFor(env, accountId);
-  if (!key) return { ok: false, code: 'no_key', error: NO_KEY };
+  if (!key.ok) return { ok: false, code: key.code, error: key.error };
   const { results } = await env.DB.prepare('SELECT place_id AS placeId FROM crm_review_competitors WHERE account_id = ? LIMIT 10').bind(accountId).all<{ placeId: string }>();
   let n = 0;
   for (const c of results ?? []) {
     const d = await placeDetails(env, key.key, c.placeId, false);
+    if (d.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (d.ok && d.data) {
       await env.DB.prepare('UPDATE crm_review_competitors SET name = ?, rating = ?, review_count = ?, maps_url = ?, last_error = \'\', updated_at = ? WHERE account_id = ? AND place_id = ?')
         .bind(d.data.name, d.data.rating, d.data.count, d.data.mapsUrl, nowIso(), accountId, c.placeId).run();

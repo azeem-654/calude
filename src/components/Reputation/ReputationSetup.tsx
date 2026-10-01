@@ -293,7 +293,7 @@ function BusinessProfileSource({ status, onStatus }: { status: RepStatus | null;
         Sign in with the Google account that manages your business on Google. This adds <strong>all</strong> your reviews (not just five)
         and lets you <strong>reply from here</strong> — Google accepts replies only this way.
       </p>
-      {!gbp?.configured && <div style={{ fontSize: 12, color: '#7c5a10', background: '#fdf5e7', borderRadius: 10, padding: '8px 10px' }}>This app's Google sign-in is not set up yet, so Business Profile cannot be connected. The owner of this app sets it up in Settings → Security & Privacy.</div>}
+      {!gbp?.configured && <div style={{ fontSize: 12, color: '#7c5a10', background: '#fdf5e7', borderRadius: 10, padding: '8px 10px' }}>This app's Google sign-in is not set up yet, so Business Profile cannot be connected. The owner of this app sets it up in Settings → Platform services.</div>}
       {gbp?.configured && (gbp.status === 'none' || gbp.status === 'error') && (
         <>
           {gbp.status === 'error' && <div role="alert" style={{ fontSize: 12, color: '#b42318', marginBottom: 8 }}>{gbp.lastError || 'The connection stopped working.'}</div>}

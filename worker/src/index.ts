@@ -48,6 +48,7 @@ import { handleSmtpSend } from './routes/smtpSend';
 import { handleProviderSend } from './routes/providerSend';
 import { handleUiReport } from './routes/uireport';
 import { handleSystemMail } from './routes/systemMail';
+import { handlePlatform } from './routes/platform';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
 import { handleRevenue } from './routes/revenue';
@@ -58,7 +59,7 @@ import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
-import { handleYtThumb, handleImgProxy, handlePlacesSearch } from './routes/proxies';
+import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
   handleImapFetch, handleMailProbe, handleSmsSend, handleSmsInbound, handleDeliverability,
@@ -82,6 +83,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/security.php': handleSecurity,
   '/api/uireport.php': handleUiReport,
   '/api/system-mail.php': handleSystemMail,
+  /* The owner's keys for everybody, in one read. Owner only. */
+  '/api/platform.php': handlePlatform,
   '/api/affiliate.php': handleAffiliate,
   '/api/resell.php': handleResell,
   '/api/resell-webhook.php': handleResellWebhook,
@@ -184,7 +187,9 @@ const ROUTES: Record<string, Handler> = {
      route below it is kept for installs that configured one, but it is no
      longer what the app reaches for. */
   '/api/prospects.php': handleProspects,
-  '/api/places-search.php': handlePlacesSearch,
+  /* Took a Google key in the request body and checked no workspace. Prospect
+     search reads Google through /api/prospects.php on the owner's key now. */
+  '/api/places-search.php': async () => json({ success: false, error: 'Business search moved to /api/prospects.php. Reload the page.', message: 'Business search moved to /api/prospects.php. Reload the page.' }, 410),
   /* Was the legacy Places Details call, with the key in the request body and
      no workspace check. Reviews are read by /api/reputation.php now; this
      answers so an old bundle in somebody's tab says where it went. */

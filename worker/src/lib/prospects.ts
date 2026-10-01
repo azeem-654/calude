@@ -1,27 +1,25 @@
 /**
- * Finding businesses to sell to, without anybody's API key.
+ * Finding businesses to sell to — the OpenStreetMap half, and the site read
+ * both halves share.
  *
- * ── Why not Google Places, which this app already had ──
+ * ── Two maps ──
  *
- * Two reasons, and the second is the fatal one.
+ * **Google Maps** (lib/googlePlaces.ts) is the default: one key, the install
+ * owner's, serves every customer (Settings → Platform services). It was once
+ * removed from here for two reasons that still hold and are now handled
+ * rather than avoided. It costs money per search — so the owner's key has a
+ * per-workspace budget and stops at the end of a trial. And Google's terms
+ * restrict keeping what Places returns beyond the place id — so this server
+ * caches nothing of a Google search, and the owner is told plainly what a
+ * customer saving results to Contacts means (OWNER-CHECKLIST 16).
  *
- * It is not free: Google retired the pooled $200 credit in March 2025 and
- * replaced it with per-SKU allowances that do not pool, so Text Search gives
- * 5,000 calls a month and then charges $32 per thousand.
- *
- * And its terms forbid the product being built here. Places content may not be
- * pre-fetched, cached or stored, beyond the place id and, for thirty days, a
- * latitude and longitude. A prospect list is by definition stored contact
- * details — so "search Google Maps and keep the results" is not a feature that
- * can be built on Places at all, at any price.
- *
- * ── What replaces it ──
- *
- * OpenStreetMap, through Overpass. No key, no account, no bill, and the data is
- * ODbL — it may be kept and used, with attribution. Coverage is a real
- * trade-off and is stated plainly to the customer rather than papered over:
- * OSM is excellent for a European high street and patchy for a small trade in
- * a suburb nobody has mapped.
+ * **OpenStreetMap**, through Overpass, below. No key, no account, no bill,
+ * and the data is ODbL — it may be kept and used, with attribution. Kept as
+ * the second choice on the same screen, because it costs nobody anything and
+ * its results are genuinely the customer's to keep. Coverage is the trade-off
+ * and is stated plainly: excellent for a European high street, patchy for a
+ * small trade in a suburb nobody has mapped — which is why Google's coverage
+ * was what finally let this go live.
  *
  * What Overpass asks in return is restraint. The public instances serve roughly
  * ten thousand requests a day across every user on earth, with no guarantee and
@@ -46,8 +44,16 @@ import { nowIso, type Env } from './db';
 import { readSite, urlProblem } from './readSite';
 
 export interface Prospect {
-  /** OSM element, so the same business found twice is recognisably the same. */
+  /** OSM element (`node/1`) or `google:<place id>`, so the same business found twice is recognisably the same. */
   ref: string;
+  /** Which map it came from. Decides the attribution shown and the source stamp on an imported contact. */
+  source?: 'osm' | 'google';
+  /** Google's place id — the one piece of a Places answer its terms let anybody keep. */
+  placeId?: string;
+  rating?: number | null;
+  ratingCount?: number | null;
+  mapsUrl?: string;
+  temporarilyClosed?: boolean;
   name: string;
   phone: string;
   website: string;
@@ -133,6 +139,7 @@ export function toProspect(el: OsmElement): Prospect | null {
 
   return {
     ref: `${el.type}/${el.id}`,
+    source: 'osm',
     name: name.slice(0, 160),
     /* OSM has three spellings for each of these and uses all three. */
     phone: (t.phone || t['contact:phone'] || t['contact:mobile'] || '').split(';')[0].trim().slice(0, 40),

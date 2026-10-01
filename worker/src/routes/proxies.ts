@@ -1,5 +1,6 @@
 /**
- * The three narrow proxies.
+ * The two narrow proxies. (The third, a Google Places search that took a key in
+ * the request body, is gone: prospect search is /api/prospects.php now.)
  *
  * None of these is a general-purpose fetcher, and each one's input validation
  * is the thing that keeps it from becoming one. A proxy that will fetch any
@@ -11,8 +12,6 @@
  * They exist at all because the app draws these images onto a <canvas>, and a
  * cross-origin image loaded directly taints it.
  */
-import { fail, json } from '../lib/http';
-import { requireSessionForSocket, type Env } from '../lib/db';
 
 const DAY = 'public, max-age=86400';
 
@@ -76,37 +75,4 @@ export async function handleImgProxy(req: Request): Promise<Response> {
     }
   } catch { /* fall through */ }
   return new Response('not found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
-}
-
-/**
- * Google Places search, for the prospecting tool.
- *
- * Session-gated even though it only reads: it spends the customer's own Places
- * quota, and an open endpoint would let anyone else spend it.
- */
-export async function handlePlacesSearch(req: Request, env: Env): Promise<Response> {
-  const d = await req.json<{ token?: string; apiKey?: string; query?: string; pageToken?: string }>().catch(() => ({}) as Record<string, string>);
-  const gate = await requireSessionForSocket(env.DB, d.token);
-  if ('denied' in gate) return gate.denied;
-
-  const apiKey = String(d.apiKey ?? '').trim();
-  const query = String(d.query ?? '').trim();
-  if (!apiKey) return fail('Add a Google Places API key in Settings → AI Engine to search for businesses.');
-  if (query.length < 2) return fail('Enter something to search for.');
-
-  const url = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
-  url.searchParams.set('query', query);
-  url.searchParams.set('key', apiKey);
-  if (d.pageToken) url.searchParams.set('pagetoken', String(d.pageToken));
-
-  try {
-    const r = await fetch(url.toString());
-    const data = await r.json<{ status?: string; error_message?: string; results?: unknown[]; next_page_token?: string }>();
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      return fail(`Google Places: ${data.status ?? 'unknown error'} ${data.error_message ?? ''}`.trim());
-    }
-    return json({ success: true, results: data.results ?? [], nextPageToken: data.next_page_token ?? null });
-  } catch (e) {
-    return fail(`Could not reach Google Places: ${e instanceof Error ? e.message : String(e)}`);
-  }
 }

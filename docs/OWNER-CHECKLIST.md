@@ -39,7 +39,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 21 | **Have the lawyer read the Affiliate Program Terms** too (`/affiliate-terms`, from `AFFILIATE_TERMS` in legalText.ts) | a lawyer | The program's promises being exactly what you mean |
 
 | 22 | *For resellers, nothing to do* — tell them where it is: **Agency & clients → Billing** connects *their own* Stripe or Creem, sets each client's monthly price, and makes the link the client pays through. The money goes to the reseller; you never hold it | — | Resellers charging their clients at their own price |
-| 23 | **Turn on Google reviews** — enable **Places API (New)** in Google Cloud, make an API key restricted to it, paste it in the app: Settings → Integrations → **Google reviews (Places API key)** → Save key → **Test connection** | console.cloud.google.com, then app.protectedcentral.com and testing.protectedcentral.com | Every customer's Reviews screen. Until it is set, "Find your business on Google" says no key is set up (a customer can still paste their own). See 26 |
+| 23 | **Set the Google Maps key — it turns on prospect search *and* Google reviews for every customer.** Enable **Places API (New)** in Google Cloud (billing must be on), make an API key restricted to it, paste it in the app: **Settings → Platform services → Google Maps key (Places API)** → Save key → **Test connection** | console.cloud.google.com, then app.protectedcentral.com and testing.protectedcentral.com | Contacts → Find businesses on Google Maps, the AI Sales Agent's lead search, and every customer's Reviews screen. Until it is set, prospect search says "Prospect search needs the Google Maps key — the owner sets it in Settings → Platform services" and offers OpenStreetMap instead. Step by step in 16 |
 | 24 | *Optional, takes Google weeks* — **Business Profile**: enable three My Business APIs, add the `business.manage` scope and the `/api/reputation.php` redirect addresses to your Google client, and **request Business Profile API access** from Google | console.cloud.google.com, then Google's access request form | Reading *all* of a customer's reviews (Places gives five) and replying from the app. Until Google approves, connecting works but every read and reply says "Google has not approved Business Profile API access for this app yet". See 26 |
 
 **Done, and no longer on the list:**
@@ -75,6 +75,23 @@ credential, and `user/tokens/verify` refuses it. It needs a browser and the
 owner's login.
 
 ---
+
+## Settings → Platform services — every key you provide, in one place
+
+Added 2026-10-01. Signed in as **azeem@protectedcentral.com**, open **Settings**
+and pick the last tab, **Platform services**. Nobody else sees it, and the
+server refuses it to anybody else. It lists everything you provide to all your
+customers — the AI key, the Google Maps key, Google sign-in, payments for the
+app, system email, Openprovider, managed buying, white-label addresses, the
+screen-sharing relay, voice and the credential wrap key — each with *Working*,
+*Set, not checked*, *Needs attention* or *Not set*, when it was last proved,
+Google's or the processor's last error, and what customers lose without it.
+At the top it says how many need your attention.
+
+It never shows a key — not even its last characters. The Google Maps key and
+Google sign-in are set right there (scroll down); every other row has a button
+that opens the tab where it is set. Look at it after any change, and once a
+week.
 
 ## Turning Customer Engagement on
 
@@ -493,6 +510,11 @@ which is the one customers said misheard them. The screen says so each time
 rather than pretending, but it is a noticeably worse first impression.
 Nothing else is needed for voice: transcription uses this same Gemini key.
 
+**Check it first on Settings → Platform services** (the last Settings tab,
+only you see it): the **AI (Google Gemini)** row says whether a key is set,
+when Google last accepted it, and Google's last refusal. Its **Open Settings →
+AI Engine** button takes you to where it is set.
+
 **Do it in the app. It takes about three minutes and needs no terminal.**
 
 1. Open <https://aistudio.google.com/apikey> and sign in with your Google
@@ -549,29 +571,70 @@ Two things worth knowing:
 directions. Run it if you change the word list — the half that matters is the
 seventeen pieces of ordinary trade copy that must *not* be flagged.
 
-### 16. Prospect search — built, and held back on the live app
+### 16. Prospect search on Google Maps — live, on your key (2026-10-01)
 
-**Contacts → Find businesses** searches OpenStreetMap. No key, no account, no
-bill, and the results may be kept, which is the part that matters.
+**Contacts → Find businesses** now searches **Google Maps** for every
+customer, on one key that you provide. Nobody else is asked for a key. It also
+powers the AI Sales Agent's "Google Maps" lead search, and the same key reads
+Google reviews (26). Until you set it, the screen says *"Prospect search needs
+the Google Maps key — the owner sets it in Settings → Platform services"* and
+offers the free OpenStreetMap search instead — nothing fails quietly.
 
-**It is switched off for customers for now.** On app.protectedcentral.com the
-button carries a *SOON* label and opens a short page explaining what it will do;
-on testing.protectedcentral.com it works in full. Turn it on for everyone by
-taking `'prospects'` out of `REHEARSING` in `src/services/features.ts` — one
-line, then promote. Try some real searches for your own customers' towns first:
-how useful it is depends entirely on how well those places are mapped, and that
-is the thing worth knowing before every customer presses it once.
+**Why it was held back, and what changed.** It used to search OpenStreetMap
+only, and was switched off on the live app because OSM is thin in many towns —
+a sole trader in a suburb is often simply not on it. Google has them. The two
+reasons Google had been removed are now handled rather than avoided: the cost
+(your key, with a per-customer budget) and the terms (below).
 
-The old Google Places search is still wired up for installs that configured a
-key, but nothing reaches for it any more and you can delete the key. Two reasons
-it had to go: Places charges $32 per thousand searches past a 5,000/month
-allowance, and its terms forbid storing what comes back beyond a place id — so a
-saved prospect list could never legally have been built on it.
+**Set it up — about ten minutes, once per site.**
 
-What to expect: OSM is strong on town centres and high-street trades and thin on
-a sole trader working from home, and it carries a phone number far more often
-than an email. The screen says so before the search rather than after an empty
-result.
+1. Open <https://console.cloud.google.com> and sign in. At the top, pick the
+   project your Google sign-in client lives in (or **New project**).
+2. Left menu → **Billing**. If it says the project has no billing account,
+   **Link a billing account** and add a card. Places will not answer without
+   one, even inside the free allowance.
+3. Left menu → **APIs & Services → Library** → search **Places API (New)** →
+   open it → **Enable**. It must say "(New)": Google no longer lets new
+   projects switch on the old one, and the app does not use it.
+4. **APIs & Services → Credentials → + Create credentials → API key.** Copy
+   the key (it starts `AIza`).
+5. Click the key's name → **API restrictions → Restrict key** → tick only
+   **Places API (New)** → **Save**. Leave **Application restrictions** on
+   *None*: the server uses the key, never a browser, so a website restriction
+   would block it.
+6. Optional but wise: **APIs & Services → Places API (New) → Quotas** → lower
+   *Text Search requests per day* to a number you are happy to pay for (e.g.
+   1,000). Google then stops before your bill does.
+7. In the app, signed in as **azeem@protectedcentral.com**: **Settings →
+   Platform services** (the last tab; only you see it) → scroll to **Google
+   Maps key (Places API)** → paste → **Save key** → **Test connection**. It
+   says *Working* when Google accepted it, and the list at the top of the tab
+   turns green for Google Maps.
+8. Do steps 7 again on **testing.protectedcentral.com** — separate database,
+   separate key setting (the same key is fine).
+
+**What it costs, and the limits that protect you.** A search asks Google for
+phone and website, which is Google's "Text Search Enterprise" price — about
+$35 per 1,000 searches after 1,000 free a month across your whole account
+(2025 prices; check Google's price list). Each customer workspace may run **20
+searches an hour, 60 a day and 300 a month** on your key — at most about $10 a
+month each — and gets a plain refusal by name beyond that. A customer whose
+**trial has ended unpaid** cannot spend your key at all (same as the AI key).
+A customer who adds their own key in Reputation → Settings uses theirs instead.
+The Google Maps card shows this month's searches and review calls on your key.
+
+**Google's terms — read this once.** Google lets anyone keep a place's **ID**
+indefinitely, but restricts storing the rest of what Places returns (name,
+phone, address). The app keeps nothing of a search on the server. But when a
+customer presses **Add to Contacts**, those details are saved in their CRM —
+which is what a prospect list is. Many lead tools do exactly this; it is a
+contractual risk with Google (they can suspend a key), not a law. Decide with
+your lawyer (item 12) whether you are comfortable. If not, the OpenStreetMap
+choice on the same screen has no such restriction.
+
+What to expect: Google publishes no email addresses. Customers tick the
+businesses they want and press **Look up email addresses**, which reads each
+business's own website for the address it publishes — never a guessed one.
 
 ### 17. Sign up and sign in with Google — step by step
 
@@ -630,7 +693,8 @@ want to own this:
 
 **In the app** — signed in as azeem@protectedcentral.com:
 
-7. **Settings → Security & Privacy → Sign in with Google**. Paste the client ID
+7. **Settings → Platform services → Sign in with Google** (also still under
+   Security & Privacy — the same card). Paste the client ID
    and secret, **Save**. The secret is encrypted and never shown again, not
    even its last characters; leave the box blank later to keep it.
 8. Open a private window at <https://app.protectedcentral.com/signup> — the
@@ -978,8 +1042,9 @@ B only matters once you want customers to reply from the app.
    the key is used by the server, never by a browser, so a website restriction
    would block it.
 5. In the app, signed in as **azeem@protectedcentral.com**: **Settings →
-   Integrations → Google reviews (Places API key)** → paste → **Save key** →
+   Platform services → Google Maps key (Places API)** → paste → **Save key** →
    **Test connection**. Green means Google answered. Do it on both sites.
+   This is the same key as prospect search (16) — one key, both features.
 
 Each check costs a Places request with reviews (Google bills these per 1,000;
 see Google's price list). The app checks each workspace at most every six

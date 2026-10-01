@@ -31,7 +31,7 @@ const SENDS = [
   'Messages you send from Sign-ups & trials',
 ];
 
-async function status(env: Env) {
+export async function systemMailStatus(env: Env) {
   const all = await systemCandidates(env);
   const chosenId = (await metaGet(env.DB, SYSTEM_MAILBOX_KEY).catch(() => null)) ?? '';
   const inUse = await installMailbox(env);
@@ -72,7 +72,7 @@ export async function handleSystemMail(req: Request, env: Env): Promise<Response
   if (!isOwner(user)) return fail('Only the install owner can choose the system mailbox.', 403);
   const action = String(d.action ?? '');
 
-  if (action === 'status') return json({ success: true, ...(await status(env)) });
+  if (action === 'status') return json({ success: true, ...(await systemMailStatus(env)) });
 
   if (action === 'choose') {
     const id = String(d.id ?? '').trim();
@@ -82,7 +82,7 @@ export async function handleSystemMail(req: Request, env: Env): Promise<Response
       if (!known) return fail('That mailbox is not in one of your own workspaces.', 200, { field: 'system.mailbox' });
     }
     await metaPut(env.DB, SYSTEM_MAILBOX_KEY, id);
-    return json({ success: true, ...(await status(env)) });
+    return json({ success: true, ...(await systemMailStatus(env)) });
   }
 
   /* One real message to the owner, through the same door a sign-in code uses,

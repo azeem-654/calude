@@ -113,7 +113,7 @@ for (const m of methods) {
 }
 
 /* ── 2 · Every validate / test-connection button on every Settings tab ── */
-const settingsTabs = ['Email & SMS', 'AI Engine', 'API Validation', 'Integrations', 'Email Deliverability', 'Infrastructure', 'Domains & Email', 'Security & Privacy'];
+const settingsTabs = ['Email & SMS', 'AI Engine', 'API Validation', 'Integrations', 'Email Deliverability', 'Infrastructure', 'Domains & Email', 'Security & Privacy', 'Platform services'];
 for (const t of settingsTabs) {
   await p.goto(`${B}/settings`, { waitUntil: 'networkidle' });
   const tab = p.getByRole('button', { name: new RegExp(`^${t}`) }).first();
@@ -178,12 +178,30 @@ await settle();
 ok('Reputation: a malformed Places key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
 ok('Reputation: …and the refusal is shown', /does not look like a Google API key/.test(await repDialog.innerText()));
 await p.goto(`${B}/settings`, { waitUntil: 'networkidle' });
-await p.getByRole('button', { name: /^Integrations/ }).first().click();
+await p.getByRole('button', { name: /^Platform services/ }).first().click();
 await settle();
 await p.locator('[data-field="places.installKey"]').fill('AIzaTooShort');
 await p.getByRole('button', { name: 'Save key', exact: true }).click();
 await settle();
-ok('Settings → Integrations: a malformed install Places key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+ok('Settings → Platform services: a malformed Google Maps key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+
+/* ── 2d · Contacts → Find businesses: both boxes refuse by name ──
+   Checked before any key or budget, so this runs on an install with no
+   Google Maps key at all. */
+await resetDeadEnds();
+await p.goto(`${B}/contacts`, { waitUntil: 'networkidle' });
+await settle();
+await p.getByRole('button', { name: /Find businesses/ }).first().click();
+const findDialog = p.getByRole('dialog', { name: 'Find businesses' });
+await findDialog.getByRole('button', { name: /^Search$/ }).click();
+await settle();
+ok('Find businesses: an empty search is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+ok('Find businesses: …and the refusal is shown', /Say what kind of business/.test(await findDialog.innerText()));
+await findDialog.locator('[data-field="prospects.trade"]').fill('plumber');
+await findDialog.getByRole('button', { name: /^Search$/ }).click();
+await settle();
+ok('Find businesses: a missing place is refused at its box', (await deadEnds()).length === 0 && /Say where to look/.test(await findDialog.innerText()), JSON.stringify(await deadEnds()));
+await findDialog.getByRole('button', { name: 'Close' }).click();
 
 /* ── 3 · The guard catches what it is for ──
    A refusal naming a box that does not exist anywhere must be recorded and

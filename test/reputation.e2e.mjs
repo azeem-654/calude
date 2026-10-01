@@ -159,10 +159,13 @@ const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone *
 process.on('exit', stop);
 process.on('uncaughtException', e => { console.log(e, wlog.slice(-1500)); stop(); process.exit(1); });
 const scheduled = async () => { for (let i = 0; i < 3; i++) { try { return await fetch(`${B}/cdn-cgi/handler/scheduled`, { headers: { Connection: 'close' } }); } catch { await sleep(1000); } } return null; };
-for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
+for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
 
 let ipN = 1;
-const api = (p, body) => fetch(`${B}/api/${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': `10.7.3.${ipN++ % 250}` }, body: JSON.stringify(body) }).then(r => r.json().catch(() => ({})));
+/* `Connection: close`: `sql()` blocks this process while wrangler runs, and a
+   kept-alive socket the Worker closed meanwhile would be reused after it and
+   fail as "other side closed". */
+const api = (p, body) => fetch(`${B}/api/${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close', 'CF-Connecting-IP': `10.7.3.${ipN++ % 250}` }, body: JSON.stringify(body) }).then(r => r.json().catch(() => ({})));
 
 console.log('\nReputation');
 const OWNER = 'owner@rep.test', PW = 'Tq9!vX2#pLm7wZ-rep';
@@ -276,7 +279,7 @@ r = await rep('gbp_connect');
 const authUrl = new URL(r.url ?? 'http://x');
 ok('gbp_connect returns Google\'s consent URL with the business.manage scope and our callback', r.success && authUrl.searchParams.get('scope') === 'https://www.googleapis.com/auth/business.manage' && authUrl.searchParams.get('redirect_uri') === `${B}/api/reputation.php` && authUrl.searchParams.get('access_type') === 'offline', r.url);
 const state = authUrl.searchParams.get('state') ?? '';
-const cb = async (q) => (await fetch(`${B}/api/reputation.php?${q}`)).text();
+const cb = async (q) => (await fetch(`${B}/api/reputation.php?${q}`, { headers: { Connection: 'close' } })).text();
 let html = await cb(`code=good-code&state=${encodeURIComponent(state.replace(/\|[^|]+$/, '|forgedsig'))}`);
 ok('a forged state is refused', /could not be matched/.test(html));
 html = await cb(`code=good-code&state=${encodeURIComponent(`${BACCT}|bea@other.test|x|y`)}`);
@@ -399,9 +402,9 @@ await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true 
 await page.waitForTimeout(400);
 ok('no sideways scroll at 390', (await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0);
 await page.goto(`${B}/settings`, { waitUntil: 'networkidle' });
-await page.getByRole('button', { name: /^Integrations/ }).first().click();
+await page.getByRole('button', { name: /^Platform services/ }).first().click();
 await page.waitForTimeout(800);
-ok('the owner sees the install key card, without the key', /Google reviews \(Places API key\)/.test(await page.locator('body').innerText()) && !(await page.content()).includes(IKEY));
+ok('the owner sees the Google Maps key card on Platform services, without the key', /Google Maps key \(Places API\)/.test(await page.locator('body').innerText()) && !(await page.content()).includes(IKEY));
 ok('no page errors', !errs.length, errs.join(' | '));
 await br.close();
 

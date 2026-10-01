@@ -226,8 +226,10 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
 
 - **Two sources.** Places API (New) — rating, count and at most **five**
   reviews Google picks; key = the workspace's own, else the install owner's
-  (`crm_install_providers` kind `google_places`, Settings → Integrations).
-  Neither → `NO_KEY`, by name. Business Profile (OAuth `business.manage`,
+  (`crm_install_providers` kind `google_places`, Settings → Platform services),
+  resolved by `placesKeyFor` in `lib/googlePlaces.ts` — shared with prospect
+  search, and like `loadAiKey` it stops falling back to the owner's key once a
+  trial has ended. Neither → `NO_KEY`, by name. Business Profile (OAuth `business.manage`,
   callback is the GET of `/api/reputation.php`, state/nonce like calendar.ts
   but in its own `pending_state` column, single-use, 30 min) — every review,
   and the only way Google accepts a reply. Until Google approves the app's API
@@ -247,6 +249,47 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
   `GOOGLE_GBP_*_BASE`, `GOOGLE_TOKEN_URL`) so `npm run test:reputation` (self-
   contained: mock + SMTP sink on :8833, wrangler on :8822, fresh D1, needs a
   `VITE_BASE=/` build) proves the requests themselves.
+
+## Platform services — the owner's keys for everybody, in one place
+
+Settings → **Platform services** (`components/Settings/PlatformServices.tsx`,
+tab `platform`) is listed only for the install owner, and its one read,
+`/api/platform.php` `status` (`routes/platform.ts`), answers 403 `not_owner`
+to anybody else. It lists every install-wide service — the AI key, the Google
+Maps key, the Google sign-in client, payments, system email, Openprovider,
+managed buying, Cloudflare for SaaS, TURN, voice, `CREDENTIAL_WRAP_KEY` —
+with its state (`ok` / `unchecked` / `error` / `off`, `optional` ones not
+counted as needing attention), when it was last proved, the last error and
+what it powers. **It sets nothing itself and never says a secret** (not even
+a tail; Cloudflare secrets are presence only). The two purely install-wide
+Google panels are embedded (`PlacesKeyPanel`, `GoogleSignInPanel` — the same
+components, one implementation each); the rest open the tab that owns them.
+Add a new install-wide key there when you add one.
+
+## Prospect search — Google Maps on the owner's key
+
+Contacts → **Find businesses** (`components/Contacts/FindProspects.tsx`) and
+the AI Sales Agent's Google source (`services/aiDiscovery.ts`) both call
+`/api/prospects.php` (`routes/prospects.ts`): session + `workspaceAccess`
+always, the key never from the request. `search` reads **Places API (New)**
+Text Search (`searchBusinesses` in `lib/googlePlaces.ts`, `GOOGLE_PLACES_BASE`
+overridable, field mask with phone/website — Google's dearer SKU) on the key
+from `placesKeyFor`; on the owner's key `placesBudget` caps each workspace (20
+an hour, 60 a day, 300 a month) and an ended trial is refused. Refusals by
+name: `no_key` ("Prospect search needs the Google Maps key — the owner sets it
+in Settings → Platform services."), `trial_ended`, `places_budget` (429), and
+Google's own (`bad_key`, `api_disabled`, …, which also mark the owner's key as
+refused). Each call is counted in `crm_places_usage` (migration 0058) and shown
+on the owner's key card. **Nothing of a Google search is cached** — Google's
+terms let a place id be kept and restrict the rest; imported contacts carry
+`customFields.googlePlaceId`. `source: 'osm'` still searches OpenStreetMap
+(free, keepable, cached a fortnight) as the second choice on the same screen.
+The old `/api/places-search.php`, which took a key in the body, answers 410.
+`npm run test:prospects` (pure mapping) and `npm run test:platform` (self-
+contained: Places mock on :8833, wrangler on :8822, fresh D1, needs a
+`VITE_BASE=/` build). Tests that call `wrangler d1 execute` mid-run send
+`Connection: close`: the blocked event loop otherwise reuses a socket the
+Worker already closed and fails as "other side closed".
 
 ## Forms ask only for what they show
 

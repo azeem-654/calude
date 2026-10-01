@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users, ShieldCheck, Server, Activity } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, ExternalLink, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Sparkles, Users, ShieldCheck, Server, Activity, KeyRound } from 'lucide-react';
 import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import Header from '../Layout/Header';
 import TeamPermissions from './TeamPermissions';
@@ -17,7 +17,7 @@ import MailboxManager from '../Setup/MailboxManager';
 import SetupAdmin from '../Setup/SetupAdmin';
 import WhiteLabelPanel from './WhiteLabelPanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
-import PlacesKeyPanel from './PlacesKeyPanel';
+import PlatformServices from './PlatformServices';
 import MotionPanel from './MotionPanel';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
@@ -35,7 +35,6 @@ import SecurityCenter from './SecurityCenter';
 import BrandingPanel from './BrandingPanel';
 import InfrastructurePanel from './InfrastructurePanel';
 import AutomationPanel from './AutomationPanel';
-import ProspectSearchCard from './ProspectSearchCard';
 
 /* ─── helpers ─── */
 
@@ -1102,7 +1101,14 @@ const tabs = [
      answer it, because it runs on the server. */
   { id: 'automation', label: 'Automation', icon: Activity },
   { id: 'branding', label: 'Branding', icon: Palette },
+  /* The keys and accounts the install owner provides to every customer, in one
+     place (PlatformServices.tsx). Listed only for the owner — the server
+     refuses the status call for anybody else. */
+  { id: 'platform', label: 'Platform services', icon: KeyRound, ownerOnly: true },
 ];
+
+/** The single crm_users row with no workspace of its own and role agency. */
+const isInstallOwner = () => getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency';
 
 export default function Settings() {
   const { addNotification } = useApp();
@@ -1116,7 +1122,10 @@ export default function Settings() {
    */
   const [params, setParams] = useSearchParams();
   const asked = params.get('tab');
-  const activeTab = tabs.some(t => t.id === asked) ? asked! : 'email-sms';
+  /* A customer handed a link to ?tab=platform lands on the default tab, not on
+     an empty owner screen. */
+  const visibleTabs = tabs.filter(t => !('ownerOnly' in t) || isInstallOwner());
+  const activeTab = visibleTabs.some(t => t.id === asked) ? asked! : 'email-sms';
   const setActiveTab = (id: string) =>
     setParams(id === 'email-sms' ? {} : { tab: id }, { replace: true });
   /*
@@ -1188,7 +1197,7 @@ export default function Settings() {
         {/* Sidebar */}
         <div style={{ width: 220, flex: '1 1 220px', maxWidth: '100%', position: 'sticky', top: '24px' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
-            {tabs.map(tab => (
+            {visibleTabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', border: 'none', borderRadius: '9px', backgroundColor: activeTab === tab.id ? '#eceef1' : 'transparent', color: activeTab === tab.id ? '#17191c' : '#475569', fontSize: '13px', fontWeight: activeTab === tab.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', marginBottom: '2px' }}>
                 <tab.icon size={16} />
@@ -1203,14 +1212,11 @@ export default function Settings() {
         {/* Content */}
         <div style={{ flex: '999 1 320px', minWidth: 0 }}>
           {activeTab === 'email-sms' && <EmailSMSTab />}
-          {activeTab === 'ai-engine' && (
-            <>
-              <AIEngineTab />
-              {/* Moved off Email & SMS. It configures how the AI Sales Agent
-                  finds prospects, which has nothing to do with a mailbox. */}
-              <ProspectSearchCard />
-            </>
-          )}
+          {/* The AI Sales Agent's prospect search used to have a key card here
+              that held a Places key per browser. It searches on the owner's
+              Google Maps key now, set once in Platform services. */}
+          {activeTab === 'ai-engine' && <AIEngineTab />}
+          {activeTab === 'platform' && isInstallOwner() && <PlatformServices openTab={setActiveTab} />}
           {activeTab === 'api-validation' && (
             <>
               {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <ScreenChecksCard />}
@@ -1303,10 +1309,14 @@ export default function Settings() {
                 ))}
               </div>
             </div>
-            {/* The install's Places key for Reputation. Owner only, like the
-                Google sign-in client: one Google project per install, on the
-                operator's quota. The server refuses anybody else. */}
-            {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <PlacesKeyPanel />}
+            {/* The install's Google Maps key moved to Platform services, with
+                every other key the owner provides to all customers. */}
+            {isInstallOwner() && (
+              <p style={{ fontSize: 12.5, color: '#64748b', margin: '12px 4px 0', lineHeight: 1.6 }}>
+                The Google Maps key, the AI key and the other keys you provide to every customer are under{' '}
+                <button onClick={() => setActiveTab('platform')} style={{ border: 0, background: 'none', padding: 0, color: '#0f172a', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', textDecoration: 'underline' }}>Platform services</button>.
+              </p>
+            )}
             </>
           )}
 
