@@ -28,6 +28,14 @@
  * Unread notices from routes/customers.ts sit above the help offer until they
  * are closed. They come from the owner, so their button is the owner's link —
  * the server has already refused anything that is not http(s).
+ *
+ * ── Out of the way of a dialog ──
+ *
+ * While a modal is open the whole corner steps aside. It sits above the page
+ * at a fixed spot, and a wizard's footer button lives in the same corner: the
+ * welcome notice covered "Continue" on the New project wizard, so a brand-new
+ * customer's first project could not get past its first screen. Nothing is
+ * lost — the notices stay unread and come back when the dialog closes.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -52,6 +60,21 @@ function screenName(path: string): string {
   return 'this screen';
 }
 
+/** Whether a modal dialog is open anywhere on the page. Watched rather than
+    asked for, because the dialogs are spread over twenty components and the
+    one that broke this was not written with the corner in mind. */
+function useModalOpen(): boolean {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const check = () => setOpen(!!document.querySelector('[aria-modal="true"]'));
+    check();
+    const mo = new MutationObserver(check);
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal'] });
+    return () => mo.disconnect();
+  }, []);
+  return open;
+}
+
 const dayKey = (path: string) => `pc_help_offered_${new Date().toISOString().slice(0, 10)}_${path}`;
 
 export default function CornerHelp() {
@@ -62,6 +85,7 @@ export default function CornerHelp() {
   const [features, setFeatures] = useState<string[]>(() => window.ProtectedCentralChat?.features() ?? []);
   const [offer, setOffer] = useState<{ path: string; why: 'trouble' | 'dwell' } | null>(null);
   const shownFor = useRef(new Set<string>());
+  const modalOpen = useModalOpen();
 
   useEffect(() => {
     let alive = true;
@@ -116,7 +140,7 @@ export default function CornerHelp() {
   const name = useMemo(() => screenName(loc.pathname), [loc.pathname]);
   const notices = acct?.notices ?? [];
   const showOffer = !!offer && offer.path === loc.pathname && anything && !isOwner;
-  if (!notices.length && !showOffer) return null;
+  if (modalOpen || (!notices.length && !showOffer)) return null;
 
   const openChat = (view: string) => { window.ProtectedCentralChat?.open(view); setOffer(null); };
 
