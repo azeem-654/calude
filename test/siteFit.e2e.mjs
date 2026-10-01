@@ -19,11 +19,11 @@
  *   - the film is not entirely visible when scrolled to, is cropped by more
  *     than its 22% budget, or — on the owner's laptop sizes — covers less than
  *     90% of the window's width,
- *   - where the page steps (a landscape window whose whole hero fits the
- *     first screen — every laptop and desktop size above): one notch down from
- *     the top does not land the film centred under the nav (within 12px), one
- *     notch up does not go back to the top, or a notch down from the film does
- *     not scroll on past it,
+ *   - on a laptop or desktop (landscape, at least 1000×501): the words do not
+ *     fill the first screen on their own, the product picture is not at least
+ *     90% of the window's width (the owner asked for it scaled by the width),
+ *     or the wheel does not step top → picture → film, each centred under the
+ *     nav within 12px, and back up the same way, then on past the film,
  *   - the page scrolls sideways, or throws.
  *
  *   VITE_BASE=/ npm run build && npx wrangler dev --local     (another terminal)
@@ -57,7 +57,7 @@ async function settle(p) {
 
 for (const sz of sizes) {
   const [w, h] = sz.split('x').map(Number);
-  const desk = w >= 1180 && w > h && h > 500;
+  const desk = w >= 1000 && w > h && h > 500;
   const p = await b.newPage({ viewport: { width: w, height: h } });
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.goto(`${B}/`, { waitUntil: 'networkidle' });
@@ -70,9 +70,9 @@ for (const sz of sizes) {
     const r = s => document.querySelector(s).getBoundingClientRect();
     const copy = r('.dc-hero-copy'), stage = r('.dc-hero-stage'), shot = r('.dc-hero-shot');
     const on = x => x.top >= navH - 1 && x.bottom <= innerHeight + 1;
-    return { both: on(copy) && on(stage), copyB: Math.round(copy.bottom), stageT: Math.round(stage.top), stageB: Math.round(stage.bottom), picW: Math.round(shot.width), steps: document.documentElement.classList.contains('dc-snap') };
+    return { words: on(copy), wide: shot.width >= Math.min(innerWidth * 0.9, 1700), copyB: Math.round(copy.bottom), picW: Math.round(shot.width), steps: document.documentElement.classList.contains('dc-snap') };
   }, navH);
-  const firstOk = !desk || (first.both && first.steps);
+  const firstOk = !desk || (first.words && first.wide && first.steps);
 
   await p.evaluate(() => {
     const short = innerHeight <= 500 && innerWidth > innerHeight;
@@ -113,29 +113,31 @@ for (const sz of sizes) {
     await p.evaluate(() => scrollTo(0, 0));
     await settle(p);
     await p.mouse.move(w / 2, h / 2);
-    await p.mouse.wheel(0, 120);
-    const yFilm = await settle(p);
-    const off = await p.evaluate((navH) => {
-      const f = document.querySelector('.dc-film-frame').getBoundingClientRect();
+    /** How far the centre of `sel` is from the middle of the area under the nav. */
+    const off = sel => p.evaluate(([sel, navH]) => {
+      const f = document.querySelector(sel).getBoundingClientRect();
       return Math.round((f.top + f.bottom) / 2 - (navH + innerHeight) / 2);
-    }, navH);
-    await p.waitForTimeout(900);
-    await p.mouse.wheel(0, -120);
-    const yTop = await settle(p);
-    await p.waitForTimeout(900);
+    }, [sel, navH]);
+    const notch = async dy => { await p.waitForTimeout(900); await p.mouse.wheel(0, dy); return settle(p); };
     await p.mouse.wheel(0, 120);
-    const yFilm2 = await settle(p);
-    await p.waitForTimeout(900);
-    await p.mouse.wheel(0, 120);
-    const yPast = await settle(p);
-    stepOk = Math.abs(off) <= 12 && yTop <= 2 && Math.abs(yFilm2 - yFilm) <= 2 && yPast > yFilm + 40;
-    step = `film@${yFilm} off ${off}px, up→${yTop}, down again→${yFilm2}, on→${yPast}`;
+    const yPic = await settle(p);
+    const offPic = await off('.dc-hero-stage');
+    const yFilm = await notch(120);
+    const offFilm = await off('.dc-film-frame');
+    const yPicUp = await notch(-120);
+    const yTop = await notch(-120);
+    await notch(120);
+    const yFilm2 = await notch(120);
+    const yPast = await notch(120);
+    stepOk = Math.abs(offPic) <= 12 && Math.abs(offFilm) <= 12 && Math.abs(yPicUp - yPic) <= 12 && yTop <= 2
+      && Math.abs(yFilm2 - yFilm) <= 12 && yPast > yFilm + 40;
+    step = `picture@${yPic} off ${offPic}px, film@${yFilm} off ${offFilm}px, up→${yPicUp}, up→${yTop}, down×2→${yFilm2}, on→${yPast}`;
   }
 
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   const ok = hero.fits && firstOk && filmOk && stepOk && overflow === 0 && hero.maxCover <= 40 && !hero.offscreen && !errs.length;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK ' : 'BAD'} ${sz.padEnd(10)} nav ${navH} | first screen ${desk ? `words+picture=${first.both}` : '-'} picW=${first.picW} | hero stage ${hero.stageH}px fits=${hero.fits} chips=${hero.chips} cover=${hero.maxCover}px off=${hero.offscreen} | film ${film.w}×${film.h} (${Math.round(film.cover * 100)}% wide, crop ${Math.round(film.crop * 100)}%) ${film.top}-${film.bottom} visible=${film.visible} ${film.file} | step ${step} | overflow ${overflow} errs ${errs.length}`);
+  console.log(`${ok ? 'OK ' : 'BAD'} ${sz.padEnd(10)} nav ${navH} | first screen ${desk ? `words=${first.words} wide=${first.wide}` : '-'} picW=${first.picW} | hero stage ${hero.stageH}px fits=${hero.fits} chips=${hero.chips} cover=${hero.maxCover}px off=${hero.offscreen} | film ${film.w}×${film.h} (${Math.round(film.cover * 100)}% wide, crop ${Math.round(film.crop * 100)}%) ${film.top}-${film.bottom} visible=${film.visible} ${film.file} | step ${step} | overflow ${overflow} errs ${errs.length}`);
   await p.close();
 }
 console.log(bad ? `${bad} size(s) wrong` : 'all sizes fit');

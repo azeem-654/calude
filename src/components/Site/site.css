@@ -1731,92 +1731,88 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 }
 
 /*
- * Two columns, on a wide, short window.
+ * Three screens, on a laptop or a desktop: the words, the product, the film.
  *
- * On the owner's laptop (about 1340×590 of browser) the single column put the
- * headline, the words and the buttons above the picture, so the picture had
- * to be scrolled to, and — capped by the window's height so it fitted when it
- * was — sat 620px wide in the middle of 1340 with dark sky either side. What
- * is short on a laptop is height, and what it has spare is width. So there,
- * the words are the left-hand column and the picture the right, the hero is
- * exactly one screen, and the picture is as large as what is left of the
- * height allows.
+ * The owner's laptop shows about 1340×590 of browser. Fitting the words and
+ * the picture on that one screen — stacked, then side by side — left the
+ * picture 620–690px wide with dark sky either side, and the screens it shows
+ * too small to read. The owner asked for the picture scaled by the width.
+ * What a laptop is short of is height, and a 16:10 screenshot as wide as the
+ * window is taller than the window. So the first screen is the words alone,
+ * large; one step down (useFilmStep) is the picture, as wide as the window
+ * and exactly as tall as what is under the nav; the next step is the film.
  *
- * The picture is cut to 16:9 here, losing the bottom tenth of each screen —
- * where the screens are emptiest, and the part the drift already crops — which
- * buys it about 11% more width at the same height. The chips go (SiteHome
- * finds no room for them on either side), because their side is the headline.
+ * The picture is wider than it is tall here, so each screenshot is shown at
+ * the window's width and travels slowly from its top to its bottom while it
+ * holds (dc-pan-y) — the whole screen is read, at close to its own size,
+ * rather than all of it at half size. With reduced motion it holds still on
+ * its top, where the screens put their headings.
  *
- * --hero-fixed is everything in the right-hand column that is not the picture:
- * the prompt standing above the frame (50px less its 26px overlap), the chrome
- * bar, and a two-line caption. test/siteFit.e2e.mjs checks the sum.
+ * --hero-fixed is everything on the picture's screen that is not the picture:
+ * the prompt's overhang, the chrome bar, a one-line caption and the padding.
+ * test/siteFit.e2e.mjs checks the sum.
  */
-@media (min-width: 1180px) and (orientation: landscape) and (min-height: 501px) {
+@media (min-width: 1000px) and (orientation: landscape) and (min-height: 501px) {
   .dc-hero {
-    --hero-pad-t: 14px;
-    --hero-pad-b: 18px;
-    --hero-gutter: clamp(16px, 4vw, 44px);
-    --hero-copy: clamp(400px, 33vw, 600px);
-    --hero-gap: clamp(32px, 3.2vw, 64px);
-    --hero-fixed: 112px;
+    --hero-gutter: clamp(16px, 2.4vw, 40px);
+    --hero-screen: calc(var(--dc-vh) - var(--dc-nav-h));
+    --hero-fixed: 128px;
+    padding: var(--dc-nav-h) var(--hero-gutter) 0;
+  }
+  .dc-hero-inner { max-width: none; }
+  .dc-hero-copy {
+    min-height: var(--hero-screen);
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 20px 0 28px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-height: var(--dc-vh);
-    padding: calc(var(--dc-nav-h) + var(--hero-pad-t)) var(--hero-gutter) var(--hero-pad-b);
-  }
-  .dc-hero-inner {
-    /* Whichever is smaller: the width left beside the words, the width the
-       height allows, or the screenshots' own 1440 (larger is only blur). */
-    --hero-stage: min(1440px,
-      calc(100vw - 2 * var(--hero-gutter) - var(--hero-copy) - var(--hero-gap)),
-      calc((var(--dc-vh) - var(--dc-nav-h) - var(--hero-pad-t) - var(--hero-pad-b) - var(--hero-fixed)) * 16 / 9));
-    width: 100%;
-    max-width: calc(600px + var(--hero-gap) + 1440px);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--hero-stage);
-    /* The outer rows soak up the difference, so the words sit level with the
-       middle of the picture whichever is taller. */
-    grid-template-rows: 1fr auto auto 1fr;
-    grid-template-areas: ". stage" "copy stage" "note stage" ". stage";
-    column-gap: var(--hero-gap);
     align-items: center;
-    text-align: left;
   }
-  .dc-hero-copy { grid-area: copy; max-width: 600px; container-type: inline-size; }
-  /* The column is the width the picture leaves, so it is asked, not the
-     window: at 1366×657 it is about 450px, where the full pill wrapped to
-     three lines and the two buttons stacked. */
-  @container (max-width: 540px) {
-    .dc-ai-pill-more { display: none; }
-    .dc-hero-cta .dc-btn-lg { padding: 13px 19px; font-size: 14.5px; }
-  }
-  .dc .dc-ai-pill { margin: 0 0 18px; }
-  .dc-split {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-    font-size: clamp(36px, 2.8vw, 58px);
-  }
-  /* The divider between the two halves, turned to lie between two lines. */
+  /* Two lines, one above the other, with the divider lying between them —
+     side by side it wrapped on a laptop and left the divider standing at the
+     end of the first line. */
+  .dc-split { flex-direction: column; gap: 0; font-size: clamp(42px, 4.8vw, 84px); }
   .dc-split i {
-    width: 72px;
+    width: 96px;
     height: 2px;
     min-height: 0;
-    align-self: flex-start;
-    margin: 0.22em 0 0.26em;
-    background: linear-gradient(90deg, var(--lime), transparent);
+    align-self: center;
+    margin: 0.2em 0 0.24em;
+    background: linear-gradient(90deg, transparent, var(--lime), transparent);
   }
-  .dc .dc-hero-sub { margin: 18px 0 0; max-width: 34em; font-size: clamp(14.5px, 1.1vw, 18px); }
-  .dc-hero-cta { justify-content: flex-start; margin-top: 24px; }
-  .dc-hero-stage { grid-area: stage; width: 100%; max-width: none; margin: 0; }
-  .dc-hero-shot { max-width: none; }
-  .dc-hero-shot .dc-reel-stage { aspect-ratio: 16 / 9; }
-  .dc-hero-shot .dc-reel-caption { padding: 8px 14px 9px; min-height: 0; }
-  .dc-hero-shot .dc-reel-text { font-size: 13px; line-height: 1.45; }
-  /* Under the words: in the picture's column it would cost the picture
-     another 26px of height. */
-  .dc-sample-note { grid-area: note; margin-top: 16px; text-align: left; }
+  /* The orb and sparks were drawn for a picture directly under the buttons;
+     with the picture a screen further down they straddle the two screens. */
+  .dc-hero-orb, .dc-hero-sparks { display: none; }
+  .dc .dc-hero-sub { max-width: 760px; font-size: clamp(16px, 1.3vw, 21px); }
+  .dc-hero-cta { margin-top: 30px; }
+  .dc-hero-stage {
+    width: min(100%, 1760px);
+    max-width: none;
+    min-height: var(--hero-screen);
+    margin: 0 auto;
+    padding: 12px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .dc-hero-shot { max-width: none; width: 100%; }
+  .dc-hero-shot .dc-reel-stage { aspect-ratio: auto; height: calc(var(--hero-screen) - var(--hero-fixed)); }
+  .dc-hero-shot .dc-reel-shot { object-position: 50% 0; transform-origin: 50% 0; }
+  .dc-hero-shot .dc-reel-caption { padding: 8px 16px 9px; min-height: 0; }
+  .dc-hero-shot .dc-reel-text { font-size: 14px; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dc-sample-note { margin-top: 10px; }
+}
+@media (min-width: 1000px) and (orientation: landscape) and (min-height: 501px) and (prefers-reduced-motion: no-preference) {
+  /* Top to bottom while the screen holds: a short pause on the heading,
+     the travel, a short pause on the end. Replaces the corner drift. */
+  .dc-hero-shot .dc-reel.in-view .dc-reel-shot.on[data-drift] { animation: dc-pan-y var(--hold, 9s) ease-in-out both; }
+  .dc-hero-shot .dc-reel.held .dc-reel-shot.on[data-drift] { animation-play-state: paused; }
+}
+@keyframes dc-pan-y {
+  0%, 14% { object-position: 50% 0%; }
+  86%, 100% { object-position: 50% 100%; }
 }
 
 /* ── The launch film ─────────────────────────────────────────────────────
@@ -1900,6 +1896,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 @media (hover: none) and (pointer: coarse) {
   html.dc-snap { scroll-snap-type: y proximity; }
   html.dc-snap .dc-hero { scroll-snap-align: start; }
+  html.dc-snap .dc-hero-stage { scroll-snap-align: center; }
   html.dc-snap .dc-film-frame { scroll-snap-align: center; }
 }
 .dc-film-sound {

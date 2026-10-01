@@ -426,7 +426,7 @@ export default function SiteHome() {
                 thing anybody sees, and waiting for it to be scrolled to would
                 mean it never starts. */}
             <div className="dc-hero-shot">
-              <ShotReel shots={REELS.autopilot} label="AI Autopilot" eager />
+              <ShotReel shots={REELS.autopilot} label="AI Autopilot" eager holdMs={9000} />
               <span className="dc-hero-scan" aria-hidden="true" />
             </div>
             <EventChips className="dc-hero-chips" />

@@ -40,7 +40,7 @@ export default function GoogleSignInPanel() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -67,11 +67,10 @@ export default function GoogleSignInPanel() {
     setSaved(true);
   };
 
-  const copy = () => {
-    if (!cfg?.redirectUri) return;
-    void navigator.clipboard?.writeText(cfg.redirectUri);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+  const copy = (uri: string) => {
+    void navigator.clipboard?.writeText(uri);
+    setCopied(uri);
+    window.setTimeout(() => setCopied(c => (c === uri ? '' : c)), 1600);
   };
 
   if (!cfg) return null;
@@ -103,23 +102,37 @@ export default function GoogleSignInPanel() {
       {/* ── The redirect address, because this is what actually goes wrong ── */}
       <div style={{ background: '#f8fafc', border: `1px solid ${LINE}`, borderRadius: 12, padding: '13px 14px', marginBottom: 16 }}>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: INK, marginBottom: 6 }}>
-          Authorised redirect URI — paste this into Google exactly
+          Authorised redirect URIs — add all three to Google, exactly
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <code style={{
-            flex: 1, minWidth: 200, fontSize: 12, color: INK, background: '#fff',
-            border: `1px solid ${LINE}`, borderRadius: 8, padding: '7px 9px', wordBreak: 'break-all',
-          }}>
-            {cfg.redirectUri}
-          </code>
-          <button onClick={copy} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 11px',
-            border: `1px solid ${LINE}`, borderRadius: 8, background: '#fff', color: INK,
-            fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-          }}>
-            {copied ? <Check size={11} color="#0f7b3d" /> : <Copy size={11} />} {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
+        {/* The same Google client signs people in, connects calendars for Meet
+            links and connects Business Profile for reviews, and each comes back
+            to its own address. Only the sign-in one used to be listed here, so
+            "Connect Google Calendar" ended at Google's redirect_uri_mismatch —
+            an error that names nothing anybody can act on. */}
+        {[
+          { uri: cfg.redirectUri, what: 'Sign in with Google' },
+          { uri: `${cfg.origin}/api/calendar.php`, what: 'Google Calendar and Meet links' },
+          { uri: `${cfg.origin}/api/reputation.php`, what: 'Google Business Profile (reviews)' },
+        ].map(r => (
+          <div key={r.uri} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 3 }}>{r.what}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <code style={{
+                flex: 1, minWidth: 200, fontSize: 12, color: INK, background: '#fff',
+                border: `1px solid ${LINE}`, borderRadius: 8, padding: '7px 9px', wordBreak: 'break-all',
+              }}>
+                {r.uri}
+              </code>
+              <button onClick={() => copy(r.uri)} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 11px',
+                border: `1px solid ${LINE}`, borderRadius: 8, background: '#fff', color: INK,
+                fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                {copied === r.uri ? <Check size={11} color="#0f7b3d" /> : <Copy size={11} />} {copied === r.uri ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        ))}
         <p style={{ fontSize: 11.5, color: MUTED, margin: '9px 0 0', lineHeight: 1.6 }}>
           Also add <code style={{ color: INK }}>{cfg.origin}</code> under <em>Authorised JavaScript origins</em>.
           Google compares both character for character; a trailing slash or <code style={{ color: INK }}>http</code>{' '}
@@ -182,7 +195,7 @@ export default function GoogleSignInPanel() {
         <li>Publish it. With only those three scopes there is no review and no waiting.</li>
         <li>
           Under <strong>Credentials</strong>, create an <strong>OAuth client ID</strong> of type{' '}
-          <strong>Web application</strong>, and paste the redirect URI above into it.
+          <strong>Web application</strong>, and paste the three redirect URIs above into it.
         </li>
         <li>Copy the client ID and client secret it shows you into the two boxes here.</li>
       </ol>

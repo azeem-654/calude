@@ -44,7 +44,7 @@ const src = (file: string) =>
   `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/reel/${file}.webp`;
 
 export default function ShotReel({
-  shots, label, eager = false, chrome = true,
+  shots, label, eager = false, chrome = true, holdMs,
 }: {
   shots: ReelShot[];
   /** What the reel is of, for a screen reader: "AI Autopilot". */
@@ -53,12 +53,15 @@ export default function ShotReel({
   eager?: boolean;
   /** The three browser dots across the top. */
   chrome?: boolean;
+  /** How long each screen holds, when it is not the phone's pan. The hero
+      travels down each screen while it holds (site.css), so it needs longer. */
+  holdMs?: number;
 }) {
   const [at, setAt] = useState(0);
   const [inView, setInView] = useState(false);
   const [held, setHeld] = useState(false);
   const [still] = useState(() => motionReduced());
-  const [hold] = useState(() => (narrow() ? HOLD_NARROW_MS : HOLD_MS));
+  const [hold] = useState(() => (narrow() ? HOLD_NARROW_MS : holdMs ?? HOLD_MS));
   const box = useRef<HTMLDivElement | null>(null);
   const many = shots.length > 1;
 
