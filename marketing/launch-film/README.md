@@ -1,4 +1,4 @@
-# Launch film — 16:9, about five minutes
+# Launch film — 16:9, about five minutes (v3, 4:56)
 
 The long product film on protectedcentral.com (`public/site/launch/launch-16x9.*`).
 It is not part of the app build. It lives here so it can be re-rendered when the
@@ -37,7 +37,7 @@ checked against the code before they were drawn:
 | Scene | What is real | Kept honest by |
 |---|---|---|
 | Your shop on Autopilot | Shop orders, `chase_payment`, `thank_buyers` (autopilotPlan.ts); payment on the seller's own processor | The money is shown on the customer's **own Stripe app**, on a phone outside the window — the app has no balance screen. "Example figures" on screen. |
-| Many projects | 19 project solutions; each starts from a prompt or voice | The flow into one Stripe account is a dark diagram labelled **illustration**, not an app screen — there is no revenue-by-project chart. |
+| Many projects | 19 project solutions; each starts from a prompt or voice; Reports → **Revenue by project** (RevenueByProject.tsx), drawn in its own palette | "Example figures" on screen; the stacked bars are the real report's shape, the numbers are an example |
 | Blog & SEO | Month plan, the nine checks (blogWriter.ts, by their own names), WordPress | — |
 | AI Shorts | Upload → clips with captions, hashtags and a virality score (Gemini) | Shows an uploaded video, not a YouTube link (which gives sample clips) |
 | Template gallery | 65 templates (17 websites, 48 funnels), real names and categories | — |
@@ -48,9 +48,20 @@ checked against the code before they were drawn:
 The voice never promises income. It says what the product does — sells,
 follows up, thanks buyers — and that the money goes to the customer's account.
 
-Update `SHIPPED` and the 128 from the history before re-rendering in a later
-month (`git log --since=2026-09-01 --until=2026-10-01 origin/main | wc -l`) —
-the scene is only worth showing while it is true.
+The "always improving" scene says **130–150 updates every month**. That is
+September's pace — 142 commits reached `staging` in the twenty days the history
+covered (`git log --since=2026-09-01 --until=2026-10-01 origin/staging | wc -l`).
+Re-count before re-rendering and change the line and the counter if the pace
+has dropped; update `SHIPPED` with the newest real releases.
+
+## v3: safe for a wide window
+
+The site fills a wide, short window by cropping the film up to 11% top and
+bottom (`object-fit: cover`, site.css). So nothing that matters sits in the
+outer 11% (119px) of the frame: the opening title, the trust heading and the
+offer were moved inward, and the toast was raised. A small
+"protectedcentral.com · 7-day free trial" tag sits in the lower left through
+every product scene (`renderLowerThird`) — most people watch part of an ad.
 
 ## Rendering
 

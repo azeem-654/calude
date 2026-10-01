@@ -820,22 +820,22 @@ CUR_SCENE = null;
 /* ── Intro: ten tools, then one ─────────────────────────────────────── */
 const CX = 960, CY = 560;
 const FRAGS = [
-  { n: 'CRM', i: 'users', x: 120, y: 250, r: -6, kind: 'rows' },
-  { n: 'Email', i: 'mail', x: 470, y: 180, r: 5, kind: 'list' },
-  { n: 'Calendar', i: 'calendar', x: 1160, y: 200, r: -2, kind: 'grid' },
+  { n: 'CRM', i: 'users', x: 120, y: 262, r: -6, kind: 'rows' },
+  { n: 'Email', i: 'mail', x: 470, y: 236, r: 5, kind: 'list' },
+  { n: 'Calendar', i: 'calendar', x: 1160, y: 240, r: -2, kind: 'grid' },
   { n: 'Q3 leads.xlsx', i: 'file-text', x: 1500, y: 290, r: 4, kind: 'sheet' },
   { n: 'Social', i: 'image', x: 90, y: 620, r: -5, kind: 'img' },
   { n: 'Tasks', i: 'list-checks', x: 450, y: 560, r: 3, kind: 'checks' },
   { n: 'Analytics', i: 'bar-chart-3', x: 1180, y: 600, r: -3, kind: 'bars' },
-  { n: 'Support', i: 'life-buoy', x: 1540, y: 660, r: 6, kind: 'chat' },
+  { n: 'Support', i: 'life-buoy', x: 1540, y: 640, r: 6, kind: 'chat' },
   { n: 'Pipeline', i: 'kanban', x: 820, y: 700, r: -4, kind: 'cols' },
   { n: 'Inbox (214)', i: 'inbox', x: 800, y: 330, r: 2, kind: 'list' },
 ];
 const s1 = scene({ a: T.intro[0], b: T.intro[1], tout: 0 });
 s1.root = mount(`
   ${FRAGS.map((f, i) => `<div class="frag" id="fr${i}" style="left:${f.x}px;top:${f.y}px"><div class="fbar"><i></i><i></i><i></i><span style="margin-left:6px;display:flex;align-items:center;gap:6px">${ico(f.i, 15, '#5b6475')}${f.n}</span></div><div class="fbody">${fragBody(f.kind)}</div></div>`).join('')}
-  <div class="big" id="s1h1" style="top:70px;font-size:70px">Your business shouldn't need <span class="grad-blue">10 different tools.</span></div>
-  <div class="big" id="s1h2" style="top:900px;font-size:58px">Bring it all to <span class="grad-lime">one place.</span></div>
+  <div class="big" id="s1h1" style="top:128px;font-size:66px">Your business shouldn't need <span class="grad-blue">10 different tools.</span></div>
+  <div class="big" id="s1h2" style="top:860px;font-size:56px">Bring it all to <span class="grad-lime">one place.</span></div>
   <div class="abs" id="s1ring" style="left:${CX}px;top:${CY}px;width:10px;height:10px;border-radius:50%;border:3px solid rgba(214,249,111,.9);opacity:0"></div>
   <div class="abs" style="left:${CX}px;top:${CY}px;width:0;height:0;">
     <div id="s1mark" style="position:absolute;left:-110px;top:-110px;width:220px;height:220px">${LOGO(220, false)}</div>
@@ -931,7 +931,7 @@ cp('resell', { kick: 'Resell it · white label', lines: ['Your price.', '^Your ^
   bullets: [['tag', 'Any price, set per client'], ['palette', 'Your brand, logo and domain'], ['wallet', 'Paid to you — we never hold it']] });
 cp('affiliate', { kick: 'Affiliate program', lines: ['Earn ^40%,', '~for ~life.'], sub: 'Of every payment from every customer you refer — for as long as they keep paying.',
   bullets: [['link', 'One link to share'], ['bar-chart-3', 'Visits, sign-ups and commissions'], ['badge-dollar-sign', 'Every month they pay, you earn']] });
-cp('dev', { kick: 'Always improving', lines: ['Always building', "^what's ^next."], sub: '128 updates shipped in September alone — every one lands in your workspace automatically.',
+cp('dev', { kick: 'Always improving', lines: ['Always building', "^what's ^next."], sub: 'Around 130–150 updates a month — new AI tools, modules and fixes, landing in your workspace automatically.',
   bullets: [['sparkles', 'New AI tools and modules, all the time'], ['refresh-cw', 'No installs, no upgrades to run'], ['rocket', 'The latest, the day it ships']] });
 cp('s10', { kick: 'One workspace', lines: ['One', '~intelligent', '~workspace.'] });
 
@@ -1406,20 +1406,17 @@ sMoney.render = (t) => {
 /* ── Many projects, many streams ─────────────────────────────────────── */
 const BS = T.streams[0];
 const PROJ = [
-  ['camera', 'Social Media Growth', '“Post every weekday from my website”', 'mic', 'Set up by voice', '#db2777', 0.9],
-  ['shopping-bag', 'E-commerce Store', '“Sell my cleaning kits online”', 'keyboard', 'Set up by text', '#16a34a', 4.6],
-  ['target', 'Lead Generation', '“Find landlords in Austin and book calls”', 'mic', 'Set up by voice', '#2563eb', 5.9],
-  ['newspaper', 'Blog & SEO', '“An article a week that ranks”', 'keyboard', 'Set up by text', '#c2410c', 7.1],
+  ['camera', 'Social Media Growth', '“Post every weekday from my website”', 'mic', 'Set up by voice', '#2a78d6', 0.9],
+  ['shopping-bag', 'E-commerce Store', '“Sell my cleaning kits online”', 'keyboard', 'Set up by text', '#eb6834', 4.6],
+  ['target', 'Lead Generation', '“Find landlords in Austin and book calls”', 'mic', 'Set up by voice', '#1baf7a', 5.9],
+  ['newspaper', 'Blog & SEO', '“An article a week that ranks”', 'keyboard', 'Set up by text', '#eda100', 7.1],
 ];
-/* The illustration under the cards: each project's sales flow into the one
-   account they are paid into. It is drawn as a diagram, not as a screen —
-   the app has no revenue-by-project chart, and the film must not invent one. */
-const FY = i => 84 + i * 64, SINK_Y = 190;
-const flowD = i => `M250,${FY(i)} C430,${FY(i)} 470,${SINK_Y} 640,${SINK_Y}`;
-const bez = (i, u) => { const y0 = FY(i), m = 1 - u; return [m * m * m * 250 + 3 * m * m * u * 430 + 3 * m * u * u * 470 + u * u * u * 640, m * m * m * y0 + 3 * m * m * u * y0 + 3 * m * u * u * SINK_Y + u * u * u * SINK_Y]; };
-/* [project, leaves at, amount] — one coin per example sale. */
-const COINS = [];
-PROJ.forEach((p, i) => { for (let k = 0; k < 7; k++) COINS.push([i, p[6] + 1.0 + k * (1.35 + i * 0.12), [29, 49, 89, 19][i] + k * 10]); });
+/* Under the cards, the report the product draws: Reports → Revenue by
+   project (RevenueByProject.tsx) — stacked bars by project, in its own
+   palette, with the period switch. The figures are an example, and say so. */
+const WK = 12;
+const WEEKLY = [[180, 220, 240, 300, 310, 360, 380, 420, 450, 470, 520, 560], [0, 0, 260, 380, 420, 510, 560, 640, 700, 760, 820, 900], [0, 0, 0, 0, 310, 360, 480, 520, 600, 680, 720, 790], [0, 0, 0, 0, 0, 0, 140, 210, 260, 330, 380, 460]];
+const CH_W = 640, CH_H = 190, CH_MAX = 3000;
 const sStreams = winScene(...T.streams, 'wStreams', '<b>AI Autopilot</b><span>›</span>Your projects', `
   <div class="abs" style="left:24px;top:18px;right:24px;display:flex;align-items:center"><div class="h2" style="font-size:26px">Your projects</div>
     <span class="pill" id="sCount" style="margin-left:12px;background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff">1 running</span>
@@ -1432,21 +1429,22 @@ const sStreams = winScene(...T.streams, 'wStreams', '<b>AI Autopilot</b><span>�
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span class="once pill" style="background:#f6f7fb;color:#475569;border:1px solid #e6e9f0;font-size:12px">${ico(p[3], 13)}${p[4]} · once</span></div>
     </div>`).join('')}
   </div>
-  <div class="abs" style="left:24px;right:24px;top:336px;height:336px;border-radius:20px;background:#0f172a;overflow:hidden">
-    <div class="abs" style="left:20px;top:16px" ><div class="kicker" style="color:#94a3b8">How it adds up · illustration</div></div>
-    <svg class="abs" style="left:0;top:0" width="912" height="336" viewBox="0 0 912 336">
-      ${PROJ.map((p, i) => `<path class="fl" d="${flowD(i)}" fill="none" stroke="${p[5]}" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 10" opacity="0"/>`).join('')}
+  <div class="card abs" style="left:24px;right:24px;top:330px;height:344px;padding:16px 18px">
+    <div style="display:flex;align-items:center;gap:10px"><div style="font-size:17px;font-weight:700;color:#0f172a">Revenue by project</div>
+      <span class="muted" style="font-size:12.5px;font-weight:650">Reports</span>
+      <div style="margin-left:auto;display:flex;gap:4px;padding:3px;border:1px solid #e6e9f0;border-radius:10px">${['30 days', '90 days', '12 months'].map((x, i) => `<span style="padding:5px 10px;border-radius:8px;font-size:12.5px;font-weight:650;${i === 1 ? 'background:#eceef1;color:#17191c' : 'color:#64748b'}">${x}</span>`).join('')}</div></div>
+    <div style="display:flex;gap:28px;margin-top:10px">
+      <div><div class="muted" style="font-size:12px;font-weight:650">Revenue, last 90 days</div><div id="sTot" style="font-size:30px;font-weight:820;letter-spacing:-0.03em;color:#0b0b0b;font-variant-numeric:tabular-nums">$0</div></div>
+      <div><div class="muted" style="font-size:12px;font-weight:650">Projects earning</div><div id="sProj" style="font-size:30px;font-weight:820;letter-spacing:-0.03em;color:#0b0b0b">0</div></div></div>
+    <svg class="abs" style="left:18px;bottom:20px" width="${CH_W}" height="${CH_H}" viewBox="0 0 ${CH_W} ${CH_H}">
+      ${[0, 1, 2, 3].map(i => `<line x1="0" x2="${CH_W}" y1="${(CH_H / 3) * i}" y2="${(CH_H / 3) * i}" stroke="#e1e0d9" stroke-width="1"/>`).join('')}
+      ${Array.from({ length: WK }, (_, w) => PROJ.map((p, i) => `<rect class="bar" data-w="${w}" data-i="${i}" x="${(w * (CH_W / WK) + 7).toFixed(1)}" width="${(CH_W / WK - 14).toFixed(1)}" y="${CH_H}" height="0" fill="${p[5]}" rx="2"/>`).join('')).join('')}
     </svg>
-    ${PROJ.map((p, i) => `<div class="fn abs" style="left:20px;top:${FY(i) - 22}px;width:230px;height:44px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;gap:8px;padding:0 12px;color:#fff;font-size:14px;font-weight:750;opacity:0"><span style="color:${p[5]}">${ico(p[0], 17)}</span>${p[1]}</div>`).join('')}
-    <div class="abs" id="fSink" style="left:640px;top:${SINK_Y - 70}px;width:250px;height:140px;border-radius:18px;background:linear-gradient(135deg,#312e81,#4338ca);border:1px solid rgba(255,255,255,.18);padding:16px 18px;color:#fff;opacity:0">
-      <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#c7d2fe">YOUR STRIPE ACCOUNT</div>
-      <div id="sTot" style="font-size:36px;font-weight:860;letter-spacing:-0.04em;margin-top:8px;font-variant-numeric:tabular-nums">$0</div>
-      <div style="font-size:12.5px;font-weight:650;color:#c7d2fe">this month · example</div></div>
-    ${COINS.map(() => `<span class="coin abs" style="width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fef08a,#eab308);box-shadow:0 0 10px rgba(250,204,21,.7);opacity:0"></span>`).join('')}
+    <div class="abs" style="right:20px;bottom:24px;width:228px;display:grid;gap:9px">${PROJ.map(p => `<div class="sr" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#334155;opacity:0"><i style="width:10px;height:10px;border-radius:3px;background:${p[5]};display:inline-block"></i>${p[1]}<b class="sv" style="margin-left:auto;font-variant-numeric:tabular-nums">$0</b></div>`).join('')}</div>
   </div>
-  ${note('Illustration with example figures — what each project brings in depends on your offer, audience and market.')}`);
+  ${note('Example figures — what each project brings in depends on your offer, audience and market.')}`);
 PROJ.forEach(p => sfx(BS + p[6], 'pop', 0.4)); sfx(BS + 9.6, 'shimmer', 0.6);
-COINS.forEach(c => { if (c[1] + 1.4 < 18.6) sfx(BS + c[1] + 1.4, 'coin', 0.22); });
+PROJ.forEach(p => sfx(BS + p[6] + 0.4, 'coin', 0.3));
 sStreams.render = (t) => {
   const r = sStreams.root, L = t - BS;
   const n = PROJ.filter(p => L >= p[6]).length;
@@ -1458,22 +1456,26 @@ sStreams.render = (t) => {
     q(c, '.once').style.borderColor = glow > 0.5 ? '#bef264' : '#e6e9f0';
     q(c, '.once').style.color = glow > 0.5 ? '#3f6212' : '#475569';
   });
+  /* Each project's layer grows in when its card appears, and the stack keeps
+     climbing — one report, every project in it. */
+  const grow = PROJ.map(p => seg(L, p[6] + 0.3, p[6] + 1.6, eo));
+  const base = new Array(WK).fill(0);
   let tot = 0;
-  r.querySelectorAll('.fn').forEach((n, i) => appear(n, L, PROJ[i][6] + 0.2, 0.45, 0, 0.9));
-  r.querySelectorAll('.fl').forEach((pth, i) => {
-    pth.setAttribute('opacity', String(seg(L, PROJ[i][6] + 0.3, PROJ[i][6] + 0.8) * 0.75));
-    pth.setAttribute('stroke-dashoffset', String((-L * 40).toFixed(1)));
+  r.querySelectorAll('.bar').forEach(bar => {
+    const w = +bar.dataset.w, i = +bar.dataset.i;
+    const v = WEEKLY[i][w] * grow[i] * seg(L, 0.3 + w * 0.05, 1.0 + w * 0.05, eo);
+    const h = (v / CH_MAX) * CH_H;
+    bar.setAttribute('y', (CH_H - base[w] - h).toFixed(1)); bar.setAttribute('height', Math.max(0, h).toFixed(1));
+    base[w] += h;
   });
-  const sink = q(r, '#fSink'); appear(sink, L, 1.0, 0.5, 0, 0.9);
-  r.querySelectorAll('.coin').forEach((c, j) => {
-    const [i, t0, amt] = COINS[j]; const u = lin(L, t0, t0 + 1.4);
-    c.style.opacity = String(u > 0 && u < 1 ? 1 : 0);
-    if (u > 0 && u < 1) { const [x, y] = bez(i, eio(u)); c.style.left = x + 'px'; c.style.top = y + 'px'; }
-    if (u >= 1) tot += amt * 10;
+  r.querySelectorAll('.sr').forEach((row, i) => {
+    const sum = WEEKLY[i].reduce((a, x) => a + x, 0) * grow[i];
+    tot += sum;
+    row.style.opacity = String(seg(L, PROJ[i][6] + 0.2, PROJ[i][6] + 0.6));
+    setText(q(row, '.sv'), usd(sum, 0));
   });
-  const lastIn = COINS.filter(c => L >= c[1] + 1.4).map(c => c[1] + 1.4).pop() ?? -9;
-  sink.style.boxShadow = `0 0 ${(30 * (1 - seg(L, lastIn, lastIn + 0.5))).toFixed(1)}px rgba(250,204,21,.5)`;
   setText(q(r, '#sTot'), usd(tot, 0));
+  setText(q(r, '#sProj'), String(PROJ.filter((p, i) => grow[i] > 0.05).length));
 };
 
 /* ── Blog & SEO: a month planned, nine checks, published to WordPress ── */
@@ -1801,8 +1803,14 @@ sAff.render = (t) => {
 };
 
 /* ── Always improving: what actually shipped ────────────────────────── */
-/* Real releases, from the repository's history (September 2026). */
+/* Real releases, newest first, from the repository's history. The pace
+   (130–150 a month) is September's: 142 commits reached testing in the
+   twenty days the history covers — re-check it before re-rendering. */
 const SHIPPED = [
+  ['Oct 1', 'Revenue by project: what each Autopilot project earned', 'New'],
+  ['Oct 1', 'Reviews read from Google, answered with AI', 'New module'],
+  ['Oct 1', 'Affiliate program: 40% of every payment, for life', 'New'],
+  ['Oct 1', 'Resell at your own price, paid to your own account', 'Agency'],
   ['Sep 30', 'Onboarding emails for every trial, and a daily sign-ups digest', 'New'],
   ['Sep 30', '7-day free trial and instant sign-up with a code', 'New'],
   ['Sep 28', 'Send through Brevo, Resend, SendGrid, Mailgun, Mailjet or Postmark', 'Integration'],
@@ -1822,10 +1830,10 @@ const SHIPPED = [
 ];
 const TAG = { AI: ['#f4f5ff', '#5b46e5', '#e0e3ff'], 'New module': ['#ecfdf5', '#16a34a', '#bbf7d0'], New: ['#eff6ff', '#2563eb', '#bfdbfe'], Integration: ['#fdf2f8', '#db2777', '#fbcfe8'], Security: ['#fff7ed', '#c2410c', '#fed7aa'], Agency: ['#f0fdfa', '#0f766e', '#99f6e4'] };
 const B9 = T.dev[0];
-const sDev = winScene(...T.dev, 'wDev', "<b>What's new</b><span>›</span>September 2026", `
+const sDev = winScene(...T.dev, 'wDev', "<b>What's new</b><span>›</span>Recently shipped", `
   <div class="abs" style="left:24px;top:20px;right:24px;display:flex;align-items:center;gap:16px">
-    <div><div class="h2">What shipped this month</div><div class="muted" style="font-size:16px;margin-top:4px;font-weight:550">Every update arrives in your workspace on its own.</div></div>
-    <div style="margin-left:auto;text-align:right"><div style="font-size:52px;font-weight:860;letter-spacing:-0.04em;color:#5b46e5;line-height:1;font-variant-numeric:tabular-nums" id="devN">0</div><div class="muted" style="font-size:13.5px;font-weight:750">updates in September</div></div>
+    <div><div class="h2">Recently shipped</div><div class="muted" style="font-size:16px;margin-top:4px;font-weight:550">Every update arrives in your workspace on its own.</div></div>
+    <div style="margin-left:auto;text-align:right"><div style="font-size:52px;font-weight:860;letter-spacing:-0.04em;color:#5b46e5;line-height:1;font-variant-numeric:tabular-nums" id="devN">130–150</div><div class="muted" style="font-size:13.5px;font-weight:750">updates every month</div></div>
   </div>
   <div class="abs" style="left:24px;right:24px;top:118px;bottom:112px;overflow:hidden;border-radius:18px;background:#fff;border:1px solid #e6e9f0">
     <div id="devList" style="position:absolute;left:0;right:0;top:0">
@@ -1844,7 +1852,7 @@ const sDev = winScene(...T.dev, 'wDev', "<b>What's new</b><span>›</span>Septem
 SHIPPED.forEach((_, i) => sfx(B9 + 1.0 + i * 0.55, 'tick', 0.16)); sfx(B9 + 0.6, 'whoosh_soft', 0.5); sfx(B9 + 11.5, 'notify', 0.4);
 sDev.render = (t) => {
   const r = sDev.root, L = t - B9;
-  setText(q(r, '#devN'), String(Math.round(128 * seg(L, 0.6, 5.0, eo))));
+  { const n = q(r, '#devN'); const p = seg(L, 0.6, 1.4, eo5); n.style.opacity = String(p); n.style.transform = `scale(${mix(0.8, 1, p).toFixed(3)})`; n.style.transformOrigin = '100% 50%'; }
   r.querySelectorAll('.sh').forEach((row, i) => appear(row, L, 1.0 + i * 0.55, 0.45, 14, 1));
   /* Six rows show at a time; the list climbs as new ones arrive. */
   const shown = clamp((L - 1.0) / 0.55 + 1, 0, SHIPPED.length);
@@ -1864,8 +1872,8 @@ const TRUST = [
 const B10 = T.trust[0];
 const s9 = scene({ a: T.trust[0], b: T.trust[1], tin: 0.7, inScale: 1.06, tout: 0.5, origin: '50% 50%', outScale: 0.92 });
 s9.root = mount(`
-  <div class="big" id="s9h" style="top:120px;font-size:76px">Your business. <span class="grad-lime">Your workspace.</span></div>
-  <div class="big" id="s9s" style="top:222px;font-size:30px;font-weight:540;letter-spacing:-0.015em;color:rgba(226,232,255,.75)">Privacy and protection built into the experience.</div>
+  <div class="big" id="s9h" style="top:150px;font-size:72px">Your business. <span class="grad-lime">Your workspace.</span></div>
+  <div class="big" id="s9s" style="top:246px;font-size:30px;font-weight:540;letter-spacing:-0.015em;color:rgba(226,232,255,.75)">Privacy and protection built into the experience.</div>
   <div class="abs" id="s9mark" style="left:230px;top:420px;width:300px;height:300px">
     <div class="abs" style="left:-110px;top:-110px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(200,242,77,.28),rgba(200,242,77,0) 65%)" id="s9glow"></div>
     ${LOGO(300, false)}
@@ -1896,12 +1904,12 @@ const B11 = T.cta[0];
 const s11 = scene({ a: T.cta[0], b: T.cta[1], tin: 0.6, inScale: 0.94 });
 s11.root = mount(`
   <div class="abs" id="ctaGlow" style="left:560px;top:140px;width:800px;height:800px;border-radius:50%;background:radial-gradient(circle,rgba(91,70,229,.45),rgba(91,70,229,0) 65%)"></div>
-  <div class="abs cta" style="left:0;right:0;top:120px;display:flex;align-items:center;justify-content:center;gap:18px">${LOGO(70)}<span style="font-size:42px;font-weight:820;color:#fff;letter-spacing:-0.04em">Protected Central</span></div>
-  <div class="big cta" style="top:236px;font-size:84px">Start your <span class="grad-lime">7-Day Free Trial</span></div>
-  <div class="big cta" style="top:350px;color:rgba(226,232,255,.8);font-size:34px;font-weight:560;letter-spacing:-0.02em;line-height:1.3">No card. No complicated setup. Start building with AI.</div>
+  <div class="abs cta" style="left:0;right:0;top:150px;display:flex;align-items:center;justify-content:center;gap:18px">${LOGO(70)}<span style="font-size:42px;font-weight:820;color:#fff;letter-spacing:-0.04em">Protected Central</span></div>
+  <div class="big cta" style="top:252px;font-size:84px">Start your <span class="grad-lime">7-Day Free Trial</span></div>
+  <div class="big cta" style="top:362px;color:rgba(226,232,255,.8);font-size:34px;font-weight:560;letter-spacing:-0.02em;line-height:1.3">No card. No complicated setup. Start building with AI.</div>
   <div class="abs cta" style="left:0;right:0;top:470px;display:flex;justify-content:center"><div class="cta-btn" id="ctaBtn" style="position:relative;overflow:hidden">TRY PROTECTED CENTRAL FREE ${ico('arrow-right', 34)}<span id="shine" class="abs" style="top:-20px;bottom:-20px;width:120px;left:-160px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.75),rgba(255,255,255,0));transform:skewX(-18deg)"></span></div></div>
   <div class="big cta" style="top:650px;font-size:48px;font-weight:780;letter-spacing:-0.025em">ProtectedCentral.com</div>
-  <div class="big cta" style="top:730px;font-size:34px;font-weight:650;letter-spacing:-0.02em;color:rgba(226,232,255,.62)">Describe it. <span class="grad-blue" style="font-weight:780">AI builds it.</span></div>
+  <div class="big cta" style="top:724px;font-size:34px;font-weight:650;letter-spacing:-0.02em;color:rgba(226,232,255,.62)">Describe it. <span class="grad-blue" style="font-weight:780">AI builds it.</span></div>
 `);
 sfx(B11 + 0.1, 'impact', 0.9); sfx(B11 + 2.0, 'click', 0.8); sfx(B11 + 2.25, 'sting', 1);
 s11.render = (t) => {
@@ -2004,6 +2012,20 @@ function renderBg(t) {
   document.getElementById('dots').style.transform = `translateY(${(-t * 6) % 34}px)`;
 }
 
+/* ── Where to go, while the product is on screen ───────────────────────── */
+/* An ad is watched in part far more often than in full. The address and the
+   offer stay in the lower left through every product scene, so somebody who
+   stops at minute two still knows both; they step aside for the full-screen
+   scenes at the end, which say it larger. */
+document.getElementById('lt').innerHTML = `${LOGO(30)}protectedcentral.com<span style="opacity:.55">·</span><b>7-day free trial</b>`;
+function renderLowerThird(t) {
+  const a = NT.s2[0] + 1.2, b = NT.trust[0];
+  const p = seg(t, a, a + 0.6, eo5) * (1 - seg(t, b - 0.5, b));
+  const n = document.getElementById('lt');
+  n.style.opacity = String(p);
+  n.style.transform = `translateY(${((1 - p) * 14).toFixed(1)}px)`;
+}
+
 /* ── Render ──────────────────────────────────────────────────────────── */
 buildCopy();
 window.render = (t) => {
@@ -2011,6 +2033,7 @@ window.render = (t) => {
   SCENES.forEach(sc => { if (sceneFx(sc, t)) sc.render(sc.map ? sc.map(t) : t); });
   renderCopy(t);
   renderToast(t);
+  renderLowerThird(t);
   renderCursor(t);
 };
 window.SFX.forEach(e => { delete e.sc; delete e.moved; });
