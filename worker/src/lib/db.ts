@@ -52,6 +52,16 @@ export interface Env {
    */
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
+  /**
+   * Google endpoints for Reputation (lib/reputation.ts). Unset in production;
+   * test/reputation.e2e.mjs points them at a local mock so the requests this
+   * sends can be checked, not just a mock of this module's own answers.
+   */
+  GOOGLE_PLACES_BASE?: string;
+  GOOGLE_GBP_ACCOUNTS_BASE?: string;
+  GOOGLE_GBP_INFO_BASE?: string;
+  GOOGLE_GBP_V4_BASE?: string;
+  GOOGLE_TOKEN_URL?: string;
 }
 
 /**

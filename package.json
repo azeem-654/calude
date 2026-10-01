@@ -45,7 +45,8 @@
     "test:affiliate": "node test/affiliate.e2e.mjs",
     "test:resell": "node test/resell.e2e.mjs",
     "test:livehelp": "node test/liveHelp.e2e.mjs",
-    "test:sitefit": "node test/siteFit.e2e.mjs"
+    "test:sitefit": "node test/siteFit.e2e.mjs",
+    "test:reputation": "node test/reputation.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

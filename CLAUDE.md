@@ -184,6 +184,39 @@ the operator's subscription billing only — never on a customer's shop or a
 reseller's own billing. `npm run test:affiliate` (fresh D1, `PERSIST=`) signs
 real webhooks.
 
+## Reputation — reviews read from Google, never invented
+
+`/reputation` (`components/Reputation`, `services/reputationService.ts`) talks
+only to `/api/reputation.php` (`routes/reputation.ts`); the Google calls are in
+`lib/reputation.ts`, the cron pass in `lib/reputationTick.ts`; tables in
+migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
+`crm_review_competitors`). It once seeded fake reviews, invented one every
+20–40 s and "posted" replies by flipping a flag — none of that may come back.
+
+- **Two sources.** Places API (New) — rating, count and at most **five**
+  reviews Google picks; key = the workspace's own, else the install owner's
+  (`crm_install_providers` kind `google_places`, Settings → Integrations).
+  Neither → `NO_KEY`, by name. Business Profile (OAuth `business.manage`,
+  callback is the GET of `/api/reputation.php`, state/nonce like calendar.ts
+  but in its own `pending_state` column, single-use, 30 min) — every review,
+  and the only way Google accepts a reply. Until Google approves the app's API
+  access every GBP call is 403 / quota 0 and says `NOT_APPROVED`; the check then
+  falls back to Places.
+- **Reply** posts only for a `google_business` review with a live connection;
+  anything else is refused with the review's link, and "Mark as replied" records
+  `posted_elsewhere`. The legacy `/api/reviews-fetch.php` answers 410.
+- **Rules** (`crm_reputation_rules` in crm_data) run on the server only if the
+  customer *saved* them, and never on a source's first import (that is history).
+  `auto_send` without a live GBP connection leaves a draft with `attention`.
+- **Review requests**: the modal sends through the server (`send_requests`);
+  Autopilot's `queued` rows are sent by the cron (`sendQueued`) and marked
+  `sent`/`failed` with a reason; a workspace problem (no mailbox, no link)
+  leaves them queued with the reason.
+- Every Google base URL is an `Env` override (`GOOGLE_PLACES_BASE`,
+  `GOOGLE_GBP_*_BASE`, `GOOGLE_TOKEN_URL`) so `npm run test:reputation` (self-
+  contained: mock + SMTP sink on :8833, wrangler on :8822, fresh D1, needs a
+  `VITE_BASE=/` build) proves the requests themselves.
+
 ## Forms ask only for what they show
 
 A refusal about a particular box names it — `fail(msg, 200, { field:

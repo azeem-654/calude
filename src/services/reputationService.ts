@@ -1,27 +1,45 @@
 /**
- * reputationService — real-time review management for the Reputation module.
+ * reputationService — the Reviews screen's side of /api/reputation.php.
  *
- * Aggregates reviews across platforms, streams new ones live, drafts AI
- * replies grounded in a business profile, runs auto-response rules, and
- * powers review-request campaigns. A fetch endpoint (api/reviews-fetch.php)
- * can pull real reviews when configured; otherwise a realistic live simulation
- * keeps the module fully usable.
+ * Reviews come from Google, read by the Worker: through Places API (New) —
+ * rating, count and at most five reviews Google picks — or, once connected,
+ * through Business Profile, which has every review and can post replies.
+ * Nothing here invents a review. This file used to seed eight, make up another
+ * every twenty to forty seconds and compare the business with three made-up
+ * competitors; all of that is gone, and anything left over from it in this
+ * browser is cleared on first load (`clearLegacy`).
+ *
+ * What stays in the workspace's synced storage is what the customer writes:
+ * the business profile (tone, signature, review links) and the auto-response
+ * rules. The cron reads both from crm_data, so a rule runs with no tab open.
  */
+import { sessionToken } from './auth';
+import { getActiveAccountId } from './tenancy';
+import { API_BASE } from './apiBase';
 
 export type Platform = 'google' | 'facebook' | 'yelp' | 'trustpilot';
 
+export type ReplyState = 'none' | 'draft' | 'posted' | 'posted_elsewhere';
+
 export interface RepReview {
   id: string;
+  source: 'google_places' | 'google_business';
   platform: Platform;
-  rating: number;              // 1-5
   author: string;
+  authorPhoto: string;
+  rating: number;
   content: string;
-  date: string;                // ISO
-  replied: boolean;
-  reply?: string;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  autoReplied?: boolean;
-  isNew?: boolean;             // just streamed in (for animation)
+  time: string | null;
+  link: string;
+  reply: string;
+  replyTime: string | null;
+  replyState: ReplyState;
+  draft: string;
+  attention: boolean;
+  note: string;
+  auto: boolean;
+  /** Can this review be answered from here (Business Profile, connected)? */
+  canPost: boolean;
 }
 
 export interface BusinessProfile {
@@ -37,8 +55,8 @@ export interface BusinessProfile {
 export interface AutoResponseRule {
   id: string;
   enabled: boolean;
-  minRating: number;           // applies to reviews with rating >= min
-  maxRating: number;           // ... and <= max
+  minRating: number;
+  maxRating: number;
   mode: 'auto_send' | 'draft' | 'alert';
   instruction: string;
   runs: number;
@@ -46,99 +64,151 @@ export interface AutoResponseRule {
 
 export interface ReviewRequest {
   id: string;
-  contactName: string;
-  email: string;
-  sentAt: string;
-  status: 'sent' | 'clicked' | 'reviewed';
-  platform: Platform;
+  contactName?: string;
+  email?: string;
+  contactId?: string;
+  sentAt?: string;
+  createdAt?: string;
+  status: 'queued' | 'sent' | 'failed' | 'clicked' | 'reviewed';
+  platform?: Platform;
+  error?: string;
 }
 
 export interface Competitor {
+  placeId: string;
   name: string;
-  rating: number;
-  reviewCount: number;
+  rating: number | null;
+  reviewCount: number | null;
+  mapsUrl: string;
+  lastError: string;
 }
 
-/* ─── Storage ─── */
-const REV_KEY = 'crm_reputation_reviews';
+export interface PlaceHit { placeId: string; name: string; address: string; rating: number | null; count: number | null; mapsUrl: string }
+export interface GbpLocation { id: string; title: string; address: string; placeId: string; mapsUrl: string }
+
+export interface RepStatus {
+  source: null | {
+    placeId: string; placeName: string; mapsUrl: string;
+    ownKey: boolean; ownKeyVerified: boolean; autoCheck: boolean;
+    lastCheckedAt: string | null; lastError: string;
+    rating: number | null; reviewCount: number | null;
+  };
+  installKey: boolean;
+  gbp: { configured: boolean; status: 'none' | 'connected' | 'error' | string; ownerEmail: string; location: { id: string; title: string } | null; lastError: string };
+  counts: { total: number; unanswered: number; attention: number };
+  placesReviewLimit: number;
+}
+
+export type Res<T> = T & { success: boolean; error?: string; message?: string; code?: string; field?: string; link?: string };
+
+async function call<T>(action: string, extra: Record<string, unknown> = {}): Promise<Res<T>> {
+  const accountId = getActiveAccountId();
+  if (!accountId) return { success: false, error: 'No workspace is active yet.' } as Res<T>;
+  try {
+    const r = await fetch(`${API_BASE}/api/reputation.php`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: sessionToken(), accountId, action, ...extra }),
+    });
+    const j = await r.json().catch(() => ({ success: false, error: `The server answered ${r.status}.` }));
+    return j as Res<T>;
+  } catch {
+    /* Offline is not "no reviews" — said as what it is. */
+    return { success: false, error: 'Could not reach the server. Check your connection and try again.', code: 'offline' } as Res<T>;
+  }
+}
+
+export const repStatus = () => call<RepStatus>('status');
+export const findPlace = (query: string) => call<{ places: PlaceHit[] }>('find_place', { query });
+export const saveSource = (patch: { placeId?: string; placeName?: string; placesKey?: string; clearKey?: boolean; autoCheck?: boolean }) => call<RepStatus>('save_source', patch);
+export const checkNow = () => call<RepStatus & { added: number; repliesFound: number; via: string; notes: string[] }>('check_now');
+export const listReviews = () => call<{ reviews: RepReview[] }>('reviews');
+export const draftReply = (reviewId: string, instruction = '') => call<{ draft: string }>('draft_reply', { reviewId, instruction });
+export const postReply = (reviewId: string, text: string) => call<{ replyState: ReplyState }>('reply', { reviewId, text });
+export const markReplied = (reviewId: string, text: string) => call<{ replyState: ReplyState }>('mark_replied', { reviewId, text });
+export const dismissAttention = (reviewId: string) => call<object>('dismiss', { reviewId });
+export const listCompetitors = (refresh = false) => call<{ competitors: Competitor[] }>('competitors', { refresh });
+export const addCompetitor = (placeId: string) => call<{ competitors: Competitor[] }>('add_competitor', { placeId });
+export const removeCompetitor = (placeId: string) => call<{ competitors: Competitor[] }>('remove_competitor', { placeId });
+export const gbpConnect = () => call<{ url: string }>('gbp_connect');
+export const gbpLocations = () => call<{ locations: GbpLocation[] }>('gbp_locations');
+export const gbpChoose = (location: string) => call<RepStatus>('gbp_choose', { location });
+export const gbpDisconnect = () => call<RepStatus>('gbp_disconnect');
+export const listRequests = () => call<{ requests: ReviewRequest[] }>('requests');
+export const sendRequests = (recipients: { name: string; email: string }[], platform: Platform) =>
+  call<{ sent: number; failed: number; failures: string[] }>('send_requests', { recipients, platform });
+
+/* ── The install owner's Places key (no workspace) ── */
+async function ownerCall(action: string, extra: Record<string, unknown> = {}) {
+  try {
+    const r = await fetch(`${API_BASE}/api/reputation.php`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: sessionToken(), action, ...extra }),
+    });
+    return await r.json() as Res<{ set: boolean; status: string; lastError: string }>;
+  } catch {
+    return { success: false, error: 'Could not reach the server.', set: false, status: 'none', lastError: '' };
+  }
+}
+export const installKeyStatus = () => ownerCall('install_key_status');
+export const saveInstallKey = (apiKey: string) => ownerCall('save_install_key', { apiKey });
+export const testInstallKey = () => ownerCall('test_install_key');
+
+/* ── What the customer writes: synced workspace storage ── */
 const PROFILE_KEY = 'crm_reputation_profile';
 const RULES_KEY = 'crm_reputation_rules';
-const REQ_KEY = 'crm_reputation_requests';
-const COMP_KEY = 'crm_reputation_competitors';
-const GOOGLE_KEY = 'crm_reputation_google';
-
-/**
- * The Google Business Profile connection.
- *
- * This was the one setting on the Reputation screen that was never saved: the
- * key and Place ID lived in component state, so they were gone on the next
- * page load and the "live review sync" they enable never had anything to work
- * with. Stored like the profile and the rules beside them.
- */
-export interface GoogleConnection { apiKey: string; placeId: string }
-
-export function loadGoogle(): GoogleConnection {
-  try {
-    const saved = JSON.parse(localStorage.getItem(GOOGLE_KEY) || 'null');
-    if (saved && typeof saved.apiKey === 'string') return saved as GoogleConnection;
-  } catch { /* ignore */ }
-  return { apiKey: '', placeId: '' };
-}
-export function saveGoogle(g: GoogleConnection) {
-  try { localStorage.setItem(GOOGLE_KEY, JSON.stringify(g)); } catch { /* ignore */ }
-}
-
-export function loadReviews(): RepReview[] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(REV_KEY) || 'null');
-    if (Array.isArray(saved) && saved.length) return saved;
-  } catch { /* ignore */ }
-  const seed = seedReviews();
-  saveReviews(seed);
-  return seed;
-}
-export function saveReviews(list: RepReview[]) {
-  try { localStorage.setItem(REV_KEY, JSON.stringify(list.map(r => ({ ...r, isNew: false })))); } catch { /* ignore */ }
-}
+const LEGACY_REVIEWS = 'crm_reputation_reviews';
+const LEGACY_COMPETITORS = 'crm_reputation_competitors';
+const LEGACY_GOOGLE = 'crm_reputation_google';
 
 export function loadProfile(): BusinessProfile {
-  try { const s = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); if (s) return s; } catch { /* ignore */ }
+  try { const s = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); if (s) return { reviewLinks: {}, ...s }; } catch { /* ignore */ }
   return { name: '', category: '', description: '', tone: 'warm', signature: '', knowledge: '', reviewLinks: {} };
 }
 export function saveProfile(p: BusinessProfile) { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch { /* ignore */ } }
 
-export function loadRules(): AutoResponseRule[] {
-  try { const s = JSON.parse(localStorage.getItem(RULES_KEY) || 'null'); if (Array.isArray(s)) return s; } catch { /* ignore */ }
-  return defaultRules();
+/** Saved rules, or the suggestions — which the server does not run until saved. */
+export function loadRules(): { rules: AutoResponseRule[]; saved: boolean } {
+  try { const s = JSON.parse(localStorage.getItem(RULES_KEY) || 'null'); if (Array.isArray(s)) return { rules: s, saved: true }; } catch { /* ignore */ }
+  return { rules: defaultRules(), saved: false };
 }
 export function saveRules(r: AutoResponseRule[]) { try { localStorage.setItem(RULES_KEY, JSON.stringify(r)); } catch { /* ignore */ } }
 
-export function loadRequests(): ReviewRequest[] {
-  try { return JSON.parse(localStorage.getItem(REQ_KEY) || '[]'); } catch { return []; }
+/**
+ * Move a pre-server Google key off this browser, and drop the made-up data.
+ *
+ * The key was kept in crm_reputation_google — workspace storage, so it was
+ * synced to the server in plain text. It is handed to `save_source` (which
+ * encrypts it) and the local copy deleted; deleting it is what removes the
+ * plain copy from crm_data too. The old seeded reviews and competitors are
+ * not real and are removed rather than shown.
+ */
+export async function migrateLegacy(): Promise<string> {
+  let note = '';
+  try {
+    const raw = localStorage.getItem(LEGACY_GOOGLE);
+    if (raw) {
+      const g = JSON.parse(raw) as { apiKey?: string; placeId?: string };
+      const apiKey = String(g?.apiKey ?? '').trim();
+      const placeId = String(g?.placeId ?? '').trim();
+      if (apiKey || placeId) {
+        const r = await saveSource({ placesKey: apiKey, placeId });
+        /* A key of the wrong shape is refused; dropped rather than kept in
+           plain text forever, and the customer is told. */
+        note = r.success ? 'Your Google key was moved to the server and encrypted.' : `Your old Google settings could not be moved (${r.error ?? 'refused'}) and were removed. Set the source again below.`;
+        if (!r.success && r.code === 'offline') return '';
+      }
+      localStorage.removeItem(LEGACY_GOOGLE);
+    }
+    if (localStorage.getItem(LEGACY_REVIEWS) !== null) localStorage.removeItem(LEGACY_REVIEWS);
+    if (localStorage.getItem(LEGACY_COMPETITORS) !== null) localStorage.removeItem(LEGACY_COMPETITORS);
+  } catch { /* storage blocked: nothing to move */ }
+  return note;
 }
-export function saveRequests(r: ReviewRequest[]) { try { localStorage.setItem(REQ_KEY, JSON.stringify(r)); } catch { /* ignore */ } }
-
-export function loadCompetitors(): Competitor[] {
-  try { const s = JSON.parse(localStorage.getItem(COMP_KEY) || 'null'); if (Array.isArray(s)) return s; } catch { /* ignore */ }
-  return [
-    { name: 'Your business', rating: 0, reviewCount: 0 },   // filled at runtime
-    { name: 'Northgate Rivals', rating: 4.2, reviewCount: 318 },
-    { name: 'Summit & Co', rating: 3.9, reviewCount: 204 },
-    { name: 'Bluepeak Group', rating: 4.6, reviewCount: 512 },
-  ];
-}
-export function saveCompetitors(c: Competitor[]) { try { localStorage.setItem(COMP_KEY, JSON.stringify(c)); } catch { /* ignore */ } }
 
 /* ─── Sentiment ─── */
-/**
- * A review that carries no words is still a review.
- *
- * This took the whole screen down when a record arrived with no text — an older
- * schema, a half-finished import, a star rating left on its own. A rating with
- * nothing written against it is neutral by the same rule as anything else, not
- * a reason to stop rendering the page.
- */
-export function sentimentOf(rating: number, text: unknown): RepReview['sentiment'] {
+export type Sentiment = 'positive' | 'neutral' | 'negative';
+/** A review with no words is still a review, and neutral unless its stars say otherwise. */
+export function sentimentOf(rating: number, text: unknown): Sentiment {
   const n = Number(rating);
   if (Number.isFinite(n) && n >= 4) return 'positive';
   if (Number.isFinite(n) && n <= 2 && n > 0) return 'negative';
@@ -151,8 +221,7 @@ export function sentimentOf(rating: number, text: unknown): RepReview['sentiment
 const STOP = new Set(['the', 'and', 'was', 'for', 'with', 'this', 'that', 'they', 'have', 'were', 'your', 'you', 'our', 'are', 'but', 'all', 'not', 'very', 'had', 'has', 'from', 'get', 'their', 'them', 'would', 'will', 'been', 'when', 'what', 'who', 'how']);
 export function trendingThemes(reviews: RepReview[], sentiment: 'positive' | 'negative'): { word: string; count: number }[] {
   const counts = new Map<string, number>();
-  reviews.filter(r => r.sentiment === sentiment).forEach(r => {
-    /* Same reason as sentimentOf: a review with no words contributes none. */
+  reviews.filter(r => sentimentOf(r.rating, r.content) === sentiment).forEach(r => {
     const content = typeof r.content === 'string' ? r.content : '';
     content.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).forEach(w => {
       if (w.length < 4 || STOP.has(w)) return;
@@ -162,72 +231,20 @@ export function trendingThemes(reviews: RepReview[], sentiment: 'positive' | 'ne
   return [...counts.entries()].map(([word, count]) => ({ word, count })).sort((a, b) => b.count - a.count).slice(0, 8);
 }
 
-/* ─── Default rules ─── */
+/* ─── Suggested rules ─── */
+/**
+ * What the rules tab suggests before anything is saved.
+ *
+ * The top rule drafts rather than auto-sends: a reply posted publicly in the
+ * customer's name is a permission they should switch on, not find on.
+ */
 export function defaultRules(): AutoResponseRule[] {
   return [
-    { id: 'ar-5', enabled: true, minRating: 4, maxRating: 5, mode: 'auto_send', instruction: 'Thank them warmly and invite them back.', runs: 0 },
+    { id: 'ar-5', enabled: true, minRating: 4, maxRating: 5, mode: 'draft', instruction: 'Thank them warmly and invite them back.', runs: 0 },
     { id: 'ar-3', enabled: true, minRating: 3, maxRating: 3, mode: 'draft', instruction: 'Acknowledge the feedback and ask how we can do better.', runs: 0 },
     { id: 'ar-1', enabled: true, minRating: 1, maxRating: 2, mode: 'alert', instruction: 'Apologize, take it offline, and offer to make it right.', runs: 0 },
   ];
 }
 export function blankRule(): AutoResponseRule {
   return { id: `ar-${Date.now()}`, enabled: true, minRating: 1, maxRating: 5, mode: 'draft', instruction: '', runs: 0 };
-}
-
-/* ─── Live stream simulation (new reviews arrive over time) ─── */
-const STREAM_AUTHORS = ['Jordan P.', 'Nina R.', 'Carlos M.', 'Priya S.', 'Liam O.', 'Grace T.', 'Ahmed K.', 'Sofia L.', 'Marcus D.', 'Elena V.'];
-const STREAM_POS = [
-  'Absolutely fantastic experience — the team went above and beyond. Highly recommend!',
-  'Quick, professional and friendly service. Will definitely come back.',
-  'Best in the area, hands down. Everything was smooth from start to finish.',
-  'Really impressed with the quality and the attention to detail. Five stars!',
-];
-const STREAM_MID = [
-  'Decent overall, though the wait was a little longer than expected.',
-  'Good service but a couple of small things could be improved.',
-  'It was fine — nothing spectacular, nothing bad.',
-];
-const STREAM_NEG = [
-  'Disappointed with the service this time. Hoping for better next visit.',
-  'Slow response and the issue wasn\'t fully resolved. Not happy.',
-];
-const PLATFORMS: Platform[] = ['google', 'facebook', 'yelp', 'trustpilot'];
-
-export function makeIncomingReview(): RepReview {
-  const roll = Math.random();
-  const rating = roll < 0.62 ? (Math.random() < 0.6 ? 5 : 4) : roll < 0.82 ? 3 : (Math.random() < 0.5 ? 2 : 1);
-  const content = rating >= 4 ? STREAM_POS[Math.floor(Math.random() * STREAM_POS.length)]
-    : rating === 3 ? STREAM_MID[Math.floor(Math.random() * STREAM_MID.length)]
-    : STREAM_NEG[Math.floor(Math.random() * STREAM_NEG.length)];
-  const author = STREAM_AUTHORS[Math.floor(Math.random() * STREAM_AUTHORS.length)];
-  const platform = PLATFORMS[Math.floor(Math.random() * PLATFORMS.length)];
-  return {
-    id: `rev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    platform, rating, author, content, date: new Date().toISOString(),
-    replied: false, sentiment: sentimentOf(rating, content), isNew: true,
-  };
-}
-
-/* ─── Seed (first load) ─── */
-function seedReviews(): RepReview[] {
-  const base: [Platform, number, string, string, number][] = [
-    ['google', 5, 'Amanda Foster', 'Outstanding from start to finish. The staff were knowledgeable and made everything effortless. Couldn\'t be happier!', 2],
-    ['google', 4, 'David Kim', 'Great service overall. One small hiccup with scheduling but they sorted it out quickly.', 8],
-    ['facebook', 5, 'Rachel Torres', 'I\'ve recommended them to all my friends. Consistently excellent and genuinely care about customers.', 26],
-    ['yelp', 2, 'Brian Walsh', 'Had high hopes but the experience fell short. Long wait and communication could be better.', 50],
-    ['trustpilot', 5, 'Priya Nair', 'Exceptional quality and support. They answered every question and delivered ahead of schedule.', 74],
-    ['google', 3, 'Tom Becker', 'It was okay. Nothing wrong exactly, just didn\'t wow me. Might try again.', 120],
-    ['facebook', 5, 'Sofia Lang', 'Five stars all the way. Friendly, fast, and fair pricing. My new go-to.', 190],
-    ['yelp', 1, 'Kevin Ross', 'Really disappointed. The issue took days to resolve and I had to follow up repeatedly.', 300],
-  ];
-  return base.map((b, i) => ({
-    id: `seed-${i}`, platform: b[0], rating: b[1], author: b[2], content: b[3],
-    date: new Date(Date.now() - b[4] * 3_600_000).toISOString(),
-    replied: i % 3 === 0, reply: i % 3 === 0 ? 'Thank you so much for the kind words — it means a lot to our team!' : undefined,
-    sentiment: sentimentOf(b[1], b[3]),
-  }));
-}
-
-export function matchRule(rules: AutoResponseRule[], rating: number): AutoResponseRule | null {
-  return rules.find(r => r.enabled && rating >= r.minRating && rating <= r.maxRating) ?? null;
 }

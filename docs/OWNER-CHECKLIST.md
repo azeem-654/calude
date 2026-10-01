@@ -40,6 +40,8 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 21 | **Have the lawyer read the Affiliate Program Terms** too (`/affiliate-terms`, from `AFFILIATE_TERMS` in legalText.ts) | a lawyer | The program's promises being exactly what you mean |
 
 | 22 | *For resellers, nothing to do* — tell them where it is: **Agency & clients → Billing** connects *their own* Stripe or Creem, sets each client's monthly price, and makes the link the client pays through. The money goes to the reseller; you never hold it | — | Resellers charging their clients at their own price |
+| 23 | **Turn on Google reviews** — enable **Places API (New)** in Google Cloud, make an API key restricted to it, paste it in the app: Settings → Integrations → **Google reviews (Places API key)** → Save key → **Test connection** | console.cloud.google.com, then app.protectedcentral.com and testing.protectedcentral.com | Every customer's Reviews screen. Until it is set, "Find your business on Google" says no key is set up (a customer can still paste their own). See 26 |
+| 24 | *Optional, takes Google weeks* — **Business Profile**: enable three My Business APIs, add the `business.manage` scope and the `/api/reputation.php` redirect addresses to your Google client, and **request Business Profile API access** from Google | console.cloud.google.com, then Google's access request form | Reading *all* of a customer's reviews (Places gives five) and replying from the app. Until Google approves, connecting works but every read and reply says "Google has not approved Business Profile API access for this app yet". See 26 |
 
 **Done, and no longer on the list:**
 
@@ -952,3 +954,54 @@ phones.
 - **Deploys go through GitHub Actions**, never by hand. Push to `main`;
   `.github/workflows/deploy.yml` typechecks, builds, applies D1 migrations and
   then publishes, in that order.
+
+### 26. Google reviews — added 2026-10-01
+
+The Reviews screen (`/reputation`) used to invent its reviews and competitors.
+It now reads Google, and needs two things from you. Do part A on day one; part
+B only matters once you want customers to reply from the app.
+
+**A · The Places key (one key for every customer)**
+
+1. Open <https://console.cloud.google.com> and pick the same project as your
+   Google sign-in client (or any project with billing on).
+2. **APIs & Services → Library** → search **Places API (New)** → **Enable**.
+   Not "Places API" without "(New)": Google no longer lets new projects turn
+   the old one on, and the app does not use it.
+3. **APIs & Services → Credentials → Create credentials → API key.** Copy it
+   (it starts `AIza`).
+4. Click the new key → **API restrictions → Restrict key** → tick only
+   **Places API (New)** → Save. Leave **Application restrictions** at *None* —
+   the key is used by the server, never by a browser, so a website restriction
+   would block it.
+5. In the app, signed in as **azeem@protectedcentral.com**: **Settings →
+   Integrations → Google reviews (Places API key)** → paste → **Save key** →
+   **Test connection**. Green means Google answered. Do it on both sites.
+
+Each check costs a Places request with reviews (Google bills these per 1,000;
+see Google's price list). The app checks each workspace at most every six
+hours, plus whenever somebody presses Refresh.
+
+**B · Business Profile (all reviews, and replying from the app)**
+
+1. Same project → **APIs & Services → Library** → enable all three:
+   **My Business Account Management API**, **My Business Business Information
+   API**, and **Google My Business API**.
+2. **OAuth consent screen → Data access / Scopes → Add** →
+   `https://www.googleapis.com/auth/business.manage`. This is a sensitive
+   scope: it is asked only of the person who presses "Connect Google Business
+   Profile", never at sign-in.
+3. **Credentials → your OAuth client → Authorised redirect URIs → Add**, both
+   exactly:
+   - `https://app.protectedcentral.com/api/reputation.php`
+   - `https://testing.protectedcentral.com/api/reputation.php`
+4. **Request API access from Google** — search "Business Profile API access
+   request form" (it is linked from Google's *Business Profile APIs → Prerequisites*
+   page), fill it in for this Cloud project, and wait for the approval email.
+5. Until it is approved, a customer can connect, but listing locations,
+   reading and replying all answer **"Google has not approved Business Profile
+   API access for this app yet."** — reviews keep coming through Places, and
+   replies are posted on Google by hand ("Copy reply & open on Google", then
+   "Mark as replied"). Nothing pretends to have posted.
+6. Once approved: Reviews → Settings → Review Sources → **Connect Google
+   Business Profile** → choose the location. Tick this item off here.

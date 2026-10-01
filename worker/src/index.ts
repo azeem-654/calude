@@ -25,6 +25,8 @@ import { handleMailbox } from './routes/mailbox';
 import { handleInfra } from './routes/infra';
 import { handleAutomation } from './routes/automation';
 import { handleCalendar } from './routes/calendar';
+import { handleReputation } from './routes/reputation';
+import { runReputation } from './lib/reputationTick';
 import { handleEngage } from './routes/engage';
 import { handleEngagement } from './routes/engagement';
 import { handleAutopilot } from './routes/autopilot';
@@ -55,7 +57,7 @@ import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
-import { handleYtThumb, handleImgProxy, handlePlacesSearch, handleReviewsFetch } from './routes/proxies';
+import { handleYtThumb, handleImgProxy, handlePlacesSearch } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
   handleImapFetch, handleMailProbe, handleSmsSend, handleSmsInbound, handleDeliverability,
@@ -105,6 +107,9 @@ const ROUTES: Record<string, Handler> = {
      browser, so it answers with a page. Same path, because only /api/* reaches
      the Worker at all. */
   '/api/calendar.php': handleCalendar,
+  /* Reviews read from Google and answered from here. Same two-faced shape as
+     calendar.php: POST is the API, GET is Business Profile's OAuth redirect. */
+  '/api/reputation.php': handleReputation,
   /* The owner's one: session required, every query scoped to the workspace. */
   '/api/engagement.php': handleEngagement,
   /* Autopilot's ledger: what it is doing, what it did and why, and the two
@@ -177,7 +182,10 @@ const ROUTES: Record<string, Handler> = {
      longer what the app reaches for. */
   '/api/prospects.php': handleProspects,
   '/api/places-search.php': handlePlacesSearch,
-  '/api/reviews-fetch.php': handleReviewsFetch,
+  /* Was the legacy Places Details call, with the key in the request body and
+     no workspace check. Reviews are read by /api/reputation.php now; this
+     answers so an old bundle in somebody's tab says where it went. */
+  '/api/reviews-fetch.php': async () => json({ success: false, error: 'Reviews are read by the Reputation screen now. Reload the page.', message: 'Reviews are read by the Reputation screen now. Reload the page.' }, 410),
   '/api/yt-thumb.php': (req) => handleYtThumb(req),
   '/api/img-proxy.php': (req) => handleImgProxy(req),
   /* A client's logo, for emails and saved posts that cannot carry it inline.
@@ -379,6 +387,19 @@ export default {
         report.notes.push({ accountId: '', text: n, kind: 'problem' });
       }
 
+      /*
+       * Reviews from Google, and the review requests Autopilot queued.
+       *
+       * After the engagement notifications: nobody is waiting on a review being
+       * read the way somebody is waiting on "we got your enquiry", and the
+       * requests it sends are a polite ask, not a reply. It gates itself to every
+       * fifteen minutes, and each workspace to every six hours.
+       */
+      const reputation = await runReputation(env);
+      for (const n of reputation.notes.slice(0, 5)) {
+        report.notes.push({ accountId: '', text: n, kind: 'problem' });
+      }
+
       /* An automation that could not send because nothing is connected belongs
          in the same place a customer already looks to find out what the
          schedule did while they were away. */
@@ -436,6 +457,7 @@ export default {
            nothing new in it is the ordinary case, and folding it into a
            success count would make a quiet week look like a busy one. */
         agents: { ran: agents.ran, produced: agents.produced, skipped: agents.skipped, failed: agents.failed },
+        ...(reputation.ran ? { reputation: { checked: reputation.checked, added: reputation.added, failed: reputation.failed, requestsSent: reputation.requestsSent, requestsFailed: reputation.requestsFailed } } : {}),
         /* Absent on most ticks, which is the point of the gate. */
         ...(swept.ran ? { housekeeping: { deleted: swept.deleted } } : {}),
         notes: report.notes.slice(0, 20),
