@@ -406,7 +406,9 @@ export function accountUsage(id: string): AccountUsage {
     contacts: count('crm_contacts'),
     deals,
     conversations: count('crm_mailboxes'),
-    reviews: count('crm_reputation_reviews'),
+    /* Written by the Reputation screen from the server's list (reputationService
+       listReviews); the old local review list held sample data and is gone. */
+    reviews: Number(rawGet(id, 'crm_reputation_count') || 0) || 0,
   };
 }
 

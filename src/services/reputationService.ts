@@ -121,7 +121,16 @@ export const repStatus = () => call<RepStatus>('status');
 export const findPlace = (query: string) => call<{ places: PlaceHit[] }>('find_place', { query });
 export const saveSource = (patch: { placeId?: string; placeName?: string; placesKey?: string; clearKey?: boolean; autoCheck?: boolean }) => call<RepStatus>('save_source', patch);
 export const checkNow = () => call<RepStatus & { added: number; repliesFound: number; via: string; notes: string[] }>('check_now');
-export const listReviews = () => call<{ reviews: RepReview[] }>('reviews');
+/* The agency dashboard's per-workspace counts are read from this browser's
+   copy of each workspace (tenancy.ts accountUsage), and reviews now live only
+   on the server — so the count is left behind here each time the list is read,
+   rather than the dashboard asking the server once per client. */
+export const REVIEW_COUNT_KEY = 'crm_reputation_count';
+export async function listReviews() {
+  const r = await call<{ reviews: RepReview[] }>('reviews');
+  if (r.success && Array.isArray(r.reviews)) { try { localStorage.setItem(REVIEW_COUNT_KEY, String(r.reviews.length)); } catch { /* private mode */ } }
+  return r;
+}
 export const draftReply = (reviewId: string, instruction = '') => call<{ draft: string }>('draft_reply', { reviewId, instruction });
 export const postReply = (reviewId: string, text: string) => call<{ replyState: ReplyState }>('reply', { reviewId, text });
 export const markReplied = (reviewId: string, text: string) => call<{ replyState: ReplyState }>('mark_replied', { reviewId, text });

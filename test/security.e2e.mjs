@@ -109,6 +109,16 @@ const prov = await api('provider-send.php', { token: B.token, accountId: A.acct,
 check("B cannot send through A's provider key", !prov.ok && prov.status === 403, JSON.stringify(prov.data));
 const blog = await api('blog-publish.php', { token: B.token, accountId: A.acct, title: 't', content: 'c' });
 check("B cannot publish as A", !blog.ok && blog.status === 403, JSON.stringify(blog.data));
+const rev = await api('revenue.php', { action: 'summary', token: B.token, accountId: A.acct, days: 30 });
+check("B cannot read A's revenue", !rev.ok, JSON.stringify(rev.data).slice(0, 120));
+const revPj = await api('revenue.php', { action: 'summary', token: B.token, accountId: B.acct, days: 30, projectId: pj.data.id });
+check("B cannot scope a report to A's project", !revPj.ok, JSON.stringify(revPj.data).slice(0, 120));
+const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
+check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
+const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });
+check("B cannot read A's reviews", !repR.ok, JSON.stringify(repR.data).slice(0, 120));
+const repSave = await api('reputation.php', { action: 'save_source', token: B.token, accountId: A.acct, placeId: 'ChIJforged', placeName: 'Forged' });
+check("B cannot point A's reviews at another business", !repSave.ok, JSON.stringify(repSave.data).slice(0, 120));
 
 console.log("\nOverwriting A's records by id");
 const bpf = await api('projects.php', { action: 'save_portfolio', token: B.token, accountId: B.acct, name: 'B Co', profile: {} });
