@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import Header from '../Layout/Header';
 import DeliverabilityReport from './DeliverabilityReport';
+import RevenueByProject from './RevenueByProject';
+import { useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import {
   kpis, trend, sources, funnel, owners, campaignRows, isEmpty,
@@ -32,7 +34,12 @@ const tooltipStyle: React.CSSProperties = {
 
 export default function Analytics() {
   const [period, setPeriod] = useState<Period>('30d');
-  const [section, setSection] = useState<'overview' | 'deliverability'>('overview');
+  /* `?section=revenue` opens straight on revenue — a project's Overview links
+     here, and landing on the general overview would make somebody hunt. */
+  const [params] = useSearchParams();
+  const [section, setSection] = useState<'overview' | 'revenue' | 'deliverability'>(
+    () => (params.get('section') === 'revenue' ? 'revenue' : params.get('section') === 'deliverability' ? 'deliverability' : 'overview'),
+  );
   const { contacts, pipelines, campaigns } = useApp();
 
   /* Everything below is derived from the account's own records and recomputed
@@ -49,8 +56,8 @@ export default function Analytics() {
     <div style={{ minHeight: '100vh' }}>
       <Header title="Reports" subtitle="How every module is performing" />
       <div style={{ padding: 'clamp(14px, 3vw, 28px)' }}>
-        <div style={{ display: 'flex', gap: 7, marginBottom: 18 }}>
-          {([['overview', 'Overview'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
+        <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap' }}>
+          {([['overview', 'Overview'], ['revenue', 'Revenue by project'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setSection(id)} title={label} aria-pressed={section === id}
               style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                 border: `1px solid ${section === id ? '#17191c' : '#e2e8f0'}`,
@@ -61,6 +68,8 @@ export default function Analytics() {
         </div>
 
         {section === 'deliverability' && <DeliverabilityReport />}
+
+        {section === 'revenue' && <RevenueByProject />}
 
         {section === 'overview' && <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>

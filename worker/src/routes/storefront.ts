@@ -465,11 +465,16 @@ export async function handleStorefrontWebhook(req: Request, env: Env): Promise<R
 
   if (event.kind === 'paid') {
     /* Only a pending order moves. An order already fulfilled must not be walked
-       backwards to 'paid' by a redelivered event, and processors redeliver. */
+       backwards to 'paid' by a redelivered event, and processors redeliver.
+       `paid_at` is when the money arrived, which is what the revenue report
+       dates a sale by — COALESCE because an order paid once, set back to
+       pending by hand and paid again was still first paid the first time. */
+    const now = nowIso();
     const moved = await env.DB.prepare(
-      `UPDATE crm_orders SET status = 'paid', channel = ?, stripe_session = ?, updated_at = ?
+      `UPDATE crm_orders SET status = 'paid', channel = ?, stripe_session = ?, updated_at = ?,
+              paid_at = COALESCE(paid_at, ?)
        WHERE ${where.sql} AND status = 'pending'`,
-    ).bind(provider.id, event.sessionId, nowIso(), ...where.args).run();
+    ).bind(provider.id, event.sessionId, now, now, ...where.args).run();
 
     /*
      * A discount code is spent when the money arrives, not when it is typed.

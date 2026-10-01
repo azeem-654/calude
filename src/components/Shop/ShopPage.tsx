@@ -212,6 +212,24 @@ export default function ShopPage() {
     try { return !!new URLSearchParams(window.location.search).get('order'); }
     catch { return false; }
   });
+  /*
+   * Which project sent this visitor, from `?pj=` on the project's shop link.
+   *
+   * Kept in sessionStorage, per shop, so it survives the visitor clicking
+   * around before buying — the link they arrived on is gone from the address
+   * bar after the first navigation, and the sale is still that link's. Session
+   * rather than local storage: a visit, not a fortnight, is as far as "this
+   * link sold it" can honestly stretch. The server decides whether the id
+   * counts (it must be one of this shop's own projects); this only carries it.
+   */
+  const [arrivedFrom] = useState(() => {
+    const key = `pc_shop_pj_${slug ?? ''}`;
+    try {
+      const fromUrl = (new URLSearchParams(window.location.search).get('pj') ?? '').trim().slice(0, 80);
+      if (fromUrl) { try { sessionStorage.setItem(key, fromUrl); } catch { /* storage refused */ } return fromUrl; }
+      return sessionStorage.getItem(key) ?? '';
+    } catch { return ''; }
+  });
   /* Which option is showing on each card, before anything is added. */
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [discountCode, setDiscountCode] = useState('');
@@ -418,6 +436,7 @@ export default function ShopPage() {
     const res = await call({
       action: 'buy', slug: shop.slug, items: orderItems, email,
       discountCode: discountCode.trim(), shipCountry: country,
+      projectId: arrivedFrom || undefined,
       /* Deliberately no price. */
     });
     setBusy(false);
