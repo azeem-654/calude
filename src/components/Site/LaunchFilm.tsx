@@ -1,7 +1,7 @@
 /**
  * The launch film, full length, as the second thing on the page.
  *
- * About three minutes, rendered from marketing/launch-film and re-encoded for
+ * About five minutes, rendered from marketing/launch-film and re-encoded for
  * the web (public/site/launch/, as WebM and MP4). It is drawn for 16:9 — the
  * product window on the right, the words on the left — so it is shown whole
  * on every screen. There used to be a square cut for portrait screens,
@@ -84,7 +84,7 @@ export default function LaunchFilm() {
   const signup = appHref('/signup');
 
   return (
-    <section className="dc-film" id="film" aria-label="Protected Central in three minutes" ref={wrap}>
+    <section className="dc-film" id="film" aria-label="Protected Central in five minutes" ref={wrap}>
       <div className="dc-film-frame">
         <video
           ref={video}
@@ -109,7 +109,7 @@ export default function LaunchFilm() {
         )}
       </div>
       <div className="dc-film-foot">
-        <p>Protected Central in three minutes. Screens show a demo workspace with example data.</p>
+        <p>Protected Central in five minutes. Screens show a demo workspace with example data and example figures.</p>
         {!sound && (
           <button type="button" className="dc-film-sound" onClick={withSound}>
             <Volume2 size={16} /> Watch with sound

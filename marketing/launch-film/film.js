@@ -808,11 +808,13 @@ const T = {
   s6: [86.4, 94.4], web: [94.0, 102.0], s7: [101.6, 109.6], live: [109.2, 117.2], s8: [116.8, 124.8],
   agency: [124.4, 132.4], dev: [132.0, 154.0], trust: [153.6, 160.6], s10: [160.2, 166.0],
   lock: [165.6, 168.3], cta: [167.9, 178.6],
+  /* Drawn for v2; the start times only need to be apart, `place` moves them. */
+  money: [300, 320.4], streams: [330, 348.9], blog: [360, 374.6], shorts: [380, 395.2],
+  gallery: [400, 411.6], reviews: [420, 433.9], resell: [440, 452.5], affiliate: [460, 471.7],
 };
-window.DURATION = 178.6;
-
-place(s2, ...T.s2); place(s3, ...T.s3); place(s4, ...T.s4); place(s5, ...T.s5);
-place(s6, ...T.s6); place(s7, ...T.s7); place(s8, ...T.s8); place(s10, ...T.s10);
+/* Every scene is drawn against T, then moved to the slot its voice lines
+   occupy (NT, from timing.mjs) once all of them exist — see the bottom. */
+const NT = window.NT, NC = window.NC;
 CUR_SCENE = null;
 
 /* ── Intro: ten tools, then one ─────────────────────────────────────── */
@@ -883,37 +885,55 @@ s1.render = (t) => {
 };
 
 /* ── The words on the left, scene by scene ──────────────────────────── */
-copy(6.5, 15.8, { kick: 'AI Autopilot', lines: ['Tell AI', '~what ~you ~want.'], sub: 'Type it, say it, or drop in files and your website.',
+/* Each block spans its scene's voice (NC, from timing.mjs). */
+const cp = (k, o) => copy(...NC[k], o);
+cp('s2', { kick: 'AI Autopilot', lines: ['Tell AI', '~what ~you ~want.'], sub: 'Type it, say it, or point it at your website.',
   bullets: [['globe', 'Reads your business from your website'], ['message-circle-question', 'Asks only what it still needs'], ['sparkles', 'Builds workflows, agents and campaigns']] });
-copy(15.9, 27.4, { kick: 'AI Autopilot · Blueprint', lines: ['See the plan', '~before ~it ~runs.'], sub: 'Change anything in plain words — or by voice.',
+cp('plan', { kick: 'AI Autopilot · Blueprint', lines: ['See the plan', '~before ~it ~runs.'], sub: 'Change anything in plain words — or by voice.',
   bullets: [['list-checks', 'Every workflow, listed in order'], ['pen-line', 'Edit a sentence, the plan rebuilds'], ['shield-check', 'Nothing runs until you approve']] });
-copy(27.5, 39.0, { kick: 'AI agents', lines: ['AI agents inside', '~every ~workflow.'], sub: 'They read your website and the web, then write in your voice.',
+cp('canvas', { kick: 'AI agents', lines: ['AI agents inside', '~every ~workflow.'], sub: 'They read your website and the web, then write in your voice.',
   bullets: [['git-branch', 'Triggers, conditions, delays, branches'], ['database', 'AI steps with real data sources'], ['pencil', 'Edit any step in place']] });
-copy(39.1, 47.6, { kick: 'Runs on its own', lines: ['Working', '~while ~you ~work.'], sub: 'The server runs every workflow every five minutes — tabs closed or not.',
+cp('s3', { kick: 'Runs on its own', lines: ['Working', '~while ~you ~sleep.'], sub: 'The server runs every workflow every five minutes — tabs closed or not.',
   bullets: [['activity', 'Live status on every step'], ['scroll-text', 'A delivery log for every send'], ['mail', 'A daily digest of what happened']] });
-copy(47.7, 54.2, { kick: 'Template library', lines: ['Or start from', '^33 ^ready-made', '^AI ^workflows.'], sub: 'Built from what businesses ask for most.' });
-copy(54.3, 62.8, { kick: 'Guardrails', lines: ['You stay', '~in ~control.'], sub: "Anything that sends waits for your yes — until you decide it doesn't have to.",
+cp('money', { kick: 'Autopilot · Your shop', lines: ['Sales that keep', '^coming ^in.'], sub: 'Paid straight into your own Stripe account — never ours.',
+  bullets: [['camera', 'Posts your products on schedule'], ['link', 'A fresh payment link when an order stalls'], ['heart-handshake', 'Thanks every buyer the moment they pay']] });
+cp('streams', { kick: 'Multiple projects', lines: ['Set up once.', '~Many ~streams.'], sub: 'Each project starts from a sentence or your voice — then keeps working.',
+  bullets: [['camera', 'Social Media Growth'], ['shopping-bag', 'E-commerce Store'], ['target', 'Lead Generation'], ['newspaper', 'Blog & SEO']] });
+cp('lib', { kick: 'Template library', lines: ['Start from', '^33 ^ready-made', '^AI ^workflows.'], sub: 'Built from what businesses ask for most.' });
+cp('guard', { kick: 'Guardrails', lines: ['You stay', '~in ~control.'], sub: "Anything that sends waits for your yes — until you decide it doesn't have to.",
   bullets: [['sliders-horizontal', 'Off, Ask me or On — per ability'], ['check-circle-2', 'Approve from the board in one click'], ['scroll-text', 'Every action written down']] });
-copy(62.9, 71.4, { kick: 'AI replies', lines: ['Every reply,', '~answered ~fast.'], sub: 'AI drafts the answer from your business profile. The sequence stops by itself.',
+cp('reply', { kick: 'AI replies', lines: ['Every reply,', '~answered ~fast.'], sub: 'AI drafts the answer from your business profile. The sequence stops by itself.',
   bullets: [['inbox', 'Replies caught from your own mailbox'], ['pen-line', 'Drafted in your tone'], ['send', 'Sent on approval, or automatically']] });
-copy(71.5, 79.0, { kick: 'CRM & pipeline', lines: ['Know every lead.', '~Every ~deal.'], sub: 'Stages you define. Value counted from your own records.',
+cp('s4', { kick: 'CRM & pipeline', lines: ['Know every lead.', '~Every ~deal.'], sub: 'Stages you define. Value counted from your own records.',
   bullets: [['users', 'Contacts with their full history'], ['calendar-check', 'Deal tasks with due dates'], ['kanban', 'Weighted pipeline value']] });
-copy(79.1, 86.6, { kick: 'Campaigns', lines: ["Campaigns that don't", 'stop at ~Send.'], sub: 'Multi-step sequences on your own mailbox and number.',
+cp('s5', { kick: 'Campaigns', lines: ["Campaigns that don't", 'stop at ~Send.'], sub: 'Multi-step sequences on your own mailbox and number.',
   bullets: [['mail', 'Email and SMS steps'], ['hand', 'Stops the moment someone replies'], ['clock', 'Sent by the server, on schedule']] });
-copy(86.7, 94.2, { kick: 'Content Studio', lines: ['From idea', 'to ~finished ~asset.'], sub: 'Posts, articles and emails in your colours and your voice.',
-  bullets: [['image', 'Posts sized for every platform'], ['file-text', 'SEO articles from your topics'], ['user-check', 'Reviewed before anything goes out']] });
-copy(94.3, 101.8, { kick: 'Websites & funnels', lines: ['Pages that', '~capture ~leads.'], sub: 'Real templates, in your brand, on your own domain.',
-  bullets: [['layout-template', 'Websites and multi-step funnels'], ['clipboard-list', 'Forms that start the follow-up'], ['globe', 'Published on your domain']] });
-copy(101.9, 109.4, { kick: 'Appointments & support', lines: ['Sales. Support.', '^Connected.'], sub: 'Bookings, tickets and conversations in one timeline.',
+cp('s6', { kick: 'Content Studio', lines: ['From idea', 'to ~finished ~asset.'], sub: 'Posts, articles and emails in your colours and your voice.',
+  bullets: [['image', 'Posts sized for every platform'], ['file-text', 'Articles from your topics'], ['user-check', 'Reviewed before anything goes out']] });
+cp('blog', { kick: 'Blog & SEO', lines: ['Articles that', '~rank ~on ~Google.'], sub: 'A month of posts around your keywords, published to WordPress.',
+  bullets: [['calendar-days', 'A whole month planned at once'], ['list-checks', 'Nine SEO checks on every post'], ['send', 'Published on schedule']] });
+cp('shorts', { kick: 'AI Shorts', lines: ['One long video.', '^A ^week ^of ^shorts.'], sub: 'AI finds the best moments and cuts them to 9:16.',
+  bullets: [['scissors', 'Best moments, found and cut'], ['captions', 'Captions and hashtags written'], ['flame', 'A viral score on every clip']] });
+cp('gallery', { kick: 'Websites & funnels', lines: ['^65 ^ready-built', 'templates.'], sub: '17 websites and 48 funnels, ready to make yours.',
+  bullets: [['layout-template', 'Websites, stores and restaurants'], ['clipboard-list', 'Quote requests, quizzes, webinars'], ['play-circle', 'Video sales letters']] });
+cp('web', { kick: 'Websites & funnels', lines: ['Live on', '~your ~domain.'], sub: 'In your brand, with forms that start the follow-up.',
+  bullets: [['palette', 'Your colours, one click'], ['clipboard-list', 'Forms that start the follow-up'], ['globe', 'Published on your domain']] });
+cp('reviews', { kick: 'Reputation', lines: ['Five stars,', '~on ~repeat.'], sub: 'Review requests by email, and AI replies in your tone.',
+  bullets: [['mail', 'Ask happy customers in one click'], ['star', 'Google, Facebook, Yelp or Trustpilot'], ['sparkles', 'AI drafts every reply']] });
+cp('s7', { kick: 'Appointments & support', lines: ['Sales. Support.', '^Connected.'], sub: 'Bookings, tickets and conversations in one timeline.',
   bullets: [['calendar', 'Booking pages with Google Meet'], ['ticket', 'Tickets with a reference'], ['message-square', 'AI chat on your website']] });
-copy(109.5, 117.0, { kick: 'Live help', lines: ['See their screen.', '~Fix ~it ~together.'], sub: 'Customers share their screen in one click. Nothing to install.',
+cp('live', { kick: 'Live help', lines: ['See their screen.', '~Fix ~it ~together.'], sub: 'Customers share their screen in one click. Nothing to install.',
   bullets: [['monitor', 'Straight from browser to browser'], ['mouse-pointer-click', 'Point, talk and chat'], ['video', 'Switch to Google Meet any time']] });
-copy(117.1, 124.6, { kick: 'Dashboard', lines: ["See what's happening.", "~See ~what's ~next."], sub: 'Every module in one command centre.' });
-copy(124.7, 132.2, { kick: 'For agencies', lines: ['Run it for', '~every ~client.'], sub: 'Each client in their own workspace — under your brand and your address.',
+cp('s8', { kick: 'Dashboard', lines: ["See what's happening.", "~See ~what's ~next."], sub: 'Every module in one command centre.' });
+cp('agency', { kick: 'For agencies', lines: ['Run it for', '~every ~client.'], sub: 'Each client in their own workspace — under your brand and your address.',
   bullets: [['building-2', 'Sub-accounts with their own data'], ['palette', 'Your logo, colours and domain'], ['file-bar-chart', 'Reports you can send your clients']] });
-copy(132.3, 153.4, { kick: 'Always improving', lines: ['Always building', "^what's ^next."], sub: '128 updates shipped in September alone — every one lands in your workspace automatically.',
+cp('resell', { kick: 'Resell it · white label', lines: ['Your price.', '^Your ^clients.'], sub: 'They pay you monthly, on your own Stripe or Creem account.',
+  bullets: [['tag', 'Any price, set per client'], ['palette', 'Your brand, logo and domain'], ['wallet', 'Paid to you — we never hold it']] });
+cp('affiliate', { kick: 'Affiliate program', lines: ['Earn ^40%,', '~for ~life.'], sub: 'Of every payment from every customer you refer — for as long as they keep paying.',
+  bullets: [['link', 'One link to share'], ['bar-chart-3', 'Visits, sign-ups and commissions'], ['badge-dollar-sign', 'Every month they pay, you earn']] });
+cp('dev', { kick: 'Always improving', lines: ['Always building', "^what's ^next."], sub: '128 updates shipped in September alone — every one lands in your workspace automatically.',
   bullets: [['sparkles', 'New AI tools and modules, all the time'], ['refresh-cw', 'No installs, no upgrades to run'], ['rocket', 'The latest, the day it ships']] });
-copy(160.5, 165.7, { kick: 'One workspace', lines: ['One', '~intelligent', '~workspace.'] });
+cp('s10', { kick: 'One workspace', lines: ['One', '~intelligent', '~workspace.'] });
 
 /* ── Blueprint ──────────────────────────────────────────────────────── */
 const PLAN_Q = [['Who are your customers?', 'Homeowners around Austin'], ['How should we reach them?', 'Email, SMS and Instagram'], ['Where do people book?', 'Your booking page']];
@@ -1262,6 +1282,524 @@ sAgency.render = (t) => {
   q(r, '#brandLogo').style.boxShadow = `0 0 0 ${(flash * 5).toFixed(1)}px rgba(91,70,229,.15)`;
 };
 
+/* ════════════════════════════════════════════════════════════════════════
+   Drawn for v2. Every figure on these screens is an example and says so:
+   the film shows what the product does, never what somebody will earn.
+   ════════════════════════════════════════════════════════════════════════ */
+const usd = (n, dp = 2) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+const note = (txt, top = 690, right = 24) => `<div class="abs" style="left:24px;right:${right}px;top:${top}px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;color:#94a3b8">${ico('info', 14, '#94a3b8')}${txt}</div>`;
+const press = (node, L, a) => { const p = lin(L, a, a + 0.2); node.style.transform = `scale(${(1 - Math.sin(p * Math.PI) * 0.07).toFixed(3)})`; };
+
+/* ── Revenue on autopilot: a shop project, paid into the customer's own Stripe ── */
+const BM = T.money[0];
+const LOOP = [
+  ['camera', 'Product post published', 'Instagram · 9:00 · by Autopilot'],
+  ['mouse-pointer-click', 'Visitor opens your shop', 'spotless-shop.com/shop'],
+  ['credit-card', 'Order paid', 'Kitchen Refresh Kit · $49.00'],
+  ['heart-handshake', 'Thank-you email sent', 'The moment they paid'],
+];
+const PAYS = [[3.2, 49, 'Kitchen Refresh Kit'], [5.4, 129, 'Deep Clean Package'], [7.9, 19, 'Stain Remover Set'], [10.4, 79, 'Window Care Bundle'], [12.9, 49, 'Kitchen Refresh Kit'], [15.0, 129, 'Deep Clean Package'], [17.2, 79, 'Window Care Bundle']];
+const BAL0 = 1240;
+const ORD = [[3.2, 'maria@lopezhome.com', 'Kitchen Refresh Kit', 49], [5.4, 'dan.w@mailbox.org', 'Deep Clean Package', 129], [7.9, 'priya.s@gmail.com', 'Stain Remover Set', 19], [10.4, 'tom@beckerfamily.net', 'Window Care Bundle', 79]];
+const sMoney = winScene(...T.money, 'wMoney', '<b>Online shop</b><span>›</span>Spotless Shop<span>›</span>Autopilot', `
+  <div class="abs" style="left:24px;top:20px;width:540px">
+    <div style="display:flex;align-items:center;gap:10px"><span id="mBot">${BOT(40)}</span><div><div style="font-size:21px;font-weight:820;color:#17191c">Autopilot · Spotless Shop</div><div class="muted" style="font-size:13.5px;font-weight:650">Runs every 5 minutes · <span id="mNext">next run in 4:59</span></div></div>
+      <span class="pill" style="margin-left:auto;background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0"><span class="dot" style="background:#16a34a"></span>Running</span></div>
+    <div class="card" style="margin-top:16px;padding:16px 18px;position:relative">
+      <div class="abs" style="left:39px;top:40px;bottom:40px;width:3px;border-radius:2px;background:#eef0f5"><div id="mLine" style="width:100%;height:0;background:linear-gradient(#5b46e5,#16a34a);border-radius:2px"></div></div>
+      ${LOOP.map((l, i) => `<div class="lp" style="display:flex;align-items:center;gap:14px;padding:11px 0;position:relative">
+        <span class="lpi" style="width:44px;height:44px;border-radius:14px;background:#f4f5ff;color:#5b46e5;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;z-index:1;border:2px solid #fff">${ico(l[0], 21)}</span>
+        <div style="flex:1"><div style="font-size:16.5px;font-weight:780;color:#17191c">${l[1]}</div><div class="muted" style="font-size:13px;font-weight:620;margin-top:2px">${l[2]}</div></div>
+        <span class="lpk" style="color:#16a34a;opacity:0">${ico('check-circle-2', 20)}</span></div>`).join('')}
+    </div>
+    <div class="card" id="mChase" style="margin-top:14px;padding:13px 16px;display:flex;align-items:center;gap:12px;opacity:0">
+      <span style="width:38px;height:38px;border-radius:12px;background:#fff7ed;color:#c2410c;display:flex;align-items:center;justify-content:center">${ico('link', 18)}</span>
+      <div style="flex:1"><div style="font-size:15px;font-weight:760">Order #1043 waited a day</div><div class="muted" style="font-size:12.5px;font-weight:620">Unpaid · Deep Clean Package</div></div>
+      <span class="pill" id="mChaseP" style="background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff">${ico('send', 13)}Fresh payment link sent</span></div>
+    <div class="card" id="mAway" style="margin-top:14px;padding:13px 16px;display:flex;align-items:center;gap:12px;background:#0f172a;border-color:#0f172a;opacity:0">
+      <span style="width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.08);color:#c8f24d;display:flex;align-items:center;justify-content:center">${ico('moon', 18)}</span>
+      <div style="flex:1"><div style="font-size:15px;font-weight:760;color:#fff">You're offline</div><div style="font-size:12.5px;font-weight:620;color:#94a3b8">Laptop closed · Autopilot is still running</div></div></div>
+    <div class="card" style="margin-top:14px;padding:12px 16px">
+      <div class="kicker">Activity today · by Autopilot</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">${[['camera', 'posts published', 1.2, 3], ['heart-handshake', 'buyers thanked', 3.4, 7], ['link', 'links re-sent', 8.6, 1]].map(a => `<div class="act" data-a="${a[2]}" data-n="${a[3]}" style="display:flex;align-items:center;gap:8px"><span style="color:#5b46e5">${ico(a[0], 17)}</span><div><b class="actn" style="font-size:20px;font-variant-numeric:tabular-nums">0</b><div class="muted" style="font-size:11.5px;font-weight:650">${a[1]}</div></div></div>`).join('')}</div></div>
+  </div>
+  <div class="card abs" style="left:588px;top:20px;width:348px;padding:16px 16px 6px">
+    <div style="display:flex;align-items:center"><div style="font-size:18px;font-weight:820">Orders</div><span class="muted" style="margin-left:auto;font-size:12.5px;font-weight:700">Online shop</span></div>
+    ${ORD.map(o => `<div class="od" style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #f0f2f7;margin-top:8px;opacity:0">
+      <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o[1]}</div><div class="muted" style="font-size:12px;font-weight:650">1 × ${o[2]}</div></div>
+      <b style="font-size:14px;font-variant-numeric:tabular-nums">${usd(o[3])}</b><span class="pill ost" style="font-size:11.5px;min-width:58px;justify-content:center">pending</span></div>`).join('')}
+  </div>
+  ${note('Example figures. Payments go to your own Stripe or Creem account — Protected Central never holds them.', 676, 400)}`);
+/* The money is shown where it really lands: the customer's own Stripe app on
+   their phone, outside the Protected Central window — this app has no balance
+   screen and does not pretend to. */
+sMoney.root.appendChild(el(`<div class="abs" id="mPhone" style="left:1452px;top:548px;width:330px;height:520px;border-radius:44px;background:#0b0f19;padding:12px;box-shadow:0 40px 80px -20px rgba(0,0,0,.6),0 0 0 2px #262b38">
+  <div style="position:absolute;inset:12px;border-radius:34px;overflow:hidden;background:linear-gradient(180deg,#1e1b4b,#0f172a 60%)">
+    <div style="display:flex;justify-content:space-between;padding:14px 22px 0;font-size:13px;font-weight:700;color:#e2e8f0"><span>9:41</span><span style="display:flex;gap:5px;align-items:center">${ico('wifi', 14)}${ico('battery-full', 16)}</span></div>
+    <div style="padding:22px 20px 0;color:#fff"><div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#a5b4fc">YOUR STRIPE ACCOUNT</div>
+      <div style="font-size:13px;font-weight:650;color:#94a3b8;margin-top:10px">Balance today</div>
+      <div id="mBal" style="font-size:40px;font-weight:860;letter-spacing:-0.04em;font-variant-numeric:tabular-nums;transform-origin:0 50%">${usd(BAL0)}</div>
+      <div id="mGain" style="font-size:13px;font-weight:780;color:#86efac;height:18px"></div></div>
+    <div id="mFeed" style="position:absolute;left:12px;right:12px;top:186px;bottom:16px;overflow:hidden">
+      ${PAYS.map(p => `<div class="py" style="position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.1);backdrop-filter:blur(6px);opacity:0">
+        <span style="width:30px;height:30px;border-radius:8px;background:#635bff;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;font-size:16px">S</span>
+        <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#fff">Payment received · ${usd(p[1])}</div><div style="font-size:11.5px;font-weight:600;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p[2]} · now</div></div></div>`).join('')}
+    </div>
+  </div></div>`));
+LOOP.forEach((_, i) => sfx(BM + 0.9 + i * 0.5, 'tick', 0.2));
+PAYS.forEach(p => sfx(BM + p[0], 'coin', 0.75));
+sfx(BM + 8.6, 'notify', 0.35); sfx(BM + 14.2, 'whoosh_soft', 0.4);
+sMoney.render = (t) => {
+  const r = sMoney.root, L = t - BM;
+  /* The loop lights step by step, then keeps cycling — one pass per payment. */
+  const lps = r.querySelectorAll('.lp');
+  lps.forEach((n, i) => appear(n, L, 0.6 + i * 0.5, 0.4, 12, 0.98));
+  const cyc = L < 2.6 ? -1 : Math.floor(((L - 2.6) / 0.6)) % 4;
+  lps.forEach((n, i) => {
+    const on = L >= 0.9 + i * 0.5;
+    q(n, '.lpk').style.opacity = String(on ? 1 : 0);
+    const ic = q(n, '.lpi'); const hot = cyc === i;
+    ic.style.background = hot ? '#5b46e5' : '#f4f5ff'; ic.style.color = hot ? '#fff' : '#5b46e5';
+    ic.style.boxShadow = hot ? '0 0 0 6px rgba(91,70,229,.15)' : 'none';
+  });
+  q(r, '#mLine').style.height = (seg(L, 0.9, 2.6, eio) * 100).toFixed(1) + '%';
+  const nxt = Math.max(0, 299 - Math.floor(L * 7) % 300);
+  setText(q(r, '#mNext'), `next run in ${Math.floor(nxt / 60)}:${String(nxt % 60).padStart(2, '0')}`);
+  appear(q(r, '#mChase'), L, 8.3, 0.45, 14, 0.98);
+  q(r, '#mChaseP').style.opacity = String(seg(L, 8.6, 8.9));
+  appear(q(r, '#mAway'), L, 14.0, 0.5, 14, 0.98);
+  r.querySelectorAll('.act').forEach(a => {
+    const st = +a.dataset.a, n = +a.dataset.n;
+    /* Buyers thanked follows the payments; the others count up once. */
+    const v = a.dataset.n === '7' ? PAYS.filter(p => L >= p[0] + 0.6).length : Math.round(n * seg(L, st, st + 1.2));
+    setText(q(a, '.actn'), String(v));
+  });
+  r.querySelectorAll('.od').forEach((n, i) => {
+    appear(n, L, 1.2 + i * 0.25, 0.4, 10, 0.98);
+    const paid = L >= ORD[i][0]; const st = q(n, '.ost');
+    setText(st, paid ? 'paid' : 'pending');
+    st.style.background = paid ? '#ecfdf5' : '#fff7ed'; st.style.color = paid ? '#16a34a' : '#c2410c'; st.style.border = `1px solid ${paid ? '#bbf7d0' : '#fed7aa'}`;
+  });
+  const ph = q(r, '#mPhone'); const pp = seg(L, 2.4, 3.1, eo5);
+  ph.style.opacity = String(pp); ph.style.transform = `translateY(${((1 - pp) * 80).toFixed(1)}px) rotate(${(mix(6, -3, pp) + Math.sin(t * 0.9) * 0.6).toFixed(2)}deg)`;
+  /* Payments arrive at the top and push the older ones down. */
+  let bal = BAL0, last = null;
+  PAYS.forEach(p => { if (L >= p[0]) { bal += p[1]; last = p; } });
+  const tick = last ? seg(L, last[0], last[0] + 0.5, eo) : 1;
+  const shown = last ? bal - last[1] * (1 - tick) : bal;
+  setText(q(r, '#mBal'), usd(shown));
+  q(r, '#mBal').style.transform = `scale(${(1 + (last ? Math.sin(Math.PI * seg(L, last[0], last[0] + 0.35)) * 0.05 : 0)).toFixed(3)})`;
+  q(r, '#mBal').style.transformOrigin = '0 50%';
+  setText(q(r, '#mGain'), bal > BAL0 ? `+${usd(bal - BAL0)} since you logged off` : '');
+  const arrived = PAYS.filter(p => L >= p[0]).length;
+  r.querySelectorAll('.py').forEach((n, i) => {
+    const p = PAYS[i]; const k = seg(L, p[0], p[0] + 0.45, back);
+    const slot = arrived - 1 - i; // 0 = newest
+    const y = slot * 62;
+    n.style.opacity = String(L >= p[0] ? clamp(k) * (slot > 5 ? 0 : 1) : 0);
+    const slide = PAYS.filter(x => L >= x[0] && x[0] > p[0]).reduce((s, x) => s + (1 - seg(L, x[0], x[0] + 0.4, eo)), 0);
+    n.style.transform = `translateY(${(y - slide * 62).toFixed(1)}px) scale(${mix(0.9, 1, clamp(k)).toFixed(3)})`;
+  });
+  animBot(r, t, true, 11);
+};
+
+/* ── Many projects, many streams ─────────────────────────────────────── */
+const BS = T.streams[0];
+const PROJ = [
+  ['camera', 'Social Media Growth', '“Post every weekday from my website”', 'mic', 'Set up by voice', '#db2777', 0.9],
+  ['shopping-bag', 'E-commerce Store', '“Sell my cleaning kits online”', 'keyboard', 'Set up by text', '#16a34a', 4.6],
+  ['target', 'Lead Generation', '“Find landlords in Austin and book calls”', 'mic', 'Set up by voice', '#2563eb', 5.9],
+  ['newspaper', 'Blog & SEO', '“An article a week that ranks”', 'keyboard', 'Set up by text', '#c2410c', 7.1],
+];
+/* The illustration under the cards: each project's sales flow into the one
+   account they are paid into. It is drawn as a diagram, not as a screen —
+   the app has no revenue-by-project chart, and the film must not invent one. */
+const FY = i => 84 + i * 64, SINK_Y = 190;
+const flowD = i => `M250,${FY(i)} C430,${FY(i)} 470,${SINK_Y} 640,${SINK_Y}`;
+const bez = (i, u) => { const y0 = FY(i), m = 1 - u; return [m * m * m * 250 + 3 * m * m * u * 430 + 3 * m * u * u * 470 + u * u * u * 640, m * m * m * y0 + 3 * m * m * u * y0 + 3 * m * u * u * SINK_Y + u * u * u * SINK_Y]; };
+/* [project, leaves at, amount] — one coin per example sale. */
+const COINS = [];
+PROJ.forEach((p, i) => { for (let k = 0; k < 7; k++) COINS.push([i, p[6] + 1.0 + k * (1.35 + i * 0.12), [29, 49, 89, 19][i] + k * 10]); });
+const sStreams = winScene(...T.streams, 'wStreams', '<b>AI Autopilot</b><span>›</span>Your projects', `
+  <div class="abs" style="left:24px;top:18px;right:24px;display:flex;align-items:center"><div class="h2" style="font-size:26px">Your projects</div>
+    <span class="pill" id="sCount" style="margin-left:12px;background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff">1 running</span>
+    <span class="btn" style="margin-left:auto;padding:9px 14px;background:#17191c;color:#fff;font-size:14px">${ico('plus', 15)}New project</span></div>
+  <div class="abs" style="left:24px;right:24px;top:72px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    ${PROJ.map(p => `<div class="pj card" style="padding:14px 16px;opacity:0;position:relative;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px"><span style="width:40px;height:40px;border-radius:12px;background:${p[5]}1a;color:${p[5]};display:flex;align-items:center;justify-content:center">${ico(p[0], 20)}</span>
+        <div style="flex:1;min-width:0"><div style="font-size:16.5px;font-weight:800;color:#17191c">${p[1]}</div><div class="muted" style="font-size:12.5px;font-weight:620;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p[2]}</div></div>
+        <span class="pill" style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;font-size:12px"><span class="dot" style="background:#16a34a;width:7px;height:7px"></span>Running</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span class="once pill" style="background:#f6f7fb;color:#475569;border:1px solid #e6e9f0;font-size:12px">${ico(p[3], 13)}${p[4]} · once</span></div>
+    </div>`).join('')}
+  </div>
+  <div class="abs" style="left:24px;right:24px;top:336px;height:336px;border-radius:20px;background:#0f172a;overflow:hidden">
+    <div class="abs" style="left:20px;top:16px" ><div class="kicker" style="color:#94a3b8">How it adds up · illustration</div></div>
+    <svg class="abs" style="left:0;top:0" width="912" height="336" viewBox="0 0 912 336">
+      ${PROJ.map((p, i) => `<path class="fl" d="${flowD(i)}" fill="none" stroke="${p[5]}" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 10" opacity="0"/>`).join('')}
+    </svg>
+    ${PROJ.map((p, i) => `<div class="fn abs" style="left:20px;top:${FY(i) - 22}px;width:230px;height:44px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;gap:8px;padding:0 12px;color:#fff;font-size:14px;font-weight:750;opacity:0"><span style="color:${p[5]}">${ico(p[0], 17)}</span>${p[1]}</div>`).join('')}
+    <div class="abs" id="fSink" style="left:640px;top:${SINK_Y - 70}px;width:250px;height:140px;border-radius:18px;background:linear-gradient(135deg,#312e81,#4338ca);border:1px solid rgba(255,255,255,.18);padding:16px 18px;color:#fff;opacity:0">
+      <div style="font-size:12px;font-weight:800;letter-spacing:.08em;color:#c7d2fe">YOUR STRIPE ACCOUNT</div>
+      <div id="sTot" style="font-size:36px;font-weight:860;letter-spacing:-0.04em;margin-top:8px;font-variant-numeric:tabular-nums">$0</div>
+      <div style="font-size:12.5px;font-weight:650;color:#c7d2fe">this month · example</div></div>
+    ${COINS.map(() => `<span class="coin abs" style="width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fef08a,#eab308);box-shadow:0 0 10px rgba(250,204,21,.7);opacity:0"></span>`).join('')}
+  </div>
+  ${note('Illustration with example figures — what each project brings in depends on your offer, audience and market.')}`);
+PROJ.forEach(p => sfx(BS + p[6], 'pop', 0.4)); sfx(BS + 9.6, 'shimmer', 0.6);
+COINS.forEach(c => { if (c[1] + 1.4 < 18.6) sfx(BS + c[1] + 1.4, 'coin', 0.22); });
+sStreams.render = (t) => {
+  const r = sStreams.root, L = t - BS;
+  const n = PROJ.filter(p => L >= p[6]).length;
+  setText(q(r, '#sCount'), `${Math.max(1, n)} running`);
+  r.querySelectorAll('.pj').forEach((c, i) => {
+    appear(c, L, PROJ[i][6], 0.5, 22, 0.92);
+    const glow = seg(L, 9.6 + i * 0.25, 10.0 + i * 0.25) * (1 - seg(L, 13.5, 14.5));
+    q(c, '.once').style.background = glow > 0.5 ? '#f7fee7' : '#f6f7fb';
+    q(c, '.once').style.borderColor = glow > 0.5 ? '#bef264' : '#e6e9f0';
+    q(c, '.once').style.color = glow > 0.5 ? '#3f6212' : '#475569';
+  });
+  let tot = 0;
+  r.querySelectorAll('.fn').forEach((n, i) => appear(n, L, PROJ[i][6] + 0.2, 0.45, 0, 0.9));
+  r.querySelectorAll('.fl').forEach((pth, i) => {
+    pth.setAttribute('opacity', String(seg(L, PROJ[i][6] + 0.3, PROJ[i][6] + 0.8) * 0.75));
+    pth.setAttribute('stroke-dashoffset', String((-L * 40).toFixed(1)));
+  });
+  const sink = q(r, '#fSink'); appear(sink, L, 1.0, 0.5, 0, 0.9);
+  r.querySelectorAll('.coin').forEach((c, j) => {
+    const [i, t0, amt] = COINS[j]; const u = lin(L, t0, t0 + 1.4);
+    c.style.opacity = String(u > 0 && u < 1 ? 1 : 0);
+    if (u > 0 && u < 1) { const [x, y] = bez(i, eio(u)); c.style.left = x + 'px'; c.style.top = y + 'px'; }
+    if (u >= 1) tot += amt * 10;
+  });
+  const lastIn = COINS.filter(c => L >= c[1] + 1.4).map(c => c[1] + 1.4).pop() ?? -9;
+  sink.style.boxShadow = `0 0 ${(30 * (1 - seg(L, lastIn, lastIn + 0.5))).toFixed(1)}px rgba(250,204,21,.5)`;
+  setText(q(r, '#sTot'), usd(tot, 0));
+};
+
+/* ── Blog & SEO: a month planned, nine checks, published to WordPress ── */
+const BB = T.blog[0];
+const CHECKS = ['Long enough to be worth indexing', 'The keyword is in the title', 'The keyword appears early', 'The keyword is in a heading', 'Not stuffed', 'Links to a page that earns', 'Title fits in a search result', 'Description fits and sells', 'Broken into sections'];
+const WEEKS = [['Pillar', '5 signs your kitchen needs a refresh'], ['Supporting', 'Quartz or granite? An honest guide'], ['Supporting', 'What a remodel costs in Austin'], ['Supporting', 'Small kitchens, big ideas']];
+const sBlog = winScene(...T.blog, 'wBlog', '<b>Blog &amp; SEO</b><span>›</span>October plan', `
+  <div class="abs" style="left:24px;top:20px;width:540px">
+    <div class="kicker">Month plan · 1 post a week</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px">${WEEKS.map((w, i) => `<div class="wk card" style="padding:10px;opacity:0;border-radius:14px">
+      <div style="font-size:11.5px;font-weight:800;color:${i ? '#64748b' : '#5b46e5'}">WEEK ${i + 1} · ${w[0].toUpperCase()}</div><div style="font-size:13px;font-weight:700;color:#17191c;margin-top:4px;line-height:1.3">${w[1]}</div></div>`).join('')}</div>
+    <div class="card" id="bArt" style="margin-top:16px;padding:18px 20px;opacity:0">
+      <span class="pill" style="background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff;font-size:12.5px">${ico('key-round', 13)}Keyword: kitchen remodel austin</span>
+      <div style="font-size:26px;font-weight:840;letter-spacing:-0.025em;color:#17191c;margin-top:12px;line-height:1.15">5 Signs Your Kitchen Needs a Remodel — An Austin Guide</div>
+      <div class="muted" style="font-size:13px;font-weight:650;margin-top:8px">1,240 words · 6 min read · 1.1% density · 5 headings · 2 internal links</div>
+      <div style="margin-top:14px;display:grid;gap:8px">${[92, 100, 84, 'h', 96, 100, 70, 'h', 94, 88, 62].map(w => w === 'h' ? `<div style="height:16px;border-radius:6px;background:#e3e7f3;width:58%;margin-top:6px"></div>` : `<div style="height:10px;border-radius:6px;background:#f1f3f8;width:${w}%"></div>`).join('')}</div>
+      <div style="display:flex;gap:8px;margin-top:14px"><span class="pill" style="background:#f6f7fb;color:#475569;border:1px solid #e6e9f0">${ico('sparkles', 13)}Written from your portfolio</span></div>
+    </div>
+    <div class="abs" style="left:0;top:600px;display:flex;align-items:center;gap:12px">
+      <div class="btn" id="bPub" style="padding:13px 20px;background:#17191c;color:#fff;font-size:17px">${ico('send', 17)}Schedule the month</div>
+      <span id="bLive" style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;color:#16a34a;opacity:0">${ico('check-circle-2', 18)}4 posts scheduled · WordPress</span></div>
+  </div>
+  <div class="card abs" style="left:588px;top:20px;width:348px;padding:16px 18px">
+    <div style="display:flex;align-items:center"><div class="kicker">SEO checks</div><span class="pill" id="bAll" style="margin-left:auto;background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;font-size:12px;opacity:0">All checks pass</span></div>
+    ${CHECKS.map(c => `<div class="ck" style="display:flex;align-items:center;gap:9px;margin-top:9px;font-size:13.5px;font-weight:680;color:#334155">
+      <span class="cki" style="width:20px;height:20px;border-radius:50%;border:2px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff"></span>${c}</div>`).join('')}
+  </div>
+  <div class="card abs" id="bSerp" style="left:588px;top:404px;width:348px;padding:14px 18px;opacity:0">
+    <div class="kicker">In a search result</div>
+    <div style="font-size:12.5px;font-weight:650;color:#475569;margin-top:10px">acme-remodel.com › blog › kitchen-remodel-signs</div>
+    <div style="font-size:17px;font-weight:700;color:#1a0dab;margin-top:3px;line-height:1.25">5 Signs Your Kitchen Needs a Remodel — An Austin Guide</div>
+    <div style="font-size:13px;font-weight:550;color:#4d5156;margin-top:4px;line-height:1.45">Peeling cabinets, too little storage, a layout that fights you? Here's how Austin homeowners know it's time — and what it costs.</div>
+  </div>`);
+WEEKS.forEach((_, i) => sfx(BB + 0.5 + i * 0.3, 'tick', 0.2)); sfx(BB + 2.0, 'whoosh_soft', 0.4);
+CHECKS.forEach((_, i) => sfx(BB + 4.0 + i * 0.42, 'tick', 0.22)); sfx(BB + 7.9, 'success', 0.5);
+sfx(BB + 11.7, 'click', 0.9); sfx(BB + 11.9, 'notify', 0.45);
+sBlog.render = (t) => {
+  const r = sBlog.root, L = t - BB;
+  r.querySelectorAll('.wk').forEach((c, i) => appear(c, L, 0.5 + i * 0.3, 0.4, 14, 0.96));
+  appear(q(r, '#bArt'), L, 2.0, 0.5, 18, 0.98);
+  r.querySelectorAll('.ck').forEach((c, i) => {
+    const on = L >= 4.0 + i * 0.42; const ic = q(c, '.cki');
+    ic.style.background = on ? '#16a34a' : 'transparent'; ic.style.borderColor = on ? '#16a34a' : '#e2e8f0';
+    ic.innerHTML = on ? ICONS['check'] : '';
+    c.style.opacity = String(0.45 + 0.55 * seg(L, 3.6 + i * 0.42, 4.0 + i * 0.42));
+  });
+  q(r, '#bAll').style.opacity = String(seg(L, 7.9, 8.2));
+  appear(q(r, '#bSerp'), L, 8.6, 0.5, 16, 0.98);
+  press(q(r, '#bPub'), L, 11.6);
+  q(r, '#bLive').style.opacity = String(seg(L, 11.9, 12.2));
+};
+
+/* ── AI Shorts: one long video in, vertical clips out ────────────────── */
+const BV = T.shorts[0];
+const STEPS_V = [[0.8, 'Uploading video to Gemini AI...'], [2.4, 'Finding viral moments...'], [4.6, 'Generating captions & scoring virality...'], [6.6, 'Done! Your clips are ready.']];
+const CLIPS = [
+  [94, 'The #1 mistake new owners make', ['THE', 'BIGGEST', 'MISTAKE?'], ['#1d4ed8', '#7c3aed'], 0.08],
+  [91, 'Why cheap quotes cost more', ['CHEAP', 'COSTS', 'MORE'], ['#be123c', '#f97316'], 0.27],
+  [88, 'Ask any contractor these 3 things', ['ASK', 'THESE', '3 THINGS'], ['#0f766e', '#22c55e'], 0.45],
+  [86, 'What 500 kitchens taught us', ['500', 'KITCHENS', 'LATER'], ['#334155', '#0ea5e9'], 0.63],
+  [79, 'The 10-minute weekly habit', ['10', 'MINUTES', 'A WEEK'], ['#9333ea', '#db2777'], 0.82],
+];
+const WAVE = Array.from({ length: 120 }, (_, i) => 0.25 + 0.75 * Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11 + 1) + 0.35 * Math.sin(i * 1.7)));
+const sShorts = winScene(...T.shorts, 'wShorts', '<b>AI Shorts</b><span>›</span>Marketing Podcast Ep. 42', `
+  <div class="card abs" style="left:24px;right:24px;top:20px;padding:16px 18px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="width:44px;height:44px;border-radius:12px;background:#17191c;color:#fff;display:flex;align-items:center;justify-content:center">${ico('film', 21)}</span>
+      <div><div style="font-size:17px;font-weight:800">Marketing Podcast Ep. 42.mp4</div><div class="muted" style="font-size:13px;font-weight:650">48:12 · uploaded from your computer</div></div>
+      <div style="margin-left:auto;display:flex;gap:6px">${['9:16 Portrait', 'Max 60s', 'All moments'].map(x => `<span class="pill" style="background:#f6f7fb;color:#475569;border:1px solid #e6e9f0;font-size:12px">${x}</span>`).join('')}</div></div>
+    <div style="position:relative;margin-top:14px;height:54px;border-radius:12px;background:#f6f7fb;overflow:hidden">
+      <div style="position:absolute;inset:6px 10px;display:flex;align-items:center;gap:2px">${WAVE.map(h => `<i style="flex:1;height:${(h * 100).toFixed(0)}%;border-radius:2px;background:#cbd5e1"></i>`).join('')}</div>
+      ${CLIPS.map(c => `<div class="hl abs" style="top:4px;bottom:4px;left:${(c[4] * 100).toFixed(1)}%;width:6%;border-radius:8px;background:rgba(249,115,22,.22);border:2px solid #f97316;opacity:0"></div>`).join('')}
+      <div id="vScan" class="abs" style="top:0;bottom:0;width:3px;background:#5b46e5;box-shadow:0 0 12px #5b46e5"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;font-weight:720;color:#5b46e5"><span id="vBot">${BOT(24)}</span><span id="vStep"></span></div>
+  </div>
+  <div class="abs" style="left:24px;right:24px;top:228px;display:grid;grid-template-columns:repeat(5,1fr);gap:16px">
+    ${CLIPS.map(c => `<div class="cv" style="opacity:0">
+      <div style="position:relative;height:300px;border-radius:16px;overflow:hidden;background:linear-gradient(160deg,${c[3][0]},${c[3][1]})">
+        <div class="abs" style="left:50%;top:34%;width:96px;height:96px;margin-left:-48px;border-radius:50%;background:rgba(255,255,255,.18)"></div>
+        <div class="abs" style="left:50%;top:58%;width:150px;height:120px;margin-left:-75px;border-radius:75px 75px 0 0;background:rgba(255,255,255,.14)"></div>
+        <span class="pill abs" style="left:8px;top:8px;background:${c[0] >= 85 ? '#16a34a' : '#d97706'};color:#fff;font-size:12px;padding:4px 9px">${ico('flame', 12)}${c[0]}</span>
+        <div class="cap abs" style="left:8px;right:8px;bottom:26px;text-align:center;font-size:21px;font-weight:900;letter-spacing:-0.01em;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.45)">${c[2].map(w => `<span class="cw">${w}</span>`).join(' ')}</div>
+      </div>
+      <div style="font-size:13.5px;font-weight:760;color:#17191c;margin-top:8px;line-height:1.3">${c[1]}</div>
+      <div class="muted" style="font-size:12px;font-weight:650;margin-top:2px">#remodel #homeowner #diy</div></div>`).join('')}
+  </div>
+  <div class="abs" style="left:24px;right:24px;top:640px;display:flex;align-items:center;gap:10px">
+    <span class="pill" style="background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff">${ico('captions', 14)}Auto-captions · Bold Yellow</span>
+    <span class="pill" style="background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff">${ico('hash', 14)}Titles & hashtags written</span>
+    <span class="btn" id="vPub" style="margin-left:auto;padding:10px 16px;background:#17191c;color:#fff;font-size:14.5px">${ico('send', 15)}Publish to social</span></div>`);
+sfx(BV + 0.8, 'whoosh_soft', 0.4); sfx(BV + 2.4, 'ai_on', 0.5);
+CLIPS.forEach((c, i) => sfx(BV + 2.8 + i * 0.35, 'tick', 0.22));
+CLIPS.forEach((c, i) => sfx(BV + 6.8 + i * 0.3, 'pop', 0.35)); sfx(BV + 6.6, 'success', 0.45);
+sShorts.render = (t) => {
+  const r = sShorts.root, L = t - BV;
+  const st = STEPS_V.filter(s => L >= s[0]).pop();
+  setText(q(r, '#vStep'), st ? st[1] : '');
+  q(r, '#vScan').style.left = (seg(L, 2.4, 6.4, x => x) * 100).toFixed(2) + '%';
+  q(r, '#vScan').style.opacity = String(seg(L, 2.3, 2.5) * (1 - seg(L, 6.3, 6.6)));
+  r.querySelectorAll('.hl').forEach((h, i) => { h.style.opacity = String(seg(L, 2.8 + i * 0.35, 3.1 + i * 0.35)); });
+  r.querySelectorAll('.cv').forEach((c, i) => {
+    appear(c, L, 6.8 + i * 0.3, 0.5, 26, 0.9);
+    /* Karaoke captions: the word being said turns yellow. */
+    c.querySelectorAll('.cw').forEach((w, j) => {
+      const k = Math.floor(((L - 7.5 - i * 0.2) / 0.45)) % 4;
+      w.style.color = L > 7.5 && k === j ? '#facc15' : '#fff';
+    });
+  });
+  q(r, '#vPub').style.boxShadow = L > 12.5 ? '0 0 0 5px rgba(91,70,229,.18)' : 'none';
+  animBot(r, t, L > 2.3 && L < 6.6, 13);
+};
+
+/* ── Website and funnel gallery: the real template names ─────────────── */
+const BG = T.gallery[0];
+const TPL = [
+  ['Business Website', 'Full Websites', ['#2563eb', '#0ea5e9'], 5.0],
+  ['Online Store', 'Full Websites', ['#16a34a', '#84cc16'], 5.9],
+  ['Restaurant / Cafe', 'Full Websites', ['#b45309', '#f59e0b'], 6.6],
+  ['Fitness Studio', 'Full Websites', ['#be123c', '#fb7185'], 99],
+  ['Free Quote Request', 'Lead Capture', ['#0f766e', '#2dd4bf'], 7.5],
+  ['Quiz Funnel', 'Lead Capture', ['#7c3aed', '#c084fc'], 8.3],
+  ['Webinar Registration', 'Event Pages', ['#1e293b', '#6366f1'], 9.2],
+  ['Video Sales Letter', 'Sales Pages', ['#9f1239', '#e11d48'], 10.3],
+];
+const thumb = (c, i) => `<div style="position:absolute;inset:0;background:#fff">
+  <div style="height:${i % 3 === 0 ? 74 : 62}px;background:linear-gradient(135deg,${c[0]},${c[1]});padding:10px 12px">
+    <div style="height:6px;width:40%;border-radius:3px;background:rgba(255,255,255,.7)"></div>
+    <div style="height:9px;width:${70 - (i % 3) * 10}%;border-radius:4px;background:#fff;margin-top:12px"></div>
+    <div style="height:9px;width:${50 - (i % 2) * 10}%;border-radius:4px;background:rgba(255,255,255,.85);margin-top:5px"></div></div>
+  <div style="padding:9px 12px;display:grid;grid-template-columns:repeat(${i % 2 ? 2 : 3},1fr);gap:6px">${Array.from({ length: i % 2 ? 2 : 3 }, () => `<div style="height:34px;border-radius:7px;background:#f1f3f8"></div>`).join('')}</div>
+  <div style="margin:0 12px;height:7px;border-radius:4px;background:#eef0f5;width:64%"></div></div>`;
+const sGallery = winScene(...T.gallery, 'wGallery', '<b>Websites</b><span>›</span>Templates', `
+  <div class="abs" style="left:24px;top:18px;right:24px;display:flex;align-items:flex-end"><div><div class="h2">Start from a template</div><div class="muted" style="font-size:15px;margin-top:4px;font-weight:550">17 websites and 48 funnels, built in your name and colours.</div></div>
+    <span class="pill" style="margin-left:auto;background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff;font-size:14px">${ico('layout-template', 15)}<span id="gN">0</span> templates</span></div>
+  <div class="abs" style="left:24px;right:24px;top:100px;display:flex;gap:8px">${['All', 'Lead Capture', 'Sales Pages', 'Landing Pages', 'Event Pages', 'Full Websites', 'Seasonal'].map((x, i) => `<span class="pill" style="background:${i ? '#fff' : '#17191c'};color:${i ? '#475569' : '#fff'};border:1px solid ${i ? '#e6e9f0' : '#17191c'}">${x}</span>`).join('')}</div>
+  <div class="abs" style="left:24px;right:24px;top:150px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+    ${TPL.map((x, i) => `<div class="gt card" style="padding:8px;opacity:0;border-radius:16px">
+      <div style="position:relative;height:178px;border-radius:11px;overflow:hidden;border:1px solid #eef0f5">${thumb(x[2], i)}</div>
+      <div style="padding:8px 4px 2px"><div style="font-size:14.5px;font-weight:780;color:#17191c">${x[0]}</div><div class="muted" style="font-size:12px;font-weight:650;margin-top:1px">${x[1]}</div></div></div>`).join('')}
+  </div>
+  <div class="abs" id="gUse" style="left:24px;right:24px;top:660px;display:flex;align-items:center;gap:10px;opacity:0">
+    <span style="font-size:15px;font-weight:750;color:#334155">Free Quote Request</span><span class="muted" style="font-size:14px;font-weight:600">· 3 pages · form starts “New lead, answered fast”</span>
+    <span class="btn" style="margin-left:auto;padding:10px 16px;background:#5b46e5;color:#fff;font-size:14.5px">Use this template ${ico('arrow-right', 15)}</span></div>`);
+TPL.forEach((x, i) => sfx(BG + 0.6 + i * 0.12, 'pop', 0.14)); TPL.forEach(x => { if (x[3] < 50) sfx(BG + x[3], 'tick', 0.25); });
+sGallery.render = (t) => {
+  const r = sGallery.root, L = t - BG;
+  setText(q(r, '#gN'), String(Math.round(65 * seg(L, 0.5, 4.2, eo))));
+  r.querySelectorAll('.gt').forEach((c, i) => {
+    appear(c, L, 0.6 + i * 0.12, 0.45, 18, 0.95);
+    const a = TPL[i][3]; const hot = seg(L, a, a + 0.25) * (1 - seg(L, a + 0.9, a + 1.3));
+    const pick = i === 4 && L > 10.9;
+    c.style.borderColor = pick ? '#a5b4fc' : hot > 0.05 ? '#c7d2fe' : '#e6e9f0';
+    c.style.boxShadow = pick ? '0 0 0 5px rgba(91,70,229,.12), 0 16px 30px rgba(91,70,229,.16)' : `0 ${(hot * 14).toFixed(1)}px ${(hot * 28).toFixed(1)}px rgba(91,70,229,${(hot * 0.18).toFixed(3)})`;
+    c.style.transform += ` translateY(${(-hot * 6).toFixed(1)}px)`;
+  });
+  q(r, '#gUse').style.opacity = String(seg(L, 10.9, 11.2));
+};
+
+/* ── Reputation: ask by email, answer with AI ────────────────────────── */
+const BR = T.reviews[0];
+const ASK = [['Maria Lopez', 'Kitchen remodel · finished yesterday'], ['Dan Whitaker', 'Bathroom refit · finished Monday'], ['Priya Shah', 'Cabinet repaint · finished Friday'], ['Tom Becker', 'Flooring · finished last week']];
+const SITES = [['Google', 5.6], ['Facebook', 6.3], ['Yelp', 7.0], ['Trustpilot', 7.6]];
+const RREPLY = "Thank you so much, Maria! We loved working on your kitchen, and we're thrilled it came in exactly on quote. Enjoy every meal in it!";
+const sReviews = winScene(...T.reviews, 'wReviews', '<b>Reputation</b><span>›</span>Request Reviews', `
+  <div class="card abs" style="left:24px;top:20px;width:470px;padding:18px">
+    <div style="font-size:20px;font-weight:820">Request Reviews</div>
+    <div class="muted" style="font-size:13.5px;font-weight:620;margin-top:3px">Ask happy customers to leave a review by email.</div>
+    ${ASK.map(a => `<div class="ak" style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:13px;border:1px solid #eef0f5;opacity:0">
+      <span style="width:20px;height:20px;border-radius:6px;background:#5b46e5;color:#fff;display:flex;align-items:center;justify-content:center">${ico('check', 13)}</span>
+      <div style="flex:1"><div style="font-size:15px;font-weight:760">${a[0]}</div><div class="muted" style="font-size:12.5px;font-weight:620">${a[1]}</div></div>
+      <span class="aks" style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:800;color:#16a34a;opacity:0">${ico('send', 13)}Sent</span></div>`).join('')}
+    <div class="kicker" style="margin-top:16px">Send them to</div>
+    <div style="display:flex;gap:6px;margin-top:8px">${SITES.map(s => `<span class="st pill" style="background:#fff;color:#475569;border:1px solid #e6e9f0">${s[0]}</span>`).join('')}</div>
+    <div class="btn" id="rSend" style="margin-top:16px;padding:12px 18px;background:#17191c;color:#fff;font-size:15.5px">${ico('mail', 16)}Send 4 requests</div>
+  </div>
+  <div class="card abs" id="rMail" style="left:24px;top:540px;width:470px;padding:14px 18px;opacity:0;background:#f8fafc">
+    <div class="muted" style="font-size:12px;font-weight:700">EMAIL THEY RECEIVE</div>
+    <div style="font-size:15px;font-weight:780;margin-top:4px">How was your experience with Acme Remodel?</div>
+    <span class="pill" style="margin-top:10px;background:#5b46e5;color:#fff;font-size:13px">Leave a review ${ico('arrow-right', 13)}</span></div>
+  <div class="abs" style="left:518px;top:20px;width:418px">
+    <div class="card" id="rRev" style="padding:18px;opacity:0">
+      <div style="display:flex;align-items:center;gap:10px"><span style="width:40px;height:40px;border-radius:50%;background:#fde68a;display:flex;align-items:center;justify-content:center;font-weight:800">M</span>
+        <div><div style="font-size:15.5px;font-weight:800">Maria L.</div><div class="muted" style="font-size:12.5px;font-weight:650">Google · an example review</div></div>
+        <style>.sx svg{fill:currentColor}</style><span style="margin-left:auto;color:#f59e0b;display:flex;gap:1px">${[0, 1, 2, 3, 4].map(() => `<span class="sx" style="opacity:0">${ico('star', 18)}</span>`).join('')}</span></div>
+      <div style="font-size:15px;font-weight:600;line-height:1.5;margin-top:12px;color:#17191c">Our kitchen looks incredible. On time, tidy every day, and the final bill matched the quote exactly.</div>
+      <div class="btn" id="rAi" style="margin-top:12px;padding:9px 14px;background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff;font-size:14px">${ico('sparkles', 15)}AI reply</div>
+    </div>
+    <div id="rBox" style="margin-top:14px;border-radius:18px;background:#f4f5ff;border:1.5px solid #c7d2fe;padding:16px 18px;opacity:0">
+      <div style="display:flex;align-items:center;gap:8px"><span id="rvBot">${BOT(28)}</span><span style="font-size:13.5px;font-weight:800;color:#5b46e5">Your reply · drafted by AI in your tone</span></div>
+      <div style="font-size:15px;font-weight:600;line-height:1.5;margin-top:8px;min-height:92px;color:#17191c"><span id="rTxt"></span></div>
+      <span class="btn" id="rPost" style="margin-top:8px;padding:9px 16px;background:#5b46e5;color:#fff;font-size:14.5px">Post</span>
+    </div>
+  </div>`);
+ASK.forEach((_, i) => sfx(BR + 0.6 + i * 0.25, 'tick', 0.2)); sfx(BR + 3.9, 'click', 0.9);
+ASK.forEach((_, i) => sfx(BR + 4.2 + i * 0.2, 'pop', 0.3)); SITES.forEach(s => sfx(BR + s[1], 'tick', 0.25));
+sfx(BR + 8.4, 'notify', 0.4); sfx(BR + 9.3, 'click', 0.8); sfx(BR + 9.5, 'ai_on', 0.5);
+for (let x = BR + 9.9; x < BR + 12.6; x += 0.1) sfx(x, 'key', 0.09);
+sReviews.render = (t) => {
+  const r = sReviews.root, L = t - BR;
+  r.querySelectorAll('.ak').forEach((c, i) => {
+    appear(c, L, 0.6 + i * 0.25, 0.4, 12, 0.98);
+    q(c, '.aks').style.opacity = String(seg(L, 4.2 + i * 0.2, 4.4 + i * 0.2));
+  });
+  press(q(r, '#rSend'), L, 3.85);
+  appear(q(r, '#rMail'), L, 4.6, 0.45, 14, 0.98);
+  r.querySelectorAll('.st').forEach((c, i) => {
+    const on = L >= SITES[i][1] && L < SITES[i][1] + 0.7 || (i === 0 && L >= 8.2);
+    c.style.background = on ? '#17191c' : '#fff'; c.style.color = on ? '#fff' : '#475569'; c.style.borderColor = on ? '#17191c' : '#e6e9f0';
+  });
+  appear(q(r, '#rRev'), L, 8.3, 0.5, 18, 0.98);
+  r.querySelectorAll('.sx').forEach((s, i) => { s.style.opacity = String(seg(L, 8.6 + i * 0.08, 8.8 + i * 0.08)); });
+  press(q(r, '#rAi'), L, 9.25);
+  appear(q(r, '#rBox'), L, 9.5, 0.45, 16, 0.98);
+  typeInto(q(r, '#rTxt'), RREPLY, L, 9.9, 12.6);
+  q(r, '#rPost').style.boxShadow = L > 12.7 ? '0 0 0 5px rgba(91,70,229,.2)' : 'none';
+  animBot(r, t, L > 9.5 && L < 12.7, 17);
+};
+
+/* ── Reselling at your own price, white label ────────────────────────── */
+const BRS = T.resell[0];
+const RCL = [['Bright Smiles Dental', '#0ea5e9', 97, 'Paid'], ['Austin Roofing Co.', '#ea580c', 297, 'Paid'], ['Green Leaf Landscaping', '#16a34a', 0, 'new'], ['Nova Fitness', '#7c3aed', 149, 'Paid'], ['Harbor Legal', '#0f766e', 197, 'Paid']];
+const BADGE = { Paid: ['#ecfdf5', '#16a34a', '#bbf7d0'], 'Link sent': ['#eff6ff', '#2563eb', '#bfdbfe'], 'No price': ['#f6f7fb', '#64748b', '#e6e9f0'] };
+const sResell = winScene(...T.resell, 'wResell', '<b>Summit Digital</b><span>›</span>Charge your clients', `
+  <div class="abs" style="left:24px;top:20px;width:540px">
+    <div style="display:flex;align-items:center;gap:10px"><span style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#f97316,#db2777)"></span><div class="h2" style="font-size:24px">Your clients</div>
+      <span class="pill" style="margin-left:auto;background:#f6f7fb;color:#475569;border:1px solid #e6e9f0">${ico('globe', 13)}app.summitdigital.co</span></div>
+    ${RCL.map((c, i) => `<div class="rc card" style="margin-top:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;opacity:0">
+      <span style="width:38px;height:38px;border-radius:11px;background:${c[1]};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:850">${c[0][0]}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:780">${c[0]}</div><div class="muted" style="font-size:12.5px;font-weight:650">Own workspace · your brand</div></div>
+      <span class="rp" style="font-size:16px;font-weight:820;font-variant-numeric:tabular-nums;color:#17191c;min-width:92px;text-align:right">${c[2] ? usd(c[2], 0) + '/mo' : ''}</span>
+      <span class="pill rb" style="min-width:86px;justify-content:center">${c[3]}</span></div>`).join('')}
+  </div>
+  <div class="card abs" style="left:588px;top:20px;width:348px;padding:18px">
+    <div style="font-size:19px;font-weight:820">Charge your clients</div>
+    <div class="muted" style="font-size:13px;font-weight:620;margin-top:3px">Your price, paid into your own account.</div>
+    <div style="margin-top:14px;padding:12px;border-radius:13px;background:#f6f7fb;border:1px solid #e6e9f0;display:flex;align-items:center;gap:8px">
+      <span style="font-size:17px;font-weight:850;color:#635bff">stripe</span><span class="pill" style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;font-size:11.5px">LIVE</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-size:13px;font-weight:780;color:#16a34a">${ico('check-circle-2', 15)}Connected</span></div>
+    <div class="kicker" style="margin-top:16px">Green Leaf Landscaping</div>
+    <div style="font-size:13px;font-weight:700;color:#475569;margin-top:8px">Your price per month</div>
+    <div style="display:flex;gap:8px;margin-top:6px"><div id="rsIn" style="flex:1;height:44px;border-radius:11px;border:2px solid #c7d2fe;display:flex;align-items:center;padding:0 12px;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums">$<span id="rsV"></span><span id="rsCar" style="width:2px;height:22px;background:#5b46e5;margin-left:2px"></span></div>
+      <span style="height:44px;border-radius:11px;border:1px solid #e6e9f0;display:flex;align-items:center;padding:0 12px;font-weight:750;color:#475569">USD</span></div>
+    <div class="btn" id="rsLink" style="margin-top:12px;width:100%;justify-content:center;padding:11px 0;background:#17191c;color:#fff;font-size:14.5px">${ico('link', 15)}Create a monthly payment link</div>
+    <div id="rsUrl" style="margin-top:10px;padding:9px 11px;border-radius:10px;background:#f4f5ff;border:1px solid #e0e3ff;font-size:12.5px;font-weight:700;color:#5b46e5;opacity:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">checkout.stripe.com/c/pay/cs_live_a1Qz…</div>
+    <div style="margin-top:14px;font-size:13px;font-weight:650;color:#475569;line-height:1.5" id="rsNote">Your clients pay you, on your own Stripe or Creem account, at the price you set. <b style="color:#17191c">Protected Central never holds this money.</b></div>
+  </div>
+  <div class="abs" id="wlCard" style="left:24px;top:452px;width:540px;opacity:0">
+    <div class="kicker">White label · what your clients see</div>
+    <div style="margin-top:10px;border-radius:16px;border:1px solid #e6e9f0;overflow:hidden;box-shadow:0 12px 30px rgba(16,24,40,.08)">
+      <div style="height:30px;background:#f2f4f8;border-bottom:1px solid #e3e6ee;display:flex;align-items:center;gap:6px;padding:0 12px">${[0, 1, 2].map(() => '<i style="width:8px;height:8px;border-radius:50%;background:#d4d8e2;display:inline-block"></i>').join('')}<span style="margin-left:8px;font-size:12px;font-weight:700;color:#64748b">${ico('lock', 11)} app.summitdigital.co</span></div>
+      <div style="display:flex;align-items:center;gap:18px;padding:18px 22px;background:linear-gradient(135deg,#fff7ed,#fdf2f8)">
+        <div style="display:flex;align-items:center;gap:10px"><span style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#f97316,#db2777)"></span><span style="font-size:19px;font-weight:850">Summit Digital</span></div>
+        <div style="margin-left:auto;width:220px;display:grid;gap:7px"><div style="height:30px;border-radius:8px;background:#fff;border:1px solid #e6e9f0;font-size:12px;font-weight:600;color:#94a3b8;display:flex;align-items:center;padding:0 10px">you@greenleaf.co</div>
+          <div style="height:30px;border-radius:8px;background:linear-gradient(90deg,#f97316,#db2777);color:#fff;font-size:12.5px;font-weight:800;display:flex;align-items:center;justify-content:center">Sign in</div></div></div>
+    </div></div>
+  ${note('Example prices — you choose your own.')}`);
+RCL.forEach((_, i) => sfx(BRS + 0.5 + i * 0.2, 'tick', 0.18));
+for (let x = BRS + 3.3; x < BRS + 3.7; x += 0.15) sfx(x, 'key', 0.18);
+for (let x = BRS + 4.9; x < BRS + 5.4; x += 0.15) sfx(x, 'key', 0.18);
+sfx(BRS + 7.0, 'click', 0.9); sfx(BRS + 7.3, 'pop', 0.4); sfx(BRS + 9.6, 'coin', 0.8);
+sResell.render = (t) => {
+  const r = sResell.root, L = t - BRS;
+  /* $97, then the reseller thinks better of it: $297. */
+  const v = L < 3.3 ? '' : L < 4.6 ? '97'.slice(0, Math.ceil((L - 3.3) / 0.18)) : L < 4.9 ? '' : '297'.slice(0, Math.ceil((L - 4.9) / 0.15));
+  setText(q(r, '#rsV'), v);
+  q(r, '#rsCar').style.opacity = L < 6.0 && Math.floor(L * 2.5) % 2 ? '1' : '0';
+  press(q(r, '#rsLink'), L, 6.95);
+  q(r, '#rsUrl').style.opacity = String(seg(L, 7.3, 7.6));
+  q(r, '#rsNote').style.background = L > 10.3 ? 'rgba(200,242,77,.18)' : 'transparent';
+  appear(q(r, '#wlCard'), L, 1.7, 0.5, 18, 0.98);
+  r.querySelectorAll('.rc').forEach((c, i) => {
+    appear(c, L, 0.5 + i * 0.2, 0.4, 14, 0.98);
+    let st = RCL[i][3], price = RCL[i][2];
+    if (i === 2) { st = L > 9.6 ? 'Paid' : L > 7.4 ? 'Link sent' : 'No price'; price = L > 5.6 ? 297 : 0; }
+    const b = BADGE[st]; const rb = q(c, '.rb');
+    setText(rb, st); rb.style.background = b[0]; rb.style.color = b[1]; rb.style.border = `1px solid ${b[2]}`;
+    setText(q(c, '.rp'), price ? usd(price, 0) + '/mo' : '—');
+    c.style.boxShadow = i === 2 && L > 9.6 && L < 11 ? '0 0 0 5px rgba(22,163,74,.14)' : 'none';
+  });
+};
+
+/* ── Affiliate program: 40%, every month they pay ────────────────────── */
+const BA = T.affiliate[0];
+const AST = [['Visits through your link', 214, 0], ['Sign-ups', 9, 0], ['Paying customers', 2, 0], ['Held (refund window)', 157.6, 2], ['Payable now', 38.8, 2], ['Paid to you', 38.8, 2]];
+const COMM = [['Oct 1', 'j•••@brightsmiles.com', 97, 'Held', 1], ['Sep 28', 'm•••@novafit.io', 297, 'Held', 0], ['Sep 1', 'j•••@brightsmiles.com', 97, 'Payable', 1], ['Aug 1', 'j•••@brightsmiles.com', 97, 'Paid', 1]];
+const CST = { Held: ['#fff7ed', '#c2410c', '#fed7aa'], Payable: ['#eff6ff', '#2563eb', '#bfdbfe'], Paid: ['#ecfdf5', '#16a34a', '#bbf7d0'] };
+const sAff = winScene(...T.affiliate, 'wAff', '<b>Affiliate program</b>', `
+  <div class="abs" style="left:24px;top:18px;right:24px"><div class="h2" style="font-size:26px">Affiliate program</div>
+    <div class="muted" style="font-size:14.5px;font-weight:600;margin-top:3px">40% of every payment from customers you refer, for as long as they keep paying.</div></div>
+  <div class="card abs" style="left:24px;right:24px;top:96px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+    <span class="kicker" style="white-space:nowrap">Your link</span>
+    <div style="flex:1;padding:10px 12px;border-radius:11px;background:#f6f7fb;border:1px solid #e6e9f0;font-size:16px;font-weight:750;color:#17191c">protectedcentral.com/?ref=sam-k3f9</div>
+    <span class="btn" id="aCopy" style="padding:10px 16px;background:#5b46e5;color:#fff;font-size:14.5px">${ico('copy', 15)}<span id="aCopyT">Copy link</span></span></div>
+  <div class="abs" style="left:24px;right:24px;top:182px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    ${AST.map(a => `<div class="as card" style="padding:12px 14px;opacity:0"><div class="muted" style="font-size:12.5px;font-weight:700">${a[0]}</div><div class="av" style="font-size:26px;font-weight:850;letter-spacing:-0.03em;margin-top:2px;font-variant-numeric:tabular-nums">0</div></div>`).join('')}
+  </div>
+  <div class="card abs" style="left:24px;right:24px;top:376px;padding:6px 0 4px">
+    <div style="display:grid;grid-template-columns:90px 1fr 120px 130px 110px;padding:10px 18px;font-size:12px;font-weight:800;letter-spacing:.06em;color:#94a3b8;text-transform:uppercase"><span>Date</span><span>Customer</span><span>They paid</span><span>Commission</span><span>Status</span></div>
+    ${COMM.map(c => `<div class="cm" style="display:grid;grid-template-columns:90px 1fr 120px 130px 110px;align-items:center;padding:11px 18px;border-top:1px solid #f0f2f7;font-size:15px;font-weight:680;color:#17191c;opacity:0">
+      <span class="muted" style="font-weight:750">${c[0]}</span><span class="cn">${c[1]}</span><span style="font-variant-numeric:tabular-nums">${usd(c[2])}</span>
+      <span style="font-weight:850;color:#5b46e5;font-variant-numeric:tabular-nums">${usd(c[2] * 0.4)} <span style="font-size:12px;color:#94a3b8;font-weight:750">40%</span></span>
+      <span><span class="pill" style="background:${CST[c[3]][0]};color:${CST[c[3]][1]};border:1px solid ${CST[c[3]][2]}">${c[3]}</span></span></div>`).join('')}
+  </div>
+  ${note('Example figures. Commissions are held 30 days for refunds, then paid — see the affiliate terms.')}`);
+sfx(BA + 1.9, 'click', 0.8); sfx(BA + 2.1, 'success', 0.4);
+AST.forEach((_, i) => sfx(BA + 2.8 + i * 0.15, 'tick', 0.18));
+COMM.forEach((_, i) => sfx(BA + 5.2 + i * 0.5, 'coin', 0.45));
+sAff.render = (t) => {
+  const r = sAff.root, L = t - BA;
+  press(q(r, '#aCopy'), L, 1.85);
+  setText(q(r, '#aCopyT'), L > 2.05 && L < 4.5 ? 'Copied' : 'Copy link');
+  r.querySelectorAll('.as').forEach((c, i) => {
+    appear(c, L, 2.8 + i * 0.15, 0.4, 12, 0.97);
+    const a = AST[i]; const v = a[1] * seg(L, 3.0 + i * 0.15, 4.8 + i * 0.15, eo);
+    setText(q(c, '.av'), a[2] ? usd(v) : fmt(v));
+  });
+  r.querySelectorAll('.cm').forEach((c, i) => {
+    appear(c, L, 5.2 + i * 0.5, 0.4, 12, 0.98);
+    /* "Not just the first month": the same customer, month after month. */
+    const same = COMM[i][4] && L > 7.6 && L < 10.4;
+    c.style.background = same ? '#f7fee7' : 'transparent';
+    q(c, '.cn').style.fontWeight = same ? '850' : '680';
+  });
+};
+
 /* ── Always improving: what actually shipped ────────────────────────── */
 /* Real releases, from the repository's history (September 2026). */
 const SHIPPED = [
@@ -1381,12 +1919,22 @@ s11.render = (t) => {
   q(r, '#ctaGlow').style.transform = `scale(${(1 + Math.sin(t * 1.5) * 0.05).toFixed(3)})`;
 };
 
+/* ── Every scene into the slot its voice occupies ─────────────────────── */
+/* Must run after every scene and its sounds exist: `place` moves the cues
+   registered so far, and the toasts and cursor below are timed with `at`. */
+CUR_SCENE = null;
+[[s2, 's2'], [sPlan, 'plan'], [sCanvas, 'canvas'], [s3, 's3'], [sMoney, 'money'], [sStreams, 'streams'],
+ [sLib, 'lib'], [sGuard, 'guard'], [sReply, 'reply'], [s4, 's4'], [s5, 's5'], [s6, 's6'], [sBlog, 'blog'],
+ [sShorts, 'shorts'], [sGallery, 'gallery'], [sWeb, 'web'], [sReviews, 'reviews'], [s7, 's7'], [sLive, 'live'],
+ [s8, 's8'], [sAgency, 'agency'], [sResell, 'resell'], [sAff, 'affiliate'], [sDev, 'dev'], [s9, 'trust'],
+ [s10, 's10'], [s10b, 'lock'], [s11, 'cta']].forEach(([sc, k]) => place(sc, ...NT[k]));
+
 /* ── Toasts and cursor ───────────────────────────────────────────────── */
 CUR_SCENE = null;
 const TOASTS = [
   [at(s4, 19.55), at(s4, 21.2), 'Lead qualified.'], [at(s5, 22.95), at(s5, 24.5), 'Campaign ready.'],
   [at(s6, 30.65), at(s6, 32.3), 'New content asset created.'], [at(s7, 35.5), at(s7, 36.9), 'Ticket routed to Support.'],
-  [B1 + 10.6, B1 + 11.8, 'Building 5 workflows…'], [B5 + 7.3, B5 + 8.6, 'Reply sent to Maria.'],
+  [at(sPlan, B1 + 10.6), at(sPlan, B1 + 11.8), 'Building 5 workflows…'], [at(sReply, B5 + 7.3), at(sReply, B5 + 8.6), 'Reply sent to Maria.'],
 ];
 TOASTS.forEach(x => sfx(x[0], 'notify', 0.45));
 function renderToast(t) {
@@ -1403,16 +1951,25 @@ function renderToast(t) {
 const WX = 860, WY = 206;
 /* The short ad's cursor was in portrait coordinates, window at (60,696). */
 const fromPortrait = (x, y) => [x - 60 + 860, y - 696 + 140];
+/* Cursor paths are written in each scene's own (nominal) time, then moved
+   with the scene. */
+const mv = (sc, path) => path.map(([t, x, y]) => [at(sc, t), x, y]);
 const PATHS = [
-  [[at(s2, 7.6), 1940, 1000], [at(s2, 8.25), ...fromPortrait(524, 1186)], [at(s2, 8.9), ...fromPortrait(532, 1196)], [at(s2, 9.6), 1940, 1000]],
-  [[B1 + 9.4, 1940, 900], [B1 + 10.2, WX + 120, WY + 546], [B1 + 10.9, WX + 124, WY + 552], [B1 + 11.5, 1940, 980]],
-  [[B4 + 3.4, 1940, 700], [B4 + 4.3, WX + 405, WY + 110], [B4 + 6.8, WX + 860, WY + 267], [B4 + 7.6, 1940, 900]],
-  [[B5 + 5.9, 1940, 900], [B5 + 6.8, WX + 420, WY + 420], [B5 + 7.6, WX + 426, WY + 426], [B5 + 8.2, 1940, 980]],
-  [[B6 + 4.3, 1940, 900], [B6 + 5.1, WX + 180, WY + 496], [B6 + 5.9, WX + 186, WY + 500], [B6 + 6.4, 1940, 980]],
-  [[B7 + 0.6, 1940, 700], [B7 + 1.5, WX + 256, WY + 160], [B7 + 2.2, WX + 262, WY + 166], [B7 + 2.8, 1940, 900]],
-  [[B11 + 1.2, 1940, 900], [B11 + 1.9, 1020, 530], [B11 + 3.4, 1026, 536]],
+  mv(s2, [[7.6, 1940, 1000], [8.25, ...fromPortrait(524, 1186)], [8.9, ...fromPortrait(532, 1196)], [9.6, 1940, 1000]]),
+  mv(sPlan, [[B1 + 9.4, 1940, 900], [B1 + 10.2, WX + 120, WY + 546], [B1 + 10.9, WX + 124, WY + 552], [B1 + 11.5, 1940, 980]]),
+  mv(sGuard, [[B4 + 3.4, 1940, 700], [B4 + 4.3, WX + 405, WY + 110], [B4 + 6.8, WX + 860, WY + 267], [B4 + 7.6, 1940, 900]]),
+  mv(sReply, [[B5 + 5.9, 1940, 900], [B5 + 6.8, WX + 420, WY + 420], [B5 + 7.6, WX + 426, WY + 426], [B5 + 8.2, 1940, 980]]),
+  mv(sWeb, [[B6 + 4.3, 1940, 900], [B6 + 5.1, WX + 180, WY + 496], [B6 + 5.9, WX + 186, WY + 500], [B6 + 6.4, 1940, 980]]),
+  mv(sLive, [[B7 + 0.6, 1940, 700], [B7 + 1.5, WX + 256, WY + 160], [B7 + 2.2, WX + 262, WY + 166], [B7 + 2.8, 1940, 900]]),
+  mv(sBlog, [[BB + 10.6, 1940, 900], [BB + 11.5, WX + 130, WY + 624], [BB + 12.2, WX + 136, WY + 628], [BB + 12.9, 1940, 980]]),
+  mv(sReviews, [[BR + 3.0, 1940, 900], [BR + 3.8, WX + 120, WY + 410], [BR + 4.4, WX + 126, WY + 414], [BR + 8.6, WX + 600, WY + 300], [BR + 9.2, WX + 586, WY + 236], [BR + 9.9, WX + 592, WY + 240], [BR + 10.5, 1940, 980]]),
+  mv(sResell, [[BRS + 2.6, 1940, 900], [BRS + 3.2, WX + 700, WY + 268], [BRS + 6.2, WX + 700, WY + 276], [BRS + 6.9, WX + 760, WY + 326], [BRS + 7.6, WX + 766, WY + 330], [BRS + 8.2, 1940, 980]]),
+  mv(sAff, [[BA + 1.0, 1940, 700], [BA + 1.8, WX + 860, WY + 136], [BA + 2.5, WX + 866, WY + 140], [BA + 3.1, 1940, 900]]),
+  mv(s11, [[B11 + 1.2, 1940, 900], [B11 + 1.9, 1020, 530], [B11 + 3.4, 1026, 536]]),
 ];
-const CLICKS = [[at(s2, 8.66), ...fromPortrait(531, 1191)], [B1 + 10.3, WX + 122, WY + 550], [B4 + 4.4, WX + 405, WY + 110], [B4 + 6.9, WX + 860, WY + 267], [B5 + 6.9, WX + 424, WY + 424], [B6 + 5.2, WX + 184, WY + 498], [B7 + 1.6, WX + 260, WY + 164], [B11 + 2.0, 1024, 534]];
+const CLICKS = [[at(s2, 8.66), ...fromPortrait(531, 1191)], [at(sPlan, B1 + 10.3), WX + 122, WY + 550], [at(sGuard, B4 + 4.4), WX + 405, WY + 110], [at(sGuard, B4 + 6.9), WX + 860, WY + 267],
+  [at(sReply, B5 + 6.9), WX + 424, WY + 424], [at(sWeb, B6 + 5.2), WX + 184, WY + 498], [at(sLive, B7 + 1.6), WX + 260, WY + 164], [at(sBlog, BB + 11.6), WX + 133, WY + 626],
+  [at(sReviews, BR + 3.9), WX + 123, WY + 412], [at(sReviews, BR + 9.3), WX + 589, WY + 238], [at(sResell, BRS + 7.0), WX + 763, WY + 328], [at(sAff, BA + 1.9), WX + 863, WY + 138], [at(s11, B11 + 2.0), 1024, 534]];
 function renderCursor(t) {
   const c = document.getElementById('cursor');
   let segm = null;
@@ -1435,8 +1992,8 @@ function renderCursor(t) {
 /* ── Ground ──────────────────────────────────────────────────────────── */
 function renderBg(t) {
   const g1 = document.getElementById('g1'), g2 = document.getElementById('g2'), g3 = document.getElementById('g3');
-  const calm = seg(t, T.trust[0], T.trust[0] + 0.7) * (1 - seg(t, T.trust[1] - 0.5, T.trust[1] + 0.3));
-  const cta = seg(t, T.cta[0], T.cta[0] + 0.9);
+  const calm = seg(t, NT.trust[0], NT.trust[0] + 0.7) * (1 - seg(t, NT.trust[1] - 0.5, NT.trust[1] + 0.3));
+  const cta = seg(t, NT.cta[0], NT.cta[0] + 0.9);
   g1.style.transform = `translate(${Math.sin(t * 0.21) * 160}px, ${Math.cos(t * 0.17) * 110}px)`;
   g2.style.transform = `translate(${Math.cos(t * 0.19) * 150}px, ${Math.sin(t * 0.23) * 100}px)`;
   g3.style.transform = `translate(${Math.sin(t * 0.27) * 200}px, ${Math.cos(t * 0.2) * 60}px)`;

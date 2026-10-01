@@ -1,4 +1,4 @@
-# Launch film — 16:9, about three minutes
+# Launch film — 16:9, about five minutes
 
 The long product film on protectedcentral.com (`public/site/launch/launch-16x9.*`).
 It is not part of the app build. It lives here so it can be re-rendered when the
@@ -13,69 +13,65 @@ module with AI automation first. So this one is **drawn for 16:9**: the product
 window on the right (960×800 at 860,140), the words on the left, nothing cropped.
 Phones get the same file, as wide as the screen.
 
-## How it is built
+## v2: the voice sets the clock
 
-`film.js` is assembled from `../launch-ad/app.js` — its maths, brand pieces
-(logo, bot, icons) and seven of its product scenes (Autopilot prompt, running
-workflows, CRM, campaigns, content, appointments, dashboard, and the module
-sidebar) carried over **verbatim** — plus what was drawn for this frame:
+v1 laid its lines on a timeline drawn first, so the narration waited for the
+pictures — two and three seconds of nothing between scenes. The owner asked for
+no pauses and a livelier read, so in v2:
 
-- `place(scene, a, b)` moves a scene written for the short ad to a new slot and
-  slows it to fit; its render keeps its own clock and its sounds move with it.
-- The left column (`copy(a, b, {kick, lines, sub, bullets})`) says what each
-  scene is. `~word` is blue, `^word` is lime.
-- New scenes: the blueprint (questions, workflows, edit by sentence), a workflow
-  canvas with an AI agent's step settings, the template gallery (the real
-  names; 33 templates), guardrails and approvals, AI replies, websites and
-  funnels, live help, agencies/white label, and **What shipped** — sixteen real
-  releases from September 2026 with their dates, and the month's count (128,
-  `git log --since=2026-09-01 --until=2026-10-01 origin/main | wc -l`).
-- Intro, trust (wording from docs/SECURITY.md §7 only), lockup and the offer
-  are re-laid for the wide frame.
+- **`lines.json`** is `[id, scene, text]`. Each line is rendered by Piper, then
+  **`timing.mjs`** measures every WAV and lays them end to end (0.16 s between
+  lines of a scene, 0.24 s between scenes), writing `timing.js` — the slot each
+  scene occupies (`NT`) and its words (`NC`) — and `vo.json`.
+- Every scene is drawn against nominal times (`T` in film.js) and then moved
+  into its slot with **`place(scene, a, b)`** at the bottom of film.js; the
+  scene's render keeps its own clock, and its sounds, cursor and toasts move
+  with it (`at(scene, t)`). Change a line, re-run Piper and `timing.mjs`, and
+  the film re-times itself.
 
-Every screen carries **DEMO WORKSPACE**; numbers are demo values. Update
-`SHIPPED` and the 128 from the history before re-rendering in a later month —
-the scene is only worth showing while it is true.
+## What it shows, and what it must not
 
-## Timeline (178.6 s)
+Every screen carries **DEMO WORKSPACE**. The scenes added in v2 were each
+checked against the code before they were drawn:
 
-| s | Scene | VO |
+| Scene | What is real | Kept honest by |
 |---|---|---|
-| 0–6.4 | Ten tools → one | Running a business shouldn't mean running ten different tools. Meet Protected Central. |
-| 6–16 | AI Autopilot: describe it | Tell AI what you want… / Autopilot understands your business… |
-| 15.6–27.6 | Blueprint | Before anything runs, you see the whole plan as a blueprint… |
-| 27.2–39.2 | Canvas + AI agent settings | Every workflow is drawn step by step. AI agents read your website… |
-| 38.8–47.8 | Workflows running | Then the server runs them every five minutes… |
-| 47.4–54.4 | Template gallery | Or start from thirty-three ready-made workflows. |
-| 54–63 | Guardrails & approvals | Anything that sends waits for your approval… |
-| 62.6–71.6 | AI replies | When a lead replies, AI drafts the answer… |
-| 71.2–79.2 | CRM & pipeline | Every lead, every deal, and every next step… |
-| 78.8–86.8 | Campaigns | Campaigns and follow-up that don't stop at send. |
-| 86.4–94.4 | Content Studio | Posts, articles and emails… |
-| 94–102 | Websites & funnels | Websites and funnels from real templates… |
-| 101.6–109.6 | Appointments & support | Appointments, tickets and support conversations, connected. |
-| 109.2–117.2 | Live help | …share their screen with you, in one click. |
-| 116.8–124.8 | Dashboard | See what's happening… and what's next. |
-| 124.4–132.4 | Agencies | Run it for every client… under your brand. |
-| 132–154 | What shipped | Protected Central never stands still. 128 updates in September… |
-| 153.6–160.6 | Trust | Your business. Your workspace. Your team stays in control. |
-| 160.2–168.3 | One workspace + lockup | One intelligent workspace. This is Protected Central. |
-| 167.9–178.6 | Offer | Describe it. AI builds it. Start your seven-day free trial today. |
+| Your shop on Autopilot | Shop orders, `chase_payment`, `thank_buyers` (autopilotPlan.ts); payment on the seller's own processor | The money is shown on the customer's **own Stripe app**, on a phone outside the window — the app has no balance screen. "Example figures" on screen. |
+| Many projects | 19 project solutions; each starts from a prompt or voice | The flow into one Stripe account is a dark diagram labelled **illustration**, not an app screen — there is no revenue-by-project chart. |
+| Blog & SEO | Month plan, the nine checks (blogWriter.ts, by their own names), WordPress | — |
+| AI Shorts | Upload → clips with captions, hashtags and a virality score (Gemini) | Shows an uploaded video, not a YouTube link (which gives sample clips) |
+| Template gallery | 65 templates (17 websites, 48 funnels), real names and categories | — |
+| Reputation | Email review requests (Google/Facebook/Yelp/Trustpilot), AI reply drafts | The review is labelled **an example review**; the film never claims live review monitoring, which is sample data in the app |
+| Resell / white label | `resell.ts`: own price, own Stripe/Creem, payment link | Labelled example prices |
+| Affiliate | `affiliate.ts`: 40%, for as long as they pay, 30-day hold | Stats consistent with the table; "Example figures"; the hold is stated |
+
+The voice never promises income. It says what the product does — sells,
+follows up, thanks buyers — and that the money goes to the customer's account.
+
+Update `SHIPPED` and the 128 from the history before re-rendering in a later
+month (`git log --since=2026-09-01 --until=2026-10-01 origin/main | wc -l`) —
+the scene is only worth showing while it is true.
 
 ## Rendering
 
 Same kit as `../launch-ad` (Playwright's Chromium, `ffmpeg-static`,
 `@fontsource-variable/inter`, `lucide-static`, Piper with `en_US-ryan-high`),
-with `icons.js` built from every icon name `film.js` uses.
+with `icons.js` built from every quoted name in `film.js` that is a lucide icon.
 
 ```bash
+# voice: length 0.88, noise 0.72, noise-w 0.9, 0.12 s between sentences
+for each [id, , text] in lines.json: piper -m en_US-ryan-high.onnx --length-scale 0.88 --noise-scale 0.72 --noise-w 0.9 --sentence-silence 0.12 -f vo/<id>.wav
+node timing.mjs vo                     # → timing.js, vo.json
 python3 -m http.server 8766 &
-node capture.mjs stills 10 22 33      # review frames
-node capture.mjs sfx                  # sound cues → sfx.json
-node capture.mjs video film_silent.mp4 30
-# VO: each line of lines.json through piper → vo/<id>.wav (length_scale 0.97)
+node capture.mjs stills 60 152 205     # review frames
+node capture.mjs sfx                   # sound cues → sfx.json
+node capture.mjs video part0.mp4 30 0 2209 &   # …in four ranges, in parallel, then concat
 node mixcfg.mjs && node ../launch-ad/mix.mjs mix_film.json film_audio.wav && ../launch-ad/loud.sh film_audio.wav film_audio_norm.wav
+node captions.mjs > ../../public/site/launch/captions.vtt
 ```
 
-The voice is a neural placeholder for timing — record a human read before
-paid media. The music is synthesised (`mix.mjs`), so there is nothing to clear.
+The web files must stay under Cloudflare's 25 MiB per file: two-pass H.264 at
+~540 kb/s and VP9 at ~480 kb/s for 4:55.
+
+The voice is a neural voice, not a person — record a human read before paid
+media. The music is synthesised (`mix.mjs`), so there is nothing to clear.

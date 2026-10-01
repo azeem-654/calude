@@ -181,6 +181,8 @@ const SFX = {
   pulse: (g, P) => P(0, 0.25, tt => (Math.sin(TAU * 523 * tt) + 0.3 * Math.sin(TAU * 1046 * tt)) * Math.min(1, tt / 0.008) * Math.exp(-tt / 0.08) * 0.16 * g, 0.5, 0.35),
   success: (g, P) => P(0, 0.7, tt => { const a = Math.sin(TAU * 1318.5 * tt) * Math.exp(-tt / 0.18); const b = tt > 0.08 ? Math.sin(TAU * 1760 * (tt - 0.08)) * Math.exp(-(tt - 0.08) / 0.25) : 0; return (a + b) * 0.1 * g; }, 0.55, 0.5),
   notify: (g, P) => P(0, 0.7, tt => { const a = Math.sin(TAU * 1046.5 * tt) * Math.exp(-tt / 0.15); const b = tt > 0.07 ? Math.sin(TAU * 1568 * (tt - 0.07)) * Math.exp(-(tt - 0.07) / 0.22) : 0; return (a + b) * 0.09 * g; }, 0.65, 0.5),
+  /* A payment arriving: two bright bell partials, the second a fifth up — a till's "ching" without the drawer. */
+  coin: (g, P) => P(0, 0.9, tt => { const a = Math.sin(TAU * 1975.5 * tt) * Math.exp(-tt / 0.09); const b = tt > 0.06 ? (Math.sin(TAU * 2960 * (tt - 0.06)) + 0.35 * Math.sin(TAU * 5920 * (tt - 0.06))) * Math.exp(-(tt - 0.06) / 0.28) : 0; return (a * 0.8 + b) * 0.075 * g; }, 0.6, 0.55),
   shimmer: (g, P) => P(0, 1.2, tt => [1318.5, 1975.5, 2637].reduce((s, f, i) => s + Math.sin(TAU * f * tt + i) * (0.6 + 0.4 * Math.sin(tt * 30 + i)), 0) * Math.min(1, tt / 0.05) * Math.exp(-tt / 0.35) * 0.05 * g, 0.5, 0.7),
   ai_on: (g, P) => { let ph = 0; P(0, 0.9, tt => { ph += TAU * (300 + 1100 * Math.pow(Math.min(1, tt / 0.45), 2)) / SR; return (Math.sin(ph) * Math.exp(-Math.max(0, tt - 0.4) / 0.12) * Math.min(1, tt / 0.05) * 0.1 + Math.sin(TAU * 2637 * tt) * Math.max(0, tt - 0.35) * Math.exp(-tt / 0.3) * 0.08) * g; }, 0.5, 0.6); },
   whoosh_soft: (g, P) => P(-0.15, 0.5, sweepNoise(0.5, 700, 3200, 1.4, 0.5 * g, bell), 0.5, 0.3),
