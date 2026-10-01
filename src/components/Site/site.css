@@ -62,6 +62,24 @@
 .dc *::before,
 .dc *::after { box-sizing: border-box; }
 
+/*
+ * Two measurements the hero, the film and the scroll step all share.
+ *
+ * The nav is one fixed height, stuck or not. It used to lose 10px of padding
+ * on leaving the top, which meant "the area under the nav" was a different
+ * size depending on where you were — and the film is sized to exactly fill
+ * that area, and scrolled to sit exactly in it (useFilmStep.ts). `svh` where
+ * it exists, so a phone's collapsing address bar is not counted as room.
+ */
+:root { --dc-nav-h: 58px; --dc-vh: 100vh; }
+@supports (height: 100svh) { :root { --dc-vh: 100svh; } }
+@media (max-width: 420px) { :root { --dc-nav-h: 52px; } }
+
+/* Only while the site is mounted (useFilmStep adds the class): the app is
+   the same bundle. Every anchor, the film's centring and keyboard focus then
+   all mean "under the nav" rather than "under the top of the window". */
+html.dc-root { scroll-padding-top: var(--dc-nav-h); }
+
 .dc h1, .dc h2, .dc h3, .dc h4, .dc h5, .dc p, .dc ul { margin: 0; }
 .dc ul { list-style: none; padding: 0; }
 .dc a { text-decoration: none; color: inherit; }
@@ -81,6 +99,11 @@
 
 /* Everything that is not the sky sits above it. */
 .dc > *:not(.dc-sky) { position: relative; z-index: 1; }
+/* Except the nav, which is fixed above everything. The rule above is (0,2,0)
+   and outranked `.dc-nav`'s own `position: fixed`, so the nav had been
+   scrolling away with the hero — and its "stuck" glass never showed. The
+   film and the scroll step are both measured against a nav that stays. */
+.dc > .dc-nav { position: fixed; z-index: 60; }
 
 /* ── Arrival ────────────────────────────────────────────────────────────────
    `.reveal` is one element; `.stagger` is a group whose children come in one
@@ -251,9 +274,9 @@
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 15px clamp(16px, 4vw, 44px);
-  transition: background 0.35s ease, box-shadow 0.35s ease,
-              padding 0.35s ease, border-color 0.35s ease;
+  height: var(--dc-nav-h);
+  padding: 0 clamp(16px, 4vw, 44px);
+  transition: background 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
   border-bottom: 1px solid transparent;
   animation: dc-drop 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -261,8 +284,6 @@
 @keyframes dc-drop { from { transform: translateY(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
 
 .dc-nav.stuck {
-  padding-top: 10px;
-  padding-bottom: 10px;
   background: rgba(11, 13, 11, 0.72);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
@@ -429,7 +450,7 @@
 .dc-chapter,
 .dc-platform,
 .dc-pricing,
-.dc-process { scroll-margin-top: 82px; }
+.dc-process { scroll-margin-top: 24px; }  /* below the nav's scroll padding */
 
 .dc-chapter,
 .dc-process,
@@ -1088,7 +1109,7 @@
 @media (max-width: 420px) {
   .dc-split { font-size: 28px; gap: 8px; }
   .dc-split i { display: none; }
-  .dc-nav { gap: 10px; padding: 12px 14px; }
+  .dc-nav { gap: 10px; padding: 0 14px; }
   .dc-btn { padding: 9px 14px; font-size: 13px; }
   .dc-btn-lg { padding: 12px 20px; font-size: 14px; }
   .dc-chain-out { grid-template-columns: 1fr; }
@@ -1709,43 +1730,177 @@
   .dc-hero-prompt .aps-prompt-text { font-size: 13px; min-height: 2.8em; }
 }
 
+/*
+ * Two columns, on a wide, short window.
+ *
+ * On the owner's laptop (about 1340×590 of browser) the single column put the
+ * headline, the words and the buttons above the picture, so the picture had
+ * to be scrolled to, and — capped by the window's height so it fitted when it
+ * was — sat 620px wide in the middle of 1340 with dark sky either side. What
+ * is short on a laptop is height, and what it has spare is width. So there,
+ * the words are the left-hand column and the picture the right, the hero is
+ * exactly one screen, and the picture is as large as what is left of the
+ * height allows.
+ *
+ * The picture is cut to 16:9 here, losing the bottom tenth of each screen —
+ * where the screens are emptiest, and the part the drift already crops — which
+ * buys it about 11% more width at the same height. The chips go (SiteHome
+ * finds no room for them on either side), because their side is the headline.
+ *
+ * --hero-fixed is everything in the right-hand column that is not the picture:
+ * the prompt standing above the frame (50px less its 26px overlap), the chrome
+ * bar, and a two-line caption. test/siteFit.e2e.mjs checks the sum.
+ */
+@media (min-width: 1180px) and (orientation: landscape) and (min-height: 501px) {
+  .dc-hero {
+    --hero-pad-t: 14px;
+    --hero-pad-b: 18px;
+    --hero-gutter: clamp(16px, 4vw, 44px);
+    --hero-copy: clamp(400px, 33vw, 600px);
+    --hero-gap: clamp(32px, 3.2vw, 64px);
+    --hero-fixed: 112px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: var(--dc-vh);
+    padding: calc(var(--dc-nav-h) + var(--hero-pad-t)) var(--hero-gutter) var(--hero-pad-b);
+  }
+  .dc-hero-inner {
+    /* Whichever is smaller: the width left beside the words, the width the
+       height allows, or the screenshots' own 1440 (larger is only blur). */
+    --hero-stage: min(1440px,
+      calc(100vw - 2 * var(--hero-gutter) - var(--hero-copy) - var(--hero-gap)),
+      calc((var(--dc-vh) - var(--dc-nav-h) - var(--hero-pad-t) - var(--hero-pad-b) - var(--hero-fixed)) * 16 / 9));
+    width: 100%;
+    max-width: calc(600px + var(--hero-gap) + 1440px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--hero-stage);
+    /* The outer rows soak up the difference, so the words sit level with the
+       middle of the picture whichever is taller. */
+    grid-template-rows: 1fr auto auto 1fr;
+    grid-template-areas: ". stage" "copy stage" "note stage" ". stage";
+    column-gap: var(--hero-gap);
+    align-items: center;
+    text-align: left;
+  }
+  .dc-hero-copy { grid-area: copy; max-width: 600px; container-type: inline-size; }
+  /* The column is the width the picture leaves, so it is asked, not the
+     window: at 1366×657 it is about 450px, where the full pill wrapped to
+     three lines and the two buttons stacked. */
+  @container (max-width: 540px) {
+    .dc-ai-pill-more { display: none; }
+    .dc-hero-cta .dc-btn-lg { padding: 13px 19px; font-size: 14.5px; }
+  }
+  .dc .dc-ai-pill { margin: 0 0 18px; }
+  .dc-split {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    font-size: clamp(36px, 2.8vw, 58px);
+  }
+  /* The divider between the two halves, turned to lie between two lines. */
+  .dc-split i {
+    width: 72px;
+    height: 2px;
+    min-height: 0;
+    align-self: flex-start;
+    margin: 0.22em 0 0.26em;
+    background: linear-gradient(90deg, var(--lime), transparent);
+  }
+  .dc .dc-hero-sub { margin: 18px 0 0; max-width: 34em; font-size: clamp(14.5px, 1.1vw, 18px); }
+  .dc-hero-cta { justify-content: flex-start; margin-top: 24px; }
+  .dc-hero-stage { grid-area: stage; width: 100%; max-width: none; margin: 0; }
+  .dc-hero-shot { max-width: none; }
+  .dc-hero-shot .dc-reel-stage { aspect-ratio: 16 / 9; }
+  .dc-hero-shot .dc-reel-caption { padding: 8px 14px 9px; min-height: 0; }
+  .dc-hero-shot .dc-reel-text { font-size: 13px; line-height: 1.45; }
+  /* Under the words: in the picture's column it would cost the picture
+     another 26px of height. */
+  .dc-sample-note { grid-area: note; margin-top: 16px; text-align: left; }
+}
+
 /* ── The launch film ─────────────────────────────────────────────────────
-   Edge to edge: the section paints no gutter, so the film is as wide as the
-   window. The frame holds the aspect ratio before anything has loaded, so the
-   page below does not jump when the poster arrives. */
+   Edge to edge: the section paints no gutter. The frame holds its size before
+   anything has loaded, so the page below does not jump when the poster
+   arrives. */
 
 /*
- * As wide as the window and never taller than what is left of it under the
- * nav. Sized by width alone it was 754px tall on a 1340px laptop showing 590,
- * so the top and bottom of the ad — the lines it is there to say — were off
- * screen. Now the height is the smaller of the two, and the film is fitted
- * inside (object-fit: contain) on the same near-black it fades to, so a
- * shape mismatch shows as a dark band rather than a crop. Every screen gets
- * the same 16:9 film, whole — on a phone, as wide as the screen.
+ * As wide as the window, never taller than the area under the nav — and on a
+ * wide, short window, cropped a little to be wider still.
+ *
+ * Sized by width alone it was 754px tall on a 1340px laptop showing 590, and
+ * its top and bottom were off screen. Fitted inside the height instead
+ * (object-fit: contain), it was whole but 900px wide in a 1340px window, with
+ * two dark bands the owner asked to have filled.
+ *
+ * So the film is cropped, within a budget: it has been laid out so nothing it
+ * says sits in its outer 11% top or bottom, and the frame may cut up to that
+ * (22% of its height in all) and no more. Height first — the area under the
+ * nav — and then width is the window's, or the height × 16/9 ÷ 0.78 if that
+ * is narrower; `cover` then crops exactly the difference, top and bottom
+ * equally. On 1340×590 that is 1215px of 1340; from about 1366×657 up, the
+ * whole width. Captions are cues drawn in the element's box, so cropping the
+ * picture never crops a caption. On a phone the frame is 16:9 already, so
+ * nothing is cut and the whole film shows, as wide as the screen.
+ *
+ * Whatever width is left is the band's, painted as a continuation of the
+ * film's own ground — its edges are #04070f, with the navy and violet glows it
+ * carries on either side — rather than black bars.
  */
 .dc-film {
+  --film-h: min(56.25vw, calc(var(--dc-vh) - var(--dc-nav-h)));
   position: relative;
   margin-top: clamp(40px, 6vw, 72px);
-  scroll-margin-top: 72px;
+  /* Centred in the area under the nav, by the #film link, "Watch with sound"
+     and the scroll step alike. */
+  scroll-margin-top: calc((var(--dc-vh) - var(--dc-nav-h) - var(--film-h)) / 2);
 }
+.dc-film-band {
+  position: relative;
+  background:
+    radial-gradient(55% 95% at 0% 50%, rgba(40, 70, 170, 0.15), transparent 72%),
+    radial-gradient(55% 95% at 100% 50%, rgba(112, 60, 190, 0.14), transparent 72%),
+    #04070f;
+}
+/* The lime rules above and below, across the whole width, over the film. */
+.dc-film-band::before,
+.dc-film-band::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 2;
+  background: rgba(200, 242, 77, 0.18);
+  pointer-events: none;
+}
+.dc-film-band::before { top: 0; }
+.dc-film-band::after { bottom: 0; }
 .dc-film-frame {
   position: relative;
-  width: 100%;
-  height: min(56.25vw, calc(100vh - 80px));
-  background: #05070c;
-  border-top: 1px solid rgba(200, 242, 77, 0.18);
-  border-bottom: 1px solid rgba(200, 242, 77, 0.18);
+  width: min(100%, calc((var(--dc-vh) - var(--dc-nav-h)) * 16 / 9 / 0.78));
+  height: var(--film-h);
+  margin: 0 auto;
+  background: #04070f;
   overflow: hidden;
 }
 .dc .dc-film-video {
   width: 100%;
   height: 100%;
   max-width: none;
-  object-fit: contain;
-  background: #05070c;
+  object-fit: cover;
+  background: #04070f;
 }
-@supports (height: 100svh) {
-  .dc-film-frame { height: min(56.25vw, calc(100svh - 80px)); }
+/* A touch screen gets the hero and the film as resting places; a wheel gets
+   a step instead (useFilmStep). Proximity, never mandatory: mandatory would
+   hold everybody below the film to it. And touch only — with a wheel, even
+   proximity caught the first notch below the film and pulled it straight
+   back, so the page could not be scrolled on from there. Only while the
+   whole hero fits on the first screen, which is when the class is set. */
+@media (hover: none) and (pointer: coarse) {
+  html.dc-snap { scroll-snap-type: y proximity; }
+  html.dc-snap .dc-hero { scroll-snap-align: start; }
+  html.dc-snap .dc-film-frame { scroll-snap-align: center; }
 }
 .dc-film-sound {
   position: absolute;

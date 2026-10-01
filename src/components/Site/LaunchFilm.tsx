@@ -3,12 +3,16 @@
  *
  * About five minutes, rendered from marketing/launch-film and re-encoded for
  * the web (public/site/launch/, as WebM and MP4). It is drawn for 16:9 — the
- * product window on the right, the words on the left — so it is shown whole
- * on every screen. There used to be a square cut for portrait screens,
- * cropped from a taller ad with blurred sides; the owner asked for the full
- * frame instead, so a phone gets the same film, as wide as the screen. It is
- * fitted inside the window's height (site.css), so no part of it is ever off
- * screen.
+ * product window on the right, the words on the left. There used to be a
+ * square cut for portrait screens, cropped from a taller ad with blurred
+ * sides; the owner asked for the full frame instead, so a phone gets the same
+ * film, whole, as wide as the screen.
+ *
+ * On a wide, short window — a laptop — the film is fitted to the height under
+ * the nav and may lose up to 11% of itself top and bottom to fill more of the
+ * width; the film is laid out to keep everything that matters out of that
+ * margin (site.css, "The launch film"). One scroll from the top lands on it,
+ * centred (useFilmStep).
  *
  * ── How it plays ──
  *
@@ -73,7 +77,7 @@ export default function LaunchFilm() {
     v.muted = false;
     v.currentTime = 0;
     /* All of it on screen before it speaks: the frame is sized to fit under
-       the nav, and this lines it up there. */
+       the nav, and the section's scroll margin (site.css) centres it there. */
     wrap.current?.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
     /* The captions stay available from the controls, but with the voice
        audible they would say everything twice. */
@@ -85,28 +89,32 @@ export default function LaunchFilm() {
 
   return (
     <section className="dc-film" id="film" aria-label="Protected Central in five minutes" ref={wrap}>
-      <div className="dc-film-frame">
-        <video
-          ref={video}
-          className="dc-film-video"
-          poster={poster}
-          muted={!sound}
-          playsInline
-          preload="none"
-          controls={sound}
-          aria-label="Protected Central — a three-minute tour of the product, AI Autopilot first"
-        >
-          {/* WebM first: two thirds the size, and what Chrome, Firefox and
-              Edge pick. MP4 for Safari, and for anything without VP9. */}
-          {armed && <source src={`${base}/${file}.webm`} type="video/webm" />}
-          {armed && <source src={`${base}/${file}.mp4`} type="video/mp4" />}
-          {armed && <track kind="captions" src={`${base}/captions.vtt`} srcLang="en" label="English" default />}
-        </video>
-        {!sound && (
-          <button type="button" className="dc-film-sound" onClick={withSound}>
-            <Volume2 size={16} /> Watch with sound
-          </button>
-        )}
+      {/* The band is the full width; the frame inside it is as wide as the
+          crop allows, and the band's own ground carries on from the film's. */}
+      <div className="dc-film-band">
+        <div className="dc-film-frame">
+          <video
+            ref={video}
+            className="dc-film-video"
+            poster={poster}
+            muted={!sound}
+            playsInline
+            preload="none"
+            controls={sound}
+            aria-label="Protected Central — a five-minute tour of the product, AI Autopilot first"
+          >
+            {/* WebM first: two thirds the size, and what Chrome, Firefox and
+                Edge pick. MP4 for Safari, and for anything without VP9. */}
+            {armed && <source src={`${base}/${file}.webm`} type="video/webm" />}
+            {armed && <source src={`${base}/${file}.mp4`} type="video/mp4" />}
+            {armed && <track kind="captions" src={`${base}/captions.vtt`} srcLang="en" label="English" default />}
+          </video>
+          {!sound && (
+            <button type="button" className="dc-film-sound" onClick={withSound}>
+              <Volume2 size={16} /> Watch with sound
+            </button>
+          )}
+        </div>
       </div>
       <div className="dc-film-foot">
         <p>Protected Central in five minutes. Screens show a demo workspace with example data and example figures.</p>

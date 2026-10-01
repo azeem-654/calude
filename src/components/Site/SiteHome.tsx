@@ -45,6 +45,7 @@ import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
+import { useFilmStep } from './useFilmStep';
 import './site.css';
 
 type Reel = keyof typeof REELS;
@@ -331,17 +332,30 @@ export default function SiteHome() {
   /* Whether the chips beside the hero's picture have room to sit beside it.
      Measured, not guessed from a breakpoint: the picture's width depends on
      the window's height as well as its width (site.css), so no single media
-     query can say where its edges are. */
+     query can say where its edges are. Both sides, because the chips come in
+     pairs: on a wide laptop the picture is the right-hand column, flush to
+     the gutter, and on a wider screen the room to its left is only the gap
+     before the words — a chip there would sit on the headline. */
   const stage = useRef<HTMLDivElement | null>(null);
+  const copy = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
-    const fit = () => { el.dataset.chips = el.getBoundingClientRect().left >= 200 ? 'out' : 'off'; };
+    const fit = () => {
+      const r = el.getBoundingClientRect();
+      const c = copy.current?.getBoundingClientRect();
+      const beside = !!c && c.bottom > r.top && c.top < r.bottom;
+      const left = beside && c ? r.left - c.right : r.left;
+      el.dataset.chips = left >= 200 && window.innerWidth - r.right >= 200 ? 'out' : 'off';
+    };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(document.documentElement);
     return () => ro.disconnect();
   }, []);
+
+  const heroInner = useRef<HTMLDivElement | null>(null);
+  useFilmStep(heroInner);
 
   return (
     <div className="dc">
@@ -380,25 +394,29 @@ export default function SiteHome() {
              illustration and say nothing about anybody's results. ── */}
       <section className="dc-hero" id="top">
         <div className="dc-hero-glow" aria-hidden="true" />
-        <div className="dc-hero-inner">
-          <a className="dc-eyebrow dc-ai-pill dc-lead-0" href="#autopilot">
-            <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — describe it, and it builds and runs it</span> <ArrowRight size={14} />
-          </a>
-          <h1 className="dc-split">
-            <span className="dc-lead-l">Run your agency</span>
-            <i aria-hidden="true" />
-            <span className="dc-lead-r">Resell it as your own</span>
-          </h1>
-          <p className="dc-hero-sub dc-lead-1">
-            Tell it what you want in a sentence and AI Autopilot builds the workflows, writes the posts
-            and follows up every lead — one login, on your own mailbox, with every step visible and
-            editable before it happens.
-          </p>
-          <div className="dc-hero-cta dc-lead-2">
-            <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
-              Start your 7-day free trial <ArrowRight size={16} />
+        <div className="dc-hero-inner" ref={heroInner}>
+          {/* The words, as one block: on a wide, short window they are the
+              left-hand column beside the picture (site.css, "Two columns"). */}
+          <div className="dc-hero-copy" ref={copy}>
+            <a className="dc-eyebrow dc-ai-pill dc-lead-0" href="#autopilot">
+              <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — describe it, and it builds and runs it</span> <ArrowRight size={14} />
             </a>
-            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 55-second tour</a>
+            <h1 className="dc-split">
+              <span className="dc-lead-l">Run your agency</span>
+              <i aria-hidden="true" />
+              <span className="dc-lead-r">Resell it as your own</span>
+            </h1>
+            <p className="dc-hero-sub dc-lead-1">
+              Tell it what you want in a sentence and AI Autopilot builds the workflows, writes the posts
+              and follows up every lead — one login, on your own mailbox, with every step visible and
+              editable before it happens.
+            </p>
+            <div className="dc-hero-cta dc-lead-2">
+              <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
+                Start your 7-day free trial <ArrowRight size={16} />
+              </a>
+              <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 5-minute tour</a>
+            </div>
           </div>
           <div className="dc-hero-stage dc-lead-3" ref={stage} data-chips="off">
             <div className="dc-hero-sparks" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
@@ -420,8 +438,9 @@ export default function SiteHome() {
       </section>
 
       {/* ── The launch film, full length and full width: the second thing
-             anybody sees, because fifty-five seconds of the product working
-             answers more than the rest of the page can in text. ── */}
+             anybody sees, one scroll from the top (useFilmStep), because five
+             minutes of the product working answers more than the rest of the
+             page can in text. ── */}
       <LaunchFilm />
 
       {/* ── What it connects to, and what it writes for. Two rows, labelled,
