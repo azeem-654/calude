@@ -159,6 +159,32 @@ if (other0()) {
   ok('Sign-ups: a bad message link is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
 }
 
+/* ── 2c · Reputation: the review-source form and the owner's Places key ──
+   Finding the business, the workspace's own key, and the install key all
+   refuse by naming a box; each must be on screen when they do. */
+await resetDeadEnds();
+await p.goto(`${B}/reputation`, { waitUntil: 'networkidle' });
+await settle();
+await p.getByRole('button', { name: /Find your business on Google|Reputation settings/ }).first().click();
+const repDialog = p.getByRole('dialog');
+await repDialog.getByRole('button', { name: /Review Sources/ }).click();
+await repDialog.locator('[data-field="rep.search"]').fill('');
+await repDialog.getByRole('button', { name: /^Search/ }).click();
+await settle();
+ok('Reputation: an empty business search is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+await repDialog.locator('[data-field="rep.placesKey"]').fill('not-a-google-key');
+await repDialog.getByRole('button', { name: 'Save key', exact: true }).click();
+await settle();
+ok('Reputation: a malformed Places key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+ok('Reputation: …and the refusal is shown', /does not look like a Google API key/.test(await repDialog.innerText()));
+await p.goto(`${B}/settings`, { waitUntil: 'networkidle' });
+await p.getByRole('button', { name: /^Integrations/ }).first().click();
+await settle();
+await p.locator('[data-field="places.installKey"]').fill('AIzaTooShort');
+await p.getByRole('button', { name: 'Save key', exact: true }).click();
+await settle();
+ok('Settings → Integrations: a malformed install Places key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+
 /* ── 3 · The guard catches what it is for ──
    A refusal naming a box that does not exist anywhere must be recorded and
    reported — otherwise every pass above proves nothing. */

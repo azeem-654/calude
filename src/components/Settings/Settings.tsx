@@ -17,6 +17,7 @@ import MailboxManager from '../Setup/MailboxManager';
 import SetupAdmin from '../Setup/SetupAdmin';
 import WhiteLabelPanel from './WhiteLabelPanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
+import PlacesKeyPanel from './PlacesKeyPanel';
 import MotionPanel from './MotionPanel';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
@@ -1278,6 +1279,7 @@ export default function Settings() {
           )}
 
           {activeTab === 'integrations' && (
+            <>
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Third-Party Integrations</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '12px' }}>
@@ -1301,6 +1303,11 @@ export default function Settings() {
                 ))}
               </div>
             </div>
+            {/* The install's Places key for Reputation. Owner only, like the
+                Google sign-in client: one Google project per install, on the
+                operator's quota. The server refuses anybody else. */}
+            {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <PlacesKeyPanel />}
+            </>
           )}
 
           {/*
