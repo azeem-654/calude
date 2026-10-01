@@ -184,6 +184,37 @@ the operator's subscription billing only — never on a customer's shop or a
 reseller's own billing. `npm run test:affiliate` (fresh D1, `PERSIST=`) signs
 real webhooks.
 
+## Revenue by project — what a project earned, on a stated rule
+
+`lib/revenue.ts` holds the rule and the arithmetic (pure); `routes/revenue.ts`
+is `/api/revenue.php` `summary` (`days` 30 | 90 | 365, optional `currency`,
+`projectId` — refused unless it is this workspace's); the screen is
+Reports → **Revenue by project** (`components/Analytics/RevenueByProject.tsx`,
+`/analytics?section=revenue`) and the strip on a project's Overview
+(`ProjectRevenueStrip.tsx`). `npm run test:revenue` (fresh D1, port 8811,
+`PERSIST=`) signs real storefront webhooks.
+
+- **Only money that arrived counts**: orders `paid` or `fulfilled`, dated by
+  `crm_orders.paid_at` — stamped once, when an order first becomes paid (the
+  storefront webhook, `record_order`, `set_order_status`), never moved by a
+  later fulfil or redelivery. Refunds are shown beside revenue, never in it.
+- **An order belongs to at most one project**, on the first of: (a) `link` —
+  the buyer came through the project's shop link `/shop/<slug>?pj=<projectId>`
+  (ShopPage keeps `pj` in sessionStorage for the visit); (b) `shop` — the shop
+  belongs to the project; (c) `products` — every line is a product of the same
+  project. Otherwise **Unattributed**, drawn in grey, never shared out. Every
+  candidate must be a project of the order's own workspace; a foreign or
+  unknown `pj` is dropped silently. Shop orders are stamped at checkout
+  (`project_id`, `project_via`, frozen like the price); unstamped orders (older
+  ones, manual ones) are attributed when the report is read, by the same
+  function.
+- **Currencies are never added together** or converted. Every figure is in one
+  currency (asked for, else the one with most revenue); the rest are listed.
+- **Recovered by Autopilot** is an order named in a project's `chase_payment`
+  effect whose `chased_at` is set (the email was accepted) and that was paid
+  after it. **Won deals** come from the project's own pipeline (`projectId`),
+  shown at the typed value — a deal has no currency, so it never joins revenue.
+
 ## Forms ask only for what they show
 
 A refusal about a particular box names it — `fail(msg, 200, { field:

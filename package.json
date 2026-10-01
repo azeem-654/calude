@@ -44,6 +44,7 @@
     "test:systemmail": "node test/systemMail.e2e.mjs",
     "test:affiliate": "node test/affiliate.e2e.mjs",
     "test:resell": "node test/resell.e2e.mjs",
+    "test:revenue": "node test/revenue.e2e.mjs",
     "test:livehelp": "node test/liveHelp.e2e.mjs",
     "test:sitefit": "node test/siteFit.e2e.mjs"
   },

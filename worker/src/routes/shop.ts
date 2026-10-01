@@ -25,6 +25,7 @@ import { addr, body, fail, json } from '../lib/http';
 import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
 import { priceBasket, type Discount, type ShippingRate, type TaxRate } from '../lib/checkout';
 import { createPayLink } from './storefront';
+import { checkoutAttribution } from './revenue';
 import { rateLimit } from '../lib/rateLimit';
 
 interface Req {
@@ -48,6 +49,8 @@ interface Req {
   country?: string;
   /* Owner */
   id?: string;
+  /** Owner: the shop's project. Buyer: the `?pj=` on the shop link, a
+   *  candidate only — see checkoutAttribution. */
   projectId?: string;
   name?: string;
   headline?: string;
@@ -561,17 +564,25 @@ export async function handleShop(req: Request, env: Env): Promise<Response> {
     if (totals.discountProblem) return fail(totals.discountProblem, 200, { code: 'discount' });
     const total = totals.totalCents;
 
+    /* Which project earned it — the rule is in lib/revenue.ts. `projectId` is
+       the shop link's `?pj=`, which anybody can type, so it is a candidate
+       that counts only if it names one of this shop's own projects. */
+    const credit = await checkoutAttribution(
+      env, shop.account_id, String(d.projectId ?? '').trim(), shop,
+      [...new Set(items.map(i => i.productId))],
+    );
+
     const now = nowIso();
     const orderId = rid('ord');
     await env.DB.prepare(
       `INSERT INTO crm_orders
        (id, account_id, contact_id, email, items, total_cents, currency, status, channel,
-        shop_id, discount_code, discount_cents, shipping_cents, tax_cents, tax_label,
+        shop_id, project_id, project_via, discount_code, discount_cents, shipping_cents, tax_cents, tax_label,
         placed_at, updated_at)
-       VALUES (?,?,?,?,?,?,?, 'pending', 'shop', ?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?, 'pending', 'shop', ?,?,?,?,?,?,?,?,?,?)`,
     ).bind(
       orderId, shop.account_id, `ip:${ip}`, email, JSON.stringify(items), total,
-      currency, shop.id,
+      currency, shop.id, credit.projectId, credit.projectId ? credit.via : '',
       /* Frozen onto the order. A code edited next week must not change what
          this receipt says it charged — the same rule as the price. The tax is
          frozen for a harder reason: a rate changed next April must not restate

@@ -784,16 +784,21 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     const total = items.reduce((n, i) => n + i.qty * i.priceCents, 0);
     const now = nowIso();
     const id = rid('ord');
+    const status = ['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'].includes(String(d.status)) ? String(d.status) : 'pending';
+    /* Recorded as paid means the money is in, now, as far as anybody here can
+       know — the revenue report dates the sale by this. Not for 'refunded':
+       an order typed in already refunded never counted as money arriving. */
+    const paidAt = status === 'paid' || status === 'fulfilled' ? now : null;
     await env.DB.prepare(
       `INSERT INTO crm_orders
-       (id, account_id, contact_id, email, items, total_cents, currency, status, channel, placed_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?)`,
+       (id, account_id, contact_id, email, items, total_cents, currency, status, channel, placed_at, updated_at, paid_at)
+       VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?)`,
     ).bind(
       id, accountId, String(d.contactId ?? '').slice(0, 80), String(d.email ?? '').slice(0, 200),
       JSON.stringify(items), total,
       await storefrontCurrency(env, accountId),
-      ['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'].includes(String(d.status)) ? String(d.status) : 'pending',
-      now, now,
+      status,
+      now, now, paidAt,
     ).run();
     return json({ success: true, id, orders: await listOrders() });
   }
@@ -804,8 +809,15 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     if (!['pending', 'paid', 'fulfilled', 'cancelled', 'refunded'].includes(status)) {
       return fail(`"${status}" is not something an order can be.`);
     }
-    const res = await env.DB.prepare('UPDATE crm_orders SET status = ?, updated_at = ? WHERE id = ? AND account_id = ?')
-      .bind(status, nowIso(), id, accountId).run();
+    /* `paid_at` is stamped the first time an order becomes paid or fulfilled
+       and never moved after — marking it fulfilled next week must not move
+       the sale into next week's revenue. */
+    const now = nowIso();
+    const res = await env.DB.prepare(
+      `UPDATE crm_orders SET status = ?, updated_at = ?,
+              paid_at = CASE WHEN paid_at IS NULL AND ? IN ('paid', 'fulfilled') THEN ? ELSE paid_at END
+        WHERE id = ? AND account_id = ?`,
+    ).bind(status, now, status, now, id, accountId).run();
     if (!res.meta.changes) return fail('That order is not in this workspace.');
     return json({ success: true, orders: await listOrders() });
   }

@@ -48,6 +48,7 @@ import { handleUiReport } from './routes/uireport';
 import { handleSystemMail } from './routes/systemMail';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
+import { handleRevenue } from './routes/revenue';
 import { handleCustomers } from './routes/customers';
 import { handleTrialOptout, runTrialMail } from './lib/trialMail';
 import { handleValidateKey } from './routes/validateKey';
@@ -82,6 +83,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/affiliate.php': handleAffiliate,
   '/api/resell.php': handleResell,
   '/api/resell-webhook.php': handleResellWebhook,
+  /* Revenue by project — read-only, the workspace's own rows. */
+  '/api/revenue.php': handleRevenue,
   /* Who signed up, their trial, and the owner's messages to them. */
   '/api/customers.php': handleCustomers,
   /* "Stop these emails" under a trial email. Signed, and a GET only shows a

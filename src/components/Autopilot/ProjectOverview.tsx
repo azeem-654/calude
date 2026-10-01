@@ -21,6 +21,7 @@ import {
 import type { Project } from '../../services/projects';
 import type { AgentRun, ProjectWorkflow } from '../../services/autopilot';
 import { T } from './theme';
+import ProjectRevenueStrip from './ProjectRevenueStrip';
 
 export interface OverviewAsset { id: string; name: string; kind: string; route: string; at: string }
 
@@ -77,6 +78,10 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
           <span><b>{assets.length}</b> thing{assets.length === 1 ? '' : 's'} made</span>
         </span>
       </div>
+
+      {/* What it earned, before what it is doing — the question an owner opens
+          a project to answer. */}
+      <ProjectRevenueStrip projectId={project.id} />
 
       {/* Workflows first, with the button always here — a new project must be
           able to add one before it has any. */}
