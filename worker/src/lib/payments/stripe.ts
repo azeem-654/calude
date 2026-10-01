@@ -183,6 +183,10 @@ export const stripe: PaymentProvider = {
     if (req.email) params.set('customer_email', req.email);
     params.set('client_reference_id', req.reference);
     params.set('metadata[accountId]', req.reference);
+    /* On the subscription too, so every renewal invoice names the workspace —
+       a renewal is a new invoice, not the checkout, and without this it
+       arrives anonymous. */
+    params.set('subscription_data[metadata][accountId]', req.reference);
 
     const r = await call(key, '/checkout/sessions', params);
     if (!r.ok) {
@@ -230,6 +234,28 @@ export const stripe: PaymentProvider = {
     const meta = (obj.metadata ?? {}) as Record<string, string>;
     const type = String(event.type ?? '');
 
+    /*
+     * A subscription's payments arrive as invoices: the first one and every
+     * renewal is `invoice.paid`, carrying what was paid and — through the
+     * subscription's metadata, set at checkout — the workspace. Stripe has
+     * moved that metadata between API versions, so both places are read.
+     */
+    if (type === 'invoice.paid' || type === 'invoice.payment_succeeded') {
+      const inv = obj as {
+        id?: string; amount_paid?: number; currency?: string; metadata?: Record<string, string>;
+        subscription_details?: { metadata?: Record<string, string> };
+        parent?: { subscription_details?: { metadata?: Record<string, string> } };
+      };
+      const accountId = inv.parent?.subscription_details?.metadata?.accountId
+        || inv.subscription_details?.metadata?.accountId || inv.metadata?.accountId || '';
+      return {
+        kind: 'paid', reference: String(accountId), sessionId: String(inv.id ?? ''),
+        eventId: String((event as { id?: string }).id ?? inv.id ?? ''),
+        amountCents: Number(inv.amount_paid ?? 0), currency: String(inv.currency ?? '').toUpperCase(),
+        subscriptionPayment: Number(inv.amount_paid ?? 0) > 0,
+      };
+    }
+
     const kind: PaymentEvent['kind'] =
       type === 'checkout.session.completed' || type === 'checkout.session.async_payment_succeeded' ? 'paid'
         : type === 'checkout.session.async_payment_failed' || type === 'checkout.session.expired' ? 'failed'
@@ -256,6 +282,9 @@ export const stripe: PaymentProvider = {
       kind,
       reference: meta.orderId || String(obj.client_reference_id ?? ''),
       sessionId: String(obj.id ?? ''),
+      eventId: String((event as { id?: string }).id ?? ''),
+      amountCents: typeof obj.amount_total === 'number' ? obj.amount_total : undefined,
+      currency: obj.currency ? String(obj.currency).toUpperCase() : undefined,
       shipping: a.line1 ? {
         name: String(ship.name ?? cd.name ?? ''),
         line1: String(a.line1 ?? ''), line2: String(a.line2 ?? ''),

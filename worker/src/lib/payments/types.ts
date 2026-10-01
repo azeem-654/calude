@@ -92,6 +92,17 @@ export interface PaymentEvent {
   reference: string;
   /** The processor's session id, as a fallback way to find the order. */
   sessionId: string;
+  /** The processor's own id for this event — what anything counted per
+   *  payment (an affiliate commission) is keyed on, so a retry counts once. */
+  eventId?: string;
+  /** Money that actually moved on this event, in minor units, when the
+   *  processor says. */
+  amountCents?: number;
+  currency?: string;
+  /** True for one payment of a subscription — the first and every renewal.
+   *  A subscription checkout completing is *not* one: on Stripe its first
+   *  invoice arrives as its own event, and counting both would pay twice. */
+  subscriptionPayment?: boolean;
   /** The delivery address, when the processor collected one. */
   shipping?: {
     name: string; line1: string; line2: string; city: string;

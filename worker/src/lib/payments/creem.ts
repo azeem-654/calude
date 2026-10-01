@@ -384,12 +384,33 @@ export const creem: PaymentProvider = {
 
   readEvent(rawBody) {
     let ev: {
+      id?: string;
       eventType?: string;
-      object?: { id?: string; request_id?: string; metadata?: Record<string, string>; order?: { id?: string }; customer?: { email?: string } };
+      object?: {
+        id?: string; request_id?: string; metadata?: Record<string, string>; order?: { id?: string; amount?: number; currency?: string };
+        customer?: { email?: string }; product?: { price?: number; currency?: string };
+        last_transaction?: { amount?: number; currency?: string };
+      };
     };
     try { ev = JSON.parse(rawBody); } catch { return null; }
 
     const o = ev.object ?? {};
+    /*
+     * Each payment of a subscription — the first and every renewal — is
+     * `subscription.paid`, carrying the subscription with the metadata given
+     * at checkout. `checkout.completed` for the same first payment is not
+     * counted as a subscription payment, so nothing earned on it is counted
+     * twice.
+     */
+    if (ev.eventType === 'subscription.paid') {
+      const amount = Number(o.last_transaction?.amount ?? o.product?.price ?? 0);
+      return {
+        kind: 'paid', reference: String(o.metadata?.accountId || o.request_id || ''), sessionId: String(o.id ?? ''),
+        eventId: String(ev.id ?? ''), amountCents: amount,
+        currency: String(o.last_transaction?.currency ?? o.product?.currency ?? '').toUpperCase(),
+        subscriptionPayment: amount > 0,
+      };
+    }
     const reference = String(o.request_id || o.metadata?.orderId || '');
     const sessionId = String(o.id ?? '');
     const type = String(ev.eventType ?? '');
@@ -405,6 +426,10 @@ export const creem: PaymentProvider = {
        this app can post a parcel to. So no shipping is claimed — the supplier
        path will say the address is missing, which is true, rather than posting
        to a half-read one. */
-    return { kind, reference, sessionId };
+    return {
+      kind, reference, sessionId, eventId: String(ev.id ?? ''),
+      amountCents: typeof o.order?.amount === 'number' ? o.order.amount : undefined,
+      currency: o.order?.currency ? String(o.order.currency).toUpperCase() : undefined,
+    };
   },
 };

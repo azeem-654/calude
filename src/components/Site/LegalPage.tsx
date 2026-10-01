@@ -7,17 +7,17 @@
  * (PolicyPage), with a contents list and anchored sections so a support reply
  * can link to one. The words are in legalText.ts.
  */
-import { LEGAL_UPDATED, PRIVACY, PRIVACY_CONTACT, TERMS, type LegalSection } from './legalText';
+import { AFFILIATE_TERMS, LEGAL_UPDATED, PRIVACY, PRIVACY_CONTACT, TERMS, type LegalSection } from './legalText';
 import { usePageTitle } from '../../services/pageTitle';
 
 const INK = '#17191c';
 const MUTED = '#5b6270';
 const LINE = '#e6e9f0';
 
-export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' }) {
-  const title = doc === 'privacy' ? 'Privacy Policy' : 'Terms of Service';
+export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'affiliate' }) {
+  const title = doc === 'privacy' ? 'Privacy Policy' : doc === 'affiliate' ? 'Affiliate Program Terms' : 'Terms of Service';
   usePageTitle(`${title} — Protected Central`);
-  const sections: LegalSection[] = doc === 'privacy' ? PRIVACY : TERMS;
+  const sections: LegalSection[] = doc === 'privacy' ? PRIVACY : doc === 'affiliate' ? AFFILIATE_TERMS : TERMS;
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7', padding: 'clamp(20px, 5vw, 52px) clamp(16px, 4vw, 32px)', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif' }}>

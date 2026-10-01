@@ -189,3 +189,50 @@ export const TERMS: LegalSection[] = [
     body: [`Questions about these terms: ${PRIVACY_CONTACT}.`],
   },
 ];
+
+/*
+ * The affiliate program's terms. Written from what the software does
+ * (worker/src/lib/affiliate.ts): 40% of each subscription payment from a
+ * referred account, for as long as it pays; held 30 days; paid by the owner
+ * by hand. Like the other pages, not yet reviewed by a lawyer — see
+ * docs/OWNER-CHECKLIST.md.
+ */
+export const AFFILIATE_TERMS: LegalSection[] = [
+  {
+    id: 'what', title: 'What you earn',
+    body: [
+      'You earn 40% of every subscription payment made to Protected Central by a customer who signed up through your referral link — the first payment and every renewal, for as long as that customer keeps paying for their own subscription.',
+      'The commission is calculated on the amount the customer actually paid. Payments for anything other than a Protected Central subscription (for example domains, or anything a customer sells through their own shop) do not earn a commission.',
+    ],
+  },
+  {
+    id: 'referral', title: 'Who counts as your referral',
+    body: [
+      'A customer is yours when they open your link and then create an account within 60 days in the same browser. The first affiliate link a customer used is the one that counts. A customer can be attributed to a link for up to 14 days after creating their account, and never after that.',
+      'You cannot refer yourself, your own additional accounts, or accounts you control.',
+    ],
+  },
+  {
+    id: 'paying', title: 'When and how you are paid',
+    body: [
+      'Each commission is held for 30 days after the customer pays, so that a refund can be honoured. After that it is payable. We pay payable commissions by the method you give us on the Affiliate program screen, normally once a month. A commission on a payment that is refunded, reversed or disputed is not paid, and may be deducted if it was already paid.',
+      'You are responsible for any tax on what you earn.',
+    ],
+  },
+  {
+    id: 'conduct', title: 'How you may promote Protected Central',
+    body: ['Promote honestly. In particular, you must not:'],
+    list: [
+      'send unsolicited email or messages (spam), or buy lists of addresses;',
+      'bid on "Protected Central" or close variations in paid search ads;',
+      'promise income, results or features that Protected Central does not provide;',
+      'present yourself as Protected Central, or as its employee.',
+    ],
+  },
+  {
+    id: 'changes', title: 'Changes and ending',
+    body: [
+      'We may change these terms or end the program with 30 days\' notice. Commissions earned before a change or the end are paid under the terms they were earned under. We may end an individual affiliate\'s participation at once for a breach of these terms, and commissions earned through the breach are not paid.',
+    ],
+  },
+];

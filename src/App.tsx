@@ -4,6 +4,7 @@ import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
 import LoginScreen from './components/Auth/LoginScreen';
 import { checkSession, getSession } from './services/auth';
+import { attributeIfPending } from './services/referral';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
@@ -52,6 +53,7 @@ import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
 import Signups from './components/Agency/Signups';
+import Affiliate from './components/Affiliate/Affiliate';
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -64,12 +66,13 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (['/security', '/privacy', '/terms-of-service'].includes(location.pathname)) {
+  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms'].includes(location.pathname)) {
     return (
       <Routes>
         <Route path="/security" element={<TrustCenter />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
+        <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
       </Routes>
     );
   }
@@ -175,10 +178,12 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/moderation" element={<ReviewQueue />} />
           {/* The owner's list of who signed up; the server refuses anybody else. */}
           <Route path="/signups" element={<Signups />} />
+          <Route path="/affiliate" element={<Affiliate />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
+          <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
           {/*
            * Every other Routes block in this file has a catch-all; this one did
            * not, and the result was a screen that looked broken rather than
@@ -324,6 +329,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per signed-in session, not per user-object change
   }, [session?.user.email]);
 
+  /* A new account that arrived through an affiliate's link says so, once
+     (services/referral.ts; the server decides whether it counts). */
+  useEffect(() => {
+    if (session?.backend === 'php') void attributeIfPending();
+  }, [session?.user.email, session?.backend]);
+
   /* Signing in at /login leaves that address in the bar, and it is not a route
      the signed-in app has. Put the workspace root back before the tree swaps. */
   const signedIn = () => {
@@ -403,6 +414,7 @@ export default function App() {
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
+          <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
           <Route path="*" element={<SiteHome />} />
         </Routes>
       </BrowserRouter>
@@ -431,6 +443,7 @@ export default function App() {
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
+          <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
           <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
           <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />

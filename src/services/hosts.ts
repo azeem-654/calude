@@ -166,7 +166,12 @@ export const isRehearsal = (): boolean => {
  * it and development does not bounce to production.
  */
 export function appHref(path = '/login'): string {
-  const clean = path.startsWith('/') ? path : `/${path}`;
+  let clean = path.startsWith('/') ? path : `/${path}`;
+  /* An affiliate's code rides along to sign-up and sign-in, so a visitor who
+     arrived through somebody's link on the site is still theirs on the app's
+     host, which keeps its own storage (services/referral.ts). */
+  const ref = pendingRefCode();
+  if (ref && /^\/(signup|login)(\?|$)/.test(clean)) clean += `${clean.includes('?') ? '&' : '?'}ref=${encodeURIComponent(ref)}`;
   if (isMarketingHost()) return `${APP_ORIGIN}${clean}`;
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
   return `${base}${clean}`;
@@ -174,3 +179,20 @@ export function appHref(path = '/login'): string {
 
 /** True when `appHref` produced a link off this origin, so the router cannot take it. */
 export const isCrossOrigin = (href: string): boolean => /^https?:\/\//.test(href);
+
+/** Read here rather than imported from referral.ts, which imports auth — a cycle through hosts. */
+function pendingRefCode(): string {
+  try {
+    const v = JSON.parse(localStorage.getItem('pc_ref') ?? 'null') as { code?: string; at?: number } | null;
+    return v?.code && /^[a-z0-9][a-z0-9-]{2,40}$/.test(v.code) && Date.now() - (v.at ?? 0) < 60 * 86_400_000 ? v.code : '';
+  } catch { return ''; }
+}
+
+/** The public site's address for this deployment: where an affiliate's link points. */
+export function siteOrigin(): string {
+  try {
+    const h = location.hostname;
+    if (h.startsWith('app.')) return `${location.protocol}//${h.slice(4)}`;
+    return location.origin;
+  } catch { return 'https://protectedcentral.com'; }
+}

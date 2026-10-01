@@ -37,6 +37,7 @@ import {
 } from '../lib/db';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { DEFAULT_PROVIDER, providerChoices, providerFor, type ProviderContext } from '../lib/payments';
+import { recordCommission } from '../lib/affiliate';
 
 const SECRET_KEY = 'mailbox_key';
 const KIND = 'payments';
@@ -390,6 +391,18 @@ export async function handleBillingWebhook(req: Request, env: Env): Promise<Resp
       lastEvent: event.kind,
       processor: provider.id,
     }));
+  }
+
+  /*
+   * The affiliate program: 40% of each subscription payment from a referred
+   * account. Only real subscription payments with an amount count, keyed on
+   * the processor's event id so a retry cannot pay twice (lib/affiliate.ts).
+   */
+  if (accountId && event.kind === 'paid' && event.subscriptionPayment && (event.amountCents ?? 0) > 0) {
+    await recordCommission(env, {
+      accountId, amountCents: event.amountCents ?? 0, currency: event.currency || 'USD',
+      eventKey: `${provider.id}:${event.eventId || event.sessionId}`,
+    });
   }
 
   /* 200 for anything correctly signed, including events not acted on — a

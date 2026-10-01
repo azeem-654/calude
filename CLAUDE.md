@@ -154,6 +154,27 @@ otherwise their first validated one — a chosen mailbox that stops working
 falls back rather than silencing every code. Only mailboxes in workspaces the
 install owner owns are candidates. `npm run test:systemmail` (fresh D1).
 
+## The affiliate program — 40% of every payment, for as long as it pays
+
+`lib/affiliate.ts` holds the rules (rate 40, 30-day hold, 14-day attribution
+window); `routes/affiliate.ts` the API; `components/Affiliate` the screen
+(`/affiliate`, with a **Manage program** tab for the install owner);
+`/affiliate-terms` the terms (`AFFILIATE_TERMS` in legalText.ts). A link is
+`<site>/?ref=<code>`; `services/referral.ts` keeps the code in `pc_ref`
+(60 days, first link wins), `appHref` carries it to `/signup` and `/login`,
+and after any sign-in the browser asks `attribute` — the server decides.
+
+**A commission is written only by the billing webhook, from money that
+arrived** (`recordCommission`): a `subscriptionPayment` event — Stripe
+`invoice.paid` (first payment and every renewal; the subscription carries
+`metadata.accountId` via `subscription_data`) or Creem `subscription.paid` —
+keyed `<processor>:<event id>` so a redelivery cannot pay twice. A completed
+subscription *checkout* earns nothing, because its invoice does. Nothing
+moves money: the owner pays affiliates and marks rows paid. Commissions are on
+the operator's subscription billing only — never on a customer's shop or a
+reseller's own billing. `npm run test:affiliate` (fresh D1, `PERSIST=`) signs
+real webhooks.
+
 ## Forms ask only for what they show
 
 A refusal about a particular box names it — `fail(msg, 200, { field:

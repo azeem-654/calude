@@ -35,6 +35,10 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 19 | **Set your kickoff-call booking link**, signed in as azeem@protectedcentral.com: Workspace → **Sign-ups & trials** → Kickoff call & welcome → paste a booking page (your own under Booking pages, or any calendar link) → Save | app.protectedcentral.com | The "Book a free kickoff call" button on every trial customer's trial bar, help card and welcome message. Until it is set those buttons are simply not shown |
 | 20 | **Read the onboarding emails and pick your digest hour**, signed in as azeem@protectedcentral.com: Workspace → Sign-ups & trials → *Onboarding emails* (the day 1, 3 and 5 wording — they are on by default) and *Daily digest* (the hour, in your own time zone, and where it goes) → Save. Press *Send me today's digest now* to see one | app.protectedcentral.com | Both send from the mailbox in item 15; until it validates, nothing goes |
 
+| 19 | **Send renewal events to the app** — in Stripe → Developers → Webhooks → your endpoint for `/api/billing-webhook.php`, add the event **`invoice.paid`** (keep `checkout.session.completed`). On Creem, add **`subscription.paid`** | Stripe or Creem dashboard | The affiliate program: commissions are earned on each subscription payment, and without these events only the first sign-up is seen, never a renewal |
+| 20 | **Pay affiliates once a month** — Affiliate program → Manage program shows what is payable and where each affiliate wants paying; pay them, then press **Mark paid** | app.protectedcentral.com/affiliate | Affiliates being paid. The app records commissions; it never sends money |
+| 21 | **Have the lawyer read the Affiliate Program Terms** too (`/affiliate-terms`, from `AFFILIATE_TERMS` in legalText.ts) | a lawyer | The program's promises being exactly what you mean |
+
 **Done, and no longer on the list:**
 
 - Item 15, on the live app — support@protectedcentral.com is connected through
