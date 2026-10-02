@@ -105,6 +105,24 @@ export default function Engagement() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  /* What the inbox's own sync loop learnt: changed conversations merged in by
+     id and the list kept in last-activity order, so a new enquiry appears at
+     the top without anybody pressing Refresh. */
+  const mergeRows = useCallback((rows: (Partial<Conversation> & { id: string })[]) => {
+    setConversations(prev => {
+      const byId = new Map(prev.map(c => [c.id, c]));
+      for (const r of rows) {
+        const had = byId.get(r.id);
+        if (had) byId.set(r.id, { ...had, ...r });
+        else if (r.lastAt) byId.set(r.id, r as Conversation);
+      }
+      return [...byId.values()].sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
+    });
+  }, []);
+  /* Live from the list rather than the last overview: somebody waiting, or
+     something nobody here has read yet. */
+  const inboxBadge = conversations.filter(c => (c.status === 'open' && !!c.needsHumanSince) || Number(c.unread ?? 0) > 0).length;
+
   /*
    * Pulling public captures into the CRM.
    *
@@ -178,7 +196,7 @@ export default function Engagement() {
       <div role="tablist" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 20, borderBottom: `1px solid ${LINE}`, paddingBottom: 10 }}>
         {TABS.map(({ id, label, icon: Ic }) => {
           const on = tab === id;
-          const badge = id === 'inbox' ? (counts?.waitingOnHuman ?? 0)
+          const badge = id === 'inbox' ? inboxBadge
             : id === 'live' ? (counts?.liveWaiting ?? 0)
             : id === 'tickets' ? (counts?.openTickets ?? 0)
               : id === 'submissions' ? (counts?.newSubmissions ?? 0) : 0;
@@ -296,7 +314,7 @@ export default function Engagement() {
         </div>
       )}
 
-      {tab === 'inbox' && <EngageInbox conversations={conversations} onChange={() => void refresh()} />}
+      {tab === 'inbox' && <EngageInbox conversations={conversations} onChange={() => void refresh()} onRows={mergeRows} />}
       {tab === 'live' && <EngageLive onChange={() => void refresh()} />}
       {tab === 'tickets' && <EngageTickets tickets={tickets} onChange={() => void refresh()} />}
       {tab === 'forms' && <EngageBuilder kind="form" onChange={() => void refresh()} />}

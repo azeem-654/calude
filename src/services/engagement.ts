@@ -31,13 +31,19 @@ export interface EngageCounts {
 export interface Conversation {
   id: string; channel: string; status: string; handledBy: string; assignedTo: string;
   subject: string; intent: string; aiSummary: string; pageUrl: string;
-  lastAt: string; createdAt: string;
+  lastAt: string; createdAt: string; updatedAt?: string;
+  /* When the visitor started waiting for a person; '' when nobody is. */
+  needsHumanSince?: string;
+  /* Their messages nobody here has had on screen yet. */
+  unread?: number;
   personName: string | null; personEmail: string | null; personId: string | null;
 }
 
 export interface ConversationMessage {
   id: string; role: string; author: string; body: string;
   sources: string; internal: number; createdAt: string;
+  /* JSON [{id, mime, size, w, h}] — read with parseAttachments (services/chatImage.ts). */
+  attachments?: string;
 }
 
 export interface Ticket {
@@ -116,6 +122,49 @@ export const replyToConversation = (conversationId: string, message: string, int
 export const setConversation = (conversationId: string, status: string, assignedTo = '') =>
   call('set_conversation', { conversationId, status, assignedTo });
 export const resumeAi = (conversationId: string) => call('resume_ai', { conversationId });
+
+/* ── Chat, live ──────────────────────────────────────────────────────────────
+   The inbox keeps itself current by asking what changed since its last
+   cursor (the server's clock, handed back each time) — see `inbox_sync` in
+   worker/src/routes/engagement.ts. */
+export const inboxSync = (o: { since?: string; conversationId?: string; msgSince?: string; seen?: boolean }) =>
+  call('inbox_sync', o);
+
+/** A reply carrying a picture, already shrunk by `shrinkImage`. */
+export const replyWithImage = (
+  conversationId: string, message: string, image: { data: string; w: number; h: number }, internal = false,
+) => call('reply', { conversationId, message, internal, image: image.data, w: image.w, h: image.h });
+
+/** Who is waiting for a person — the dashboard card and the nav badge. */
+export const supportWaiting = () => call('support_waiting');
+
+/* Pictures are fetched with the session and drawn from memory: none has an
+   address that works without it, so an <img src> cannot point at one. Kept
+   for the page's life, keyed by workspace as well as id. */
+const fileCache = new Map<string, Promise<string>>();
+export function chatFileUrl(fileId: string): Promise<string> {
+  const accountId = getActiveAccountId() ?? '';
+  const key = `${accountId}:${fileId}`;
+  let p = fileCache.get(key);
+  if (!p) {
+    p = fetch(`${API_BASE}/api/engagement.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: getSession()?.token, accountId, action: 'file', fileId }),
+    }).then(async r => {
+      if (!r.ok || !(r.headers.get('Content-Type') ?? '').startsWith('image/')) throw new Error('That picture could not be loaded.');
+      return URL.createObjectURL(await r.blob());
+    });
+    p.catch(() => fileCache.delete(key));
+    fileCache.set(key, p);
+  }
+  return p;
+}
+
+/** Seed the cache with a picture this page has just sent, so it is not fetched back. */
+export function rememberChatFile(fileId: string, url: string) {
+  fileCache.set(`${getActiveAccountId() ?? ''}:${fileId}`, Promise.resolve(url));
+}
 
 export const listTickets = () => call('tickets');
 export const getTicket = (id: string) => call('ticket', { id });
