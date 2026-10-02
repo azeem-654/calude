@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import TaskBadge from './TaskBadge';
+import SupportBadge from './SupportBadge';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
@@ -437,6 +438,7 @@ export default function TopNav() {
         </button>
 
         <TaskBadge style={circleBtn} />
+        <SupportBadge style={circleBtn} />
 
         {/* The bell used to carry a hardcoded red dot and open nothing at all —
             a permanent claim of unread news with no way to read it. The dot is
