@@ -1,6 +1,6 @@
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
-import { cachedPrimary } from './mailboxStore';
+import { cachedPrimary, hasSendRoute } from './mailboxStore';
 import { API_BASE } from './apiBase';
 
 /**
@@ -91,7 +91,9 @@ function defaultConfig(): EmailProviderConfig {
      chosen otherwise. Read from the cached server list rather than from a copy
      of the credentials in the browser. */
   const primary = cachedPrimary();
-  if (primary?.smtpHost) {
+  /* 'smtp' here means "the workspace's mailbox": /api/smtp-send.php sends
+     through lib/deliver, which takes a provider mailbox's API route too. */
+  if (primary && hasSendRoute(primary)) {
     return { provider: 'smtp', apiKey: '', inboxId: '', fromName: primary.fromName, fromEmail: primary.fromEmail };
   }
   return { provider: 'none', apiKey: '', inboxId: '', fromName: '', fromEmail: '' };

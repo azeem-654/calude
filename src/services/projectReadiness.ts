@@ -17,7 +17,7 @@
  * screen was confident about it. Every answer here comes from the endpoint that
  * would actually be used.
  */
-import { loadMailboxes } from './mailboxService';
+import { hasSendRoute, refreshMailboxCache } from './mailboxStore';
 import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
@@ -31,8 +31,10 @@ const UNKNOWN: Readiness = { mailbox: 'unknown', sms: 'unknown', payments: 'unkn
 
 async function mailboxState(): Promise<ReadyState> {
   try {
-    const boxes = await loadMailboxes();
-    return boxes.some(m => (m.smtpHost ?? '').trim()) ? 'ready' : 'missing';
+    /* By route, not by SMTP host: a mailbox sending through Brevo or Resend
+       has no host, and asking for one told those customers they had none. */
+    const boxes = await refreshMailboxCache();
+    return boxes.some(m => hasSendRoute({ smtpHost: m.smtp.host, provider: m.provider?.hasKey ? m.provider.name : '' })) ? 'ready' : 'missing';
   } catch { return 'unknown'; }
 }
 

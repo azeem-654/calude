@@ -235,8 +235,21 @@ export interface MailboxSnapshot {
   fromEmail: string;
   fromName: string;
   imapHost: string;
+  /**
+   * The provider API this mailbox sends through ('brevo', 'resend'…), or ''
+   * for its own SMTP server. A name, not a secret. Without it a Brevo mailbox
+   * has no SMTP host and every "is mail set up?" read it as none — the CLAUDE.md
+   * trap, on the client. Absent on a snapshot cached by an older build.
+   */
+  provider?: string;
   canSend: boolean;
   canReceive: boolean;
+}
+
+/** The client's reading of lib/deliver.ts `canSend`: a route out exists. */
+export function hasSendRoute(m: { smtpHost?: string; provider?: string } | null | undefined): boolean {
+  if (!m) return false;
+  return !!(m.smtpHost ?? '').trim() || (!!m.provider && m.provider !== 'smtp');
 }
 
 function toSnapshot(m: MailboxRecord): MailboxSnapshot {
@@ -247,6 +260,7 @@ function toSnapshot(m: MailboxRecord): MailboxSnapshot {
     fromEmail: m.from.email || m.smtp.username,
     fromName: m.from.name,
     imapHost: m.imap.host,
+    provider: m.provider?.name && m.provider.name !== 'smtp' && m.provider.hasKey ? m.provider.name : '',
     /* "Configured" is not the same as "works". These say what the last real
        validation found, so a screen cannot claim a workspace can send on the
        strength of a host name somebody typed. */
