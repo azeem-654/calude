@@ -6,6 +6,7 @@
  */
 import type { Booking, ScheduleAvailability } from '../types';
 import { API_BASE } from './apiBase';
+import { getActiveAccountId } from './tenancy';
 
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -17,13 +18,32 @@ async function call(body: Record<string, unknown>): Promise<Record<string, unkno
   } catch { return null; }
 }
 
+/*
+ * Every owner call names the workspace, and publish names the slug.
+ *
+ * None of them did. The Worker refuses an owner call without `accountId`
+ * ("A workspace is required"), so no booking page was ever published and the
+ * screen said "Couldn't publish — make sure the site is deployed"; and with
+ * no `slug` in what was published, /book/<slug> — the only link the screen
+ * hands out — could never have found it. The visitor's calls below carry the
+ * workspace the page belongs to for the same reason.
+ */
+
 /** Owner: publish the schedule so visitors (and the reminder engine) can use it. */
 export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<boolean> {
+  return (await publishBooking(token, schedule)).ok;
+}
+
+/** The same, with the server's reason when it refuses — a slug already taken
+    by another workspace is something the owner can fix, if they are told. */
+export async function publishBooking(token: string, schedule: ScheduleAvailability): Promise<{ ok: boolean; error: string }> {
   const a = schedule.automations;
   const res = await call({
     action: 'publish',
     token,
+    accountId: getActiveAccountId() ?? '',
     public: {
+      slug: schedule.slug,
       title: schedule.title,
       description: schedule.description,
       duration: schedule.duration,
@@ -51,7 +71,8 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       automations: a ?? {},
     },
   });
-  return !!(res && res.success);
+  if (!res) return { ok: false, error: 'Could not reach the server. Check your connection; the page will publish when you next change something.' };
+  return res.success ? { ok: true, error: '' } : { ok: false, error: String(res.error ?? 'The booking page could not be published.') };
 }
 
 /**
@@ -77,14 +98,14 @@ export async function fetchPublicConfig(slug?: string): Promise<
 }
 
 /** Visitor: booked slots for a given date. */
-export async function fetchBookedSlots(date: string): Promise<{ time: string; duration: number }[] | null> {
-  const res = await call({ action: 'slots', date });
+export async function fetchBookedSlots(date: string, accountId: string): Promise<{ time: string; duration: number }[] | null> {
+  const res = await call({ action: 'slots', date, accountId });
   if (!res || !res.success) return null;
   return (res.booked as { time: string; duration: number }[]) ?? [];
 }
 
 export async function createRemoteBooking(payload: {
-  eventTypeId?: string; slotDate: string; slotTime: string;
+  accountId: string; eventTypeId?: string; slotDate: string; slotTime: string;
   guestName: string; guestEmail: string; guestPhone?: string; notes?: string; timezone?: string;
 }): Promise<{ ok: boolean; id?: string; key?: string; error?: string }> {
   const res = await call({ action: 'create', ...payload });
@@ -111,13 +132,13 @@ export async function rescheduleRemoteBooking(id: string, key: string, slotDate:
 
 /** Owner: all server-side bookings. */
 export async function listRemoteBookings(token: string): Promise<Booking[] | null> {
-  const res = await call({ action: 'list', token });
+  const res = await call({ action: 'list', token, accountId: getActiveAccountId() ?? '' });
   if (!res || !res.success) return null;
   return ((res.bookings as Booking[]) ?? []).map(b => ({ ...b, remote: true }));
 }
 
 export async function setRemoteBookingStatus(token: string, id: string, status: 'confirmed' | 'cancelled' | 'completed'): Promise<boolean> {
-  const res = await call({ action: 'set_status', token, id, status });
+  const res = await call({ action: 'set_status', token, accountId: getActiveAccountId() ?? '', id, status });
   return !!(res && res.success);
 }
 

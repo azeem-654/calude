@@ -69,6 +69,8 @@ export interface HostCapabilities {
   provider: string;
   providerConfigured: boolean;
   blacklists: number;
+  /** False when no verification provider can be connected on this server. */
+  providers: boolean;
 }
 
 export interface SuppressionEntry {
@@ -138,12 +140,13 @@ export async function hostCapabilities(): Promise<HostCapabilities | null> {
     provider: String(res.provider || ''),
     providerConfigured: !!res.providerConfigured,
     blacklists: Number(res.blacklists || 0),
+    providers: res.providers !== false,
   };
 }
 
 export async function checkAuthentication(domain: string, selectors?: string[]): Promise<{ ok: boolean; data?: AuthCheck; error?: string }> {
   const res = await call('auth_check', { domain, selectors: selectors ?? loadSettings().dkimSelectors });
-  if (!res) return { ok: false, error: 'Could not reach the server. Authentication checks need the PHP API, so they only work on the deployed site.' };
+  if (!res) return { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
   if (!res.success) return { ok: false, error: String(res.error || 'Check failed.') };
   return { ok: true, data: res as unknown as AuthCheck };
 }
@@ -250,8 +253,9 @@ export async function verifyEmails(
         out.push(r);
       }
     } else {
-      // Server unreachable: fall back to what we can decide locally rather
-      // than reporting nothing.
+      // No server answer — the Worker has no `verify` yet, or it could not be
+      // reached: fall back to what we can decide locally rather than
+      // reporting nothing, and say that is all it was.
       for (const e of batch) {
         const l = localCheck(e);
         out.push({
@@ -259,7 +263,7 @@ export async function verifyEmails(
           mx: [], hasMx: l.valid, disposable: l.disposable, role: l.role, free: false,
           trapRisk: [], smtp: null, verdict: l.verdict,
           score: l.verdict === 'valid' ? 70 : l.verdict === 'risky' ? 50 : 10,
-          reasons: [l.reason, 'Checked locally only — the server was unreachable, so DNS was not consulted.'],
+          reasons: [l.reason, 'Checked in this browser only — syntax, disposable and role addresses. DNS was not consulted.'],
         });
       }
     }

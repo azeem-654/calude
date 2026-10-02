@@ -78,6 +78,9 @@ export default function BookingPage() {
   /* The link the visitor actually followed. Routed all along, never read. */
   const { slug } = useParams<{ slug?: string }>();
   const [unknownLink, setUnknownLink] = useState(false);
+  /* Whose page this is, from the server's answer — slots and the booking
+     itself are asked for in that workspace, never one the visitor names. */
+  const [pageAccount, setPageAccount] = useState('');
 
   const visitorTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -88,6 +91,7 @@ export default function BookingPage() {
       if (!alive) return;
       if (res && 'notFound' in res) { setUnknownLink(true); return; }
       setRemoteCfg(res?.config ?? null);
+      setPageAccount(res?.accountId ?? '');
     });
     const params = new URLSearchParams(window.location.search);
     const m = params.get('manage');
@@ -223,7 +227,7 @@ export default function BookingPage() {
     setSelectedTime(null);
     if (usingServer) {
       const ds = dateKey(date);
-      const booked = await fetchBookedSlots(ds);
+      const booked = await fetchBookedSlots(ds, pageAccount);
       if (booked) setBookedRemote(prev => ({ ...prev, [ds]: booked }));
     }
   };
@@ -286,6 +290,7 @@ export default function BookingPage() {
 
     // Server first (real cross-device booking + emails), local fallback.
     const res = await createRemoteBooking({
+      accountId: pageAccount,
       eventTypeId: eventType?.id,
       slotDate: dateStr, slotTime: selectedTime,
       guestName: guestForm.name.trim(), guestEmail: guestForm.email.trim(),

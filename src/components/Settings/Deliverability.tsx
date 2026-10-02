@@ -86,7 +86,7 @@ export default function Deliverability() {
   const [tab, setTab] = useState<'health' | 'warmup' | 'verify' | 'alerts'>('health');
   return (
     <div>
-      <div style={{ display: 'flex', gap: 7, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 16 }}>
         {([['health', 'Reputation & authentication'], ['warmup', 'Warmup & providers'], ['verify', 'Verification & placement'], ['alerts', 'Alerts & help']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} title={label}
             style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
@@ -337,6 +337,10 @@ function DeliverabilityHealth() {
       </div>
 
       {/* Blacklists */}
+      {/* Only when the server can query blocklists. It cannot yet — they
+         refuse shared resolvers — and a "Check now" that always fails reads as
+         a fault in the customer's domain. */}
+      {(caps?.blacklists ?? 0) > 0 && (
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
@@ -367,6 +371,7 @@ function DeliverabilityHealth() {
           </div>
         )}
       </div>
+      )}
 
       {/* Volume + timing advice */}
       <div style={card}>
@@ -429,6 +434,10 @@ function DeliverabilityHealth() {
       </div>
 
       {/* Verification provider */}
+      {/* Only where a provider can actually be connected. The Worker has none
+         (deliverability `capabilities`), and a Save that can only refuse is a
+         form pretending to work. */}
+      {caps?.providers !== false && (
       <div style={card}>
         <h3 style={h3}><KeyRound size={15} /> Verification provider</h3>
         <p style={sub}>
@@ -474,6 +483,7 @@ function DeliverabilityHealth() {
           this screen can only tell you whether one is present.
         </p>
       </div>
+      )}
 
       {/* Suppression list */}
       <div style={card}>

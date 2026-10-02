@@ -180,7 +180,7 @@ export default function CornerHelp() {
           <p style={{ margin: '6px 0 10px', fontSize: 13, lineHeight: 1.55, color: '#4b5563' }}>
             {offer?.why === 'trouble'
               ? 'A real person can look at it with you now — we see which screen you are on.'
-              : 'A real person can walk you through it — chat, share your screen, or book a call.'}
+              : `A real person can walk you through it — ${ways(canChat, canScreen, !!kickoff)}.`}
           </p>
           <div style={{ display: 'grid', gap: 6 }}>
             {canScreen && <button type="button" style={PRIMARY} onClick={() => openChat('screen')}><Monitor size={14} /> Share my screen</button>}
@@ -204,6 +204,15 @@ export default function CornerHelp() {
       )}
     </div>
   );
+}
+
+/* Only the ways that are on the card. The sentence used to list all three
+   whatever was switched on, so a card with one "Book a call" button offered a
+   chat and a screen share that were nowhere on it. */
+function ways(chat: boolean, screen: boolean, call: boolean): string {
+  const w = [chat && 'chat', screen && 'share your screen', call && 'book a call'].filter(Boolean) as string[];
+  if (!w.length) return 'press Get help';
+  return w.length === 1 ? w[0] : `${w.slice(0, -1).join(', ')} or ${w[w.length - 1]}`;
 }
 
 const CARD: React.CSSProperties = {

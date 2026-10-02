@@ -11,6 +11,7 @@
  * The local fallback is a soft gate — production security comes from the server.
  */
 import { API_BASE } from './apiBase';
+import { adoptOwnWorkspace } from './tenancy';
 
 
 const SESSION_KEY = 'crm_session';        // global (not scoped): { token, user, backend }
@@ -308,11 +309,25 @@ export async function bootstrap(email: string, password: string, name: string): 
 function pub(u: LocalUser): AuthUser { return { email: u.email, name: u.name, role: u.role, accountId: u.accountId }; }
 
 /**
- * Written directly rather than through services/tenancy, which imports this
- * module — going the other way as well would be a cycle.
+ * Written directly rather than through services/tenancy's setter. (Tenancy
+ * once imported this module; it no longer does, which is what lets
+ * adoptSessionWorkspace below call into it. Keep it that way — tenancy is
+ * installed before anything else and must not pull auth in with it.)
  */
 function setActiveWorkspace(id: string) {
   try { window.localStorage.setItem('crm_active_account', id); } catch { /* private mode */ }
+}
+
+/**
+ * A customer's own workspace, registered in this browser as well as selected.
+ * Selecting it alone left `activeAccount()` null (see adoptOwnWorkspace).
+ * Called at sign-in and once at start-up, so a browser that signed in before
+ * this existed is mended on its next load rather than on its next sign-in.
+ */
+export function adoptSessionWorkspace(): void {
+  const user = getSession()?.user;
+  if (!user?.accountId) return;
+  try { adoptOwnWorkspace(user.accountId, { name: user.name, email: user.email }); } catch { /* storage off */ }
 }
 
 /**
@@ -357,6 +372,7 @@ export async function login(email: string, password: string): Promise<{ ok: bool
        */
       if (user.accountId) {
         setActiveWorkspace(user.accountId);
+        adoptSessionWorkspace();
       } else {
         /*
          * An owner is not bound to one workspace, so the server sends the list.
@@ -405,6 +421,7 @@ function adoptSession(data: Record<string, unknown>): void {
 
   if (user.accountId) {
     setActiveWorkspace(user.accountId);
+    adoptSessionWorkspace();
     return;
   }
   const owned = (data.workspaces as { accountId?: string }[] | undefined) ?? [];

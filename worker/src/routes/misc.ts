@@ -405,17 +405,138 @@ export async function handleSmsInbound(req: Request, env: Env): Promise<Response
 /* ── Deliverability ──────────────────────────────────────────────────────── */
 
 /**
+ * "We asked and there is no record" and "we could not ask" are different
+ * answers and must not collapse into the same one. Telling somebody their
+ * SPF record is missing when the lookup itself failed sends them to edit
+ * DNS that was already correct.
+ */
+async function dohLookup(name: string, type: 'TXT' | 'MX'): Promise<{ asked: boolean; records: string[]; why: string }> {
+  try {
+    const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`, {
+      headers: { Accept: 'application/dns-json' },
+    });
+    if (!r.ok) return { asked: false, records: [], why: `the DNS service answered HTTP ${r.status}` };
+    const j = await r.json<{ Answer?: { data: string; type?: number }[] }>();
+    /* A CNAME on the way is answered too. Keep only the type asked for (TXT
+       16, MX 15), or a DKIM selector that is a CNAME reads as a host name. */
+    const want = type === 'TXT' ? 16 : 15;
+    return {
+      asked: true,
+      records: (j.Answer ?? []).filter(a => a.type === undefined || a.type === want)
+        .map(a => a.data.replace(/^"|"$/g, '').replace(/"\s+"/g, '')),
+      why: '',
+    };
+  } catch (e) {
+    return { asked: false, records: [], why: e instanceof Error ? e.message : 'the DNS lookup failed' };
+  }
+}
+
+/**
  * The suppression list, and the DNS records that decide whether a campaign
  * reaches an inbox at all. DNS is resolved through Cloudflare's own DNS-over-
  * HTTPS, which needs no extension and no configuration.
  */
 export async function handleDeliverability(req: Request, env: Env): Promise<Response> {
-  const d = await body<{ token?: string; action?: string; accountId?: string; domain?: string; selector?: string; list?: unknown }>(req);
+  const d = await body<{ token?: string; action?: string; accountId?: string; domain?: string; selector?: string; selectors?: unknown; list?: unknown }>(req);
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
 
   const accountId = String(d.accountId ?? '').trim();
   if (accountId && !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to read.', 403);
+
+  /*
+   * What the Email Deliverability tab can rely on here.
+   *
+   * The tab was written against the PHP backend and asks for `capabilities`,
+   * `auth_check`, `blacklist`, `provider_set` and `verify`. None of them
+   * existed on the Worker, so every button on it answered '"auth_check" is
+   * not something this endpoint does.' DNS lookups run (DNS-over-HTTPS), so
+   * `auth_check` is real below. Port 25 is closed to Workers, there is no
+   * blocklist querying and no verification provider, and this says so — the
+   * tab hides what is not here rather than offering it.
+   */
+  if (d.action === 'capabilities') {
+    return json({ success: true, dns: true, smtp: false, provider: '', providerConfigured: false, blacklists: 0, providers: false });
+  }
+  if (d.action === 'blacklist') {
+    return fail('Blocklist checks are not available yet. The public blocklists refuse lookups made through shared DNS resolvers, which is all this server has, so any answer would be a guess.');
+  }
+  if (d.action === 'provider_set') {
+    return fail('A verification provider cannot be connected yet. Addresses are checked for syntax, disposable domains and role accounts without one.');
+  }
+
+  if (d.action === 'auth_check') {
+    const domain = String(d.domain ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9][a-z0-9.\-]{1,253}$/.test(domain) || !domain.includes('.')) {
+      return fail('Enter the domain you send from, e.g. yourbusiness.com');
+    }
+    const selectors = (Array.isArray(d.selectors) ? d.selectors : ['default'])
+      .map(x => String(x).replace(/[^a-z0-9_\-]/gi, '')).filter(Boolean).slice(0, 8);
+
+    const [spfR, dmarcR, mxR, ...dkimRs] = await Promise.all([
+      dohLookup(domain, 'TXT'),
+      dohLookup(`_dmarc.${domain}`, 'TXT'),
+      dohLookup(domain, 'MX'),
+      ...selectors.map(sel => dohLookup(`${sel}._domainkey.${domain}`, 'TXT')),
+    ]);
+    if (!spfR.asked && !dmarcR.asked && !mxR.asked) {
+      return fail(`The DNS records could not be checked right now — ${spfR.why}. Nothing about your domain has changed; try again shortly.`);
+    }
+    const unasked = (why: string) => ({ status: 'unknown', message: `Could not be looked up just now (${why}). This says nothing about whether the record exists.` });
+
+    /* SPF */
+    const spfs = spfR.records.filter(t => t.toLowerCase().startsWith('v=spf1'));
+    let spf: Record<string, unknown>;
+    if (!spfR.asked) spf = { ...unasked(spfR.why), record: null };
+    else if (!spfs.length) spf = { status: 'missing', record: null, message: 'No SPF record. Publish the one under "Records to publish" below.' };
+    else if (spfs.length > 1) spf = { status: 'error', record: spfs.join('  |  '), message: 'More than one SPF record. Receivers treat that as no SPF at all — merge them into one.' };
+    else {
+      const rec = spfs[0];
+      const lookups = (rec.match(/\b(include:|a\b|a:|mx\b|mx:|ptr|exists:|redirect=)/gi) ?? []).length;
+      const qualifier = rec.match(/([~?+-])all\b/i)?.[1] ?? '';
+      spf = lookups > 10
+        ? { status: 'error', record: rec, lookups, qualifier, message: `This record needs ${lookups} DNS lookups; receivers stop at 10 and then treat SPF as failed. Remove includes you no longer use.` }
+        : qualifier === '-' || qualifier === '~'
+          ? { status: 'pass', record: rec, lookups, qualifier, message: `Published, ending in ${qualifier}all.` }
+          : { status: 'warn', record: rec, lookups, qualifier, message: qualifier ? `Ends in ${qualifier}all, which lets anybody send as this domain. Use ~all or -all.` : 'Has no "all" at the end, so it does not say what to do with other senders. End it with ~all.' };
+    }
+
+    /* DKIM — only under the selectors tried; a provider's own selector may differ. */
+    const found = selectors.map((sel, i) => ({ sel, r: dkimRs[i] }))
+      .flatMap(({ sel, r }) => r.records.filter(t => /\bp=/i.test(t)).map(rec => ({ selector: sel, record: rec, revoked: /\bp=\s*(;|$)/i.test(rec) })));
+    const live = found.filter(k => !k.revoked);
+    const dkim = live.length
+      ? { status: 'pass', selectors: found, message: `Key published under ${live.map(k => k.selector).join(', ')}.` }
+      : !dkimRs.some(r => r.asked)
+        ? { ...unasked(dkimRs[0]?.why ?? 'no selector to try'), selectors: [] }
+        : found.length
+          ? { status: 'error', selectors: found, message: 'The key under this selector is revoked (empty p=). Publish the current key from your mail provider.' }
+          : { status: 'missing', selectors: [], message: `No DKIM key under the selectors tried (${selectors.join(', ')}). Your mail provider names the selector it signs with — publish the key it gives you.` };
+
+    /* DMARC */
+    const dmarcRec = dmarcR.records.find(t => t.toLowerCase().startsWith('v=dmarc1')) ?? null;
+    const tag = (k: string) => dmarcRec?.match(new RegExp(`\\b${k}=([^;]+)`, 'i'))?.[1]?.trim();
+    const policy = (tag('p') ?? '').toLowerCase();
+    const pct = Number(tag('pct') ?? 100);
+    const enforced = policy === 'quarantine' || policy === 'reject';
+    const dmarc = !dmarcR.asked
+      ? { ...unasked(dmarcR.why), record: null }
+      : !dmarcRec
+        ? { status: 'missing', record: null, message: 'No DMARC record. Gmail and Yahoo require one from bulk senders — publish the one below.' }
+        : policy === 'none'
+          ? { status: 'warn', record: dmarcRec, policy, rua: !!tag('rua'), pct, message: 'Published with p=none: it reports, and protects nothing. Move to quarantine once your mail passes.' }
+          : { status: enforced ? 'pass' : 'error', record: dmarcRec, policy, rua: !!tag('rua'), pct, message: enforced ? `Published, policy ${policy}.` : 'Has no valid p= policy.' };
+
+    /* MX — not needed to send, needed for replies to arrive. */
+    const mxRecords = mxR.records.map(r => { const [pri, host] = r.split(/\s+/); return { host: (host ?? '').replace(/\.$/, ''), pri: Number(pri) || 0 }; });
+    const mx = !mxR.asked
+      ? { ...unasked(mxR.why), records: [] }
+      : mxRecords.length
+        ? { status: 'pass', records: mxRecords, message: `${mxRecords.length} mail server${mxRecords.length === 1 ? ' receives' : 's receive'} for this domain.` }
+        : { status: 'warn', records: [], message: 'No MX records, so replies to this domain will bounce.' };
+
+    return json({ success: true, domain, spf, dkim, dmarc, mx, checkedAt: nowIso() });
+  }
 
   if (d.action === 'get_suppressions') {
     const raw = await dataGet(env.DB, storageWorkspace(user, accountId || RESERVED_AGENCY), 'crm_suppressions');
@@ -432,34 +553,11 @@ export async function handleDeliverability(req: Request, env: Env): Promise<Resp
     if (!/^[a-z0-9][a-z0-9.\-]{1,253}$/.test(domain)) return fail('Enter the domain you send from, e.g. yourbusiness.com');
     const selector = String(d.selector ?? 'default').replace(/[^a-z0-9_\-]/gi, '') || 'default';
 
-    /**
-     * "We asked and there is no record" and "we could not ask" are different
-     * answers and must not collapse into the same one. Telling somebody their
-     * SPF record is missing when the lookup itself failed sends them to edit
-     * DNS that was already correct.
-     */
-    const resolve = async (name: string, type: 'TXT' | 'MX'): Promise<{ asked: boolean; records: string[]; why: string }> => {
-      try {
-        const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`, {
-          headers: { Accept: 'application/dns-json' },
-        });
-        if (!r.ok) return { asked: false, records: [], why: `the DNS service answered HTTP ${r.status}` };
-        const j = await r.json<{ Answer?: { data: string }[] }>();
-        return {
-          asked: true,
-          records: (j.Answer ?? []).map(a => a.data.replace(/^"|"$/g, '').replace(/"\s+"/g, '')),
-          why: '',
-        };
-      } catch (e) {
-        return { asked: false, records: [], why: e instanceof Error ? e.message : 'the DNS lookup failed' };
-      }
-    };
-
     const [spfR, dmarcR, dkimR, mxR] = await Promise.all([
-      resolve(domain, 'TXT'),
-      resolve(`_dmarc.${domain}`, 'TXT'),
-      resolve(`${selector}._domainkey.${domain}`, 'TXT'),
-      resolve(domain, 'MX'),
+      dohLookup(domain, 'TXT'),
+      dohLookup(`_dmarc.${domain}`, 'TXT'),
+      dohLookup(`${selector}._domainkey.${domain}`, 'TXT'),
+      dohLookup(domain, 'MX'),
     ]);
 
     /* If the lookups could not run at all, say that rather than reporting four

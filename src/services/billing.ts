@@ -123,9 +123,9 @@ async function startSubscription(opts: {
       updateBilling(opts.accountId, { status: 'checkout_sent', checkoutUrl: data.url, lastCheckoutAt: new Date().toISOString() });
       return { ok: true, url: data.url };
     }
-    return { ok: false, error: data.error || 'Stripe did not return a checkout URL.' };
+    return { ok: false, error: data.error || 'The payment provider did not return a checkout address. Try again in a minute.' };
   } catch {
-    return { ok: false, error: 'Checkout endpoint unreachable. The workspace owner must enable billing first.' };
+    return { ok: false, error: 'Could not reach the server to start checkout. Check your connection and try again.' };
   }
 }
 
@@ -161,19 +161,6 @@ export async function saveStripeSecretToServer(token: string, secretKey: string,
   } catch {
     return { ok: false, error: 'Config endpoint unreachable. Deploy stripe-config.php and set up the Cloud Database first.' };
   }
-}
-
-/** Fetch the caller's own billing record from the server (works for clients too). */
-export async function fetchBillingRecord(accountId: string, token: string): Promise<{ status: BillingRecord['status']; hasCustomer: boolean } | null> {
-  try {
-    const r = await fetch(`${API_BASE}/api/stripe-config.php`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'record', token, accountId }),
-    });
-    const data = await r.json() as { success: boolean; status?: BillingRecord['status']; hasCustomer?: boolean };
-    if (!data.success) return null;
-    return { status: data.status || 'none', hasCustomer: !!data.hasCustomer };
-  } catch { return null; }
 }
 
 /** Whether the server holds a Stripe secret (i.e. client self-service is enabled). */

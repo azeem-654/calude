@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installTenantStorage } from './services/tenancy'
-import { moveSessionToCookie } from './services/auth'
+import { adoptSessionWorkspace, moveSessionToCookie } from './services/auth'
 import { installFieldGuard } from './services/fieldGuard'
 import { captureRef } from './services/referral'
 import { initTheme } from './services/theme'
@@ -11,6 +11,9 @@ import { applyMotion, watchNewStylesheets, watchSystemMotion } from './services/
 
 // Scope every crm_* localStorage key to the active sub-account BEFORE anything reads storage.
 installTenantStorage();
+/* A customer's own workspace in the registry, before any screen asks for it —
+   browsers that signed in before sign-in did this are mended here. */
+adoptSessionWorkspace();
 /* Every refused call that names a field is checked against the screen
    (services/fieldGuard.ts): a form must never ask for a box it does not show. */
 installFieldGuard();
