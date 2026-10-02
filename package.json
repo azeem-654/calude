@@ -48,6 +48,7 @@
     "test:livehelp": "node test/liveHelp.e2e.mjs",
     "test:sitefit": "node test/siteFit.e2e.mjs",
     "test:reputation": "node test/reputation.e2e.mjs",
+    "test:mapslink": "npx --yes tsx worker/test/mapsLink.test.mts",
     "test:platform": "node test/platform.e2e.mjs"
   },
   "dependencies": {

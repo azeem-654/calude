@@ -174,7 +174,8 @@ function PlacesSource({ status, onStatus }: { status: RepStatus | null; onStatus
     setBusy('');
     if (!r.success) { setMsg({ ok: false, text: r.error ?? 'Search failed.' }); setHits([]); return; }
     setHits(r.places);
-    if (!r.places.length) setMsg({ ok: false, text: 'Google found nothing for that. Try the name as it appears on Google Maps, with the town.' });
+    if (!r.places.length) setMsg({ ok: false, text: r.fromLink ? 'Google found no business for that link. Type the name as it appears on Google Maps, with the town.' : 'Google found nothing for that. Try the name as it appears on Google Maps, with the town.' });
+    else if (r.fromLink) setMsg({ ok: true, text: r.places.length === 1 ? 'This is the business your link points to — press it to use it.' : 'Your link matched more than one business — press yours.' });
   };
   const pick = async (p: PlaceHit) => {
     setBusy('pick'); setMsg(null);
@@ -183,7 +184,7 @@ function PlacesSource({ status, onStatus }: { status: RepStatus | null; onStatus
     if (!r.success) { setMsg({ ok: false, text: r.error ?? 'Could not save.' }); return; }
     setHits([]); setQ('');
     onStatus(r);
-    setMsg({ ok: true, text: `Saved — ${p.name}. Press Refresh on the Reviews screen to read it now; it is also checked every six hours.` });
+    setMsg({ ok: true, text: `Saved — ${p.name}. Press Refresh on the Reviews screen to read it now; after that Google is checked on its own about every six hours.` });
   };
   const saveKey = async (clear = false) => {
     setBusy('key'); setMsg(null);
@@ -203,6 +204,7 @@ function PlacesSource({ status, onStatus }: { status: RepStatus | null; onStatus
       </div>
       <p style={{ fontSize: 12, color: MUTED, margin: '0 0 12px', lineHeight: 1.55 }}>
         Reads your Google rating, review count and up to five reviews (Google chooses which). No Google account needed.
+        Type the name and town, or paste the link from Google Maps (Share → Copy link) or your g.page review link.
       </p>
       {src?.placeId && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: INK, background: '#f7f8f9', borderRadius: 10, padding: '8px 10px', marginBottom: 10, flexWrap: 'wrap' }}>
@@ -212,7 +214,7 @@ function PlacesSource({ status, onStatus }: { status: RepStatus | null; onStatus
       )}
       <div style={{ display: 'flex', gap: 8 }}>
         <input data-field="rep.search" style={{ ...inp, flex: 1, minWidth: 0 }} value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void search(); }}
-          placeholder={src?.placeId ? 'Search again to change it' : 'Business name and town'} aria-label="Business name and town" />
+          placeholder={src?.placeId ? 'Search again, or paste a Maps link, to change it' : 'Business name and town, or a Google Maps link'} aria-label="Business name and town, or a Google Maps link" />
         <button onClick={search} disabled={busy === 'search'} style={btnDark}><Search size={13} /> {busy === 'search' ? 'Searching…' : 'Search'}</button>
       </div>
       {hits.map(h => (

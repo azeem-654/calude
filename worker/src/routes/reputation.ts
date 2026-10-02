@@ -20,7 +20,7 @@ import { rateLimit } from '../lib/rateLimit';
 import { canSend, cannotSendReason } from '../lib/deliver';
 import { loadMailbox } from './mailbox';
 import {
-  PLACE_ID_RE, checkWorkspace, draftReply, encryptKey, gbpAuthUrl, gbpConnect, gbpLive, gbpLocations, gbpReply,
+  PLACE_ID_RE, checkWorkspace, resolvePlaceLink, draftReply, encryptKey, gbpAuthUrl, gbpConnect, gbpLive, gbpLocations, gbpReply,
   installPlacesKey, loadProfile, markInstallKey, placeDetails, placesKeyFor, refreshCompetitors, saveInstallPlacesKey, searchPlaces,
 } from '../lib/reputation';
 import { KEY_RE, meterPlaces, placesUsage } from '../lib/googlePlaces';
@@ -30,7 +30,7 @@ interface Req {
   token?: string; accountId?: string; action?: string;
   query?: string; placeId?: string; placeName?: string; placesKey?: string; clearKey?: boolean; autoCheck?: boolean;
   reviewId?: string; instruction?: string; text?: string; location?: string; apiKey?: string;
-  recipients?: { name?: string; email?: string }[]; platform?: string; refresh?: boolean;
+  recipients?: { name?: string; email?: string }[]; platform?: string; refresh?: boolean; field?: string;
 }
 
 /** Where Google is told to come back to. Registered once in the Google console. */
@@ -89,10 +89,19 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
   if (act === 'status') return json({ success: true, ...(await statusOf(env, accountId)) });
 
   if (act === 'find_place') {
-    const q = String(d.query ?? '').trim().slice(0, 200);
-    if (q.length < 3) return fail('Type your business name and town to search for it.', 200, { field: 'rep.search' });
+    /* Long enough for a pasted Maps link (they run to several hundred
+       characters); a search itself is cut to 200 where it is sent. */
+    const q = String(d.query ?? '').trim().slice(0, 2000);
+    const field = d.field === 'rep.competitorSearch' ? 'rep.competitorSearch' : 'rep.search';
+    if (q.length < 3) return fail('Type the business name and town, or paste its Google Maps link.', 200, { field });
     const key = await placesKeyFor(env, accountId);
     if (!key.ok) return fail(key.error, 200, { code: key.code });
+    const linked = await resolvePlaceLink(env, key.key, q);
+    if (linked) {
+      await meterPlaces(env, accountId, 'reviews', key.whose, linked.calls);
+      if (!linked.ok) return fail(linked.error ?? 'That link could not be read.', 200, { code: linked.code, field });
+      return json({ success: true, places: linked.data ?? [], fromLink: true });
+    }
     const r = await searchPlaces(env, key.key, q);
     if (r.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (!r.ok) return fail(r.error ?? 'Google could not search.', 200, { code: r.code });
@@ -133,6 +142,14 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
   }
 
   if (act === 'check_now') {
+    /* A read with reviews is Google's dearest Places request. On the owner's
+       key a person pressing Refresh is welcome; a script is not — the cron
+       already reads every workspace on its own. */
+    const k = await placesKeyFor(env, accountId);
+    if (k.ok && k.whose === 'install' && !(await gbpLive(env, accountId))) {
+      const v = await rateLimit(env, { what: 'reputation-check', who: accountId, max: 30, windowSeconds: 3600 });
+      if (!v.allowed) return fail('Google has been checked a lot in the last hour for this workspace — new reviews are still read on their own every six hours. Try Refresh again later.', 429, { code: 'check_budget' });
+    }
     const r = await checkWorkspace(env, accountId);
     const s = await statusOf(env, accountId);
     if (!r.ok) return fail(r.error, 200, { code: r.code, ...s });
@@ -316,7 +333,7 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     for (const r of recipients) {
       const name = String(r?.name ?? '').slice(0, 120);
       const email = String(r?.email ?? '').trim();
-      const res = await sendReviewRequest(env, accountId, mb, profile, { name, email }, target.link);
+      const res = await sendReviewRequest(env, accountId, mb, profile, { name, email }, target.link, origin);
       if (res.ok) sent++; else failures.push(`${email || name}: ${res.error}`);
       list.push({
         id: `req-${newToken().slice(0, 16)}`, contactName: name, email, platform,

@@ -22,6 +22,7 @@ import {
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ReputationSetup from './ReputationSetup';
+import { flushNow } from '../../services/serverData';
 import {
   repStatus, listReviews, checkNow, saveSource, draftReply, postReply, markReplied, dismissAttention,
   listCompetitors, addCompetitor, removeCompetitor, findPlace, listRequests, sendRequests,
@@ -93,6 +94,19 @@ export default function Reputation() {
     return () => { alive = false; };
   }, [refresh]);
 
+  /*
+   * What the cron reads arrives on the server with nobody watching. Re-reading
+   * the stored list once a minute while the tab is visible (and on coming
+   * back to it) puts it on screen without a reload. It asks this app's
+   * database only — never Google, so it costs nobody's quota.
+   */
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') void refresh(); };
+    const id = window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+  }, [refresh]);
+
   const src = status?.source ?? null;
   const gbp = status?.gbp;
   const gbpLive = gbp?.status === 'connected' && !!gbp.location;
@@ -123,6 +137,9 @@ export default function Reputation() {
     setChecking(false);
     if (!r.success) { addNotification(r.error ?? 'Google could not be read.', 'error'); await refresh(); return; }
     addNotification(r.added ? `${r.added} new review${r.added === 1 ? '' : 's'} from Google.` : 'Checked Google — nothing new.', 'success');
+    /* What the check could not do is said, not dropped: Business Profile
+       refusing and Places standing in, or new reviews Places will not show. */
+    for (const n of (r.notes ?? []).slice(0, 2)) addNotification(n, 'info');
     await refresh();
   };
   const toggleAuto = async () => {
@@ -193,6 +210,7 @@ export default function Reputation() {
               drafts replies in your voice, asks happy customers for a review, and compares you with competitors you pick.
             </p>
             {migrated && <p style={{ fontSize: 12.5, color: '#3f9142', margin: '0 0 14px' }}>{migrated}</p>}
+            {gbp?.status === 'connected' && !gbp.location && <p style={{ fontSize: 12.5, color: INK, margin: '0 0 14px' }}>Business Profile is connected — choose which of your locations this workspace is under Review sources.</p>}
             <button onClick={() => setSetupOpen('sources')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               <Search size={16} /> Find your business on Google
             </button>
@@ -387,7 +405,7 @@ function CompetitorPanel({ comp, onChange, notify }: { comp: Competitor[]; onCha
   const [err, setErr] = useState('');
   const search = async () => {
     setBusy(true); setErr('');
-    const r = await findPlace(q);
+    const r = await findPlace(q, 'rep.competitorSearch');
     setBusy(false);
     if (!r.success) { setErr(r.error ?? 'Search failed.'); setHits([]); return; }
     setHits(r.places);
@@ -419,7 +437,7 @@ function CompetitorPanel({ comp, onChange, notify }: { comp: Competitor[]; onCha
       })}
       {comp.filter(c => c.placeId !== '__you').length < 5 && (
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          <input data-field="rep.competitorSearch" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void search(); }} placeholder="Add a competitor — name and town" aria-label="Search for a competitor"
+          <input data-field="rep.competitorSearch" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void search(); }} placeholder="Add a competitor — name and town, or Maps link" aria-label="Search for a competitor"
             style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid #e6e9f0', borderRadius: 9, fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }} />
           <button onClick={search} disabled={busy || q.trim().length < 3} style={btn(false)}><Search size={12} /> {busy ? '…' : 'Find'}</button>
         </div>
@@ -477,6 +495,9 @@ function RequestModal({ contacts, profile, onClose, onSent, addNotification }: {
     const picks = withEmail.filter(c => selected.has(c.email)).map(c => ({ name: c.name, email: c.email }));
     if (picks.length === 0) { setError('Select at least one contact.'); return; }
     setSending(true); setError('');
+    /* The server reads the review link from the synced profile; a link saved
+       a moment ago may still be waiting in the sync queue. */
+    await flushNow().catch(() => undefined);
     const r = await sendRequests(picks, platform);
     setSending(false);
     if (!r.success) { setError(r.error ?? 'Nothing was sent.'); onSent(); return; }

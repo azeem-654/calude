@@ -38,12 +38,17 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 /* ── The Google mock ── */
 const K = c => `AIza${c.repeat(35)}`;
 const WKEY = K('W'), IKEY = K('I'), WKEY2 = K('M');
+/* Keys Google refuses in the two ways a customer meets most: the API not
+   switched on in their project, and a quota run dry. */
+const DKEY = K('D'), QKEY = K('Q');
 const VALID = new Set([WKEY, IKEY, WKEY2]);
-const PLACE = 'ChIJplaceAAAA0001', COMP = 'ChIJcompetitor01';
+const PLACE = 'ChIJplaceAAAA0001', COMP = 'ChIJcompetitor01', ZERO = 'ChIJzeroReviews0001';
 const T0 = '2026-09-20T10:00:00.000000Z';
 const seen = [];
 const mock = {
-  compRating: 4.1, gbpDenied: false, replies: [],
+  compRating: 4.1, gbpDenied: false, refreshDenied: false, replies: [],
+  /* A business that opened last week: Google has no rating and no count for it yet. */
+  zero: { rating: undefined, count: undefined, reviews: [] },
   placesReviews: [
     { name: `places/${PLACE}/reviews/r1`, rating: 5, text: { text: 'Lovely bread and very friendly staff.' }, authorAttribution: { displayName: 'Ann Baker', photoUri: 'https://lh3.example/a.png', uri: 'https://maps.google.com/contrib/1' }, publishTime: T0, googleMapsUri: 'https://maps.google.com/review/r1' },
     { name: `places/${PLACE}/reviews/r2`, rating: 2, text: { text: 'Slow service and cold coffee.' }, authorAttribution: { displayName: 'Bob Critic' }, publishTime: '2026-09-18T09:00:00Z', googleMapsUri: 'https://maps.google.com/review/r2' },
@@ -60,16 +65,32 @@ const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'a
 const notApproved = res => send(res, 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute' of service 'mybusinessaccountmanagement.googleapis.com'" } });
 const place = (id) => id === PLACE
   ? { id: PLACE, displayName: { text: 'Acme Bakery' }, formattedAddress: '1 High St, Town', rating: 4.6, userRatingCount: 120, googleMapsUri: 'https://maps.google.com/?cid=1', reviews: mock.placesReviews }
-  : id === COMP ? { id: COMP, displayName: { text: 'Rival Rolls' }, formattedAddress: '9 Low St, Town', rating: mock.compRating, userRatingCount: 50, googleMapsUri: 'https://maps.google.com/?cid=2' } : null;
+  : id === COMP ? { id: COMP, displayName: { text: 'Rival Rolls' }, formattedAddress: '9 Low St, Town', rating: mock.compRating, userRatingCount: 50, googleMapsUri: 'https://maps.google.com/?cid=2' }
+  : id === ZERO ? { id: ZERO, displayName: { text: 'New Nook' }, formattedAddress: '3 New St, Town', googleMapsUri: 'https://maps.google.com/?cid=3', ...(mock.zero.rating != null ? { rating: mock.zero.rating, userRatingCount: mock.zero.count } : {}), reviews: mock.zero.reviews }
+  : null;
+/* Google's shorteners, as GOOGLE_LINK_BASE asks them: `/<host><path>`. */
+const SHORT = {
+  '/maps.app.goo.gl/acme1': 'https://maps.google.com/?q=Acme%20Bakery,%201%20High%20St&ftid=0x48761b:0x1&entry=gps&g_ep=CAE',
+  '/g.page/r/acmeRev/review': 'https://g.page/r/acmeRev/review/',
+  '/g.page/r/acmeRev/review/': `https://search.google.com/local/writereview?placeid=${PLACE}&source=g.page.m.rc._`,
+  '/share.google/elsewhere': 'https://www.example.com/not-google',
+};
 
 const httpSrv = http.createServer((req, res) => {
   let raw = '';
   req.on('data', c => { raw += c; });
   req.on('end', () => {
     const u = new URL(req.url, G);
-    seen.push({ method: req.method, path: u.pathname, search: u.search, key: req.headers['x-goog-api-key'] ?? '', mask: req.headers['x-goog-fieldmask'] ?? '', auth: req.headers.authorization ?? '', body: raw });
+    seen.push({ method: req.method, path: u.pathname, search: u.search, key: req.headers['x-goog-api-key'] ?? '', mask: req.headers['x-goog-fieldmask'] ?? '', auth: req.headers.authorization ?? '', body: raw, ua: req.headers['user-agent'] ?? '' });
+    if (/^\/(maps\.app\.goo\.gl|g\.page|share\.google|goo\.gl)\//.test(u.pathname)) {
+      const to = SHORT[u.pathname];
+      if (!to) { res.writeHead(404); return res.end('Dynamic Link Not Found'); }
+      res.writeHead(302, { Location: to }); return res.end();
+    }
     if (u.pathname.startsWith('/v1/places')) {
       const key = String(req.headers['x-goog-api-key'] ?? '');
+      if (key === DKEY) return send(res, 403, { error: { code: 403, status: 'PERMISSION_DENIED', message: 'Places API (New) has not been used in project 123 before or it is disabled.', details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'SERVICE_DISABLED' }] } });
+      if (key === QKEY) return send(res, 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: "Quota exceeded for quota metric 'Place Details requests'." } });
       if (!VALID.has(key)) return send(res, 400, { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.', details: [{ reason: 'API_KEY_INVALID' }] } });
       if (u.pathname === '/v1/places:searchText') {
         return send(res, 200, { places: [place(PLACE), place(COMP)].map(({ reviews, ...p }) => p) });
@@ -85,7 +106,8 @@ const httpSrv = http.createServer((req, res) => {
       if (f.get('grant_type') === 'authorization_code' && f.get('code') === 'good-code' && f.get('client_secret') === 'test-secret') {
         return send(res, 200, { access_token: 'at-1', refresh_token: 'rt-1', expires_in: 3600, scope: 'https://www.googleapis.com/auth/business.manage', token_type: 'Bearer' });
       }
-      if (f.get('grant_type') === 'refresh_token' && f.get('refresh_token') === 'rt-1') return send(res, 200, { access_token: 'at-2', expires_in: 3600 });
+      if (f.get('grant_type') === 'refresh_token' && f.get('refresh_token') === 'rt-1' && !mock.refreshDenied) return send(res, 200, { access_token: 'at-2', expires_in: 3600 });
+      if (f.get('grant_type') === 'refresh_token') return send(res, 400, { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' });
       return send(res, 400, { error: 'invalid_grant', error_description: 'Bad code.' });
     }
     if (!/^Bearer at-[12]$/.test(String(req.headers.authorization ?? ''))) return send(res, 401, { error: { code: 401, message: 'Request had invalid authentication credentials.' } });
@@ -126,6 +148,7 @@ function smtp(sock) {
       if (up.startsWith('EHLO') || up.startsWith('HELO')) sock.write('250-sink\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n');
       else if (up.startsWith('AUTH LOGIN')) { loginStep = 1; w('334 VXNlcm5hbWU6'); }
       else if (up.startsWith('AUTH PLAIN')) w('235 ok');
+      else if (up.startsWith('RCPT TO') && /reject/i.test(line)) w('550 5.1.1 No such user here');
       else if (up === 'DATA') { data = true; w('354 go'); }
       else if (up === 'QUIT') { w('221 bye'); sock.end(); }
       else w('250 ok');
@@ -150,7 +173,7 @@ await new Promise(r => server.listen(MOCK, '127.0.0.1', r));
 const persist = fs.mkdtempSync(path.join(os.tmpdir(), 'rep-d1-'));
 const sql = q => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command ${JSON.stringify(q)}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))[0].results;
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GOOGLE_PLACES_BASE:${G}`, `GOOGLE_GBP_ACCOUNTS_BASE:${G}`, `GOOGLE_GBP_INFO_BASE:${G}`, `GOOGLE_GBP_V4_BASE:${G}`, `GOOGLE_TOKEN_URL:${G}/token`];
+const vars = [`APP_ORIGIN:${B}`, `GOOGLE_LINK_BASE:${G}`, `GOOGLE_PLACES_BASE:${G}`, `GOOGLE_GBP_ACCOUNTS_BASE:${G}`, `GOOGLE_GBP_INFO_BASE:${G}`, `GOOGLE_GBP_V4_BASE:${G}`, `GOOGLE_TOKEN_URL:${G}/token`];
 /* Its own process group (detached), so stopping it stops workerd as well. */
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--persist-to', persist, '--test-scheduled', ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
@@ -260,6 +283,87 @@ ok('B cannot change A\'s source', !r.success);
 r = await rep('status', {}, BACCT, TB);
 ok('B\'s own workspace shows none of it', r.success && r.source === null && r.counts.total === 0, JSON.stringify(r));
 
+/* ── Every shape of link a customer pastes (A's workspace, install key now) ── */
+const one = x => x.success && x.places?.length === 1 && x.places[0].placeId === PLACE;
+seen.length = 0;
+r = await rep('find_place', { query: 'https://www.google.com/maps/place/Acme+Bakery/@51.5,-0.12,17z/data=!3m1!4b1!4m6!3m5!1s0x48761b:0x1!8m2!3d51.501!4d-0.121!16s%2Fg%2F11abc?entry=ttu' });
+ok('a desktop /maps/place/ link finds exactly that business (name searched, narrowed by its cid)', one(r) && r.fromLink === true, JSON.stringify(r));
+const textReq = seen.find(x => x.path === '/v1/places:searchText');
+ok('…searching its name near the pin', !!textReq && JSON.parse(textReq.body).textQuery === 'Acme Bakery' && JSON.parse(textReq.body).locationBias?.circle?.center?.latitude === 51.501, JSON.stringify(seen.map(x => x.body)));
+r = await rep('find_place', { query: `https://search.google.com/local/writereview?placeid=${PLACE}` });
+ok('the review-form link (place id) finds it directly', one(r), JSON.stringify(r));
+r = await rep('find_place', { query: PLACE });
+ok('a bare place id finds it', one(r), JSON.stringify(r));
+r = await rep('find_place', { query: `https://www.google.com/maps/place/?q=place_id:${PLACE}` });
+ok('a ?q=place_id: link finds it', one(r), JSON.stringify(r));
+seen.length = 0;
+r = await rep('find_place', { query: 'https://maps.app.goo.gl/acme1' });
+ok('a maps.app.goo.gl share link is followed to the business', one(r), JSON.stringify(r));
+ok('…asking the shortener without a browser\'s user agent, and never following on its own', seen.some(x => x.path === '/maps.app.goo.gl/acme1' && !/Mozilla/.test(x.ua)), JSON.stringify(seen.map(x => [x.path, x.ua])));
+r = await rep('find_place', { query: 'g.page/r/acmeRev/review' });
+ok('a g.page review link (no scheme, two hops) is followed to its place id', one(r), JSON.stringify(r));
+r = await rep('find_place', { query: 'https://maps.app.goo.gl/gone404' });
+ok('a dead short link is reported by name, at the box', !r.success && r.code === 'link_dead' && r.field === 'rep.search', JSON.stringify(r));
+r = await rep('find_place', { query: 'https://share.google/elsewhere' });
+ok('a short link that leads away from Google is refused', !r.success && r.code === 'not_google', JSON.stringify(r));
+r = await rep('find_place', { query: 'https://maps.google.com/?cid=10281119596374313554' });
+ok('a bare ?cid= link says why Places cannot use it, and what to paste instead', !r.success && r.code === 'link_cid_only' && /Share/.test(r.error), JSON.stringify(r));
+r = await rep('find_place', { query: 'https://www.yelp.com/biz/acme-bakery', field: 'rep.competitorSearch' });
+ok('a link that is not Google\'s is refused at the competitor box', !r.success && r.code === 'not_google' && r.field === 'rep.competitorSearch', JSON.stringify(r));
+r = await rep('find_place', { query: 'https://www.google.com/maps/place/?q=place_id:ChIJnoSuchPlace0000' });
+ok('a place id Google does not know is reported, not shown as found', !r.success && /no business with the place ID/.test(r.error), JSON.stringify(r));
+
+/* ── B's workspace: keys Google refuses, a business with no reviews, unsaved rules, a trial that ended ── */
+const repB = (action, extra = {}) => rep(action, extra, BACCT, TB);
+await repB('save_source', { placesKey: DKEY });
+r = await repB('find_place', { query: 'Acme Bakery' });
+ok('a key with the API switched off says so by name', !r.success && r.code === 'api_disabled' && /Places API \(New\)" is not enabled/.test(r.error), JSON.stringify(r));
+await repB('save_source', { placesKey: QKEY });
+r = await repB('find_place', { query: 'Acme Bakery' });
+ok('a key over its quota says so by name', !r.success && r.code === 'quota', JSON.stringify(r));
+r = await repB('save_source', { clearKey: true, placeId: ZERO, placeName: 'New Nook' });
+ok('B removes its key and picks a new business (the install key is used)', r.success && r.source?.ownKey === false && r.source.placeId === ZERO, JSON.stringify(r));
+r = await repB('check_now');
+ok('a business with no reviews yet: read, nothing added, a count of 0 and no rating', r.success && r.added === 0 && r.source?.reviewCount === 0 && r.source.rating === null, JSON.stringify(r));
+mock.zero = { rating: 5, count: 1, reviews: [
+  { name: `places/${ZERO}/reviews/z1`, rating: 5, text: { text: 'Very good bread, friendly service.', languageCode: 'en' }, originalText: { text: 'Très bon pain, accueil chaleureux.', languageCode: 'fr' }, authorAttribution: { displayName: 'Élodie Martin' }, publishTime: '2026-10-01T09:00:00Z', googleMapsUri: 'https://maps.google.com/review/z1' },
+] };
+r = await repB('check_now');
+let listB = (await repB('reviews')).reviews ?? [];
+const z1 = listB.find(x => x.author === 'Élodie Martin');
+ok('its first review arrives', r.success && r.added === 1 && !!z1, JSON.stringify(r));
+ok('…in the words its author wrote (French), not Google\'s translation', z1?.content === 'Très bon pain, accueil chaleureux.', JSON.stringify(z1));
+ok('…and with no rules saved, nothing acts on it', z1 && !z1.attention && z1.replyState === 'none' && !z1.note, JSON.stringify(z1));
+r = await api('data.php', { token: TB, accountId: BACCT, action: 'bulk_set', items: { crm_reputation_rules: JSON.stringify([{ id: 'x', enabled: true, minRating: 1, maxRating: 3, mode: 'alert', instruction: '', runs: 0 }]) } });
+ok('B saves an alert rule for 1–3★', r.success, JSON.stringify(r));
+mock.zero = { rating: 3.7, count: 4, reviews: [
+  ...mock.zero.reviews,
+  { name: `places/${ZERO}/reviews/z2`, rating: 1, text: { text: 'Kalt und unfreundlich.' }, originalText: { text: 'Kalt und unfreundlich.' }, authorAttribution: { displayName: 'Jörg' }, publishTime: '2026-10-02T09:00:00Z', googleMapsUri: 'https://maps.google.com/review/z2' },
+] };
+r = await repB('check_now');
+listB = (await repB('reviews')).reviews ?? [];
+const z2 = listB.find(x => x.author === 'Jörg');
+ok('the next new review meets the saved rule — even though the business had none at the first read', r.success && r.added === 1 && z2?.attention === true && /Flagged by your rule/.test(z2.note), JSON.stringify(z2));
+ok('Google\'s count went up by 3 but Places showed 1: the check says so', r.notes?.some(n => /counts 4 reviews, 3 more than at the last check, but 1 of the 3 new ones are among the five/.test(n)), JSON.stringify(r.notes));
+ok('…and the earlier review is untouched by the rule', !listB.find(x => x.author === 'Élodie Martin')?.attention);
+sql("UPDATE crm_users SET trial_ends_at = '2026-01-01T00:00:00Z' WHERE email = 'bea@other.test'");
+r = await repB('find_place', { query: 'Acme Bakery' });
+ok('when the trial has ended, the owner\'s key stops: search says why', !r.success && r.code === 'trial_ended', JSON.stringify(r));
+r = await repB('check_now');
+ok('…and so does a check, by name', !r.success && r.code === 'trial_ended' && /trial has ended/.test(r.error), JSON.stringify(r).slice(0, 300));
+await repB('save_source', { placesKey: WKEY2 });
+r = await repB('check_now');
+ok('…but a key of the customer\'s own still works after the trial', r.success, JSON.stringify(r).slice(0, 300));
+await repB('save_source', { clearKey: true });
+sql("UPDATE crm_users SET trial_ends_at = NULL WHERE email = 'bea@other.test'");
+await api('reputation.php', { token: T, action: 'save_install_key', apiKey: DKEY });
+r = await repB('check_now');
+const inst = await api('reputation.php', { token: T, action: 'install_key_status' });
+ok('when Google refuses the owner\'s key, the customer is told and the owner\'s card turns to error', !r.success && r.code === 'api_disabled' && inst.status === 'error' && /not enabled/.test(inst.lastError), `${JSON.stringify(r).slice(0, 200)} ${JSON.stringify(inst)}`);
+await api('reputation.php', { token: T, action: 'save_install_key', apiKey: IKEY });
+r = await api('reputation.php', { token: T, action: 'test_install_key' });
+ok('…and a good key, tested, turns it back', r.success && r.status === 'ok', JSON.stringify(r));
+
 /* ── Competitors ── */
 r = await rep('add_competitor', { placeId: COMP });
 ok('a competitor is added with Google\'s numbers', r.success && r.competitors?.[0]?.rating === 4.1 && r.competitors[0].reviewCount === 50 && r.competitors[0].name === 'Rival Rolls', JSON.stringify(r));
@@ -323,6 +427,8 @@ r = await rep('gbp_locations');
 ok('a quota of zero is reported the same way', !r.success && /has not approved Business Profile API access/.test(r.error), JSON.stringify(r));
 r = await rep('check_now');
 ok('while not approved, the check falls back to Places and says why', r.success && r.via === 'google_places' && r.notes?.some(n => /has not approved/.test(n)) && /has not approved/.test(r.gbp.lastError), JSON.stringify(r).slice(0, 400));
+list = (await rep('reviews')).reviews;
+ok('…without showing a review Business Profile already read a second time', list.filter(x => x.author === 'Ann Baker').length === 1 && list.length === 6, JSON.stringify(list.map(x => `${x.author}/${x.source}`)));
 mock.gbpDenied = false;
 
 /* ── The cron: new reviews meet the rules, and Autopilot's queued request goes out ── */
@@ -370,6 +476,29 @@ const before = mail.length;
 await scheduled(); await sleep(2500);
 ok('the gate stops a second pass within fifteen minutes', mail.length === before);
 
+/* ── Asking for reviews from the screen: sent, refused, failed — each said ── */
+r = await rep('send_requests', { recipients: [{ name: 'Tom', email: 'tom@example.test' }], platform: 'yelp' });
+ok('no Yelp link: refused by name before anything is sent', !r.success && r.code === 'no_link', JSON.stringify(r));
+r = await rep('send_requests', { recipients: [{ name: 'Tom', email: 'tom@example.test' }] }, BACCT, TB);
+ok('a workspace with a link but no mailbox is told so', !r.success && (r.code === 'no_link' || r.code === 'no_mailbox'), JSON.stringify(r));
+mail.length = 0;
+r = await rep('send_requests', { recipients: [{ name: 'Tom Tester', email: 'tom@example.test' }, { name: 'Ruth', email: 'reject@example.test' }], platform: 'google' });
+ok('one sent, one refused by the mail server: reported as partial', r.success === true && r.sent === 1 && r.failed === 1 && /reject@example\.test/.test(r.failures?.[0] ?? ''), JSON.stringify(r));
+reqs = (await rep('requests')).requests ?? [];
+ok('…and the list says which failed, and why', reqs.some(x => x.email === 'reject@example.test' && x.status === 'failed' && /550|No such user/i.test(x.error)) && reqs.some(x => x.email === 'tom@example.test' && x.status === 'sent'), JSON.stringify(reqs.slice(0, 3)));
+/* Read from the raw header: `readable` unwraps quoted-printable, and the
+   signature's hex would sometimes be taken for an escape and mangled. */
+const tomRaw = mail.find(m => m.includes('tom@example.test')) ?? '';
+const unsub = (/^List-Unsubscribe: <([^>]+)>/m.exec(tomRaw) ?? ['', ''])[1];
+ok('the request carries a one-click unsubscribe (header and footer link)', !!unsub && /unsubscribe\.php\?/.test(unsub) && Buffer.from(tomRaw.split('\n\n').slice(1).join('').replace(/\s+/g, ''), 'base64').toString('utf8').includes('Unsubscribe</a>'), tomRaw.slice(0, 1500));
+const unsubPage = await fetch(unsub, { headers: { Connection: 'close' } });
+const unsubHtml = await unsubPage.text();
+ok('…which opens a valid page', unsubPage.status === 200 && /Unsubscribe me/.test(unsubHtml), `${unsubPage.status} ${unsub} ${unsubHtml.slice(0, 200)}`);
+const u = new URL(unsub);
+await fetch(unsub, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Connection: 'close' }, body: u.searchParams.toString() });
+r = await rep('send_requests', { recipients: [{ name: 'Tom Tester', email: 'tom@example.test' }], platform: 'google' });
+ok('…and once used, that address is not asked again', !r.success && r.sent === 0 && /unsubscribed/.test(r.error), JSON.stringify(r));
+
 /* ── The screen ── */
 await page.evaluate(([k]) => {
   localStorage.setItem('crm_reputation_google', JSON.stringify({ apiKey: k, placeId: 'ChIJplaceAAAA0001' }));
@@ -394,6 +523,10 @@ ok('no sideways scroll at 1280', (await page.evaluate(() => document.documentEle
 await page.getByRole('button', { name: 'Reputation settings' }).click();
 await page.getByRole('dialog').getByRole('button', { name: /Review Sources/ }).click();
 await page.waitForTimeout(400);
+await page.locator('[data-field="rep.search"]').fill(`https://search.google.com/local/writereview?placeid=${PLACE}`);
+await page.getByRole('dialog').getByRole('button', { name: /^Search$/ }).click();
+await page.waitForTimeout(1500);
+ok('pasting a Google review link in the search box finds the business it names', /This is the business your link points to/.test(await page.getByRole('dialog').innerText()) && await page.getByRole('dialog').getByRole('button', { name: /Acme Bakery/ }).count() === 1);
 ok('Review sources: search, own key, Business Profile, link-only platforms', await page.locator('[data-field="rep.search"]').isVisible() && await page.locator('[data-field="rep.placesKey"]').isVisible() && /not<\/strong> read|are not read/.test(await page.getByRole('dialog').innerHTML()) && /Google Business Profile/.test(await page.getByRole('dialog').innerText()));
 await page.setViewportSize({ width: 390, height: 844 });
 await page.waitForTimeout(500);
@@ -407,6 +540,24 @@ await page.waitForTimeout(800);
 ok('the owner sees the Google Maps key card on Platform services, without the key', /Google Maps key \(Places API\)/.test(await page.locator('body').innerText()) && !(await page.content()).includes(IKEY));
 ok('no page errors', !errs.length, errs.join(' | '));
 await br.close();
+
+/* ── Business Profile: an hour later, a revoked grant, and disconnecting ── */
+sql(`UPDATE crm_gbp_connections SET expires_at = '2000-01-01T00:00:00.000Z' WHERE account_id = '${A}'`);
+seen.length = 0;
+r = await rep('check_now');
+ok('an expired access token is refreshed with the stored refresh token, then used', r.success && r.via === 'google_business'
+  && seen.some(x => x.path === '/token' && new URLSearchParams(x.body).get('grant_type') === 'refresh_token')
+  && seen.some(x => x.path.startsWith('/v4/') && x.auth === 'Bearer at-2'), JSON.stringify(seen.map(x => [x.path, x.auth])));
+mock.refreshDenied = true;
+sql(`UPDATE crm_gbp_connections SET expires_at = '2000-01-01T00:00:00.000Z' WHERE account_id = '${A}'`);
+r = await rep('check_now');
+const revoked = (await rep('status')).gbp;
+ok('a grant Google revoked: the connection says "connect again", and the check falls back to Places', r.success && r.via === 'google_places' && revoked?.status === 'error' && /Connect (it|Business Profile) again/.test(revoked.lastError), `${JSON.stringify(revoked)} ${JSON.stringify(r).slice(0, 300)}`);
+ok('…and its reviews can no longer be posted to from here', !(await rep('reviews')).reviews.some(x => x.canPost));
+mock.refreshDenied = false;
+r = await rep('gbp_disconnect');
+ok('disconnect removes the connection and keeps the reviews already read', r.success && r.gbp.status === 'none' && r.counts.total >= 6, JSON.stringify(r).slice(0, 300));
+ok('…and its tokens', sql(`SELECT COUNT(*) AS n FROM crm_gbp_connections WHERE account_id = '${A}'`)[0].n === 0);
 
 stop();
 console.log(fail ? `\n${fail} failed` : '\nall passed');
