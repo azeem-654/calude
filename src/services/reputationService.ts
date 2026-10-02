@@ -118,7 +118,9 @@ async function call<T>(action: string, extra: Record<string, unknown> = {}): Pro
 }
 
 export const repStatus = () => call<RepStatus>('status');
-export const findPlace = (query: string) => call<{ places: PlaceHit[] }>('find_place', { query });
+/** A name and town, or a pasted Google Maps link / place ID — the server tells them apart and follows short links. */
+export const findPlace = (query: string, field: 'rep.search' | 'rep.competitorSearch' = 'rep.search') =>
+  call<{ places: PlaceHit[]; fromLink?: boolean }>('find_place', { query, field });
 export const saveSource = (patch: { placeId?: string; placeName?: string; placesKey?: string; clearKey?: boolean; autoCheck?: boolean }) => call<RepStatus>('save_source', patch);
 export const checkNow = () => call<RepStatus & { added: number; repliesFound: number; via: string; notes: string[] }>('check_now');
 /* The agency dashboard's per-workspace counts are read from this browser's
@@ -238,7 +240,9 @@ export function trendingThemes(reviews: RepReview[], sentiment: 'positive' | 'ne
   const counts = new Map<string, number>();
   reviews.filter(r => sentimentOf(r.rating, r.content) === sentiment).forEach(r => {
     const content = typeof r.content === 'string' ? r.content : '';
-    content.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).forEach(w => {
+    /* Letters of any alphabet: "très", "schön" and "отлично" are words too,
+       and an a–z filter turned them into "trs" and "schn" or nothing. */
+    content.toLowerCase().replace(/[^\p{L}\p{M}\s]/gu, '').split(/\s+/).forEach(w => {
       if (w.length < 4 || STOP.has(w)) return;
       counts.set(w, (counts.get(w) ?? 0) + 1);
     });

@@ -34,6 +34,7 @@ import { decryptSecret, encryptSecret, newToken } from './crypto';
 import { dataGet, installSecret, nowIso, type Env } from './db';
 import { googleCreds } from './googleAuth';
 import { aiBudget, askGemini, extractJson, loadAiKey } from './ai';
+import { cidOfMapsUri, followShortLink, parseMapsLink } from './mapsLink';
 import {
   KEY_FAULT, PLACE_ID_RE, httpsOnly, markInstallKey, meterPlaces, placesBase, placesError, placesKeyFor,
   type GResult, type GoogleError,
@@ -68,7 +69,10 @@ export {
 
 async function gfetch(url: string, init: RequestInit): Promise<{ res: Response | null; body: Record<string, unknown>; netError?: string }> {
   try {
-    const res = await fetch(url, init);
+    /* A Google that does not answer must not hold the request (or the cron
+       pass) open until the platform kills it; it is reported as a network
+       failure like any other. */
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000), ...init });
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
     return { res, body };
   } catch (e) {
@@ -83,7 +87,11 @@ export interface IncomingReview {
   time: string | null; link: string; reply: string; replyTime: string | null;
 }
 
-export async function searchPlaces(env: Env, key: string, query: string): Promise<GResult<PlaceSummary[]>> {
+export async function searchPlaces(env: Env, key: string, query: string, near?: { lat: number; lng: number }): Promise<GResult<PlaceSummary[]>> {
+  const req: Record<string, unknown> = { textQuery: query.slice(0, 200), pageSize: 8 };
+  /* Where a pasted link put the pin: the branch of a chain the customer meant,
+     not the most famous one. A bias, so a slightly-off pin still finds it. */
+  if (near) req.locationBias = { circle: { center: { latitude: near.lat, longitude: near.lng }, radius: 3000 } };
   const { res, body, netError } = await gfetch(`${urls(env).places}/v1/places:searchText`, {
     method: 'POST',
     headers: {
@@ -91,7 +99,7 @@ export async function searchPlaces(env: Env, key: string, query: string): Promis
       'X-Goog-Api-Key': key,
       'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri',
     },
-    body: JSON.stringify({ textQuery: query, pageSize: 8 }),
+    body: JSON.stringify(req),
   });
   if (!res) return { ok: false, code: 'network', error: `Could not reach Google Places: ${netError}` };
   if (!res.ok) return { ok: false, ...placesError(res.status, body as GoogleError) };
@@ -150,6 +158,57 @@ export async function placeDetails(env: Env, key: string, placeId: string, withR
       reviews,
     },
   };
+}
+
+/* ── A pasted Google Maps link ───────────────────────────────────────── */
+
+/**
+ * Turn what a customer pasted — a Maps link of any shape, or a place ID — into
+ * the place(s) it names, or say why it cannot. `null` means it was plain words
+ * and should be searched for as typed. `calls` is how many requests reached
+ * Places, for the meter. lib/mapsLink.ts says which shape carries what.
+ */
+export async function resolvePlaceLink(env: Env, key: string, raw: string): Promise<GResult<PlaceSummary[]> & { calls: number } | null> {
+  let link = parseMapsLink(raw);
+  if (!link) return null;
+  if (link.notGoogle) return { ok: false, calls: 0, code: 'not_google', error: 'That link is not a Google Maps link. Paste the link from Google Maps (Share → Copy link), or type the business name and town.' };
+  if (link.short) {
+    const f = await followShortLink(raw, env.GOOGLE_LINK_BASE);
+    if (!f.link) {
+      return {
+        ok: false, calls: 0, code: 'link_dead',
+        error: f.error === 'not_found'
+          ? 'Google says that short link does not exist. Copy it again from Google Maps (Share → Copy link), or type the business name and town.'
+          : `That short link could not be opened (${f.error ?? 'no answer'}). Type the business name and town instead.`,
+      };
+    }
+    link = f.link;
+    if (link.notGoogle) return { ok: false, calls: 0, code: 'not_google', error: 'That short link leads away from Google Maps. Paste the link from Google Maps itself, or type the business name and town.' };
+  }
+  if (link.placeId) {
+    const p = await placeDetails(env, key, link.placeId, false);
+    if (!p.ok || !p.data) return { ok: false, calls: 1, code: p.code, error: p.code === 'not_found' ? 'Google has no business with the place ID in that link. Type the business name and town instead.' : p.error };
+    const { reviews: _r, ...summary } = p.data;
+    return { ok: true, calls: 1, data: [summary] };
+  }
+  if (link.query) {
+    const near = link.lat != null && link.lng != null ? { lat: link.lat, lng: link.lng } : undefined;
+    const r = await searchPlaces(env, key, link.query, near);
+    if (!r.ok) return { ok: false, calls: 1, code: r.code, error: r.error };
+    const hits = r.data ?? [];
+    /* The CID names exactly one place; a name search can return its
+       neighbours. When it matches, only that one is offered. */
+    const exact = link.cid ? hits.filter(h => cidOfMapsUri(h.mapsUrl) === link!.cid) : [];
+    return { ok: true, calls: 1, data: exact.length ? exact : hits };
+  }
+  if (link.cid) {
+    return {
+      ok: false, calls: 0, code: 'link_cid_only',
+      error: 'That link carries only Google\'s internal number for the business, which Google\'s Places search cannot look up. '
+        + 'Open the business in Google Maps, press Share → Copy link and paste that, or type the business name and town.',
+    };
+  }
+  return { ok: false, calls: 0, code: 'link_unreadable', error: 'That Google link does not point at one business. Paste the link from the business\'s own page on Google Maps, or type its name and town.' };
 }
 
 /* ── Business Profile: OAuth ───────────────────────────────────────────── */
@@ -387,6 +446,18 @@ export async function storeReviews(env: Env, accountId: string, list: IncomingRe
            AND NOT EXISTS (SELECT 1 FROM crm_reviews WHERE account_id = ? AND source = 'google_business' AND ext_id = ?)`,
       ).bind(r.extId, now, accountId, r.author, r.rating, r.time ?? '', accountId, accountId, r.extId).run();
     }
+    /*
+     * And the other way: once Business Profile has read a review, Places
+     * reading it again (because Business Profile failed this time and the
+     * check fell back) must not show it twice.
+     */
+    if (r.source === 'google_places') {
+      const twin = await env.DB.prepare(
+        `SELECT 1 AS n FROM crm_reviews WHERE account_id = ? AND source = 'google_business' AND author = ? AND rating = ?
+           AND substr(COALESCE(review_time, ''), 1, 16) = substr(?, 1, 16) LIMIT 1`,
+      ).bind(accountId, r.author, r.rating, r.time ?? '').first();
+      if (twin) continue;
+    }
     const id = reviewId();
     const ins = await env.DB.prepare(
       `INSERT OR IGNORE INTO crm_reviews
@@ -447,6 +518,7 @@ Tone: ${profile.tone || 'warm'}. 2-4 sentences. Address the reviewer by first na
 - 3 stars: thank them, acknowledge the mixed experience, show you want to improve.
 - 1-2 stars: apologize sincerely, do NOT be defensive, take it offline (invite them to contact you), promise to make it right. Never argue or blame the customer.
 Do not invent specifics not supported by the business facts above.
+Write the reply in the same language the review is written in. If the review has no words, write in the language of the business details above.
 ${instruction ? `Extra instruction: ${instruction.slice(0, 500)}` : ''}
 ${profile.signature ? `End with: ${profile.signature}` : ''}
 
@@ -542,12 +614,16 @@ export interface CheckResult {
  * Rules run only on reviews that arrived after the first read of that source.
  * The first read of a location brings in years of history, and auto-replying
  * to a review from 2019 the moment somebody connects is not what anybody set a
- * rule for.
+ * rule for. The exception is a business Google already said had no reviews
+ * (`review_count` 0 from an earlier read): it has no history, so its very
+ * first review is new and the rules meet it — otherwise a new business would
+ * never be alerted to the review that matters most.
  */
 export async function checkWorkspace(env: Env, accountId: string): Promise<CheckResult> {
   const out: CheckResult = { ok: false, via: null, added: 0, repliesFound: 0, error: '', code: '', notes: [] };
-  const src = await env.DB.prepare('SELECT place_id AS placeId, place_name AS placeName, places_key AS ownKey FROM crm_review_sources WHERE account_id = ?')
-    .bind(accountId).first<{ placeId: string; placeName: string; ownKey: string }>();
+  const src = await env.DB.prepare('SELECT place_id AS placeId, place_name AS placeName, places_key AS ownKey, review_count AS prevCount FROM crm_review_sources WHERE account_id = ?')
+    .bind(accountId).first<{ placeId: string; placeName: string; ownKey: string; prevCount: number | null }>();
+  const prevCount = src?.prevCount ?? null;
   const live = await gbpLive(env, accountId);
   if (!src && !live) return { ...out, code: 'no_source', error: 'No review source is set up yet. Find your business on Google in Reputation → Settings → Review sources.' };
 
@@ -567,11 +643,13 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
 
   let gbpError = '';
   if (live) {
-    const initial = !(await hadAny('google_business'));
+    const initial = !(await hadAny('google_business')) && prevCount !== 0;
     const g = await gbpReviews(env, accountId, live.account, live.location, initial ? 3 : 1);
     if (g.ok && g.data) {
       out.ok = true; out.via = 'google_business';
-      rating = g.data.rating; count = g.data.count;
+      /* Google leaves the count out when there are none; a successful read
+         with no count is a count of zero, and is stored as one (see above). */
+      rating = g.data.rating; count = g.data.count ?? 0;
       await ingest(g.data.reviews, initial);
       await env.DB.prepare("UPDATE crm_gbp_connections SET last_error = '', updated_at = ? WHERE account_id = ?").bind(nowIso(), accountId).run();
     } else {
@@ -587,13 +665,25 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
       out.code = out.code || key.code;
       out.error = gbpError ? `${gbpError} ${key.error}` : key.error;
     } else {
-      const initial = !(await hadAny('google_places'));
+      const initial = !(await hadAny('google_places')) && prevCount !== 0;
       const p = await placeDetails(env, key.key, src.placeId, true);
       if (p.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
       if (p.ok && p.data) {
         out.ok = true; out.via = 'google_places';
-        rating = p.data.rating; count = p.data.count; mapsUrl = p.data.mapsUrl;
+        rating = p.data.rating; count = p.data.count ?? 0; mapsUrl = p.data.mapsUrl;
+        const before = out.added;
         await ingest(p.data.reviews, initial);
+        /*
+         * Places returns five reviews Google ranks by relevance, not the
+         * newest, so a review can arrive on Google and never be among them.
+         * The count still moves; saying so is the difference between "nothing
+         * new" and "something new you cannot see here".
+         */
+        const grew = prevCount != null && prevCount > 0 ? count - prevCount : 0;
+        const unseen = grew - (out.added - before);
+        if (unseen > 0) {
+          out.notes.push(`Google now counts ${count} reviews, ${grew} more than at the last check, but ${grew - unseen} of the ${grew} new ${grew === 1 ? 'one is' : 'ones are'} among the five Google lets Places show. Connect Google Business Profile to read every review, or open your listing on Google Maps to see ${unseen === 1 ? 'it' : 'them'}.`);
+        }
         if (gbpError) out.notes.push(gbpError);
         if (key.whose === 'workspace') {
           await env.DB.prepare('UPDATE crm_review_sources SET key_verified_at = COALESCE(key_verified_at, ?) WHERE account_id = ?').bind(nowIso(), accountId).run();

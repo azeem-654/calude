@@ -122,6 +122,12 @@ const repR = await api('reputation.php', { action: 'reviews', token: B.token, ac
 check("B cannot read A's reviews", !repR.ok, JSON.stringify(repR.data).slice(0, 120));
 const repSave = await api('reputation.php', { action: 'save_source', token: B.token, accountId: A.acct, placeId: 'ChIJforged', placeName: 'Forged' });
 check("B cannot point A's reviews at another business", !repSave.ok, JSON.stringify(repSave.data).slice(0, 120));
+/* A pasted link makes the server fetch Google's shortener and spend a Places
+   call; on A's workspace that is A's key and A's rate limit. */
+const repFind = await api('reputation.php', { action: 'find_place', token: B.token, accountId: A.acct, query: 'https://maps.app.goo.gl/abc' });
+check("B cannot resolve a Maps link (or search) on A's workspace", !repFind.ok && repFind.status === 403, JSON.stringify(repFind.data).slice(0, 120));
+const repCheck = await api('reputation.php', { action: 'check_now', token: B.token, accountId: A.acct });
+check("B cannot make A's workspace read Google", !repCheck.ok && repCheck.status === 403, JSON.stringify(repCheck.data).slice(0, 120));
 /* Prospect search spends the owner's Google Maps key on the named workspace's
    budget, so naming A's workspace must be refused before anything is spent. */
 const proS = await api('prospects.php', { action: 'search', token: B.token, accountId: A.acct, trade: 'plumber', place: 'Manchester' });

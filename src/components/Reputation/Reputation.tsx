@@ -22,6 +22,7 @@ import {
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import ReputationSetup from './ReputationSetup';
+import { flushNow } from '../../services/serverData';
 import {
   repStatus, listReviews, checkNow, saveSource, draftReply, postReply, markReplied, dismissAttention,
   listCompetitors, addCompetitor, removeCompetitor, findPlace, listRequests, sendRequests,
@@ -93,6 +94,19 @@ export default function Reputation() {
     return () => { alive = false; };
   }, [refresh]);
 
+  /*
+   * What the cron reads arrives on the server with nobody watching. Re-reading
+   * the stored list once a minute while the tab is visible (and on coming
+   * back to it) puts it on screen without a reload. It asks this app's
+   * database only — never Google, so it costs nobody's quota.
+   */
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') void refresh(); };
+    const id = window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+  }, [refresh]);
+
   const src = status?.source ?? null;
   const gbp = status?.gbp;
   const gbpLive = gbp?.status === 'connected' && !!gbp.location;
@@ -123,6 +137,9 @@ export default function Reputation() {
     setChecking(false);
     if (!r.success) { addNotification(r.error ?? 'Google could not be read.', 'error'); await refresh(); return; }
     addNotification(r.added ? `${r.added} new review${r.added === 1 ? '' : 's'} from Google.` : 'Checked Google — nothing new.', 'success');
+    /* What the check could not do is said, not dropped: Business Profile
+       refusing and Places standing in, or new reviews Places will not show. */
+    for (const n of (r.notes ?? []).slice(0, 2)) addNotification(n, 'info');
     await refresh();
   };
   const toggleAuto = async () => {
@@ -193,6 +210,7 @@ export default function Reputation() {
               drafts replies in your voice, asks happy customers for a review, and compares you with competitors you pick.
             </p>
             {migrated && <p style={{ fontSize: 12.5, color: '#3f9142', margin: '0 0 14px' }}>{migrated}</p>}
+            {gbp?.status === 'connected' && !gbp.location && <p style={{ fontSize: 12.5, color: INK, margin: '0 0 14px' }}>Business Profile is connected — choose which of your locations this workspace is under Review sources.</p>}
             <button onClick={() => setSetupOpen('sources')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: INK, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               <Search size={16} /> Find your business on Google
             </button>
@@ -387,7 +405,7 @@ function CompetitorPanel({ comp, onChange, notify }: { comp: Competitor[]; onCha
   const [err, setErr] = useState('');
   const search = async () => {
     setBusy(true); setErr('');
-    const r = await findPlace(q);
+    const r = await findPlace(q, 'rep.competitorSearch');
     setBusy(false);
     if (!r.success) { setErr(r.error ?? 'Search failed.'); setHits([]); return; }
     setHits(r.places);
@@ -419,7 +437,7 @@ function CompetitorPanel({ comp, onChange, notify }: { comp: Competitor[]; onCha
       })}
       {comp.filter(c => c.placeId !== '__you').length < 5 && (
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          <input data-field="rep.competitorSearch" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void search(); }} placeholder="Add a competitor — name and town" aria-label="Search for a competitor"
+          <input data-field="rep.competitorSearch" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void search(); }} placeholder="Add a competitor — name and town, or Maps link" aria-label="Search for a competitor"
             style={{ flex: 1, minWidth: 0, padding: '8px 10px', border: '1px solid #e6e9f0', borderRadius: 9, fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }} />
           <button onClick={search} disabled={busy || q.trim().length < 3} style={btn(false)}><Search size={12} /> {busy ? '…' : 'Find'}</button>
         </div>
@@ -470,13 +488,33 @@ function RequestModal({ contacts, profile, onClose, onSent, addNotification }: {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [find, setFind] = useState('');
   const link = profile.reviewLinks[platform] || '';
-  const withEmail = contacts.filter(c => c.email);
+  /* One address once: two contacts sharing it would be one email anyway. */
+  const withEmail = contacts.filter((c, i, all) => c.email && all.findIndex(x => x.email === c.email) === i);
+  /*
+   * The server sends at most fifty in one go. The list used to show fifty but
+   * "Select all" took everybody, and the rest were dropped without a word; a
+   * search reaches anyone, and the cap is said where the choice is made.
+   */
+  const MAX = 50;
+  const f = find.trim().toLowerCase();
+  const shown = withEmail.filter(c => !f || String(c.name ?? '').toLowerCase().includes(f) || String(c.email).toLowerCase().includes(f)).slice(0, MAX);
+  const allShownOn = shown.length > 0 && shown.every(c => selected.has(c.email));
+  const toggleShown = () => setSelected(s => {
+    const n = new Set(s);
+    if (allShownOn) shown.forEach(c => n.delete(c.email));
+    else for (const c of shown) { if (n.size >= MAX) break; n.add(c.email); }
+    return n;
+  });
 
   const send = async () => {
     const picks = withEmail.filter(c => selected.has(c.email)).map(c => ({ name: c.name, email: c.email }));
     if (picks.length === 0) { setError('Select at least one contact.'); return; }
     setSending(true); setError('');
+    /* The server reads the review link from the synced profile; a link saved
+       a moment ago may still be waiting in the sync queue. */
+    await flushNow().catch(() => undefined);
     const r = await sendRequests(picks, platform);
     setSending(false);
     if (!r.success) { setError(r.error ?? 'Nothing was sent.'); onSent(); return; }
@@ -508,14 +546,21 @@ function RequestModal({ contacts, profile, onClose, onSent, addNotification }: {
           {error && <div role="alert" style={{ padding: '9px 12px', background: '#fdecec', borderRadius: 10, fontSize: 12, color: '#b42318', marginBottom: 12 }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>Select contacts ({selected.size})</span>
-            <button onClick={() => setSelected(selected.size === withEmail.length ? new Set() : new Set(withEmail.map(c => c.email)))} style={{ border: 'none', background: 'none', color: INK, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{selected.size === withEmail.length && withEmail.length ? 'Clear' : 'Select all'}</button>
+            <button onClick={toggleShown} disabled={!shown.length} style={{ border: 'none', background: 'none', color: INK, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{allShownOn ? 'Clear' : f ? 'Select these' : 'Select all'}</button>
           </div>
+          {withEmail.length > MAX && (
+            <>
+              <input aria-label="Find a contact" value={find} onChange={e => setFind(e.target.value)} placeholder={`Find among ${withEmail.length} contacts`}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 11px', border: '1px solid #e6e9f0', borderRadius: 10, fontSize: 12.5, outline: 'none', fontFamily: 'inherit', marginBottom: 6 }} />
+              <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 8px' }}>Up to {MAX} at a time — send these, then choose the next ones.</p>
+            </>
+          )}
           {withEmail.length === 0 && <p style={{ fontSize: 13, color: FAINT, textAlign: 'center', padding: 20 }}>No contacts with email addresses yet.</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {withEmail.slice(0, 50).map(c => {
+            {shown.map(c => {
               const on = selected.has(c.email);
               return (
-                <button key={c.email} onClick={() => setSelected(s => { const n = new Set(s); if (on) n.delete(c.email); else n.add(c.email); return n; })}
+                <button key={c.email} onClick={() => setSelected(s => { const n = new Set(s); if (on) n.delete(c.email); else if (n.size < MAX) n.add(c.email); return n; })}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, border: `1px solid ${on ? INK : '#e6e9f0'}`, background: on ? '#f7f8f9' : '#fff', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ width: 18, height: 18, borderRadius: 6, border: `2px solid ${on ? INK : '#cbd5e1'}`, background: on ? INK : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{on && <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>✓</span>}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>

@@ -18,7 +18,8 @@
  * arrive over days, not minutes; "Check now" on the screen is there for the
  * moment somebody is waiting for one.
  */
-import { dataGet, dataPut, metaGet, metaPut, nowIso, type Env } from './db';
+import { dataGet, dataPut, installSecret, metaGet, metaPut, nowIso, type Env } from './db';
+import { signAddress } from './crypto';
 import { addr } from './http';
 import { canSend, cannotSendReason, deliver, fromAddressOf } from './deliver';
 import { loadMailbox, type Mailbox } from '../routes/mailbox';
@@ -55,23 +56,43 @@ async function optedOut(env: Env, accountId: string, email: string): Promise<boo
   return !!row;
 }
 
-/** One review request, by email, from the workspace's own mailbox. */
+/**
+ * The signed one-click opt-out for this workspace (routes/unsubscribe.ts) —
+ * the same link a campaign carries, so one "stop" stops both.
+ */
+async function optOutUrl(env: Env, origin: string, accountId: string, email: string): Promise<string> {
+  const t = await signAddress(await installSecret(env.DB, 'unsub_key'), email, accountId);
+  return `${origin.replace(/\/$/, '')}/api/unsubscribe.php?${new URLSearchParams({ e: email, a: accountId, c: 'review-request', t }).toString()}`;
+}
+
+/**
+ * One review request, by email, from the workspace's own mailbox.
+ *
+ * It goes to somebody else's customers in the workspace's name, so it carries
+ * a way to stop them: a footer link and the List-Unsubscribe header that
+ * Gmail and Yahoo require of bulk senders. Without an origin there is no
+ * address to put in either, and it is not sent rather than sent without one.
+ */
 export async function sendReviewRequest(
   env: Env, accountId: string, mb: Mailbox, profile: Profile,
-  to: { name: string; email: string }, link: string,
+  to: { name: string; email: string }, link: string, origin: string,
 ): Promise<{ ok: boolean; error: string; permanent?: boolean }> {
   const email = addr(to.email);
   if (!email) return { ok: false, error: 'No usable email address for this contact.', permanent: true };
   if (await optedOut(env, accountId, email)) return { ok: false, error: `${email} has unsubscribed from this business's email.`, permanent: true };
+  if (!/^https?:\/\//.test(origin)) return { ok: false, error: 'This installation has no APP_ORIGIN set, so the email could carry no unsubscribe link. It was not sent.' };
+  const unsubscribeUrl = await optOutUrl(env, origin, accountId, email);
   const business = profile.name || mb.from.name || 'us';
   const first = (to.name || '').trim().split(/\s+/)[0] || 'there';
   const html = `<p>Hi ${esc(first)},</p><p>Thanks for choosing ${esc(business)}! Would you take 30 seconds to share your experience? It really helps us.</p>`
     + `<p><a href="${esc(link)}" style="display:inline-block;padding:12px 24px;background:#17191c;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">Leave a review</a></p>`
-    + (profile.signature ? `<p>${esc(profile.signature)}</p>` : '');
+    + (profile.signature ? `<p>${esc(profile.signature)}</p>` : '')
+    + `<p style="font-size:12px;color:#8a8f98">Don't want emails like this from ${esc(business)}? <a href="${esc(unsubscribeUrl)}" style="color:#8a8f98">Unsubscribe</a>.</p>`;
   const r = await deliver(mb, {
     fromName: mb.from.name || business, fromEmail: fromAddressOf(mb), to: email,
     subject: `How was your experience with ${business}?`, html,
     replyTo: mb.from.replyTo || undefined,
+    unsubscribeUrl,
   });
   return { ok: r.ok, error: r.error };
 }
@@ -99,7 +120,8 @@ export async function sendQueued(env: Env, accountId: string, budget: number): P
   const profile = await loadProfile(env, accountId);
   const mb = await loadMailbox(env, accountId);
   const target = reviewLinkFor(profile, 'google');
-  const blocker = !canSend(mb) ? cannotSendReason(mb)
+  const blocker = !/^https?:\/\//.test(env.APP_ORIGIN ?? '') ? 'APP_ORIGIN is not set for this installation, so a request could carry no unsubscribe link.'
+    : !canSend(mb) ? cannotSendReason(mb)
     : !target ? 'No review link is set. Add your Google review link in Reputation → Settings → Review sources.'
     : '';
   if (blocker) {
@@ -122,7 +144,7 @@ export async function sendQueued(env: Env, accountId: string, budget: number): P
       r.status = 'failed'; r.error = c ? 'This contact has no email address.' : 'This contact no longer exists.'; failed++;
       continue;
     }
-    const res = await sendReviewRequest(env, accountId, mb as Mailbox, profile, { name, email }, target!.link);
+    const res = await sendReviewRequest(env, accountId, mb as Mailbox, profile, { name, email }, target!.link, env.APP_ORIGIN ?? '');
     r.attempts = (Number(r.attempts) || 0) + 1;
     if (res.ok) { r.status = 'sent'; r.sentAt = nowIso(); r.error = ''; sent++; continue; }
     r.error = res.error.slice(0, 300);
