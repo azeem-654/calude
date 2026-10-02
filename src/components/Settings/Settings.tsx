@@ -8,7 +8,7 @@ import Deliverability from './Deliverability';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
-import { activeAccount, planById } from '../../services/tenancy';
+import { activeAccount } from '../../services/tenancy';
 import { loadStripeConfig } from '../../services/billing';
 import { fetchSmsStatus, saveSmsConfig, testSmsConfig } from '../../services/smsStore';
 import { fetchReplies, saveAiKey, testAiKey, type AiStatus } from '../../services/replies';
@@ -37,15 +37,6 @@ import InfrastructurePanel from './InfrastructurePanel';
 import AutomationPanel from './AutomationPanel';
 
 /* ─── helpers ─── */
-
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button onClick={() => onChange(!value)}
-      style={{ width: '36px', height: '20px', borderRadius: '999px', backgroundColor: value ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, padding: 0 }}>
-      <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: value ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(16,24,40,0.25)' }} />
-    </button>
-  );
-}
 
 function Field({ label, value, onChange, type = 'text', placeholder = '' }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }) {
   const [show, setShow] = useState(false);
@@ -1152,11 +1143,6 @@ export default function Settings() {
       timezone: saved?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
   });
-  const [notifications, setNotifications] = useState(() => {
-    const fallback = { emailNew: true, emailReplied: true, smsNew: false, dealClosed: true, appointmentReminder: true, weeklyReport: true };
-    try { return { ...fallback, ...(JSON.parse(localStorage.getItem('crm_notification_prefs') || 'null') ?? {}) }; } catch { return fallback; }
-  });
-
   /* Connected-ness is read from whatever actually configures each one, so the
      badge cannot claim a connection that does not exist. The two with no
      integration behind them say so rather than offering a button that lies. */
@@ -1180,7 +1166,6 @@ export default function Settings() {
   const handleSave = () => {
     try {
       localStorage.setItem('crm_profile', JSON.stringify(profile));
-      localStorage.setItem('crm_notification_prefs', JSON.stringify(notifications));
       addNotification('Settings saved');
     } catch {
       addNotification('Could not save — this browser refused to store the settings.', 'error');
@@ -1229,11 +1214,14 @@ export default function Settings() {
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Profile Information</h3>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>JD</div>
-                <div>
-                  <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>John Doe</p>
-                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px' }}>Admin · Protected Central</p>
-                  <button style={{ padding: '7px 14px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', backgroundColor: 'white', color: '#475569', fontWeight: 500 }}>Change Photo</button>
+                {/* Was a fixture: "JD", "John Doe", "Admin · Protected Central" and a
+                    Change Photo button with nothing behind it, on every account. */}
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>
+                  {(`${profile.firstName.trim()[0] ?? ''}${profile.lastName.trim()[0] ?? ''}` || profile.email.trim()[0] || '?').toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px', overflowWrap: 'anywhere' }}>{`${profile.firstName} ${profile.lastName}`.trim() || profile.email}</p>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, overflowWrap: 'anywhere' }}>{getSession()?.user.role === 'client' ? 'Team member' : 'Account owner'}{profile.company.trim() ? ` · ${profile.company.trim()}` : ''}</p>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px', marginBottom: '16px' }}>
@@ -1259,28 +1247,32 @@ export default function Settings() {
             </>
           )}
 
+          {/*
+            This tab was six switches — "New email received", "Weekly report
+            every Monday" and so on — saved to this browser and read by
+            nothing. Somebody who switched on a weekly report waited for one
+            that did not exist. It now says what does reach you, and where
+            each is controlled.
+          */}
           {activeTab === 'notifications' && (
             <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Notification Preferences</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '6px' }}>What reaches you</h3>
+              <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 8px', lineHeight: 1.55 }}>
+                Three things tell you what is happening. None of them needs switching on.
+              </p>
               {[
-                { key: 'emailNew', label: 'New email received', desc: 'Get notified when a new email arrives' },
-                { key: 'emailReplied', label: 'Email replied', desc: 'When a contact replies to your email' },
-                { key: 'smsNew', label: 'New SMS', desc: 'Incoming text messages' },
-                { key: 'dealClosed', label: 'Deal closed', desc: 'When a deal is marked as won or lost' },
-                { key: 'appointmentReminder', label: 'Appointment reminders', desc: '30 minutes before scheduled appointments' },
-                { key: 'weeklyReport', label: 'Weekly report', desc: 'Performance summary every Monday' },
-              ].map(({ key, label, desc }) => (
-                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <div>
-                    <p style={{ fontSize: '14px', fontWeight: 500, color: '#475569', margin: 0 }}>{label}</p>
-                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{desc}</p>
-                  </div>
-                  <Toggle value={(notifications as Record<string, boolean>)[key]} onChange={v => setNotifications((p: Record<string, boolean>) => ({ ...p, [key]: v }))} />
+                {
+                  label: 'Autopilot’s morning email',
+                  desc: `Between 7 and 10 in the morning, to ${getSession()?.user.email ?? 'your address'}, from your own mailbox — on days when something is waiting for your approval, was done, or could not be done. Nothing on a quiet day. It needs a connected mailbox (Email & SMS); to stop it, pause Autopilot on its screen.`,
+                },
+                { label: 'The bell at the top of every screen', desc: 'What happened while you were working in this browser — sends, imports, anything that failed.' },
+                { label: 'Messages from us', desc: 'Appear in the corner of the app when we have something to tell you about your account.' },
+              ].map(({ label, desc }) => (
+                <div key={label} style={{ padding: '14px 0', borderTop: '1px solid #f1f5f9' }}>
+                  <p style={{ fontSize: '14px', fontWeight: 600, color: '#334155', margin: 0 }}>{label}</p>
+                  <p style={{ fontSize: '12.5px', color: '#64748b', margin: '3px 0 0', lineHeight: 1.55 }}>{desc}</p>
                 </div>
               ))}
-              <button onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginTop: '16px' }}>
-                <Save size={15} /> Save Preferences
-              </button>
             </div>
           )}
 
@@ -1325,12 +1317,12 @@ export default function Settings() {
             "Pro $297/mo", a "next billing" date already two years in the past,
             and an Upgrade button with no click handler — sitting alongside the
             real Stripe-backed billing at /billing that works properly. Rather
-            than maintain two, this one shows the real plan and sends you to
-            the real screen.
+            than maintain two, this one sends you to the real screen. It
+            does not repeat the plan: the one this browser remembers is not
+            the server's, and a trial customer was shown "Studio $0/mo" for a
+            plan they never chose.
           */}
           {activeTab === 'billing' && (() => {
-            const acct = activeAccount();
-            const plan = acct ? planById(acct.plan) : null;
             /* Only the install owner is billing anybody, and the endpoint
                enforces that too — this is which of them is worth showing. */
             const owner = getSession()?.user.accountId === null;
@@ -1339,24 +1331,13 @@ export default function Settings() {
               {owner && <OperatorPayments />}
               <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Billing &amp; Subscription</h3>
-                <div style={{ padding: '22px 24px', borderRadius: '12px', background: '#17191c', color: 'white', marginBottom: '18px', boxShadow: '0 8px 20px rgba(23,25,28,0.25)' }}>
-                  <p style={{ fontSize: '12px', opacity: 0.8, margin: '0 0 4px' }}>Current plan</p>
-                  <p style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>
-                    {plan?.name ?? '—'}{' '}
-                    <span style={{ fontSize: '14px', fontWeight: 400 }}>{acct ? `$${acct.price}/mo` : ''}</span>
-                  </p>
-                  <p style={{ fontSize: '12px', opacity: 0.8, margin: '8px 0 0' }}>
-                    {acct ? `${acct.name} · ${acct.status}` : 'No workspace active'}
-                  </p>
-                </div>
+                <p style={{ fontSize: '13.5px', color: '#475569', margin: '0 0 16px', lineHeight: 1.55 }}>
+                  Your plan, your trial and your payment method are all on Plan &amp; billing.
+                </p>
                 <button onClick={() => navigate('/billing')}
                   style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', backgroundColor: '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   <CreditCard size={14} /> Manage plan &amp; payment
                 </button>
-                <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '12px 0 0', lineHeight: 1.55 }}>
-                  Changing plan, payment method and invoices all live on the billing screen, which talks to whichever
-                  payment processor this deployment is connected to.
-                </p>
               </div>
               </div>
             );
