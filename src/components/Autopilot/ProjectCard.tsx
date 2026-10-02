@@ -1340,7 +1340,7 @@ export default function ProjectCard({
 
           {/* ── Content Library: what it has actually produced ── */}
           {/* ── Analytics: the working day, and what went out ── */}
-          {tab === 'analytics' && <ProjectFlow day={day} live={live} />}
+          {tab === 'analytics' && <ProjectFlow day={day} live={live} channels={Array.isArray(project.brief?.plannerChannels) ? project.brief.plannerChannels : null} />}
 
           {/* ── Settings ── */}
           {tab === 'settings' && (

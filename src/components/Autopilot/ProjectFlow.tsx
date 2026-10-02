@@ -36,7 +36,7 @@ const ACCENT = '#5b46e5';
  * summaries are written by a model and would change under us, and a chart that
  * quietly stopped matching would show an idle day on a busy project.
  */
-const STAGES: { key: string; label: string; icon: typeof Bot; match: (a: AutopilotAction) => boolean; idle: string }[] = [
+const ALL_STAGES: { key: string; label: string; icon: typeof Bot; match: (a: AutopilotAction) => boolean; idle: string; channels?: string[] }[] = [
   {
     key: 'think', label: 'Reads the business', icon: Bot,
     match: a => a.kind === 'plan' || a.kind === 'observe',
@@ -45,27 +45,32 @@ const STAGES: { key: string; label: string; icon: typeof Bot; match: (a: Autopil
   {
     key: 'write', label: 'Writes the blog post', icon: FileText,
     match: a => /blog/i.test(a.summary) || a.link?.kind === 'blog-post',
-    idle: 'One a day, once there is a key to write with.',
+    idle: 'One a day.',
+    channels: ['blog'],
   },
   {
     key: 'social', label: 'Writes the social posts', icon: Image,
     match: a => /social/i.test(a.summary) || a.link?.kind === 'social-post',
     idle: 'Tops the queue up when it runs low.',
+    channels: ['social'],
   },
   {
     key: 'pages', label: 'Builds the pages', icon: Globe,
     match: a => a.link?.kind === 'website' || a.link?.kind === 'funnel' || /website|funnel|landing/i.test(a.summary),
     idle: 'Built once, then left alone.',
+    channels: ['site'],
   },
   {
     key: 'campaign', label: 'Writes the campaigns', icon: Mail,
     match: a => a.link?.kind === 'sequence' || /campaign|sequence|follow-up/i.test(a.summary),
     idle: 'A new angle roughly weekly.',
+    channels: ['email'],
   },
   {
     key: 'send', label: 'Sends and follows up', icon: Users,
     match: a => a.kind === 'enrol' || a.kind === 'send',
     idle: 'Waits for somebody to send to.',
+    channels: ['email', 'sms'],
   },
 ];
 
@@ -78,7 +83,18 @@ const clock = (iso: string): string => {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
-export default function ProjectFlow({ day, live }: { day: ProjectDay | null; live: boolean }) {
+export default function ProjectFlow({ day, live, channels }: {
+  day: ProjectDay | null; live: boolean;
+  /**
+   * The brief's `plannerChannels` — what the planner may do on this project.
+   * null for a project older than the brief, which plans everything. Without
+   * this a sales follow-up project was shown "Writes the blog post — one a
+   * day" and four more stages the planner drops for it (planNext reads the
+   * same list), so the chart promised work that would never come.
+   */
+  channels?: string[] | null;
+}) {
+  const STAGES = channels ? ALL_STAGES.filter(s => !s.channels || s.channels.some(c => channels.includes(c))) : ALL_STAGES;
   const done = day?.didToday ?? [];
   const upcoming = day?.upcoming ?? [];
   const next = upcoming[0];
