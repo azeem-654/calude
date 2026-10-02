@@ -221,6 +221,21 @@ export function BlockRender({ block }: { block: FunnelBlock }) {
  * tick, the content gate, the person record, the notification, the contact, the
  * deal, and any automation listening for that form.
  *
+ * ── Consent is the form's, and the visitor's ──
+ *
+ * This sent `consent: true` on every submission, whatever the form said — so a
+ * form whose owner wrote consent wording ("I agree to be contacted…") took the
+ * enquiry from a page that never showed the wording or a box, and the server,
+ * which refuses a submission without the tick, was told it had been ticked.
+ * The record then claimed an agreement nobody gave.
+ *
+ * The wording is read from the form itself (`engage.php form`, the same answer
+ * the form's own page uses) rather than copied into the block, because the
+ * owner can change it after the page is published and the page must follow.
+ * Where there is wording, the box is drawn and its real value is sent; where
+ * there is none, nothing is claimed. A server refusal for consent re-reads the
+ * form, so wording added since the page loaded appears instead of a dead end.
+ *
  * An unbound block says so rather than collecting into nothing.
  */
 function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; pad: number }) {
@@ -231,6 +246,37 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
   const [values, setValues] = useState<Record<string, string>>({});
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  /* `null` until the form has answered. `missing` is a draft or deleted form;
+     `unknown` is a server that could not be asked — the visitor may still
+     try, and the server will refuse anything consent-bound. */
+  const [form, setForm] = useState<{ consentText: string; missing?: boolean; unknown?: boolean } | null>(null);
+  const [consent, setConsent] = useState(false);
+
+  const loadForm = async (): Promise<string> => {
+    try {
+      const r = await fetch(`${window.location.origin}/api/engage.php`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'form', formSlug: slug }),
+      });
+      const d = await r.json() as { success?: boolean; notFound?: boolean; form?: { consentText?: string | null } };
+      if (!d.success) { setForm({ consentText: '', missing: !!d.notFound || r.status === 404 }); return ''; }
+      const consentText = String(d.form?.consentText ?? '').trim();
+      setForm({ consentText });
+      return consentText;
+    } catch {
+      setForm({ consentText: '', unknown: true });
+      return '';
+    }
+  };
+
+  useEffect(() => {
+    if (!slug) return;
+    setForm(null);
+    void loadForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  const consentText = form?.consentText ?? '';
 
   /* The key a field's answer is filed under. `email` and `phone` matter: the
      capture reads those two by name to build the contact, so a field labelled
@@ -249,6 +295,7 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
     if (!slug) return;
     const missing = fields.find((f, i) => f.required && !(values[keyFor(f.label, f.type, i)] ?? '').trim());
     if (missing) { setState('error'); setMessage(`${missing.label} is needed.`); return; }
+    if (consentText && !consent) { setState('error'); setMessage('Please tick the box to agree before sending.'); return; }
 
     setState('sending');
     try {
@@ -256,12 +303,19 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'submit', formSlug: slug, answers: values, consent: true,
+          /* What the visitor did, and nothing more. No wording means no box
+             and no claim: `false`, which the server only minds when the form
+             asks for consent. */
+          action: 'submit', formSlug: slug, answers: values, consent: consentText ? consent : false,
           context: { page: window.location.href },
         }),
       });
-      const d = await r.json() as { success?: boolean; message?: string; error?: string; redirect?: string };
-      if (!d.success) { setState('error'); setMessage(d.error ?? 'That could not be sent.'); return; }
+      const d = await r.json() as { success?: boolean; message?: string; error?: string; redirect?: string; code?: string };
+      if (!d.success) {
+        /* Wording added after this page loaded: show the box now. */
+        if (d.code === 'consent') await loadForm();
+        setState('error'); setMessage(d.error ?? 'That could not be sent.'); return;
+      }
       setState('sent');
       setMessage(d.message || 'Thank you — we have got that.');
       /* The form's own redirect wins over the block's, because the form is
@@ -276,6 +330,8 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
       setMessage(`That could not be sent: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+
+  const ready = !!slug && !!form && !form.missing;
 
   const input: CSSProperties = {
     width: '100%', padding: '11px 13px', border: '1px solid #e2e8f0', borderRadius: 8,
@@ -313,15 +369,25 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
               );
             })}
 
-            {message && state === 'error' && (
-              <p style={{ margin: '0 0 12px', fontSize: 13, color: '#b42318' }}>{message}</p>
+            {consentText && (
+              <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, color: '#475569', lineHeight: 1.5, margin: '4px 0 14px' }}>
+                <input type="checkbox" checked={consent} data-field="consent"
+                  onChange={e => setConsent(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
+                <span>{consentText}</span>
+              </label>
             )}
 
-            <button onClick={() => void send()} disabled={!slug || state === 'sending'}
+            {message && state === 'error' && (
+              <p role="alert" style={{ margin: '0 0 12px', fontSize: 13, color: '#b42318' }}>{message}</p>
+            )}
+
+            {/* Held until the form has said whether it asks for consent, so
+                nobody can send before the box they owe a tick is on screen. */}
+            <button onClick={() => void send()} disabled={!ready || state === 'sending'}
               style={{
-                width: '100%', padding: '13px 0', background: slug ? (s.buttonColor ?? '#6366f1') : '#cbd5e1',
+                width: '100%', padding: '13px 0', background: ready ? (s.buttonColor ?? '#6366f1') : '#cbd5e1',
                 color: s.buttonTextColor ?? '#fff', border: 'none', borderRadius: 8, fontSize: 15,
-                fontWeight: 700, cursor: !slug || state === 'sending' ? 'default' : 'pointer',
+                fontWeight: 700, cursor: !ready || state === 'sending' ? 'default' : 'pointer',
                 marginTop: 4, fontFamily: 'inherit',
               }}>
               {state === 'sending' ? 'Sending…' : (s.buttonText ?? 'Submit')}
@@ -335,6 +401,11 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
               <p style={{ margin: '10px 0 0', fontSize: 12.5, color: '#b45309', textAlign: 'center', lineHeight: 1.55 }}>
                 This form is not connected yet, so it cannot take an enquiry.
                 Choose a form for it in the builder, under Customer&nbsp;Engagement&nbsp;→&nbsp;Forms.
+              </p>
+            )}
+            {slug && form?.missing && (
+              <p style={{ margin: '10px 0 0', fontSize: 12.5, color: '#b45309', textAlign: 'center', lineHeight: 1.55 }}>
+                This form is not taking enquiries at the moment.
               </p>
             )}
           </>
