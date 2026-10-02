@@ -95,6 +95,14 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     } else {
       s = { state: 'off', detail: 'No AI key at all: customers without their own cannot have anything written, and the wizard matches words instead of reading them.', checkedAt: null, lastError: '' };
     }
+    /* Backup keys take over when the main one fails (lib/aiPool.ts); with
+       none, the install has no AI only if there are no backups either. */
+    const backups = (await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_ai_keys').first<{ n: number }>().catch(() => null))?.n ?? 0;
+    if (backups) {
+      s = s.state === 'off'
+        ? { state: 'unchecked', detail: `No main key, but ${backups} backup key${backups === 1 ? '' : 's'} below carr${backups === 1 ? 'ies' : 'y'} every AI call.`, checkedAt: null, lastError: '' }
+        : { ...s, detail: `${s.detail} ${backups} backup key${backups === 1 ? '' : 's'} take${backups === 1 ? 's' : ''} over if it fails.` };
+    }
     services.push({
       id: 'ai', name: 'AI (Google Gemini)',
       powers: 'Autopilot writing, replies, the New Project wizard, the microphone, review reply drafts',

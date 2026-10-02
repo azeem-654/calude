@@ -28,8 +28,9 @@
  */
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
-import { loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
+import { aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
+import { withFailover } from '../lib/aiPool';
 
 interface AiReq {
   token?: string;
@@ -82,25 +83,34 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     ...(d.request?.systemInstruction ? { systemInstruction: d.request.systemInstruction } : {}),
   });
 
-  let lastStatus = 0; let lastError = '';
-  for (const model of await modelsFor(key)) {
-    let res: Response;
-    try {
-      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(60_000),
-      });
-    } catch (e) {
-      lastError = e instanceof Error ? e.message : String(e);
-      continue;
+  /* On each of the install's keys in turn while the failure is the key's —
+     a limit, a refusal, Google down for it (lib/aiPool.ts) — so a customer
+     is answered by the next key rather than shown the first one's error. */
+  return withFailover<Response>(key, async k => {
+    let lastStatus = -1; let lastError = '';
+    for (const model of await modelsFor(k)) {
+      let res: Response;
+      try {
+        res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(60_000),
+        });
+      } catch (e) {
+        lastStatus = 0;
+        lastError = e instanceof Error ? e.message : String(e);
+        continue;
+      }
+      if (res.ok) return { ok: true, value: json({ success: true, response: await res.json() }) };
+      lastStatus = res.status;
+      lastError = await res.text().catch(() => '');
+      /* The next model on a retired id or a busy one; anything else is the
+         request's own fault and another model will say the same. */
+      if (![404, 429, 500, 502, 503, 504].includes(res.status) && !/no longer available|not found|not supported/i.test(lastError)) break;
     }
-    if (res.ok) return json({ success: true, response: await res.json() });
-    lastStatus = res.status;
-    lastError = await res.text().catch(() => '');
-    /* The next model on a retired id or a busy one; anything else is the
-       request's own fault and another model will say the same. */
-    if (![404, 429, 500, 502, 503, 504].includes(res.status) && !/no longer available|not found|not supported/i.test(lastError)) break;
-  }
-  let msg = lastError;
-  try { msg = (JSON.parse(lastError) as { error?: { message?: string } }).error?.message || lastError; } catch { /* not JSON */ }
-  return fail(lastStatus === 429 ? 'The AI is busy right now. Try again in a minute.' : `The AI could not answer: ${msg.slice(0, 240) || 'no response'}`);
+    let msg = lastError;
+    try { msg = (JSON.parse(lastError) as { error?: { message?: string } }).error?.message || lastError; } catch { /* not JSON */ }
+    return {
+      ok: false, status: lastStatus, error: lastError,
+      value: fail(lastStatus === 429 ? 'The AI is busy right now. Try again in a minute.' : `The AI could not answer: ${msg.slice(0, 240) || 'no response'}`),
+    };
+  });
 }

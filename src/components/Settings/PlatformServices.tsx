@@ -26,6 +26,7 @@ import { AlertTriangle, CheckCircle, ChevronRight, Circle, Loader, RefreshCw, XC
 import { API_BASE } from '../../services/apiBase';
 import { sessionToken } from '../../services/auth';
 import PlacesKeyPanel from './PlacesKeyPanel';
+import AiKeysPanel from './AiKeysPanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
 
 const INK = '#0f172a';
@@ -143,6 +144,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
         )}
       </div>
 
+      <div id="platform-ai-keys" style={{ scrollMarginTop: 16 }}><AiKeysPanel /></div>
       <div id="platform-google-maps" style={{ scrollMarginTop: 16 }}><PlacesKeyPanel /></div>
       <div id="platform-google-signin" style={{ scrollMarginTop: 16 }}><GoogleSignInPanel /></div>
     </div>

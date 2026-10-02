@@ -62,6 +62,8 @@ export interface Env {
   GOOGLE_GBP_INFO_BASE?: string;
   GOOGLE_GBP_V4_BASE?: string;
   GOOGLE_TOKEN_URL?: string;
+  /** Where Gemini is asked instead, in tests only (lib/ai.ts). */
+  GEMINI_BASE?: string;
   /** Where Google's short links (maps.app.goo.gl, g.page…) are asked instead, in tests (lib/mapsLink.ts). */
   GOOGLE_LINK_BASE?: string;
 }

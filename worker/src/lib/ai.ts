@@ -16,10 +16,17 @@
  */
 import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
+import { fingerprint, installPool, remember, withFailover, type Attempt } from './aiPool';
 import { rateLimit } from './rateLimit';
 import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
 
-const BASE = 'https://generativelanguage.googleapis.com';
+const GOOGLE = 'https://generativelanguage.googleapis.com';
+/* `GEMINI_BASE` points every call at a stand-in, for tests only — set from
+   the first `env` this isolate sees, since the callers below are handed a
+   key and not an env (test/aikeys.e2e.mjs). */
+let BASE = GOOGLE;
+export function adoptAiBase(env: Env): void { BASE = (env.GEMINI_BASE ?? '').trim() || GOOGLE; }
+export const aiBase = () => BASE;
 
 /*
  * ── Which models, asked rather than assumed ──
@@ -113,23 +120,27 @@ export interface AiResult {
  * surprise and a bill nobody agreed to.
  */
 export async function loadAiKey(env: Env, accountId: string): Promise<string | null> {
+  adoptAiBase(env);
   const key = await installSecret(env.DB, 'mailbox_key');
 
+  let own = '';
   const row = await env.DB.prepare('SELECT api_key FROM crm_ai_config WHERE account_id = ?')
     .bind(accountId).first<{ api_key: string }>();
   if (row?.api_key) {
-    try {
-      const plain = await decryptSecret(key, row.api_key);
-      if (plain) return plain;
-    } catch { /* unreadable blob: fall through rather than fail the whole tick */ }
+    try { own = (await decryptSecret(key, row.api_key)) || ''; } catch { /* unreadable blob: fall through rather than fail the whole tick */ }
   }
 
   /* The operator's key is part of what the trial gives. Once it has ended and
      nothing is paid, it is not spent on this workspace — by a screen or by a
-     cron run, both of which arrive here (lib/trial.ts). */
-  if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended') return null;
-
-  return installAiKey(env);
+     cron run, both of which arrive here (lib/trial.ts). Their own key, if
+     they brought one, still is, alone. */
+  const ended = (await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended';
+  const pool = ended ? [] : await installPool(env);
+  /* Their own key first; the operator's keys behind it, so a customer whose
+     key runs out mid-sentence is answered rather than shown an error
+     (lib/aiPool.ts). The returned key carries the rest through withFailover. */
+  const keys = own ? [{ key: own, fp: await fingerprint(own), source: 'workspace' as const, label: 'Workspace key' }, ...pool.filter(k => k.key !== own)] : pool;
+  return remember(env, keys);
 }
 
 /**
@@ -160,45 +171,10 @@ export async function loadAiKey(env: Env, accountId: string): Promise<string | n
  * rather keep the key in Cloudflare's secret store than in its own database.
  */
 export async function installAiKey(env: Env): Promise<string | null> {
-  const key = await installSecret(env.DB, 'mailbox_key');
-
-  /* An explicit install-level key, if one was ever set. Checked first because
-     somebody who went out of their way to set one meant it. */
-  const explicit = await env.DB.prepare(
-    "SELECT credentials FROM crm_install_providers WHERE kind = 'ai' AND credentials != ''",
-  ).first<{ credentials: string }>();
-  if (explicit?.credentials) {
-    try {
-      const parsed = JSON.parse(await decryptSecret(key, explicit.credentials)) as { apiKey?: string };
-      if (parsed.apiKey) return parsed.apiKey;
-    } catch { /* unreadable; keep looking */ }
-  }
-
-  /*
-   * The owner's own AI Engine setting.
-   *
-   * Ordered so a key that last worked beats one that last failed — a row whose
-   * `last_error` is set is a key that has already been refused once, and
-   * handing it to every workspace on the install would multiply that failure
-   * rather than surface it.
-   */
-  const owned = await env.DB.prepare(
-    `SELECT c.api_key AS apiKey
-     FROM crm_ai_config c
-     JOIN crm_workspaces w ON w.account_id = c.account_id
-     JOIN crm_users u ON u.email = w.owner_email
-     WHERE u.account_id IS NULL AND u.role = 'agency' AND c.api_key != ''
-     ORDER BY (c.last_error = '') DESC, (c.verified_at IS NOT NULL) DESC
-     LIMIT 1`,
-  ).first<{ apiKey: string }>();
-  if (owned?.apiKey) {
-    try {
-      const plain = await decryptSecret(key, owned.apiKey);
-      if (plain) return plain;
-    } catch { /* unreadable; the env var below is the last chance */ }
-  }
-
-  return (env.AI_API_KEY ?? '').trim() || null;
+  adoptAiBase(env);
+  /* The reading itself — the installation key, the owner's AI Engine key,
+     the backups, AI_API_KEY — is lib/aiPool.ts, in that order. */
+  return remember(env, await installPool(env));
 }
 
 /**
@@ -254,10 +230,21 @@ function thinkingFor(model: string): Record<string, unknown> {
 export async function askGeminiParts(
   apiKey: string, parts: AiPart[], temperature = 0.5, opts: { json?: boolean; fast?: boolean; timeoutMs?: number } = {},
 ): Promise<AiResult> {
+  /* On each of the install's keys in turn, while the failure is the key's
+     (lib/aiPool.ts). */
+  return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, opts));
+}
+
+async function askGeminiOnce(
+  apiKey: string, parts: AiPart[], temperature: number, opts: { json?: boolean; fast?: boolean; timeoutMs?: number },
+): Promise<Attempt<AiResult>> {
+  const failed = (status: number, raw: string): Attempt<AiResult> =>
+    ({ ok: false, status, error: raw, value: { ok: false, text: '', error: friendly(status, raw) } });
   const asJson = opts.json !== false;
   const base = asJson ? { responseMimeType: 'application/json', temperature } : { temperature };
 
   let lastError = '';
+  let lastStatus = -1;   // -1: no model answered at all — none of this key's ids exist
   for (const model of await modelsFor(apiKey)) {
     let thinking = !!opts.fast;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -276,6 +263,7 @@ export async function askGeminiParts(
       } catch (e) {
         const timedOut = e instanceof Error && /abort|timeout/i.test(`${e.name} ${e.message}`);
         lastError = timedOut ? `${model} took too long` : `Could not reach Google: ${e instanceof Error ? e.message : String(e)}`;
+        lastStatus = 0;
         break;
       }
 
@@ -286,20 +274,24 @@ export async function askGeminiParts(
         /* Models sometimes wrap JSON in a fence despite being asked not to. */
         return {
           ok: true,
-          text: asJson ? text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim(),
-          error: '',
+          value: {
+            ok: true,
+            text: asJson ? text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim(),
+            error: '',
+          },
         };
       }
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
       if (res.status === 404 || MODEL_GONE.test(lastError)) break;   // this id is gone; next
+      lastStatus = res.status;
       /* The thinking setting refused: the same model, without it. */
       if (thinking && res.status === 400 && /thinking/i.test(lastError)) { thinking = false; attempt--; continue; }
-      if (!RETRYABLE.has(res.status)) return { ok: false, text: '', error: friendly(res.status, lastError) };
+      if (!RETRYABLE.has(res.status)) return failed(res.status, lastError);
       if (attempt < 2) await new Promise(r => setTimeout(r, 800));
     }
   }
-  return { ok: false, text: '', error: friendly(0, lastError || 'every model failed') };
+  return failed(lastStatus, lastError || 'every model failed');
 }
 
 /** Turn Google's verbose error bodies into a sentence worth showing. */
@@ -391,6 +383,12 @@ export function extractJson<T>(text: string): T | null {
  * a person reading the draft can check, and every draft stays a draft.
  */
 export async function researchWeb(apiKey: string, question: string, max = 5): Promise<WebResult> {
+  return withFailover(apiKey, k => researchOnce(k, question, max));
+}
+
+async function researchOnce(apiKey: string, question: string, max: number): Promise<Attempt<WebResult>> {
+  const failed = (status: number, raw: string): Attempt<WebResult> =>
+    ({ ok: false, status, error: raw, value: { ok: false, findings: [], sources: [], error: friendly(status, raw) } });
   const prompt = `Search the web for the most recent, genuinely new information on this, and report it.
 
 Question: ${question}
@@ -418,7 +416,7 @@ Reply with JSON only, in exactly this shape:
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
     } catch (e) {
-      return { ok: false, findings: [], sources: [], error: `Could not reach Google: ${e instanceof Error ? e.message : String(e)}` };
+      return failed(0, `Could not reach Google: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     if (res.ok) {
@@ -439,7 +437,7 @@ Reply with JSON only, in exactly this shape:
          says. That is the failure this function exists to prevent, so it is
          reported as one rather than passed on as research. */
       if (!sources.length) {
-        return { ok: false, findings: [], sources: [], error: 'The search came back with no sources, so nothing was written from it.' };
+        return { ok: true, value: { ok: false, findings: [], sources: [], error: 'The search came back with no sources, so nothing was written from it.' } };
       }
       const findings = (parsed?.findings ?? [])
         .map(f => ({
@@ -449,14 +447,14 @@ Reply with JSON only, in exactly this shape:
         }))
         .filter(f => f.title && f.summary)
         .slice(0, max);
-      return { ok: true, findings, sources, error: '' };
+      return { ok: true, value: { ok: true, findings, sources, error: '' } };
     }
 
     lastError = await res.text().catch(() => `HTTP ${res.status}`);
     if (res.status === 404 || MODEL_GONE.test(lastError)) continue;
-    return { ok: false, findings: [], sources: [], error: friendly(res.status, lastError) };
+    return failed(res.status, lastError);
   }
-  return { ok: false, findings: [], sources: [], error: friendly(0, lastError || 'every model failed') };
+  return failed(-1, lastError || 'every model failed');
 }
 
 /**
@@ -489,4 +487,14 @@ export async function aiBudget(env: Env, accountId: string): Promise<string | nu
     if (!v.allowed) return `That is a lot of AI requests for one workspace — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`;
   }
   return null;
+}
+
+/**
+ * One real, tiny generation on exactly this key — no fallback to the next.
+ * The owner's "Test" on the AI keys card: listing models (verifyAiKey) proves
+ * the key exists, but a key whose quota is spent lists models happily and
+ * then refuses every sentence.
+ */
+export async function probeAiKey(apiKey: string): Promise<Attempt<AiResult>> {
+  return askGeminiOnce(apiKey, [{ text: 'Reply with the single word OK.' }], 0, { json: false, fast: true, timeoutMs: 20_000 });
 }

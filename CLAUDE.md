@@ -535,8 +535,19 @@ server, and becomes the checklist on the project's first card — so the board
 cannot say something the screen the customer agreed to did not. Two
 implementations of that list would drift the first time either changed.
 
-**The AI key is the operator's.** `loadAiKey` tries the workspace's own key, then
-the install's, then `env.AI_API_KEY`. Customers are not asked for one, and the
+**The AI key is the operator's — and there may be several.** `loadAiKey` tries the workspace's own key, then
+the install's, then `env.AI_API_KEY`. The install's keys are a pool
+(`lib/aiPool.ts`): the installation key, the owner's AI Engine key, then the
+owner's backups (Settings → Platform services → **AI keys**, `routes/aikeys.ts`,
+table `crm_ai_keys`, migration 0059), then `AI_API_KEY`. `loadAiKey` returns the
+first and files the rest under it; `askGemini*`, `researchWeb` and `/api/ai.php`
+go through `withFailover`, which retries the same request on the next key when
+the failure is the key's (429, 401/403, invalid/blocked/disabled key, 5xx, no
+answer) and not when it is the request's (a plain 400). A failed key rests
+(`crm_ai_key_health.cooldown_until`: 2 min rate limit, 1 h daily quota, 30 min
+refusal) and goes to the back. Any new direct Gemini call must go through
+`withFailover` too, or it skips the pool. `npm run test:aikeys` (self-contained:
+Gemini mock on :8833 via `GEMINI_BASE`, wrangler :8822, fresh D1). Customers are not asked for one, and the
 capability `needs` strings stopped mentioning it in the same commit that added
 the fallback — removing the ask before supplying the thing would have been a
 promise the product could not keep.
