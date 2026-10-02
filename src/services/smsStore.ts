@@ -59,6 +59,19 @@ export async function fetchSmsStatus(): Promise<SmsStatus | null> {
 }
 
 /**
+ * The same question, keeping "could not ask" apart from "nothing is set".
+ *
+ * `fetchSmsStatus` answers null for both. That is fine for a screen that only
+ * draws a state, and wrong for anything that would act on "not set" — handing
+ * over a sender because the server did not answer would overwrite one it
+ * already holds.
+ */
+export async function fetchSmsState(): Promise<{ reachable: boolean; sms: SmsStatus | null; error?: string }> {
+  const r = await call('get');
+  return r.success ? { reachable: true, sms: r.sms ?? null } : { reachable: false, sms: null, error: r.error };
+}
+
+/**
  * Save the sender.
  *
  * Blank secrets mean "keep the stored ones", the same convention the mailbox

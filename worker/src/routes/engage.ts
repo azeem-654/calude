@@ -417,9 +417,13 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
 
     /* Consent is refused rather than recorded as absent. A submission kept
        without the tick is a record nobody can lawfully act on, which is worse
-       than not having it. */
+       than not having it. Only a literal `true` counts — "yes", 1 and a
+       missing field are all a box nobody ticked. A page that renders a form
+       for a visitor (the website/funnel block, the form's own page) reads the
+       wording from `form` and shows it beside a box tagged
+       `data-field="consent"`, which is the field named here. */
     if (String(form.consentText ?? '').trim() && d.consent !== true) {
-      return withCors(fail('Please agree before sending.', 422, { code: 'consent' }));
+      return withCors(fail('Please tick the box to agree before sending.', 422, { code: 'consent', field: 'consent' }));
     }
 
     const answers: Record<string, string> = {};

@@ -41,7 +41,10 @@ async function api(path, body, init = {}) {
   return { status: r.status, data, ok: !!data.success };
 }
 
-const d1 = sql => execSync(`npx wrangler d1 execute crmpro --local --json --command ${JSON.stringify(sql.replace(/\s+/g, ' '))}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+/* PERSIST: the --persist-to directory `wrangler dev` was started with, when it
+   is not the default — otherwise these reads look at a different database. */
+const persist = process.env.PERSIST ? ` --persist-to ${process.env.PERSIST}` : '';
+const d1 = sql => execSync(`npx wrangler d1 execute crmpro --local${persist} --json --command ${JSON.stringify(sql.replace(/\s+/g, ' '))}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const d1rows = sql => { try { return JSON.parse(d1(sql))[0]?.results ?? []; } catch (e) { console.log(String(e.stdout ?? e)); return []; } };
 
 /* Sign-up is limited per network; a test run is not an attack. */
@@ -142,6 +145,62 @@ const oldPlaces = await api('places-search.php', { token: B.token, apiKey: 'AIza
 check('the old Places proxy that took a key in the body is gone', !oldPlaces.ok && oldPlaces.status === 410, JSON.stringify(oldPlaces.data).slice(0, 120));
 const plat = await api('platform.php', { action: 'status', token: B.token });
 check("B cannot read the owner's Platform services", !plat.ok && plat.status === 403, JSON.stringify(plat.data).slice(0, 120));
+
+console.log('\nSMS credentials — never in plain text, never back to a browser');
+{
+  /* A token that is unmistakable in any dump, so a grep for it is the test. */
+  const TOKEN = `tok${run}secret0123456789abcdef`;
+  const sB = await api('sms-send.php', { action: 'save', token: B.token, accountId: A.acct, accountSid: 'AC' + 'f'.repeat(32), authToken: 'hijack', from: '+15550000000' });
+  check("B cannot set A's SMS sender", !sB.ok && sB.status === 403, JSON.stringify(sB.data));
+  const gB = await api('sms-send.php', { action: 'get', token: B.token, accountId: A.acct });
+  check("B cannot read whether A has an SMS sender", !gB.ok && gB.status === 403, JSON.stringify(gB.data));
+
+  const save = await api('sms-send.php', { action: 'save', token: A.token, accountId: A.acct, accountSid: 'AC' + 'a'.repeat(32), authToken: TOKEN, from: '+15551234567' });
+  const got = await api('sms-send.php', { action: 'get', token: A.token, accountId: A.acct });
+  check('A saving a sender is answered with "set", never the token', save.ok && got.data.sms?.hasCredentials === true && !JSON.stringify(got.data).includes(TOKEN) && !JSON.stringify(got.data).includes('aaaaaaaa'), JSON.stringify(got.data));
+  const stored = d1rows(`SELECT auth_token AS t, verified_at AS v FROM crm_sms_config WHERE account_id = '${A.acct}'`)[0];
+  check('…and it is stored encrypted, unverified', !!stored && stored.t.startsWith('v1.') && !stored.t.includes(TOKEN) && stored.v === null, JSON.stringify(stored));
+  const badFrom = await api('sms-send.php', { action: 'save', token: A.token, accountId: A.acct, from: '555' });
+  check('A bad sending number is refused by name (sms.from)', !badFrom.ok && badFrom.data.field === 'sms.from', JSON.stringify(badFrom.data));
+
+  /* The old client wrote the token into the synced schedule and into the
+     booking page's private blob. Both doors take it out now. */
+  const LEGACY = `legacy${run}tokenABCDEF`;
+  const sched = { title: 'Meet', automations: { confirmEmail: true, twilioSid: 'AC' + 'b'.repeat(32), twilioToken: LEGACY, twilioFrom: '+15557654321' } };
+  await api('data.php', { action: 'bulk_set', token: B.token, accountId: B.acct, items: { crm_schedule: JSON.stringify(sched), crm_sms: JSON.stringify({ accountSid: 'AC1', authToken: LEGACY, fromNumber: '' }) } });
+  const back = await api('data.php', { action: 'get_all', token: B.token, accountId: B.acct });
+  check('A schedule synced with a Twilio token is stored without it', back.ok && !JSON.stringify(back.data).includes(LEGACY) && !('crm_sms' in (back.data.data ?? {})) && JSON.parse(back.data.data?.crm_schedule ?? '{}').automations?.confirmEmail === true, JSON.stringify(back.data).slice(0, 200));
+  const adopted = d1rows(`SELECT auth_token AS t, from_number AS f FROM crm_sms_config WHERE account_id = '${B.acct}'`)[0];
+  check('…and kept, encrypted, as the sender of a workspace that had none', !!adopted && adopted.t.startsWith('v1.') && adopted.f === '+15557654321', JSON.stringify(adopted));
+  const anyPlain = d1rows(`SELECT count(*) AS n FROM crm_data WHERE v LIKE '%${LEGACY}%'`)[0];
+  check('…and appears nowhere in crm_data', anyPlain?.n === 0, JSON.stringify(anyPlain));
+
+  /* B's workspace, not A's: "Public surfaces" below needs A to have no booking page. */
+  const pub = await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B' }, private: { twilio: { sid: 'AC' + 'c'.repeat(32), token: LEGACY, from: '+15550001111' }, automations: { twilioToken: LEGACY, reminderEmail: true } } });
+  const priv = d1rows(`SELECT private FROM crm_booking_config WHERE account_id = '${B.acct}'`)[0]?.private ?? '';
+  check('Publishing a booking page never stores a Twilio credential', pub.ok && !priv.includes(LEGACY) && !priv.includes('twilio') && priv.includes('reminderEmail'), priv);
+  const bStill = d1rows(`SELECT auth_token AS t FROM crm_sms_config WHERE account_id = '${B.acct}'`)[0];
+  check('…and an older copy does not replace a sender the workspace already has', !!bStill && bStill.t === adopted?.t, 'sender was overwritten');
+  const cfg = await api('booking.php', { action: 'config', slug: `b-${run}` });
+  check('…and the public page config carries none of it', cfg.ok && !JSON.stringify(cfg.data).includes(LEGACY), JSON.stringify(cfg.data).slice(0, 160));
+}
+
+console.log('\nForms — consent is the visitor\'s to give');
+{
+  const fr = await api('engagement.php', { action: 'save_form', token: A.token, accountId: A.acct, record: {
+    name: `Consent form ${run}`, consentText: 'I agree to be contacted about my enquiry.', status: 'live',
+    fields: [{ key: 'email', label: 'Email', type: 'email', required: true }],
+  } });
+  const slug = fr.data.item?.slug;
+  const meta = await api('engage.php', { action: 'form', formSlug: slug });
+  check('A form with consent wording says so to the page that renders it', meta.ok && /agree/.test(meta.data.form?.consentText ?? ''), JSON.stringify(meta.data).slice(0, 160));
+  const none = await api('engage.php', { action: 'submit', formSlug: slug, answers: { email: `c1-${run}@example.test` } }, { ip: '10.8.0.1' });
+  check('A submission without the tick is refused, naming the consent box', !none.ok && none.status === 422 && none.data.code === 'consent' && none.data.field === 'consent', JSON.stringify(none.data));
+  const truthy = await api('engage.php', { action: 'submit', formSlug: slug, answers: { email: `c2-${run}@example.test` }, consent: 'yes' }, { ip: '10.8.0.2' });
+  check('…and so is anything but a literal true', !truthy.ok && truthy.data.code === 'consent', JSON.stringify(truthy.data));
+  const given = await api('engage.php', { action: 'submit', formSlug: slug, answers: { email: `c3-${run}@example.test` }, consent: true }, { ip: '10.8.0.3' });
+  check('…and one with it is taken', given.ok, JSON.stringify(given.data));
+}
 
 console.log("\nOverwriting A's records by id");
 const bpf = await api('projects.php', { action: 'save_portfolio', token: B.token, accountId: B.acct, name: 'B Co', profile: {} });

@@ -65,7 +65,6 @@ export function buildAutomations(state: OnboardingState): SchedulingAutomations 
     ownerEmail: state.profile.email || '',
     reminderEmail: true,
     reminderMinutes: 60,
-    reminderSms: false, twilioSid: '', twilioToken: '', twilioFrom: '',
     followupEmail: true,
     followupText: `Thanks for meeting with ${co}! If you enjoyed it, a quick review means the world to us — and if you have any questions, just reply to this email.`,
   };

@@ -301,9 +301,9 @@ export async function runAlertCheck(contacts: Contact[]): Promise<RaiseResult> {
     if (res.success) emailed = notify.length;
   }
 
-  // SMS goes out through the same Twilio settings the scheduling reminders
-  // use. It is queued rather than sent here because the browser cannot reach
-  // Twilio directly without exposing the token.
+  // SMS would go out through the workspace's sender, which is kept on the
+  // server (services/smsStore.ts) — this browser never holds the token, so it
+  // can only queue.
   let smsQueued = 0;
   if (prefs.sms && prefs.smsTo && notify.length) {
     try {

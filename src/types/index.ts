@@ -171,10 +171,11 @@ export interface SchedulingAutomations {
   ownerEmail: string;
   reminderEmail: boolean;      // email reminder before the meeting
   reminderMinutes: number;     // how long before (minutes)
-  reminderSms: boolean;        // also SMS via Twilio
-  twilioSid: string;
-  twilioToken: string;
-  twilioFrom: string;
+  /* No Twilio fields. The SID, auth token and sending number used to live here
+     — in localStorage and, through sync, in plain text in the database — and
+     no sender ever read them. Texts go from the workspace's sender, which is
+     kept encrypted on the server (services/smsStore.ts); this screen only
+     learns whether one is set. */
   followupEmail: boolean;      // thank-you email after the meeting
   followupText: string;
 }

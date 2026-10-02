@@ -9,6 +9,7 @@
  */
 import { body, fail, json, ok } from '../lib/http';
 import { workspaceAccess, dataDelete, dataGet, dataList, dataPut, storageWorkspace, userFromToken, type Env } from '../lib/db';
+import { cleanDataValue } from '../lib/legacyTwilio';
 
 interface DataBody {
   token?: string;
@@ -96,7 +97,13 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
         const value = items[key];
         if (value === null) { await dataDelete(env.DB, ws, key); continue; }
         if (enc.encode(value).length > MAX_VALUE_BYTES) { rejected.push(key); continue; }
-        await dataPut(env.DB, ws, key, value);
+        /* A browser that has not reloaded since the Twilio token moved to the
+           server still pushes the copy it holds. Taken out here (and kept as
+           the sender if there was none), not refused — refusing would make
+           the client re-read the key and keep showing its stale copy. */
+        const cleaned = await cleanDataValue(env, accountId, key, value);
+        if (cleaned === null) { await dataDelete(env.DB, ws, key); continue; }
+        await dataPut(env.DB, ws, key, cleaned);
       }
       return json({
         success: true,
@@ -118,7 +125,9 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
       if (new TextEncoder().encode(value).length > MAX_VALUE_BYTES) {
         return fail('That record is too large to store — it exceeds 2MB.');
       }
-      await dataPut(env.DB, ws, key, value);
+      const cleaned = await cleanDataValue(env, accountId, key, value);
+      if (cleaned === null) await dataDelete(env.DB, ws, key);
+      else await dataPut(env.DB, ws, key, cleaned);
       return ok();
     }
 

@@ -191,7 +191,7 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
     if (!accountId) return fail('A valid workspace is required.');
     const from = String(d.from ?? '').trim();
     if (from && !E164.test(from)) {
-      return fail(`"${from}" is not a sending number in international format, e.g. +15551234567.`);
+      return fail(`"${from}" is not a sending number in international format, e.g. +15551234567.`, 200, { field: 'sms.from' });
     }
     const key = await installSecret(env.DB, 'mailbox_key');
     const existing = await env.DB.prepare('SELECT account_sid, auth_token FROM crm_sms_config WHERE account_id = ?')

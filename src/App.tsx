@@ -9,6 +9,7 @@ import { getActiveAccountId, setActiveAccountId, activeBranding } from './servic
 import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync, startCloudRefresh } from './services/serverData';
+import { retireBrowserTwilio } from './services/legacyTwilio';
 import { Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import DueWorkRunner from './components/shared/DueWorkRunner';
@@ -259,6 +260,11 @@ function SyncGate({ children }: { children: React.ReactNode }) {
         markWhiteLabelHost(true);
       }
       await initCloudSync();
+      if (!alive) return;
+      /* Before the workspace mounts, so nothing reads the old plaintext Twilio
+         token into state. After the pull, so a copy the cloud held is the one
+         handed to the server rather than overwritten by an empty one. */
+      await retireBrowserTwilio();
       if (!alive) return;
       /* Autopilot writes to the database from the cron, with nobody's browser
          involved. Without this the customer sits on the page and watches
