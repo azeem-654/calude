@@ -10,6 +10,7 @@ import type { EmailSequence, EmailStep, StepType, SequenceStats, SequenceActivit
 import { normaliseSequences } from '../../services/marketingShape';
 import type { Contact } from '../../types';
 import SourceTag from '../shared/SourceTag';
+import { loadEnrollments } from '../../services/contactEmail';
 import { writeCampaign } from '../../services/aiWrite';
 
 // ── Step type config ──────────────────────────────────────────────────────────
@@ -419,6 +420,14 @@ function StepEditorPanel({ step, seqId, contacts, onChange }: {
           onChange={v => variant === 'A' ? onChange({ body: v }) : onChange({ variantB: { subject: step.variantB?.subject ?? step.subject, body: v } })}
         />
       )}
+      {/* Said on the step itself: the engine cannot ring anybody or use
+          LinkedIn, and before it stepped over these the note below was emailed
+          to the prospect. See isPersonStep in worker/src/scheduled.ts. */}
+      {(isPhone || isLinkedIn) && (
+        <p style={{ margin: 0, padding: '8px 10px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>
+          This step is yours to do. Nothing is sent for it — the sequence moves past it on its day, and the note below is for you, not the contact.
+        </p>
+      )}
       {isPhone && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
@@ -526,6 +535,14 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
   }, [sequences, selected]);
 
   const activeStepObj = selected?.steps.find(s => s.id === activeStep) ?? selected?.steps[0] ?? null;
+  const enrolledHere = useMemo(() => {
+    if (!selected || tab !== 'contacts') return [];
+    const byId = new Map(contacts.map(c => [c.id, c]));
+    return loadEnrollments()
+      .filter(e => e.sequenceId === selected.id)
+      .map(e => ({ c: byId.get(e.contactId), status: e.status }))
+      .filter((x): x is { c: Contact; status: typeof x.status } => !!x.c);
+  }, [selected, tab, contacts]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const updateStep = (stepId: string, updates: Partial<EmailStep>) => {
@@ -663,7 +680,7 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
     if (!selected) return;
     const next = selected.status === 'active' ? 'paused' : selected.status === 'paused' ? 'active' : 'active';
     onUpdateSequence(selected.id, { status: next });
-    if (next === 'active') { onActivateSequence(selected); onNotify(`Sequence activated!`); }
+    if (next === 'active') onActivateSequence(selected);
     else onNotify(`Sequence paused`);
     setSelected(p => p ? { ...p, status: next } : p);
   };
@@ -837,13 +854,17 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
             )}
             {tab === 'contacts' && (
               <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-                <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Contacts enrolled in this sequence.</p>
-                {contacts.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Contacts enrolled in this sequence. Add somebody from their contact page → Email → Sequences.</p>
+                {/* The real enrolments. This listed the first twenty contacts in
+                    the workspace, each badged "Active", whether or not anybody
+                    had been put into the sequence — a sequence nobody was in
+                    looked as though it was working on twenty people. */}
+                {enrolledHere.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', border: '1px dashed #e2e8f0', borderRadius: 12 }}>
                     <Users size={28} style={{ display: 'block', margin: '0 auto 10px', opacity: 0.3 }} />
                     <p style={{ fontSize: 13, margin: 0 }}>No contacts enrolled yet.</p>
                   </div>
-                ) : contacts.slice(0, 20).map(c => (
+                ) : enrolledHere.slice(0, 50).map(({ c, status }) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: '1px solid #f1f5f9', borderRadius: 8, marginBottom: 6, backgroundColor: 'white' }}>
                     <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                       {c.name.slice(0, 2).toUpperCase()}
@@ -852,7 +873,7 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{c.email}</div>
                     </div>
-                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, backgroundColor: '#ecfdf5', color: '#16a34a', fontWeight: 600 }}>Active</span>
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, backgroundColor: status === 'active' ? '#ecfdf5' : '#f1f5f9', color: status === 'active' ? '#16a34a' : '#64748b', fontWeight: 600, textTransform: 'capitalize' }}>{status}</span>
                   </div>
                 ))}
               </div>
@@ -866,23 +887,18 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
             )}
             {tab === 'settings' && (
               <div style={{ flex: 1, overflowY: 'auto', padding: 20, maxWidth: 480 }}>
-                <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Sequence Settings</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {[
-                    { label: 'Stop on reply', checked: true, desc: 'Remove contacts from sequence when they reply' },
-                    { label: 'Stop on bounce', checked: true, desc: 'Remove contacts from sequence when email bounces' },
-                    { label: 'Respect time zones', checked: false, desc: 'Send emails in the recipient\'s local time zone' },
-                    { label: 'Business hours only', checked: true, desc: 'Only send emails during business hours (9am–5pm)' },
-                  ].map(s => (
-                    <div key={s.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: '1px solid #f1f5f9', borderRadius: 8, backgroundColor: 'white' }}>
-                      <input type="checkbox" defaultChecked={s.checked} style={{ marginTop: 2, accentColor: '#6366f1', cursor: 'pointer' }} />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{s.label}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{s.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>How this sequence runs</h3>
+                {/* What the engine does, rather than four ticked boxes. Those
+                    were never saved and never read — "Stop on reply" was ticked
+                    on every sequence while nothing watched for replies, so a
+                    customer would learn otherwise when somebody who had answered
+                    got the next email. */}
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8, fontSize: 13, color: '#374151', lineHeight: 1.55 }}>
+                  <li>Each email goes out on its day, from your connected mailbox, checked every five minutes on the server.</li>
+                  <li>A reply does not stop it. Remove somebody from the sequence on their contact page when they answer.</li>
+                  <li>Call and LinkedIn steps send nothing — they are reminders for you, and the sequence moves past them.</li>
+                  <li>Pausing the sequence holds everybody where they are until you resume it.</li>
+                </ul>
               </div>
             )}
           </div>
@@ -892,7 +908,7 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
           <Inbox size={44} style={{ opacity: 0.25 }} />
           <h3 style={{ fontSize: 17, fontWeight: 600, color: '#64748b', margin: 0 }}>Email Sequence Builder</h3>
           <p style={{ fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 1.6, margin: 0 }}>
-            Create outbound email sequences with AI, templates, or from scratch. Automate multi-step outreach across email, phone, and LinkedIn.
+            Create outbound email sequences with AI, templates, or from scratch. Email steps send on their own; call and LinkedIn steps are reminders for you — nothing is sent for them.
           </p>
           <button onClick={() => setShowCreate(true)}
             style={{ padding: '10px 22px', backgroundColor: '#6366f1', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}>
