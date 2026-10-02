@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Shield, Settings, Bot } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
+import { refreshMailboxCache } from '../../services/mailboxStore';
+import { loadEnrollments } from '../../services/contactEmail';
 import ContactImport from './ContactImport';
 import SequenceBuilder from './SequenceBuilder';
 import AutomationBuilder from './AutomationBuilder';
@@ -96,6 +98,16 @@ function CampaignsTab({ onOpenSequences }: { onOpenSequences: () => void }) {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [dismissedProviderBanner, setDismissedProviderBanner] = useState(false);
+  /* The mailbox mirror is filled by Settings. On a second device, or after
+     site data was cleared, it is empty — and this tab said "Email provider
+     not set up" and the wizard refused to send for a workspace whose mailbox
+     works. Asked of the server each time the tab opens instead. */
+  const [, setMailboxesRead] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void refreshMailboxCache().then(() => { if (alive) setMailboxesRead(n => n + 1); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
 
   const emailReady = isEmailConfigured();
   const filtered = campaigns.filter(c => typeFilter === 'all' || c.type === typeFilter);
@@ -122,7 +134,7 @@ function CampaignsTab({ onOpenSequences }: { onOpenSequences: () => void }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, marginBottom: 18 }}>
           <Settings size={16} color="#d97706" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13, color: '#92400e' }}>
-            <strong>Email provider not set up yet.</strong> You can create and draft campaigns now — connect SMTP, Resend, or Mailtrap in{' '}
+            <strong>No mailbox can send yet.</strong> You can create and draft campaigns now — connect a mailbox (your own SMTP, or Brevo, Resend, SendGrid, Mailgun, Mailjet or Postmark) in{' '}
             <button onClick={() => navigate('/settings?tab=email-sms')} style={{ border: 'none', background: 'none', color: '#17191c', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 2, fontFamily: 'inherit' }}>Settings → Email &amp; SMS</button> when ready to send.
           </div>
           <button onClick={() => setDismissedProviderBanner(true)} style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}>✕</button>
@@ -342,15 +354,17 @@ export default function Marketing() {
   const setActiveTab = (id: TabId) =>
     setParams(id === 'campaigns' ? {} : { tab: id }, { replace: true });
   const ctx = useApp();
-  const { contacts, sequences, automations, addSequence, updateSequence, deleteSequence, addAutomation, updateAutomation, deleteAutomation, bulkImportContacts, addCampaign, addNotification } = ctx;
+  const { contacts, sequences, automations, addSequence, updateSequence, deleteSequence, addAutomation, updateAutomation, deleteAutomation, bulkImportContacts, addNotification } = ctx;
 
+  /* Activating used to add an "active" campaign row with nothing behind it —
+     another one on every pause and resume — and announce the sequence "live"
+     with nobody in it. Switching on enrols nobody, so it says who is in it. */
   const handleActivateSequence = (seq: EmailSequence) => {
-    addCampaign({
-      name: seq.name, type: 'sequence', status: 'active',
-      sent: 0, opened: 0, clicked: 0, replied: 0,
-      createdAt: new Date().toISOString().split('T')[0],
-    });
-    addNotification(`Sequence "${seq.name}" is now live!`);
+    const inIt = loadEnrollments().filter(e => e.sequenceId === seq.id && e.status === 'active').length;
+    addNotification(inIt
+      ? `"${seq.name}" is on — ${inIt} ${inIt === 1 ? 'person' : 'people'} in it.`
+      : `"${seq.name}" is on, but nobody is in it yet. Add people from their contact page → Email → Sequences.`,
+    inIt ? 'success' : 'info');
   };
 
   const activeSeqCount = sequences.filter(s => s.status === 'active').length;

@@ -1,4 +1,4 @@
-import { cachedMailboxes } from '../../services/mailboxStore';
+import { cachedMailboxes, hasSendRoute } from '../../services/mailboxStore';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,7 @@ import {
 import { loadEmailConfig, sendEmail, personalizeHtml } from '../../services/emailService';
 import { enrollInSequence, campaignAsSequence } from '../../services/contactEmail';
 import { sanitizeEmailHtml } from '../../services/emailHtml';
+import { sendSmsNow } from '../../services/smsStore';
 import PreSendCheck from './PreSendCheck';
 import { findSuppression, localCheck, loadSettings as loadDeliverability } from '../../services/deliverability';
 import { suppress } from '../../services/deliverability';
@@ -694,7 +695,9 @@ function StepAIWorkflow({ state, onChange, setup }: {
   /* ── It could not write ──
      Two different situations and they need different offers: no key at all is
      something to go and connect, and everything else is the model's own
-     complaint. Both leave the template as a way forward, named as a template. */
+     complaint. Both leave the template as a way forward, named as a template.
+     The key is the operator's, so the heading does not say one is missing —
+     it contradicted the server's own "you do not need a key of your own". */
   if (problem && state.steps.length === 0) {
     return (
       <div style={{ padding: '32px 20px', maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
@@ -702,14 +705,14 @@ function StepAIWorkflow({ state, onChange, setup }: {
           <XCircle size={24} color={needsKey ? '#c2410c' : '#dc2626'} />
         </div>
         <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>
-          {needsKey ? 'No AI key connected' : 'The AI could not write this'}
+          {needsKey ? 'Writing is unavailable right now' : 'The AI could not write this'}
         </h3>
         <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, marginBottom: 22 }}>{problem}</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
           {needsKey && (
             <button onClick={() => navigate('/settings?tab=ai-engine')}
               style={{ padding: '10px 18px', border: 'none', borderRadius: 9, background: '#17191c', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              Connect an AI key
+              Use your own AI key instead
             </button>
           )}
           <button onClick={() => void build()}
@@ -960,9 +963,9 @@ function getSenderProfiles(): SenderProfile[] {
 
   for (const mb of cachedMailboxes()) {
     const email = mb.fromEmail;
-    if (!mb.smtpHost || !email || seen.has(email)) continue;
+    if (!hasSendRoute(mb) || !email || seen.has(email)) continue;
     seen.add(email);
-    const g = guess(mb.smtpHost.toLowerCase());
+    const g = guess((mb.smtpHost || mb.provider || '').toLowerCase());
     profiles.push({
       id: mb.id,
       /* The customer's own label wins — "Support" is more use in a dropdown
@@ -1550,6 +1553,12 @@ function StepReview({ state, counts, contacts, onLaunch }: {
   const isDemo = false;
   const hasProvider = emailConfig.provider === 'smtp' || (emailConfig.provider !== 'none' && !!emailConfig.apiKey);
   const isSMS = state.type === 'sms';
+  /* "Send now" with no mailbox used to read "Save & Launch Campaign", then
+     announce it launched with the whole audience counted as sent. There is
+     nothing to send it with, so neither sending nor scheduling is offered —
+     a schedule would come due, fail one recipient at a time and be spent
+     before anybody connected a mailbox. A draft is. */
+  const cannotSendNow = !isSMS && !hasProvider;
 
   const goalLabel = GOALS.find(g => g.id === state.goal)?.label || 'Custom';
   const typeLabel = ({ email: 'Email', sms: 'SMS', sequence: 'Email Sequence' } as const)[state.type];
@@ -1604,6 +1613,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
     setChecking(false);
     setLaunching(true);
     let sentCount = 0;
+    let firstError = '';
 
     if (sendTime === 'now' && hasProvider && !isSMS) {
       const cfg = loadEmailConfig();
@@ -1630,15 +1640,43 @@ function StepReview({ state, counts, contacts, onLaunch }: {
         setSendLogs(prev => prev.map((l, idx) => idx === i ? { ...l, status: result.success ? 'sent' : 'failed', error: result.error } : l));
         setSendProgress(Math.round(((i + 1) / audience.length) * 100));
         if (result.success) sentCount++;
+        else firstError ||= result.error ?? '';
         await new Promise(r => setTimeout(r, 120));
       }
+    } else if (sendTime === 'now' && isSMS) {
+      /* A text campaign sent now is sent now, one message each through the
+         workspace's own SMS sender. This branch used to wait a second and
+         count the whole audience as sent: "Campaign Launched", every contact
+         "sent", and not one text left the building. */
+      const logs: SendLog[] = audience.map(c => ({ email: c.phone || c.email, name: c.name, status: 'pending' as const }));
+      setSendLogs(logs);
+      for (let i = 0; i < audience.length; i++) {
+        const contact = audience[i];
+        const phone = (contact.phone ?? '').trim();
+        const text = personalizeHtml(state.steps[0]?.body || state.smsBody || '', contact).trim();
+        const r = !phone ? { success: false, error: 'No phone number on this contact.' }
+          : !text ? { success: false, error: 'The message is empty.' }
+            : await sendSmsNow(phone, text);
+        const error = r.success ? undefined : (r.error || r.message || 'Not sent.');
+        setSendLogs(prev => prev.map((l, idx) => idx === i ? { ...l, status: r.success ? 'sent' : 'failed', error } : l));
+        setSendProgress(Math.round(((i + 1) / audience.length) * 100));
+        if (r.success) sentCount++;
+        else firstError ||= error ?? '';
+        await new Promise(res => setTimeout(res, 120));
+      }
     } else {
-      await new Promise(r => setTimeout(r, 1200));
-      sentCount = sendTime === 'now' ? audience.length : 0;
+      /* Scheduled: nothing has gone yet, and the count says so. The engine
+         the campaign is handed to below sends it at the time. */
+      await new Promise(r => setTimeout(r, 400));
     }
 
     setLaunching(false);
     setLaunched(true);
+    /* The screen below is gone in under two seconds, so a send where nothing
+       went out is also said where it stays. */
+    if (sendTime === 'now' && audience.length && !sentCount) {
+      addNotification(`Nothing was sent — ${firstError || 'every message failed'}`, 'error');
+    }
     setTimeout(() => onLaunch(sendTime === 'now', scheduledAt, sentCount, audience), 1400);
   };
 
@@ -1667,7 +1705,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
       <div style={{ width: 70, height: 70, borderRadius: '50%', backgroundColor: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
         <CheckCircle size={34} color="#16a34a" />
       </div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Campaign {sendTime === 'now' ? 'Launched' : 'Scheduled'}! 🎉</h2>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>{sendTime === 'now' && sendLogs.length > 0 && !sendLogs.some(l => l.status === 'sent') ? 'Nothing was sent' : <>Campaign {sendTime === 'now' ? 'Launched' : 'Scheduled'}! 🎉</>}</h2>
       {sendLogs.length > 0 && <p style={{ color: '#64748b', fontSize: 14 }}>{sendLogs.filter(l => l.status === 'sent').length} sent · {sendLogs.filter(l => l.status === 'failed').length} failed</p>}
     </div>
   );
@@ -1800,7 +1838,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
               <div>
                 <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#92400e' }}>No email provider configured</p>
                 <p style={{ margin: '0 0 8px', fontSize: 12, color: '#78350f', lineHeight: 1.5 }}>
-                  Go to <strong>Settings → Email & SMS</strong> and set up SMTP, Resend, or Mailtrap to send real emails.
+                  Go to <strong>Settings → Email & SMS</strong> and connect a mailbox — your own SMTP, or Brevo, Resend, SendGrid, Mailgun, Mailjet or Postmark — to send real emails.
                   You can still <strong>save this campaign as a draft</strong> now and activate it after setup.
                 </p>
                 <button onClick={() => { navigate('/settings?tab=email-sms'); }}
@@ -1845,12 +1883,17 @@ function StepReview({ state, counts, contacts, onLaunch }: {
             💾 Save as Draft
           </button>
         )}
-        <button onClick={handleLaunch} disabled={launching || !state.name}
-          style={{ flex: 1, padding: 13, backgroundColor: (launching || !state.name) ? '#e2e8f0' : '#17191c', color: (launching || !state.name) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-          {launching ? <><Loader size={15} /> {isDemo ? 'Capturing to Demo Inbox…' : (hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…')}</> : <><Send size={16} /> {sendTime === 'now' ? (isDemo ? `Launch → Demo Inbox (${counts[state.audience]} emails)` : (hasProvider && !isSMS ? `Launch & Send to ${counts[state.audience]} contacts` : 'Save & Launch Campaign')) : 'Schedule Campaign'}</>}
+        <button onClick={handleLaunch} disabled={launching || !state.name || cannotSendNow}
+          style={{ flex: 1, padding: 13, backgroundColor: (launching || !state.name || cannotSendNow) ? '#e2e8f0' : '#17191c', color: (launching || !state.name || cannotSendNow) ? '#94a3b8' : 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: (launching || !state.name || cannotSendNow) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          {launching ? <><Loader size={15} /> {isDemo ? 'Capturing to Demo Inbox…' : (hasProvider && sendTime === 'now' && !isSMS ? 'Sending…' : 'Launching…')}</> : <><Send size={16} /> {sendTime === 'now' ? (isDemo ? `Launch → Demo Inbox (${counts[state.audience]} emails)` : (isSMS ? `Send ${counts[state.audience]} texts now` : hasProvider ? `Launch & Send to ${counts[state.audience]} contacts` : 'Connect a mailbox to send')) : (cannotSendNow ? 'Connect a mailbox to schedule' : 'Schedule Campaign')}</>}
         </button>
       </div>
       {!state.name && <p style={{ fontSize: 12, color: '#f59e0b', textAlign: 'center', marginTop: 8 }}>⚠️ Add a campaign name in step 1 first</p>}
+      {state.name && cannotSendNow && (
+        <p style={{ fontSize: 12, color: '#92400e', textAlign: 'center', marginTop: 8 }}>
+          No mailbox can send yet. Save it as a draft, connect a mailbox in Settings → Email &amp; SMS, then send or schedule it.
+        </p>
+      )}
     </div>
   );
 }

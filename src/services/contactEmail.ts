@@ -626,6 +626,15 @@ export async function processSequences(
     const contact = contacts.find(c => c.id === enr.contactId);
     const step = seq?.steps[enr.currentStep];
     if (!seq || !contact || !step) continue;
+    /* Only an email is this runner's to send. A text step (`channel: 'sms'`,
+       which Autopilot writes) went out from here as an email to the contact's
+       address, and a phone-call or LinkedIn step — whose body is a note to the
+       salesperson — went to the prospect as an email with no subject. Both are
+       left to the server's pass (scheduled.ts), which sends texts and steps
+       over person-only steps without sending anything. */
+    const kind = String((step as { type?: string }).type ?? '');
+    if ((step as { channel?: string }).channel === 'sms' || kind === 'phone_call' || kind.startsWith('li_')) continue;
+    if (seq.status === 'paused') continue;
     /* Held, not skipped: currentStep does not move, so nobody loses a message
        to a cap — they get it tomorrow. */
     if (gate && !gate(contact, seq)) continue;

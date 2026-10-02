@@ -724,7 +724,9 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
     const overBudget = await aiBudget(env, accountId);
     if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const apiKey = await loadAiKey(env, accountId);
-    if (!apiKey) return fail('No AI key is connected yet. Settings → AI Engine.', 400);
+    /* The key is the operator's (loadAiKey falls back to the install's), so a
+       customer is never sent to connect one — the same words aiwrite uses. */
+    if (!apiKey) return fail('Writing is unavailable on this installation at the moment. You do not need a key of your own — this is ours to fix.', 503, { code: 'no_ai' });
 
     const brand = await brandFor(env, accountId, project.portfolioId);
     const r = await writeAutomation(apiKey, brand, instruction);

@@ -57,6 +57,23 @@ interface Step {
   id: string; day: number; waitUnit: 'hours' | 'days';
   subject: string; body: string;
   channel?: 'email' | 'sms';
+  /** The Sequences builder's step kind ('auto_email', 'phone_call', 'li_connect'…). */
+  type?: string;
+}
+
+/**
+ * A step that is a job for a person, not a message.
+ *
+ * The Sequences builder offers phone calls and LinkedIn steps, and their body
+ * is a note to the salesperson — "Call to introduce yourself and reference the
+ * email sent on Day 0." Nothing here can ring anybody or touch LinkedIn, and
+ * the step has no `channel`, so it used to fall through to email: the call
+ * script went to the prospect with an empty subject line. It is stepped over
+ * instead, and said to be the customer's to do.
+ */
+export function isPersonStep(step: { type?: string } | undefined): boolean {
+  const t = String(step?.type ?? '');
+  return t === 'phone_call' || t.startsWith('li_');
 }
 interface Sequence { id: string; name: string; status: string; steps: Step[] }
 interface Contact { id: string; name?: string; firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; jobTitle?: string }
@@ -157,6 +174,22 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     const contact = contacts.find(c => c.id === enr.contactId);
     const step = seq?.steps[enr.currentStep];
     if (!seq || !contact || !step) continue;
+    if (seq.status === 'paused') continue;
+
+    if (isPersonStep(step)) {
+      /* Advanced, not held: holding it would stop every email after it, and
+         the call is the customer's to make whenever they choose. */
+      enr.history.push({ step: enr.currentStep, at: new Date().toISOString(), action: 'yours' });
+      enr.currentStep += 1;
+      if (enr.currentStep >= enr.totalSteps) { enr.status = 'completed'; enr.nextSendAt = undefined; }
+      else {
+        const next = seq.steps[enr.currentStep];
+        enr.nextSendAt = nextSendFor(next?.day ?? 1, next?.waitUnit ?? 'days');
+      }
+      touched = true;
+      note(report, accountId, `"${seq.name}": a ${step.type === 'phone_call' ? 'phone call' : 'LinkedIn'} step for ${contact.name ?? contact.id} is yours to do — nothing was sent.`, 'info');
+      continue;
+    }
 
     const isSms = step.channel === 'sms';
     /* The address this step needs, not the one the contact happens to have.
