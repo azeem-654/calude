@@ -34,6 +34,7 @@ import { metaGet, metaPut, nowIso, userFromToken, type Env, type SessionUser } f
 import { deliver, fromAddressOf } from '../lib/deliver';
 import { trialFor, type TrialState } from '../lib/trial';
 import { installMailbox } from './auth';
+import { houseWidgetKey } from './engage';
 
 interface Req {
   token?: string;
@@ -153,10 +154,28 @@ export async function welcomeNewAccount(env: Env, email: string): Promise<void> 
   try {
     const s = await loadSettings(env);
     if (!s.welcomeOn || !s.welcomeTitle.trim()) return;
+    /*
+     * The wording the owner never touched promises a kickoff call and a help
+     * button. Until the owner sets a booking link (OWNER-CHECKLIST 19) and
+     * makes the help widget (16), neither exists, and the first thing every
+     * trial customer read was an offer they could not take up. Untouched, it
+     * says only what is there; anything the owner wrote is theirs and sent as
+     * written.
+     */
+    let body = s.welcomeBody;
+    if (body === DEFAULTS.welcomeBody) {
+      const kickoff = !!safeLink(s.kickoffUrl);
+      const help = !!(await houseWidgetKey(env));
+      body = [
+        kickoff ? 'Book a free 20-minute kickoff call and we will set up your first project with you, on your screen.' : '',
+        help ? `${kickoff ? 'Or press' : 'Press'} the help button in the corner any time to reach us.` : '',
+        !kickoff && !help ? 'Start with AI Autopilot: describe your business in a sentence and it plans your first project with you. Everything you make during the trial stays yours when you choose a plan.' : '',
+      ].filter(Boolean).join(' ');
+    }
     await env.DB.prepare(
       'INSERT INTO crm_notices (id, to_email, title, body, link, link_label, emailed, created_at) VALUES (?,?,?,?,?,?,?,?)',
     ).bind(
-      crypto.randomUUID(), email, s.welcomeTitle.slice(0, 200), s.welcomeBody.slice(0, 2000),
+      crypto.randomUUID(), email, s.welcomeTitle.slice(0, 200), body.slice(0, 2000),
       safeLink(s.kickoffUrl), s.kickoffUrl ? 'Book my kickoff call' : '', 'skipped', nowIso(),
     ).run();
   } catch { /* before 0052, or a transient failure: nobody is kept from signing in by a welcome */ }

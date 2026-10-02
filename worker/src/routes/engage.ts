@@ -108,6 +108,23 @@ const cors = (origin: string | null) => ({
   'Vary': 'Origin',
 });
 
+/**
+ * The install owner's live widget marked `in_app` — the help button inside the
+ * app — or '' when there is none. Also asked by the welcome a new account
+ * finds (routes/customers.ts), which must not point at a button that is not there.
+ */
+export async function houseWidgetKey(env: Env): Promise<string> {
+  const w = await env.DB.prepare(
+    `SELECT public_key AS publicKey FROM crm_widgets
+     WHERE in_app = 1 AND status = 'live' AND account_id IN (
+       SELECT ws.account_id FROM crm_workspaces ws
+       JOIN crm_users u ON u.email = ws.owner_email
+       WHERE u.account_id IS NULL AND u.role = 'agency')
+     ORDER BY updated_at DESC LIMIT 1`,
+  ).first<{ publicKey: string }>().catch(() => null);
+  return w?.publicKey ?? '';
+}
+
 export async function handleEngage(req: Request, env: Env): Promise<Response> {
   const origin = req.headers.get('Origin');
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
@@ -171,15 +188,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
      same box on their workspace changes nothing here. Answers with a key that
      is public anyway, or with nothing. */
   if (act === 'house') {
-    const w = await env.DB.prepare(
-      `SELECT public_key AS publicKey FROM crm_widgets
-       WHERE in_app = 1 AND status = 'live' AND account_id IN (
-         SELECT ws.account_id FROM crm_workspaces ws
-         JOIN crm_users u ON u.email = ws.owner_email
-         WHERE u.account_id IS NULL AND u.role = 'agency')
-       ORDER BY updated_at DESC LIMIT 1`,
-    ).first<{ publicKey: string }>().catch(() => null);
-    return withCors(json({ success: true, widgetKey: w?.publicKey ?? '' }));
+    return withCors(json({ success: true, widgetKey: await houseWidgetKey(env) }));
   }
 
   /* ── Start a conversation ── */
