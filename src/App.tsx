@@ -40,6 +40,7 @@ import Autopilot from './components/Autopilot/Autopilot';
 import Commerce from './components/Commerce/Commerce';
 import ShopPage from './components/Shop/ShopPage';
 import Engagement from './components/Engagement/Engagement';
+import FormPage from './components/Engagement/FormPage';
 import ClientReport from './components/Portal/ClientReport';
 import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
@@ -62,6 +63,10 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   /* A reseller's client, opening a report link. Never a login form — they have
      no account here and are never going to have one. */
   const isReport = location.pathname.startsWith('/p/');
+  /* A form's public page. Signed in or not, it is the visitor's page, not the
+     app's: without this the catch-all sent a signed-in owner checking their own
+     link to the dashboard. */
+  const isForm = location.pathname.startsWith('/f/');
   const isPreview = location.pathname.startsWith('/preview');
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
@@ -98,6 +103,14 @@ function AppLayout({ isClient }: { isClient: boolean }) {
     return (
       <Routes>
         <Route path="/p/:token" element={<ClientReport />} />
+      </Routes>
+    );
+  }
+
+  if (isForm) {
+    return (
+      <Routes>
+        <Route path="/f/:slug" element={<FormPage />} />
       </Routes>
     );
   }
@@ -352,6 +365,9 @@ export default function App() {
   const isPublicShop = window.location.pathname.startsWith(`${base}/shop`);
   /* The third anonymous visitor: somebody's client reading their own report. */
   const isPublicReport = window.location.pathname.startsWith(`${base}/p/`);
+  /* The fourth: somebody filling in a business's form (Customer Engagement →
+     Forms hands out /f/<slug>). */
+  const isPublicForm = window.location.pathname.startsWith(`${base}/f/`);
 
   /*
    * Coming back from Google, which is neither signed in nor signed out.
@@ -370,6 +386,16 @@ export default function App() {
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         <Routes>
           <Route path="/p/:token" element={<ClientReport />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+  if (!session && isPublicForm) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="/f/:slug" element={<FormPage />} />
+          <Route path="*" element={<FormPage />} />
         </Routes>
       </BrowserRouter>
     );
