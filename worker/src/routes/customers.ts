@@ -34,6 +34,7 @@ import { metaGet, metaPut, nowIso, userFromToken, type Env, type SessionUser } f
 import { deliver, fromAddressOf } from '../lib/deliver';
 import { trialFor, type TrialState } from '../lib/trial';
 import { installMailbox } from './auth';
+import { houseWidgetKey } from './engage';
 
 interface Req {
   token?: string;
@@ -153,13 +154,31 @@ export async function welcomeNewAccount(env: Env, email: string): Promise<void> 
   try {
     const s = await loadSettings(env);
     if (!s.welcomeOn || !s.welcomeTitle.trim()) return;
+    const body = s.welcomeBody === DEFAULTS.welcomeBody ? await stockWelcome(env, s.kickoffUrl) : s.welcomeBody;
     await env.DB.prepare(
       'INSERT INTO crm_notices (id, to_email, title, body, link, link_label, emailed, created_at) VALUES (?,?,?,?,?,?,?,?)',
     ).bind(
-      crypto.randomUUID(), email, s.welcomeTitle.slice(0, 200), s.welcomeBody.slice(0, 2000),
+      crypto.randomUUID(), email, s.welcomeTitle.slice(0, 200), body.slice(0, 2000),
       safeLink(s.kickoffUrl), s.kickoffUrl ? 'Book my kickoff call' : '', 'skipped', nowIso(),
     ).run();
   } catch { /* before 0052, or a transient failure: nobody is kept from signing in by a welcome */ }
+}
+
+/**
+ * The stock welcome, saying only what this install can do today.
+ *
+ * Word for word it offers a kickoff call and a help button. Both are the
+ * owner's to switch on (the booking link on this screen; the house widget in
+ * Customer Engagement), and until they are, every new customer's first screen
+ * promised a call with nothing to press and a button that was not there. An
+ * owner who rewrites the welcome is taken at their word; only the untouched
+ * default is fitted to what exists.
+ */
+async function stockWelcome(env: Env, kickoffUrl: string): Promise<string> {
+  const parts = ['Start in AI Autopilot: describe one thing you want handled and it shows you exactly what it will build before anything exists. Nothing sends until you approve it.'];
+  if (safeLink(kickoffUrl)) parts.push('If you would rather do it together, book a free 20-minute kickoff call and we will set up your first project with you, on your screen.');
+  if (await houseWidgetKey(env)) parts.push('Or press the help button in the corner any time to ask us.');
+  return parts.join(' ');
 }
 
 export interface SignupRow {
