@@ -386,7 +386,7 @@ export default function Scheduling() {
         {tab === 'automations' && (
           <div style={{ ...CARD, padding: 24 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Automations</h3>
-            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Calendly-style workflows — emails send through your SMTP settings (Settings → Email); SMS uses your Twilio account.</p>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Emails go from your mailbox in Settings → Email & SMS. With no mailbox connected, nothing is sent — the booking still stands.</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Confirmation */}
@@ -426,7 +426,7 @@ export default function Scheduling() {
                   <Clock size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Reminder before the meeting</div>
-                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Email (and optional SMS) so guests actually show up.</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Not sent yet — this setting is saved, but no reminder email or SMS goes out today. Ask guests to add the meeting to their calendar from the confirmation.</div>
                   </div>
                   <button onClick={() => setAuto({ reminderEmail: !auto.reminderEmail })}
                     style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.reminderEmail ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
@@ -465,7 +465,7 @@ export default function Scheduling() {
                   <Check size={18} color="#8b5cf6" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Follow-up email after the meeting</div>
-                    <div style={{ fontSize: 12.5, color: '#64748b' }}>A thank-you note sent automatically once the meeting ends.</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Not sent yet — this setting is saved, but no follow-up goes out today.</div>
                   </div>
                   <button onClick={() => setAuto({ followupEmail: !auto.followupEmail })}
                     style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.followupEmail ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
@@ -480,7 +480,7 @@ export default function Scheduling() {
               </div>
 
               <div style={{ padding: '13px 18px', backgroundColor: '#eceef1', borderRadius: 12, border: '1px solid #d5d8dd', fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
-                Reminders and follow-ups are processed server-side whenever the booking page or your CRM is opened. Emails use the SMTP settings from <strong>Settings → Email</strong>; make sure they're configured.
+                What is sent today: the guest's confirmation (with their reschedule and cancel link) and your notification, when somebody books, moves or cancels. Reminders and follow-ups are not sent yet; the switches are kept so nothing you set is lost.
               </div>
             </div>
           </div>
