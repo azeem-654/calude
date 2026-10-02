@@ -15,6 +15,8 @@ import { voiceStatus } from '../lib/voice';
 import { enrolOnEvent } from '../lib/automationEngine';
 import { cleanSdp, iceServers, offersScreen, sweepLive } from '../lib/liveHelp';
 import { createEvent } from '../lib/googleCalendar';
+import { rateLimit } from '../lib/rateLimit';
+import { decodeImage, fileResponse, storeChatFile } from '../lib/chatFiles';
 
 interface Req {
   token?: string;
@@ -41,7 +43,35 @@ interface Req {
   record?: Record<string, unknown>;
   /* Live help — the answering browser's half of the handshake */
   sdp?: string;
+  /* The inbox, kept current: `since` is the cursor the last answer handed
+     back for the list, `msgSince` for the open thread; `seen` says the thread
+     is on a screen somebody is looking at. A picture in a reply, and one to
+     fetch back. */
+  since?: string;
+  msgSince?: string;
+  seen?: boolean;
+  image?: string;
+  w?: number;
+  h?: number;
+  fileId?: string;
 }
+
+/* Same overlap as the visitor's poll (routes/engage.ts), for the same reason. */
+const OVERLAP_MS = 10_000;
+
+/* The visitor messages nobody here has had on screen yet. Worked out only for
+   a row whose two stamps already say there are some, so a list of two hundred
+   quiet conversations costs two hundred comparisons and no reads. */
+const UNREAD_SQL = `CASE WHEN c.last_visitor_at > c.agent_seen_at THEN (
+    SELECT count(*) FROM crm_conversation_messages m
+    WHERE m.conversation_id = c.id AND m.role = 'visitor' AND m.created_at > c.agent_seen_at
+  ) ELSE 0 END`;
+
+const LIST_COLS = `c.id, c.channel, c.status, c.handled_by AS handledBy, c.assigned_to AS assignedTo,
+              c.subject, c.intent, c.ai_summary AS aiSummary, c.page_url AS pageUrl,
+              c.last_at AS lastAt, c.created_at AS createdAt, c.updated_at AS updatedAt,
+              c.needs_human_since AS needsHumanSince, ${UNREAD_SQL} AS unread,
+              p.name AS personName, p.email AS personEmail, p.id AS personId`;
 
 const s = (v: unknown, max = 400) => String(v ?? '').trim().slice(0, max);
 const int = (v: unknown, lo: number, hi: number) =>
@@ -79,7 +109,10 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       success: true,
       counts: {
         openConversations: await one("SELECT count(*) AS n FROM crm_conversations WHERE account_id = ? AND status = 'open'"),
-        waitingOnHuman: await one("SELECT count(*) AS n FROM crm_conversations WHERE account_id = ? AND handled_by = 'human' AND status = 'open'"),
+        /* Somebody who wrote and has not had a person answer — not every
+           conversation a person once touched, which kept counting threads
+           the customer had long since stopped reading. */
+        waitingOnHuman: await one("SELECT count(*) AS n FROM crm_conversations WHERE account_id = ? AND status = 'open' AND needs_human_since != ''"),
         openTickets: await one("SELECT count(*) AS n FROM crm_tickets WHERE account_id = ? AND status NOT IN ('resolved','closed')"),
         newSubmissions: await one("SELECT count(*) AS n FROM crm_form_submissions WHERE account_id = ? AND status = 'new'"),
         people: await one('SELECT count(*) AS n FROM crm_engage_people WHERE account_id = ?'),
@@ -104,16 +137,63 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
   /* ── The inbox ────────────────────────────────────────────────────────── */
   if (act === 'conversations') {
     const { results } = await env.DB.prepare(
-      `SELECT c.id, c.channel, c.status, c.handled_by AS handledBy, c.assigned_to AS assignedTo,
-              c.subject, c.intent, c.ai_summary AS aiSummary, c.page_url AS pageUrl,
-              c.last_at AS lastAt, c.created_at AS createdAt,
-              p.name AS personName, p.email AS personEmail, p.id AS personId
+      `SELECT ${LIST_COLS}
        FROM crm_conversations c
        LEFT JOIN crm_engage_people p ON p.id = c.person_id AND p.account_id = c.account_id
        WHERE c.account_id = ?
        ORDER BY c.last_at DESC LIMIT 200`,
     ).bind(accountId).all();
-    return json({ success: true, conversations: results ?? [] });
+    return json({ success: true, conversations: results ?? [], cursor: now });
+  }
+
+  /* ── The inbox, kept current without a refresh ──
+   *
+   * Asked every few seconds while somebody has Customer Engagement open, so
+   * it answers only what changed: the conversations touched since the last
+   * cursor (one range read on account + updated_at), and, for the thread on
+   * screen, the messages since its own cursor. A thread that is on screen and
+   * visible counts as read — that is what makes the unread dot go away for
+   * the person answering and stay for everybody else's next look. */
+  if (act === 'inbox_sync') {
+    const back = (v: unknown) => {
+      const ms = Date.parse(String(v ?? ''));
+      return Number.isFinite(ms) ? new Date(ms - OVERLAP_MS).toISOString() : '';
+    };
+    const from = back(d.since);
+    const changed = from
+      ? (await env.DB.prepare(
+          `SELECT ${LIST_COLS}
+           FROM crm_conversations c
+           LEFT JOIN crm_engage_people p ON p.id = c.person_id AND p.account_id = c.account_id
+           WHERE c.account_id = ? AND c.updated_at >= ?
+           ORDER BY c.updated_at ASC LIMIT 100`,
+        ).bind(accountId, from).all()).results ?? []
+      : [];
+
+    const convId = s(d.conversationId, 80);
+    let messages: unknown[] = [];
+    let thread: Record<string, unknown> | null = null;
+    if (convId) {
+      thread = await env.DB.prepare(
+        `SELECT id, status, handled_by, needs_human_since AS needsHumanSince, updated_at AS updatedAt
+         FROM crm_conversations WHERE id = ? AND account_id = ?`,
+      ).bind(convId, accountId).first<Record<string, unknown>>();
+      const msgFrom = back(d.msgSince);
+      if (thread && msgFrom && String(thread.updatedAt) >= msgFrom) {
+        messages = (await env.DB.prepare(
+          `SELECT id, role, author, body, sources, internal, attachments, created_at AS createdAt
+           FROM crm_conversation_messages WHERE conversation_id = ? AND account_id = ? AND created_at >= ?
+           ORDER BY created_at ASC LIMIT 200`,
+        ).bind(convId, accountId, msgFrom).all()).results ?? [];
+      }
+      /* Written only when something new has arrived, not on every poll — a
+         thread left open all afternoon must not be a write every four seconds. */
+      if (thread && d.seen && messages.some(m => (m as { role?: string }).role === 'visitor')) {
+        await env.DB.prepare('UPDATE crm_conversations SET agent_seen_at = ? WHERE id = ? AND account_id = ? AND agent_seen_at < ?')
+          .bind(now, convId, accountId, now).run();
+      }
+    }
+    return json({ success: true, cursor: now, conversations: changed, messages, thread });
   }
 
   if (act === 'conversation') {
@@ -124,9 +204,13 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
        WHERE c.id = ? AND c.account_id = ?`,
     ).bind(s(d.conversationId, 80), accountId).first();
     if (!conv) return fail('That conversation could not be found.', 404);
+    /* Opening it is reading it. Without touching updated_at: being read is not
+       a change the rest of the team's lists need to fetch. */
+    await env.DB.prepare('UPDATE crm_conversations SET agent_seen_at = ? WHERE id = ? AND account_id = ?')
+      .bind(now, s(d.conversationId, 80), accountId).run();
 
     const { results: messages } = await env.DB.prepare(
-      `SELECT id, role, author, body, sources, internal, created_at AS createdAt
+      `SELECT id, role, author, body, sources, internal, attachments, created_at AS createdAt
        FROM crm_conversation_messages WHERE conversation_id = ? AND account_id = ?
        ORDER BY created_at ASC LIMIT 500`,
     ).bind(s(d.conversationId, 80), accountId).all();
@@ -145,7 +229,7 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
         ).bind(personId, accountId).all()
       : { results: [] };
 
-    return json({ success: true, conversation: conv, messages: messages ?? [], tickets: tickets ?? [], timeline: timeline ?? [] });
+    return json({ success: true, conversation: conv, messages: messages ?? [], tickets: tickets ?? [], timeline: timeline ?? [], cursor: now });
   }
 
   if (act === 'reply') {
@@ -153,22 +237,109 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       .bind(s(d.conversationId, 80), accountId).first();
     if (!conv) return fail('That conversation could not be found.', 404);
     const text = s(d.message, 4000);
-    if (!text) return fail('Write something first.');
+    const hasImage = typeof d.image === 'string' && d.image.length > 0;
+    if (!text && !hasImage) return fail('Write something first.', 200, { field: 'message' });
+
+    const msgId = rid('msg');
+    let attachments = '[]';
+    if (hasImage) {
+      /* Per conversation, like the visitor's side: a reply box is not a bulk
+         upload, and every picture is a row of up to 1.5 MB. */
+      const room = await rateLimit(env, { what: 'engagement-attach', who: s(d.conversationId, 80), max: 20, windowSeconds: 600 });
+      if (!room.allowed) return fail('That is a lot of pictures at once — wait a few minutes before sending another.', 429, { field: 'image' });
+      const img = decodeImage(d.image);
+      if (!img.ok) return fail(img.message, img.code === 'too_large' ? 413 : 422, { code: img.code, field: 'image' });
+      const a = await storeChatFile(env, {
+        accountId, conversationId: s(d.conversationId, 80), messageId: msgId, uploadedBy: 'agent',
+        bytes: img.bytes, mime: img.mime, w: d.w, h: d.h, now,
+      });
+      attachments = JSON.stringify([a]);
+    }
 
     await env.DB.prepare(
-      `INSERT INTO crm_conversation_messages (id, conversation_id, account_id, role, author, body, internal, created_at)
-       VALUES (?,?,?, 'agent', ?,?,?,?)`,
-    ).bind(rid('msg'), s(d.conversationId, 80), accountId, who, text, d.internal ? 1 : 0, now).run();
+      `INSERT INTO crm_conversation_messages (id, conversation_id, account_id, role, author, body, internal, attachments, created_at)
+       VALUES (?,?,?, 'agent', ?,?,?,?,?)`,
+    ).bind(msgId, s(d.conversationId, 80), accountId, who, text, d.internal ? 1 : 0, attachments, now).run();
 
     /* Replying *is* taking over. Making that a separate button is how a bot
        ends up answering over the top of a colleague mid-sentence. An internal
-       note is not a reply, so it leaves the AI where it was. */
+       note is not a reply, so it leaves the AI where it was — and leaves the
+       visitor waiting, which is what they still are. */
     if (!d.internal) {
       await env.DB.prepare(
-        "UPDATE crm_conversations SET handled_by = 'human', last_at = ?, updated_at = ? WHERE id = ? AND account_id = ?",
-      ).bind(now, now, s(d.conversationId, 80), accountId).run();
+        `UPDATE crm_conversations SET handled_by = 'human', last_at = ?, updated_at = ?, agent_seen_at = ?,
+                needs_human_since = ''
+         WHERE id = ? AND account_id = ?`,
+      ).bind(now, now, now, s(d.conversationId, 80), accountId).run();
+    } else {
+      await env.DB.prepare('UPDATE crm_conversations SET updated_at = ? WHERE id = ? AND account_id = ?')
+        .bind(now, s(d.conversationId, 80), accountId).run();
     }
-    return json({ success: true });
+    return json({ success: true, id: msgId });
+  }
+
+  /* ── One picture from a thread, for the business ──
+   * Scoped like every other read here: a file id from another workspace is
+   * "not found", never "not yours". */
+  if (act === 'file') {
+    const row = await env.DB.prepare('SELECT bytes FROM crm_chat_files WHERE id = ? AND account_id = ?')
+      .bind(s(d.fileId, 80), accountId).first<{ bytes: unknown }>();
+    return (row ? fileResponse(row.bytes) : null) ?? fail('That picture could not be found.', 404);
+  }
+
+  /* ── Who is waiting for a person, everywhere ──
+   *
+   * The dashboard card and the badge in the nav both read this, so it is one
+   * round trip of small aggregate reads. Waiting means: a conversation with
+   * an unanswered visitor (`needs_human_since`), a ticket nobody has closed or
+   * put back to the customer, and a live-help request — of any kind — that
+   * nobody has answered and whose page is still asking. `hasData` lets the
+   * dashboard stay silent for a workspace that has never used any of this. */
+  if (act === 'support_waiting') {
+    const liveCut = new Date(Date.now() - 3 * 60_000).toISOString();
+    const [conv, unread, tick, live, any] = await env.DB.batch([
+      env.DB.prepare(
+        `SELECT count(*) AS n, min(needs_human_since) AS oldest,
+                (SELECT id FROM crm_conversations WHERE account_id = ?1 AND status = 'open' AND needs_human_since != ''
+                 ORDER BY needs_human_since ASC LIMIT 1) AS oldestId
+         FROM crm_conversations WHERE account_id = ?1 AND status = 'open' AND needs_human_since != ''`,
+      ).bind(accountId),
+      env.DB.prepare(
+        "SELECT count(*) AS n FROM crm_conversations WHERE account_id = ? AND status != 'closed' AND last_visitor_at > agent_seen_at",
+      ).bind(accountId),
+      env.DB.prepare(
+        `SELECT count(*) AS n, min(created_at) AS oldest,
+                (SELECT id FROM crm_tickets WHERE account_id = ?1 AND status NOT IN ('resolved','closed','waiting')
+                 ORDER BY created_at ASC LIMIT 1) AS oldestId
+         FROM crm_tickets WHERE account_id = ?1 AND status NOT IN ('resolved','closed','waiting')`,
+      ).bind(accountId),
+      env.DB.prepare(
+        `SELECT count(*) AS n, min(created_at) AS oldest,
+                (SELECT id FROM crm_live_sessions WHERE account_id = ?1 AND status = 'waiting' AND seen_at >= ?2
+                 ORDER BY created_at ASC LIMIT 1) AS oldestId
+         FROM crm_live_sessions WHERE account_id = ?1 AND status = 'waiting' AND seen_at >= ?2`,
+      ).bind(accountId, liveCut),
+      env.DB.prepare(
+        `SELECT EXISTS(SELECT 1 FROM crm_widgets WHERE account_id = ?1)
+             OR EXISTS(SELECT 1 FROM crm_conversations WHERE account_id = ?1)
+             OR EXISTS(SELECT 1 FROM crm_tickets WHERE account_id = ?1)
+             OR EXISTS(SELECT 1 FROM crm_live_sessions WHERE account_id = ?1) AS any`,
+      ).bind(accountId),
+    ]);
+    type Agg = { n: number; oldest: string | null; oldestId: string | null };
+    const first = <T,>(r: D1Result) => ((r.results ?? [])[0] ?? {}) as T;
+    const pick = (r: D1Result) => {
+      const a = first<Agg>(r);
+      return { count: Number(a.n ?? 0), oldestAt: a.oldest || null, oldestId: a.oldestId || null };
+    };
+    return json({
+      success: true,
+      hasData: !!Number(first<{ any: number }>(any).any ?? 0),
+      conversations: pick(conv),
+      unread: Number(first<{ n: number }>(unread).n ?? 0),
+      tickets: pick(tick),
+      live: pick(live),
+    });
   }
 
   if (act === 'set_conversation') {
@@ -183,7 +354,9 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
   /* Give it back to the assistant — the other half of the human override. */
   if (act === 'resume_ai') {
     await env.DB.prepare(
-      "UPDATE crm_conversations SET handled_by = 'ai', updated_at = ? WHERE id = ? AND account_id = ?",
+      /* The assistant answers the next message, so nobody is left waiting on
+         a person any more. */
+      "UPDATE crm_conversations SET handled_by = 'ai', needs_human_since = '', updated_at = ? WHERE id = ? AND account_id = ?",
     ).bind(now, s(d.conversationId, 80), accountId).run();
     return json({ success: true });
   }

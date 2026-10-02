@@ -150,11 +150,15 @@ export async function runTool(env: Env, call: ToolCall): Promise<ToolResult> {
 
       case 'handoffToHuman': {
         const summary = str(call.args.summary, 400);
+        /* Handed over is waiting for a person — the dashboard's count and the
+           inbox's WAITING mark read `needs_human_since` (migration 0060). */
+        const at = nowIso();
         await env.DB.prepare(
           `UPDATE crm_conversations
-           SET handled_by = 'human', status = 'open', ai_summary = ?, updated_at = ?
+           SET handled_by = 'human', status = 'open', ai_summary = ?, updated_at = ?,
+               needs_human_since = CASE WHEN needs_human_since = '' THEN ? ELSE needs_human_since END
            WHERE id = ? AND account_id = ?`,
-        ).bind(summary, nowIso(), call.conversationId, call.accountId).run();
+        ).bind(summary, at, at, call.conversationId, call.accountId).run();
 
         /* Written into the transcript, not just the row. A human picking this up
            needs to see where the handover happened and why, in line. */
