@@ -488,8 +488,25 @@ function RequestModal({ contacts, profile, onClose, onSent, addNotification }: {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [find, setFind] = useState('');
   const link = profile.reviewLinks[platform] || '';
-  const withEmail = contacts.filter(c => c.email);
+  /* One address once: two contacts sharing it would be one email anyway. */
+  const withEmail = contacts.filter((c, i, all) => c.email && all.findIndex(x => x.email === c.email) === i);
+  /*
+   * The server sends at most fifty in one go. The list used to show fifty but
+   * "Select all" took everybody, and the rest were dropped without a word; a
+   * search reaches anyone, and the cap is said where the choice is made.
+   */
+  const MAX = 50;
+  const f = find.trim().toLowerCase();
+  const shown = withEmail.filter(c => !f || String(c.name ?? '').toLowerCase().includes(f) || String(c.email).toLowerCase().includes(f)).slice(0, MAX);
+  const allShownOn = shown.length > 0 && shown.every(c => selected.has(c.email));
+  const toggleShown = () => setSelected(s => {
+    const n = new Set(s);
+    if (allShownOn) shown.forEach(c => n.delete(c.email));
+    else for (const c of shown) { if (n.size >= MAX) break; n.add(c.email); }
+    return n;
+  });
 
   const send = async () => {
     const picks = withEmail.filter(c => selected.has(c.email)).map(c => ({ name: c.name, email: c.email }));
@@ -529,14 +546,21 @@ function RequestModal({ contacts, profile, onClose, onSent, addNotification }: {
           {error && <div role="alert" style={{ padding: '9px 12px', background: '#fdecec', borderRadius: 10, fontSize: 12, color: '#b42318', marginBottom: 12 }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>Select contacts ({selected.size})</span>
-            <button onClick={() => setSelected(selected.size === withEmail.length ? new Set() : new Set(withEmail.map(c => c.email)))} style={{ border: 'none', background: 'none', color: INK, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{selected.size === withEmail.length && withEmail.length ? 'Clear' : 'Select all'}</button>
+            <button onClick={toggleShown} disabled={!shown.length} style={{ border: 'none', background: 'none', color: INK, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{allShownOn ? 'Clear' : f ? 'Select these' : 'Select all'}</button>
           </div>
+          {withEmail.length > MAX && (
+            <>
+              <input aria-label="Find a contact" value={find} onChange={e => setFind(e.target.value)} placeholder={`Find among ${withEmail.length} contacts`}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 11px', border: '1px solid #e6e9f0', borderRadius: 10, fontSize: 12.5, outline: 'none', fontFamily: 'inherit', marginBottom: 6 }} />
+              <p style={{ fontSize: 11.5, color: MUTED, margin: '0 0 8px' }}>Up to {MAX} at a time — send these, then choose the next ones.</p>
+            </>
+          )}
           {withEmail.length === 0 && <p style={{ fontSize: 13, color: FAINT, textAlign: 'center', padding: 20 }}>No contacts with email addresses yet.</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {withEmail.slice(0, 50).map(c => {
+            {shown.map(c => {
               const on = selected.has(c.email);
               return (
-                <button key={c.email} onClick={() => setSelected(s => { const n = new Set(s); if (on) n.delete(c.email); else n.add(c.email); return n; })}
+                <button key={c.email} onClick={() => setSelected(s => { const n = new Set(s); if (on) n.delete(c.email); else if (n.size < MAX) n.add(c.email); return n; })}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, border: `1px solid ${on ? INK : '#e6e9f0'}`, background: on ? '#f7f8f9' : '#fff', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ width: 18, height: 18, borderRadius: 6, border: `2px solid ${on ? INK : '#cbd5e1'}`, background: on ? INK : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{on && <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>✓</span>}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>

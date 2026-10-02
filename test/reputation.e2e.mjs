@@ -520,6 +520,13 @@ ok('legacy sample reviews are cleared', await page.evaluate(() => localStorage.g
 ok('Business Profile reviews offer "Post to Google"', await page.getByRole('button', { name: /Post to Google/ }).count() > 0);
 ok('Places reviews offer "Copy reply & open on Google"', await page.getByRole('button', { name: /Copy reply & open on Google/ }).count() > 0);
 ok('no sideways scroll at 1280', (await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0);
+const ritaBefore = ((await rep('requests')).requests ?? []).filter(x => x.email === 'rita@example.test' && x.status === 'sent').length;
+await page.getByRole('button', { name: /Request Reviews/ }).click();
+const reqDlg = page.getByRole('dialog', { name: 'Request reviews' });
+await reqDlg.getByRole('button', { name: /Rita Reviewer/ }).click();
+await reqDlg.getByRole('button', { name: /^Send 1 request$/ }).click();
+await page.waitForTimeout(3000);
+ok('Request Reviews on the screen sends through the server, from the workspace mailbox', ((await rep('requests')).requests ?? []).filter(x => x.email === 'rita@example.test' && x.status === 'sent').length === ritaBefore + 1 && await reqDlg.count() === 0);
 await page.getByRole('button', { name: 'Reputation settings' }).click();
 await page.getByRole('dialog').getByRole('button', { name: /Review Sources/ }).click();
 await page.waitForTimeout(400);
