@@ -439,6 +439,49 @@ function ensureDefaultAccount(_get: (k: string) => string | null, _set: (k: stri
   migrate.forEach(([nk, v]) => _set(nk, v));
 }
 
+/**
+ * Put the workspace the server issued into this browser's registry.
+ *
+ * Sign-in points `crm_active_account` at the id the server gave the customer,
+ * but nothing added that id to `crm_subaccounts` — the registry only ever held
+ * the `acct-<timestamp>` placeholder `ensureDefaultAccount` invents on the
+ * login screen. So `activeAccount()` was null for every new customer, and the
+ * screens that need it were dead ends on day one: Plan & billing said "No
+ * workspace is selected" (where the trial bar's "Choose a plan" lands),
+ * Branding said there was nothing to brand, so the checklist's "Put your name
+ * on it" could never be done, and the workspace switcher never drew.
+ *
+ * The placeholder goes at the same time, but only an untouched one: never
+ * selected, so nothing was ever stored under its prefix. Left in the switcher
+ * it is one click from being claimed on the server as a sub-account, against
+ * an allowance the customer is paying for.
+ */
+export function adoptOwnWorkspace(id: string, who: { name?: string; email?: string }): void {
+  const list = loadSubAccounts();
+  const holdsData = (accountId: string): boolean => {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      if (window.localStorage.key(i)?.startsWith(`${PREFIX}${accountId}_`)) return true;
+    }
+    return false;
+  };
+  const kept = list.filter(a => a.id === id || !(
+    /^acct-\d+$/.test(a.id) && a.name === 'Main Workspace' && !a.parentId && !holdsData(a.id)
+  ));
+  const missing = !kept.some(a => a.id === id);
+  if (!missing && kept.length === list.length) return;
+  if (missing) {
+    kept.unshift({
+      id, parentId: null, name: 'My workspace', businessName: '',
+      contactName: who.name ?? '', contactEmail: who.email ?? '', phone: '', industry: '',
+      /* The plan is the server's to say (planUsage in services/automation.ts);
+         this is only the entry plan the server assumes until a payment says
+         otherwise, so the allowance shown here matches the one it enforces. */
+      color: '#3e63dd', plan: 'starter', price: 0, status: 'active', createdAt: new Date().toISOString(),
+    });
+  }
+  saveSubAccounts(kept);
+}
+
 /** Switch active account and hard-reload so every context/service re-reads scoped data. */
 export function switchAccount(id: string) {
   setActiveAccountId(id);
