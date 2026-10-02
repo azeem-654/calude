@@ -51,11 +51,36 @@ const place = (id, name, extra = {}) => ({
   nationalPhoneNumber: '0161 555 0100', websiteUri: 'https://bobtheplumber.example/', rating: 4.7, userRatingCount: 88, ...extra,
 });
 const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+/* Geoapify, on the same mock: the free directory (lib/geoapify.ts). */
+const GEOKEY = 'a1'.repeat(16), GEOBAD = 'b2'.repeat(16);
+const geoSeen = [];
+const dentist = (n, extra = {}) => ({ type: 'Feature', properties: {
+  place_id: `geo-dent-${n}`, name: `Leeds Dental ${n}`, formatted: `Leeds Dental ${n}, ${n} Park Row, Leeds LS1 5HD, United Kingdom`,
+  categories: ['healthcare', 'healthcare.dentist'], lat: 53.79, lon: -1.54,
+  datasource: { sourcename: 'openstreetmap', raw: { phone: `0113 555 010${n}`, website: `https://leedsdental${n}.example/`, email: n === 1 ? 'hello@leedsdental1.example' : undefined } },
+  ...extra } });
+function geoapify(req, res, u) {
+  geoSeen.push({ path: u.pathname, q: Object.fromEntries(u.searchParams) });
+  if (u.searchParams.get('apiKey') !== GEOKEY) return send(res, 401, { statusCode: 401, error: 'Unauthorized', message: 'Invalid apiKey' });
+  if (u.pathname === '/v1/geocode/search') {
+    const text = (u.searchParams.get('text') ?? '').toLowerCase();
+    if (text === 'london' || text === 'leeds') return send(res, 200, { results: [{ place_id: `p-${text}`, lon: -1.55, lat: 53.8, result_type: 'city' }] });
+    return send(res, 200, { results: [] });
+  }
+  if (u.pathname === '/v2/places') {
+    if (u.searchParams.get('categories') === 'healthcare.dentist' && u.searchParams.get('filter') === 'place:p-leeds') {
+      return send(res, 200, { type: 'FeatureCollection', features: [dentist(1), dentist(2), dentist(3), { type: 'Feature', properties: { place_id: 'geo-noname', categories: ['healthcare.dentist'] } }] });
+    }
+    return send(res, 200, { type: 'FeatureCollection', features: [] });
+  }
+  send(res, 404, { message: 'mock has no such Geoapify path' });
+}
 const mock = http.createServer((req, res) => {
   let raw = '';
   req.on('data', c => { raw += c; });
   req.on('end', () => {
     const u = new URL(req.url, G);
+    if (u.pathname === '/v1/geocode/search' || u.pathname === '/v2/places') return geoapify(req, res, u);
     const key = String(req.headers['x-goog-api-key'] ?? '');
     seen.push({ method: req.method, path: u.pathname, key, mask: String(req.headers['x-goog-fieldmask'] ?? ''), body: raw });
     if (!VALID.has(key)) {
@@ -82,7 +107,7 @@ await new Promise(r => mock.listen(MOCK, '127.0.0.1', r));
 const persist = fs.mkdtempSync(path.join(os.tmpdir(), 'platform-d1-'));
 const sql = q => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command ${JSON.stringify(q)}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))[0].results;
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GOOGLE_PLACES_BASE:${G}`];
+const vars = [`APP_ORIGIN:${B}`, `GOOGLE_PLACES_BASE:${G}`, `GEOAPIFY_BASE:${G}`];
 /* Its own process group (detached), so stopping it stops workerd as well. */
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
@@ -194,6 +219,43 @@ ok('…and nothing reached Google', seen.length === 0, JSON.stringify(seen));
 r = await apiS('prospects.php', { action: 'search', accountId: C.acct, trade: 'plumber', place: 'Manchester' });
 ok('no session, no search', r.status === 401, JSON.stringify(r));
 
+/* ── The free directory (Geoapify, then OpenStreetMap) ── */
+console.log('\nThe free directory');
+r = await pros(C, 'status');
+ok('status: the free directory is always available, Geoapify not yet set', r.d.free?.available === true && r.d.free.geoapify === false, JSON.stringify(r.d));
+geoSeen.length = 0;
+r = await pros(C, 'search', { source: 'free', trade: 'dentists', place: 'Leeds' });
+ok('with no Geoapify key it goes to OpenStreetMap and never to Geoapify', geoSeen.length === 0 && (r.d.source === 'osm' || /OpenStreetMap/.test(r.d.error ?? '')), JSON.stringify(r.d).slice(0, 300));
+r = await apiS('geoapify.php', { token: C.token, action: 'save', apiKey: GEOKEY });
+ok('a customer cannot set the Geoapify key', r.status === 403 && r.d.code === 'not_owner', JSON.stringify(r.d));
+r = await apiS('geoapify.php', { token: T, action: 'save', apiKey: 'short' });
+ok('a malformed key is refused at its box', !r.d.success && r.d.field === 'geoapify.key', JSON.stringify(r.d));
+r = await apiS('geoapify.php', { token: T, action: 'save', apiKey: GEOBAD });
+ok('a key Geoapify refuses is saved but shown as refused, at once', r.d.success && r.d.tested?.ok === false && r.d.status === 'error', JSON.stringify(r.d));
+r = await apiS('geoapify.php', { token: T, action: 'save', apiKey: GEOKEY });
+ok('a good key is proved on save', r.d.success && r.d.tested?.ok === true && r.d.status === 'ok', JSON.stringify(r.d));
+ok('…never echoed, and encrypted at rest', !r.text?.includes?.(GEOKEY) && !JSON.stringify(r.d).includes(GEOKEY) && !JSON.stringify(sql("SELECT credentials FROM crm_install_providers WHERE kind = 'geoapify'")).includes(GEOKEY));
+geoSeen.length = 0;
+r = await pros(C, 'search', { source: 'free', trade: 'dentists', place: 'Leeds' });
+const geo = r.d;
+ok('a free search answers from Geoapify', geo.success && geo.source === 'free' && geo.prospects?.length === 3, JSON.stringify(geo).slice(0, 400));
+ok('…in the place\'s own boundary, for its category, on the owner\'s key', geoSeen.some(x => x.path === '/v2/places' && x.q.filter === 'place:p-leeds' && x.q.categories === 'healthcare.dentist' && x.q.apiKey === GEOKEY), JSON.stringify(geoSeen));
+ok('…with phone, website and a published email from the map, and an unnamed place left out',
+  (() => { const p = geo.prospects?.find(x => x.name === 'Leeds Dental 1'); return p?.phone === '0113 555 0101' && p.website === 'https://leedsdental1.example/' && p.email === 'hello@leedsdental1.example' && p.address.startsWith('1 Park Row') && p.category === 'dentist'; })(), JSON.stringify(geo.prospects?.[0]));
+ok('…credited to Geoapify and OpenStreetMap', /Geoapify/.test(geo.attribution) && /OpenStreetMap contributors/.test(geo.attribution), geo.attribution);
+geoSeen.length = 0;
+r = await pros(C, 'search', { source: 'auto', query: 'dentists in Leeds' });
+ok('the AI Sales Agent\'s one line is split and answered from the fortnight\'s cache, spending nothing', r.d.success && r.d.cached === true && r.d.prospects?.length === 3 && geoSeen.length === 0, `${JSON.stringify(geoSeen)} ${JSON.stringify(r.d).slice(0, 200)}`);
+r = await pros(C, 'search', { source: 'free', trade: 'dentist', place: 'Nowhereville' });
+ok('a place Geoapify does not know is refused at the place box', !r.d.success && r.d.field === 'prospects.place', JSON.stringify(r.d));
+geoSeen.length = 0;
+r = await pros(C, 'search', { source: 'free', trade: 'plumbers', place: 'Leeds' });
+ok('a trade Geoapify has no category for goes to OpenStreetMap, not Geoapify', !geoSeen.some(x => x.path === '/v2/places'), JSON.stringify(geoSeen));
+r = await apiS('geoapify.php', { token: T, action: 'status' });
+ok('the owner sees today\'s credits', r.d.creditsToday >= 4 && r.d.cap === 2800, JSON.stringify(r.d));
+r = await apiS('platform.php', { token: T, action: 'status' });
+ok('Platform services lists the free directory as working', svc('geoapify')?.state === 'ok', JSON.stringify(svc('geoapify')));
+
 /* ── The meter ── */
 r = await apiS('reputation.php', { token: T, action: 'install_key_status' });
 ok('the owner sees this month\'s searches on their key', r.d.usage?.install.prospects === 3 && r.d.usage.workspaces === 1, JSON.stringify(r.d.usage));
@@ -279,6 +341,13 @@ for (const width of [1280, 390]) {
   ok(`customer @${width}: Find businesses has no SOON label`, !/SOON/.test(await findBtn.innerText()), await findBtn.innerText());
   await findBtn.click();
   const dlg = page.getByRole('dialog', { name: 'Find businesses' });
+  ok(`customer @${width}: it opens on the free directory`, /free business directory/.test(await dlg.innerText()) && (await dlg.getByRole('button', { name: 'Free directory' }).getAttribute('aria-pressed')) === 'true');
+  await dlg.locator('[data-field="prospects.trade"]').fill('dentists');
+  await dlg.locator('[data-field="prospects.place"]').fill('Leeds');
+  await dlg.getByRole('button', { name: /^Search$/ }).click();
+  await dlg.getByText('Leeds Dental 1').waitFor({ timeout: 10_000 }).catch(() => {});
+  ok(`customer @${width}: free results appear, credited to Geoapify`, /Leeds Dental 1/.test(await dlg.innerText()) && /Powered by Geoapify/.test(await dlg.innerText()), (await dlg.innerText()).slice(0, 300));
+  await dlg.getByRole('button', { name: 'Google Maps' }).click();
   ok(`customer @${width}: the screen says Google Maps, nothing to connect`, /From Google Maps/.test(await dlg.innerText()));
   await dlg.locator('[data-field="prospects.trade"]').fill('plumber');
   await dlg.locator('[data-field="prospects.place"]').fill('Manchester');

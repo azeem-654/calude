@@ -49,6 +49,7 @@ import { handleProviderSend } from './routes/providerSend';
 import { handleUiReport } from './routes/uireport';
 import { handleSystemMail } from './routes/systemMail';
 import { handleAiKeys } from './routes/aikeys';
+import { handleGeoapify } from './routes/geoapify';
 import { handlePlatform } from './routes/platform';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -87,6 +88,7 @@ const ROUTES: Record<string, Handler> = {
   /* The owner's keys for everybody, in one read. Owner only. */
   '/api/platform.php': handlePlatform,
   '/api/aikeys.php': handleAiKeys,
+  '/api/geoapify.php': handleGeoapify,
   '/api/affiliate.php': handleAffiliate,
   '/api/resell.php': handleResell,
   '/api/resell-webhook.php': handleResellWebhook,

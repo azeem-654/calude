@@ -1,5 +1,14 @@
 /**
- * Finding businesses to approach — on Google Maps, or on OpenStreetMap.
+ * Finding businesses to approach — in the free directory, or on Google Maps.
+ *
+ * ── Free first ──
+ *
+ * The owner asked for prospect search that costs them nothing. The free
+ * directory (OpenStreetMap's businesses through Geoapify, or OpenStreetMap's
+ * own servers for trades Geoapify has no category for — worker/src/lib/
+ * geoapify.ts) is what this screen opens on, and its results may be kept.
+ * Google Maps is the second tab: more businesses in thinly mapped places,
+ * on the owner's key and budget, and Google's terms restrict keeping them.
  *
  * ── Why Google, and why it is the owner's key ──
  *
@@ -45,7 +54,10 @@ const ACCENT = '#5b46e5';
 
 export default function FindProspects({ onClose }: { onClose: () => void }) {
   const { bulkImportContacts, addNotification } = useApp();
-  const [source, setSource] = useState<ProspectSource>('google');
+  const [source, setSource] = useState<ProspectSource>('free');
+  /* Which map answered the last search — the free directory may answer from
+     OpenStreetMap's own servers, and the credit and the stamp follow that. */
+  const [answered, setAnswered] = useState<ProspectSource | ''>('');
   const [google, setGoogle] = useState<GoogleAvailability | null>(null);
   const [trade, setTrade] = useState('');
   const [place, setPlace] = useState('');
@@ -81,6 +93,7 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
     setBusy(false);
     if (r.error) { setError(r.error); setErrorCode(r.code); return; }
     setResults(r.prospects);
+    setAnswered(r.source);
     setAttribution(r.attribution);
     setCached(r.cached);
     setNextPage(r.nextPageToken);
@@ -132,7 +145,7 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
   const importThem = () => {
     if (!chosen.length) return;
     const now = new Date().toISOString();
-    const from = searched?.source === 'google' ? 'Google Maps' : 'OpenStreetMap';
+    const from = answered === 'google' ? 'Google Maps' : answered === 'free' ? 'Free directory (OpenStreetMap via Geoapify)' : 'OpenStreetMap';
     const what = searched ? `${searched.trade} in ${searched.place}` : '';
     const rows: Omit<Contact, 'id'>[] = chosen.map(p => ({
       name: p.name,
@@ -168,8 +181,8 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
 
   const googleDown = source === 'google' && google && !google.available;
   /* A refusal that is about the key, the trial or the budget is not fixed by
-     typing differently — the other map is the useful next step. */
-  const offerOsm = source === 'google' && (googleDown || /^(no_key|trial_ended|places_budget|bad_key|api_disabled|key_restricted|billing|quota)$/.test(errorCode));
+     typing differently — the free directory is the useful next step. */
+  const offerFree = source === 'google' && (googleDown || /^(no_key|trial_ended|places_budget|bad_key|api_disabled|key_restricted|billing|quota)$/.test(errorCode));
 
   return (
     <div role="dialog" aria-label="Find businesses" style={{
@@ -189,7 +202,7 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
                 ? 'From Google Maps — not switched on for this app yet.'
                 : source === 'google'
                 ? 'From Google Maps. Included — nothing for you to connect.'
-                : 'From OpenStreetMap. No account, no key, and the results are yours to keep.'}
+                : 'From the free business directory. Nothing to connect, and the results are yours to keep.'}
             </span>
           </span>
           <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 0, padding: 4, cursor: 'pointer', color: MUTED }}>
@@ -202,8 +215,8 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
               answer differently: Google has more businesses, OSM may be kept. */}
           <div role="group" aria-label="Which map to search" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {([
+              { id: 'free' as const, label: 'Free directory' },
               { id: 'google' as const, label: 'Google Maps' },
-              { id: 'osm' as const, label: 'OpenStreetMap' },
             ]).map(s => {
               const on = source === s.id;
               return (
@@ -254,17 +267,17 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
             <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.65 }}>
               {source === 'google'
                 ? 'Twenty businesses a search, with phone, website and Google rating. Google does not publish email addresses — tick the ones you want and the next step reads their own website for a published address.'
-                : 'Coverage is uneven and worth knowing about up front: town centres and high-street trades are mapped well, a sole trader working from home often is not. A phone number comes back far more often than an email — tick the ones you want and the next step reads their own website for a published address.'}
+                : 'Up to sixty businesses a search, from OpenStreetMap. Coverage is worth knowing about up front: town centres and high-street businesses are mapped well, a sole trader working from home often is not — Google Maps is the other tab for those. Tick the ones you want and the next step reads their own website for a published address.'}
             </p>
           )}
 
           {error && <Notice text={error} />}
 
-          {offerOsm && (
-            <button onClick={() => { setSource('osm'); setError(''); setErrorCode(''); setResults(null); }} style={{
+          {offerFree && (
+            <button onClick={() => { setSource('free'); setError(''); setErrorCode(''); setResults(null); }} style={{
               ...linkBtn, justifySelf: 'start', padding: '8px 12px', border: `1px solid ${LINE}`, borderRadius: 9, fontSize: 12.5,
             }}>
-              <MapPin size={12} /> Search OpenStreetMap instead — free, and nothing to set up
+              <MapPin size={12} /> Search the free directory instead — nothing to set up
             </button>
           )}
 
@@ -272,7 +285,7 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
             <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.65 }}>
               {searched?.source === 'google'
                 ? 'Google found nothing for that. Try a broader word — "dentist" rather than "cosmetic dentistry" — or a larger town nearby.'
-                : 'Nothing mapped for that. Try a broader word — "dentist" rather than "cosmetic dentistry" — or a larger town nearby. It means nobody has added them to the map, not that they do not exist.'}
+                : `Nothing mapped for that. Try a broader word — "dentist" rather than "cosmetic dentistry" — or a larger town nearby. It means nobody has added them to the map, not that they do not exist${google?.available ? '; the Google Maps tab may have them' : ''}.`}
             </p>
           )}
 
@@ -381,9 +394,9 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
             {/* Both maps ask to be named where their results are shown. */}
             {attribution && (
               <p style={{ margin: 0, fontSize: 10.5, color: '#9aa1ad', textAlign: 'center' }}>
-                {searched?.source === 'google'
+                {answered === 'google'
                   ? `Results from ${attribution}.`
-                  : `Business data ${attribution}, used under the Open Database Licence.`}
+                  : `Business data: ${attribution}, used under the Open Database Licence.`}
               </p>
             )}
           </>)}

@@ -21,6 +21,7 @@
  *
  * Owner only, on the server. A customer forcing the tab open gets a 403.
  */
+import { geoState } from './geoapify';
 import { body, fail, json } from '../lib/http';
 import { userFromToken, type Env, type SessionUser } from '../lib/db';
 import { googleCreds } from '../lib/googleAuth';
@@ -130,6 +131,26 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
       where: { label: 'Below, on this tab' },
       usage: await placesUsage(env),
       ownKeys: own?.n ?? 0,
+    });
+  }
+
+  /* ── Geoapify — the free directory for prospect search ── */
+  {
+    const g = await geoState(env);
+    const state: State = !g.set ? 'off' : g.status === 'ok' ? 'ok' : g.status === 'error' ? 'error' : 'unchecked';
+    services.push({
+      id: 'geoapify', name: 'Geoapify (free business directory)',
+      powers: 'Prospect search at no cost: Contacts → Find businesses and the AI Sales Agent search here first',
+      state,
+      detail: state === 'off'
+        ? 'Not set. The free directory still works on OpenStreetMap\'s own servers, which are slower and ask commercial apps not to rely on them.'
+        : state === 'ok' ? `Working. ${g.creditsToday} of today's ${g.cap} free credits used (20 businesses a credit; searches are kept a fortnight and not paid for twice).`
+          : state === 'error' ? 'Geoapify refused it the last time it was used — see the reason below. Searches fall back to OpenStreetMap meanwhile.'
+            : 'Saved, not yet proved. Press "Test connection" below.',
+      checkedAt: g.set && g.status !== 'unknown' ? g.updatedAt : null,
+      lastError: g.lastError,
+      where: { label: 'Below, on this tab' },
+      optional: true,
     });
   }
 

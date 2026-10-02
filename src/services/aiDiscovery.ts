@@ -151,9 +151,16 @@ export interface DiscoverySource {
  */
 export const googlePlaces: DiscoverySource = {
   id: 'google-places',
-  label: 'Google Maps',
+  label: 'Business directory',
   async search(query, limit) {
-    const r = await searchProspects({ source: 'google', query });
+    /* The free directory first — it costs the owner nothing and its results
+       may be kept (worker/src/lib/geoapify.ts). Google Maps only when that
+       found nothing or could not answer, on the owner's capped key. */
+    const free = await searchProspects({ source: 'auto', query });
+    const g = !free.error && free.prospects.length ? null : await searchProspects({ source: 'google', query });
+    /* Google refusing (no key, budget) after the free directory answered with
+       nothing is "nothing found", not a setup problem. */
+    const r = !g ? free : g.error && !free.error ? free : g;
     if (r.error) {
       return {
         ok: false, source: 'google-places', businesses: [],

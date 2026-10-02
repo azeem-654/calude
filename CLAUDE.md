@@ -266,7 +266,26 @@ Google panels are embedded (`PlacesKeyPanel`, `GoogleSignInPanel` — the same
 components, one implementation each); the rest open the tab that owns them.
 Add a new install-wide key there when you add one.
 
-## Prospect search — Google Maps on the owner's key
+## Prospect search — the free directory first, Google Maps on the owner's key
+
+**The free directory is the default** (`source: 'free'`; the AI Sales Agent
+sends `'auto'`, which is the same, and falls back to Google only when it found
+nothing). `lib/geoapify.ts`: OpenStreetMap's businesses through **Geoapify**
+on the owner's key (`crm_install_providers` kind `geoapify`, card on Platform
+services, `routes/geoapify.ts` owner-only, proved on save). A trade is mapped to
+Geoapify's categories by `categoriesFor` (only published keys — an unknown one
+fails the request); the place is geocoded once and searched inside its own
+boundary. Geoapify's terms allow storing, so searches and places are cached a
+fortnight in `crm_prospect_cache`. Credits are counted per UTC day in
+`crm_meta` and stop at 2,800 (free plan: 3,000) — past that, or with no key, a
+refused key, an outage, or a trade with **no** Geoapify category (plumbers,
+roofers: Geoapify has none), the search goes to Overpass (`searchProspects`,
+singularised word), also free. Attribution comes back with every answer.
+**Google's terms forbid saving business names and addresses**; the Google tab
+remains for customers who ask, budgeted as below. `npm run test:platform`
+covers the free directory against a Geoapify mock (`GEOAPIFY_BASE`).
+
+### Google Maps on the owner's key
 
 Contacts → **Find businesses** (`components/Contacts/FindProspects.tsx`) and
 the AI Sales Agent's Google source (`services/aiDiscovery.ts`) both call

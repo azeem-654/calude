@@ -46,8 +46,9 @@ import { readSite, urlProblem } from './readSite';
 export interface Prospect {
   /** OSM element (`node/1`) or `google:<place id>`, so the same business found twice is recognisably the same. */
   ref: string;
-  /** Which map it came from. Decides the attribution shown and the source stamp on an imported contact. */
-  source?: 'osm' | 'google';
+  /** Which map it came from. Decides the attribution shown and the source stamp on an imported contact.
+   *  'free' is OpenStreetMap's data served by Geoapify (lib/geoapify.ts). */
+  source?: 'osm' | 'google' | 'free';
   /** Google's place id — the one piece of a Places answer its terms let anybody keep. */
   placeId?: string;
   rating?: number | null;

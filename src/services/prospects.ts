@@ -9,7 +9,8 @@ import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 
-export type ProspectSource = 'google' | 'osm';
+/** 'free': OpenStreetMap's data through Geoapify (or Overpass when it cannot); 'auto' asks for that first. */
+export type ProspectSource = 'free' | 'google' | 'osm';
 
 export interface Prospect {
   ref: string;
@@ -51,6 +52,8 @@ async function call(action: string, extra: Record<string, unknown>): Promise<Rec
 
 export interface GoogleAvailability {
   available: boolean;
+  /** Whether the owner has set the Geoapify key the free directory reads first. */
+  geoapify: boolean;
   /** `no_key` (the owner has not set one) or `trial_ended`; empty when available or unknown. */
   code: string;
   error: string;
@@ -61,10 +64,13 @@ export async function googleAvailability(): Promise<GoogleAvailability | null> {
   const d = await call('status', {});
   if (d.success !== true) return null;
   const g = (d.google ?? {}) as { available?: boolean; code?: string; error?: string };
-  return { available: g.available === true, code: String(g.code ?? ''), error: String(g.error ?? '') };
+  const f = (d.free ?? {}) as { geoapify?: boolean };
+  return { available: g.available === true, geoapify: f.geoapify === true, code: String(g.code ?? ''), error: String(g.error ?? '') };
 }
 
 export interface SearchResult {
+  /** Which map answered — the free directory can answer from OpenStreetMap's own servers. */
+  source: ProspectSource | '';
   prospects: Prospect[];
   cached: boolean;
   attribution: string;
@@ -75,10 +81,11 @@ export interface SearchResult {
 }
 
 export async function searchProspects(
-  q: { source: ProspectSource; trade?: string; place?: string; query?: string; pageToken?: string },
+  q: { source: ProspectSource | 'auto'; trade?: string; place?: string; query?: string; pageToken?: string },
 ): Promise<SearchResult> {
   const d = await call('search', q);
   return {
+    source: (['free', 'google', 'osm'].includes(String(d.source)) ? d.source : '') as ProspectSource | '',
     prospects: (d.prospects as Prospect[]) ?? [],
     cached: d.cached === true,
     attribution: String(d.attribution ?? ''),

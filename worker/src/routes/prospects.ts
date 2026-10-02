@@ -32,6 +32,8 @@
 import { body, fail, json } from '../lib/http';
 import { userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { findContacts, searchProspects } from '../lib/prospects';
+import { rateLimit } from '../lib/rateLimit';
+import { GEOAPIFY_ATTRIBUTION, installGeoKey, markGeoKey, searchGeoapify } from '../lib/geoapify';
 import {
   KEY_FAULT, NO_KEY_PROSPECTS, PAGE_TOKEN_RE, markInstallKey, meterPlaces, placesBudget, placesKeyFor, searchBusinesses,
 } from '../lib/googlePlaces';
@@ -72,14 +74,28 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
     return json({
       success: true,
       google: key.ok ? { available: true, whose: key.whose } : { available: false, code: key.code, error: key.error },
+      /* The free directory is always there — Geoapify when the owner has set
+         its key, OpenStreetMap's own servers when not. Said so the screen
+         can name which. */
+      free: { available: true, geoapify: !!(await installGeoKey(env)) },
     });
   }
 
   if (act === 'search') {
-    const source = String(d.source ?? 'google') === 'osm' ? 'osm' : 'google';
-    const line = String(d.query ?? '').trim().slice(0, 200);
-    const trade = String(d.trade ?? '').trim().slice(0, 80);
-    const place = String(d.place ?? '').trim().slice(0, 80);
+    /* 'auto' is the AI Sales Agent's: the free directory, which costs the
+       owner nothing — Google only when it is asked for by name. */
+    const asked = String(d.source ?? 'google');
+    const source = asked === 'osm' ? 'osm' : asked === 'free' || asked === 'auto' ? 'free' : 'google';
+    let line = String(d.query ?? '').trim().slice(0, 200);
+    let trade = String(d.trade ?? '').trim().slice(0, 80);
+    let place = String(d.place ?? '').trim().slice(0, 80);
+    /* The free directory searches a kind of business inside a place, so one
+       line ("dentists in Leeds") is split at its last "in", "near" or
+       "around"; a line with none is refused below, by name. */
+    if (source === 'free' && line) {
+      const m = /^(.+?)\s+(?:in|near|around)\s+(.+)$/i.exec(line);
+      if (m) { trade = m[1].trim().slice(0, 80); place = m[2].trim().slice(0, 80); line = ''; }
+    }
 
     /* The boxes first, by name, before any key or budget is looked at: an empty
        box is the customer's to fix and costs nobody anything. */
@@ -88,6 +104,35 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       if (place.replace(/[^\p{L}\p{N}]/gu, '').length < 2) return fail('Say where to look — a town or a city.', 200, { field: 'prospects.place' });
     } else if (line.length < 3) {
       return fail('Say what kind of business to look for, and where.');
+    }
+
+    if (source === 'free') {
+      if (line) return fail('Say the kind of business and the place, like "dentists in Leeds".');
+      for (const b of [{ what: 'free-prospects-hour', max: 40, windowSeconds: 3600 }, { what: 'free-prospects-day', max: 200, windowSeconds: 86_400 }]) {
+        const v = await rateLimit(env, { ...b, who: accountId });
+        if (!v.allowed) return fail(`That is a lot of searches — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
+      }
+      const geo = await installGeoKey(env);
+      if (geo) {
+        const r = await searchGeoapify(env, geo.key, trade, place, String(d.pageToken ?? ''));
+        if (r.ok) {
+          if (geo.status !== 'ok' && !r.cached) await markGeoKey(env, true);
+          return json({ success: true, source: 'free', prospects: r.prospects, cached: r.cached, nextPageToken: r.next, attribution: GEOAPIFY_ATTRIBUTION });
+        }
+        if (r.code === 'not_found') return fail(r.error, 200, { field: 'prospects.place' });
+        /* A refused key is the owner's to fix and Platform services says so;
+           the customer is not made to wait for that — nor for a spent day's
+           credits, nor an outage. OpenStreetMap's own servers answer instead,
+           and trades Geoapify has no category for (plumbers, roofers) were
+           always going to be asked there. */
+        if (r.code === 'bad_key') await markGeoKey(env, false, r.error);
+      }
+      /* Overpass matches a word against OSM's tags, and they are singular:
+         "plumbers" finds nothing tagged craft=plumber. */
+      const word = trade.toLowerCase().split(/\s+/).map(w => w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w).join(' ');
+      const r = await searchProspects(env, word, place);
+      if (r.error) return fail(r.error);
+      return json({ success: true, source: 'osm', prospects: r.prospects, cached: r.cached, nextPageToken: '', attribution: '© OpenStreetMap contributors' });
     }
 
     if (source === 'osm') {

@@ -14,6 +14,7 @@
  */
 import { harvest, overpassQuery, safeTerm, toProspect, type OsmElement } from '../src/lib/prospects';
 import { PROSPECT_FIELDS, fromPlace, type GooglePlace } from '../src/lib/googlePlaces';
+import { categoriesFor, toGeoProspect } from '../src/lib/geoapify';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -123,6 +124,29 @@ ok('a named point with no business tag is a guess, not a lead',
   ok('the field mask asks for phone and website and no reviews',
     PROSPECT_FIELDS.includes('places.websiteUri') && PROSPECT_FIELDS.includes('places.nationalPhoneNumber')
     && !PROSPECT_FIELDS.includes('reviews') && PROSPECT_FIELDS.includes('nextPageToken'));
+}
+
+/* ── The free directory: a trade to Geoapify's categories, and a feature to a lead ── */
+{
+  const cases: [string, string | null][] = [
+    ['dentists', 'healthcare.dentist'], ['Dental clinic', 'healthcare.dentist'], ['barber', 'service.beauty.hairdresser'],
+    ['pubs', 'catering.bar,catering.pub'], ['solicitors', 'office.lawyer'], ['estate agents', 'office.estate_agent,service.estate_agent'],
+    ['vets', 'pet.veterinary'], ['florist', 'commercial.florist'],
+    /* No category at Geoapify: these go to Overpass, which knows craft=plumber. */
+    ['plumbers', null], ['roofer', null],
+  ];
+  for (const [t, want] of cases) ok(`"${t}" → ${want ?? 'no Geoapify category'}`, categoriesFor(t) === want, String(categoriesFor(t)));
+  ok('"bar" does not match "barber"', categoriesFor('barber') !== 'catering.bar,catering.pub');
+  const f = { properties: {
+    place_id: 'abc', name: 'Smile Co', formatted: 'Smile Co, 4 High St, York YO1 7HU, United Kingdom',
+    categories: ['healthcare', 'healthcare.dentist'], lat: 53.9, lon: -1.08,
+    datasource: { raw: { 'contact:phone': '01904 555 000;01904 555 001', 'contact:website': 'https://smile.example/' } },
+  } };
+  const p = toGeoProspect(f, 'healthcare.dentist');
+  ok('a Geoapify place is a lead with phone, website and address from OSM\'s tags',
+    p?.ref === 'geoapify:abc' && p.source === 'free' && p.phone === '01904 555 000' && p.website === 'https://smile.example/'
+    && p.address === '4 High St, York YO1 7HU, United Kingdom' && p.category === 'dentist', JSON.stringify(p));
+  ok('a place with no name is dropped', toGeoProspect({ properties: { place_id: 'x', categories: ['healthcare.dentist'] } }, 'healthcare.dentist') === null);
 }
 
 console.log(out.join('\n'));
