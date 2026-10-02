@@ -6,6 +6,7 @@
  */
 import type { Booking, ScheduleAvailability } from '../types';
 import { API_BASE } from './apiBase';
+import { withoutTwilio } from './legacyTwilio';
 
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -19,7 +20,7 @@ async function call(body: Record<string, unknown>): Promise<Record<string, unkno
 
 /** Owner: publish the schedule so visitors (and the reminder engine) can use it. */
 export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<boolean> {
-  const a = schedule.automations;
+  const a = withoutTwilio(schedule).automations;
   const res = await call({
     action: 'publish',
     token,
@@ -47,7 +48,10 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
          booking.ts never read it — reminders resolve the workspace's own
          mailbox server-side — so it was a copy of the credentials travelling
          for no reason at all. */
-      twilio: a ? { sid: a.twilioSid, token: a.twilioToken, from: a.twilioFrom } : {},
+      /* The Twilio SID and token that followed here are gone the same way:
+         nothing on the server read them, and a credential has no business in
+         a blob stored as plain text. Texts are sent from the workspace's
+         encrypted sender (services/smsStore.ts). */
       automations: a ?? {},
     },
   });

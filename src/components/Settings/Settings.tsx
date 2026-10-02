@@ -92,9 +92,13 @@ function TestBtn({ status, onTest, label = 'Test Connection' }: { status: TestSt
 
 /* ─── SMTP tab ─── */
 
-function loadSMS() {
-  try { return JSON.parse(localStorage.getItem('crm_sms') || 'null') ?? { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
-  catch { return { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' }; }
+/* The form starts empty, always. It used to start from `crm_sms` in
+   localStorage, which held the SID and auth token in plain text — so a saved
+   token was put back into the password box on every visit, and pressing Test
+   sent it to the server again. What is saved is the server's to say
+   (`fetchSmsStatus`): set or not set, never the value. */
+function loadSMS(): SmsConfig {
+  return { provider: 'twilio', accountSid: '', authToken: '', fromNumber: '' };
 }
 
 interface SmsConfig { provider: string; accountSid: string; authToken: string; fromNumber: string; }
@@ -456,7 +460,7 @@ function EmailSMSTab() {
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '5px' }}>From Phone Number</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <Phone size={16} color="#64748b" style={{ flexShrink: 0 }} />
-                <input value={sms.fromNumber} onChange={e => setSsf('fromNumber', e.target.value)} placeholder="+15551234567"
+                <input value={sms.fromNumber} onChange={e => setSsf('fromNumber', e.target.value)} placeholder="+15551234567" data-field="sms.from"
                   style={{ flex: 1, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none' }} />
               </div>
             </div>
@@ -1157,11 +1161,18 @@ export default function Settings() {
     try { return { ...fallback, ...(JSON.parse(localStorage.getItem('crm_notification_prefs') || 'null') ?? {}) }; } catch { return fallback; }
   });
 
+  /* Asked of the server: the credentials live there and nowhere else. */
+  const [smsConnected, setSmsConnected] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void fetchSmsStatus().then(st => { if (live) setSmsConnected(!!st?.hasCredentials); });
+    return () => { live = false; };
+  }, []);
+
   /* Connected-ness is read from whatever actually configures each one, so the
      badge cannot claim a connection that does not exist. The two with no
      integration behind them say so rather than offering a button that lies. */
   const integrations = (() => {
-    const sms = loadSMS();
     const stripe = loadStripeConfig();
     /* Whether mail is connected is one question with one answer now: has this
        workspace a mailbox the server has actually validated. */
@@ -1172,7 +1183,7 @@ export default function Settings() {
          not a mailbox that can send, and a badge claiming otherwise is how a
          campaign gets scheduled against a mailbox that has never worked. */
       { name: 'Email sending', description: primary ? `Sending from ${primary.fromEmail || primary.smtpHost}` : 'No mailbox connected yet', logo: '📧', connected: !!primary?.canSend, where: 'Email & SMS', tab: 'email-sms' },
-      { name: 'Twilio', description: 'Send and receive SMS', logo: '📱', connected: !!(sms.accountSid && sms.authToken), where: 'Email & SMS', tab: 'email-sms' },
+      { name: 'Twilio', description: 'Send and receive SMS', logo: '📱', connected: smsConnected, where: 'Email & SMS', tab: 'email-sms' },
       { name: 'Incoming mailbox', description: 'Read replies over IMAP', logo: '📥', connected: !!primary?.canReceive, where: 'Email & SMS', tab: 'email-sms' },
     ];
   })();

@@ -21,6 +21,7 @@ import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { newToken, timingSafeEqual } from '../lib/crypto';
 import { meetingForBooking } from './calendar';
 import { recordEvent, upsertPerson } from '../lib/engagement';
+import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
 
 interface BookingBody {
   action?: string;
@@ -74,18 +75,33 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       if (clash) return fail(`The link "${slug}" is already taken by another workspace. Choose a different one.`);
     }
 
+    /*
+     * No credential is stored with the page.
+     *
+     * The client used to send the reminder's Twilio SID and auth token here on
+     * every publish, and they were kept in plain text in `private` — read by
+     * nothing, because every SMS sender resolves the workspace's encrypted
+     * sender (`loadSmsConfig`). A client still on the old bundle may send them
+     * once more; they are kept as the sender if the workspace has none, and
+     * never written to this row.
+     */
+    const { clean: priv, found } = takeLegacyTwilio(d.private ?? {});
+    if (found) {
+      try { await adoptLegacyTwilio(env, accountId, found); } catch { /* publishing must not fail for this */ }
+    }
+
     await env.DB.prepare(
       `INSERT INTO crm_booking_config (account_id, slug, public, private, updated_at) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(account_id) DO UPDATE SET slug = excluded.slug, public = excluded.public,
                                              private = excluded.private, updated_at = excluded.updated_at`,
-    ).bind(accountId, slug || null, JSON.stringify(pub), JSON.stringify(d.private ?? {}), nowIso()).run();
+    ).bind(accountId, slug || null, JSON.stringify(pub), JSON.stringify(priv ?? {}), nowIso()).run();
     return ok({ slug });
   }
 
   /* ── Visitor: read the published page ──
      Public by necessity — the person booking has no account. Only the `public`
-     column is ever returned; `private` holds the SMTP and Twilio credentials
-     the reminders are sent with and never leaves the server. */
+     column is ever returned; `private` holds the automation switches and
+     never leaves the server either. Credentials are not kept here at all. */
   if (action === 'config') {
     const slug = String(d.slug ?? '').trim().toLowerCase();
     const accountId = String(d.accountId ?? '').trim();

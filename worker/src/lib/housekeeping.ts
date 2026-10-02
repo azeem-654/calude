@@ -31,6 +31,7 @@
  * to find what is writing it rather than to hide it behind a nightly trim.
  */
 import { metaGet, metaPut, nowIso, type Env } from './db';
+import { scrubLegacyTwilio } from './legacyTwilio';
 
 /** How long each table's rows are kept, in days. */
 const KEEP_DAYS = {
@@ -101,6 +102,11 @@ export async function runHousekeeping(env: Env): Promise<HousekeepingReport> {
   await sweep('DELETE FROM crm_rate_limits WHERE window_start < ?', daysAgo(KEEP_DAYS.rateLimits));
   await sweep('DELETE FROM crm_audit_events WHERE at < ?', daysAgo(KEEP_DAYS.audit));
   await sweep('DELETE FROM crm_webhook_events WHERE created_at < ?', daysAgo(KEEP_DAYS.webhooks));
+
+  /* Plaintext Twilio credentials the browser stored before they moved to the
+     server. Here because it is cleanup on the same hourly budget; it stamps
+     itself done after one clean pass and is a single meta read from then on. */
+  try { await scrubLegacyTwilio(env); } catch { /* retried next hour */ }
 
   /* Stamped after the work rather than before, so a run that died half way
      through is retried on the next tick instead of being skipped for an hour. */

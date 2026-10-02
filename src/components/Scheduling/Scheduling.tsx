@@ -8,13 +8,13 @@ import { useApp } from '../../context/AppContext';
 import type { DayAvailability, EventType, SchedulingAutomations, Booking } from '../../types';
 import { getSession } from '../../services/auth';
 import { publishBookingConfig, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
+import { fetchSmsState, saveSmsConfig, type SmsStatus } from '../../services/smsStore';
 
 const ET_COLORS = ['#17191c', '#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9'];
 
 const DEFAULT_AUTOMATIONS: SchedulingAutomations = {
   confirmEmail: true, ownerNotify: false, ownerEmail: '',
-  reminderEmail: true, reminderMinutes: 60, reminderSms: false,
-  twilioSid: '', twilioToken: '', twilioFrom: '',
+  reminderEmail: true, reminderMinutes: 60,
   followupEmail: false, followupText: '',
 };
 
@@ -357,7 +357,7 @@ export default function Scheduling() {
         {tab === 'automations' && (
           <div style={{ ...CARD, padding: 24 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Automations</h3>
-            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Calendly-style workflows — emails send through your SMTP settings (Settings → Email); SMS uses your Twilio account.</p>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>What should happen around a booking. Texts go from the workspace's SMS sender, which is kept on the server.</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Confirmation */}
@@ -397,7 +397,7 @@ export default function Scheduling() {
                   <Clock size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Reminder before the meeting</div>
-                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Email (and optional SMS) so guests actually show up.</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b' }}>An email so guests actually show up.</div>
                   </div>
                   <button onClick={() => setAuto({ reminderEmail: !auto.reminderEmail })}
                     style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.reminderEmail ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
@@ -412,23 +412,12 @@ export default function Scheduling() {
                         {[15, 30, 60, 120, 240, 1440].map(m => <option key={m} value={m}>{m < 60 ? `${m} minutes` : m === 1440 ? '24 hours' : `${m / 60} hours`} before</option>)}
                       </select>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
-                      <button onClick={() => setAuto({ reminderSms: !auto.reminderSms })}
-                        style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.reminderSms ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
-                        <div style={{ width: 18, height: 18, borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: 2, left: auto.reminderSms ? 20 : 2, transition: 'left 0.2s' }} />
-                      </button>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}><MessageSquare size={13} /> Also send SMS</span>
-                    </div>
-                  </div>
-                )}
-                {auto.reminderEmail && auto.reminderSms && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: 10, marginTop: 12 }}>
-                    <div><label style={LABEL}>Twilio Account SID</label><input value={auto.twilioSid} onChange={e => setAuto({ twilioSid: e.target.value })} placeholder="AC…" style={INPUT} /></div>
-                    <div><label style={LABEL}>Auth Token</label><input type="password" value={auto.twilioToken} onChange={e => setAuto({ twilioToken: e.target.value })} style={INPUT} /></div>
-                    <div><label style={LABEL}>From number</label><input value={auto.twilioFrom} onChange={e => setAuto({ twilioFrom: e.target.value })} placeholder="+15551234567" style={INPUT} /></div>
                   </div>
                 )}
               </div>
+
+              {/* Text reminders — the sender, not a switch */}
+              <SmsSenderCard />
 
               {/* Follow-up */}
               <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 18 }}>
@@ -451,7 +440,7 @@ export default function Scheduling() {
               </div>
 
               <div style={{ padding: '13px 18px', backgroundColor: '#eceef1', borderRadius: 12, border: '1px solid #d5d8dd', fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
-                Reminders and follow-ups are processed server-side whenever the booking page or your CRM is opened. Emails use the SMTP settings from <strong>Settings → Email</strong>; make sure they're configured.
+                These switches are saved with your booking page. Emails go from the mailbox in <strong>Settings → Email &amp; SMS</strong>; make sure one is connected and validated.
               </div>
             </div>
           </div>
@@ -674,6 +663,99 @@ export default function Scheduling() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The workspace's SMS sender, as this screen may know it: set or not set.
+ *
+ * ── What was here ──
+ *
+ * An "Also send SMS" switch with its own Twilio Account SID, auth token and
+ * sending number. They were kept in `crm_schedule` — localStorage, synced in
+ * plain text to the database — and resent with every publish into the booking
+ * page's private blob. Nothing ever sent a text with them: the switch was not
+ * read by anything on the server, and every SMS that does go out (Autopilot's
+ * appointment reminders, an automation's text step) uses the workspace's own
+ * sender, encrypted in `crm_sms_config`.
+ *
+ * ── What is here now ──
+ *
+ * That sender, through the same server action as Settings → Email & SMS: the
+ * boxes post to `sms-send.php save`, which is session- and workspace-checked
+ * and encrypts what it is given, and are emptied once it has. The screen is
+ * told only whether a sender is saved and checked — never a value, not even
+ * a tail. Blank boxes on save keep what is stored, and any save clears the
+ * checked stamp, as everywhere else a credential is kept.
+ *
+ * No switch claims that a text goes out from here, because none does.
+ */
+function SmsSenderCard() {
+  const [st, setSt] = useState<{ reachable: boolean; sms: SmsStatus | null } | null>(null);
+  const [sid, setSid] = useState('');
+  const [token, setToken] = useState('');
+  const [from, setFrom] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = async () => {
+    const r = await fetchSmsState();
+    setSt(r);
+    if (r.sms?.fromNumber) setFrom(f => f || r.sms!.fromNumber);
+  };
+  useEffect(() => { void load(); }, []);
+
+  const set = !!st?.sms?.hasCredentials;
+  const save = async () => {
+    setBusy(true); setNote(null);
+    const r = await saveSmsConfig({ accountSid: sid.trim(), authToken: token.trim(), fromNumber: from.trim() });
+    setBusy(false);
+    if (!r.success) { setNote({ ok: false, text: r.error ?? 'The sender could not be saved.' }); return; }
+    /* Gone from the page the moment the server has them. */
+    setSid(''); setToken('');
+    setNote({ ok: true, text: 'Saved on the server. Check it with Test in Settings → Email & SMS before relying on it.' });
+    await load();
+  };
+
+  const status = !st ? 'Checking…'
+    : !st.reachable ? 'Could not ask the server whether a sender is saved.'
+    : !set ? 'Not set — no texts can be sent from this workspace.'
+    : st.sms?.verifiedAt ? `Set, and Twilio accepted it on ${new Date(st.sms.verifiedAt).toLocaleDateString()}.`
+    : st.sms?.lastError ? `Set, but the last check failed: ${st.sms.lastError}`
+    : 'Set, not checked yet.';
+  const tone = !st || !st.reachable ? '#64748b' : !set ? '#b45309' : st.sms?.verifiedAt ? '#15803d' : st.sms?.lastError ? '#b42318' : '#64748b';
+
+  return (
+    <div style={{ border: '1px solid #e6e9f0', borderRadius: 14, padding: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 12 }}>
+        <MessageSquare size={18} color="#0d9488" style={{ flexShrink: 0, marginTop: 2 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>SMS sender</div>
+          <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>
+            The reminder above is not texted. When Autopilot is running for this workspace, it reminds a guest
+            who left a phone number the day before, by text from this sender — the same one as Settings → Email &amp; SMS.
+          </div>
+          <div data-testid="sms-sender-status" style={{ fontSize: 12.5, fontWeight: 600, color: tone, marginTop: 8 }}>{status}</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: 10 }}>
+        <div><label style={LABEL} htmlFor="sms-sid">Twilio Account SID</label>
+          <input id="sms-sid" data-field="sms.accountSid" value={sid} onChange={e => setSid(e.target.value)} autoComplete="off"
+            placeholder={set ? 'Saved — leave blank to keep' : 'AC…'} style={INPUT} /></div>
+        <div><label style={LABEL} htmlFor="sms-token">Auth token</label>
+          <input id="sms-token" data-field="sms.authToken" type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="new-password"
+            placeholder={set ? 'Saved — leave blank to keep' : ''} style={INPUT} /></div>
+        <div><label style={LABEL} htmlFor="sms-from">From number</label>
+          <input id="sms-from" data-field="sms.from" value={from} onChange={e => setFrom(e.target.value)} placeholder="+15551234567" style={INPUT} /></div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+        <button onClick={() => void save()} disabled={busy || (!sid.trim() && !token.trim() && from.trim() === (st?.sms?.fromNumber ?? ''))}
+          style={{ padding: '8px 16px', borderRadius: 9, border: 'none', background: '#17191c', color: '#fff', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Saving…' : set ? 'Update sender' : 'Save sender'}
+        </button>
+        {note && <span role={note.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, color: note.ok ? '#15803d' : '#b42318' }}>{note.text}</span>}
       </div>
     </div>
   );

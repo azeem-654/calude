@@ -6,6 +6,7 @@ import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
 import { onServerRejection, CLOUD_REFRESH_EVENT } from '../services/serverData';
 import { fireEvent } from '../services/engagement';
+import { withoutTwilio } from '../services/legacyTwilio';
 
 interface Notification {
   id: string;
@@ -269,7 +270,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
   };
 
-  const [schedule, setSchedule] = useState<ScheduleAvailability>(() => loadLS('crm_schedule', defaultSchedule));
+  /* `withoutTwilio`: a schedule saved before the reminder's Twilio token moved
+     to the server must not carry it back into state, where the next edit would
+     write it to storage and sync it up again. */
+  const [schedule, setSchedule] = useState<ScheduleAvailability>(() => withoutTwilio(loadLS('crm_schedule', defaultSchedule)));
   const [bookings, setBookings] = useState<Booking[]>(() => loadLS('crm_bookings', []));
 
   /**
