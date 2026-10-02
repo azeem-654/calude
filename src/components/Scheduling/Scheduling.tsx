@@ -7,6 +7,7 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { DayAvailability, EventType, SchedulingAutomations, Booking } from '../../types';
 import { getSession } from '../../services/auth';
+import { customerBusinessName } from '../../services/tenancy';
 import { publishBookingConfig, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
 
 const ET_COLORS = ['#17191c', '#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9'];
@@ -67,7 +68,8 @@ export default function Scheduling() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [bookingFilter, setBookingFilter] = useState<'all' | 'confirmed' | 'cancelled' | 'completed'>('all');
   const [remoteBookings, setRemoteBookings] = useState<Booking[]>([]);
-  const [pubState, setPubState] = useState<'idle' | 'saving' | 'published' | 'local'>('idle');
+  const [pubState, setPubState] = useState<'idle' | 'saving' | 'published' | 'local' | 'refused'>('idle');
+  const [pubError, setPubError] = useState('');
   const pubTimer = useRef<number | undefined>(undefined);
 
   const auto: SchedulingAutomations = { ...DEFAULT_AUTOMATIONS, ...(schedule.automations ?? {}) };
@@ -81,15 +83,31 @@ export default function Scheduling() {
     listRemoteBookings(token).then(list => { if (list) setRemoteBookings(list); });
   }, []);
 
-  /* Auto-publish the schedule so the public page + reminder engine stay in sync. */
+  /*
+   * Every workspace starts on the slug 'meeting', and a slug is unique across
+   * the install — so only the first customer ever to publish could hold it, and
+   * every other one would be told their brand-new page was taken by another
+   * workspace. An untouched default becomes the business's own name with a
+   * short tail before it is first published; one somebody typed is theirs.
+   */
+  useEffect(() => {
+    if (schedule.slug && schedule.slug !== 'meeting') return;
+    const base = customerBusinessName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'meet';
+    updateSchedule({ slug: `${base}-${Math.random().toString(36).slice(2, 6)}` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule.slug]);
+
+  /* Auto-publish the schedule so the public page stays in sync. */
   useEffect(() => {
     const token = getSession()?.token;
     if (!token) { setPubState('local'); return; }
+    if (!schedule.slug || schedule.slug === 'meeting') return;   // the effect above is about to give it one
     setPubState('saving');
     window.clearTimeout(pubTimer.current);
     pubTimer.current = window.setTimeout(async () => {
-      const ok = await publishBookingConfig(token, schedule);
-      setPubState(ok ? 'published' : 'local');
+      const res = await publishBookingConfig(token, schedule);
+      setPubError(res.error ?? '');
+      setPubState(res.ok ? 'published' : 'refused');
     }, 1200);
     return () => window.clearTimeout(pubTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,11 +220,22 @@ export default function Scheduling() {
         </div>
 
         {/* Publish state */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, fontSize: 12.5, fontWeight: 600, color: pubState === 'published' ? '#16a34a' : pubState === 'local' ? '#b45309' : '#64748b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 14, fontSize: 12.5, fontWeight: 600, color: pubState === 'published' ? '#16a34a' : pubState === 'local' || pubState === 'refused' ? '#b45309' : '#64748b' }}>
           <CloudUpload size={14} />
           {pubState === 'saving' ? 'Publishing booking page…'
             : pubState === 'published' ? 'Booking page live — visitors see your latest settings, and their bookings appear here automatically.'
-            : pubState === 'local' ? "Couldn't publish the booking page — make sure you're signed in and the site is deployed, then reopen this page."
+            : pubState === 'local' ? 'Sign in again to publish the booking page — until then the link above does not work.'
+            /* The server's own reason ("taken by another workspace", "lowercase
+               letters only"): the old fixed text blamed the session or the
+               deployment for every refusal, neither of which the owner could fix. */
+            : pubState === 'refused' ? <>
+                <span>Not published, so the link above does not work yet: {pubError}</span>
+                {tab !== 'settings' && (
+                  <button onClick={() => setTab('settings')} style={{ border: 'none', background: 'none', padding: 0, color: '#17191c', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 12.5 }}>
+                    Change the link
+                  </button>
+                )}
+              </>
             : ''}
         </div>
 

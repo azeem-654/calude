@@ -21,6 +21,8 @@ import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { newToken, timingSafeEqual } from '../lib/crypto';
 import { meetingForBooking } from './calendar';
 import { recordEvent, upsertPerson } from '../lib/engagement';
+import { canSend, deliver, fromAddressOf } from '../lib/deliver';
+import { loadMailbox } from './mailbox';
 
 interface BookingBody {
   action?: string;
@@ -44,6 +46,83 @@ interface BookingBody {
 }
 
 const SLUG_OK = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** "Tuesday 6 October 2026 at 2:30 pm" — the slot as the owner published it. */
+function slotWords(date: string, time: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const [h, mi] = time.split(':').map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return `${day} at ${h % 12 || 12}:${String(mi).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
+}
+
+/**
+ * The emails a booking promises: the guest's confirmation (with the link that
+ * lets them move or cancel it) and, if the owner asked, a note to the owner.
+ *
+ * The booking page said "a confirmation email is on its way" and the
+ * Automations tab offered both switches, and nothing anywhere sent either —
+ * guests were left with no record of the appointment and no way back to it.
+ * These go from the workspace's own mailbox, through the one door; a failure
+ * never fails the booking, and what was actually sent is returned so the page
+ * only says "on its way" when it is.
+ */
+async function bookingMail(
+  env: Env, accountId: string, origin: string,
+  what: 'booked' | 'rescheduled' | 'cancelled',
+  b: { id: string; key: string; slotDate: string; slotTime: string; guestName: string; guestEmail: string; notes?: string; meetingUrl?: string },
+): Promise<{ guest: boolean }> {
+  try {
+    const cfg = await env.DB.prepare('SELECT public, private FROM crm_booking_config WHERE account_id = ?')
+      .bind(accountId).first<{ public: string; private: string }>();
+    if (!cfg) return { guest: false };
+    let pub: Record<string, unknown> = {};
+    let auto: Record<string, unknown> = {};
+    try { pub = JSON.parse(cfg.public || '{}') as Record<string, unknown>; } catch { /* defaults */ }
+    try { auto = ((JSON.parse(cfg.private || '{}') as { automations?: Record<string, unknown> }).automations ?? {}); } catch { /* defaults */ }
+
+    const mb = await loadMailbox(env, accountId);
+    if (!canSend(mb)) return { guest: false };
+    const fromEmail = fromAddressOf(mb);
+    if (!fromEmail) return { guest: false };
+
+    const title = String(pub.title || 'Meeting');
+    const when = slotWords(b.slotDate, b.slotTime);
+    const tz = String(pub.timezone || '');
+    const location = String(pub.location || '');
+    const manageUrl = `${origin}/book?manage=${encodeURIComponent(b.id)}.${encodeURIComponent(b.key)}`;
+    const first = b.guestName.trim().split(/\s+/)[0] || 'there';
+    const button = (href: string, label: string) =>
+      `<p><a href="${esc(href)}" style="display:inline-block;padding:11px 22px;background:#17191c;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">${esc(label)}</a></p>`;
+
+    let guest = false;
+    /* On unless the owner switched it off — the default the switch shows. */
+    if (auto.confirmEmail !== false) {
+      const lead = what === 'cancelled' ? `Your ${esc(title)} on ${esc(when)} is cancelled.`
+        : what === 'rescheduled' ? `Your ${esc(title)} has moved to <strong>${esc(when)}</strong>${tz ? ` (${esc(tz)})` : ''}.`
+          : `You're booked: <strong>${esc(title)}</strong> on <strong>${esc(when)}</strong>${tz ? ` (${esc(tz)})` : ''}.`;
+      const html = `<p>Hi ${esc(first)},</p><p>${lead}</p>`
+        + (what !== 'cancelled' && location ? `<p>Where: ${esc(location)}</p>` : '')
+        + (what !== 'cancelled' && b.meetingUrl ? `<p>Join: <a href="${esc(b.meetingUrl)}">${esc(b.meetingUrl)}</a></p>` : '')
+        + (what === 'cancelled' ? '' : button(manageUrl, 'Reschedule or cancel'));
+      const subject = what === 'cancelled' ? `Cancelled: ${title}` : what === 'rescheduled' ? `Moved: ${title}, ${when}` : `Confirmed: ${title}, ${when}`;
+      const r = await deliver(mb, { fromName: mb.from.name || title, fromEmail, to: b.guestEmail, subject, html, replyTo: mb.from.replyTo || undefined });
+      guest = r.ok;
+    }
+
+    const ownerTo = auto.ownerNotify ? addr(auto.ownerEmail) : null;
+    if (ownerTo) {
+      const verb = what === 'cancelled' ? 'cancelled' : what === 'rescheduled' ? 'moved' : 'booked';
+      const html = `<p>${esc(b.guestName)} (${esc(b.guestEmail)}) ${verb} <strong>${esc(title)}</strong> — ${esc(when)}${tz ? ` (${esc(tz)})` : ''}.</p>`
+        + (b.notes ? `<p>Notes: ${esc(b.notes)}</p>` : '');
+      await deliver(mb, { fromName: mb.from.name || title, fromEmail, to: ownerTo, subject: `${b.guestName} ${verb}: ${title}, ${when}`, html, replyTo: b.guestEmail });
+    }
+    return { guest };
+  } catch {
+    return { guest: false };
+  }
+}
 const DATE_OK = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_OK = /^\d{2}:\d{2}$/;
 
@@ -217,10 +296,14 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       });
     } catch { /* the booking is the thing that had to be saved */ }
 
+    const mail = await bookingMail(env, accountId, new URL(req.url).origin, 'booked', {
+      id, key: manageKey, slotDate, slotTime, guestName, guestEmail, notes: data.notes, meetingUrl,
+    });
+
     /* Returned so the confirmation screen can show it rather than promising a
        link that may not exist. Empty means no calendar is connected, which the
        booking page says plainly instead of leaving a blank. */
-    return json({ success: true, id, key: manageKey, meetingUrl });
+    return json({ success: true, id, key: manageKey, meetingUrl, emailed: mail.guest });
   }
 
   /* ── Guest: manage their own booking, proven by the key in their link ── */
@@ -247,9 +330,19 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       });
     }
 
+    let guestData: { guestName?: string; guestEmail?: string; notes?: string } = {};
+    try { guestData = JSON.parse(row.data || '{}'); } catch { /* nothing to address */ }
+    const mailFor = (slotDate: string, slotTime: string) => ({
+      id, key, slotDate, slotTime,
+      guestName: String(guestData.guestName ?? ''), guestEmail: String(guestData.guestEmail ?? ''), notes: guestData.notes,
+    });
+
     if (action === 'cancel') {
       await env.DB.prepare("UPDATE crm_bookings SET status = 'cancelled' WHERE id = ?").bind(id).run();
-      return ok();
+      const mail = guestData.guestEmail && row.status !== 'cancelled'
+        ? await bookingMail(env, row.account_id, new URL(req.url).origin, 'cancelled', mailFor(row.slot_date, row.slot_time))
+        : { guest: false };
+      return ok({ emailed: mail.guest });
     }
 
     const newDate = String(d.slotDate ?? '');
@@ -261,7 +354,10 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     if (clash) return fail('That time was just booked — please pick another slot.');
     await env.DB.prepare("UPDATE crm_bookings SET slot_date = ?, slot_time = ?, status = 'confirmed' WHERE id = ?")
       .bind(newDate, newTime, id).run();
-    return ok();
+    const mail = guestData.guestEmail
+      ? await bookingMail(env, row.account_id, new URL(req.url).origin, 'rescheduled', mailFor(newDate, newTime))
+      : { guest: false };
+    return ok({ emailed: mail.guest });
   }
 
   /* ── Owner: see and manage the bookings taken ── */

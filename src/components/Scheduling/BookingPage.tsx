@@ -81,44 +81,44 @@ export default function BookingPage() {
 
   const visitorTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  /* Load the published config; fall back to this browser's local schedule. */
+  /* The workspace whose page this is. Every visitor call — the taken slots,
+     the booking itself — is filed under it, and none of them used to carry it,
+     so the server refused every booking with "a workspace is required". */
+  const [pageAccount, setPageAccount] = useState('');
+  const [emailed, setEmailed] = useState(false);
+
+  /* Load the published config; fall back to this browser's local schedule.
+
+     A guest's manage link names its booking, and the booking names its
+     workspace — so the page is found from that, not from the slug. Looking it
+     up by a bare /book fell through to "no booking page" on any install with
+     more than one, and the guest could neither cancel nor move the meeting. */
   useEffect(() => {
     let alive = true;
-    fetchPublicConfig(slug).then(res => {
-      if (!alive) return;
-      if (res && 'notFound' in res) { setUnknownLink(true); return; }
-      setRemoteCfg(res?.config ?? null);
-    });
     const params = new URLSearchParams(window.location.search);
     const m = params.get('manage');
+    const loadConfig = (accountId?: string) => fetchPublicConfig(accountId ? undefined : slug, accountId).then(res => {
+      if (!alive) return;
+      if (res && 'notFound' in res) { setUnknownLink(true); return; }
+      if (res?.accountId) setPageAccount(res.accountId);
+      setRemoteCfg(res?.config ?? null);
+    });
     if (m && m.includes('.')) {
       const [id, key] = m.split('.');
       getRemoteBooking(id, key).then(b => {
         if (!alive) return;
         setManage({ id, key, booking: b });
         setStep('manage');
+        const owner = (b as (Booking & { accountId?: string }) | null)?.accountId;
+        if (owner) void loadConfig(owner);
+        else setRemoteCfg(null);
       });
+    } else {
+      void loadConfig();
     }
     return () => { alive = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
-
-  /* A link that matches no published page. Rendering the default one instead
-     would let a visitor book the wrong business entirely on a multi-tenant
-     install — the failure has to be visible. */
-  if (unknownLink) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f2f4f6', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <div style={{ maxWidth: 420, background: '#fff', borderRadius: 16, padding: 32, boxShadow: '0 6px 24px rgba(16,24,40,.08)', textAlign: 'center' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: '#17191c', margin: '0 auto 16px' }} />
-          <h1 style={{ fontSize: 19, margin: '0 0 8px', color: '#0f172a' }}>This booking link does not exist</h1>
-          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#475569', margin: 0 }}>
-            Check the address, or ask whoever sent it for an up-to-date link.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   // Effective schedule = published config when available, else local (dev/preview).
   const cfg: ScheduleAvailability = useMemo(() => {
@@ -156,6 +156,27 @@ export default function BookingPage() {
     while (arr.length % 7 !== 0) arr.push(null);
     return arr;
   }, [year, month, firstDayOfWeek, daysInMonth]);
+
+  /* After every hook, not before: returning early above them rendered fewer
+     hooks than the first pass and React threw, so a mistyped link white-screened
+     instead of saying so.
+
+     A link that matches no published page. Rendering the default one instead
+     would let a visitor book the wrong business entirely on a multi-tenant
+     install — the failure has to be visible. */
+  if (unknownLink) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f2f4f6', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ maxWidth: 420, background: '#fff', borderRadius: 16, padding: 32, boxShadow: '0 6px 24px rgba(16,24,40,.08)', textAlign: 'center' }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: '#17191c', margin: '0 auto 16px' }} />
+          <h1 style={{ fontSize: 19, margin: '0 0 8px', color: '#0f172a' }}>This booking link does not exist</h1>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#475569', margin: 0 }}>
+            Check the address, or ask whoever sent it for an up-to-date link.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const dateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
@@ -221,9 +242,9 @@ export default function BookingPage() {
     if (!isDayAvailable(date)) return;
     setSelectedDate(date);
     setSelectedTime(null);
-    if (usingServer) {
+    if (usingServer && pageAccount) {
       const ds = dateKey(date);
-      const booked = await fetchBookedSlots(ds);
+      const booked = await fetchBookedSlots(pageAccount, ds);
       if (booked) setBookedRemote(prev => ({ ...prev, [ds]: booked }));
     }
   };
@@ -279,6 +300,7 @@ export default function BookingPage() {
       const res = await rescheduleRemoteBooking(manage.id, manage.key, dateStr, selectedTime);
       setSubmitting(false);
       if (!res.ok) { setError(res.error || 'Reschedule failed.'); return; }
+      setEmailed(!!res.emailed);
       setConfirmed({ date: dateStr, time: selectedTime, name: manage.booking?.guestName ?? '', manageUrl: `${window.location.origin}/book?manage=${manage.id}.${manage.key}` });
       setStep('confirmed');
       return;
@@ -286,21 +308,28 @@ export default function BookingPage() {
 
     // Server first (real cross-device booking + emails), local fallback.
     const res = await createRemoteBooking({
+      accountId: pageAccount,
       eventTypeId: eventType?.id,
       slotDate: dateStr, slotTime: selectedTime,
       guestName: guestForm.name.trim(), guestEmail: guestForm.email.trim(),
       guestPhone: guestForm.phone.trim(), notes: guestForm.notes.trim(), timezone: visitorTz,
     });
-    if (!res.ok && res.error !== 'unreachable') {
+    /* Unreachable used to fall through to "You're booked!" with the booking
+       saved only in the visitor's own browser, where the business never sees
+       it. A visitor told they are booked does not try again. */
+    if (!res.ok) {
       setSubmitting(false);
-      setError(res.error || 'Booking failed — please pick another slot.');
+      setError(res.error === 'unreachable'
+        ? 'We could not reach the booking service, so nothing was booked. Check your connection and try again.'
+        : res.error || 'Booking failed — please pick another slot.');
       return;
     }
+    setEmailed(!!res.emailed);
     finalizeLocalRecords(dateStr, selectedTime);
     setSubmitting(false);
     setConfirmed({
       date: dateStr, time: selectedTime, name: guestForm.name,
-      manageUrl: res.ok && res.id ? `${window.location.origin}/book?manage=${res.id}.${res.key}` : undefined,
+      manageUrl: res.id ? `${window.location.origin}/book?manage=${res.id}.${res.key}` : undefined,
     });
     setStep('confirmed');
   };
@@ -344,7 +373,9 @@ export default function BookingPage() {
                     Reschedule
                   </button>
                   <button onClick={async () => {
-                    if (manage && await cancelRemoteBooking(manage.id, manage.key)) setStep('cancelled');
+                    if (!manage) return;
+                    const r = await cancelRemoteBooking(manage.id, manage.key);
+                    if (r.ok) { setEmailed(r.emailed); setStep('cancelled'); }
                   }}
                     style={{ flex: 1, padding: '12px', backgroundColor: 'white', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Cancel booking
@@ -366,7 +397,7 @@ export default function BookingPage() {
             <X size={30} color="#dc2626" />
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>Booking cancelled</h1>
-          <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>A cancellation confirmation has been emailed to you. You can book a new time any time.</p>
+          <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>{emailed ? 'A cancellation confirmation has been emailed to you. ' : ''}You can book a new time any time.</p>
         </div>
       </div>
     );
@@ -381,7 +412,9 @@ export default function BookingPage() {
             <Check size={36} color="white" />
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>{rescheduling ? 'Rescheduled!' : "You're booked!"}</h1>
-          <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 24px' }}>A confirmation email is on its way to you.</p>
+          <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 24px' }}>
+            {emailed ? 'A confirmation email is on its way to you.' : 'Keep a note of it — add it to your calendar below.'}
+          </p>
           <div style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: 20, border: '1px solid #e2e8f0', marginBottom: 20, textAlign: 'left' }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{activeTitle}</div>
             <div style={{ fontSize: 14, color: '#374151', marginBottom: 4 }}>
@@ -647,7 +680,7 @@ export default function BookingPage() {
                 {submitting ? 'Booking...' : 'Confirm Booking'}
               </button>
               <p style={{ margin: 0, fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
-                You'll get a confirmation email with reschedule & cancel links.
+                After booking you can add it to your calendar, and reschedule or cancel from the confirmation.
               </p>
             </div>
           </div>
@@ -665,6 +698,7 @@ export default function BookingPage() {
     const res = await rescheduleRemoteBooking(manage.id, manage.key, dateStr, slot);
     setSubmitting(false);
     if (!res.ok) { setError(res.error || 'Reschedule failed.'); return; }
+    setEmailed(!!res.emailed);
     setConfirmed({ date: dateStr, time: slot, name: manage.booking?.guestName ?? '', manageUrl: `${window.location.origin}/book?manage=${manage.id}.${manage.key}` });
     setStep('confirmed');
   }

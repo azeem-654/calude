@@ -6,6 +6,7 @@
  */
 import type { Booking, ScheduleAvailability } from '../types';
 import { API_BASE } from './apiBase';
+import { getActiveAccountId } from './tenancy';
 
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -17,13 +18,24 @@ async function call(body: Record<string, unknown>): Promise<Record<string, unkno
   } catch { return null; }
 }
 
-/** Owner: publish the schedule so visitors (and the reminder engine) can use it. */
-export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<boolean> {
+/**
+ * Owner: publish the schedule so visitors (and the reminder engine) can use it.
+ *
+ * The workspace and the slug are what the server files the page under, and
+ * neither was ever sent: every publish was refused with "a workspace is
+ * required", so no booking page on the install had ever gone live and every
+ * /book/<slug> link answered "this booking link does not exist". The refusal
+ * comes back with it, because "taken by another workspace" is something the
+ * owner can act on and "could not publish" is not.
+ */
+export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<{ ok: boolean; error?: string }> {
   const a = schedule.automations;
   const res = await call({
     action: 'publish',
     token,
+    accountId: getActiveAccountId() ?? '',
     public: {
+      slug: schedule.slug,
       title: schedule.title,
       description: schedule.description,
       duration: schedule.duration,
@@ -51,7 +63,8 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       automations: a ?? {},
     },
   });
-  return !!(res && res.success);
+  if (!res) return { ok: false, error: 'The server could not be reached.' };
+  return res.success ? { ok: true } : { ok: false, error: String(res.error ?? res.message ?? 'The booking page could not be published.') };
 }
 
 /**
@@ -63,10 +76,12 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
  * business entirely. Returns `notFound` so the page can say so rather than
  * showing somebody else's availability.
  */
-export async function fetchPublicConfig(slug?: string): Promise<
+export async function fetchPublicConfig(slug?: string, accountId?: string): Promise<
   { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string } | { notFound: true } | null
 > {
-  const res = await call(slug ? { action: 'config', slug } : { action: 'config' });
+  /* By workspace only for a guest's manage link, which names its booking and
+     so its workspace; a visitor arriving cold is found by slug. */
+  const res = await call(slug ? { action: 'config', slug } : accountId ? { action: 'config', accountId } : { action: 'config' });
   if (!res) return null;
   if (res.notFound) return { notFound: true };
   if (!res.success || !res.config) return null;
@@ -76,20 +91,20 @@ export async function fetchPublicConfig(slug?: string): Promise<
   };
 }
 
-/** Visitor: booked slots for a given date. */
-export async function fetchBookedSlots(date: string): Promise<{ time: string; duration: number }[] | null> {
-  const res = await call({ action: 'slots', date });
+/** Visitor: booked slots for a given date, in the workspace whose page this is. */
+export async function fetchBookedSlots(accountId: string, date: string): Promise<{ time: string; duration: number }[] | null> {
+  const res = await call({ action: 'slots', accountId, date });
   if (!res || !res.success) return null;
   return (res.booked as { time: string; duration: number }[]) ?? [];
 }
 
 export async function createRemoteBooking(payload: {
-  eventTypeId?: string; slotDate: string; slotTime: string;
+  accountId: string; eventTypeId?: string; slotDate: string; slotTime: string;
   guestName: string; guestEmail: string; guestPhone?: string; notes?: string; timezone?: string;
-}): Promise<{ ok: boolean; id?: string; key?: string; error?: string }> {
+}): Promise<{ ok: boolean; id?: string; key?: string; error?: string; emailed?: boolean }> {
   const res = await call({ action: 'create', ...payload });
   if (!res) return { ok: false, error: 'unreachable' };
-  if (res.success) return { ok: true, id: res.id as string, key: res.key as string };
+  if (res.success) return { ok: true, id: res.id as string, key: res.key as string, emailed: res.emailed === true };
   return { ok: false, error: (res.error as string) || 'Booking failed.' };
 }
 
@@ -98,26 +113,28 @@ export async function getRemoteBooking(id: string, key: string): Promise<Booking
   return res && res.success ? (res.booking as Booking) : null;
 }
 
-export async function cancelRemoteBooking(id: string, key: string): Promise<boolean> {
+/* `emailed` is whether the server's mail was accepted — the page says "emailed
+   to you" only then, rather than promising a message that never left. */
+export async function cancelRemoteBooking(id: string, key: string): Promise<{ ok: boolean; emailed: boolean }> {
   const res = await call({ action: 'cancel', id, key });
-  return !!(res && res.success);
+  return { ok: !!(res && res.success), emailed: res?.emailed === true };
 }
 
-export async function rescheduleRemoteBooking(id: string, key: string, slotDate: string, slotTime: string): Promise<{ ok: boolean; error?: string }> {
+export async function rescheduleRemoteBooking(id: string, key: string, slotDate: string, slotTime: string): Promise<{ ok: boolean; error?: string; emailed?: boolean }> {
   const res = await call({ action: 'reschedule', id, key, slotDate, slotTime });
   if (!res) return { ok: false, error: 'unreachable' };
-  return res.success ? { ok: true } : { ok: false, error: (res.error as string) || 'Reschedule failed.' };
+  return res.success ? { ok: true, emailed: res.emailed === true } : { ok: false, error: (res.error as string) || 'Reschedule failed.' };
 }
 
 /** Owner: all server-side bookings. */
 export async function listRemoteBookings(token: string): Promise<Booking[] | null> {
-  const res = await call({ action: 'list', token });
+  const res = await call({ action: 'list', token, accountId: getActiveAccountId() ?? '' });
   if (!res || !res.success) return null;
   return ((res.bookings as Booking[]) ?? []).map(b => ({ ...b, remote: true }));
 }
 
 export async function setRemoteBookingStatus(token: string, id: string, status: 'confirmed' | 'cancelled' | 'completed'): Promise<boolean> {
-  const res = await call({ action: 'set_status', token, id, status });
+  const res = await call({ action: 'set_status', token, accountId: getActiveAccountId() ?? '', id, status });
   return !!(res && res.success);
 }
 
