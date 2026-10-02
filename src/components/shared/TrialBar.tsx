@@ -58,7 +58,7 @@ export default function TrialBar() {
         </div>
       );
     }
-    return <TrialEnded kickoffUrl={acct?.kickoffUrl ?? ''} onBilling={() => nav('/billing')} />;
+    return <TrialEnded kickoffUrl={acct?.kickoffUrl ?? ''} onBilling={() => nav('/billing')} onExport={() => nav('/settings?tab=security')} />;
   }
 
   if (t.kind !== 'trial') return null;
@@ -88,7 +88,7 @@ export default function TrialBar() {
   );
 }
 
-function TrialEnded({ kickoffUrl, onBilling }: { kickoffUrl: string; onBilling: () => void }) {
+function TrialEnded({ kickoffUrl, onBilling, onExport }: { kickoffUrl: string; onBilling: () => void; onExport: () => void }) {
   const session = getSession();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -114,7 +114,7 @@ function TrialEnded({ kickoffUrl, onBilling }: { kickoffUrl: string; onBilling: 
         </h2>
         <p style={{ margin: '8px 0 20px', color: '#5b6270', fontSize: 14.5, lineHeight: 1.6 }}>
           Everything you built is still here. Choose a plan to keep Autopilot, the AI writing and your workflows running.
-          You can still export your data from Settings at any time.
+          You can still download all of it, at any time, from Settings → Security &amp; Privacy.
         </p>
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
           {PLANS.map((p, i) => (
@@ -139,6 +139,9 @@ function TrialEnded({ kickoffUrl, onBilling }: { kickoffUrl: string; onBilling: 
             </a>
           )}
           <button type="button" style={{ ...GHOST, padding: '9px 14px' }} onClick={onBilling}>Plan &amp; billing</button>
+          {/* The export is the one thing promised above that this dialog does
+              not cover; a sentence naming a tab is a hunt, a button is not. */}
+          <button type="button" style={{ ...GHOST, padding: '9px 14px' }} onClick={onExport}>Download my data</button>
           <button type="button" style={{ ...GHOST, padding: '9px 14px', marginLeft: 'auto' }}
             onClick={() => { void logout().then(() => window.location.reload()); }}>
             <X size={14} /> Sign out
