@@ -37,6 +37,12 @@ function fmtTime(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** The fields the profile's edit form shows — and so the only ones it saves. */
+const EDITABLE = [
+  'firstName', 'lastName', 'email', 'phone', 'company', 'jobTitle', 'source', 'address',
+  'linkedin', 'twitter', 'website', 'assignedTo', 'status',
+] as const satisfies readonly (keyof Contact)[];
+
 const statusColors: Record<string, { bg: string; color: string }> = {
   lead: { bg: '#eff6ff', color: '#2563eb' },
   prospect: { bg: '#fef3c7', color: '#d97706' },
@@ -104,15 +110,41 @@ export default function ContactProfile({ contact, onClose }: Props) {
   const runAction = (a: NextAction) => {
     if (a.action === 'email') setTab('email');
     else if (a.action === 'task') setTab('tasks');
-    else if (a.action === 'profile') { setEditing(true); setTab('overview'); }
+    else if (a.action === 'profile') { startEdit(); setTab('overview'); }
     else if (a.action === 'deal') setTab('deals');
     else if (a.action === 'schedule') setTab('meetings');
     else if (a.action === 'call' && contact.phone) window.location.href = `tel:${contact.phone}`;
     else setTab('activity');
   };
 
+  /*
+   * The form is seeded from the contact as it is *now*, each time editing
+   * starts. It was a copy taken when the profile opened, saved back whole — so
+   * a note, task or tag added while the profile was open was erased by the
+   * next "Save Changes", and the first/last name boxes of any contact without
+   * those fields (every import, every quick add) opened empty.
+   */
+  const firstOf = (c: Contact) => c.firstName || c.name.split(' ')[0] || '';
+  const lastOf = (c: Contact) => c.lastName || c.name.split(' ').slice(1).join(' ') || '';
+  const startEdit = () => {
+    setEditForm({ ...contact, firstName: firstOf(contact), lastName: lastOf(contact) });
+    setEditing(true);
+  };
+
   const saveEdit = () => {
-    updateContact(contact.id, editForm);
+    /* Only what the form shows. Everything else on the contact belongs to
+       whatever last changed it, not to this form's copy. */
+    const patch: Partial<Contact> = {};
+    for (const k of EDITABLE) (patch as Record<string, unknown>)[k] = editForm[k];
+    const first = (editForm.firstName || '').trim();
+    const last = (editForm.lastName || '').trim();
+    /* The list, the header and every merge field read `name`; a renamed
+       contact whose `name` stayed put looked as though the edit was lost. */
+    if (first !== firstOf(contact) || last !== lastOf(contact)) {
+      const name = `${first} ${last}`.trim();
+      if (name) patch.name = name;
+    }
+    updateContact(contact.id, patch);
     setEditing(false);
     addContactActivity(contact.id, { type: 'note', description: 'Profile updated', timestamp: new Date().toISOString() });
   };
@@ -204,7 +236,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               <HealthRing health={health} />
-              <button onClick={() => { setEditing(e => !e); setTab('overview'); }}
+              <button onClick={() => { if (editing) setEditing(false); else startEdit(); setTab('overview'); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', border: editing ? 'none' : '1px solid #e2e8f0', borderRadius: 9, backgroundColor: editing ? '#17191c' : 'white', color: editing ? 'white' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: editing ? '0 1px 2px rgba(23,25,28,0.3)' : '0 1px 2px rgba(16,24,40,0.04)' }}>
                 <Edit2 size={13} /> {editing ? 'Editing' : 'Edit'}
               </button>
