@@ -183,7 +183,11 @@ export default function FindProspects({ onClose }: { onClose: () => void }) {
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', fontSize: 15, fontWeight: 800, color: INK }}>Find businesses</span>
             <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1 }}>
-              {source === 'google'
+              {/* "Included" directly above "needs the Google Maps key" read as a
+                  contradiction; until the owner's key is set it is not. */}
+              {source === 'google' && googleDown
+                ? 'From Google Maps — not switched on for this app yet.'
+                : source === 'google'
                 ? 'From Google Maps. Included — nothing for you to connect.'
                 : 'From OpenStreetMap. No account, no key, and the results are yours to keep.'}
             </span>

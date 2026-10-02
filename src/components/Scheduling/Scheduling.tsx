@@ -7,8 +7,8 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { DayAvailability, EventType, SchedulingAutomations, Booking } from '../../types';
 import { getSession } from '../../services/auth';
-import { publishBooking, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
-import { getActiveAccountId } from '../../services/tenancy';
+import { customerBusinessName } from '../../services/tenancy';
+import { publishBookingConfig, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
 
 const ET_COLORS = ['#17191c', '#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9'];
 
@@ -68,7 +68,7 @@ export default function Scheduling() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [bookingFilter, setBookingFilter] = useState<'all' | 'confirmed' | 'cancelled' | 'completed'>('all');
   const [remoteBookings, setRemoteBookings] = useState<Booking[]>([]);
-  const [pubState, setPubState] = useState<'idle' | 'saving' | 'published' | 'local'>('idle');
+  const [pubState, setPubState] = useState<'idle' | 'saving' | 'published' | 'local' | 'refused'>('idle');
   const [pubError, setPubError] = useState('');
   const pubTimer = useRef<number | undefined>(undefined);
 
@@ -84,28 +84,30 @@ export default function Scheduling() {
   }, []);
 
   /*
-   * Every workspace starts on the slug "meeting", and a slug is unique across
-   * the install. The first customer to publish takes it; everybody after was
-   * refused — and was still shown /book/meeting to hand out, which is the
-   * first customer's page. An untouched default becomes this workspace's own.
+   * Every workspace starts on the slug 'meeting', and a slug is unique across
+   * the install — so only the first customer ever to publish could hold it, and
+   * every other one would be told their brand-new page was taken by another
+   * workspace. An untouched default becomes the business's own name with a
+   * short tail before it is first published; one somebody typed is theirs.
    */
   useEffect(() => {
-    const id = getActiveAccountId() ?? '';
-    if (schedule.slug === 'meeting' && id) updateSchedule({ slug: `meet-${id.replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase()}` });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
-  }, []);
+    if (schedule.slug && schedule.slug !== 'meeting') return;
+    const base = customerBusinessName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'meet';
+    updateSchedule({ slug: `${base}-${Math.random().toString(36).slice(2, 6)}` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule.slug]);
 
-  /* Auto-publish the schedule so the public page + reminder engine stay in sync. */
+  /* Auto-publish the schedule so the public page stays in sync. */
   useEffect(() => {
     const token = getSession()?.token;
     if (!token) { setPubState('local'); return; }
-    if (schedule.slug === 'meeting') return;   // being replaced above
+    if (!schedule.slug || schedule.slug === 'meeting') return;   // the effect above is about to give it one
     setPubState('saving');
     window.clearTimeout(pubTimer.current);
     pubTimer.current = window.setTimeout(async () => {
-      const r = await publishBooking(token, schedule);
-      setPubError(r.error);
-      setPubState(r.ok ? 'published' : 'local');
+      const res = await publishBookingConfig(token, schedule);
+      setPubError(res.error ?? '');
+      setPubState(res.ok ? 'published' : 'refused');
     }, 1200);
     return () => window.clearTimeout(pubTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,11 +220,22 @@ export default function Scheduling() {
         </div>
 
         {/* Publish state */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, fontSize: 12.5, fontWeight: 600, color: pubState === 'published' ? '#16a34a' : pubState === 'local' ? '#b45309' : '#64748b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 14, fontSize: 12.5, fontWeight: 600, color: pubState === 'published' ? '#16a34a' : pubState === 'local' || pubState === 'refused' ? '#b45309' : '#64748b' }}>
           <CloudUpload size={14} />
           {pubState === 'saving' ? 'Publishing booking page…'
             : pubState === 'published' ? 'Booking page live — visitors see your latest settings, and their bookings appear here automatically.'
-            : pubState === 'local' ? `The booking page is not live, so the link below will not work yet — ${pubError || 'sign in again, then change any setting to retry.'}`
+            : pubState === 'local' ? 'Sign in again to publish the booking page — until then the link above does not work.'
+            /* The server's own reason ("taken by another workspace", "lowercase
+               letters only"): the old fixed text blamed the session or the
+               deployment for every refusal, neither of which the owner could fix. */
+            : pubState === 'refused' ? <>
+                <span>Not published, so the link above does not work yet: {pubError}</span>
+                {tab !== 'settings' && (
+                  <button onClick={() => setTab('settings')} style={{ border: 'none', background: 'none', padding: 0, color: '#17191c', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 12.5 }}>
+                    Change the link
+                  </button>
+                )}
+              </>
             : ''}
         </div>
 
@@ -373,7 +386,7 @@ export default function Scheduling() {
         {tab === 'automations' && (
           <div style={{ ...CARD, padding: 24 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Automations</h3>
-            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Calendly-style workflows — emails send through your SMTP settings (Settings → Email); SMS uses your Twilio account.</p>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Emails go from your mailbox in Settings → Email & SMS. With no mailbox connected, nothing is sent — the booking still stands.</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Confirmation */}
@@ -413,7 +426,7 @@ export default function Scheduling() {
                   <Clock size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Reminder before the meeting</div>
-                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Email (and optional SMS) so guests actually show up.</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Not sent yet — this setting is saved, but no reminder email or SMS goes out today. Ask guests to add the meeting to their calendar from the confirmation.</div>
                   </div>
                   <button onClick={() => setAuto({ reminderEmail: !auto.reminderEmail })}
                     style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.reminderEmail ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
@@ -452,7 +465,7 @@ export default function Scheduling() {
                   <Check size={18} color="#8b5cf6" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Follow-up email after the meeting</div>
-                    <div style={{ fontSize: 12.5, color: '#64748b' }}>A thank-you note sent automatically once the meeting ends.</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Not sent yet — this setting is saved, but no follow-up goes out today.</div>
                   </div>
                   <button onClick={() => setAuto({ followupEmail: !auto.followupEmail })}
                     style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.followupEmail ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
@@ -467,7 +480,7 @@ export default function Scheduling() {
               </div>
 
               <div style={{ padding: '13px 18px', backgroundColor: '#eceef1', borderRadius: 12, border: '1px solid #d5d8dd', fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
-                Reminders and follow-ups are processed server-side whenever the booking page or your CRM is opened. Emails use the SMTP settings from <strong>Settings → Email</strong>; make sure they're configured.
+                What is sent today: the guest's confirmation (with their reschedule and cancel link) and your notification, when somebody books, moves or cancels. Reminders and follow-ups are not sent yet; the switches are kept so nothing you set is lost.
               </div>
             </div>
           </div>

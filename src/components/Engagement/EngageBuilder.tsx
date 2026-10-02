@@ -219,8 +219,14 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
 
         {draft && (
           <div style={{ border: `1.5px solid ${ACCENT}`, borderRadius: 14, padding: 16, marginBottom: 14, display: 'grid', gap: 12 }}>
-            {spec.fields.map(f => (
-              <label key={f.key} style={{ display: 'block' }}>
+            {spec.fields.map(f => {
+              /* A group of buttons is not one control, so it is not wrapped in a
+                 <label>: a label forwards a click on its text to its first
+                 button, so pressing "The questions" added a question and
+                 pressing "What it offers" switched Chat on or off. */
+              const Wrap = f.type === 'fields' || f.type === 'tags' ? 'div' : 'label';
+              return (
+              <Wrap key={f.key} style={{ display: 'block' }}>
                 <span style={lbl}>{f.label}</span>
                 {f.type === 'textarea' ? (
                   <textarea style={{ ...inp, resize: 'vertical', lineHeight: 1.6 }} rows={f.rows ?? 4}
@@ -267,8 +273,9 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
                   <input style={inp} value={val(f.key)} onChange={e => set(f.key, e.target.value)} />
                 )}
                 {f.hint && <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{f.hint}</span>}
-              </label>
-            ))}
+              </Wrap>
+              );
+            })}
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => void save('live')} disabled={busy === 'save'} style={{ ...smallBtn, background: ACCENT, color: '#fff', border: 'none', padding: '9px 16px', fontSize: 13 }}>
@@ -304,8 +311,13 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
                   color: it.status === 'live' ? '#0f7b3d' : MUTED,
                 }}>{String(it.status ?? 'draft').toUpperCase()}</span>
 
+                {/* The whole address, as a link: "/f/slug" on its own could not be
+                    opened, checked or pasted anywhere useful. */}
                 {kind === 'form' && !!it.slug && (
-                  <span style={{ fontSize: 11.5, color: MUTED }}>/f/{String(it.slug)}</span>
+                  <a href={`${window.location.origin}/f/${String(it.slug)}`} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 11.5, color: MUTED, wordBreak: 'break-all' }}>
+                    {window.location.host}/f/{String(it.slug)}
+                  </a>
                 )}
                 {kind === 'widget' && !!it.public_key && (
                   <button onClick={() => {
@@ -321,6 +333,18 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
                   style={{ ...smallBtn, color: '#b42318' }} aria-label={`Delete ${String(it[spec.nameKey] ?? '')}`}>
                   {busy === String(it.id) ? <Loader size={11} className="spin" /> : <Trash2 size={11} />}
                 </button>
+                {/* The box the copy failure points at. It did not exist, so a
+                    browser that refused the clipboard (plain http, an
+                    embedded view, a denied permission) left no way to get the
+                    one line the whole widget depends on. */}
+                {kind === 'widget' && !!it.public_key && (
+                  <input readOnly value={embedSnippet(String(it.public_key))} aria-label="Embed code"
+                    onFocus={e => e.currentTarget.select()}
+                    style={{
+                      flexBasis: '100%', minWidth: 0, padding: '7px 9px', border: `1px solid ${LINE}`, borderRadius: 8,
+                      fontSize: 11.5, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: MUTED, background: '#f8fafc',
+                    }} />
+                )}
               </div>
             ))}
           </div>

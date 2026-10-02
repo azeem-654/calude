@@ -142,10 +142,10 @@ export default function AiCampaignSetup({ onReady, onBack }: {
     /* Saved locally *and* published, because a booking page that only exists in
        this browser is a link in an email that answers 404 to everybody who
        clicks it. If publishing fails the link is not offered. */
-    const ok = await publishBookingConfig(sessionToken(), next);
+    const res = await publishBookingConfig(sessionToken(), next);
     setPublishing(false);
-    if (!ok) {
-      addNotification('The booking page could not be published, so the link would not work yet. Try again, or set it up under Booking pages.', 'error');
+    if (!res.ok) {
+      addNotification(`The booking page could not be published, so the link would not work yet: ${res.error ?? 'try again.'}`, 'error');
       return;
     }
     updateSchedule(next);
