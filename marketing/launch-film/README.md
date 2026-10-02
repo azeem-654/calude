@@ -81,8 +81,48 @@ node mixcfg.mjs && node ../launch-ad/mix.mjs mix_film.json film_audio.wav && ../
 node captions.mjs > ../../public/site/launch/captions.vtt
 ```
 
-The web files must stay under Cloudflare's 25 MiB per file: two-pass H.264 at
-~540 kb/s and VP9 at ~480 kb/s for 4:55.
+The MP4 must stay under Cloudflare's 25 MiB per file: two-pass H.264 at
+~540 kb/s for 4:55. It is now only the fallback (see below); the WebM is gone.
+
+## The stream: quality follows the connection
+
+One 1080p file played well on a good line and stopped every few seconds on a
+slow one. The site plays an HLS ladder instead (`public/site/launch/hls/`),
+and `LaunchFilm.tsx` lets the player step between rungs as it measures the
+line — Safari natively, everything else with hls.js:
+
+| Rung | Average | Busiest 4 s |
+|---|---|---|
+| 1080p | ~690 kb/s | ~1.14 Mb/s |
+| 720p | ~490 kb/s | ~830 kb/s |
+| 480p | ~320 kb/s | ~500 kb/s |
+| 360p | ~230 kb/s | ~320 kb/s |
+
+Every rung has a keyframe every 4 s in the same place (`-force_key_frames`,
+no scene-cut keyframes), and segments are 4 s, so a switch can happen at any
+segment boundary without a stall.
+
+```bash
+./hls.sh                 # from the master → hls/{1080,720,480,360}/ (index.m3u8 + s###.ts)
+node hlsmaster.mjs       # → hls/master.m3u8, BANDWIDTH measured from the segments
+cp -r hls/* ../../public/site/launch/hls/
+```
+
+### Checking the switching
+
+Playwright's Chromium has no H.264, so `abr-check.mjs` swaps the ladder for a
+VP9 copy of its first 130 s (same rungs, same 4 s segments, fMP4) copied into
+`dist/site/launch/hlstest/`, then throttles the line in DevTools: fast, then
+450 kb/s, then fast again. On 2026-10-02 it fetched 1080p, stepped
+1080 → 720 → 480 within ten seconds of the line dropping and played on
+without a stall, and climbed back to 1080p when the line recovered.
+
+```bash
+for r in 1080:900k 720:500k 480:250k 360:120k; do …libvpx-vp9 -deadline realtime -cpu-used 8 -t 130
+  -g 120 -f hls -hls_time 4 -hls_segment_type fmp4 hlstest/<rung>/index.m3u8; done
+VITE_BASE=/ npm run build && cp -r hlstest dist/site/launch/ && npx wrangler dev --local
+node abr-check.mjs       # ABR OK
+```
 
 The voice is a neural voice, not a person — record a human read before paid
 media. The music is synthesised (`mix.mjs`), so there is nothing to clear.

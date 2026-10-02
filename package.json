@@ -53,6 +53,7 @@
   "dependencies": {
     "date-fns": "^4.2.1",
     "dompurify": "^3.4.16",
+    "hls.js": "1.6",
     "lucide-react": "^1.16.0",
     "qrcode-generator": "^1.5.2",
     "react": "^19.2.6",

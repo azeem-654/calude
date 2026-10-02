@@ -105,7 +105,7 @@ for (const sz of sizes) {
     /* object-fit: cover scales a 16:9 film to the frame's width when the
        frame is wider than 16:9, and cuts the difference top and bottom. */
     const crop = Math.max(0, 1 - f.height / (f.width * 9 / 16));
-    return { w: Math.round(f.width), h: Math.round(f.height), top: Math.round(f.top), bottom: Math.round(f.bottom), cover: f.width / innerWidth, crop, visible: f.top >= navH - 1 && f.bottom <= innerHeight + 1, file: [...v.querySelectorAll('source')][0]?.src.split('/').pop() };
+    return { w: Math.round(f.width), h: Math.round(f.height), top: Math.round(f.top), bottom: Math.round(f.bottom), cover: f.width / innerWidth, crop, visible: f.top >= navH - 1 && f.bottom <= innerHeight + 1, file: v.dataset.stream ?? 'none' };
   }, navH);
   const filmOk = film.visible && film.crop <= 0.221 && (!WIDE_FILM.has(sz) || film.cover >= 0.9);
 
