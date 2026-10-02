@@ -7,7 +7,8 @@ import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { DayAvailability, EventType, SchedulingAutomations, Booking } from '../../types';
 import { getSession } from '../../services/auth';
-import { publishBookingConfig, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
+import { publishBooking, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
+import { getActiveAccountId } from '../../services/tenancy';
 
 const ET_COLORS = ['#17191c', '#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9'];
 
@@ -68,6 +69,7 @@ export default function Scheduling() {
   const [bookingFilter, setBookingFilter] = useState<'all' | 'confirmed' | 'cancelled' | 'completed'>('all');
   const [remoteBookings, setRemoteBookings] = useState<Booking[]>([]);
   const [pubState, setPubState] = useState<'idle' | 'saving' | 'published' | 'local'>('idle');
+  const [pubError, setPubError] = useState('');
   const pubTimer = useRef<number | undefined>(undefined);
 
   const auto: SchedulingAutomations = { ...DEFAULT_AUTOMATIONS, ...(schedule.automations ?? {}) };
@@ -81,15 +83,29 @@ export default function Scheduling() {
     listRemoteBookings(token).then(list => { if (list) setRemoteBookings(list); });
   }, []);
 
+  /*
+   * Every workspace starts on the slug "meeting", and a slug is unique across
+   * the install. The first customer to publish takes it; everybody after was
+   * refused — and was still shown /book/meeting to hand out, which is the
+   * first customer's page. An untouched default becomes this workspace's own.
+   */
+  useEffect(() => {
+    const id = getActiveAccountId() ?? '';
+    if (schedule.slug === 'meeting' && id) updateSchedule({ slug: `meet-${id.replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase()}` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+
   /* Auto-publish the schedule so the public page + reminder engine stay in sync. */
   useEffect(() => {
     const token = getSession()?.token;
     if (!token) { setPubState('local'); return; }
+    if (schedule.slug === 'meeting') return;   // being replaced above
     setPubState('saving');
     window.clearTimeout(pubTimer.current);
     pubTimer.current = window.setTimeout(async () => {
-      const ok = await publishBookingConfig(token, schedule);
-      setPubState(ok ? 'published' : 'local');
+      const r = await publishBooking(token, schedule);
+      setPubError(r.error);
+      setPubState(r.ok ? 'published' : 'local');
     }, 1200);
     return () => window.clearTimeout(pubTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,7 +222,7 @@ export default function Scheduling() {
           <CloudUpload size={14} />
           {pubState === 'saving' ? 'Publishing booking page…'
             : pubState === 'published' ? 'Booking page live — visitors see your latest settings, and their bookings appear here automatically.'
-            : pubState === 'local' ? "Couldn't publish the booking page — make sure you're signed in and the site is deployed, then reopen this page."
+            : pubState === 'local' ? `The booking page is not live, so the link below will not work yet — ${pubError || 'sign in again, then change any setting to retry.'}`
             : ''}
         </div>
 
