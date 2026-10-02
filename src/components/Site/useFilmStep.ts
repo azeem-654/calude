@@ -1,8 +1,8 @@
 /**
  * One scroll from the hero to the film, and one back.
  *
- * On a laptop or desktop the hero is two screens (site.css, "Three screens"):
- * the words, then the product as wide as the window. Then each is a stop —
+ * On a laptop or desktop the hero is the words, then the product as wide as
+ * the window and a screen tall (site.css, "Three stops"). Each is a stop —
  * top, picture, film — one wheel step apart, in both directions.
  *
  * The owner's request: on a laptop, a single turn of the wheel (or a single
@@ -90,7 +90,7 @@ export function useFilmStep(heroInner: RefObject<HTMLElement | null>) {
 
     const stageEl = () => document.querySelector<HTMLElement>('.dc-hero-stage');
     const copyEl = () => document.querySelector<HTMLElement>('.dc-hero-copy');
-    /** The hero as two screens: the words fill the first, the picture exactly one more. */
+    /** The words all on the first screen, and the picture exactly one screen under the nav. */
     const twoScreens = () => {
       const st = stageEl(), c = copyEl();
       if (!st || !c) return false;

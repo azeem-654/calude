@@ -1731,16 +1731,23 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 }
 
 /*
- * Three screens, on a laptop or a desktop: the words, the product, the film.
+ * Three stops, on a laptop or a desktop: the words, the product, the film.
  *
  * The owner's laptop shows about 1340×590 of browser. Fitting the words and
  * the picture on that one screen — stacked, then side by side — left the
  * picture 620–690px wide with dark sky either side, and the screens it shows
  * too small to read. The owner asked for the picture scaled by the width.
  * What a laptop is short of is height, and a 16:10 screenshot as wide as the
- * window is taller than the window. So the first screen is the words alone,
- * large; one step down (useFilmStep) is the picture, as wide as the window
- * and exactly as tall as what is under the nav; the next step is the film.
+ * window is taller than the window. So the picture is a screen of its own, as
+ * wide as the window and exactly as tall as what is under the nav, one step
+ * down (useFilmStep); the next step is the film.
+ *
+ * The words sit above it at their own height, not a screen's. Given a whole
+ * screen, centred, they left a laptop's first screen a narrow column of text
+ * with empty sky either side, which the owner read as the same problem again.
+ * Now the headline is one line across the width and the picture starts on the
+ * first screen, edge to edge under the buttons, so what opens is full from
+ * side to side and the step down brings the rest of it up.
  *
  * The picture is wider than it is tall here, so each screenshot is shown at
  * the window's width and travels slowly from its top to its bottom while it
@@ -1748,11 +1755,14 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
  * rather than all of it at half size. With reduced motion it holds still on
  * its top, where the screens put their headings.
  *
+ * At least 420 tall, not 501: a 1366×768 laptop at 125% scaling shows about
+ * 1093×500, and there the older layout drew the picture 620px wide.
+ *
  * --hero-fixed is everything on the picture's screen that is not the picture:
  * the prompt's overhang, the chrome bar, a one-line caption and the padding.
  * test/siteFit.e2e.mjs checks the sum.
  */
-@media (min-width: 1000px) and (orientation: landscape) and (min-height: 501px) {
+@media (min-width: 1000px) and (orientation: landscape) and (min-height: 420px) {
   .dc-hero {
     --hero-gutter: clamp(16px, 2.4vw, 40px);
     --hero-screen: calc(var(--dc-vh) - var(--dc-nav-h));
@@ -1761,32 +1771,27 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   }
   .dc-hero-inner { max-width: none; }
   .dc-hero-copy {
-    min-height: var(--hero-screen);
-    max-width: 1120px;
+    max-width: 1480px;
     margin: 0 auto;
-    padding: 20px 0 28px;
+    padding: clamp(22px, 6vh, 64px) 0 clamp(8px, 2.5vh, 28px);
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
   }
-  /* Two lines, one above the other, with the divider lying between them —
-     side by side it wrapped on a laptop and left the divider standing at the
-     end of the first line. */
-  .dc-split { flex-direction: column; gap: 0; font-size: clamp(42px, 4.8vw, 84px); }
-  .dc-split i {
-    width: 96px;
-    height: 2px;
-    min-height: 0;
-    align-self: center;
-    margin: 0.2em 0 0.24em;
-    background: linear-gradient(90deg, transparent, var(--lime), transparent);
-  }
-  /* The orb and sparks were drawn for a picture directly under the buttons;
-     with the picture a screen further down they straddle the two screens. */
+  /* One line, the divider standing between the halves. Each half keeps its
+     words together and the size follows the width, so it never wraps into
+     the divider-at-the-end-of-a-line it once did. */
+  .dc-split { flex-wrap: nowrap; gap: 0.5em; font-size: clamp(34px, 3.55vw, 68px); }
+  .dc-split > span { white-space: nowrap; }
+  .dc-split i { min-height: 1em; }
+  /* The orb and sparks were drawn for a picture beside the words; across the
+     full width they sit on top of the screenshot. */
   .dc-hero-orb, .dc-hero-sparks { display: none; }
-  .dc .dc-hero-sub { max-width: 760px; font-size: clamp(16px, 1.3vw, 21px); }
-  .dc-hero-cta { margin-top: 30px; }
+  /* The short-window rule above lifts the prompt off the picture; here it
+     keeps its overhang, which --hero-fixed counts on. */
+  .dc-hero-prompt.aps-prompt { margin-bottom: -26px; }
+  .dc .dc-hero-sub { max-width: 940px; font-size: clamp(15px, 1.2vw, 20px); }
+  .dc-hero-cta { margin-top: clamp(14px, 3vh, 28px); }
   .dc-hero-stage {
     width: min(100%, 1760px);
     max-width: none;
@@ -1804,7 +1809,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   .dc-hero-shot .dc-reel-text { font-size: 14px; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dc-sample-note { margin-top: 10px; }
 }
-@media (min-width: 1000px) and (orientation: landscape) and (min-height: 501px) and (prefers-reduced-motion: no-preference) {
+@media (min-width: 1000px) and (orientation: landscape) and (min-height: 420px) and (prefers-reduced-motion: no-preference) {
   /* Top to bottom while the screen holds: a short pause on the heading,
      the travel, a short pause on the end. Replaces the corner drift. */
   .dc-hero-shot .dc-reel.in-view .dc-reel-shot.on[data-drift] { animation: dc-pan-y var(--hold, 9s) ease-in-out both; }

@@ -395,8 +395,9 @@ export default function SiteHome() {
       <section className="dc-hero" id="top">
         <div className="dc-hero-glow" aria-hidden="true" />
         <div className="dc-hero-inner" ref={heroInner}>
-          {/* The words, as one block: on a wide, short window they are the
-              left-hand column beside the picture (site.css, "Two columns"). */}
+          {/* The words, as one block: on a laptop or desktop they sit above the
+              picture at their own height, the headline on one line, so the
+              picture starts on the first screen (site.css, "Three stops"). */}
           <div className="dc-hero-copy" ref={copy}>
             <a className="dc-eyebrow dc-ai-pill dc-lead-0" href="#autopilot">
               <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — describe it, and it builds and runs it</span> <ArrowRight size={14} />

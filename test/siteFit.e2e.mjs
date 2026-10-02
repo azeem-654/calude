@@ -13,15 +13,17 @@
  *   - the hero's picture does not fit on one screen under the nav (on a phone
  *     on its side: the picture itself, since the caption cannot also fit),
  *   - on a laptop or desktop window (landscape, at least 1180 wide and more
- *     than 500 tall): the hero's words and its picture are not *both* on the
+ *     than 420 tall): the hero's words and its picture are not *both* on the
  *     first screen as the page opens,
  *   - a decorative chip covers more than a sliver of it, or sits off screen,
  *   - the film is not entirely visible when scrolled to, is cropped by more
  *     than its 22% budget, or — on the owner's laptop sizes — covers less than
  *     90% of the window's width,
- *   - on a laptop or desktop (landscape, at least 1000×501): the words do not
- *     fill the first screen on their own, the product picture is not at least
- *     90% of the window's width (the owner asked for it scaled by the width),
+ *   - on a laptop or desktop (landscape, at least 1000×420): the words are not
+ *     all on the first screen with the product picture starting under them
+ *     (at least 80px of it showing, so the first screen is full from side to
+ *     side), the product picture is not at least 90% of the window's width
+ *     (the owner asked for it scaled by the width),
  *     or the wheel does not step top → picture → film, each centred under the
  *     nav within 12px, and back up the same way, then on past the film,
  *   - the page scrolls sideways, or throws.
@@ -32,7 +34,7 @@
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 const B = process.env.BASE ?? 'http://localhost:8787';
 const OUT = process.env.SHOTS ?? '';
-const sizes = (process.argv[2] ?? '1340x590,1366x657,1280x720,1440x780,1536x730,1920x960,2560x1300,1024x700,820x1180,768x1024,390x844,360x640,844x390,667x375').split(',');
+const sizes = (process.argv[2] ?? '1340x590,1093x500,1366x657,1280x720,1440x780,1536x730,1920x960,2560x1300,1024x700,820x1180,768x1024,390x844,360x640,844x390,667x375').split(',');
 /* The owner's laptop and the desktops either side of it: the film must use
    the width there, not sit in the middle of it. */
 const WIDE_FILM = new Set(['1340x590', '1366x657', '1280x720', '1440x780', '1536x730', '1920x960']);
@@ -57,7 +59,7 @@ async function settle(p) {
 
 for (const sz of sizes) {
   const [w, h] = sz.split('x').map(Number);
-  const desk = w >= 1000 && w > h && h > 500;
+  const desk = w >= 1000 && w > h && h >= 420;
   const p = await b.newPage({ viewport: { width: w, height: h } });
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.goto(`${B}/`, { waitUntil: 'networkidle' });
@@ -70,12 +72,12 @@ for (const sz of sizes) {
     const r = s => document.querySelector(s).getBoundingClientRect();
     const copy = r('.dc-hero-copy'), stage = r('.dc-hero-stage'), shot = r('.dc-hero-shot');
     const on = x => x.top >= navH - 1 && x.bottom <= innerHeight + 1;
-    return { words: on(copy), wide: shot.width >= Math.min(innerWidth * 0.9, 1700), copyB: Math.round(copy.bottom), picW: Math.round(shot.width), steps: document.documentElement.classList.contains('dc-snap') };
+    return { words: on(copy), peek: innerHeight - shot.top >= 80, wide: shot.width >= Math.min(innerWidth * 0.9, 1700), copyB: Math.round(copy.bottom), picW: Math.round(shot.width), steps: document.documentElement.classList.contains('dc-snap') };
   }, navH);
-  const firstOk = !desk || (first.words && first.wide && first.steps);
+  const firstOk = !desk || (first.words && first.peek && first.wide && first.steps);
 
   await p.evaluate(() => {
-    const short = innerHeight <= 500 && innerWidth > innerHeight;
+    const short = innerHeight < 420 && innerWidth > innerHeight;
     const s = document.querySelector(short ? '.dc-hero-shot' : '.dc-hero-stage');
     scrollTo(0, s.getBoundingClientRect().top + scrollY - document.querySelector('.dc-nav').getBoundingClientRect().height);
   });
@@ -90,7 +92,7 @@ for (const sz of sizes) {
     /* On a phone on its side the promise is the picture itself, not the
        caption under it. */
     const pic = document.querySelector('.dc-hero-shot .dc-reel-stage').getBoundingClientRect();
-    const fits = innerHeight <= 500 && innerWidth > innerHeight ? pic.bottom <= innerHeight + 1 && pic.top >= 0 : st.bottom <= innerHeight + 1;
+    const fits = innerHeight < 420 && innerWidth > innerHeight ? pic.bottom <= innerHeight + 1 && pic.top >= 0 : st.bottom <= innerHeight + 1;
     return { stageH: Math.round(st.height), shotW: Math.round(shot.width), fits, chips: chips.length, maxCover: Math.round(Math.max(0, ...cover)), offscreen };
   });
 
@@ -137,7 +139,7 @@ for (const sz of sizes) {
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   const ok = hero.fits && firstOk && filmOk && stepOk && overflow === 0 && hero.maxCover <= 40 && !hero.offscreen && !errs.length;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK ' : 'BAD'} ${sz.padEnd(10)} nav ${navH} | first screen ${desk ? `words=${first.words} wide=${first.wide}` : '-'} picW=${first.picW} | hero stage ${hero.stageH}px fits=${hero.fits} chips=${hero.chips} cover=${hero.maxCover}px off=${hero.offscreen} | film ${film.w}×${film.h} (${Math.round(film.cover * 100)}% wide, crop ${Math.round(film.crop * 100)}%) ${film.top}-${film.bottom} visible=${film.visible} ${film.file} | step ${step} | overflow ${overflow} errs ${errs.length}`);
+  console.log(`${ok ? 'OK ' : 'BAD'} ${sz.padEnd(10)} nav ${navH} | first screen ${desk ? `words=${first.words} peek=${first.peek} wide=${first.wide}` : '-'} picW=${first.picW} | hero stage ${hero.stageH}px fits=${hero.fits} chips=${hero.chips} cover=${hero.maxCover}px off=${hero.offscreen} | film ${film.w}×${film.h} (${Math.round(film.cover * 100)}% wide, crop ${Math.round(film.crop * 100)}%) ${film.top}-${film.bottom} visible=${film.visible} ${film.file} | step ${step} | overflow ${overflow} errs ${errs.length}`);
   await p.close();
 }
 console.log(bad ? `${bad} size(s) wrong` : 'all sizes fit');
