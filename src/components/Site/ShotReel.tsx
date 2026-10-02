@@ -24,10 +24,14 @@
  *
  * ── Costs ──
  *
- * Nothing advances while the reel is off screen, the tab is hidden, or a
- * pointer or keyboard focus is on it — somebody reading a caption should not
- * have it change under them. Pictures are lazy, and only the one showing and
- * the next are ever in the document's way.
+ * Nothing advances while the reel is off screen or the tab is hidden, or
+ * while keyboard focus is in its controls — somebody tabbing through the dots
+ * should not have them change under them. A mouse resting on it does not
+ * stop it: the owner found the slides freezing whenever the pointer happened
+ * to sit over them, which on a page this wide is most of the time, and asked
+ * for them to keep moving. Clicking a dot or an arrow moves to that screen
+ * and the slideshow carries on from there. Pictures are lazy, and only the
+ * one showing and the next are ever in the document's way.
  */
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -94,9 +98,9 @@ export default function ShotReel({
       role="group"
       aria-roledescription="carousel"
       aria-label={label}
-      onMouseEnter={() => setHeld(true)}
-      onMouseLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
+      /* Keyboard focus only — a click focuses a button too, and that must
+         not stop the slideshow any more than a hover does. */
+      onFocus={e => { if ((e.target as HTMLElement).matches?.(':focus-visible')) setHeld(true); }}
       onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHeld(false); }}
     >
       <div className="dc-reel-frame">
