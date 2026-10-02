@@ -201,7 +201,7 @@ export async function handleResellWebhook(req: Request, env: Env): Promise<Respo
   } catch { /* carry on */ }
 
   if (event.reference) {
-    const status = event.kind === 'paid' ? 'active' : event.kind === 'refunded' ? 'cancelled' : event.kind === 'failed' ? 'past_due' : '';
+    const status = event.kind === 'paid' ? 'active' : event.kind === 'refunded' || event.kind === 'cancelled' ? 'cancelled' : event.kind === 'failed' ? 'past_due' : '';
     if (status) {
       /* Only this reseller's own client: another reseller's processor cannot
          reach here, and this one cannot speak for anybody else's. */

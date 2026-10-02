@@ -86,8 +86,10 @@ export interface CheckoutResult extends Outcome {
 
 /** What a webhook turned out to be, once its signature checked out. */
 export interface PaymentEvent {
-  /** 'paid' is the only one that moves money in this app's model. */
-  kind: 'paid' | 'failed' | 'refunded' | 'other';
+  /** 'paid' is the only one that moves money in this app's model.
+   *  'cancelled' is a subscription ending — no money moves, but what it paid
+   *  for stops. One-time checkouts never produce it. */
+  kind: 'paid' | 'failed' | 'refunded' | 'cancelled' | 'other';
   /** Our order id, when the processor gave it back. */
   reference: string;
   /** The processor's session id, as a fallback way to find the order. */
@@ -99,6 +101,9 @@ export interface PaymentEvent {
    *  processor says. */
   amountCents?: number;
   currency?: string;
+  /** The processor's id for the payer (Stripe `cus_…`, Creem `cust_…`),
+   *  when the event names one — what a billing portal is opened for. */
+  customerId?: string;
   /** True for one payment of a subscription — the first and every renewal.
    *  A subscription checkout completing is *not* one: on Stripe its first
    *  invoice arrives as its own event, and counting both would pay twice. */
@@ -135,6 +140,9 @@ export interface PaymentProvider {
   verifySignature(secret: string, rawBody: string, headers: Headers): Promise<boolean>;
   /** What the (already verified) body means. */
   readEvent(rawBody: string): PaymentEvent | null;
+  /** A link where the payer named by `customerId` manages their own
+   *  subscription — card, invoices, cancelling — on the processor's page. */
+  portal(key: string, customerId: string, returnUrl: string): Promise<Outcome & { url: string }>;
 }
 
 /**

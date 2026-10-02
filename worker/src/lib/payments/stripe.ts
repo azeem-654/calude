@@ -227,6 +227,19 @@ export const stripe: PaymentProvider = {
     return diff === 0;
   },
 
+  async portal(key, customerId, returnUrl) {
+    const r = await call(key, '/billing_portal/sessions', new URLSearchParams({ customer: customerId, return_url: returnUrl }));
+    if (!r.ok) {
+      const error = errorOf(r.data);
+      /* The one setup step Stripe needs and the app cannot take for the owner. */
+      const steps = /configuration/i.test(error)
+        ? ['In Stripe → Settings → Billing → Customer portal, press Save once to switch the portal on.']
+        : remedy(error);
+      return { ok: false, error, steps, url: '' };
+    }
+    return { ok: true, error: '', steps: [], url: String(r.data.url ?? '') };
+  },
+
   readEvent(rawBody) {
     let event: { type?: string; data?: { object?: Record<string, unknown> } };
     try { event = JSON.parse(rawBody); } catch { return null; }
@@ -242,7 +255,7 @@ export const stripe: PaymentProvider = {
      */
     if (type === 'invoice.paid' || type === 'invoice.payment_succeeded') {
       const inv = obj as {
-        id?: string; amount_paid?: number; currency?: string; metadata?: Record<string, string>;
+        id?: string; amount_paid?: number; currency?: string; metadata?: Record<string, string>; customer?: string;
         subscription_details?: { metadata?: Record<string, string> };
         parent?: { subscription_details?: { metadata?: Record<string, string> } };
       };
@@ -253,6 +266,29 @@ export const stripe: PaymentProvider = {
         eventId: String((event as { id?: string }).id ?? inv.id ?? ''),
         amountCents: Number(inv.amount_paid ?? 0), currency: String(inv.currency ?? '').toUpperCase(),
         subscriptionPayment: Number(inv.amount_paid ?? 0) > 0,
+        customerId: typeof inv.customer === 'string' ? inv.customer : undefined,
+      };
+    }
+
+    /*
+     * A renewal that could not be charged, and a subscription that has ended
+     * (cancelled at period end, or after the retries ran out). Unread, both
+     * left the subscriber "active" for good — and the billing webhook once
+     * treated every unread event as "active" too.
+     */
+    if (type === 'invoice.payment_failed' || type === 'customer.subscription.deleted') {
+      const o = obj as {
+        id?: string; customer?: string; metadata?: Record<string, string>;
+        subscription_details?: { metadata?: Record<string, string> };
+        parent?: { subscription_details?: { metadata?: Record<string, string> } };
+      };
+      const accountId = o.parent?.subscription_details?.metadata?.accountId
+        || o.subscription_details?.metadata?.accountId || o.metadata?.accountId || '';
+      return {
+        kind: type === 'invoice.payment_failed' ? 'failed' : 'cancelled',
+        reference: String(accountId), sessionId: String(o.id ?? ''),
+        eventId: String((event as { id?: string }).id ?? ''),
+        customerId: typeof o.customer === 'string' ? o.customer : undefined,
       };
     }
 
@@ -285,6 +321,7 @@ export const stripe: PaymentProvider = {
       eventId: String((event as { id?: string }).id ?? ''),
       amountCents: typeof obj.amount_total === 'number' ? obj.amount_total : undefined,
       currency: obj.currency ? String(obj.currency).toUpperCase() : undefined,
+      customerId: typeof obj.customer === 'string' ? obj.customer : undefined,
       shipping: a.line1 ? {
         name: String(ship.name ?? cd.name ?? ''),
         line1: String(a.line1 ?? ''), line2: String(a.line2 ?? ''),

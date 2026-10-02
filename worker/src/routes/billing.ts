@@ -33,7 +33,7 @@
  */
 import { addr, body, fail, json } from '../lib/http';
 import {
-  agencyBucketFor, canAccess, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
+  PLAN_RESELL, agencyBucketFor, canAccess, dataGet, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
 } from '../lib/db';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { DEFAULT_PROVIDER, providerChoices, providerFor, type ProviderContext } from '../lib/payments';
@@ -313,10 +313,66 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
         ...(r.steps.length ? { diagnosis: { summary: r.error, steps: r.steps } } : {}),
       });
     }
+    /* Which plan this checkout was for, for the webhook — the processor's
+       event names the workspace and the amount, and a discounted amount no
+       longer names a plan (planFromEvent). */
+    await dataPut(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_intent_${accountId}`,
+      JSON.stringify({ planId, at: nowIso() })).catch(() => undefined);
     return json({ success: true, url: r.url, id: r.sessionId });
   }
 
   return fail(`"${act}" is not something this endpoint does.`);
+}
+
+async function readJson(env: Env, bucket: string, key: string): Promise<Record<string, string | null | undefined>> {
+  try { return JSON.parse((await dataGet(env.DB, bucket, key)) ?? '{}'); } catch { return {}; }
+}
+
+/**
+ * The plan a payment bought: by its amount when that is exactly one plan's
+ * price, otherwise the plan the workspace last went to checkout for (a coupon
+ * changes the amount, not the plan).
+ */
+async function planFromEvent(env: Env, bucket: string, accountId: string, amountCents: number | undefined): Promise<string> {
+  const byAmount = Object.entries(PLAN_CENTS).find(([, p]) => p.cents === amountCents)?.[0];
+  if (byAmount) return byAmount;
+  const intent = await readJson(env, bucket, `crm_billing_intent_${accountId}`);
+  return PLAN_CENTS[String(intent.planId ?? '')] ? String(intent.planId) : '';
+}
+
+/**
+ * What the subscription allows follows what was paid for.
+ *
+ * Nothing wrote `crm_plans` from a payment, so somebody who bought Agency or
+ * Network stayed on Studio's two sub-accounts, and somebody who cancelled
+ * kept whatever they had. A paid event sets the plan of the person who owns
+ * the workspace; a cancellation or refund removes a plan that a processor
+ * set. A plan the operator granted by hand (`source = 'manual'`) is theirs,
+ * and a payment or a cancellation never overwrites it.
+ */
+async function applyPlan(
+  env: Env, processor: string, accountId: string, bucket: string,
+  event: { kind: string; amountCents?: number }, status: string,
+): Promise<void> {
+  const owner = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
+    .bind(accountId).first<{ owner_email: string }>();
+  if (!owner?.owner_email) return;
+  if (status === 'cancelled') {
+    await env.DB.prepare("DELETE FROM crm_plans WHERE owner_email = ? AND source NOT IN ('manual', 'default')")
+      .bind(owner.owner_email).run();
+    return;
+  }
+  if (status !== 'active') return;
+  const planId = await planFromEvent(env, bucket, accountId, event.amountCents);
+  if (!planId) return;
+  await env.DB.prepare(
+    `INSERT INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(owner_email) DO UPDATE SET plan_id = excluded.plan_id, resell_limit = excluded.resell_limit,
+       source = excluded.source, updated_at = excluded.updated_at
+     WHERE crm_plans.source <> 'manual'`,
+  ).bind(owner.owner_email, planId, PLAN_RESELL[planId] ?? PLAN_RESELL.starter, processor, nowIso()).run();
+  const st = await readJson(env, bucket, `crm_billing_status_${accountId}`);
+  await dataPut(env.DB, bucket, `crm_billing_status_${accountId}`, JSON.stringify({ ...st, planId }));
 }
 
 /**
@@ -374,23 +430,32 @@ export async function handleBillingWebhook(req: Request, env: Env): Promise<Resp
   }
 
   const accountId = event.reference;
-  if (accountId) {
-    const status = event.kind === 'paid' ? 'active'
-      : event.kind === 'refunded' ? 'cancelled'
-        : event.kind === 'failed' ? 'past_due'
-          : 'active';
-
+  /* An event this app does not act on says nothing about the subscription.
+     It used to be written as "active", so a cancellation (unread) reactivated
+     whoever it was about. */
+  const status = event.kind === 'paid' ? 'active'
+    : event.kind === 'refunded' || event.kind === 'cancelled' ? 'cancelled'
+      : event.kind === 'failed' ? 'past_due'
+        : '';
+  if (accountId && status) {
     /* Billing state is kept under the agency's own namespace, the same place
        the dashboard reads it from, so a client cannot rewrite their own. Which
        agency that is cannot come from the caller here — the processor is the
        caller — so it comes from whoever owns the workspace being billed. */
-    await dataPut(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_status_${accountId}`, JSON.stringify({
+    const bucket = await agencyBucketFor(env.DB, accountId);
+    const before = await readJson(env, bucket, `crm_billing_status_${accountId}`);
+    await dataPut(env.DB, bucket, `crm_billing_status_${accountId}`, JSON.stringify({
       status,
       subscriptionId: event.sessionId || null,
+      /* Who the processor says paid — what "Manage billing" opens the portal
+         for. Kept from before when this event does not name one. */
+      customerId: event.customerId || before.customerId || null,
+      planId: before.planId ?? null,
       updatedAt: nowIso(),
       lastEvent: event.kind,
       processor: provider.id,
     }));
+    await applyPlan(env, provider.id, accountId, bucket, event, status);
   }
 
   /*

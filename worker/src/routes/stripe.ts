@@ -12,26 +12,9 @@
 import { addr, body, fail, json } from '../lib/http';
 import { agencyBucketFor, canAccess, dataGet, dataPut, nowIso, userFromToken, type Env } from '../lib/db';
 import { timingSafeEqual } from '../lib/crypto';
+import { providerFor } from '../lib/payments';
+import { billingProcessor } from './billing';
 
-const STRIPE = 'https://api.stripe.com/v1';
-
-async function stripePost(env: Env, path: string, params: URLSearchParams): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
-  const r = await fetch(`${STRIPE}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params,
-  });
-  const data = await r.json<Record<string, unknown>>().catch(() => ({}));
-  return { ok: r.ok, status: r.status, data };
-}
-
-function stripeError(data: Record<string, unknown>): string {
-  const err = data.error as { message?: string } | undefined;
-  return err?.message ?? 'Stripe refused that request.';
-}
 
 /** Whether Stripe is set up at all — the UI asks before offering to charge. */
 export async function handleStripeConfig(req: Request, env: Env): Promise<Response> {
@@ -113,7 +96,13 @@ export async function handleStripePortal(req: Request, env: Env): Promise<Respon
   const d = await body<{ token?: string; accountId?: string; returnUrl?: string }>(req);
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
-  if (!env.STRIPE_SECRET_KEY) return fail('Stripe is not set up on this deployment.');
+  /* Whatever processor billing actually runs on — the one connected in
+     Platform services, else the old STRIPE_SECRET_KEY. Reading only the old
+     setting told every subscriber on a connected processor "Stripe is not set
+     up", the one moment they wanted to change a card or cancel. */
+  const current = await billingProcessor(env);
+  const provider = current ? providerFor(current.id) : null;
+  if (!current || !provider) return fail('Subscriptions are not set up on this deployment yet.');
 
   /* The customer is the one the webhook recorded for a workspace this caller
      may open — never an id from the request, which let anyone holding a
@@ -125,13 +114,14 @@ export async function handleStripePortal(req: Request, env: Env): Promise<Respon
     const raw = await dataGet(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_status_${accountId}`);
     customerId = String((JSON.parse(raw ?? '{}') as { customerId?: string }).customerId ?? '');
   } catch { customerId = ''; }
-  if (!/^cus_[A-Za-z0-9]+$/.test(customerId)) return fail('No Stripe customer is linked to this account yet.');
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(customerId)) {
+    return fail(`No ${provider.label} customer is linked to this workspace yet — it appears after the first payment.`);
+  }
 
   const origin = new URL(req.url).origin;
-  const params = new URLSearchParams({ customer: customerId, return_url: `${origin}/billing` });
-  const r = await stripePost(env, '/billing_portal/sessions', params);
-  if (!r.ok) return fail(stripeError(r.data));
-  return json({ success: true, url: r.data.url });
+  const r = await provider.portal(current.key, customerId, `${origin}/billing`);
+  if (!r.ok) return json({ success: false, error: r.error, message: r.error, ...(r.steps.length ? { diagnosis: { summary: r.error, steps: r.steps } } : {}) });
+  return json({ success: true, url: r.url });
 }
 
 /**

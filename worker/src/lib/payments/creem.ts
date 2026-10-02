@@ -382,19 +382,33 @@ export const creem: PaymentProvider = {
     return diff === 0;
   },
 
+  async portal(key, customerId, _returnUrl) {
+    /* Creem's portal has no return address of its own; it is a page the
+       customer leaves when they are done. */
+    const r = await call<{ customer_portal_link?: string }>(key, '/v1/customers/billing', {
+      method: 'POST', body: JSON.stringify({ customer_id: customerId }),
+    });
+    if (!r.ok || !r.data?.customer_portal_link) {
+      const error = r.error || 'Creem did not return a portal link.';
+      return { ok: false, error, steps: remedy(error, r.status), url: '' };
+    }
+    return { ok: true, error: '', steps: [], url: r.data.customer_portal_link };
+  },
+
   readEvent(rawBody) {
     let ev: {
       id?: string;
       eventType?: string;
       object?: {
         id?: string; request_id?: string; metadata?: Record<string, string>; order?: { id?: string; amount?: number; currency?: string };
-        customer?: { email?: string }; product?: { price?: number; currency?: string };
+        customer?: { id?: string; email?: string } | string; product?: { price?: number; currency?: string };
         last_transaction?: { amount?: number; currency?: string };
       };
     };
     try { ev = JSON.parse(rawBody); } catch { return null; }
 
     const o = ev.object ?? {};
+    const customerId = (typeof o.customer === 'string' ? o.customer : o.customer?.id) || undefined;
     /*
      * Each payment of a subscription — the first and every renewal — is
      * `subscription.paid`, carrying the subscription with the metadata given
@@ -409,6 +423,15 @@ export const creem: PaymentProvider = {
         eventId: String(ev.id ?? ''), amountCents: amount,
         currency: String(o.last_transaction?.currency ?? o.product?.currency ?? '').toUpperCase(),
         subscriptionPayment: amount > 0,
+        customerId,
+      };
+    }
+    /* A subscription that has ended: cancelled now, or at the end of a
+       period already paid for (Creem sends `expired` then). */
+    if (ev.eventType === 'subscription.canceled' || ev.eventType === 'subscription.expired') {
+      return {
+        kind: 'cancelled', reference: String(o.metadata?.accountId || o.request_id || ''), sessionId: String(o.id ?? ''),
+        eventId: String(ev.id ?? ''), customerId,
       };
     }
     const reference = String(o.request_id || o.metadata?.orderId || '');
@@ -427,7 +450,7 @@ export const creem: PaymentProvider = {
        path will say the address is missing, which is true, rather than posting
        to a half-read one. */
     return {
-      kind, reference, sessionId, eventId: String(ev.id ?? ''),
+      kind, reference, sessionId, eventId: String(ev.id ?? ''), customerId,
       amountCents: typeof o.order?.amount === 'number' ? o.order.amount : undefined,
       currency: o.order?.currency ? String(o.order.currency).toUpperCase() : undefined,
     };

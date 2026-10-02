@@ -37,7 +37,7 @@ async function stripeEvent(event) {
   const r = await post(`${B}/api/billing-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${t},v1=${sig}` }, body: payload });
   return r.status;
 }
-const invoicePaid = (id, accountId, cents) => ({ id, type: 'invoice.paid', data: { object: { id: `in_${id}`, amount_paid: cents, currency: 'usd', parent: { subscription_details: { metadata: { accountId } } } } } });
+const invoicePaid = (id, accountId, cents, customer = 'cus_test1') => ({ id, type: 'invoice.paid', data: { object: { id: `in_${id}`, customer, amount_paid: cents, currency: 'usd', parent: { subscription_details: { metadata: { accountId } } } } } });
 
 console.log('\nAffiliate program');
 const OWNER = 'owner@aff.test', PW = 'Tq9!vX2#pLm7wZ-aff';
@@ -118,6 +118,27 @@ r = await api('affiliate.php', { token: owner.token, action: 'admin_mark', id: '
 ok('the owner marks one paid', r.success);
 r = await api('affiliate.php', { token: aff.token, action: 'status' });
 ok('…and the affiliate sees it paid', r.program?.totals?.USD?.paid === 1960, JSON.stringify(r.program?.totals));
+
+/* What a payment buys. Nothing wrote crm_plans from a payment, so a buyer
+   of Agency stayed on Studio's limit, and a cancelled one kept theirs. */
+console.log('\nPlans follow payments');
+const plan = email => sql(`SELECT plan_id AS p, resell_limit AS l, source AS s FROM crm_plans WHERE owner_email = '${email}'`)[0];
+const billing = id => JSON.parse(sql(`SELECT v FROM crm_data WHERE k = 'crm_billing_status_${id}'`)[0]?.v ?? '{}');
+ok('a Studio payment sets Studio', plan('jamie@buyer.test')?.p === 'starter' && plan('jamie@buyer.test')?.s === 'stripe', JSON.stringify(plan('jamie@buyer.test')));
+ok('an Agency payment sets Agency, with its allowance', plan('pat@other.test')?.p === 'pro' && plan('pat@other.test')?.l === 12, JSON.stringify(plan('pat@other.test')));
+ok('…and records who paid, for the billing portal', billing(acct2).customerId === 'cus_test1', JSON.stringify(billing(acct2)));
+await stripeEvent({ id: 'evt_sub_upd', type: 'customer.subscription.updated', data: { object: { id: 'sub_1', metadata: { accountId: acct2 } } } });
+ok('an event the app does not act on leaves the status alone', billing(acct2).status === 'active' && billing(acct2).lastEvent === 'paid', JSON.stringify(billing(acct2)));
+r = await api('stripe-portal.php', { token: other.token, accountId: acct2 });
+ok('"Manage billing" goes to the connected processor, for the recorded customer', !r.success && !/not set up|No .*customer/i.test(r.message ?? r.error ?? ''), JSON.stringify(r).slice(0, 200));
+r = await api('stripe-portal.php', { token: buyer.token, accountId: acct2 });
+ok('…and only for your own workspace', !r.success && /not yours/.test(r.message ?? r.error ?? ''), JSON.stringify(r).slice(0, 160));
+await stripeEvent({ id: 'evt_sub_del', type: 'customer.subscription.deleted', data: { object: { id: 'sub_1', customer: 'cus_test1', metadata: { accountId: acct2 } } } });
+ok('a cancelled subscription is cancelled', billing(acct2).status === 'cancelled', JSON.stringify(billing(acct2)));
+ok('…and its plan removed', !plan('pat@other.test'), JSON.stringify(plan('pat@other.test')));
+sql("UPDATE crm_plans SET plan_id = 'agency', resell_limit = -1, source = 'manual' WHERE owner_email = 'jamie@buyer.test'");
+await stripeEvent(invoicePaid('evt_inv_3', acct, 4900));
+ok('a plan the owner granted by hand is not overwritten by a payment', plan('jamie@buyer.test')?.p === 'agency' && plan('jamie@buyer.test')?.s === 'manual', JSON.stringify(plan('jamie@buyer.test')));
 
 /* The screens. */
 const b = await pw.chromium.launch();
