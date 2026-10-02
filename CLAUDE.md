@@ -556,7 +556,9 @@ implementations of that list would drift the first time either changed.
 
 **The AI key is the operator's — and there may be several.** `loadAiKey` tries the workspace's own key, then
 the install's, then `env.AI_API_KEY`. The install's keys are a pool
-(`lib/aiPool.ts`): the installation key, the owner's AI Engine key, then the
+(`lib/aiPool.ts`): the installation key, the owner's main key (the **Main AI key** card on Platform
+services, `AiEngineCard.tsx` — no longer a Settings tab: customers are never asked
+for a key), then the
 owner's backups (Settings → Platform services → **AI keys**, `routes/aikeys.ts`,
 table `crm_ai_keys`, migration 0059), then `AI_API_KEY`. `loadAiKey` returns the
 first and files the rest under it; `askGemini*`, `researchWeb` and `/api/ai.php`

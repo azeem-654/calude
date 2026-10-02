@@ -113,7 +113,7 @@ for (const m of methods) {
 }
 
 /* ── 2 · Every validate / test-connection button on every Settings tab ── */
-const settingsTabs = ['Email & SMS', 'AI Engine', 'API Validation', 'Integrations', 'Email Deliverability', 'Infrastructure', 'Domains & Email', 'Security & Privacy', 'Platform services'];
+const settingsTabs = ['Email & SMS', 'API Validation', 'Integrations', 'Email Deliverability', 'Infrastructure', 'Domains & Email', 'Security & Privacy', 'Platform services'];
 for (const t of settingsTabs) {
   await p.goto(`${B}/settings`, { waitUntil: 'networkidle' });
   const tab = p.getByRole('button', { name: new RegExp(`^${t}`) }).first();

@@ -709,12 +709,6 @@ function StepAIWorkflow({ state, onChange, setup }: {
         </h3>
         <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, marginBottom: 22 }}>{problem}</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-          {needsKey && (
-            <button onClick={() => navigate('/settings?tab=ai-engine')}
-              style={{ padding: '10px 18px', border: 'none', borderRadius: 9, background: '#17191c', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              Use your own AI key instead
-            </button>
-          )}
           <button onClick={() => void build()}
             style={{ padding: '10px 18px', border: '1px solid #e2e8f0', borderRadius: 9, background: 'white', color: '#17191c', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
             Try again

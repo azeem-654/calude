@@ -321,6 +321,7 @@ for (const width of [1280, 390]) {
   const list = page.locator('[data-testid="platform-services"]');
   ok(`owner @${width}: the services are listed with their state`, await list.isVisible() && /Google Maps \(Places API\)[\s\S]*Working/.test(await list.innerText()), (await list.innerText().catch(() => '')).slice(0, 300));
   ok(`owner @${width}: the Google Maps key panel is embedded`, await page.locator('[data-field="places.installKey"]').isVisible());
+  ok(`owner @${width}: the main AI key lives here, above the backups`, /Main AI key \(Google Gemini\)/.test(await page.locator('#platform-ai-main').innerText()) && (await page.getByRole('button', { name: /^AI Engine/ }).count()) === 0);
   ok(`owner @${width}: this month's usage is shown`, /prospect search/.test(await page.locator('#platform-google-maps').innerText()));
   ok(`owner @${width}: no key on the page`, !(await page.content()).includes(IKEY));
   ok(`owner @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
@@ -333,6 +334,7 @@ for (const width of [1280, 390]) {
   await page.goto(`${B}/settings?tab=platform`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
   ok(`customer @${width}: no Platform services tab`, (await page.getByRole('button', { name: /^Platform services/ }).count()) === 0);
+  ok(`customer @${width}: no AI Engine tab — the writing is the owner's to provide`, (await page.getByRole('button', { name: /^AI Engine/ }).count()) === 0);
   ok(`customer @${width}: ?tab=platform shows nothing of it`, (await page.locator('[data-testid="platform-services"]').count()) === 0 && (await page.locator('[data-field="places.installKey"]').count()) === 0);
 
   await page.goto(`${B}/contacts`, { waitUntil: 'networkidle' });
