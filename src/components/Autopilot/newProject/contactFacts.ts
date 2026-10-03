@@ -4,10 +4,50 @@
  */
 import type { WorkflowNode } from '../../../services/autopilot';
 import { nodeDetail } from '../workflowNodes';
+import { listKindOf, loadLists } from '../../../services/contactLists';
+import type { Contact } from '../../../types';
+
+function readContacts(): Contact[] {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem('crm_contacts') || '[]');
+    return Array.isArray(raw) ? raw as Contact[] : [];
+  } catch { return []; }
+}
 
 export function contactCount(): number {
-  try { return (JSON.parse(window.localStorage.getItem('crm_contacts') || '[]') as unknown[]).length; }
-  catch { return 0; }
+  return readContacts().length;
+}
+
+export interface ListChoice {
+  id: string;
+  name: string;
+  count: number;
+  withEmail: number;
+  /** Strangers — see `listKindOf`. Said on the picker, and acted on by the planner. */
+  cold: boolean;
+}
+
+/**
+ * The lists a project can work from: hand-picked ones only.
+ *
+ * A smart list is a set of rules evaluated in the browser against health
+ * scores, email history and deals, none of which the planner on the server
+ * has. Offering one would give the project an audience it cannot follow, so
+ * they are counted (to say why they are missing) and not offered.
+ */
+export function listChoices(): { lists: ListChoice[]; smart: number } {
+  const contacts = readContacts();
+  const all = loadLists();
+  const lists = all.filter(l => l.type === 'static').map(l => {
+    const ids = new Set(l.memberIds);
+    const members = contacts.filter(c => ids.has(c.id));
+    return {
+      id: l.id, name: l.name, count: members.length,
+      withEmail: members.filter(c => c.email).length,
+      cold: listKindOf(l, members) === 'cold',
+    };
+  });
+  return { lists, smart: all.length - lists.length };
 }
 
 /** How somebody enters a workflow, in words: "A form is submitted — Quote request". */

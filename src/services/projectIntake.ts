@@ -399,10 +399,15 @@ const SPECIAL: Record<string, Record<string, string>> = {
  * An answer, in the words the customer would use — never the stored value.
  * "website" and "ai" are codes; nobody should read them on a screen.
  */
-export function describeAnswer(q: Question, value: string | string[], portfolios: { id: string; name: string }[] = []): string {
+export function describeAnswer(
+  q: Question, value: string | string[], portfolios: { id: string; name: string }[] = [],
+  /** The workspace's contact lists, for the list question — passed in because this module never reads storage. */
+  lists: { id: string; name: string }[] = [],
+): string {
   const vals = Array.isArray(value) ? value : [value];
   return vals.filter(v => String(v).trim()).map(v => {
     if (v.startsWith('existing:')) return portfolios.find(p => p.id === v.slice(9))?.name ?? 'Your business profile';
+    if (q.id === 'contactList') return lists.find(l => l.id === v)?.name ?? 'A contact list that no longer exists';
     return SPECIAL[q.id]?.[v] ?? q.options?.find(o => o.value === v)?.label ?? v;
   }).join(', ');
 }
@@ -606,6 +611,13 @@ export interface Blueprint {
    * the brief is the one record of the project the planner reads.
    */
   pageDesign: Record<string, string> | null;
+  /**
+   * The contact list this project works from, by id — or null when it works
+   * from the workspace as a whole. Only when somebody chose "a contact list I
+   * have"; an answer left over from switching back to "find new ones" is not
+   * an audience.
+   */
+  audienceListId: string | null;
 }
 
 export interface BlueprintContext {
@@ -793,8 +805,20 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     plannerChannels,
     design: designSummary(kinds, a),
     pageDesign: kinds.includes('page') ? designConfig('page', a) : null,
+    audienceListId: audienceOf(full),
   };
 }
+
+/** The chosen contact list, when the project's contacts are "a list I have" and one is picked. */
+export function audienceOf(state: Pick<IntakeState, 'known' | 'solutionKeys' | 'extraQuestions'>): string | null {
+  if (!allQuestions(state).some(q => q.id === 'contactList')) return null;
+  if (String(state.known.contactSource?.value ?? '') !== 'list') return null;
+  const id = String(state.known.contactList?.value ?? '');
+  return LIST_ID.test(id) ? id : null;
+}
+
+/** What a list id looks like (services/contactLists.ts `createList`); the server checks the same shape. */
+const LIST_ID = /^list-[A-Za-z0-9_-]{1,80}$/;
 
 /**
  * The chosen look, written onto the steps that make things.
@@ -880,7 +904,7 @@ export function launchStepsOf(bp: Blueprint): LaunchStep[] {
  * Without node graphs — those are saved as the workflows themselves — and with
  * `plannerChannels`, the one field the server acts on.
  */
-export function briefOf(bp: Blueprint, prompt: string): Record<string, unknown> {
+export function briefOf(bp: Blueprint, prompt: string, audienceName = ''): Record<string, unknown> {
   return {
     version: 1,
     prompt: prompt.slice(0, 2000),
@@ -899,6 +923,11 @@ export function briefOf(bp: Blueprint, prompt: string): Record<string, unknown> 
     limits: bp.limits,
     decided: bp.decided,
     design: { summary: bp.design, page: bp.pageDesign },
+    /* The second field the server acts on: with it, the planner starts the
+       people on this list and nobody else, and decides for itself whether
+       they are strangers (worker/src/lib/autopilotPlan.ts). The name is for
+       the project's Overview and is never trusted for anything. */
+    ...(bp.audienceListId ? { audience: { listId: bp.audienceListId, ...(audienceName ? { listName: audienceName.slice(0, 120) } : {}) } } : {}),
     createdWith: 'wizard-v2',
   };
 }
@@ -923,6 +952,13 @@ export interface EditOps {
 
 /** Only values a question actually offers survive. */
 export function validValue(q: Question, v: unknown): string | string[] | null {
+  /* A list is chosen from a picker, never typed: anything not shaped like a
+     list id — a sentence from the AI, a name — is refused here rather than
+     becoming an audience nobody can find. */
+  if (q.id === 'contactList') {
+    const s = String(Array.isArray(v) ? v[0] : v ?? '').trim();
+    return LIST_ID.test(s) ? s : null;
+  }
   if (q.type === 'text' || q.type === 'number') {
     const s = String(Array.isArray(v) ? v.join(', ') : v ?? '').trim().slice(0, 400);
     return s || null;

@@ -30,6 +30,8 @@ import {
   saveWorkflow, buildWorkflow, setWorkflowStatus, runAgent, fetchWorkflows,
 } from '../../../services/autopilot';
 import { saveProduct } from '../../../services/commerce';
+import { flushNow } from '../../../services/serverData';
+import { loadLists } from '../../../services/contactLists';
 import { understand } from '../../../services/intake';
 import { tailorEmails } from './emailWriter';
 import {
@@ -280,6 +282,11 @@ export async function runBuild(
 
   /* ── 2 · The project ── */
   set('project', { state: 'now' }, 'I’m setting up the project.');
+  /* The planner reads the list from the server. One filled in Prospecting a
+     second ago may still be in the sync's debounce, and a project whose
+     audience the server cannot find plans "that list is gone" on its first
+     tick. */
+  if (bp.audienceListId) await flushNow();
   const p = await saveProject({
     name: bp.name.trim().slice(0, 150) || 'Autopilot project',
     objective: bp.objective.trim().length >= 8 ? bp.objective.trim() : `${bp.objective.trim()} — set up with Autopilot`.slice(0, 400),
@@ -288,7 +295,7 @@ export async function runBuild(
     guardrails: guardrailsFor(capsOf(bp)),
     goals: [],
     launchSteps: launchStepsOf(bp),
-    brief: briefOf(bp, state.prompt),
+    brief: briefOf(bp, state.prompt, bp.audienceListId ? loadLists().find(l => l.id === bp.audienceListId)?.name ?? '' : ''),
   });
   if (!p.success || !p.id) {
     set('project', { state: 'failed', detail: p.error ?? 'The project could not be saved.' });

@@ -48,6 +48,14 @@ export function sanitiseBrief(raw: unknown): string | null {
     brief.plannerChannels = [...new Set(list.map(String))]
       .filter((c): c is PlannerChannel => (PLANNER_CHANNELS as readonly string[]).includes(c));
   }
+  /* The second field the server acts on, so it is checked the same way: a
+     list id of the shape the app makes, or nothing. The name is display only. */
+  if ('audience' in brief) {
+    const a = brief.audience as { listId?: unknown; listName?: unknown } | null;
+    const id = String(a?.listId ?? '');
+    brief.audience = LIST_ID.test(id) ? { listId: id, listName: String(a?.listName ?? '').slice(0, 120) } : undefined;
+    if (!brief.audience) delete brief.audience;
+  }
   const text = JSON.stringify(brief);
   /* Refused rather than truncated: half a JSON document is not a brief, it is
      a parse error waiting on the project page. */
@@ -71,6 +79,29 @@ export function focusOf(stored: string | null | undefined): PlannerChannel[] | n
     return b.plannerChannels
       .map(String)
       .filter((c): c is PlannerChannel => (PLANNER_CHANNELS as readonly string[]).includes(c));
+  } catch {
+    return null;
+  }
+}
+
+/** The shape of a contact list's id (src/services/contactLists.ts `createList`). */
+const LIST_ID = /^list-[A-Za-z0-9_-]{1,80}$/;
+
+/**
+ * The contact list a project works from, from a stored brief — or null when
+ * it works from the workspace as a whole (every project older than this, and
+ * every one whose contacts are "already in" or "find new ones").
+ *
+ * Only the id is returned. Who is on the list, and whether they are
+ * strangers, is read from the workspace's own records at plan time; a brief
+ * written by the browser is never trusted to say either.
+ */
+export function audienceOf(stored: string | null | undefined): { listId: string } | null {
+  if (!stored) return null;
+  try {
+    const b = JSON.parse(stored) as { audience?: { listId?: unknown } };
+    const id = String(b?.audience?.listId ?? '');
+    return LIST_ID.test(id) ? { listId: id } : null;
   } catch {
     return null;
   }

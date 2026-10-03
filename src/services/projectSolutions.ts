@@ -454,7 +454,25 @@ const Q: Record<string, Question> = {
       { value: 'crm', label: 'Already in Protected Central' },
       { value: 'upload', label: 'A spreadsheet I will import', hint: 'Contacts → Import takes a CSV' },
       { value: 'find', label: 'Find new ones for me', hint: 'Researched and added as leads, with your approval' },
+      { value: 'list', label: 'A contact list I have', hint: 'Including the lists you fill in Prospecting' },
     ],
+  },
+  /*
+   * Which list, when the answer above is 'list'.
+   *
+   * Stored as the list's id (`list-…`, from services/contactLists.ts) and drawn
+   * by Questions.tsx as a picker of the workspace's own lists — the bank is
+   * static and the lists are not, so it has no `options`. `validValue` only
+   * accepts something shaped like a list id, so an AI edit cannot put a
+   * sentence here. The build writes it onto the brief as `audience`, which is
+   * what the planner reads: this project then starts the people on that list
+   * and nobody else (worker/src/lib/autopilotPlan.ts).
+   */
+  contactList: {
+    id: 'contactList', group: 'contacts', type: 'text', need: 'required',
+    prompt: 'Which contact list?',
+    help: 'Only the people on it are written to by this project. Smart lists are not offered — they are worked out in your browser, and Autopilot runs on the server.',
+    showIf: { id: 'contactSource', in: ['list'] },
   },
   contactCount: {
     id: 'contactCount', group: 'contacts', type: 'single', need: 'optional',
@@ -523,7 +541,7 @@ const Q: Record<string, Question> = {
       { value: '400', label: 'Around 400' },
     ],
     aiDecides: '50',
-    showIf: { id: 'contactSource', in: ['find', 'upload'] },
+    showIf: { id: 'contactSource', in: ['find', 'upload', 'list'] },
   },
   replyHandling: {
     id: 'replyHandling', group: 'handoff', type: 'single', need: 'optional',
@@ -1061,6 +1079,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
   const reply = one(a.replyHandling, 'draft');
   const setup: SetupStep[] = [];
   if (source === 'upload') setup.push({ key: 'import', label: 'Import your contact list', by: 'you', route: '/contacts' });
+  const fromList = source === 'list' && /^list-/.test(one(a.contactList));
   if (booking === 'page') setup.push({ key: 'booking', label: 'Publish a booking page with your real availability', by: 'you', route: '/scheduling' });
   const mailbox = one(a.mailbox, 'later');
   setup.push({
@@ -1083,6 +1102,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     outputs: [
       `A ${one(a.sequenceLength, '5')}-email sequence written from your offer`,
       source === 'find' ? 'New leads matching your audience, added to Contacts' : '',
+      fromList ? 'The sequence sent to the people on the contact list you chose' : '',
       reply === 'draft' ? 'Drafted answers to replies' : '',
       booking !== 'none' ? 'Booked calls from interested people' : '',
     ].filter(Boolean),
@@ -1093,12 +1113,18 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     approvals: [
       'You approve the sequence before the first email sends',
       source === 'find' ? 'You approve each batch of new leads before they are added' : '',
+      fromList ? 'You approve each batch from the list before it is emailed' : '',
       reply === 'draft' ? 'You send each drafted reply' : '',
     ].filter(Boolean),
     manual: booking === 'own' ? ['Take the calls booked through your own link'] : ['Take the calls people book'],
     planner: ['email', ...(source === 'find' ? ['contacts' as Channel] : []), ...(opts.page ? ['site' as Channel] : []), ...(booking !== 'none' ? ['book' as Channel] : [])],
     requirements: ['contacts', 'mailbox', 'pipeline', ...(booking === 'page' ? ['bookingPage' as RequirementId] : [])],
-    limits: source === 'upload' ? ['The list is imported in Contacts — Autopilot works from what is there.'] : [],
+    limits: [
+      source === 'upload' ? 'The list is imported in Contacts — Autopilot works from what is there.' : '',
+      /* Said because it is the difference from every other outreach project,
+         which picks up anybody new in the workspace. */
+      fromList ? 'Only the people on that list are written to by this project — anybody new in Contacts is left alone unless you add them to it.' : '',
+    ].filter(Boolean),
   };
 }
 
@@ -1122,7 +1148,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Find businesses that need what we sell, email them and book calls with the interested ones.',
     keywords: [['lead', 2.5], ['leads', 2.5], ['lead generation', 3.5], ['prospect', 2.5], ['prospects', 2.5], ['find clients', 3], ['new clients', 2.5], ['new customers', 2.5], ['book calls', 2], ['meetings', 1.5]],
     channels: ['contacts', 'email', 'book', 'site'],
-    questions: ['business', 'website', 'audience', 'location', 'contactSource', 'offer', 'emailGoal', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
+    questions: ['business', 'website', 'audience', 'location', 'contactSource', 'contactList', 'offer', 'emailGoal', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
     build: a => merge(empty(), {
       ...outreachPart({ ...a, contactSource: a.contactSource ?? 'find' }, { page: true }),
       outputs: ['A page for the offer, so the email has somewhere to point'],
@@ -1135,7 +1161,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Send a five-email outreach sequence to Amazon sellers and book interested prospects.',
     keywords: [['outreach', 3.5], ['cold email', 4], ['email sequence', 3.5], ['sequence', 2], ['email campaign', 2], ['emails', 1.5], ['email', 1.5], ['follow-up', 1], ['follow up', 1]],
     channels: ['email', 'contacts', 'book'],
-    questions: ['business', 'website', 'audience', 'contactSource', 'offer', 'emailGoal', 'sequenceLength', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
+    questions: ['business', 'website', 'audience', 'contactSource', 'contactList', 'offer', 'emailGoal', 'sequenceLength', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
     build: a => merge(empty(), outreachPart(a)),
   },
   {
@@ -1337,7 +1363,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'I have 10,000 previous customers. Create an email reactivation campaign.',
     keywords: [['reactivat', 4.5], ['re-engage', 4.5], ['reengage', 4.5], ['win back', 4.5], ['winback', 4.5], ['previous customers', 4], ['past customers', 4], ['old customers', 4], ['lapsed', 3.5], ['dormant', 3.5], ['existing customers', 2.5]],
     channels: ['email'],
-    questions: ['business', 'contactSource', 'contactCount', 'emailGoal', 'offer', 'sequenceLength', 'sender', 'mailbox', 'booking', 'bookingUrl', 'replyHandling'],
+    questions: ['business', 'contactSource', 'contactList', 'contactCount', 'emailGoal', 'offer', 'sequenceLength', 'sender', 'mailbox', 'booking', 'bookingUrl', 'replyHandling'],
     build: a => {
       const base = outreachPart({ ...a, contactSource: a.contactSource ?? 'crm' });
       const win = fromTemplate('dormant-winback', 'winback', 'email', { purpose: 'Writes to people who have not bought in a while with a reason to come back — not "just checking in".' });
@@ -1383,7 +1409,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Find homeowners thinking of selling in my area and book valuations.',
     keywords: [['real estate', 4.5], ['estate agent', 4.5], ['property', 3.5], ['properties', 3], ['homeowner', 3], ['homeowners', 3], ['valuation', 3.5], ['realtor', 4.5], ['landlord', 2.5], ['listings', 2.5]],
     channels: ['contacts', 'email', 'book', 'site'],
-    questions: ['business', 'propertySide', 'location', 'contactSource', 'offer', 'booking', 'bookingUrl', 'mailbox', 'dailyVolume'],
+    questions: ['business', 'propertySide', 'location', 'contactSource', 'contactList', 'offer', 'booking', 'bookingUrl', 'mailbox', 'dailyVolume'],
     build: a => {
       const base = outreachPart(a, { page: true });
       const nurture = fromTemplate('dormant-winback', 'nurture', 'email', { purpose: 'Stays in touch with people who are not moving this month — most will, eventually.' });
@@ -1429,7 +1455,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Find warehouse candidates in the West Midlands and invite them to apply.',
     keywords: [['recruit', 4], ['recruitment', 4.5], ['recruiting', 4], ['candidates', 4], ['candidate', 3.5], ['hiring', 3.5], ['vacancy', 3.5], ['vacancies', 3.5], ['jobs', 2], ['staffing', 4]],
     channels: ['contacts', 'email'],
-    questions: ['business', 'recruitSide', 'roles', 'location', 'contactSource', 'offer', 'mailbox', 'dailyVolume'],
+    questions: ['business', 'recruitSide', 'roles', 'location', 'contactSource', 'contactList', 'offer', 'mailbox', 'dailyVolume'],
     build: a => {
       const base = outreachPart(a);
       const qual = fromTemplate('ai-lead-qualification', 'qualify', 'contacts', { purpose: 'Sorts replies into worth-a-call and not-yet, so you only phone the right ones.' });

@@ -40,6 +40,19 @@ export interface Workspace {
    * written by both would be two posts a day.
    */
   focus?: PlannerChannel[] | null;
+  /** The project being planned for, so its own sequence can be told from another project's. */
+  projectId?: string;
+  /**
+   * The contact list this project works from (its brief's `audience`), already
+   * read from the workspace's own records — or absent, and the project works
+   * from the workspace as a whole, as every project did before this.
+   *
+   * `cold` is decided by the reader from the list and its members, never from
+   * the brief: a list that says it is strangers, or that holds one prospect, is
+   * cold. `found: false` is a list the brief names and the workspace no longer
+   * has; `smart` is one whose rules only the browser can evaluate.
+   */
+  audience?: { listId: string; name: string; found: boolean; smart?: boolean; memberIds: string[]; cold: boolean };
   contacts: Contact[];
   sequences: Sequence[];
   enrolments: Enrolment[];
@@ -133,6 +146,8 @@ export interface Sequence {
      business, and re-typing it would be a second copy of a shape that already
      lives in scheduled.ts and would drift from it. */
   steps?: { channel?: string }[];
+  /** Who wrote it — the tick stamps its own with the project it was written for. */
+  source?: { projectId?: string };
 }
 export interface Enrolment { id: string; contactId: string; sequenceId: string; status?: string }
 export interface Deal {
@@ -199,6 +214,16 @@ export interface PlannedAction {
   counts?: Record<string, number>;
   /** Which guardrail governs it. Absent means it needs no permission. */
   permission?: 'sendEmail' | 'sendSms' | 'createWorkflows' | 'activateWorkflows' | 'bookAppointments';
+  /**
+   * Waits for a person even when the guardrail says 'on'.
+   *
+   * Set on a batch of strangers from a contact list. Somebody who opened email
+   * up after approving their first campaign to customers has not thereby
+   * agreed that Autopilot may write to forty businesses they found on a map;
+   * the acceptable-use rule they ticked on import is a judgement per send.
+   * 'off' still means off.
+   */
+  alwaysAsk?: boolean;
   /** What carrying it out means. Read by the execution pass. */
   effect:
     | { type: 'enrol'; sequenceId: string; contactIds: string[] }
@@ -264,6 +289,16 @@ const allDeals = (pipelines: Pipeline[]): Deal[] =>
 
 /** How many contacts one play may touch in a single run. */
 const BATCH = 50;
+
+/**
+ * How many strangers one plan starts at once.
+ *
+ * Small on purpose. A cold list sent fifty at a time from one mailbox is the
+ * pattern that gets an address filed as spam within the week (the arithmetic
+ * is in src/services/sendingPlan.ts, which plans ten a mailbox a day), and a
+ * batch a person has to read before it goes should be one they can read.
+ */
+const COLD_BATCH = 20;
 
 /** Plain-language names, kept beside the plays that use them. */
 function describePoolStep(s: { type: string; count?: number; domain?: string; domains?: string[]; addresses?: number }): string {
@@ -519,11 +554,79 @@ export function planNext(ws: Workspace): PlannedAction[] {
     });
   }
 
+  /*
+   * ── The project's own list ──
+   *
+   * A project made to write to "Dentists — Leeds, Oct" writes to the people on
+   * it and nobody else: not the enquiry that arrived this morning, not the
+   * customer who went quiet. Those are other projects' work, or the
+   * workspace's, and a list project picking them up would be mailing people
+   * the customer never put in front of it. So the workspace-wide enrolment
+   * plays below stand aside for it.
+   */
+  const aud = ws.audience;
+  if (aud) {
+    if (!aud.found) {
+      out.push({
+        key: `audience-missing:${aud.listId}`,
+        channels: ['email'],
+        scope: 'project',
+        kind: 'error',
+        summary: `The contact list "${aud.name}" this project writes to no longer exists`,
+        because: 'it was deleted or merged away in Contacts, so this project has nobody to write to — choose another list on the project, or make it again in Prospecting',
+        effect: { type: 'none' },
+      });
+    } else if (aud.smart) {
+      out.push({
+        key: `audience-smart:${aud.listId}`,
+        channels: ['email'],
+        scope: 'project',
+        kind: 'error',
+        summary: `"${aud.name}" is a smart list, which Autopilot cannot follow`,
+        because: 'a smart list is worked out in the browser from rules the server cannot evaluate, so nobody on it can be started from here',
+        effect: { type: 'none' },
+      });
+    } else if (active.length && canSend) {
+      const own = active.find(sq => ws.projectId && sq.source?.projectId === ws.projectId) ?? active[0];
+      const on = new Set(aud.memberIds);
+      const waiting = ws.contacts.filter(c => on.has(c.id) && c.email && !enrolledIds.has(c.id));
+      const batch = waiting.slice(0, aud.cold ? COLD_BATCH : BATCH);
+      if (batch.length) {
+        const more = waiting.length - batch.length;
+        out.push({
+          key: `enrol-list:${aud.listId}:${own.id}`,
+          channels: ['email'],
+          scope: 'project',
+          kind: 'enrol',
+          summary: `Start ${batch.length} from "${aud.name}" on "${own.name}"`,
+          because: aud.cold
+            ? `${waiting.length} on the list ${waiting.length === 1 ? 'has' : 'have'} an email address and ${waiting.length === 1 ? 'has' : 'have'} not been written to. They are businesses found in a directory, not people who asked to hear from you, so they go ${COLD_BATCH} at a time and each batch waits for you${more > 0 ? ` — ${more} more after this` : ''}`
+            : `${waiting.length} ${waiting.length === 1 ? 'person' : 'people'} on the list ${waiting.length === 1 ? 'has' : 'have'} an email address and ${waiting.length === 1 ? 'is' : 'are'} not in any sequence${more > 0 ? ` — ${more} more after this` : ''}`,
+          counts: { contacts: batch.length, waiting: waiting.length },
+          permission: 'sendEmail',
+          ...(aud.cold ? { alwaysAsk: true } : {}),
+          effect: { type: 'enrol', sequenceId: own.id, contactIds: batch.map(c => c.id) },
+        });
+      } else if (aud.memberIds.length && !ws.contacts.some(c => on.has(c.id) && c.email)) {
+        out.push({
+          key: `audience-no-email:${aud.listId}`,
+          channels: ['email'],
+          scope: 'project',
+          kind: 'observe',
+          summary: `Nobody on "${aud.name}" has an email address`,
+          because: `the list has ${aud.memberIds.length} ${aud.memberIds.length === 1 ? 'contact' : 'contacts'} and none can be emailed — in Prospecting, "Look up email addresses" reads each business's own website for one`,
+          counts: { contacts: aud.memberIds.length },
+          effect: { type: 'none' },
+        });
+      }
+    }
+  }
+
   /* ── New contacts nobody has started talking to ──
      The most valuable thing a small business fails to do. A lead that arrived
      four days ago and has heard nothing is the cheapest revenue in the
      workspace. */
-  if (active.length && canSend) {
+  if (active.length && canSend && !aud) {
     const fresh = ws.contacts.filter(c =>
       c.email && !enrolledIds.has(c.id) && days(c.createdAt) <= 14 && !c.lastContactedAt,
     ).slice(0, BATCH);
@@ -542,7 +645,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
         effect: { type: 'enrol', sequenceId: seq.id, contactIds: fresh.map(c => c.id) },
       });
     }
-  } else if (ws.contacts.length > 0 && canSend) {
+  } else if (!active.length && ws.contacts.length > 0 && canSend) {
     /*
      * Contacts and nowhere to put them.
      *
@@ -591,7 +694,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
      somebody tapping the number on their phone is the commonest kind there is.
      Deliberately a separate group rather than a fallback, so nobody is
      contacted on two channels for one enquiry. */
-  if (ws.canSms) {
+  if (ws.canSms && !aud) {
     const textable = active.filter(s => (s.steps ?? []).some(st => st?.channel === 'sms'));
     const phoneOnly = ws.contacts.filter(c =>
       c.phone && !c.email && !enrolledIds.has(c.id) && days(c.createdAt) <= 14 && !c.lastContactedAt,
@@ -744,7 +847,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
   /* ── People who have gone quiet ──
      Only when there is somewhere to put them; suggesting re-engagement with no
      sequence to run is advice, and this system is supposed to act. */
-  if (active.length && canSend) {
+  if (active.length && canSend && !aud) {
     const quiet = ws.contacts.filter(c =>
       c.email && !enrolledIds.has(c.id) && c.lastContactedAt && days(c.lastContactedAt) >= 60,
     ).slice(0, BATCH);
