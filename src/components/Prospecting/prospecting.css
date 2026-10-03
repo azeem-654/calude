@@ -40,7 +40,7 @@
   .pp-table td { border: 0; padding: 2px 0; background: transparent !important; }
   .pp-table td.pp-check { position: absolute; left: 12px; top: 11px; width: auto; padding: 0; }
   .pp-table td.pp-empty { display: none; }
-  .pp-label { display: inline; color: #9aa1ad; font-size: 11px; margin-right: 6px; }
+  .pp-label { display: inline-flex; vertical-align: -1px; color: #9aa1ad; font-size: 11px; margin-right: 6px; }
   .pp-site { max-width: 100%; }
 }
 

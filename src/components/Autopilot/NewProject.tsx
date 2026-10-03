@@ -112,7 +112,9 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const [describe, setDescribe] = useState<DescribeValue>(() => ({
     /* A starting sentence, not a submission — the customer reads it and says
        what they are offering before anything is understood. */
-    prompt: preset ? `Email the businesses on my contact list “${preset.name}” about our offer and book calls with the interested ones.` : '',
+    /* Worded to match Email Outreach without the AI, and with no "to …"
+       that the audience reader would take for who the emails are about. */
+    prompt: preset ? `Email outreach for the businesses on my contact list “${preset.name}”: a short email sequence about our offer that books calls with the interested ones.` : '',
     picked: '', files: [], links: [], voicePending: false,
   }));
 
@@ -205,6 +207,20 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const bp: Blueprint | null = useMemo(() => (state ? buildBlueprint(state, {
     companyName: company, website: String(state.known.website?.value ?? ''), files, links,
   }) : null), [state, company, files, links]);
+
+  /* The list the wizard was opened from, for whichever project asks where its
+     contacts are — applied again when the customer picks another solution. */
+  const withPreset = useCallback((st: IntakeState): IntakeState => {
+    if (!preset || !allQuestions(st).some(q => q.id === 'contactList')) return st;
+    return {
+      ...st,
+      known: {
+        ...st.known,
+        contactSource: { value: 'list', source: 'you', note: 'the list you started from' },
+        contactList: { value: preset.id, source: 'you', note: 'the list you started from' },
+      },
+    };
+  }, [preset]);
 
   /* ── Understand ── */
   const runUnderstanding = useCallback(async () => {
@@ -308,16 +324,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
        its contacts are. Set after the AI's facts, so a guess from the prompt
        ("find new ones") cannot overrule a list somebody chose by pressing a
        button on it. */
-    if (preset && allQuestions(st).some(q => q.id === 'contactList')) {
-      st = {
-        ...st,
-        known: {
-          ...st.known,
-          contactSource: { value: 'list', source: 'you', note: 'the list you started from' },
-          contactList: { value: preset.id, source: 'you', note: 'the list you started from' },
-        },
-      };
-    }
+    st = withPreset(st);
 
     /* The four quick ones. Each is real work — a catalogue search, a template
        count, a look at the workspace, the question list — and each is shown
@@ -346,7 +353,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
     setState(st);
     setUnderstood(true);
-  }, [describe, files, links, ws, preset]);
+  }, [describe, files, links, ws, withPreset]);
 
   /* ── Answering ── */
   const answer = useCallback((id: string, value: string | string[] | null, source: KnownSource = 'you') => {
@@ -750,10 +757,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                     if (!s) return s;
                     const known = { ...extractKnown(s.prompt, keys, ws, files, links) };
                     for (const [id, k] of Object.entries(s.known)) if (!known[id]) known[id] = k;
-                    return {
+                    return withPreset({
                       ...s, solutionKeys: keys, strength: keys[0] === CUSTOM ? 'custom' : 'strong', known,
                       summary: keys[0] === CUSTOM ? 'Built from scratch around what you described.' : `You chose ${solutionByKey(keys[0])?.label}.`,
-                    };
+                    });
                   })}
                 />
               )}

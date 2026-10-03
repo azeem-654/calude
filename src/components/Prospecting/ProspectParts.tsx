@@ -330,6 +330,9 @@ export function ImportPanel({ s, initial, suggested, onDone, listsVersion = 0 }:
       return;
     }
     setName('');
+    /* Asked again next time: the rule is a judgement about these businesses
+       and this offer, not a setting that stays ticked. */
+    setConfirmed(false);
     onDone(r);
   };
 

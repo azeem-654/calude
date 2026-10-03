@@ -47,6 +47,8 @@ public/api/data/*
 
 # Screenshots written by the e2e tests
 test-results/
+# The fresh D1 that test:prospecting makes and wipes on every run.
+.wrangler-audit/
 
 # Agents' temporary working copies (git worktrees); never part of the project.
 .claude/worktrees/
