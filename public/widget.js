@@ -1650,11 +1650,11 @@
       launcher.appendChild(el('span', '', label));
       if (online) launcher.appendChild(onlineDot(accent()));
     }
-    /* "…open the chat" stays in the name for every widget: it is what a
-       screen reader user — and every test that drives this — listens for. */
-    launcher.setAttribute('aria-label', onlyChat()
-      ? label + ' — open the chat'
-      : label + ' — open the chat and other ways to reach us' + (online ? ' (online now)' : ''));
+    /* "Open the chat" stays at the front of the name for every widget — it
+       is what a screen reader user, and every test that drives this, listens
+       for — and the visible label is in it too, so "click Help" works by voice. */
+    launcher.setAttribute('aria-label', 'Open the chat' + (onlyChat() ? '' : ' and other ways to reach us')
+      + ' — ' + label + (online ? ' (online now)' : ''));
     launcher.onclick = toggle;
 
     panel = el('div', [
