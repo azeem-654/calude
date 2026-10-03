@@ -285,6 +285,21 @@ singularised word), also free. Attribution comes back with every answer.
 remains for customers who ask, budgeted as below. `npm run test:platform`
 covers the free directory against a Geoapify mock (`GEOAPIFY_BASE`).
 
+**Prospecting** (`/prospecting`, under Customers; `components/Prospecting`) is
+the page of its own; Contacts → Find businesses is the same code
+(`useProspectSearch.ts`, `ProspectParts.tsx`) in a dialog. Imports go into a
+**contact list** (`crm_contact_lists`, the Contacts model, synced): deduped by
+email, Google place or name + phone/website, adding existing contacts to the
+list rather than copying them. A list has `kind` 'cold' | 'owned' and
+`listKindOf()` calls it cold if it says so or holds any `prospect` — the
+sendingPlan distinction. A list can be a campaign's audience
+(`/marketing?new=campaign&list=<id>`) or an Autopilot project's
+(`brief.audience.listId`, `/autopilot?new=1&list=<id>`, hand-picked lists only —
+the server cannot evaluate a smart list's rules); `autopilotTick` re-reads the
+list itself, enrols only its people, cold ones 20 at a time and each batch
+waiting for approval whatever the guardrail. `npm run test:prospecting`
+(self-contained: Geoapify mock :8838, wrangler :8908, fresh D1).
+
 ### Google Maps on the owner's key
 
 Contacts → **Find businesses** (`components/Contacts/FindProspects.tsx`) and
