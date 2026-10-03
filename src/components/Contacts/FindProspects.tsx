@@ -105,7 +105,7 @@ export default function FindProspects({ onClose, onImported }: {
               campaigns and Autopilot; this dialog is the quick way in. */}
           <button type="button" className="pp-link" style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 5, color: MUTED }}
             onClick={() => { onClose(); navigate('/prospecting'); }}>
-            Open Prospecting for saved searches and your prospect lists <ArrowRight size={12} />
+            Open AI Prospecting for saved searches, email checks and your lists <ArrowRight size={12} />
           </button>
         </div>
       </div>

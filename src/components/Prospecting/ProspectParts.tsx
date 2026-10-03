@@ -22,16 +22,21 @@ import { loadLists } from '../../services/contactLists';
 import type { ListChoice, ProspectSearch } from './useProspectSearch';
 import './prospecting.css';
 
-const INK = '#17191c';
-const MUTED = '#6b7280';
-const ACCENT = '#5b46e5';
+/* Colours as custom properties with today's values as the fallback: the
+   Contacts dialog defines none and looks as it always has, while AI
+   Prospecting defines them per theme and draws its own dark mode. */
+const INK = 'var(--pp-ink, #17191c)';
+const MUTED = 'var(--pp-muted, #6b7280)';
+const ACCENT = 'var(--pp-accent, #5b46e5)';
+/* SVG attributes do not read custom properties, so icons keep a literal. */
+const ACCENT_HEX = '#5b46e5';
 
 export function Notice({ text, tone = 'warn' }: { text: string; tone?: 'warn' | 'info' }) {
   const warn = tone === 'warn';
   return (
     <div role={warn ? 'alert' : 'status'} style={{
       display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.6, borderRadius: 10, padding: '10px 12px',
-      color: warn ? '#92400e' : '#1e3a5f', background: warn ? '#fffbeb' : '#f4f7fb', border: `1px solid ${warn ? '#fde68a' : '#dbe4f0'}`,
+      color: warn ? 'var(--pp-warn-ink, #92400e)' : 'var(--pp-soft-ink, #1e3a5f)', background: warn ? 'var(--pp-warn-bg, #fffbeb)' : 'var(--pp-soft, #f4f7fb)', border: `1px solid ${warn ? 'var(--pp-warn-line, #fde68a)' : 'var(--pp-soft-line, #dbe4f0)'}`,
     }}>
       <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
       <span style={{ minWidth: 0 }}>{text}</span>
@@ -53,7 +58,7 @@ export function SourceTabs({ s }: { s: ProspectSearch }) {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 9,
               fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-              border: `1px solid ${on ? INK : '#e6e9f0'}`, background: on ? INK : '#fff', color: on ? '#fff' : '#475569',
+              border: `1px solid ${on ? INK : 'var(--pp-line, #e6e9f0)'}`, background: on ? INK : 'var(--pp-surface, #fff)', color: on ? 'var(--pp-on-ink, #fff)' : 'var(--pp-ink-2, #475569)',
             }}>
             <MapPin size={12} /> {t.label}
           </button>
@@ -79,7 +84,7 @@ export function SearchBoxes({ s }: { s: ProspectSearch }) {
       </div>
       <button type="button" onClick={() => void s.search()} disabled={s.busy} style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px',
-        background: s.busy ? '#c7c9d3' : INK, color: '#fff', border: 'none', borderRadius: 11,
+        background: s.busy ? 'var(--pp-disabled, #c7c9d3)' : INK, color: 'var(--pp-on-ink, #fff)', border: 'none', borderRadius: 11,
         fontSize: 13.5, fontWeight: 700, cursor: s.busy ? 'default' : 'pointer', fontFamily: 'inherit',
       }}>
         {s.busy ? <Loader size={15} className="spin" /> : <Search size={15} />} Search
@@ -133,12 +138,12 @@ export function SearchHistory({ s, limit = 8 }: { s: ProspectSearch; limit?: num
         {shown.map((h: SavedSearch) => (
           <span key={`${h.source}|${h.trade}|${h.place}`} className="pp-chip" data-saved={h.saved ? 'true' : undefined}>
             <button type="button" onClick={() => s.rerun(h)} title={`Search ${h.trade} in ${h.place} again`}>
-              {h.saved ? <Bookmark size={11} style={{ verticalAlign: -1, marginRight: 4 }} fill={ACCENT} color={ACCENT} /> : <Clock size={11} style={{ verticalAlign: -1, marginRight: 4 }} />}
-              <b>{h.trade}</b> in {h.place} <span style={{ color: '#9aa1ad' }}>· {SOURCE_SHORT[h.source] ?? h.source} · {h.count}</span>
+              {h.saved ? <Bookmark size={11} style={{ verticalAlign: -1, marginRight: 4 }} fill={ACCENT_HEX} color={ACCENT_HEX} /> : <Clock size={11} style={{ verticalAlign: -1, marginRight: 4 }} />}
+              <b>{h.trade}</b> in {h.place} <span style={{ color: 'var(--pp-faint, #9aa1ad)' }}>· {SOURCE_SHORT[h.source] ?? h.source} · {h.count}</span>
             </button>
             <button type="button" className="pp-chip-icon" onClick={() => s.saveSearch(h)}
               aria-label={h.saved ? `Unsave ${h.trade} in ${h.place}` : `Save ${h.trade} in ${h.place}`} title={h.saved ? 'Unsave' : 'Save — kept when older searches make room'}>
-              <Bookmark size={12} fill={h.saved ? ACCENT : 'none'} color={h.saved ? ACCENT : 'currentColor'} />
+              <Bookmark size={12} fill={h.saved ? ACCENT_HEX : 'none'} color={h.saved ? ACCENT_HEX : 'currentColor'} />
             </button>
             <button type="button" className="pp-chip-icon" onClick={() => s.forget(h)} aria-label={`Forget ${h.trade} in ${h.place}`} title="Forget">
               <X size={12} />
@@ -171,7 +176,7 @@ export function ResultsTable({ s, maxHeight }: { s: ProspectSearch; maxHeight?: 
         <button type="button" className="pp-link" onClick={() => s.pickAll(false)}>Clear</button>
       </div>
 
-      <div className="pp-results" style={{ maxHeight, overflowY: maxHeight ? 'auto' : undefined, border: '1px solid #e6e9f0', borderRadius: 12 }}>
+      <div className="pp-results" style={{ maxHeight, overflowY: maxHeight ? 'auto' : undefined, border: '1px solid var(--pp-line, #e6e9f0)', borderRadius: 12 }}>
         <table className="pp-table" aria-label="Businesses found">
           <thead>
             <tr>
@@ -218,16 +223,16 @@ function Row({ p, s }: { p: Prospect; s: ProspectSearch }) {
       <td>
         <span className="pp-name">{p.name}</span>
         {typeof p.rating === 'number' && (
-          <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', fontSize: 11.5, color: '#92400e', fontWeight: 700, marginLeft: 8 }}>
+          <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center', fontSize: 11.5, color: 'var(--pp-warn-ink, #92400e)', fontWeight: 700, marginLeft: 8 }}>
             <Star size={10} fill="#f59e0b" color="#f59e0b" /> {p.rating.toFixed(1)}
             {typeof p.ratingCount === 'number' && <span style={{ color: MUTED, fontWeight: 500 }}>({p.ratingCount})</span>}
           </span>
         )}
-        {p.temporarilyClosed && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginLeft: 8 }}>Temporarily closed</span>}
+        {p.temporarilyClosed && <span style={{ fontSize: 11, color: 'var(--pp-warn-ink, #b45309)', fontWeight: 700, marginLeft: 8 }}>Temporarily closed</span>}
         <span className="pp-sub">{p.category}{p.category && p.address ? ' · ' : ''}{p.address}</span>
         {p.mapsUrl && (
           <a href={p.mapsUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-            style={{ display: 'inline-flex', gap: 4, alignItems: 'center', color: '#475569', fontSize: 11.5, marginTop: 2 }}>
+            style={{ display: 'inline-flex', gap: 4, alignItems: 'center', color: 'var(--pp-ink-2, #475569)', fontSize: 11.5, marginTop: 2 }}>
             <ExternalLink size={10} /> On Google Maps
           </a>
         )}
@@ -239,7 +244,7 @@ function Row({ p, s }: { p: Prospect; s: ProspectSearch }) {
       <td className={`pp-cell${p.website ? '' : ' pp-empty'}`}>
         <span className="pp-label"><Globe size={10} /></span>
         {p.website
-          ? <a className="pp-site" href={p.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#475569' }}>{p.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
+          ? <a className="pp-site" href={p.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: 'var(--pp-ink-2, #475569)' }}>{p.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
           : <span className="pp-none">—</span>}
       </td>
       <td className="pp-cell">
@@ -269,7 +274,7 @@ function EnrichButton({ s }: { s: ProspectSearch }) {
         {withSite > 8 && <span style={{ color: MUTED, fontWeight: 500 }}> (first 8)</span>}
       </button>
       {said && !s.enriching && (
-        <span role="status" style={{ fontSize: 12, color: said.ok ? '#0f7b3d' : MUTED }}>{said.message}</span>
+        <span role="status" style={{ fontSize: 12, color: said.ok ? 'var(--pp-good, #0f7b3d)' : MUTED }}>{said.message}</span>
       )}
     </>
   );
@@ -279,7 +284,7 @@ function EnrichButton({ s }: { s: ProspectSearch }) {
 export function Attribution({ s }: { s: ProspectSearch }) {
   if (!s.attribution || !s.results?.length) return null;
   return (
-    <p style={{ margin: 0, fontSize: 10.5, color: '#9aa1ad', textAlign: 'center' }}>
+    <p style={{ margin: 0, fontSize: 10.5, color: 'var(--pp-faint, #9aa1ad)', textAlign: 'center' }}>
       {s.answered === 'google'
         ? `Results from ${s.attribution}.`
         : `Business data: ${s.attribution}, used under the Open Database Licence.`}
@@ -371,10 +376,10 @@ export function ImportPanel({ s, initial, suggested, onDone, listsVersion = 0 }:
 
       {/* Not a disclaimer to click past. It is the rule, and it is the
           customer's judgement to make rather than ours to imply. */}
-      <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', background: '#f4f7fb', borderRadius: 11, padding: '11px 12px' }}>
+      <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', background: 'var(--pp-soft, #f4f7fb)', borderRadius: 11, padding: '11px 12px' }}>
         <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}
           style={{ marginTop: 2, accentColor: ACCENT, cursor: 'pointer', flexShrink: 0 }} />
-        <span style={{ fontSize: 11.5, color: '#1e3a5f', lineHeight: 1.65 }}>
+        <span style={{ fontSize: 11.5, color: 'var(--pp-soft-ink, #1e3a5f)', lineHeight: 1.65 }}>
           These are businesses whose contact details they published, and what I am offering is relevant
           to what they do. I will not add them to a campaign that is not, and I will honour anyone who
           asks me to stop. (Clause 3 of the acceptable use policy.)
@@ -385,7 +390,7 @@ export function ImportPanel({ s, initial, suggested, onDone, listsVersion = 0 }:
 
       <button type="button" onClick={go} disabled={blocked} title={!n ? 'Tick the businesses to add' : !confirmed ? 'Confirm the rule above first' : undefined} style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px',
-        background: blocked ? '#c7c9d3' : ACCENT, color: '#fff', border: 'none', borderRadius: 11,
+        background: blocked ? 'var(--pp-disabled, #c7c9d3)' : 'var(--pp-cta, #5b46e5)', color: '#fff', border: 'none', borderRadius: 11,
         fontSize: 13.5, fontWeight: 700, cursor: blocked ? 'default' : 'pointer', fontFamily: 'inherit', minWidth: 0,
       }}>
         <UserPlus size={15} style={{ flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>

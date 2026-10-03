@@ -78,7 +78,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history', icon: Users, aka: ['people', 'leads', 'crm', 'customers'] },
       /* Beside Contacts, because that is where what it finds goes — and the
          word somebody types looking for it is rarely "prospecting". */
-      { path: '/prospecting', label: 'Prospecting', desc: 'Find businesses to sell to, and keep them in lists', icon: Crosshair, aka: ['find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists'] },
+      { path: '/prospecting', label: 'AI Prospecting', desc: 'Say who to sell to — find businesses, their published emails, checked', icon: Crosshair, aka: ['prospecting', 'find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists', 'email finder', 'verify email', 'email verification', 'apollo', 'linkedin'] },
       { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
       /* Beside the inbox on purpose: this is where the conversations in that

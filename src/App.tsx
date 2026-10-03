@@ -15,7 +15,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 import DueWorkRunner from './components/shared/DueWorkRunner';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
-import Prospecting from './components/Prospecting/Prospecting';
+import AiProspecting from './components/Prospecting/AiProspecting';
 import Conversations from './components/Conversations/Conversations';
 import CalendarView from './components/Calendar/CalendarView';
 import Pipelines from './components/Pipelines/Pipelines';
@@ -159,7 +159,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
-          <Route path="/prospecting" element={<Prospecting />} />
+          <Route path="/prospecting" element={<AiProspecting />} />
+          <Route path="/ai-prospecting" element={<Navigate to="/prospecting" replace />} />
           <Route path="/engagement" element={<Engagement />} />
           <Route path="/conversations" element={<Conversations />} />
           <Route path="/calendar" element={<CalendarView />} />

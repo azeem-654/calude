@@ -1942,3 +1942,76 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 }
 .dc .dc-film-foot p { color: var(--muted); font-size: 13.5px; }
 .dc-film-video::cue { font: 600 clamp(14px, 1.6vw, 22px)/1.35 Inter, system-ui, sans-serif; background: rgba(4, 6, 10, 0.78); }
+
+/* ── AI Prospecting (ProspectingShowcase.tsx) ──
+   A drawing, not a reel: the screen in its dark palette, at the size of the
+   reels beside it. Sized by its own width so it reads the same in a column. */
+.dc-prospect .dc-show { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); }
+.dc-prospect .dc-show-item .dc-tile-icon { background: rgba(255, 138, 87, 0.14); color: #ff9a6a; }
+.dc-prospect .dc-show-head h2 em { background: linear-gradient(90deg, #ffb35c, #ff7a45 50%, #ff4f81); -webkit-background-clip: text; background-clip: text; }
+.dc-pm { margin: 0; display: grid; gap: 10px; }
+.dc-pm figcaption { font-size: 12px; color: var(--muted); text-align: center; }
+.dc-pm-win {
+  display: grid; grid-template-columns: 150px minmax(0, 1fr); border-radius: 18px; overflow: hidden; font-size: 11px;
+  background: #0f1115; border: 1px solid rgba(255, 255, 255, 0.10); color: #eceef2;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 138, 87, 0.06), 0 0 120px rgba(255, 106, 69, 0.12);
+}
+.dc-pm-side { display: flex; flex-direction: column; gap: 4px; padding: 12px 9px; background: #0c0e12; border-right: 1px solid #20242c; min-width: 0; }
+.dc-pm-brand { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-bottom: 6px; }
+.dc-pm-brand i, .dc-pm-list i {
+  width: 16px; height: 16px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: linear-gradient(135deg, #ffb35c, #ff7a45 48%, #ff4f81); color: #fff;
+}
+.dc-pm-find { display: flex; gap: 5px; align-items: center; padding: 5px 6px; border: 1px solid #20242c; border-radius: 7px; color: #646b78; font-size: 10px; }
+.dc-pm-side small { margin: 8px 4px 2px; font-size: 8.5px; letter-spacing: 0.08em; color: #646b78; font-weight: 700; }
+.dc-pm-hist, .dc-pm-list { display: grid; gap: 1px; padding: 5px 6px; border-radius: 7px; color: #c3c8d1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-pm-hist em, .dc-pm-list em { font-style: normal; font-size: 9.5px; color: #8d95a3; }
+.dc-pm-on { background: #111419; border: 1px solid #20242c; }
+.dc-pm-list { display: flex; align-items: center; gap: 6px; }
+.dc-pm-list em { margin-left: auto; }
+.dc-pm-main {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px; min-width: 0;
+  background-color: #0b0d10; background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1.2px); background-size: 14px 14px;
+}
+.dc-pm-bubble { align-self: flex-end; background: #1a1e26; padding: 7px 10px; border-radius: 10px 10px 3px 10px; max-width: 80%; }
+.dc-pm-lead { margin: 0; display: flex; gap: 6px; color: #eceef2; line-height: 1.5; }
+.dc-pm-lead svg { color: #ff8a57; flex-shrink: 0; margin-top: 2px; }
+.dc-pm-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; color: #c3c8d1; }
+.dc-pm-steps li { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.dc-pm-steps svg { color: #4ade80; flex-shrink: 0; }
+.dc-pm-steps em { margin-left: auto; font-style: normal; font-size: 9.5px; padding: 1px 6px; border-radius: 999px; border: 1px solid #20242c; color: #8d95a3; }
+.dc-pm-card { background: #111419; border: 1px solid #20242c; border-radius: 11px; overflow: hidden; }
+.dc-pm-head { display: flex; gap: 6px; align-items: center; padding: 8px 10px; font-weight: 650; }
+.dc-pm-head svg { color: #ff8a57; }
+.dc-pm-head span { font-size: 9.5px; padding: 1px 6px; border-radius: 5px; background: #161920; border: 1px solid #20242c; color: #c3c8d1; font-weight: 600; }
+.dc-pm-th, .dc-pm-tr { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) 40px; gap: 8px; padding: 6px 10px; align-items: center; }
+.dc-pm-th { border-top: 1px solid #20242c; font-size: 8.5px; letter-spacing: 0.06em; color: #646b78; text-transform: uppercase; font-weight: 700; }
+.dc-pm-tr { border-top: 1px solid #191c22; }
+.dc-pm-tr > span { display: grid; gap: 2px; min-width: 0; }
+.dc-pm-tr b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-pm-tr em { font-style: normal; font-size: 9.5px; color: #8d95a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-pm-mail { color: #4ade80; }
+.dc-pm-tr i { font-style: normal; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 999px; justify-self: start; }
+.dc-pm-tr i[data-k="valid"] { color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+.dc-pm-tr i[data-k="ok"] { color: #7cb2ff; background: rgba(124, 178, 255, 0.12); }
+.dc-pm-tr i[data-k="risky"] { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+.dc-pm-score { font-weight: 700; text-align: center; border-radius: 6px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.dc-pm-score[data-k="valid"] { color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+.dc-pm-score[data-k="ok"] { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+.dc-pm-score[data-k="risky"] { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+.dc-pm-compose { margin-top: 2px; }
+.dc-pm-strip {
+  display: flex; gap: 5px; align-items: center; flex-wrap: wrap; padding: 6px 9px 14px; margin-bottom: -9px; border-radius: 11px 11px 0 0;
+  background: linear-gradient(135deg, #ffb35c, #ff7a45 48%, #ff4f81); color: #fff; font-weight: 700; font-size: 10px;
+}
+.dc-pm-strip span { font-weight: 600; font-size: 9px; padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.16); }
+.dc-pm-box { position: relative; background: #111419; border: 1px solid #20242c; border-radius: 10px; padding: 9px 10px 22px; color: #646b78; }
+.dc-pm-box i {
+  position: absolute; right: 7px; bottom: 6px; width: 20px; height: 20px; border-radius: 6px; font-style: normal; display: inline-flex;
+  align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg, #ffb35c, #ff7a45 48%, #ff4f81);
+}
+@media (max-width: 1000px) { .dc-prospect .dc-show { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+  .dc-pm-win { grid-template-columns: minmax(0, 1fr); }
+  .dc-pm-side { display: none; }
+}

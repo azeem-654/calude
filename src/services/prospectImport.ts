@@ -16,7 +16,8 @@
  * already-known are put on the list rather than created again.
  */
 import type { Contact } from '../types';
-import type { Prospect, ProspectSource, Contactable } from './prospects';
+import type { Prospect, ProspectSource, Contactable, Verdict } from './prospects';
+import { bestAddress, personFor } from './aiProspecting';
 
 /** What the shown results were searched for, as the search form had it. */
 export interface Searched { source: ProspectSource; trade: string; place: string }
@@ -28,9 +29,13 @@ export function sourceLabel(answered: ProspectSource | ''): string {
       : 'OpenStreetMap';
 }
 
-/** The address a prospect will be imported with: published on the map, or on its own site. */
-export function emailOf(p: Prospect, found: Record<string, Contactable>): string {
-  return p.email || found[p.website]?.emails[0] || '';
+/**
+ * The address a prospect will be imported with: published on the map, on its
+ * own site, or by a named person Hunter saw published — the first of those a
+ * check has not shown to be dead.
+ */
+export function emailOf(p: Prospect, found: Record<string, Contactable>, checks: Record<string, Verdict> = {}): string {
+  return bestAddress(p, found, checks);
 }
 
 /**
@@ -42,33 +47,47 @@ export function emailOf(p: Prospect, found: Record<string, Contactable>): string
  */
 export function prospectRows(
   chosen: Prospect[], answered: ProspectSource | '', searched: Searched | null,
-  found: Record<string, Contactable>, now = new Date().toISOString(),
+  found: Record<string, Contactable>, now = new Date().toISOString(), checks: Record<string, Verdict> = {},
 ): Omit<Contact, 'id'>[] {
   const from = sourceLabel(answered);
   const what = searched ? `${searched.trade} in ${searched.place}` : '';
-  return chosen.map(p => ({
-    name: p.name,
-    email: emailOf(p, found),
-    phone: p.phone,
-    status: 'prospect',
-    /* Tagged with where and what, because a list of 40 businesses with no
-       label is unusable a week later. */
-    tags: ['prospect search', p.category].filter(Boolean),
-    /* The stamp says what made the row, so a list full of found businesses
-       can still be told apart from people who asked to hear from you — which
-       is the distinction the sending rules turn on. */
-    source: `${from} · ${what}`,
-    createdAt: now,
-    lastActivity: now,
-    value: 0,
-    company: p.name,
-    website: p.website,
-    address: p.address,
-    /* The place id is the part of a Google answer that may be kept, and the
-       one that finds this business on Google again. Only Google results carry
-       one; the free directory's ids are its own and are not stored. */
-    ...(answered === 'google' && p.placeId ? { customFields: { googlePlaceId: p.placeId } } : {}),
-  }));
+  return chosen.map(p => {
+    const email = emailOf(p, found, checks);
+    const v = email ? checks[email] : undefined;
+    const person = personFor(p, found, email);
+    /* What the check said travels with the contact, so a campaign later can
+       leave out the ones that were never more than "the domain takes mail". */
+    const fields: Record<string, string> = {
+      ...(answered === 'google' && p.placeId ? { googlePlaceId: p.placeId } : {}),
+      ...(v ? { emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt } : {}),
+    };
+    return {
+      name: p.name,
+      email,
+      phone: p.phone,
+      status: 'prospect',
+      /* Tagged with where and what, because a list of 40 businesses with no
+         label is unusable a week later. */
+      tags: ['prospect search', p.category].filter(Boolean),
+      /* The stamp says what made the row, so a list full of found businesses
+         can still be told apart from people who asked to hear from you — which
+         is the distinction the sending rules turn on. */
+      source: `${from} · ${what}`,
+      createdAt: now,
+      lastActivity: now,
+      value: 0,
+      company: p.name,
+      website: p.website,
+      address: p.address,
+      /* A named person Hunter saw published goes on as the person to write to;
+         the row stays the business, so dedupe by name still finds it. */
+      ...(person ? { firstName: person.name.split(' ')[0], lastName: person.name.split(' ').slice(1).join(' ') || undefined, jobTitle: person.position || undefined } : {}),
+      /* The place id is the part of a Google answer that may be kept, and the
+         one that finds this business on Google again. Only Google results carry
+         one; the free directory's ids are its own and are not stored. */
+      ...(Object.keys(fields).length ? { customFields: fields } : {}),
+    };
+  });
 }
 
 const norm = (s?: string) => String(s ?? '').toLowerCase().replace(/&/g, 'and').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -121,7 +140,7 @@ export interface ImportPlan {
  * filled, so a second search that found the email the first could not is not
  * wasted.
  */
-export function planImport(rows: Omit<Contact, 'id'>[], contacts: Contact[]): ImportPlan {
+export function planImport(rows: Omit<Contact, 'id'>[], contacts: Contact[], checks: Record<string, Verdict> = {}): ImportPlan {
   const fresh: Omit<Contact, 'id'>[] = [];
   const known = new Map<string, { contact: Contact; fill: Partial<Contact> }>();
   let repeats = 0;
@@ -136,6 +155,20 @@ export function planImport(rows: Omit<Contact, 'id'>[], contacts: Contact[]): Im
       if (!hit.address && row.address && !fill.address) fill.address = row.address;
       if (row.customFields?.googlePlaceId && !hit.customFields?.googlePlaceId) {
         fill.customFields = { ...(hit.customFields ?? {}), googlePlaceId: row.customFields.googlePlaceId };
+      }
+      /* A fresher check of the address they already have replaces the old
+         one — including "this bounces", which is the one a campaign most
+         needs to know. Their address itself is theirs to change, not ours. */
+      const mail = (fill.email ?? hit.email ?? '').toLowerCase();
+      const v = mail ? checks[mail] : undefined;
+      if (v) {
+        fill.customFields = { ...(fill.customFields ?? hit.customFields ?? {}), emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt };
+      }
+      /* The person the web named, when the record has nobody yet and the address is theirs. */
+      if (!hit.firstName && row.firstName && mail === row.email.toLowerCase()) {
+        fill.firstName = row.firstName;
+        if (row.lastName) fill.lastName = row.lastName;
+        if (!hit.jobTitle && row.jobTitle) fill.jobTitle = row.jobTitle;
       }
       if (was) repeats++;
       known.set(hit.id, { contact: hit, fill });

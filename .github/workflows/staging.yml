@@ -93,6 +93,14 @@ jobs:
       - name: Test the prospect finder
         run: npm run test:prospects
 
+      # AI Prospecting: what a basic check may call an address (never
+      # "verified"), each verifier's words mapped to ours, Hunter's guesses
+      # dropped; and the sentence parser, the score and the CSV. Pure, fast.
+      - name: Test email verification and AI Prospecting
+        run: |
+          npm run test:emailverify
+          npm run test:aiprospecting
+
       - name: Test the domain search
         run: npm run test:domains
 

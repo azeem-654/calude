@@ -11,9 +11,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
-  googleAvailability, lookupContacts, searchProspects,
-  type Contactable, type GoogleAvailability, type Prospect, type ProspectSource,
+  findPeople, googleAvailability, lookupContacts, searchProspects, verifyEmails,
+  type Contactable, type GoogleAvailability, type Prospect, type ProspectSource, type Verdict,
 } from '../../services/prospects';
+import { addressesOf, parseAsk, type Ask } from '../../services/aiProspecting';
 import {
   emailOf, planImport, prospectRows, recordSearch, loadSearches, toggleSaved, forgetSearch,
   type SavedSearch, type Searched,
@@ -35,6 +36,20 @@ export interface ImportOutcome {
   /** Of the already-known, how many had a blank this search filled. */
   filled: number;
 }
+
+/** One line of the plan AI Prospecting shows: a real step, with what it actually found. */
+export interface Step {
+  id: 'search' | 'read' | 'web' | 'verify' | 'deep';
+  label: string;
+  detail: string;
+  state: 'running' | 'done' | 'failed' | 'skipped';
+  /** Who answered — "Free directory", "Websites", "Hunter" — drawn as a badge. */
+  badge: string;
+  count?: number;
+}
+
+/** How many businesses the first pass reads websites for, unasked. The rest are a press away. */
+export const AUTO_READ = 16;
 
 /** A refusal about the key, the trial or the budget is not fixed by typing differently. */
 export const KEY_REFUSAL = /^(no_key|trial_ended|places_budget|bad_key|api_disabled|key_restricted|billing|quota)$/;
@@ -65,6 +80,21 @@ export function useProspectSearch() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [found, setFound] = useState<Record<string, Contactable>>({});
   const [history, setHistory] = useState<SavedSearch[]>(() => loadSearches());
+  /* What the checks said about each address, by address. */
+  const [checks, setChecks] = useState<Record<string, Verdict>>({});
+  const [verifying, setVerifying] = useState(false);
+  const [finding, setFinding] = useState(false);
+  /* The sentence the current results were asked for, its narrowing, and the plan as it ran. */
+  const [asked, setAsked] = useState('');
+  const [want, setWant] = useState<Ask['want']>({ email: false, website: false, phone: false });
+  const [steps, setSteps] = useState<Step[]>([]);
+  const step = useCallback((id: Step['id'], patch: Partial<Step> & Pick<Step, 'label' | 'state' | 'badge'>) => {
+    setSteps(prev => {
+      const i = prev.findIndex(x => x.id === id);
+      const next: Step = { id, detail: '', ...(i >= 0 ? prev[i] : {}), ...patch };
+      return i >= 0 ? prev.map((x, j) => (j === i ? next : x)) : [...prev, next];
+    });
+  }, []);
 
   /* Asked before anybody types, so "the owner has not set the key" is said up
      front rather than after a search — and the free directory is offered at once. */
@@ -76,15 +106,16 @@ export function useProspectSearch() {
 
   const clear = useCallback(() => {
     setError(''); setErrorCode(''); setResults(null); setNextPage(''); setPicked(new Set()); setFound({}); setMoreError('');
+    setChecks({}); setSteps([]);
   }, []);
 
   const setSource = useCallback((s: ProspectSource) => { setSourceState(s); clear(); }, [clear]);
 
-  const run = useCallback(async (q: Searched) => {
+  const run = useCallback(async (q: Searched): Promise<Prospect[] | null> => {
     setBusy(true); clear();
     const r = await searchProspects(q);
     setBusy(false);
-    if (r.error) { setError(r.error); setErrorCode(r.code); return; }
+    if (r.error) { setError(r.error); setErrorCode(r.code); return null; }
     setResults(r.prospects);
     setAnswered(r.source);
     setAttribution(r.attribution);
@@ -92,15 +123,145 @@ export function useProspectSearch() {
     setNextPage(r.nextPageToken);
     setSearched(q);
     setHistory(recordSearch({ source: q.source, trade: q.trade, place: q.place, count: r.prospects.length }));
+    return r.prospects;
   }, [clear]);
 
-  const search = useCallback(() => run({ source, trade: trade.trim(), place: place.trim() }), [run, source, trade, place]);
+  const search = useCallback(() => { setAsked(''); setWant({ email: false, website: false, phone: false }); return run({ source, trade: trade.trim(), place: place.trim() }); }, [run, source, trade, place]);
 
   /** Run a search from the history, boxes and tab included. */
   const rerun = useCallback((s: SavedSearch) => {
     setSourceState(s.source); setTrade(s.trade); setPlace(s.place);
+    setAsked(''); setWant({ email: false, website: false, phone: false });
     void run({ source: s.source, trade: s.trade, place: s.place });
   }, [run]);
+
+  /**
+   * Read websites for their published addresses, eight to a request (the
+   * server's cap). Returns how many sites were read and addresses found, and
+   * the new lookups, so a caller in the middle of a pipeline does not have to
+   * wait for React to hand them back.
+   */
+  const lookupSites = useCallback(async (sites: string[]) => {
+    const fresh: Record<string, Contactable> = {};
+    let error = '';
+    for (let i = 0; i < sites.length; i += 8) {
+      const r = await lookupContacts(sites.slice(i, i + 8));
+      if (r.error) { error = r.error; break; }
+      Object.assign(fresh, r.contacts);
+      setFound(f => {
+        const next = { ...f };
+        for (const [k, c] of Object.entries(r.contacts)) next[k] = { ...c, people: f[k]?.people };
+        return next;
+      });
+    }
+    const emails = Object.values(fresh).reduce((n, c) => n + c.emails.length, 0);
+    return { read: Object.keys(fresh).length, emails, fresh, error };
+  }, []);
+
+  /**
+   * Check addresses, twenty to a request. `deep` asks the owner's verifier too.
+   * Returns the verdicts and what the server said about the deep pass.
+   */
+  const verifyList = useCallback(async (emails: string[], deep: boolean) => {
+    const list = [...new Set(emails.map(e => e.toLowerCase()).filter(Boolean))];
+    const got: Record<string, Verdict> = {};
+    let note = '';
+    let error = '';
+    let ran = 0;
+    setVerifying(true);
+    for (let i = 0; i < list.length; i += 20) {
+      const r = await verifyEmails(list.slice(i, i + 20), deep);
+      if (r.error) { error = r.error; break; }
+      Object.assign(got, r.verdicts);
+      ran += r.deep.ran;
+      if (r.deep.error) note = r.deep.error;
+      setChecks(c => ({ ...c, ...r.verdicts }));
+      /* A missing verifier or a spent allowance is the same for the next
+         twenty; the rest get the free check in one more pass, not a refusal each. */
+      if (deep && r.deep.code && r.deep.code !== 'verify_budget') deep = false;
+    }
+    setVerifying(false);
+    return { verdicts: got, note, error, ran };
+  }, []);
+
+  /** Hunter's domain search for sites, five to a request. Merges the people into `found`. */
+  const searchWebFor = useCallback(async (sites: string[]) => {
+    const got: Record<string, Contactable> = {};
+    let error = '';
+    let searched = 0;
+    setFinding(true);
+    for (let i = 0; i < sites.length; i += 5) {
+      const r = await findPeople(sites.slice(i, i + 5));
+      searched += r.searched;
+      setFound(f => {
+        const next = { ...f };
+        for (const [k, people] of Object.entries(r.people)) {
+          next[k] = { emails: f[k]?.emails ?? [], mx: f[k]?.mx ?? null, people };
+          got[k] = next[k];
+        }
+        return next;
+      });
+      if (r.error) { error = r.error; break; }
+    }
+    setFinding(false);
+    const people = Object.values(got).reduce((n, c) => n + (c.people?.length ?? 0), 0);
+    return { searched, people, got, error };
+  }, []);
+
+  /**
+   * One sentence, run as a plan: search, read the first websites for the
+   * addresses they publish, and give every address found the free check.
+   * Each step is shown as it runs and reports what it actually found — a step
+   * that found nothing says so, and one that could not run says why.
+   */
+  const ask = useCallback(async (text: string, from?: ProspectSource): Promise<{ error: string; want?: Ask['want'] }> => {
+    const a = parseAsk(text);
+    if (!a) return { error: 'Say the kind of business and the place — "dentists in Leeds", "cafés near Bristol".' };
+    setTrade(a.trade); setPlace(a.place);
+    const src = from ?? source;
+    if (from) setSourceState(from);
+    const where = src === 'google' ? 'Google Maps' : 'Free directory';
+    const whereText = src === 'google' ? 'Google Maps' : 'the free directory';
+    const list = await run({ source: src, trade: a.trade, place: a.place });
+    setAsked(text.trim()); setWant(a.want);
+    if (!list) {
+      step('search', { label: `Searched ${whereText} for ${a.trade} in ${a.place}`, detail: 'The search was refused — see why below.', state: 'failed', badge: where });
+      return { error: '', want: a.want };
+    }
+    step('search', { label: `Searched ${whereText} for ${a.trade} in ${a.place}`, detail: `${list.length} found`, state: 'done', badge: where, count: list.length });
+    if (!list.length) return { error: '', want: a.want };
+
+    const sites = list.filter(p => p.website && !p.email).map(p => p.website).slice(0, AUTO_READ);
+    const onMap = list.filter(p => p.email).length;
+    let fresh: Record<string, Contactable> = {};
+    if (sites.length) {
+      step('read', { label: `Reading ${sites.length} websites for the addresses they publish`, state: 'running', badge: 'Websites' });
+      const r = await lookupSites(sites);
+      fresh = r.fresh;
+      step('read', {
+        label: `Read ${r.read} websites for the addresses they publish`,
+        detail: r.error ? r.error : `${r.emails} address${r.emails === 1 ? '' : 'es'} found${onMap ? `, plus ${onMap} published on the map` : ''}`,
+        state: r.error ? 'failed' : 'done', badge: 'Websites', count: r.emails,
+      });
+    } else {
+      step('read', { label: 'No websites to read', detail: onMap ? `${onMap} published an address on the map` : 'None of these list a website', state: 'skipped', badge: 'Websites' });
+    }
+
+    const emails = [...new Set(list.flatMap(p => addressesOf(p, fresh)))];
+    if (emails.length) {
+      step('verify', { label: `Checking ${emails.length} address${emails.length === 1 ? '' : 'es'} — format, domain and mail server`, state: 'running', badge: 'Free check' });
+      const v = await verifyList(emails, false);
+      const vs = Object.values(v.verdicts);
+      const bad = vs.filter(x => x.status === 'invalid').length;
+      const okd = vs.filter(x => x.status === 'valid' || x.status === 'domain_ok').length;
+      step('verify', {
+        label: `Checked ${vs.length} address${vs.length === 1 ? '' : 'es'} — format, domain and mail server`,
+        detail: v.error ? v.error : `${okd} take mail${bad ? `, ${bad} would bounce` : ''}${vs.length - okd - bad ? `, ${vs.length - okd - bad} risky or unclear` : ''}`,
+        state: v.error ? 'failed' : 'done', badge: 'Free check', count: okd,
+      });
+    }
+    return { error: '', want: a.want };
+  }, [source, run, step, lookupSites, verifyList]);
 
   /* Each further page is another search on the same budget, so it is asked
      for, never fetched ahead. */
@@ -144,14 +305,18 @@ export function useProspectSearch() {
     const r = await lookupContacts(sites);
     setEnriching(false);
     if (r.error) return { ok: false, message: r.error };
-    setFound(f => ({ ...f, ...r.contacts }));
+    setFound(f => {
+      const next = { ...f };
+      for (const [k, c] of Object.entries(r.contacts)) next[k] = { ...c, people: f[k]?.people };
+      return next;
+    });
     const n = Object.values(r.contacts).reduce((sum, c) => sum + c.emails.length, 0);
     return n
       ? { ok: true, message: `Found ${n} published address${n === 1 ? '' : 'es'}.` }
       : { ok: false, message: 'None of those publish an email address on their site.' };
   }, [chosen, found]);
 
-  const emailFor = useCallback((p: Prospect) => emailOf(p, found), [found]);
+  const emailFor = useCallback((p: Prospect) => emailOf(p, found, checks), [found, checks]);
 
   /**
    * Import the ticked ones, once each, and put them on the chosen list.
@@ -170,7 +335,7 @@ export function useProspectSearch() {
       if (list.type !== 'static') return { error: `"${list.name}" is a smart list — it picks its own members by rule, so nobody can be added to it. Choose another or make a new one.` };
     }
 
-    const plan = planImport(prospectRows(chosen, answered, searched, found), contacts);
+    const plan = planImport(prospectRows(chosen, answered, searched, found, undefined, checks), contacts, checks);
     const made = plan.fresh.length ? bulkImportContacts(plan.fresh) : [];
     const fills = plan.known.filter(k => Object.keys(k.fill).length).map(k => ({ id: k.contact.id, updates: k.fill }));
     if (fills.length) updateContacts(fills);
@@ -186,7 +351,7 @@ export function useProspectSearch() {
     }
     setPicked(new Set());
     return { created: made.length, already: plan.known.length, list, filled: fills.length };
-  }, [chosen, answered, searched, found, contacts, bulkImportContacts, updateContacts]);
+  }, [chosen, answered, searched, found, checks, contacts, bulkImportContacts, updateContacts]);
 
   const googleDown = source === 'google' && !!google && !google.available;
   const offerFree = source === 'google' && (googleDown || KEY_REFUSAL.test(errorCode));
@@ -199,6 +364,8 @@ export function useProspectSearch() {
     picked, toggle, pickAll, chosen, found, emailFor,
     search, rerun, loadMore, enrich, importChosen,
     history,
+    checks, verifying, finding, steps, step, asked, want, setWant,
+    ask, lookupSites, verifyList, searchWebFor,
     saveSearch: (s: SavedSearch) => setHistory(toggleSaved(s)),
     forget: (s: SavedSearch) => setHistory(forgetSearch(s)),
   };

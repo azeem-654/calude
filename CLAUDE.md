@@ -300,6 +300,52 @@ list itself, enrols only its people, cold ones 20 at a time and each batch
 waiting for approval whatever the guardrail. `npm run test:prospecting`
 (self-contained: Geoapify mock :8838, wrangler :8908, fresh D1).
 
+### AI Prospecting — one sentence, checked addresses
+
+`/prospecting` is **AI Prospecting** (`components/Prospecting/AiProspecting.tsx`,
+`AiParts.tsx`, `aiProspecting.css`; the judgement in `services/aiProspecting.ts`).
+A sentence ("dentists in Leeds with a website") is parsed by `parseAsk` — split
+at the last in/near/around, "with a website/email/phone" becomes a filter, not a
+search term — and run by `useProspectSearch.ask` as a plan whose steps are real
+calls, shown as they run with what they found: search, read the first 16
+websites (`AUTO_READ`), free-check every address. The two boxes under the
+composer carry `data-field="prospects.trade"/"prospects.place"`, so a refusal
+naming either still has a box on screen. The dashboard's `ProspectingPanel`
+hands a sentence over as `/prospecting?q=`.
+
+**Its dark mode is its own.** The page and the dashboard panel carry
+`data-noinvert` and define both palettes on `.aip, .aip-vars` (switched by
+`html[data-theme="dark"]`), because the app's inverting dark mode turns the
+orange gradient blue. The shared `ProspectParts` read `--pp-*` custom properties
+with the old colours as fallbacks, so the Contacts dialog is unchanged.
+
+**Email checks** (`lib/emailVerify.ts`, `/api/prospects.php` `verify` / `people`,
+migration 0062). Two levels, and the screen says which answered:
+- *basic* — ours, free: syntax, domain (DoH, `DOH_BASE` overridable), MX / null
+  MX / A fallback, throwaway domains, role and webmail flags. Its best answer is
+  **`domain_ok`, never `valid`**: a Worker cannot open port 25, so it cannot ask
+  whether a mailbox exists, and calling a domain check "verified" is the
+  plausible success this codebase refuses.
+- *mailbox* — the owner's verifier (`crm_install_providers` kind
+  `email_verifier`: Hunter, ZeroBounce or MillionVerifier; Settings → Platform
+  services → **Email finder & verifier**, `routes/emailVerifier.ts`, owner-only,
+  proved on the provider's free credits call). Only its "deliverable" is `valid`.
+  A key fault stops the pass and is reported once; the rest keep their basic verdict.
+
+Verdicts are cached per address across workspaces (`crm_email_checks`: a week
+basic, 30 days mailbox, 6 h unknown). Each workspace has an allowance on the
+owner's credits (`BUDGET`: 100 checks a day / 500 a month, 10 web searches a
+day / 40 a month, `crm_verifier_usage`) and an ended trial stops it.
+**With Hunter**, `people` asks Hunter's domain search for addresses it saw
+published; **an address with no source page is dropped** — that is Hunter's
+pattern guess, and guesses are what prospects.ts refuses. `bestAddress` imports
+the first address no check said would bounce; the check, and a named person's
+name and role, go onto the contact (`customFields.emailStatus`, `firstName`,
+`jobTitle`). **Never LinkedIn, Apollo or bought data** — their terms forbid
+exactly this, and the site says so. `npm run test:emailverify` and
+`npm run test:aiprospecting` (pure); `npm run test:prospecting` drives it with
+DoH and Hunter mocks (`EMAIL_VERIFIER_BASE`), in both themes.
+
 ### Google Maps on the owner's key
 
 Contacts → **Find businesses** (`components/Contacts/FindProspects.tsx`) and

@@ -22,6 +22,7 @@
  * Owner only, on the server. A customer forcing the tab open gets a 403.
  */
 import { geoState } from './geoapify';
+import { verifierState } from './emailVerifier';
 import { body, fail, json } from '../lib/http';
 import { userFromToken, type Env, type SessionUser } from '../lib/db';
 import { googleCreds } from '../lib/googleAuth';
@@ -149,6 +150,27 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
             : 'Saved, not yet proved. Press "Test connection" below.',
       checkedAt: g.set && g.status !== 'unknown' ? g.updatedAt : null,
       lastError: g.lastError,
+      where: { label: 'Below, on this tab' },
+      optional: true,
+    });
+  }
+
+  /* ── Email finder & verifier — mailbox checks in AI Prospecting ── */
+  {
+    const v = await verifierState(env);
+    const name = v.providers.find(p => p.id === v.provider)?.name ?? v.provider;
+    const state: State = !v.set ? 'off' : v.status === 'ok' ? 'ok' : v.status === 'error' ? 'error' : 'unchecked';
+    services.push({
+      id: 'email_verifier', name: v.set ? `Email finder & verifier (${name})` : 'Email finder & verifier',
+      powers: 'AI Prospecting: checking a mailbox exists before anybody sends to it, and (Hunter) finding addresses published on the web',
+      state,
+      detail: state === 'off'
+        ? 'Not set. AI Prospecting still runs the free checks (format, domain, mail server, throwaway inboxes) and says the mailbox itself was not checked.'
+        : state === 'ok' ? `Working. This month: ${v.month.verify} mailbox check${v.month.verify === 1 ? '' : 's'}${v.finds ? ` and ${v.month.find} web search${v.month.find === 1 ? '' : 'es'}` : ''} across every workspace.`
+          : state === 'error' ? `${name} refused it the last time it was used — see the reason below. Customers fall back to the free checks meanwhile.`
+            : 'Saved, not yet proved. Press "Test connection" below.',
+      checkedAt: v.set && v.status !== 'unknown' ? v.updatedAt : null,
+      lastError: v.lastError,
       where: { label: 'Below, on this tab' },
       optional: true,
     });

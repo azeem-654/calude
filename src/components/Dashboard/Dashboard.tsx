@@ -27,6 +27,7 @@ import DayBoard from './DayBoard';
 import AutopilotPanel from './AutopilotPanel';
 import DueTasks from './DueTasks';
 import SupportWaiting from './SupportWaiting';
+import ProspectingPanel from './ProspectingPanel';
 import KpiTile from './KpiTile';
 import { buildKpis, shortMoney } from './kpis';
 import { useProgressBook } from './useProgressBook';
@@ -882,6 +883,11 @@ export default function Dashboard() {
         {/* People waiting for a person — only for a workspace that has ever
             used Customer Engagement. */}
         <SupportWaiting />
+
+        {/* ── AI Prospecting ──
+            Where new customers come from, one sentence away. Below the work
+            that is already waiting on somebody, above the week's figures. */}
+        <ProspectingPanel />
 
         {/*
           The "Build a campaign from your portfolio" strip stood here.

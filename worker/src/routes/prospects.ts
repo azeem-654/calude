@@ -32,6 +32,8 @@
 import { body, fail, json } from '../lib/http';
 import { userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { findContacts, searchProspects } from '../lib/prospects';
+import { BUDGET, PROVIDERS, checkEmails, findPeople, installVerifier, usage } from '../lib/emailVerify';
+import { trialForWorkspace } from '../lib/trial';
 import { rateLimit } from '../lib/rateLimit';
 import { GEOAPIFY_ATTRIBUTION, installGeoKey, markGeoKey, searchGeoapify } from '../lib/geoapify';
 import {
@@ -49,6 +51,9 @@ interface Req {
   query?: string;
   pageToken?: string;
   websites?: string[];
+  emails?: string[];
+  /** Ask the connected verifier too, not just the free checks. */
+  deep?: boolean;
 }
 
 export async function handleProspects(req: Request, env: Env): Promise<Response> {
@@ -78,6 +83,10 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
          its key, OpenStreetMap's own servers when not. Said so the screen
          can name which. */
       free: { available: true, geoapify: !!(await installGeoKey(env)) },
+      /* Which mailbox checks and web searches the owner has connected, and how
+         much of this workspace's allowance is left — so the screen offers only
+         what will run, and says why the rest will not. */
+      verifier: await verifierStatus(env, accountId),
     });
   }
 
@@ -204,5 +213,56 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
     return json({ success: true, contacts: found });
   }
 
+  /*
+   * Is each address worth sending to.
+   *
+   * The free checks always (syntax, domain, mail server, throwaway inbox);
+   * `deep` also asks the owner's connected verifier whether the mailbox
+   * exists, within this workspace's allowance. Twenty at a time — each is a
+   * DNS lookup or a call to the verifier, and a Worker has a subrequest budget.
+   */
+  if (act === 'verify') {
+    const emails = Array.isArray(d.emails) ? d.emails : [];
+    if (!emails.length) return fail('Nothing to check.');
+    for (const b of [{ what: 'email-check-hour', max: 120, windowSeconds: 3600 }]) {
+      const v = await rateLimit(env, { ...b, who: accountId });
+      if (!v.allowed) return fail(`That is a lot of checks — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
+    }
+    const r = await checkEmails(env, accountId, emails, d.deep === true);
+    return json({ success: true, verdicts: r.verdicts, deep: r.deep });
+  }
+
+  /*
+   * Who else at these businesses has an address published on the web —
+   * Hunter's domain search, on the owner's key, five sites at a time. Only
+   * addresses Hunter found on a page come back; its pattern guesses do not.
+   */
+  if (act === 'people') {
+    const sites = Array.isArray(d.websites) ? d.websites : [];
+    if (!sites.length) return fail('Nothing to look up.');
+    const r = await findPeople(env, accountId, sites);
+    return json({ success: true, ...r });
+  }
+
   return fail(`"${act}" is not something this endpoint does.`);
+}
+
+async function verifierStatus(env: Env, accountId: string) {
+  const v = await installVerifier(env);
+  if (!v) return { available: false, provider: '', finds: false, code: 'no_verifier' };
+  if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended') {
+    return { available: false, provider: v.provider, finds: false, code: 'trial_ended' };
+  }
+  const [verify, find] = [await usage(env, accountId, 'verify'), await usage(env, accountId, 'find')];
+  return {
+    available: true,
+    provider: v.provider,
+    providerName: PROVIDERS[v.provider].name,
+    finds: PROVIDERS[v.provider].finds,
+    code: '',
+    left: {
+      verify: Math.max(0, Math.min(BUDGET.verify.day - verify.day, BUDGET.verify.month - verify.month)),
+      find: Math.max(0, Math.min(BUDGET.find.day - find.day, BUDGET.find.month - find.month)),
+    },
+  };
 }

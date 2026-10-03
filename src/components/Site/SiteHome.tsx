@@ -45,6 +45,7 @@ import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
+import ProspectingShowcase from './ProspectingShowcase';
 import { useFilmStep } from './useFilmStep';
 import './site.css';
 
@@ -226,9 +227,14 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
     group: 'Reach', icon: Send,
     /* Prospect search is held back on the live site (services/features.ts). A
        wall of "what it does" cannot list what it does not do yet. */
-    items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up',
-      ...(featureReady('prospects') ? ['Prospect search'] : [])],
+    items: ['Email sequences', 'One-to-one email', 'SMS with consent and STOP', 'Deliverability & warm-up', 'Campaigns to saved lists'],
   },
+  /* Prospect search is held back wherever `featureReady` says so; a wall of
+     "what it does" cannot list what it does not do yet. */
+  ...(featureReady('prospects') ? [{
+    group: 'Prospect', icon: Search,
+    items: ['AI Prospecting from one sentence', 'Free business directory & Google Maps', 'The emails businesses publish', 'Email verification', 'Lead lists & CSV export'],
+  }] : []),
   { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
   { group: 'Create', icon: Sparkles, items: ['Social creator', 'Blog automation', 'AI Shorts', 'Content library', 'Brand overlays'] },
@@ -373,6 +379,7 @@ export default function SiteHome() {
         </a>
         <nav className="dc-links" aria-label="Sections">
           <a href="#autopilot">Autopilot</a>
+          {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#leads">Leads</a>
           <a href="#deals">Deals</a>
           <a href="#scale">Agency</a>
@@ -488,6 +495,11 @@ export default function SiteHome() {
           </div>
         </div>
       </section>
+
+      {/* ── AI Prospecting ──
+             Straight after Autopilot: it is where the people Autopilot writes
+             to come from. ── */}
+      {featureReady('prospects') && <ProspectingShowcase />}
 
       {/* ── The three chapters ── */}
       {CHAPTERS.map(c => <ChapterBlock key={c.id} c={c} />)}

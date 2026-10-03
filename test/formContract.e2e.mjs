@@ -181,9 +181,18 @@ await p.goto(`${B}/settings`, { waitUntil: 'networkidle' });
 await p.getByRole('button', { name: /^Platform services/ }).first().click();
 await settle();
 await p.locator('[data-field="places.installKey"]').fill('AIzaTooShort');
-await p.getByRole('button', { name: 'Save key', exact: true }).click();
+await p.locator('#platform-google-maps').getByRole('button', { name: 'Save key', exact: true }).click();
 await settle();
 ok('Settings → Platform services: a malformed Google Maps key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+/* The email finder & verifier card: every service it offers, a malformed key each. */
+for (const name of ['Hunter', 'ZeroBounce', 'MillionVerifier']) {
+  const card = p.locator('#platform-email-verifier');
+  await card.getByRole('radio', { name: new RegExp(`^${name}`) }).click();
+  await card.locator('[data-field="verifier.key"]').fill('not a key');
+  await card.getByRole('button', { name: 'Save key', exact: true }).click();
+  await settle();
+  ok(`Settings → Platform services: a malformed ${name} key is refused at a box on screen`, (await deadEnds()).length === 0 && /does not look like/.test(await card.innerText()), JSON.stringify(await deadEnds()));
+}
 
 /* ── 2d · Contacts → Find businesses: both boxes refuse by name ──
    Checked before any key or budget, so this runs on an install with no
