@@ -57,7 +57,13 @@ export const AUTO_READ = 16;
 /** A refusal about the key, the trial or the budget is not fixed by typing differently. */
 export const KEY_REFUSAL = /^(no_key|trial_ended|places_budget|bad_key|api_disabled|key_restricted|billing|quota)$/;
 
-export function useProspectSearch() {
+/**
+ * `live` (AI Prospecting) asks every source again rather than take a stored
+ * answer, so each row's "found at" is when it was really found. The Contacts
+ * dialog leaves it off and takes the cache, as it always has.
+ */
+export function useProspectSearch(opts: { live?: boolean } = {}) {
+  const live = opts.live === true;
   const { contacts, bulkImportContacts, updateContacts } = useApp();
   const [source, setSourceState] = useState<ProspectSource>('free');
   /* Which map answered the last search — the free directory may answer from
@@ -96,6 +102,11 @@ export function useProspectSearch() {
   const [reading, setReading] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState<Set<string>>(new Set());
   /* A long pass (every website, every mailbox) says how far it has got. */
+  /* When this search began and when its source answered — the page's "live" stamps —
+     and how many the same search found last time, for the comparison. */
+  const [startedAt, setStartedAt] = useState('');
+  const [fetchedAt, setFetchedAt] = useState('');
+  const [prevCount, setPrevCount] = useState<number | null>(null);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const step = useCallback((id: Step['id'], patch: Partial<Step> & Pick<Step, 'label' | 'state' | 'badge'>) => {
     setSteps(prev => {
@@ -121,7 +132,7 @@ export function useProspectSearch() {
   /** Start a new search: nothing shown, nothing typed, the source kept. */
   const reset = useCallback(() => {
     clear();
-    setSearched(null); setAsked(''); setTrade(''); setPlace(''); setAnswered('');
+    setSearched(null); setAsked(''); setTrade(''); setPlace(''); setAnswered(''); setStartedAt(''); setFetchedAt(''); setPrevCount(null);
     setWant({ email: false, website: false, phone: false });
   }, [clear]);
 
@@ -129,9 +140,13 @@ export function useProspectSearch() {
 
   const run = useCallback(async (q: Searched): Promise<Prospect[] | null> => {
     setBusy(true); clear();
-    const r = await searchProspects(q);
+    setStartedAt(new Date().toISOString());
+    const before = loadSearches().find(h => h.source === q.source && h.trade.toLowerCase() === q.trade.toLowerCase() && h.place.toLowerCase() === q.place.toLowerCase());
+    setPrevCount(before ? before.count : null);
+    const r = await searchProspects({ ...q, fresh: live });
     setBusy(false);
     if (r.error) { setError(r.error); setErrorCode(r.code); return null; }
+    setFetchedAt(r.fetchedAt);
     setResults(r.prospects);
     setAnswered(r.source);
     setAttribution(r.attribution);
@@ -164,7 +179,7 @@ export function useProspectSearch() {
       const batch = sites.slice(i, i + 8);
       setReading(new Set(batch));
       if (label) setProgress({ label, done: i, total: sites.length });
-      const r = await lookupContacts(batch);
+      const r = await lookupContacts(batch, live);
       if (r.error) { error = r.error; break; }
       Object.assign(fresh, r.contacts);
       setFound(f => {
@@ -193,7 +208,7 @@ export function useProspectSearch() {
     for (let i = 0; i < list.length; i += 20) {
       setChecking(new Set(list.slice(i, i + 20)));
       if (list.length > 20) setProgress({ label: deep ? 'Asking mail servers' : 'Checking addresses', done: i, total: list.length });
-      const r = await verifyEmails(list.slice(i, i + 20), deep);
+      const r = await verifyEmails(list.slice(i, i + 20), deep, live);
       if (r.error) { error = r.error; break; }
       Object.assign(got, r.verdicts);
       ran += r.deep.ran;
@@ -302,7 +317,7 @@ export function useProspectSearch() {
   const loadMore = useCallback(async () => {
     if (!searched || !nextPage) return;
     setMore(true); setMoreError('');
-    const r = await searchProspects({ ...searched, pageToken: nextPage });
+    const r = await searchProspects({ ...searched, pageToken: nextPage, fresh: live });
     setMore(false);
     if (r.error) { setMoreError(r.error); setNextPage(''); return; }
     setResults(prev => {
@@ -336,7 +351,7 @@ export function useProspectSearch() {
         : { ok: false, message: 'None of those have a website listed.' };
     }
     setEnriching(true);
-    const r = await lookupContacts(sites);
+    const r = await lookupContacts(sites, live);
     setEnriching(false);
     if (r.error) return { ok: false, message: r.error };
     setFound(f => {
@@ -397,7 +412,7 @@ export function useProspectSearch() {
 
   return {
     source, setSource, answered, google, googleDown, registerDown, downError, offerFree, reset,
-    reading, checking, progress,
+    reading, checking, progress, live, startedAt, fetchedAt, prevCount,
     trade, setTrade, place, setPlace,
     busy, more, enriching, error, errorCode, moreError,
     results, attribution, cached, nextPage, searched,

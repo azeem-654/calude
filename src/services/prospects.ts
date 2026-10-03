@@ -46,6 +46,8 @@ export interface Prospect {
   registerUrl?: string;
   incorporated?: string;
   officers?: { name: string; role: string }[];
+  /** When this row was fetched from its source — stamped on the client from the answer's `fetchedAt`. */
+  foundAt?: string;
 }
 
 export interface Contactable {
@@ -54,6 +56,10 @@ export interface Contactable {
   mx: boolean | null;
   /** Named people Hunter saw published on the web for this site's domain (`findPeople`). */
   people?: FoundPerson[];
+  /** Whether the site answered when it was read — the plainest sign the business is still trading. */
+  live?: boolean;
+  /** When the site was read. */
+  checkedAt?: string;
 }
 
 /** One address Hunter found published on a page — never one it inferred. */
@@ -136,6 +142,8 @@ export async function googleAvailability(): Promise<GoogleAvailability | null> {
 }
 
 export interface SearchResult {
+  /** When the source answered (the server's clock). */
+  fetchedAt: string;
   /** Which map answered — the free directory can answer from OpenStreetMap's own servers. */
   source: ProspectSource | '';
   prospects: Prospect[];
@@ -148,12 +156,15 @@ export interface SearchResult {
 }
 
 export async function searchProspects(
-  q: { source: ProspectSource | 'auto'; trade?: string; place?: string; query?: string; pageToken?: string },
+  q: { source: ProspectSource | 'auto'; trade?: string; place?: string; query?: string; pageToken?: string; fresh?: boolean },
 ): Promise<SearchResult> {
   const d = await call('search', q);
+  const at = String(d.fetchedAt ?? '') || new Date().toISOString();
   return {
+    fetchedAt: at,
     source: (['free', 'google', 'osm', 'register'].includes(String(d.source)) ? d.source : '') as ProspectSource | '',
-    prospects: (d.prospects as Prospect[]) ?? [],
+    /* Every row carries the moment it was fetched, so the screen can show it per row. */
+    prospects: ((d.prospects as Prospect[]) ?? []).map(p => ({ ...p, foundAt: p.foundAt ?? at })),
     cached: d.cached === true,
     attribution: String(d.attribution ?? ''),
     nextPageToken: String(d.nextPageToken ?? ''),
@@ -163,9 +174,9 @@ export async function searchProspects(
 }
 
 /** Published contact details for up to eight at a time. The server caps it too. */
-export async function lookupContacts(websites: string[]):
+export async function lookupContacts(websites: string[], fresh = false):
 Promise<{ contacts: Record<string, Contactable>; error: string }> {
-  const d = await call('contacts', { websites });
+  const d = await call('contacts', { websites, fresh });
   return {
     contacts: (d.contacts as Record<string, Contactable>) ?? {},
     error: d.success === true ? '' : String(d.error ?? 'Lookup failed.'),
@@ -179,8 +190,8 @@ export interface VerifyResult {
 }
 
 /** Twenty at a time; the server caps it too. `deep` asks the owner's verifier as well. */
-export async function verifyEmails(emails: string[], deep: boolean): Promise<VerifyResult> {
-  const d = await call('verify', { emails: emails.slice(0, 20), deep });
+export async function verifyEmails(emails: string[], deep: boolean, fresh = false): Promise<VerifyResult> {
+  const d = await call('verify', { emails: emails.slice(0, 20), deep, fresh });
   return {
     verdicts: (d.verdicts as Record<string, Verdict>) ?? {},
     deep: (d.deep as VerifyResult['deep']) ?? { asked: deep, ran: 0, provider: '', skipped: 0, code: '', error: '' },

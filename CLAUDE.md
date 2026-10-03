@@ -313,6 +313,33 @@ composer carry `data-field="prospects.trade"/"prospects.place"`, so a refusal
 naming either still has a box on screen. The dashboard's `ProspectingPanel`
 hands a sentence over as `/prospecting?q=`.
 
+**Two screens** (`AiStart.tsx`, `AiResults.tsx`): *New search* — the headline,
+the live promise in bold, examples, the three illustrated steps, the composer
+(sentence box + `prospects.trade` / `prospects.place`), the trust row, "How it
+works" and "Need ideas?"; the side panel lists recent searches (trade icons,
+"…" menus) and lead lists. As soon as a search starts, *Results* — the
+assistant (a drawn robot whose bubble is the running step's own words), source
+tabs, the search bar with a mic (`MicButton`, the Autopilot voice engine),
+related trades, the progress card (ring = stages done, timeline, sources), the
+step-by-step log, five **counted** figures, the table (#, category, status,
+**found at**, actions, switchable columns, a per-row "…" menu drawn into the
+card so the scrolling table cannot clip it), and a rail: the results' own
+coordinates on a grid (no tile servers), sources scanned with what each
+returned, insights computed from the rows, and a type breakdown. The side panel
+becomes a drawer there. Nothing on either screen is an invented figure: no
+phone "validity", no "best time to reach", no source that was not asked.
+
+**"Live" is a property of the requests, not a label.** The page runs
+`useProspectSearch({ live: true })`, which sends `fresh: true`: the directory,
+register and Google searches, the website reads (`findContacts` — which reads
+the raw page, so short contact pages and `mailto:` links count) and the free
+address checks all skip their caches; a paid mailbox verdict is reused with its
+own date. Every row carries `foundAt` (the server's `fetchedAt`), shown in the
+Found column and kept on an imported contact (`customFields.foundAt`); the
+website read adds `live` (did it answer) and `checkedAt`. The Contacts dialog
+still takes the caches. `test:prospecting` proves a repeated search asks the
+directory again.
+
 **Its dark mode is its own.** The page and the dashboard panel carry
 `data-noinvert` and define both palettes on `.aip, .aip-vars` (switched by
 `html[data-theme="dark"]`), because the app's inverting dark mode turns the

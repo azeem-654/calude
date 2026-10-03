@@ -76,6 +76,8 @@ export function prospectRows(
       ...(answered === 'google' && p.placeId ? { googlePlaceId: p.placeId } : {}),
       ...(v ? { emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt } : {}),
       ...(p.companyNumber ? { companyNumber: p.companyNumber } : {}),
+      /* When it was found at its source, so a list says how fresh it was the day it was made. */
+      ...(p.foundAt ? { foundAt: p.foundAt } : {}),
     };
     /* With no named person behind the address, the register's first serving
        director is the person to write to — named by law, and current. */

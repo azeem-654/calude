@@ -8,8 +8,10 @@
  * the app's inverting dark mode leaves it alone and these draw the real thing.
  */
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  AlertTriangle, BadgeCheck, CheckCircle2, Globe, Info, Loader, MailCheck, MinusCircle, Phone, ShieldCheck, Sparkles, Star, Users,
+  AlertTriangle, BadgeCheck, CheckCircle2, Flame, Globe, Info, Link2, Loader, Mail, MailCheck, MinusCircle, MoreHorizontal, Phone, ShieldCheck,
+  Sparkles, Star, Users,
 } from 'lucide-react';
 import { findSuppression } from '../../services/deliverability';
 import { sameBusiness } from '../../services/prospectImport';
@@ -112,7 +114,30 @@ function Working({ text }: { text: string }) {
   return <span className="aip-working" role="status"><span className="aip-shimmer" aria-hidden="true" />{text}</span>;
 }
 
-export function LeadTable({ s, rows, showAll }: { s: ProspectSearch; rows: LeadRow[]; showAll: boolean }) {
+/** The columns somebody can hide. Business and email are the point of the table and always shown. */
+export const COLUMNS = [
+  { id: 'category', label: 'Category' }, { id: 'phone', label: 'Phone' }, { id: 'website', label: 'Website' },
+  { id: 'score', label: 'Score' }, { id: 'status', label: 'Status' }, { id: 'found', label: 'Found' }, { id: 'actions', label: 'Actions' },
+] as const;
+export type ColumnId = (typeof COLUMNS)[number]['id'];
+
+export const band = (score: number) => (score >= 75 ? 'High' : score >= 45 ? 'Medium' : 'Low');
+const timeOf = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+};
+const whenOf = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+};
+
+export function LeadTable({ s, rows, showAll, cols, onRow }: {
+  s: ProspectSearch; rows: LeadRow[]; showAll: boolean; cols: Set<ColumnId>;
+  /** A row's "…" menu — what to do with this one business. */
+  onRow: (ref: string, what: 'list' | 'workflow' | 'project' | 'campaign') => void;
+}) {
   const results = s.results ?? [];
   const all = results.length > 0 && s.picked.size === results.length;
   const some = s.picked.size > 0 && !all;
@@ -126,22 +151,57 @@ export function LeadTable({ s, rows, showAll }: { s: ProspectSearch; rows: LeadR
                 ref={el => { if (el) el.indeterminate = some; }}
                 onChange={e => s.pickAll(e.target.checked)} />
             </th>
-            <th>Name</th>
+            <th className="aip-num">#</th>
+            <th>Business</th>
+            {cols.has('category') && <th>Category</th>}
             <th>{showAll ? 'Every email address' : 'Email'}</th>
-            <th>Phone</th>
-            <th>Website</th>
-            <th title={SCORE_RULE}>Score <Info size={10} style={{ verticalAlign: -1 }} /></th>
+            {cols.has('phone') && <th>Phone</th>}
+            {cols.has('website') && <th>Website</th>}
+            {cols.has('score') && <th title={SCORE_RULE}>Score <Info size={10} style={{ verticalAlign: -1 }} /></th>}
+            {cols.has('status') && <th>Status</th>}
+            {cols.has('found') && <th title="When this business was found at its source, and when its website was read — live, at the time of the search">Found</th>}
+            {cols.has('actions') && <th>Actions</th>}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => <LeadRowView key={r.p.ref} r={r} s={s} i={i} showAll={showAll} />)}
+          {rows.map((r, i) => <LeadRowView key={r.p.ref} r={r} s={s} i={i} showAll={showAll} cols={cols} onRow={onRow} />)}
         </tbody>
       </table>
     </div>
   );
 }
 
-function LeadRowView({ r, s, i, showAll }: { r: LeadRow; s: ProspectSearch; i: number; showAll: boolean }) {
+function RowMenu({ name, onPick }: { name: string; onPick: (w: 'list' | 'workflow' | 'project' | 'campaign') => void }) {
+  /* Drawn into the results card, not inside the table: the table scrolls
+     sideways, and a scrolling box clips anything that tries to leave it. */
+  const [at, setAt] = useState<{ host: HTMLElement; top: number; right: number } | null>(null);
+  const open = (btn: HTMLElement) => {
+    const host = btn.closest('.aip-card') as HTMLElement | null;
+    if (!host) return;
+    const b = btn.getBoundingClientRect(), h = host.getBoundingClientRect();
+    setAt({ host, top: b.bottom - h.top + 4, right: h.right - b.right });
+  };
+  return (
+    <span className="aip-menu-wrap" onClick={e => e.stopPropagation()}>
+      <button type="button" className="aip-act" aria-label={`More for ${name}`} aria-expanded={!!at}
+        onClick={e => (at ? setAt(null) : open(e.currentTarget))}><MoreHorizontal size={14} /></button>
+      {at && createPortal(
+        <span className="aip-menu aip-row-menu" role="menu" style={{ top: at.top, right: at.right }} onMouseLeave={() => setAt(null)}
+          onClick={e => e.stopPropagation()}>
+          {([['list', 'Save to a list'], ['workflow', 'Add to a workflow'], ['project', 'Add to an AI project'], ['campaign', 'Add to an email campaign']] as const).map(([w, label]) => (
+            <button key={w} type="button" role="menuitem" onClick={() => { setAt(null); onPick(w); }}>{label}</button>
+          ))}
+        </span>,
+        at.host,
+      )}
+    </span>
+  );
+}
+
+function LeadRowView({ r, s, i, showAll, cols, onRow }: {
+  r: LeadRow; s: ProspectSearch; i: number; showAll: boolean; cols: Set<ColumnId>;
+  onRow: (ref: string, what: 'list' | 'workflow' | 'project' | 'campaign') => void;
+}) {
   const { p, email, v, person } = r;
   const on = s.picked.has(p.ref);
   const c = s.found[p.website];
@@ -149,11 +209,13 @@ function LeadRowView({ r, s, i, showAll }: { r: LeadRow; s: ProspectSearch; i: n
   /* Every address known was shown to bounce: name the first, struck through. */
   const dead = email ? '' : every[0] ?? '';
   const readingNow = !!p.website && s.reading.has(p.website);
+  const level = band(r.score);
   return (
-    <tr data-on={on} onClick={() => s.toggle(p.ref)} className="aip-row" style={{ ['--i' as string]: Math.min(i, 24) }}>
+    <tr data-on={on} onClick={() => s.toggle(p.ref)} className="aip-tr" style={{ ['--i' as string]: Math.min(i, 24) }}>
       <td className="pp-check" onClick={e => e.stopPropagation()}>
         <input type="checkbox" checked={on} onChange={() => s.toggle(p.ref)} aria-label={`Tick ${p.name}`} />
       </td>
+      <td className="aip-num pp-cell">{i + 1}</td>
       <td>
         <span className="aip-who">
           <Avatar name={p.name} />
@@ -162,7 +224,7 @@ function LeadRowView({ r, s, i, showAll }: { r: LeadRow; s: ProspectSearch; i: n
             {typeof p.rating === 'number' && (
               <span className="aip-rating"><Star size={10} fill="#f59e0b" color="#f59e0b" /> {p.rating.toFixed(1)}</span>
             )}
-            <span className="pp-sub">{p.category}{p.category && p.address ? ' · ' : ''}{p.address}</span>
+            <span className="pp-sub">{!cols.has('category') && p.category ? `${p.category} · ` : ''}{p.address}</span>
             {p.officers && p.officers.length > 0 && (
               <span className="aip-person"><Users size={10} /> {p.officers.slice(0, 2).map(o => `${o.name} (${o.role})`).join(', ')}</span>
             )}
@@ -178,6 +240,7 @@ function LeadRowView({ r, s, i, showAll }: { r: LeadRow; s: ProspectSearch; i: n
           </span>
         </span>
       </td>
+      {cols.has('category') && <td className="pp-cell aip-cat"><span className="pp-label">Category</span>{p.category || <span className="pp-none">—</span>}</td>}
       <td className="pp-cell">
         <span className="pp-label">Email</span>
         {showAll && every.length > 0 ? (
@@ -215,20 +278,57 @@ function LeadRowView({ r, s, i, showAll }: { r: LeadRow; s: ProspectSearch; i: n
           ? <span className="pp-none">None published{c.mx === false ? ' · the domain takes no mail' : c.mx === null && !c.emails.length && !c.people ? ' · mail check could not run' : ''}</span>
           : <span className="pp-none">{p.registerUrl ? 'The register lists no email' : p.website ? 'Not looked up yet' : 'No website to read'}</span>}
       </td>
-      <td className={`pp-cell${p.phone ? '' : ' pp-empty'}`}>
-        <span className="pp-label"><Phone size={10} /></span>
-        {p.phone || <span className="pp-none">—</span>}
-      </td>
-      <td className={`pp-cell${p.website ? '' : ' pp-empty'}`}>
-        <span className="pp-label"><Globe size={10} /></span>
-        {p.website
-          ? <a className="pp-site" href={p.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>{p.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
-          : <span className="pp-none">—</span>}
-      </td>
-      <td className="pp-cell">
-        <span className="pp-label">Score</span>
-        <span className="aip-score" data-band={r.score >= 75 ? 'high' : r.score >= 45 ? 'mid' : 'low'} title={SCORE_RULE}>{r.score}</span>
-      </td>
+      {cols.has('phone') && (
+        <td className={`pp-cell aip-phone${p.phone ? '' : ' pp-empty'}`}>
+          <span className="pp-label"><Phone size={10} /></span>
+          {p.phone || <span className="pp-none">—</span>}
+        </td>
+      )}
+      {cols.has('website') && (
+        <td className={`pp-cell${p.website ? '' : ' pp-empty'}`}>
+          <span className="pp-label"><Globe size={10} /></span>
+          {p.website
+            ? <a className="pp-site" href={p.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>{p.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
+            : <span className="pp-none">—</span>}
+        </td>
+      )}
+      {cols.has('score') && (
+        <td className="pp-cell">
+          <span className="pp-label">Score</span>
+          <span className="aip-score" data-band={r.score >= 75 ? 'high' : r.score >= 45 ? 'mid' : 'low'} title={SCORE_RULE}>{r.score}</span>
+        </td>
+      )}
+      {cols.has('status') && (
+        <td className="pp-cell">
+          <span className="pp-label">Status</span>
+          <span className="aip-status" data-band={level.toLowerCase()} title={SCORE_RULE}>{level === 'High' ? <Flame size={10} /> : level === 'Medium' ? <Star size={10} /> : null} {level}</span>
+        </td>
+      )}
+      {cols.has('found') && (
+        <td className="pp-cell aip-found">
+          <span className="pp-label">Found</span>
+          {p.foundAt ? (
+            <span className="aip-fresh" title={`Found live at its source on ${whenOf(p.foundAt)}${c?.checkedAt ? `; website read ${whenOf(c.checkedAt)}` : ''}`}>
+              <span className="aip-live-dot" aria-hidden="true" /> {timeOf(p.foundAt)}
+              {c?.live === true && <small className="aip-site-up">site up {timeOf(c.checkedAt)}</small>}
+              {c?.live === false && <small className="aip-site-down">site did not answer</small>}
+            </span>
+          ) : <span className="pp-none">—</span>}
+        </td>
+      )}
+      {cols.has('actions') && (
+        <td className="pp-cell aip-actions-cell" onClick={e => e.stopPropagation()}>
+          <span className="pp-label">Actions</span>
+          <span className="aip-acts">
+            {email && !r.blocked ? <a className="aip-act" href={`mailto:${email}`} aria-label={`Email ${p.name}`} title={`Email ${email}`}><Mail size={14} /></a> : <span className="aip-act" aria-disabled="true"><Mail size={14} /></span>}
+            {p.phone ? <a className="aip-act" href={`tel:${p.phone.replace(/[^\d+]/g, '')}`} aria-label={`Call ${p.name}`} title={`Call ${p.phone}`}><Phone size={14} /></a> : <span className="aip-act" aria-disabled="true"><Phone size={14} /></span>}
+            {p.website || p.registerUrl || p.mapsUrl
+              ? <a className="aip-act" href={p.website || p.registerUrl || p.mapsUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open ${p.name}'s page`} title="Open their page"><Link2 size={14} /></a>
+              : <span className="aip-act" aria-disabled="true"><Link2 size={14} /></span>}
+            <RowMenu name={p.name} onPick={w => onRow(p.ref, w)} />
+          </span>
+        </td>
+      )}
     </tr>
   );
 }

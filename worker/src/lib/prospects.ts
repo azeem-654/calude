@@ -41,7 +41,7 @@
  * why the import step makes them say so rather than this quietly implying it.
  */
 import { nowIso, type Env } from './db';
-import { readSite, urlProblem } from './readSite';
+import { fetchPage, readable, urlProblem } from './readSite';
 
 export interface Prospect {
   /** OSM element (`node/1`) or `google:<place id>`, so the same business found twice is recognisably the same. */
@@ -165,7 +165,7 @@ export interface SearchResult {
   error: string;
 }
 
-export async function searchProspects(env: Env, trade: string, place: string): Promise<SearchResult> {
+export async function searchProspects(env: Env, trade: string, place: string, fresh = false): Promise<SearchResult> {
   const t = safeTerm(trade);
   const p = safeTerm(place);
   if (t.length < 2) return { prospects: [], cached: false, error: 'Say what kind of business to look for.' };
@@ -174,7 +174,7 @@ export async function searchProspects(env: Env, trade: string, place: string): P
   const key = `${t}|${p}`;
   const now = Math.floor(Date.now() / 1000);
 
-  const hit = await env.DB.prepare('SELECT payload FROM crm_prospect_cache WHERE q = ? AND expires_at > ?')
+  const hit = fresh ? null : await env.DB.prepare('SELECT payload FROM crm_prospect_cache WHERE q = ? AND expires_at > ?')
     .bind(key, now).first<{ payload: string }>();
   if (hit) {
     try { return { prospects: JSON.parse(hit.payload) as Prospect[], cached: true, error: '' }; }
@@ -278,6 +278,10 @@ export interface Contactable {
   emails: string[];
   /** true has MX, false has none, null the lookup did not run. */
   mx: boolean | null;
+  /** Whether the site itself answered when it was read: the plainest sign a business is still trading. */
+  live?: boolean;
+  /** When the site was read. */
+  checkedAt?: string;
 }
 
 /*
@@ -330,7 +334,7 @@ async function hasMx(domain: string): Promise<boolean | null> {
  * home page does not. Three fetches at most: the point is to find the address
  * a business chose to publish, not to crawl anybody.
  */
-export async function findContacts(env: Env, website: string): Promise<Contactable> {
+export async function findContacts(env: Env, website: string, fresh = false): Promise<Contactable> {
   const blank: Contactable = { emails: [], mx: null };
   if (!website || urlProblem(website)) return blank;
 
@@ -338,27 +342,39 @@ export async function findContacts(env: Env, website: string): Promise<Contactab
   try { host = new URL(website).hostname.toLowerCase(); } catch { return blank; }
 
   const now = Math.floor(Date.now() / 1000);
-  const hit = await env.DB.prepare('SELECT emails, mx FROM crm_prospect_contacts WHERE host = ? AND expires_at > ?')
-    .bind(host, now).first<{ emails: string; mx: number }>();
-  if (hit) {
-    return { emails: hit.emails ? hit.emails.split(',') : [], mx: hit.mx === 1 ? true : hit.mx === 0 ? false : null };
+  /* AI Prospecting asks `fresh`: its lists are read the moment they are asked
+     for, and stamped with that moment, so a fortnight-old read must not be
+     passed off as one. The Contacts dialog still takes the cache. */
+  if (!fresh) {
+    const hit = await env.DB.prepare('SELECT emails, mx, created_at AS at FROM crm_prospect_contacts WHERE host = ? AND expires_at > ?')
+      .bind(host, now).first<{ emails: string; mx: number; at: string }>();
+    if (hit) {
+      return { emails: hit.emails ? hit.emails.split(',') : [], mx: hit.mx === 1 ? true : hit.mx === 0 ? false : null, checkedAt: hit.at };
+    }
   }
 
   const base = website.replace(/\/+$/, '');
   const emails = new Set<string>();
+  let live = false;
   for (const path of ['', '/contact', '/contact-us']) {
     if (emails.size) break;
-    try {
-      const page = await readSite(`${base}${path}`);
-      for (const e of harvest(`${page.text}\n${page.title}`, host)) emails.add(e);
-    } catch { /* a 404 on /contact is the normal case, not an error */ }
+    /* The page as fetched, not `readSite`'s reading of it: that refuses a page
+       under forty words, and a contact page is often exactly that short —
+       the address it exists to publish was being thrown away with it. The
+       HTML also carries `mailto:` links the visible text does not. */
+    const page = await fetchPage(`${base}${path}`).catch(() => null);
+    if (!page?.ok) continue;
+    if (path === '') live = true;
+    const { title, text } = readable(page.html);
+    for (const e of harvest(`${text}\n${title}\n${page.html.slice(0, 400_000)}`, host)) emails.add(e);
   }
 
   const mx = await hasMx(host.replace(/^www\./, ''));
+  const at = nowIso();
 
   await env.DB.prepare(
     'INSERT OR REPLACE INTO crm_prospect_contacts (host, emails, mx, expires_at, created_at) VALUES (?,?,?,?,?)',
-  ).bind(host, [...emails].join(','), mx === true ? 1 : mx === false ? 0 : -1, now + CACHE_SECONDS, nowIso()).run();
+  ).bind(host, [...emails].join(','), mx === true ? 1 : mx === false ? 0 : -1, now + CACHE_SECONDS, at).run();
 
-  return { emails: [...emails], mx };
+  return { emails: [...emails], mx, live, checkedAt: at };
 }

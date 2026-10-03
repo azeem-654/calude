@@ -217,7 +217,7 @@ async function keep(env: Env, key: string, value: unknown): Promise<void> {
     .bind(key, JSON.stringify(value), Math.floor(Date.now() / 1000) + CACHE_SECONDS, nowIso()).run().catch(() => undefined);
 }
 
-export async function searchRegister(env: Env, key: string, trade: string, place: string, pageToken = ''): Promise<RegisterSearch> {
+export async function searchRegister(env: Env, key: string, trade: string, place: string, pageToken = '', fresh = false): Promise<RegisterSearch> {
   const codes = sicFor(trade);
   if (!codes) {
     return { ok: false, prospects: [], next: '', cached: false, code: 'no_category',
@@ -225,7 +225,7 @@ export async function searchRegister(env: Env, key: string, trade: string, place
   }
   const start = Math.max(0, Number(pageToken) || 0);
   const ck = `ch|${codes.join(',')}|${place.toLowerCase()}|${start}`;
-  const hit = await cachedJson<{ prospects: Prospect[]; next: string }>(env, ck);
+  const hit = fresh ? null : await cachedJson<{ prospects: Prospect[]; next: string }>(env, ck);
   if (hit) return { ok: true, prospects: hit.prospects, next: hit.next, cached: true, error: '', code: '' };
 
   const q = new URLSearchParams({ company_status: 'active', location: place, size: String(PAGE), start_index: String(start) });
@@ -239,7 +239,7 @@ export async function searchRegister(env: Env, key: string, trade: string, place
   const prospects = (r.body.items ?? []).map(c => toRegisterProspect(c, trade)).filter((p): p is Prospect => !!p);
   /* Directors for the first of the page, in parallel; each list is cached. */
   await Promise.all(prospects.slice(0, OFFICERS_FOR).map(async p => {
-    p.officers = await officersOf(env, key, p.companyNumber!);
+    p.officers = await officersOf(env, key, p.companyNumber!, fresh);
   }));
   const total = Number(r.body.hits ?? 0);
   const next = start + PAGE < total && prospects.length === PAGE ? String(start + PAGE) : '';
@@ -247,9 +247,9 @@ export async function searchRegister(env: Env, key: string, trade: string, place
   return { ok: true, prospects, next, cached: false, error: '', code: '' };
 }
 
-export async function officersOf(env: Env, key: string, number: string): Promise<{ name: string; role: string }[]> {
+export async function officersOf(env: Env, key: string, number: string, fresh = false): Promise<{ name: string; role: string }[]> {
   const ck = `ch-officers|${number}`;
-  const hit = await cachedJson<{ name: string; role: string }[]>(env, ck);
+  const hit = fresh ? null : await cachedJson<{ name: string; role: string }[]>(env, ck);
   if (hit) return hit;
   const r = await get<{ items?: ChOfficer[] }>(env, key, `/company/${encodeURIComponent(number)}/officers?items_per_page=20`);
   if (r.status !== 200) return [];

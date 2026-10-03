@@ -458,7 +458,7 @@ export interface CheckOutcome {
  * A provider fault stops the deep pass for the batch and is reported once —
  * the rest keep their basic verdict rather than becoming "unknown".
  */
-export async function checkEmails(env: Env, accountId: string, raw: unknown[], deep: boolean): Promise<CheckOutcome> {
+export async function checkEmails(env: Env, accountId: string, raw: unknown[], deep: boolean, fresh = false): Promise<CheckOutcome> {
   const emails = [...new Set(raw.map(normaliseEmail).filter(Boolean))].slice(0, MAX_PER_CALL);
   const out: CheckOutcome = { verdicts: {}, deep: { asked: deep, ran: 0, provider: '', skipped: 0, code: '', error: '' } };
   const have = await cached(env, emails);
@@ -466,9 +466,11 @@ export async function checkEmails(env: Env, accountId: string, raw: unknown[], d
   /* Basic first, one DNS answer per domain. */
   const dnsByDomain = new Map<string, MailDns | null>();
   for (const e of emails) {
-    /* A cached basic verdict still goes on to the deep pass below. */
+    /* A cached basic verdict still goes on to the deep pass below. `fresh`
+       re-runs the free check (it is a DNS lookup) but keeps a mailbox
+       verdict, which is paid for and carries its own date. */
     const hit = have.get(e);
-    if (hit) { out.verdicts[e] = hit; continue; }
+    if (hit && !(fresh && hit.level === 'basic')) { out.verdicts[e] = hit; continue; }
     const f = addressFacts(e);
     if (f.syntax && !dnsByDomain.has(f.domain)) dnsByDomain.set(f.domain, await mailDns(env, f.domain));
     out.verdicts[e] = basicVerdict(e, dnsByDomain.get(f.domain) ?? null);

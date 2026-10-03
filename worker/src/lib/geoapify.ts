@@ -245,14 +245,16 @@ function refusal(status: number, body: Record<string, unknown>): { code: string;
   return { code: 'error', error: `Geoapify answered ${status}${msg ? `: ${msg}` : ''}.` };
 }
 
-export async function searchGeoapify(env: Env, key: string, trade: string, place: string, pageToken = ''): Promise<GeoSearch> {
+export async function searchGeoapify(env: Env, key: string, trade: string, place: string, pageToken = '', fresh = false): Promise<GeoSearch> {
   const cats = categoriesFor(trade);
   if (!cats) return fail('no_category', '');
   const offset = /^geo:\d{1,4}$/.test(pageToken) ? Number(pageToken.slice(4)) : 0;
   const p = place.toLowerCase().replace(/[^\p{L}\p{N} ,-]/gu, '').trim().slice(0, 80);
   const q = `geoapify|${cats}|${p}|${offset}`;
 
-  const hit = await cached<{ prospects: Prospect[]; next: string }>(env, q);
+  /* `fresh` (AI Prospecting) asks Geoapify again; the place's boundary below
+     is still taken from the cache — a town does not move, a business might. */
+  const hit = fresh ? null : await cached<{ prospects: Prospect[]; next: string }>(env, q);
   if (hit) return { ok: true, prospects: hit.prospects, cached: true, next: hit.next, error: '', code: '' };
 
   if ((await creditsToday(env)) >= DAILY_CREDIT_CAP) {

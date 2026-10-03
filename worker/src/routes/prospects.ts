@@ -55,6 +55,12 @@ interface Req {
   emails?: string[];
   /** Ask the connected verifier too, not just the free checks. */
   deep?: boolean;
+  /**
+   * AI Prospecting's "live" — ask every source again rather than serve a
+   * stored answer, so the time each row is stamped with is when it was
+   * actually found. Paid mailbox verdicts are still reused, with their date.
+   */
+  fresh?: boolean;
 }
 
 export async function handleProspects(req: Request, env: Env): Promise<Response> {
@@ -68,6 +74,9 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
   if (!access.ok) return fail(access.message ?? 'That workspace is not yours.', 403, { code: access.code });
 
   const act = String(d.action ?? '').trim();
+  const fresh = d.fresh === true;
+  /* When this answer was fetched from its source — the stamp on every row. */
+  const fetchedAt = new Date().toISOString();
 
   /*
    * Can this workspace search Google right now, and if not, why.
@@ -128,7 +137,7 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
         if (!v.allowed) return fail(`That is a lot of register searches — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
       }
       const key = (await installRegisterKey(env))!;
-      const r = await searchRegister(env, key.key, trade, place, String(d.pageToken ?? ''));
+      const r = await searchRegister(env, key.key, trade, place, String(d.pageToken ?? ''), fresh);
       if (!r.ok) {
         if (r.code === 'bad_key') await markRegisterKey(env, false, r.error);
         /* No type for the trade is the customer's to fix, on the trade box. */
@@ -136,7 +145,7 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
           200, r.code === 'no_category' ? { field: 'prospects.trade', code: r.code } : { code: r.code });
       }
       if (key.status !== 'ok' && !r.cached) await markRegisterKey(env, true);
-      return json({ success: true, source: 'register', prospects: r.prospects, cached: r.cached, nextPageToken: r.next, attribution: REGISTER_ATTRIBUTION });
+      return json({ success: true, source: 'register', prospects: r.prospects, cached: r.cached, nextPageToken: r.next, attribution: REGISTER_ATTRIBUTION, fetchedAt });
     }
 
     if (source === 'free') {
@@ -147,10 +156,10 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       }
       const geo = await installGeoKey(env);
       if (geo) {
-        const r = await searchGeoapify(env, geo.key, trade, place, String(d.pageToken ?? ''));
+        const r = await searchGeoapify(env, geo.key, trade, place, String(d.pageToken ?? ''), fresh);
         if (r.ok) {
           if (geo.status !== 'ok' && !r.cached) await markGeoKey(env, true);
-          return json({ success: true, source: 'free', prospects: r.prospects, cached: r.cached, nextPageToken: r.next, attribution: GEOAPIFY_ATTRIBUTION });
+          return json({ success: true, source: 'free', prospects: r.prospects, cached: r.cached, nextPageToken: r.next, attribution: GEOAPIFY_ATTRIBUTION, fetchedAt });
         }
         if (r.code === 'not_found') return fail(r.error, 200, { field: 'prospects.place' });
         /* A refused key is the owner's to fix and Platform services says so;
@@ -163,9 +172,9 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       /* Overpass matches a word against OSM's tags, and they are singular:
          "plumbers" finds nothing tagged craft=plumber. */
       const word = trade.toLowerCase().split(/\s+/).map(w => w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w).join(' ');
-      const r = await searchProspects(env, word, place);
+      const r = await searchProspects(env, word, place, fresh);
       if (r.error) return fail(r.error);
-      return json({ success: true, source: 'osm', prospects: r.prospects, cached: r.cached, nextPageToken: '', attribution: '© OpenStreetMap contributors' });
+      return json({ success: true, source: 'osm', prospects: r.prospects, cached: r.cached, nextPageToken: '', attribution: '© OpenStreetMap contributors', fetchedAt });
     }
 
     if (source === 'osm') {
@@ -216,6 +225,7 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       /* Google's terms ask for its name wherever its results are shown off a
          Google map. */
       attribution: 'Google Maps',
+      fetchedAt,
     });
   }
 
@@ -230,9 +240,9 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
   if (act === 'contacts') {
     const sites = (Array.isArray(d.websites) ? d.websites : []).slice(0, 8).map(String);
     if (!sites.length) return fail('Nothing to look up.');
-    const found: Record<string, { emails: string[]; mx: boolean | null }> = {};
+    const found: Record<string, { emails: string[]; mx: boolean | null; live?: boolean; checkedAt?: string }> = {};
     for (const site of sites) {
-      found[site] = await findContacts(env, site);
+      found[site] = await findContacts(env, site, fresh);
     }
     return json({ success: true, contacts: found });
   }
@@ -252,7 +262,7 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       const v = await rateLimit(env, { ...b, who: accountId });
       if (!v.allowed) return fail(`That is a lot of checks — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
     }
-    const r = await checkEmails(env, accountId, emails, d.deep === true);
+    const r = await checkEmails(env, accountId, emails, d.deep === true, fresh);
     return json({ success: true, verdicts: r.verdicts, deep: r.deep });
   }
 

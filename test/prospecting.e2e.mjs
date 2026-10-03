@@ -53,6 +53,7 @@ const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'a
 const HKEY = 'ab'.repeat(20);
 const CHKEY = '0f3c1a2b-4d5e-4f60-8a71-92b3c4d5e6f7';
 const chCalls = [];
+let placesHits = 0;
 const hunterCalls = { verify: 0, find: 0 };
 const mock = http.createServer((req, res) => {
   const u = new URL(req.url, G);
@@ -108,6 +109,7 @@ const mock = http.createServer((req, res) => {
     return send(res, 200, { results: [] });
   }
   if (u.pathname === '/v2/places') {
+    placesHits++;
     if (u.searchParams.get('categories') === 'healthcare.dentist' && u.searchParams.get('filter') === 'place:p-leeds') {
       const offset = Number(u.searchParams.get('offset') ?? 0);
       const ns = offset === 0 ? Array.from({ length: 60 }, (_, i) => i + 1) : offset === 60 ? [61, 62, 63] : [];
@@ -165,6 +167,20 @@ const signIn = async (width) => {
   return { ctx, page };
 };
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+/* A search from wherever the page is: the first screen has the sentence box; the results screen starts a new search first. */
+const askFor = async (page, line) => {
+  if (!(await page.getByLabel('Who to look for').count())) await page.getByRole('button', { name: 'Start a new search' }).first().click();
+  await page.getByLabel('Who to look for').fill(line);
+  await page.keyboard.press('Enter');
+};
+/* On the results screen the searches and lists are a drawer. */
+const openDrawer = async page => {
+  if (await page.getByRole('button', { name: 'Your searches and lists' }).count()) await page.getByRole('button', { name: 'Your searches and lists' }).click();
+};
+const listMenu = async (page, name, item) => {
+  await page.getByRole('button', { name: `More for ${name}` }).first().click();
+  await page.getByRole('menuitem', { name: item }).click();
+};
 const stored = (page, key) => page.evaluate(k => {
   const name = Object.keys(localStorage).find(x => x.endsWith(`_${k}`) && x.startsWith('crm_acct_'));
   try { return name ? JSON.parse(localStorage.getItem(name) || 'null') : null; } catch { return null; }
@@ -187,13 +203,24 @@ let listId = '';
   await h1.waitFor({ timeout: 8000 }).catch(() => {});
   ok('…and opens the page', await h1.isVisible(), (await page.innerText('body')).slice(0, 300));
   const empty = await page.innerText('body');
-  ok('the empty page says what to do', /Who do you want to sell to\?/.test(empty) && /None yet/.test(empty) && /never a guessed address/.test(empty), empty.slice(0, 800));
+  ok('the new-search screen says what to do, and that every lead is searched live', /Who do you want to sell to\?/.test(empty) && /None yet/.test(empty)
+    && /Every lead is freshly baked — searched live from the internet the moment you ask/.test(empty) && /every result carries the time it was found/.test(empty)
+    && /1\. Find/.test(empty) && /2\. Enrich/.test(empty) && /3\. Verify/.test(empty) && /Live business data/.test(empty), empty.slice(0, 1200));
+  ok('…in bold', await page.locator('.aip-live-promise strong').count() === 2);
+  await page.getByRole('button', { name: 'How it works' }).click();
+  ok('"How it works" explains the steps, the sources and what it will not do', /It searches live/.test(await page.getByRole('dialog', { name: 'How AI Prospecting works' }).innerText()) && /Never LinkedIn/.test(await page.getByRole('dialog', { name: 'How AI Prospecting works' }).innerText()));
+  await page.getByRole('dialog', { name: 'How AI Prospecting works' }).getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: /Need ideas\?/ }).click();
+  await page.getByRole('dialog', { name: 'Search ideas' }).getByRole('button', { name: /restaurants/ }).first().click();
+  ok('"Need ideas?" fills the box with the trade, ready for a place', /^restaurants in $/.test(await page.getByLabel('Who to look for').inputValue()), await page.getByLabel('Who to look for').inputValue());
+  await page.getByLabel('Who to look for').fill('');
+  await page.locator('[data-field="prospects.trade"]').fill('');
 
   /* A free search. */
   await page.locator('[data-field="prospects.trade"]').fill('dentists');
   await page.locator('[data-field="prospects.place"]').fill('Leeds');
   await page.getByRole('button', { name: /^Search$/ }).click();
-  await page.getByText('Leeds Dental 1', { exact: true }).waitFor({ timeout: 15_000 });
+  await page.locator('table').getByText('Leeds Dental 1', { exact: true }).waitFor({ timeout: 15_000 });
   let body = await page.innerText('body');
   ok('a free search shows results, counted and credited', /60 found/.test(body) && /Powered by Geoapify/.test(body), body.slice(0, 400));
   await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 }).catch(() => {});
@@ -208,9 +235,16 @@ let listId = '';
   ok('…as a table with phone, website and published email', await page.locator('table[aria-label="Businesses found"] th', { hasText: 'Email' }).count() === 1
     && /0113 555 1001/.test(body) && /hello@leedsdental1\.example/.test(body));
   await page.getByRole('button', { name: /More results/ }).click();
-  await page.getByText('Leeds Dental 63', { exact: true }).waitFor({ timeout: 15_000 });
+  await page.locator('table').getByText('Leeds Dental 63', { exact: true }).waitFor({ timeout: 15_000 });
   ok('"More results" fetches the next page', /63 found/.test(await page.innerText('body')));
-  ok('the search is remembered', await page.getByRole('button', { name: /dentists in Leeds/ }).count() > 0);
+  await openDrawer(page);
+  ok('the search is remembered, in the drawer of searches and lists', await page.getByRole('button', { name: /dentists in Leeds/ }).count() > 0);
+  await page.getByRole('button', { name: 'Close the panel' }).first().click();
+  ok('the results screen: progress done, the five figures, the rail',
+    /100%/.test(await page.getByRole('region', { name: 'Progress' }).innerText()) && /Fetched live from Business directories at/.test(await page.getByRole('region', { name: 'Progress' }).innerText())
+    && /63\s*Businesses found/.test(await page.innerText('body')) && /Sources scanned/.test(await page.innerText('body')) && /Business type breakdown/.test(await page.innerText('body')),
+    (await page.innerText('body')).slice(0, 1500));
+  ok('every row carries the time it was found', await page.locator('.aip-fresh').count() === 63, String(await page.locator('.aip-fresh').count()));
   ok('@1280: no sideways scroll with results', (await overflow(page)) <= 0, String(await overflow(page)));
 
   /* Import 1..5 into a new list. */
@@ -249,13 +283,14 @@ let listId = '';
   lists = await stored(page, 'crm_contact_lists');
   ok('…seven contacts, not twelve', (contacts ?? []).filter(c => /^Leeds Dental/.test(c.name)).length === 7);
   ok('…and seven on the list', (lists ?? []).find(l => l.id === listId)?.memberIds.length === 7);
+  await openDrawer(page);
   const side = page.locator(`[data-list="${listId}"]`);
-  ok('the list is under "Your prospect lists" with its count', /Dentists — Leeds test/.test(await side.innerText()) && /7 businesses/.test(await side.innerText()), await side.innerText().catch(() => ''));
+  ok('the list is under "My lead lists" with its count', /Dentists — Leeds test/.test(await side.innerText()) && /7 businesses/.test(await side.innerText()), await side.innerText().catch(() => ''));
   await page.screenshot({ path: 'test-results/prospecting-1280.png' });
   await page.waitForTimeout(2500); // the sync's debounce
 
   /* The campaign shortcut: the wizard opens with the list as the audience. */
-  await side.getByRole('button', { name: /Send a campaign to this list/ }).click();
+  await listMenu(page, LIST, 'Send a campaign to this list');
   const wiz = page.getByRole('dialog', { name: 'Create campaign' });
   await wiz.waitFor({ timeout: 8000 });
   ok('the campaign shortcut opens the campaign wizard', await wiz.isVisible());
@@ -279,7 +314,7 @@ let listId = '';
 
   /* The Autopilot shortcut: the wizard opens working from the list. */
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await page.locator(`[data-list="${listId}"]`).getByRole('button', { name: /Use this list in a new Autopilot project/ }).click();
+  await listMenu(page, LIST, 'Use this list in a new Autopilot project');
   const np = page.getByRole('dialog', { name: 'New project' });
   await np.waitFor({ timeout: 8000 });
   const prompt = await np.getByLabel('What would you like Autopilot to do?').inputValue();
@@ -350,11 +385,11 @@ for (const width of [390, 1280]) {
   ok(`fresh browser @${width}: the search history too`, await page.getByRole('button', { name: /dentists in Leeds/ }).count() > 0);
   if (width === 390) {
     await page.getByRole('button', { name: /dentists in Leeds/ }).first().click();
-    await page.getByText('Leeds Dental 1', { exact: true }).first().waitFor({ timeout: 15_000 });
+    await page.locator('table').getByText('Leeds Dental 1', { exact: true }).first().waitFor({ timeout: 15_000 });
     ok('@390: a search from history runs and its results fit the phone', (await overflow(page)) <= 0, String(await overflow(page)));
     await page.getByRole('checkbox', { name: 'Tick Leeds Dental 8', exact: true }).check();
     ok('@390: the import controls are on screen', await page.getByRole('button', { name: /Add 1 to a new list/ }).isVisible());
-    await page.getByText('Leeds Dental 1', { exact: true }).first().scrollIntoViewIfNeeded();
+    await page.locator('table').getByText('Leeds Dental 1', { exact: true }).first().scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/prospecting-390-results.png' });
     await page.getByRole('button', { name: /Add 1 to a new list/ }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/prospecting-390-import.png' });
@@ -399,12 +434,13 @@ console.log('\nAI Prospecting');
 
   const { ctx, page } = await signIn(1280);
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await page.getByLabel('Who to look for').fill('Find dentists in Leeds with a website');
-  await page.keyboard.press('Enter');
+  const before = placesHits;
+  await askFor(page, 'Find dentists in Leeds with a website');
   await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 });
   let body = await page.innerText('body');
-  ok('a typed sentence is understood and run — the question shown, the plan under it',
-    await page.locator('.aip-bubble', { hasText: 'Find dentists in Leeds with a website' }).count() === 1 && /Searched business directories for dentists in Leeds/.test(body), body.slice(0, 900));
+  ok('a typed sentence is understood and run — the question kept, the plan shown',
+    (await page.locator('.aip-top h2').getAttribute('title')) === 'Find dentists in Leeds with a website' && /Searched business directories for dentists in Leeds/.test(body), body.slice(0, 900));
+  ok('…and searched live: the directory was asked again, not served from storage', placesHits > before, `${before} → ${placesHits}`);
   ok('…the boxes show how it was understood', await page.locator('[data-field="prospects.trade"]').inputValue() === 'dentists' && await page.locator('[data-field="prospects.place"]').inputValue() === 'Leeds');
   ok('…and "with a website" narrows what is shown', (await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'With website' }).getAttribute('aria-pressed')) === 'true');
 
@@ -451,7 +487,7 @@ console.log('\nAI Prospecting');
   ok('Export writes a CSV with the check and the score', /^﻿?Business,Category,Address,Phone,Website,Email,Email check/.test(csv) && /hello@leedsdental1\.example,Verified/.test(csv), csv.slice(0, 300));
 
   /* The checker for a pasted list — the cached verdict is reused, nothing respent. */
-  await page.getByRole('button', { name: /Check email addresses/ }).click();
+  await page.getByRole('button', { name: /Address checks/ }).click();
   await page.getByLabel('Email addresses to check').fill('Hello@LeedsDental1.example, nobody@dead.example\nnot-an-address');
   await page.getByRole('button', { name: /Check \(free\)/ }).click();
   await page.getByText(/Checked 2/).waitFor({ timeout: 15_000 });
@@ -468,22 +504,20 @@ console.log('\nAI Prospecting');
   await panel.getByLabel('Who do you want to sell to?').fill('dentists in Leeds');
   await panel.getByRole('button', { name: 'Start prospecting' }).click();
   await page.waitForURL(/\/prospecting$/);
-  await page.locator('.aip-bubble', { hasText: 'dentists in Leeds' }).waitFor({ timeout: 15_000 }).catch(() => {});
-  ok('…and its box runs the search on AI Prospecting', await page.locator('.aip-bubble', { hasText: 'dentists in Leeds' }).count() === 1);
+  await page.getByText(/Searched business directories for dentists in Leeds/).waitFor({ timeout: 30_000 }).catch(() => {});
+  ok('…and its box runs the search on AI Prospecting', (await page.locator('.aip-top h2').getAttribute('title')) === 'dentists in Leeds');
 
   /* Dark: drawn, not inverted. */
   await page.evaluate(() => localStorage.setItem('crm_theme', 'dark'));
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('.aip-main').waitFor();
-  await page.getByLabel('Who to look for').fill('dentists in Leeds');
-  await page.keyboard.press('Enter');
+  await askFor(page, 'dentists in Leeds');
   await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 }).catch(() => {});
   const dark = await page.evaluate(() => ({
     bg: getComputedStyle(document.querySelector('.aip-main')).backgroundColor,
     flt: getComputedStyle(document.querySelector('.aip')).filter,
   }));
   ok('dark mode: the page draws its own dark palette and is not inverted', dark.bg === 'rgb(15, 17, 21)' && /invert/.test(dark.flt), JSON.stringify(dark));
-  await page.locator('.aip-bubble', { hasText: 'dentists in Leeds' }).waitFor({ timeout: 15_000 }).catch(() => {});
   await page.screenshot({ path: 'test-results/ai-prospecting-dark.png' });
   await page.goto(`${B}/`, { waitUntil: 'networkidle' });
   await page.getByTestId('prospecting-panel').scrollIntoViewIfNeeded();
@@ -526,8 +560,7 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
     names.join('|') === 'Business directories|Verified business directories|Google Maps' && !/free/i.test(names.join(' ')), names.join('|'));
 
   /* Business directories: everything read, every address shown. */
-  await page.getByLabel('Who to look for').fill('dentists in Leeds');
-  await page.keyboard.press('Enter');
+  await askFor(page, 'dentists in Leeds');
   await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 });
   ok('"Start a new search" is on the bar once there is a search', await page.getByRole('button', { name: 'Start a new search' }).first().isVisible());
   const all = page.getByRole('button', { name: /^Find all emails \(\d+ websites\)/ });
@@ -557,6 +590,13 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   ok('…two runs on the server, started by hand', runs.length === 2 && runs.every(r => r.trigger_kind === 'manual') && runs.some(r => r.contact_name === 'Leeds Dental 10'), JSON.stringify(runs));
   const forged = await api('engagement.php', { token: CT, accountId: ACCT, action: 'enrol_contacts', automationId: 'auto-paused', contacts: [{ id: 'x' }] });
   ok('the server refuses a workflow that is not on', forged.success === false && /not switched on/.test(forged.error), JSON.stringify(forged));
+  /* One row's own menu: that business alone. */
+  await page.getByRole('button', { name: 'More for Leeds Dental 22', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add to an AI project' }).click();
+  const one = page.getByRole('region', { name: 'Add to an AI project' });
+  ok('a row\'s own "…" menu adds just that business', /1 ticked/.test(await one.innerText()) && await page.getByRole('checkbox', { name: 'Tick Leeds Dental 22', exact: true }).isChecked(), await one.innerText().catch(() => ''));
+  await one.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Untick all' }).click();
 
   /* Add to a draft campaign. */
   await page.getByRole('checkbox', { name: 'Tick Leeds Dental 16', exact: true }).check();
@@ -590,13 +630,11 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
 
   /* Verified business directories. */
   await where.getByRole('button', { name: 'Verified business directories' }).click();
-  await page.getByLabel('Who to look for').fill('unicorn groomers in Leeds');
-  await page.keyboard.press('Enter');
+  await askFor(page, 'unicorn groomers in Leeds');
   await page.waitForTimeout(1500);
   const dead = await page.evaluate(() => (window.__deadEnds ?? []).length);
   ok('a trade the register has no type for is refused on the trade box, not a dead end', dead === 0 && /has no type for "unicorn groomers"/.test(await page.innerText('body')), String(dead));
-  await page.getByLabel('Who to look for').fill('accountants in Leeds');
-  await page.keyboard.press('Enter');
+  await askFor(page, 'accountants in Leeds');
   await page.getByText('Park Row Accountants LTD', { exact: true }).waitFor({ timeout: 20_000 });
   const body = await page.innerText('body');
   ok('the register answers with active companies, their directors, and why there are no emails',
@@ -618,8 +656,7 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
 
   const m = await signIn(390);
   await m.page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await m.page.getByLabel('Who to look for').fill('dentists in Leeds');
-  await m.page.keyboard.press('Enter');
+  await askFor(m.page, 'dentists in Leeds');
   await m.page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 });
   await m.page.getByRole('checkbox', { name: 'Tick Leeds Dental 1', exact: true }).check();
   ok('@390: the ticked-actions bar is on screen and nothing scrolls sideways',
