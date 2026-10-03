@@ -25,15 +25,27 @@
  * customer's page reports the failure and this screen offers a Google Meet,
  * made on the spot from the workspace's connected calendar, which the
  * customer's widget shows as a link within seconds.
+ *
+ * ── Calls ──
+ *
+ * "Call us now" in a widget is the same session with a microphone and no
+ * screen. It rings here — and, wherever else the person answering is in the
+ * app, in the alert from HelpLauncher — for as long as the server lets it
+ * (RING_SECONDS in lib/liveHelp.ts). Answer joins it exactly as Join joins a
+ * screen share; Decline tells the caller at once and offers them a message or
+ * a ticket instead. Both kinds get the same sound controls (LiveAudio.tsx).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Monitor, Mic, MicOff, PhoneOff, Maximize2, Video, ShieldCheck, Loader, Send, Info,
+  Monitor, PhoneOff, Maximize2, Video, ShieldCheck, Loader, Send, Info, Phone, PhoneIncoming,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  liveAnswer, liveEnd, liveMeet, liveSession, liveSessions, type LiveSession,
+  liveAnswer, liveDecline, liveEnd, liveMeet, liveSession, liveSessions, type LiveSession,
 } from '../../services/engagement';
+import { AudioControls } from './LiveAudio';
+import { callClock, useRinger } from './liveSound';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -43,10 +55,12 @@ const ACCENT = '#5b46e5';
 interface Call {
   id: string;
   who: string;
+  kind: 'screen' | 'voice';
   pc: RTCPeerConnection;
   mic: MediaStream | null;
   dc: RTCDataChannel | null;
   state: string;
+  connectedAt: number;
 }
 
 /** Wait for this browser's own addresses, capped — see the widget's twin. */
@@ -72,17 +86,31 @@ const ENDED: Record<string, string> = {
   expired: 'Nobody joined in time',
   left: 'Their page closed',
   failed: 'Could not connect',
+  declined: 'Declined',
 };
+/* The same reasons, said of a call. */
+const ENDED_CALL: Record<string, string> = {
+  sharer: 'They hung up',
+  agent: 'Ended from here',
+  expired: 'Missed — nobody answered',
+  left: 'Their page closed',
+  failed: 'Could not connect',
+  declined: 'Declined',
+};
+const endedText = (s: LiveSession) => (s.kind === 'voice' ? ENDED_CALL : ENDED)[s.endedReason]
+  ?? (s.kind === 'voice' ? 'The call ended.' : 'The session ended.');
 
 export default function EngageLive({ onChange }: { onChange?: () => void }) {
   const { addNotification } = useApp();
   const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [info, setInfo] = useState({ enabled: true, relay: false, meetReady: false });
+  const [info, setInfo] = useState({ enabled: true, relay: false, meetReady: false, screen: true, voice: false });
   const [loaded, setLoaded] = useState(false);
   const [joining, setJoining] = useState('');
   const [call, setCall] = useState<Call | null>(null);
   const [callState, setCallState] = useState('');
-  const [muted, setMuted] = useState(false);
+  const [theyMuted, setTheyMuted] = useState(false);
+  const [now, setNow] = useState(0);
+  const [params, setParams] = useSearchParams();
   const [messages, setMessages] = useState<{ from: 'me' | 'them'; text: string }[]>([]);
   const [say, setSay] = useState('');
   const [ring, setRing] = useState<{ x: number; y: number; n: number } | null>(null);
@@ -108,7 +136,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
     const r = await liveSessions();
     if (r.success) {
       setSessions((r.sessions ?? []) as LiveSession[]);
-      setInfo({ enabled: !!r.enabled, relay: !!r.relay, meetReady: !!r.meetReady });
+      setInfo({ enabled: !!r.enabled, relay: !!r.relay, meetReady: !!r.meetReady, screen: !!r.screen, voice: !!r.voice });
     }
     setLoaded(true);
   }, []);
@@ -134,6 +162,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
     remote.current = { video: null, audio: null };
     setCall(null);
     setCallState('');
+    setTheyMuted(false);
     setMessages([]);
   }, [load, onChange]);
 
@@ -150,7 +179,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
     if (!call) return;
     const s = sessions.find(x => x.id === call.id);
     if (s && s.status === 'ended') {
-      addNotification(ENDED[s.endedReason] ?? 'The session ended.', 'info');
+      addNotification(endedText(s), 'info');
       hangUp(false);
     }
   }, [sessions, call, hangUp, addNotification]);
@@ -166,16 +195,28 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
       return;
     }
 
-    remote.current = { video: null, audio: null };
-    const pc = new RTCPeerConnection({ iceServers: (r.iceServers ?? []) as RTCIceServer[] });
+    const voice = s.kind === 'voice';
     let mic: MediaStream | null = null;
     try {
-      mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch {
+      if (voice) {
+        /* A call with nobody to hear is not answered: refused before the
+           caller is told somebody picked up, so they can still leave a
+           message rather than talking into silence. */
+        setJoining('');
+        addNotification('Answering a call needs your microphone. Allow it for this site in the browser and press Answer again.', 'error');
+        return;
+      }
       /* They can still be seen and typed to; said so rather than refused. */
       addNotification('No microphone — you can watch and type, but they will not hear you.', 'info');
     }
-    const c: Call = { id: s.id, who: s.name || s.verifiedEmail || s.email || 'Customer', pc, mic, dc: null, state: 'connecting' };
+    remote.current = { video: null, audio: null };
+    const pc = new RTCPeerConnection({ iceServers: (r.iceServers ?? []) as RTCIceServer[] });
+    const c: Call = {
+      id: s.id, who: s.name || s.verifiedEmail || s.email || (voice ? 'Caller' : 'Customer'),
+      kind: voice ? 'voice' : 'screen', pc, mic, dc: null, state: 'connecting', connectedAt: 0,
+    };
 
     /* Kept, not attached. The tracks arrive during setRemoteDescription —
        before this call is on screen, so before the <video> exists — and a
@@ -192,13 +233,15 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
       c.dc = ev.channel;
       ev.channel.onmessage = m => {
         try {
-          const d = JSON.parse(String(m.data)) as { t?: string; text?: string };
+          const d = JSON.parse(String(m.data)) as { t?: string; text?: string; on?: boolean };
           if (d.t === 'say' && d.text) setMessages(x => [...x, { from: 'them', text: String(d.text).slice(0, 2000) }]);
+          if (d.t === 'mute') setTheyMuted(!!d.on);
         } catch { /* not ours */ }
       };
     };
     pc.onconnectionstatechange = () => {
       c.state = pc.connectionState;
+      if (pc.connectionState === 'connected' && !c.connectedAt) c.connectedAt = Date.now();
       setCallState(pc.connectionState);
     };
 
@@ -228,7 +271,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
 
     setCall(c);
     setCallState('connecting');
-    setMuted(false);
+    setTheyMuted(false);
     setJoining('');
     void load();
     onChange?.();
@@ -265,12 +308,37 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
     setSay('');
   };
 
-  const toggleMute = () => {
-    const t = call?.mic?.getAudioTracks()[0];
-    if (!t) return;
-    t.enabled = !t.enabled;
-    setMuted(!t.enabled);
+  const decline = async (s: LiveSession) => {
+    setJoining(s.id);
+    const r = await liveDecline(s.id);
+    setJoining('');
+    if (!r.success) addNotification(r.error ?? 'That call could not be declined.', 'error');
+    else addNotification('Declined — they have been offered a message or a ticket instead.', 'info');
+    void load();
+    onChange?.();
   };
+
+  /* Answer pressed in the app-wide alert: it brings the person here with the
+     call's id, and the call is answered as soon as the list has it. Once:
+     the id is taken out of the address so a reload does not answer again. */
+  const wantAnswer = params.get('answer') ?? '';
+  useEffect(() => {
+    if (!wantAnswer || !loaded || call || joining) return;
+    const s = sessions.find(x => x.id === wantAnswer);
+    const next = new URLSearchParams(params);
+    next.delete('answer');
+    setParams(next, { replace: true });
+    if (s && s.status === 'waiting' && s.ready) void join(s);
+    else if (s) addNotification(s.status === 'waiting' ? 'They are still connecting — press Answer in a moment.' : 'That call has already ended.', 'info');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantAnswer, loaded, sessions]);
+
+  /* The call's length, ticking. */
+  useEffect(() => {
+    if (!call) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [call]);
 
   const meet = async (id: string) => {
     setMeetBusy(true);
@@ -293,12 +361,66 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
   const primary: React.CSSProperties = { ...btn, background: ACCENT, color: '#fff', border: 'none' };
 
   const waiting = sessions.filter(s => s.status === 'waiting');
+  const ringing = waiting.filter(s => s.kind === 'voice');
+  const sharing = waiting.filter(s => s.kind !== 'voice');
   const others = sessions.filter(s => s.status !== 'waiting').slice(0, 20);
   const current = call ? sessions.find(s => s.id === call.id) : undefined;
+  /* Ring while a call is waiting to be answered and nobody here is on one. */
+  useRinger(!call && ringing.some(s => s.ready));
+
+  const voiceCall = call?.kind === 'voice';
+  const meetButton = call && (
+    <button style={btn} onClick={() => void meet(call.id)} disabled={meetBusy || !info.meetReady}
+      title={info.meetReady ? 'Make a Google Meet and put the link on their screen' : 'Connect a Google Calendar under Meetings first'}>
+      {meetBusy ? <Loader size={13} className="spin" /> : <Video size={13} />} {current?.meetUrl ? 'Open the Meet' : 'Switch to Google Meet'}
+    </button>
+  );
+  const endButton = call && (
+    <button style={{ ...btn, color: '#b42318', borderColor: '#fecaca' }} onClick={() => hangUp(true)}>
+      <PhoneOff size={13} /> {voiceCall ? 'Hang up' : 'End'}
+    </button>
+  );
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      {call && (
+      {call && voiceCall && (
+        <div style={{ ...card, padding: 16, display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span aria-hidden style={{
+              width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'inline-flex', alignItems: 'center',
+              justifyContent: 'center', background: 'rgba(91,70,229,0.1)', color: ACCENT, fontWeight: 800, fontSize: 18,
+            }}>{call.who.trim().charAt(0).toUpperCase() || <Phone size={18} />}</span>
+            <div style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 200px' }}>
+              <strong style={{ fontSize: 15, color: INK, overflowWrap: 'anywhere' }}>{call.who}</strong>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: MUTED }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                  background: callState === 'connected' ? '#16a34a' : callState === 'failed' ? '#b42318' : '#d97706',
+                }} />
+                {callState === 'connected' ? `On a call · ${callClock(call.connectedAt && now > call.connectedAt ? now - call.connectedAt : 0)}`
+                  : callState === 'failed' ? 'Their network would not allow a direct connection'
+                    : 'Connecting…'}
+              </span>
+            </div>
+            {callState === 'failed' && meetButton}
+            {endButton}
+          </div>
+          <AudioControls call={call} audio={audio} theirName={call.who} theyMuted={theyMuted} connected={callState === 'connected'} />
+          <audio ref={audio} autoPlay />
+          {current?.topic && (
+            <div style={{ fontSize: 13, color: INK, lineHeight: 1.55 }}><strong>They said:</strong> {current.topic}</div>
+          )}
+          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.55, display: 'flex', gap: 7 }}>
+            <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              A call in the browser, between the two of you — not a phone line, and not recorded. If they need to show
+              you something, ask them to press <strong>Share your screen</strong> in the same widget.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {call && !voiceCall && (
         <div style={{ ...card, padding: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
             <span style={{
@@ -312,19 +434,11 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
                   : 'Connecting…'}
             </span>
             <span style={{ flex: 1 }} />
-            <button style={btn} onClick={toggleMute} disabled={!call.mic}>
-              {muted || !call.mic ? <MicOff size={13} /> : <Mic size={13} />} {!call.mic ? 'No microphone' : muted ? 'Unmute' : 'Mute'}
-            </button>
             <button style={btn} onClick={() => void video.current?.requestFullscreen?.()}>
               <Maximize2 size={13} /> Full screen
             </button>
-            <button style={btn} onClick={() => void meet(call.id)} disabled={meetBusy || !info.meetReady}
-              title={info.meetReady ? 'Make a Google Meet and put the link on their screen' : 'Connect a Google Calendar under Meetings first'}>
-              {meetBusy ? <Loader size={13} className="spin" /> : <Video size={13} />} {current?.meetUrl ? 'Open the Meet' : 'Switch to Google Meet'}
-            </button>
-            <button style={{ ...btn, color: '#b42318', borderColor: '#fecaca' }} onClick={() => hangUp(true)}>
-              <PhoneOff size={13} /> End
-            </button>
+            {meetButton}
+            {endButton}
           </div>
 
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))' }}>
@@ -349,6 +463,10 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
               )}
             </div>
             <audio ref={audio} autoPlay />
+
+            <div style={{ gridColumn: '1 / -1' }}>
+              <AudioControls call={call} audio={audio} theirName={call.who} theyMuted={theyMuted} connected={callState === 'connected'} />
+            </div>
 
             <div style={{ display: 'grid', gap: 8, alignContent: 'start' }}>
               <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.55, display: 'flex', gap: 7 }}>
@@ -386,21 +504,46 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
         </div>
       )}
 
+      {ringing.length > 0 && (
+        <div role="alert" style={{ ...card, borderColor: '#c7d2fe', background: '#f5f3ff' }}>
+          <div style={{ display: 'flex', gap: 9, alignItems: 'center', marginBottom: 10 }}>
+            <PhoneIncoming size={17} color={ACCENT} />
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0 }}>
+              {ringing.length === 1 ? 'Incoming call' : `${ringing.length} incoming calls`}
+            </h3>
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {ringing.map(s => <Row key={s.id} s={s}>
+              <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                <button style={{ ...primary, background: '#16a34a' }} disabled={!!joining || !!call || !s.ready} onClick={() => void join(s)}
+                  title={call ? 'Hang up the current call first' : s.ready ? '' : 'Their browser is still setting the call up'}>
+                  {joining === s.id ? <Loader size={13} className="spin" /> : <Phone size={13} />}
+                  {s.ready ? 'Answer' : 'Connecting…'}
+                </button>
+                <button style={{ ...btn, color: '#b42318', borderColor: '#fecaca' }} disabled={!!joining} onClick={() => void decline(s)}>
+                  <PhoneOff size={13} /> Decline
+                </button>
+              </span>
+            </Row>)}
+          </div>
+        </div>
+      )}
+
       <div style={card}>
         <div style={{ display: 'flex', gap: 9, alignItems: 'center', marginBottom: 4 }}>
           <Monitor size={16} color={ACCENT} />
           <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0 }}>Live help</h3>
         </div>
         <p style={{ fontSize: 13, color: MUTED, margin: '0 0 12px', lineHeight: 1.6, maxWidth: '76ch' }}>
-          Customers who pressed <strong style={{ color: INK }}>Share your screen</strong> in a chat widget. Join one to
-          see what they see and talk them through it. The picture goes between the two browsers, encrypted; it is not
-          recorded, and this app never receives it.
+          Customers who pressed <strong style={{ color: INK }}>Share your screen</strong> or <strong style={{ color: INK }}>Call us now</strong> in
+          a chat widget. Join a share to see what they see and talk them through it; answer a call to talk. Picture and
+          voice go between the two browsers, encrypted; nothing is recorded, and this app never receives it.
         </p>
 
         {loaded && !info.enabled && (
           <Notice>
-            No live widget offers screen sharing yet, so nobody can ask. Open <strong>Widgets</strong>, edit one, tick
-            <strong> Share your screen</strong> and make it live.
+            No live widget offers screen sharing or calls yet, so nobody can ask. Open <strong>Widgets</strong>, edit one, tick
+            <strong> Share your screen</strong> or <strong>Call us now</strong> and make it live.
           </Notice>
         )}
         {loaded && info.enabled && !info.relay && (
@@ -413,11 +556,11 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
 
         {!loaded ? (
           <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Loading…</p>
-        ) : waiting.length === 0 ? (
-          <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Nobody is waiting.</p>
+        ) : sharing.length === 0 ? (
+          <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>{ringing.length ? 'Nobody is waiting to share a screen.' : 'Nobody is waiting.'}</p>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
-            {waiting.map(s => <Row key={s.id} s={s}>
+            {sharing.map(s => <Row key={s.id} s={s}>
               <button style={primary} disabled={!!joining || !!call || !s.ready} onClick={() => void join(s)}
                 title={s.ready ? '' : 'They are still choosing what to share'}>
                 {joining === s.id ? <Loader size={13} className="spin" /> : <Monitor size={13} />}
@@ -436,7 +579,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
               <span style={{ fontSize: 12, color: MUTED }}>
                 {s.status === 'live'
                   ? `With ${s.agentName || s.agentEmail}`
-                  : `${ENDED[s.endedReason] ?? 'Ended'}${s.agentName || s.agentEmail ? ` · ${s.agentName || s.agentEmail}` : ''}`}
+                  : `${endedText(s)}${s.agentName || s.agentEmail ? ` · ${s.agentName || s.agentEmail}` : ''}`}
               </span>
             </Row>)}
           </div>
@@ -454,6 +597,7 @@ function Row({ s, children }: { s: LiveSession; children: React.ReactNode }) {
     }}>
       <div style={{ flex: '1 1 240px', minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+          {s.kind === 'voice' && <Phone size={13} color={MUTED} aria-label="Call" />}
           <strong style={{ fontSize: 13.5, color: INK }}>{s.name || s.verifiedEmail || s.email || 'A visitor'}</strong>
           {s.verifiedEmail ? (
             <span title="Signed in to this app when they asked — this is who they are, not only what they typed"

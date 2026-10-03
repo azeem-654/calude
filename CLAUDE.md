@@ -593,6 +593,33 @@ stamped `verified_email` from their session — never from the body. Viewing
 only; nobody can click on the customer's machine, and the screens say so.
 `npm run test:livehelp` drives two real browsers through a session.
 
+**"Call us now"** (widget feature `voice`) is the same session with a
+microphone and no screen: `crm_live_sessions.kind = 'voice'` (migration 0061).
+It is a browser call — never call it a phone call. It rings for
+`RING_SECONDS` (75, `lib/liveHelp.ts`): `live_poll` ends it as `expired` after
+that and records `live.missed` (emailed), and `live_answer` refuses a rung-out
+call even before any poll has closed it. `live_decline` ends it as `declined`.
+Both caller screens then offer chat/ticket instead. The business is rung by
+`LiveAlert` in `shared/HelpLauncher.tsx` (polls `live_waiting` every 5 s, only
+while the page is visible) wherever they are; Answer goes to
+`/engagement?tab=live&answer=<id>`, which joins it once. That poll also writes
+`crm_live_presence` (≤ once a minute), which is the widget's `online` — `null`
+for a widget offering neither call nor screen, so it claims nothing. Both ends
+have the same sound controls (mute, told to the other side over the data
+channel; volume; microphone via `replaceTrack`; speaker via `setSinkId`, not
+drawn where unsupported; who is talking from `getStats` audio levels) —
+`widget.js` `audioPanel`, `Engagement/LiveAudio.tsx`.
+
+The widget's launcher reads "Help" (with a green dot only when `online`) and
+opens a home panel listing exactly the enabled features (`homeOptions`, also
+read by the marketing-site teaser, `data-pc-teaser`, once a session, ≥720px
+wide). `CornerHelp` names the same options. The owner's photo and name are
+per widget (`agent_name`; the photo via `engagement.php widget_avatar`,
+checked by magic bytes, PNG/JPEG ≤256px, served at
+`/api/widget-avatar.php?k=<random key>`, `lib/widgetAvatar.ts`) and reach the
+public config as `agentName` / `agentAvatar` / `businessName`.
+`npm run test:voicecall` (same arguments as `test:livehelp`, plus `PERSIST=`).
+
 ## Trials, sign-ups and keeping trial customers
 
 **Every sign-up is on a 7-day trial, no card** (`worker/src/lib/trial.ts`).

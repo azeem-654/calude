@@ -73,6 +73,9 @@ export interface Widget {
   title: string; subtitle: string; welcome: string; launcher: string; accent: string;
   position: string; features: string; status: string; show_branding: number;
   booking_slug?: string; in_app?: number;
+  /* Who the visitor talks to: a name, and the key of the photo served at
+     /api/widget-avatar.php (set through widgetAvatar, never saved whole). */
+  agent_name?: string; agent_avatar_key?: string;
 }
 
 /** One request to share a screen, as the business side sees it. */
@@ -84,6 +87,14 @@ export interface LiveSession {
   status: 'waiting' | 'live' | 'ended'; endedReason: string; sharerState: string;
   agentEmail: string; agentName: string; meetUrl: string; ready: number;
   createdAt: string; joinedAt: string | null; endedAt: string | null;
+  /* 'voice' is "Call us now" — the same handshake with no screen. */
+  kind: 'screen' | 'voice';
+}
+
+/** A call ringing now, as the app-wide alert sees it. */
+export interface RingingCall {
+  id: string; name: string; email: string; verifiedEmail: string; topic: string;
+  ready: number; createdAt: string;
 }
 
 export interface CapturedPerson {
@@ -134,6 +145,13 @@ export const liveSession = (id: string) => call('live_session', { id });
 export const liveAnswer = (id: string, sdp: string) => call('live_answer', { id, sdp });
 export const liveEnd = (id: string) => call('live_end', { id });
 export const liveMeet = (id: string) => call('live_meet', { id });
+export const liveDecline = (id: string) => call('live_decline', { id });
+
+/** Set (a data URL made by the browser) or remove ('') a widget's photo. */
+export const widgetAvatar = (id: string, image: string) => call('widget_avatar', { id, image });
+/** Where a widget's photo is served; public, and names nothing but the picture. */
+export const widgetAvatarUrl = (key: string): string =>
+  key ? `${API_BASE || window.location.origin}/api/widget-avatar.php?k=${encodeURIComponent(key)}` : '';
 
 /**
  * Who was sent what, and what happened.

@@ -17,7 +17,7 @@
  */
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 
-const B = 'http://localhost:8787';
+const B = process.env.BASE ?? 'http://localhost:8787';
 const [TOK, ACCT, OTOK, OACCT] = process.argv.slice(2);
 if (!OACCT) { console.error('usage: node test/liveHelp.e2e.mjs <owner-token> <owner-account> <other-token> <other-account>'); process.exit(2); }
 const out = [];
@@ -26,7 +26,9 @@ const ok = (n, p, d = '') => { out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : 
 const api = async (path, body, headers = {}) => {
   const r = await fetch(`${B}/api/${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    /* Connection: close — a kept-alive socket the local Worker has dropped is
+       otherwise reused and fails as "Network connection lost". */
+    headers: { 'Content-Type': 'application/json', Connection: 'close', ...headers },
     body: JSON.stringify(body),
   });
   return { status: r.status, json: await r.json().catch(() => ({})) };
@@ -179,7 +181,7 @@ await site.goto('http://acme.localhost:9911/pricing');
 await site.getByRole('button', { name: 'Open the chat' }).click();
 const menu = await site.getByRole('dialog').innerText();
 ok('the widget opens onto a menu of what it offers',
-  /Share your screen/.test(menu) && /Raise a ticket/.test(menu) && /Check a ticket/.test(menu), menu.slice(0, 200));
+  /Share your screen/.test(menu) && /Submit a ticket/.test(menu) && /Check a ticket/.test(menu), menu.slice(0, 200));
 
 await site.getByRole('button', { name: /Share your screen/ }).click();
 await site.getByLabel('Your name').fill('Browser Customer');
@@ -244,7 +246,7 @@ ok('ending from the business tells the customer', /Support has ended the session
 /* The ticket screens the widget always had a server for and never drew. */
 const dlg = site.getByRole('dialog');
 await dlg.getByRole('button', { name: 'Back' }).last().click();
-await dlg.getByRole('button', { name: /Raise a ticket/ }).click();
+await dlg.getByRole('button', { name: /Submit a ticket/ }).click();
 await dlg.getByLabel('Your name').fill('Browser Customer');
 await dlg.getByLabel(/Email/).fill('browser@customer.example');
 await dlg.getByLabel('What is it about?').fill(`Invoice PDF ${stamp}`);

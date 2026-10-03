@@ -18,6 +18,12 @@
  *
  * ── When there is nothing to show ──
  *
+ * The button reads "Help" with a green dot when somebody here has the app
+ * open (the widget draws it; see public/widget.js) rather than a bare round
+ * icon nobody recognised as more than chat. On the marketing site, where
+ * nobody is signed in, the widget may also show a one-time teaser naming
+ * the ways in.
+ *
  * No such widget yet: customers see nothing — a button that opens onto nothing
  * is worse than no button — and the install owner sees a placeholder that says
  * what to switch on. Not on a reseller's own address, where the product is
@@ -26,12 +32,13 @@
  */
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LifeBuoy, Monitor } from 'lucide-react';
+import { LifeBuoy, Monitor, Phone, PhoneOff } from 'lucide-react';
 import { API_BASE } from '../../services/apiBase';
 import { getSession } from '../../services/auth';
 import { getActiveAccountId } from '../../services/tenancy';
 import { isWhiteLabelHost } from '../../services/hosts';
-import { liveWaiting } from '../../services/engagement';
+import { liveDecline, liveWaiting, type RingingCall } from '../../services/engagement';
+import { useRinger } from '../Engagement/liveSound';
 
 const ACCENT = '#5b46e5';
 
@@ -56,7 +63,10 @@ function inject(key: string, who: { name: string; email: string; workspace: stri
   s.src = `${API_BASE || window.location.origin}/widget.js`;
   s.async = true;
   s.setAttribute('data-pc-widget', key);
-  s.setAttribute('data-pc-compact', '');
+  /* Signed out is the marketing site: there, and only there, the widget may
+     offer its teaser card once a visit. Inside the app it would be one more
+     thing in the corner of somebody who is working. */
+  if (!who) s.setAttribute('data-pc-teaser', '');
   if (who) {
     s.setAttribute('data-pc-name', who.name);
     s.setAttribute('data-pc-email', who.email);
@@ -88,7 +98,7 @@ export default function HelpLauncher({ signedIn = true }: { signedIn?: boolean }
 
   return (
     <>
-      {signedIn && <WaitingAlert />}
+      {signedIn && <LiveAlert />}
       {state === 'none' && isOwner && !isWhiteLabelHost() && (
         <button
           type="button"
@@ -110,17 +120,26 @@ export default function HelpLauncher({ signedIn = true }: { signedIn?: boolean }
 }
 
 /**
- * "Somebody is waiting to share their screen", wherever you are in the app.
+ * "Somebody is calling" and "somebody is waiting to share their screen",
+ * wherever you are in the app.
  *
- * The Live help tab shows it within seconds, but nobody sits on that tab. A
+ * The Live help tab shows both within seconds, but nobody sits on that tab. A
  * person in front of "waiting for somebody to join" is the most time-sensitive
- * thing this product holds, so the alert follows the person answering round
- * the app. It asks once, and stops asking for good if the workspace has no
- * widget offering screen sharing — most never will, and they should not pay a
- * request every thirty seconds for a feature they have not switched on.
+ * thing this product holds — and a call rings for barely a minute — so the
+ * alert follows the person answering round the app, and a call rings here.
+ *
+ * It asks only while the page is visible (a hidden tab cannot answer, and its
+ * asking is also what lights the widget's "online" dot, which must mean
+ * somebody is looking): every five seconds when the workspace takes calls,
+ * every thirty when it only takes screen shares, and never again once the
+ * server says neither is switched on — most workspaces never will, and they
+ * should not pay a request a minute for a feature they have not chosen.
  */
-function WaitingAlert() {
+function LiveAlert() {
   const [waiting, setWaiting] = useState(0);
+  const [calls, setCalls] = useState<RingingCall[]>([]);
+  const [busy, setBusy] = useState('');
+  const [gone, setGone] = useState<Set<string>>(() => new Set());
   const location = useLocation();
   const navigate = useNavigate();
   const onTab = location.pathname === '/engagement' && location.search.includes('tab=live');
@@ -128,18 +147,73 @@ function WaitingAlert() {
   useEffect(() => {
     let alive = true;
     let timer = 0;
+    let off = false;
     const ask = async () => {
+      window.clearTimeout(timer);
+      if (!alive || off) return;
+      if (document.visibilityState !== 'visible') return;
       const r = await liveWaiting();
       if (!alive) return;
-      if (r.success && !r.enabled) { setWaiting(0); return; }
+      if (r.success && !r.enabled) { off = true; setWaiting(0); setCalls([]); return; }
       setWaiting(r.success ? Number(r.waiting ?? 0) : 0);
-      timer = window.setTimeout(() => void ask(), 30_000);
+      setCalls(r.success ? (r.calls ?? []) as RingingCall[] : []);
+      timer = window.setTimeout(() => void ask(), r.success && r.voice ? 5_000 : 30_000);
     };
+    const seen = () => { if (document.visibilityState === 'visible') void ask(); };
     void ask();
-    return () => { alive = false; window.clearTimeout(timer); };
+    document.addEventListener('visibilitychange', seen);
+    return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', seen); };
   }, []);
 
-  if (!waiting || onTab) return null;
+  const ringing = calls.filter(c => !gone.has(c.id));
+  useRinger(!onTab && ringing.some(c => !!c.ready));
+
+  const decline = async (c: RingingCall) => {
+    setBusy(c.id);
+    await liveDecline(c.id);
+    setBusy('');
+    setGone(g => new Set(g).add(c.id));
+  };
+
+  if (onTab) return null;
+  if (ringing.length) {
+    const c = ringing[0];
+    const who = c.name || c.verifiedEmail || c.email || 'A website visitor';
+    return (
+      <div role="alert" aria-label="Incoming call" style={{
+        position: 'fixed', right: 20, bottom: 84, zIndex: 901, width: 'min(340px, calc(100vw - 40px))', boxSizing: 'border-box',
+        padding: '14px 14px 12px', borderRadius: 16, background: '#0f172a', color: '#fff', fontFamily: 'inherit',
+        boxShadow: '0 18px 44px -14px rgba(15,23,42,.6)',
+      }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ width: 36, height: 36, borderRadius: '50%', background: '#16a34a', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Phone size={17} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.06em', color: '#a5b4fc' }}>
+              INCOMING CALL{ringing.length > 1 ? ` · ${ringing.length} WAITING` : ''}
+            </div>
+            <div style={{ fontSize: 14.5, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}</div>
+            {c.verifiedEmail
+              ? <div style={{ fontSize: 11.5, color: '#86efac' }}>Signed in as {c.verifiedEmail}</div>
+              : c.email ? <div style={{ fontSize: 11.5, color: '#cbd5e1' }}>{c.email} (typed, not proved)</div> : null}
+          </div>
+        </div>
+        {c.topic && <div style={{ fontSize: 12.5, color: '#e2e8f0', marginTop: 8, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{c.topic}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
+          <button type="button" disabled={!c.ready || !!busy} onClick={() => navigate(`/engagement?tab=live&answer=${encodeURIComponent(c.id)}`)}
+            style={{ ...ALERT_BTN, background: '#16a34a', color: '#fff', flex: 1 }}>
+            <Phone size={14} /> {c.ready ? 'Answer' : 'Connecting…'}
+          </button>
+          <button type="button" disabled={!!busy} onClick={() => void decline(c)}
+            style={{ ...ALERT_BTN, background: '#fff', color: '#b42318', flex: 1 }}>
+            <PhoneOff size={14} /> Decline
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (!waiting) return null;
   return (
     <button
       type="button"
@@ -157,3 +231,8 @@ function WaitingAlert() {
     </button>
   );
 }
+
+const ALERT_BTN: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 12px',
+  border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+};

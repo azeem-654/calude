@@ -120,6 +120,15 @@ the real state rather than remembering what you told it.
 7. **Live help** — tick *Share your screen* on a widget. Requests then appear
    under **Live help**, and a dark "waiting to share their screen" pill
    follows you round the app until somebody joins. See 25.
+   Tick *Call us now* as well for a voice call in the visitor's browser (no
+   phone number): it rings in the app wherever you are, for 75 seconds, with
+   Answer and Decline; nobody answering is told to the caller, who is offered a
+   message or a ticket, and you get a "Missed call" email. The widget's green
+   "online" dot means one of you has the app open on that workspace right now.
+8. **Your photo and name** — in Widgets, edit the help widget and fill in
+   *Your photo and name* (save the widget once before adding the photo). Set
+   the business name under Customer Engagement → **Settings** so the widget
+   reads "Azeem from Protected Central".
 
 Protected Central itself is configured exactly the same way, in its own
 workspace. There is no separate support system and no special code path.

@@ -12,10 +12,10 @@
  *
  * What differs is the fields, so that is the only thing `SPECS` holds.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { Check, Copy, Loader, Plus, Trash2, X, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Copy, Loader, Plus, Trash2, X, AlertTriangle, Upload } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { deleteOf, embedSnippet, listOf, saveOf } from '../../services/engagement';
+import { deleteOf, embedSnippet, listOf, saveOf, widgetAvatar, widgetAvatarUrl } from '../../services/engagement';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -27,7 +27,7 @@ type Kind = 'form' | 'agent' | 'article' | 'widget' | 'voice_agent';
 interface FieldSpec {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'tags' | 'fields' | 'check' | 'agent';
+  type: 'text' | 'textarea' | 'select' | 'tags' | 'fields' | 'check' | 'agent' | 'person';
   hint?: string;
   options?: { id: string; label: string }[];
   rows?: number;
@@ -45,6 +45,7 @@ const TOOL_OPTIONS = [
    widgets always have; anything more puts a short menu in front of it. */
 const FEATURE_OPTIONS = [
   { id: 'chat', label: 'Chat' },
+  { id: 'voice', label: 'Call us now (voice, in the browser)' },
   { id: 'screen', label: 'Share your screen' },
   { id: 'ticket', label: 'Raise and check a ticket' },
   { id: 'meeting', label: 'Book a call (needs a booking page below)' },
@@ -105,6 +106,7 @@ const SPECS: Record<Kind, { title: string; blurb: string; nameKey: string; field
       { key: 'name', label: 'Name it', type: 'text' },
       { key: 'title', label: 'Title in the window', type: 'text' },
       { key: 'subtitle', label: 'Subtitle', type: 'text' },
+      { key: 'agentName', label: 'Your photo and name', type: 'person', hint: 'Shown at the top of the widget — “Azeem from Acme” — and beside replies from a person. The photo is cut square and shrunk to 256 pixels in your browser before it is uploaded.' },
       { key: 'welcome', label: 'Welcome message', type: 'text' },
       { key: 'launcher', label: 'Text on the button', type: 'text' },
       { key: 'accent', label: 'Colour', type: 'text' },
@@ -114,7 +116,7 @@ const SPECS: Record<Kind, { title: string; blurb: string; nameKey: string; field
       { key: 'allowedHosts', label: 'Only on these websites', type: 'text', hint: 'Comma separated, e.g. acme.com. Left blank it works anywhere, which is fine while testing and worth tightening once you are live.' },
       { key: 'consentText', label: 'Consent wording', type: 'text' },
       { key: 'agentId', label: 'AI agent that answers the chat', type: 'agent', hint: 'With none, the chat takes their message and tells them a person will reply.' },
-      { key: 'features', label: 'What it offers', type: 'tags', options: FEATURE_OPTIONS, hint: 'Screen sharing arrives in Live help; somebody there joins and sees what they share. It works on computers — phones cannot share a screen from a web page.' },
+      { key: 'features', label: 'What it offers', type: 'tags', options: FEATURE_OPTIONS, hint: 'Calls and screen shares arrive in Live help, and a call also rings wherever you are in the app while you are signed in. A call is voice between two browsers — no phone number. Screen sharing works on computers — phones cannot share a screen from a web page.' },
       { key: 'bookingSlug', label: 'Booking page for "Book a call"', type: 'text', hint: 'The end of your booking link: for /book/intro-call, type intro-call.' },
       { key: 'inApp', label: 'Use as the help button inside Protected Central', type: 'check', hint: 'Only on the install owner’s workspace: the round button in the corner of the app, for your own customers. Anywhere else this is ignored.' },
     ],
@@ -224,7 +226,7 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
                  <label>: a label forwards a click on its text to its first
                  button, so pressing "The questions" added a question and
                  pressing "What it offers" switched Chat on or off. */
-              const Wrap = f.type === 'fields' || f.type === 'tags' ? 'div' : 'label';
+              const Wrap = f.type === 'fields' || f.type === 'tags' || f.type === 'person' ? 'div' : 'label';
               return (
               <Wrap key={f.key} style={{ display: 'block' }}>
                 <span style={lbl}>{f.label}</span>
@@ -269,6 +271,9 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
                   </span>
                 ) : f.type === 'fields' ? (
                   <FieldEditor value={val(f.key)} onChange={v => set(f.key, v)} />
+                ) : f.type === 'person' ? (
+                  <PersonField name={val(f.key)} onName={v => set(f.key, v)} widgetId={val('id')}
+                    avatarKey={val('agentAvatarKey')} onAvatar={k => { set('agentAvatarKey', k); void load(); }} inp={inp} />
                 ) : (
                   <input style={inp} value={val(f.key)} onChange={e => set(f.key, e.target.value)} />
                 )}
@@ -352,6 +357,97 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
       </div>
     </div>
   );
+}
+
+/**
+ * "Your photo and name" on a widget.
+ *
+ * The photo is made small here, in the browser — cut square from the middle
+ * and drawn at no more than 256 pixels as a JPEG — so what is uploaded is a
+ * few tens of kilobytes whatever the phone took. The server still checks the
+ * bytes (lib/widgetAvatar.ts): a resized picture is what this screen sends,
+ * not what the server takes on trust. It needs the widget to exist, so a new
+ * widget is saved first.
+ */
+function PersonField({ name, onName, widgetId, avatarKey, onAvatar, inp }: {
+  name: string; onName: (v: string) => void; widgetId: string; avatarKey: string;
+  onAvatar: (key: string) => void; inp: React.CSSProperties;
+}) {
+  const { addNotification } = useApp();
+  const file = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const upload = async (f: File) => {
+    setError('');
+    if (!/^image\//.test(f.type)) { setError('Choose a picture — a PNG, JPEG or similar.'); return; }
+    setBusy(true);
+    try {
+      const url = await squareJpeg(f, 256);
+      const r = await widgetAvatar(widgetId, url);
+      if (!r.success) { setError(String(r.error ?? 'The photo could not be saved.')); return; }
+      onAvatar(String(r.key ?? ''));
+      addNotification('Photo saved — the widget shows it from now on.', 'success');
+    } catch {
+      setError('That picture could not be read. Try a PNG or JPEG.');
+    } finally {
+      setBusy(false);
+      if (file.current) file.current.value = '';
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    const r = await widgetAvatar(widgetId, '');
+    setBusy(false);
+    if (!r.success) { setError(String(r.error ?? 'The photo could not be removed.')); return; }
+    onAvatar('');
+  };
+
+  const src = widgetAvatarUrl(avatarKey);
+  return (
+    <span style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span aria-hidden style={{
+        width: 52, height: 52, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'rgba(91,70,229,0.1)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: ACCENT, fontWeight: 800, fontSize: 20,
+      }}>
+        {src ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (name.trim().charAt(0).toUpperCase() || '?')}
+      </span>
+      <span style={{ display: 'grid', gap: 7, flex: '1 1 220px', minWidth: 0 }}>
+        <input style={inp} value={name} maxLength={60} placeholder="Your first name, e.g. Azeem" aria-label="Your name in the widget"
+          data-field="agentName" onChange={e => onName(e.target.value)} />
+        <span style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-field="agentAvatar"
+            aria-label="Upload your photo" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
+          <button type="button" style={smallBtn} disabled={!widgetId || busy} onClick={() => file.current?.click()}>
+            {busy ? <Loader size={11} className="spin" /> : <Upload size={11} />} {src ? 'Change photo' : 'Upload photo'}
+          </button>
+          {src && <button type="button" style={{ ...smallBtn, color: '#b42318' }} disabled={busy} onClick={() => void remove()}>Remove photo</button>}
+          {!widgetId && <span style={{ fontSize: 11.5, color: MUTED }}>Save the widget once, then add a photo.</span>}
+        </span>
+        {error && <span style={{ fontSize: 11.5, color: '#b42318' }}>{error}</span>}
+      </span>
+    </span>
+  );
+}
+
+/** A picture cut square from its middle and drawn at most `side` pixels, as a JPEG data URL. */
+async function squareJpeg(f: File, side: number): Promise<string> {
+  const bmp = await createImageBitmap(f);
+  const crop = Math.min(bmp.width, bmp.height);
+  const out = Math.min(side, crop);
+  const c = document.createElement('canvas');
+  c.width = out; c.height = out;
+  const g = c.getContext('2d');
+  if (!g) throw new Error('no canvas');
+  /* White under a transparent PNG: a JPEG has no transparency, and black
+     behind somebody's cut-out photo would not be what they uploaded. */
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, out, out);
+  g.drawImage(bmp, (bmp.width - crop) / 2, (bmp.height - crop) / 2, crop, crop, 0, 0, out, out);
+  bmp.close();
+  return c.toDataURL('image/jpeg', 0.86);
 }
 
 /**

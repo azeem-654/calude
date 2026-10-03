@@ -16,9 +16,11 @@
  *     per day, after 75 seconds of the tab being visible — long enough that
  *     somebody who knew what they were doing would have done it.
  *
- * The card names the screen and offers only what will work: chat and screen
- * sharing when the help widget has them switched on, and a call when the owner
- * has set a kickoff booking link. A card with nothing behind its buttons would
+ * The card names the screen and offers only what will work: a call in the
+ * browser, screen sharing, chat and a ticket when the help widget has them
+ * switched on — named exactly as the widget's own home panel names them, so
+ * the card and the panel it opens never disagree — and a booked call when the
+ * owner has set a kickoff booking link. A card with nothing behind its buttons would
  * be worse than no card, so with none of those it is not drawn at all.
  *
  * Nothing here for the install owner, who is the person being asked for.
@@ -39,13 +41,13 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CalendarCheck, LifeBuoy, MessageSquare, Monitor, X } from 'lucide-react';
+import { CalendarCheck, LifeBuoy, MessageSquare, Monitor, Phone, Ticket, X } from 'lucide-react';
 import { getSession } from '../../services/auth';
 import { myAccount, onMyAccount, readNotice, type MyAccount } from '../../services/customers';
 import { TROUBLE_EVENT } from '../../services/fieldGuard';
 import { NAV_GROUPS } from '../Layout/navModel';
 
-interface Chat { open: (view?: string) => void; features: () => string[] }
+interface Chat { open: (view?: string) => void; features: () => string[]; online?: () => boolean | null }
 declare global { interface Window { ProtectedCentralChat?: Chat } }
 
 const OFF_KEY = 'pc_help_offer_off';
@@ -98,8 +100,10 @@ export default function CornerHelp() {
 
   const canChat = features.includes('chat');
   const canScreen = features.includes('screen');
+  const canCall = features.includes('voice');
+  const canTicket = features.includes('ticket');
   const kickoff = acct?.kickoffUrl ?? '';
-  const anything = canChat || canScreen || !!kickoff || features.length > 0;
+  const anything = canChat || canScreen || canCall || canTicket || !!kickoff || features.length > 0;
 
   /* 1. Something went wrong here. */
   useEffect(() => {
@@ -180,12 +184,15 @@ export default function CornerHelp() {
           <p style={{ margin: '6px 0 10px', fontSize: 13, lineHeight: 1.55, color: '#4b5563' }}>
             {offer?.why === 'trouble'
               ? 'A real person can look at it with you now — we see which screen you are on.'
-              : `A real person can walk you through it — ${ways(canChat, canScreen, !!kickoff)}.`}
+              : `A real person can walk you through it — ${ways({ call: canCall, screen: canScreen, chat: canChat, ticket: canTicket, book: !!kickoff })}.`}
           </p>
           <div style={{ display: 'grid', gap: 6 }}>
-            {canScreen && <button type="button" style={PRIMARY} onClick={() => openChat('screen')}><Monitor size={14} /> Share my screen</button>}
-            {canChat && <button type="button" style={canScreen ? SECONDARY : PRIMARY} onClick={() => openChat('chat')}><MessageSquare size={14} /> Chat with us</button>}
-            {!canChat && !canScreen && features.length > 0 && (
+            {/* The widget's own names and order, the first one the strong one. */}
+            {canCall && <button type="button" style={PRIMARY} onClick={() => openChat('voice')}><Phone size={14} /> Call us now</button>}
+            {canScreen && <button type="button" style={canCall ? SECONDARY : PRIMARY} onClick={() => openChat('screen')}><Monitor size={14} /> Share your screen with us</button>}
+            {canChat && <button type="button" style={canCall || canScreen ? SECONDARY : PRIMARY} onClick={() => openChat('chat')}><MessageSquare size={14} /> Chat with us</button>}
+            {canTicket && !canChat && !canScreen && !canCall && <button type="button" style={PRIMARY} onClick={() => openChat('ticket')}><Ticket size={14} /> Submit a ticket</button>}
+            {!canChat && !canScreen && !canCall && !canTicket && features.length > 0 && (
               <button type="button" style={PRIMARY} onClick={() => openChat('home')}><LifeBuoy size={14} /> Get help</button>
             )}
             {kickoff && (
@@ -209,8 +216,11 @@ export default function CornerHelp() {
 /* Only the ways that are on the card. The sentence used to list all three
    whatever was switched on, so a card with one "Book a call" button offered a
    chat and a screen share that were nowhere on it. */
-function ways(chat: boolean, screen: boolean, call: boolean): string {
-  const w = [chat && 'chat', screen && 'share your screen', call && 'book a call'].filter(Boolean) as string[];
+function ways(o: { call: boolean; screen: boolean; chat: boolean; ticket: boolean; book: boolean }): string {
+  const w = [
+    o.call && 'call us now from your browser', o.screen && 'share your screen', o.chat && 'chat',
+    o.ticket && !o.chat && !o.screen && !o.call && 'submit a ticket', o.book && 'book a call',
+  ].filter(Boolean) as string[];
   if (!w.length) return 'press Get help';
   return w.length === 1 ? w[0] : `${w.slice(0, -1).join(', ')} or ${w[w.length - 1]}`;
 }
