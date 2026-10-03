@@ -36,6 +36,7 @@ import {
   cleanSdp, iceServers, isPresent, liveKind, offers, RING_SECONDS, SEEN_EVERY_MS, WAIT_MINUTES,
 } from '../lib/liveHelp';
 import { avatarUrl } from '../lib/widgetAvatar';
+import { decodeImage, fileResponse, parseAttachments, storeChatFile } from '../lib/chatFiles';
 
 interface Req {
   action?: string;
@@ -70,9 +71,42 @@ interface Req {
   reason?: string;
   /* 'screen' (the default) or 'voice' — "Call us now", no screen. */
   kind?: string;
+
+  /* Chat, live. `since` is the cursor the last poll handed back; `image` a
+     picture as a data URL, with its drawn size as a layout hint only; `fileId`
+     one picture to fetch back. */
+  since?: string;
+  image?: string;
+  w?: number;
+  h?: number;
+  fileId?: string;
 }
 
 const MAX_BODY = 4000;
+
+/* How far behind its cursor a poll looks again. Two writers can commit out of
+   timestamp order by a few milliseconds; reading the last ten seconds twice
+   and de-duplicating by id on the page costs nothing and never misses one. */
+const OVERLAP_MS = 10_000;
+
+/** A message as the visitor's side may see it — never the author's address. */
+const publicMessage = (m: Record<string, unknown>) => ({
+  id: String(m.id), role: String(m.role), body: String(m.body ?? ''), createdAt: String(m.createdAt ?? ''),
+  attachments: parseAttachments(m.attachments).map(a => ({ id: a.id, w: a.w, h: a.h })),
+});
+
+/**
+ * The visitor is now waiting for a person: stamped once, from the message
+ * they are waiting on, so a second message does not reset the clock. Also the
+ * "something changed" bump the business inbox polls for.
+ */
+async function waitForPerson(env: Env, convId: string, since: string, changedAt: string) {
+  await env.DB.prepare(
+    `UPDATE crm_conversations SET updated_at = ?, last_at = max(last_at, ?),
+            needs_human_since = CASE WHEN needs_human_since = '' THEN ? ELSE needs_human_since END
+     WHERE id = ?`,
+  ).bind(changedAt, changedAt, since, convId).run();
+}
 
 /** The workspace behind a widget key, and the widget's own configuration. */
 async function widgetFor(env: Env, key: string) {
@@ -151,9 +185,16 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
      Except the live-help poll, which has its own. A person waiting for support
      asks every few seconds and creates nothing by asking; charging that to the
      shared budget would lock them out of their own session in ten minutes. */
+  /* The chat poll and a picture being fetched back are the same kind of
+     thing — read-only, asked every few seconds by somebody mid-conversation —
+     and get budgets of their own for the same reason. */
   const limit = act === 'live_poll'
     ? await rateLimit(env, { what: 'engage-live', who: ip, max: 600, windowSeconds: 600 })
-    : await rateLimit(env, { what: 'engage', who: ip, max: 60, windowSeconds: 600 });
+    : act === 'poll'
+      ? await rateLimit(env, { what: 'engage-poll', who: ip, max: 600, windowSeconds: 600 })
+      : act === 'file'
+        ? await rateLimit(env, { what: 'engage-file', who: ip, max: 300, windowSeconds: 600 })
+        : await rateLimit(env, { what: 'engage', who: ip, max: 60, windowSeconds: 600 });
   if (!limit.allowed) {
     return withCors(fail('Too many requests from this connection. Try again shortly.', 429));
   }
@@ -269,18 +310,25 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     }
 
     const now = nowIso();
+    /* Handed back with its id, so the page can tell this message from the
+       same one arriving again on its next poll. */
+    const mine = { id: rid('msg'), role: 'visitor', body: text, createdAt: now, attachments: [] };
     await env.DB.prepare(
       `INSERT INTO crm_conversation_messages (id, conversation_id, account_id, role, body, created_at)
        VALUES (?,?,?, 'visitor', ?, ?)`,
-    ).bind(rid('msg'), String(conv.id), accountId, text, now).run();
-    await env.DB.prepare('UPDATE crm_conversations SET last_at = ?, updated_at = ? WHERE id = ?')
-      .bind(now, now, String(conv.id)).run();
+    ).bind(mine.id, String(conv.id), accountId, text, now).run();
+    /* With a person on the thread, writing to it is waiting for them. */
+    await env.DB.prepare(
+      `UPDATE crm_conversations SET last_at = ?, updated_at = ?, last_visitor_at = ?,
+              needs_human_since = CASE WHEN handled_by != 'ai' AND needs_human_since = '' THEN ? ELSE needs_human_since END
+       WHERE id = ?`,
+    ).bind(now, now, now, now, String(conv.id)).run();
 
     /* A human has taken over: the AI stays out of it entirely. This is the whole
        of section 54 — an agent who has picked up a conversation is not competing
        with a bot for the next word. */
     if (conv.handledBy !== 'ai') {
-      return withCors(json({ success: true, handedOver: true, messages: [] }));
+      return withCors(json({ success: true, handedOver: true, message: mine, messages: [] }));
     }
 
     const widget = await env.DB.prepare('SELECT agent_id AS agentId FROM crm_widgets WHERE id = ?')
@@ -295,16 +343,20 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
          never answers — and the conversation is still in the inbox, so a human
          can pick it up. */
       const said = 'Thanks — a colleague will pick this up. Leave your email and we will come back to you.';
+      const sys = { id: rid('msg'), role: 'system', body: said, createdAt: nowIso(), attachments: [] };
       await env.DB.prepare(
         `INSERT INTO crm_conversation_messages (id, conversation_id, account_id, role, body, created_at)
          VALUES (?,?,?, 'system', ?, ?)`,
-      ).bind(rid('msg'), String(conv.id), accountId, said, nowIso()).run();
-      return withCors(json({ success: true, messages: [{ role: 'system', body: said }] }));
+      ).bind(sys.id, String(conv.id), accountId, said, sys.createdAt).run();
+      await waitForPerson(env, String(conv.id), now, sys.createdAt);
+      return withCors(json({ success: true, message: mine, messages: [sys] }));
     }
 
+    /* A picture with no words is left out: the assistant cannot see it, and an
+       empty turn is something a model answers with nonsense or refuses. */
     const { results: history } = await env.DB.prepare(
       `SELECT role, body FROM crm_conversation_messages
-       WHERE conversation_id = ? AND internal = 0 ORDER BY created_at ASC LIMIT 40`,
+       WHERE conversation_id = ? AND internal = 0 AND body != '' ORDER BY created_at ASC LIMIT 40`,
     ).bind(String(conv.id)).all<Turn>();
 
     const out = await think(env, accountId, cfg, history ?? []);
@@ -314,10 +366,19 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const aiGate = await contentGate(env, accountId, 'chat', out.reply);
     const safe = aiGate.ok ? out.reply : (cfg.fallback || 'Let me put you through to a colleague.');
 
+    const aiMsg = { id: rid('msg'), role: 'ai', body: safe, createdAt: nowIso(), attachments: [] };
     await env.DB.prepare(
       `INSERT INTO crm_conversation_messages (id, conversation_id, account_id, role, body, sources, created_at)
        VALUES (?,?,?, 'ai', ?, ?, ?)`,
-    ).bind(rid('msg'), String(conv.id), accountId, safe, JSON.stringify(out.sources), nowIso()).run();
+    ).bind(aiMsg.id, String(conv.id), accountId, safe, JSON.stringify(out.sources), aiMsg.createdAt).run();
+    /* An assistant that could not think, or asked for a person, has left the
+       visitor waiting for one — counted from their message, not from the
+       apology. Otherwise the reply is only a change the inbox should see. */
+    if (out.needsHuman || out.unavailable) await waitForPerson(env, String(conv.id), now, aiMsg.createdAt);
+    else {
+      await env.DB.prepare('UPDATE crm_conversations SET updated_at = ?, last_at = max(last_at, ?) WHERE id = ?')
+        .bind(aiMsg.createdAt, aiMsg.createdAt, String(conv.id)).run();
+    }
 
     if (out.intent) {
       await env.DB.prepare('UPDATE crm_conversations SET intent = ? WHERE id = ?')
@@ -346,7 +407,8 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
 
     return withCors(json({
       success: true,
-      messages: [{ role: 'ai', body: safe, sources: out.sources }],
+      message: mine,
+      messages: [{ ...aiMsg, sources: out.sources }],
       tool: toolResult,
       /* Reported, not hidden: a chat that has quietly stopped thinking should
          say so, and the widget offers the human instead. */
@@ -354,22 +416,102 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     }));
   }
 
-  /* ── Poll for replies a human has sent ── */
+  /* ── Poll for what has been said since ──
+   *
+   * Asked every few seconds while the chat is open, so it is cheap: the
+   * conversation row already says when it last changed, and a poll from after
+   * that is answered without reading the thread at all. `cursor` is the
+   * server's clock, never the page's — a visitor whose computer is an hour out
+   * must still get replies. Without `since` it is the recent thread whole, for
+   * a page reloaded mid-conversation. */
   if (act === 'poll') {
     const conv = await env.DB.prepare(
-      'SELECT id, account_id AS accountId, visitor_key AS visitorKey, handled_by AS handledBy, status FROM crm_conversations WHERE id = ?',
+      `SELECT id, visitor_key AS visitorKey, handled_by AS handledBy, status, updated_at AS updatedAt
+       FROM crm_conversations WHERE id = ?`,
     ).bind(String(d.conversationId ?? '')).first<Record<string, unknown>>();
     if (!conv || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
       return withCors(fail('That conversation could not be found.', 404));
     }
+    const head = { success: true, cursor: nowIso(), handedOver: conv.handledBy !== 'ai', status: conv.status };
+    const sinceMs = Date.parse(String(d.since ?? ''));
+    if (Number.isFinite(sinceMs)) {
+      const from = new Date(sinceMs - OVERLAP_MS).toISOString();
+      if (String(conv.updatedAt) < from) return withCors(json({ ...head, messages: [] }));
+      const { results } = await env.DB.prepare(
+        `SELECT id, role, body, attachments, created_at AS createdAt FROM crm_conversation_messages
+         WHERE conversation_id = ? AND internal = 0 AND created_at >= ? ORDER BY created_at ASC LIMIT 100`,
+      ).bind(String(conv.id), from).all<Record<string, unknown>>();
+      return withCors(json({ ...head, messages: (results ?? []).map(publicMessage) }));
+    }
     const { results } = await env.DB.prepare(
-      `SELECT role, body, created_at AS createdAt FROM crm_conversation_messages
-       WHERE conversation_id = ? AND internal = 0 ORDER BY created_at ASC LIMIT 200`,
-    ).bind(String(conv.id)).all();
+      `SELECT * FROM (SELECT id, role, body, attachments, created_at AS createdAt FROM crm_conversation_messages
+         WHERE conversation_id = ? AND internal = 0 ORDER BY created_at DESC LIMIT 200)
+       ORDER BY createdAt ASC`,
+    ).bind(String(conv.id)).all<Record<string, unknown>>();
+    return withCors(json({ ...head, messages: (results ?? []).map(publicMessage) }));
+  }
+
+  /* ── A picture from the visitor — a screenshot, usually ──
+   *
+   * Its own action rather than a field on `send`, because it does not go to
+   * the assistant: a model reading this thread cannot see the picture, and
+   * answering "I can see the problem" about an image it never saw is the
+   * confident nonsense this product refuses to ship. So a picture marks the
+   * conversation as waiting for a person, whoever is answering it. */
+  if (act === 'attach') {
+    const conv = await env.DB.prepare(
+      'SELECT id, account_id AS accountId, visitor_key AS visitorKey, status FROM crm_conversations WHERE id = ?',
+    ).bind(String(d.conversationId ?? '')).first<Record<string, unknown>>();
+    if (!conv || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
+      return withCors(fail('That conversation could not be found.', 404));
+    }
+    if (conv.status === 'closed') return withCors(fail('This conversation has been closed.', 409));
+    /* Per conversation as well as per address: each one is up to 1.5 MB in
+       the database, and one chat is not a photo album. */
+    const room = await rateLimit(env, { what: 'engage-attach', who: String(conv.id), max: 8, windowSeconds: 600 });
+    if (!room.allowed) return withCors(fail('That is a lot of pictures at once — wait a few minutes before sending another.', 429));
+
+    const img = decodeImage(d.image);
+    if (!img.ok) return withCors(fail(img.message, img.code === 'too_large' ? 413 : 422, { code: img.code }));
+
+    const accountId = String(conv.accountId);
+    const caption = String(d.message ?? '').trim().slice(0, MAX_BODY);
+    if (caption) {
+      const g = await contentGate(env, accountId, 'chat', caption);
+      if (!g.ok) return withCors(fail(g.message, 422, { code: 'blocked' }));
+    }
+    const now = nowIso();
+    const msgId = rid('msg');
+    const a = await storeChatFile(env, {
+      accountId, conversationId: String(conv.id), messageId: msgId, uploadedBy: 'visitor',
+      bytes: img.bytes, mime: img.mime, w: d.w, h: d.h, now,
+    });
+    await env.DB.prepare(
+      `INSERT INTO crm_conversation_messages (id, conversation_id, account_id, role, body, attachments, created_at)
+       VALUES (?,?,?, 'visitor', ?, ?, ?)`,
+    ).bind(msgId, String(conv.id), accountId, caption, JSON.stringify([a]), now).run();
+    await env.DB.prepare('UPDATE crm_conversations SET last_visitor_at = ? WHERE id = ?').bind(now, String(conv.id)).run();
+    await waitForPerson(env, String(conv.id), now, now);
     return withCors(json({
-      success: true, messages: results ?? [],
-      handedOver: conv.handledBy !== 'ai', status: conv.status,
+      success: true,
+      message: publicMessage({ id: msgId, role: 'visitor', body: caption, attachments: JSON.stringify([a]), createdAt: now }),
     }));
+  }
+
+  /* ── One picture back, for the visitor's own thread ──
+   * Only a file on a message the visitor could already read: in their
+   * conversation, proved by its key, and never on an internal note. One
+   * answer for every way of not matching, as for the conversation itself. */
+  if (act === 'file') {
+    const row = await env.DB.prepare(
+      `SELECT f.bytes FROM crm_chat_files f
+       JOIN crm_conversations c ON c.id = f.conversation_id AND c.account_id = f.account_id
+       JOIN crm_conversation_messages m ON m.id = f.message_id AND m.conversation_id = f.conversation_id
+       WHERE f.id = ? AND f.conversation_id = ? AND c.visitor_key = ? AND c.visitor_key != '' AND m.internal = 0`,
+    ).bind(String(d.fileId ?? '').slice(0, 80), String(d.conversationId ?? '').slice(0, 80), String(d.visitorKey ?? ''))
+      .first<{ bytes: unknown }>();
+    const res = row ? fileResponse(row.bytes) : null;
+    return withCors(res ?? fail('That picture could not be found.', 404));
   }
 
   /* ── Tell us who you are ── */

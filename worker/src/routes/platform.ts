@@ -87,10 +87,10 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
       s = { state: stateOf(explicit), detail: 'An installation AI key is stored and used first.', checkedAt: explicit.status === 'ok' ? explicit.updatedAt : null, lastError: explicit.lastError };
     } else if (owned) {
       s = owned.lastError
-        ? { state: 'error', detail: 'The key in your own workspace\'s AI Engine is the one everybody uses, and Google last refused it.', checkedAt: null, lastError: owned.lastError }
+        ? { state: 'error', detail: 'The main AI key is the one everybody uses, and Google last refused it.', checkedAt: null, lastError: owned.lastError }
         : owned.verifiedAt
-          ? { state: 'ok', detail: 'The key in your own workspace\'s AI Engine is the one everybody without a key of their own uses.', checkedAt: owned.verifiedAt, lastError: '' }
-          : { state: 'unchecked', detail: 'Your AI Engine key is stored but has not been checked with Google — press "Check now" there.', checkedAt: null, lastError: '' };
+          ? { state: 'ok', detail: 'The main AI key is the one every customer\'s writing uses.', checkedAt: owned.verifiedAt, lastError: '' }
+          : { state: 'unchecked', detail: 'The main AI key is stored but has not been checked with Google — press "Check now" on it below.', checkedAt: null, lastError: '' };
     } else if (env_) {
       s = { state: 'unchecked', detail: 'Only the AI_API_KEY Cloudflare secret is set. It works, but it cannot be checked from here.', checkedAt: null, lastError: '' };
     } else {
@@ -108,7 +108,7 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
       id: 'ai', name: 'AI (Google Gemini)',
       powers: 'Autopilot writing, replies, the New Project wizard, the microphone, review reply drafts',
       ...s,
-      where: { label: 'Settings → AI Engine, while you are in one of your own workspaces', tab: 'ai-engine' },
+      where: { label: 'Below, on this tab — Main AI key' },
     });
   }
 

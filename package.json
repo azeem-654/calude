@@ -47,6 +47,7 @@
     "test:revenue": "node test/revenue.e2e.mjs",
     "test:livehelp": "node test/liveHelp.e2e.mjs",
     "test:voicecall": "node test/voiceCall.e2e.mjs",
+    "test:chatlive": "node test/chatLive.e2e.mjs",
     "test:sitefit": "node test/siteFit.e2e.mjs",
     "test:reputation": "node test/reputation.e2e.mjs",
     "test:mapslink": "npx --yes tsx worker/test/mapsLink.test.mts",

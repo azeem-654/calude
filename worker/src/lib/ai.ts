@@ -303,7 +303,7 @@ function friendly(status: number, raw: string): string {
     /* Deliberately does not name a screen. On most installs the key is the
        operator's, and sending a customer to their own AI Engine tab to fix a
        key that is not there is a wild goose chase. */
-    return 'Writing was refused by the AI provider. If you connected your own key, check it under Settings → AI Engine; otherwise this is on us.';
+    return 'Writing was refused by the AI provider. This is on us, not you — please try again shortly.';
   }
   if (/SERVICE[ _]DISABLED|API[ _]KEY[ _]SERVICE[ _]BLOCKED/i.test(raw)) {
     return 'The Generative Language API is not enabled for this key\'s project.';

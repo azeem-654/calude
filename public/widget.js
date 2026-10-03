@@ -238,9 +238,53 @@
     body.appendChild(wrap);
   }
 
-  /* ── Chat ──────────────────────────────────────────────────────────────── */
+  /* ── Chat ──────────────────────────────────────────────────────────────────
+   *
+   * Live in both directions. Whenever a conversation exists the widget asks
+   * for what has been said since its last look — every three seconds while
+   * the chat is open on a visible tab, every twelve while it is closed, every
+   * thirty while the tab is hidden, and not at all once nothing has happened
+   * for half an hour (anything the visitor does wakes it). A reply that
+   * arrives while the panel is shut puts a dot on the launcher.
+   *
+   * Messages are known by their id, not by how many there have been. Counting
+   * broke the moment two arrived between polls in a different order, or the
+   * visitor's own message came back on a poll before the call that sent it
+   * had answered — and it only ever polled once a person had taken over, so
+   * a business reply to a conversation the assistant still held never came.
+   */
 
-  function bubble(role, text) {
+  var CHAT_ICONS = {
+    attach: ['M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48'],
+  };
+
+  var history = [];          // what the chat view draws: {id?, role, body, attachments?}
+  var seenIds = {};          // every message id already in `history`
+  var pendingBodies = [];    // sent, drawn, and not yet given an id by the server
+  var greeted = false;
+  var toldHandover = false;
+  var lastDrawnRole = '';
+
+  function remember(role, text) { history.push({ role: role, body: text }); }
+
+  /* Somebody at the business, shown as themselves when the widget has been
+     given a face and a name for them — never for the assistant, which must
+     not look like a person. Only an https (or this install's own) address is
+     drawn: it is a URL from configuration landing on a stranger's page. */
+  function agentFace() {
+    var c = state.cfg || {};
+    var name = typeof c.agentName === 'string' ? c.agentName.slice(0, 60) : '';
+    var src = '';
+    if (typeof c.agentAvatar === 'string' && c.agentAvatar) {
+      try {
+        var u = new URL(c.agentAvatar, ORIGIN);
+        if (u.protocol === 'https:' || u.origin === ORIGIN) src = u.href;
+      } catch (e) { src = ''; }
+    }
+    return name || src ? { name: name, src: src } : null;
+  }
+
+  function bubble(role, text, attachments) {
     if (!log) return null;
     var mine = role === 'visitor';
     var b = el('div', [
@@ -249,10 +293,42 @@
       mine
         ? 'align-self:flex-end;background:' + accent() + ';color:#fff;'
         : 'align-self:flex-start;background:#f1f3f7;color:#0f172a;',
-    ].join(''), text);
-    log.appendChild(b);
+    ].join(''), text || null);
+    if (attachments && attachments.length) {
+      if (!text) b.style.padding = '4px';
+      attachments.forEach(function (a) { b.appendChild(thumb(a)); });
+    }
+
+    var node = b;
+    var face = role === 'agent' ? agentFace() : null;
+    if (face) {
+      /* The face goes on the first of a run of their messages, as a person
+         would be introduced once rather than before every sentence. */
+      node = el('div', 'align-self:flex-start;display:flex;gap:8px;align-items:flex-end;max-width:90%;');
+      var pic = el('div', 'width:28px;height:28px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;'
+        + 'align-items:center;justify-content:center;font-size:12px;font-weight:800;color:' + accent() + ';background:' + accent() + '22;');
+      var initial = face.name ? face.name.charAt(0).toUpperCase() : '';
+      if (lastDrawnRole === 'agent') {
+        pic.style.background = 'transparent';
+      } else if (face.src) {
+        var im = el('img', 'width:100%;height:100%;object-fit:cover;display:block;');
+        im.alt = ''; im.src = face.src; im.referrerPolicy = 'no-referrer';
+        im.onerror = function () { im.remove(); pic.textContent = initial; };
+        pic.appendChild(im);
+      } else {
+        pic.textContent = initial;
+      }
+      var col = el('div', 'display:flex;flex-direction:column;gap:3px;min-width:0;');
+      if (face.name && lastDrawnRole !== 'agent') col.appendChild(el('div', 'font-size:11.5px;font-weight:700;color:#64748b;padding-left:2px;', face.name));
+      b.style.maxWidth = '100%';
+      b.style.alignSelf = 'flex-start';
+      col.appendChild(b);
+      node.appendChild(pic); node.appendChild(col);
+    }
+    lastDrawnRole = role;
+    log.appendChild(node);
     log.scrollTop = log.scrollHeight;
-    return b;
+    return node;
   }
 
   function note(text, into) {
@@ -261,97 +337,344 @@
     var n = el('div', 'align-self:center;font-size:11.5px;color:#64748b;text-align:center;padding:2px 8px;line-height:1.5;', text);
     target.appendChild(n);
     target.scrollTop = target.scrollHeight;
+    if (!into) lastDrawnRole = 'note';
   }
 
-  var history = [];
-  var serverCount = 0;
-  function remember(role, text) { history.push({ role: role, body: text }); }
+  function say(text) { remember('note', text); note(text); }
+
+  function draw(m) {
+    if (m.role === 'note') note(m.body);
+    else bubble(m.role, m.body, m.attachments);
+  }
+
+  /* ── Pictures ──
+   * Fetched with the conversation's key and drawn from memory: a picture has
+   * no address anybody could open without that key, so there is nothing to
+   * put in an <img src> but the bytes themselves. */
+  var files = {};
+  function fileUrl(id) {
+    if (!files[id]) {
+      var body = { action: 'file', conversationId: state.conv, visitorKey: state.vkey, fileId: id };
+      if (SAME_ORIGIN) body.token = 'cookie';
+      files[id] = fetch(API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }).then(function (r) {
+        var type = r.headers.get('Content-Type') || '';
+        if (!r.ok || type.indexOf('image/') !== 0) throw new Error('missing');
+        return r.blob();
+      }).then(function (b) { return URL.createObjectURL(b); })
+        .catch(function (e) { delete files[id]; throw e; });
+    }
+    return files[id];
+  }
+
+  function thumb(a) {
+    var box = el('button', 'display:block;padding:0;border:0;background:#e2e8f0;border-radius:10px;overflow:hidden;cursor:zoom-in;margin:2px 0;'
+      + 'min-width:60px;min-height:48px;max-width:220px;');
+    box.type = 'button';
+    box.setAttribute('aria-label', 'Open the picture full size');
+    if (a.w && a.h) {
+      var w = Math.min(220, a.w);
+      box.style.width = w + 'px';
+      box.style.aspectRatio = a.w + ' / ' + a.h;
+      box.style.maxHeight = '260px';
+    }
+    var im = el('img', 'display:block;width:100%;height:100%;max-height:260px;object-fit:cover;');
+    im.alt = 'Picture sent in the chat';
+    box.appendChild(im);
+    fileUrl(a.id).then(function (u) { im.src = u; box.onclick = function () { lightbox(u); }; })
+      .catch(function () {
+        box.removeChild(im);
+        box.style.cursor = 'default';
+        box.appendChild(el('span', 'display:block;padding:10px;font-size:12px;color:#475569;', 'Picture unavailable'));
+      });
+    return box;
+  }
+
+  function lightbox(src) {
+    var o = el('div', 'position:fixed;inset:0;z-index:2147483002;background:rgba(15,23,42,.84);display:flex;'
+      + 'align-items:center;justify-content:center;padding:16px;box-sizing:border-box;cursor:zoom-out;');
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-label', 'Picture, full size');
+    var im = el('img', 'max-width:100%;max-height:100%;border-radius:8px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.4);');
+    im.src = src; im.alt = 'Picture sent in the chat';
+    o.appendChild(im);
+    function close() { o.remove(); document.removeEventListener('keydown', key, true); }
+    function key(e) { if (e.key === 'Escape') { e.stopPropagation(); close(); } }
+    o.onclick = close;
+    document.addEventListener('keydown', key, true);
+    document.body.appendChild(o);
+  }
+
+  /* Shrunk here, before it leaves: a phone photo is several megabytes and a
+     screenshot is mostly text, both readable at 1600 pixels. JPEG at 0.8,
+     then lower quality, then smaller, until it fits under 1.5 MB. */
+  var MAX_SIDE = 1600;
+  var MAX_BYTES = 1572864;
+  function shrink(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type || '')) { reject(new Error('Only pictures can be sent here.')); return; }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var nw = img.naturalWidth, nh = img.naturalHeight;
+        if (!nw || !nh) { reject(new Error('That file could not be read as a picture.')); return; }
+        var scale = Math.min(1, MAX_SIDE / Math.max(nw, nh));
+        var q = 0.8;
+        for (var i = 0; i < 8; i++) {
+          var w = Math.max(1, Math.round(nw * scale)), h = Math.max(1, Math.round(nh * scale));
+          var c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          var g = c.getContext('2d');
+          /* White under a transparent screenshot, or JPEG makes it black. */
+          g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+          g.drawImage(img, 0, 0, w, h);
+          var data = c.toDataURL('image/jpeg', q);
+          var bytes = Math.floor((data.length - data.indexOf(',') - 1) * 3 / 4);
+          if (bytes <= MAX_BYTES) { resolve({ data: data, w: w, h: h }); return; }
+          if (q > 0.6) q -= 0.1; else scale *= 0.75;
+        }
+        reject(new Error('That picture is too large to send, even made smaller.'));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('That file could not be read as a picture.')); };
+      img.src = url;
+    });
+  }
+
+  /* ── Messages in, from wherever they came ── */
+
+  function addMessage(m, how) {
+    if (!m) return;
+    how = how || {};
+    if (m.id) {
+      if (seenIds[m.id]) return;
+      seenIds[m.id] = 1;
+    }
+    /* Our own words, back on a poll before the call that sent them answered:
+       already on screen, so only the id is kept. */
+    if (m.role === 'visitor' && how.polled && !(m.attachments && m.attachments.length)) {
+      var at = pendingBodies.indexOf(m.body);
+      if (at !== -1) { pendingBodies.splice(at, 1); return; }
+    }
+    var entry = { id: m.id, role: m.role, body: m.body, attachments: m.attachments || [] };
+    history.push(entry);
+    if (state.view === 'chat' && log) draw(entry);
+    if (m.role !== 'visitor' && how.polled && !how.baseline) {
+      lastActivity = Date.now();
+      if (!chatOnScreen()) markUnread(true);
+    }
+  }
+
+  /* The answer to our own send: its id is ours now, whichever arrived first. */
+  function claimOwn(m) {
+    if (!m || !m.id || seenIds[m.id]) return;
+    seenIds[m.id] = 1;
+    var at = pendingBodies.indexOf(m.body);
+    if (at !== -1) pendingBodies.splice(at, 1);
+  }
+
+  function chatOnScreen() {
+    return state.open && state.view === 'chat' && document.visibilityState !== 'hidden';
+  }
+
+  /* A dot on the launcher, and an attribute a page can style or test for.
+     The launcher itself is left exactly as it was drawn. */
+  function markUnread(on) {
+    if (!launcher) return;
+    var dot = launcher.querySelector('[data-pc-unread-dot]');
+    if (on) {
+      launcher.setAttribute('data-pc-unread', '1');
+      if (!dot) {
+        dot = el('span', 'position:absolute;top:-2px;right:-2px;width:13px;height:13px;border-radius:50%;'
+          + 'background:#ef4444;border:2px solid #fff;box-sizing:border-box;pointer-events:none;');
+        dot.setAttribute('data-pc-unread-dot', '');
+        dot.setAttribute('role', 'status');
+        dot.setAttribute('aria-label', 'New reply');
+        if (!launcher.style.position) launcher.style.position = 'relative';
+        launcher.appendChild(dot);
+      }
+    } else {
+      launcher.removeAttribute('data-pc-unread');
+      if (dot) dot.remove();
+    }
+  }
+
+  /* Opening the panel onto the chat: what was unread has been seen, and the
+     poll goes back to its quick pace at once. */
+  function chatOpened() {
+    if (state.view === 'chat') markUnread(false);
+    wakePoll();
+  }
+
+  /* ── The poll ── */
+
+  var cursor = '';
+  var pollTimer = null;
+  var polling = false;
+  var lastActivity = Date.now();
+  var IDLE_STOP_MS = 30 * 60 * 1000;
+
+  function pollDelay() {
+    if (document.visibilityState === 'hidden') return 30000;
+    return state.open && state.view === 'chat' ? 3000 : 12000;
+  }
+
+  function schedulePoll(ms) {
+    window.clearTimeout(pollTimer);
+    pollTimer = null;
+    if (!state.conv) return;
+    /* Half an hour of nothing either way: the conversation is over in all but
+       name, and asking every few seconds for ever would be a load test made
+       of abandoned tabs. Anything the visitor does starts it again. */
+    if (Date.now() - lastActivity > IDLE_STOP_MS) return;
+    pollTimer = window.setTimeout(pollNow, ms == null ? pollDelay() : ms);
+  }
+
+  function pollNow() {
+    window.clearTimeout(pollTimer);
+    pollTimer = null;
+    if (!state.conv || polling) return;
+    polling = true;
+    var baseline = !cursor;
+    var conv = state.conv;
+    post({ action: 'poll', conversationId: conv, visitorKey: state.vkey, since: cursor || undefined }).then(function (r) {
+      polling = false;
+      if (conv !== state.conv) return;
+      if (!r.success) { schedulePoll(15000); return; }
+      if (r.cursor) cursor = r.cursor;
+      (r.messages || []).forEach(function (m) { addMessage(m, { polled: true, baseline: baseline }); });
+      schedulePoll();
+    });
+  }
+
+  function wakePoll() {
+    lastActivity = Date.now();
+    if (state.conv && !polling) schedulePoll(200);
+  }
+
+  /* Once the widget is drawn: a conversation carried over from before a
+     reload is fetched straight away, so a reply that came in meanwhile is
+     waiting — and marked — rather than appearing only when they look. */
+  var booted = false;
+  window.addEventListener('pc-widget-ready', function () {
+    if (booted) return;
+    booted = true;
+    if (state.conv) schedulePoll(0);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') {
+        if (chatOnScreen()) markUnread(false);
+        wakePoll();
+      }
+    });
+  });
+
+  /* ── The view ── */
 
   function chatView() {
     log = el('div', 'flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;');
     var bar = el('div', 'display:flex;gap:8px;padding:12px;border-top:1px solid #e6e9f0;flex-shrink:0;');
+    var pick = el('input', 'display:none;');
+    pick.type = 'file';
+    pick.accept = 'image/*';
+    pick.onchange = function () { if (pick.files && pick.files[0]) sendImage(pick.files[0]); pick.value = ''; };
+    var clip = el('button', 'display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;padding:0;'
+      + 'border:1px solid #e6e9f0;border-radius:10px;background:#fff;color:#475569;cursor:pointer;');
+    clip.type = 'button';
+    clip.title = 'Attach a screenshot or picture (or paste one)';
+    clip.setAttribute('aria-label', 'Attach a screenshot or picture');
+    clip.appendChild(icon(CHAT_ICONS.attach, 18));
+    clip.onclick = function () { pick.click(); };
     input = el('input', FIELD + 'flex:1;min-width:0;');
     input.placeholder = 'Type a message…';
     input.setAttribute('aria-label', 'Message');
     input.onkeydown = function (e) { if (e.key === 'Enter') send(input.value); };
+    /* A screenshot is most often on the clipboard already. */
+    input.addEventListener('paste', function (e) {
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file' && /^image\//.test(items[i].type)) {
+          var f = items[i].getAsFile();
+          if (f) { e.preventDefault(); sendImage(f); return; }
+        }
+      }
+    });
     var go = el('button', primary() + 'padding:10px 15px;font-size:13px;', 'Send');
     go.onclick = function () { send(input.value); };
-    bar.appendChild(input); bar.appendChild(go);
+    bar.appendChild(pick); bar.appendChild(clip); bar.appendChild(input); bar.appendChild(go);
     body.appendChild(log); body.appendChild(bar);
 
-    if (!history.length) {
+    if (!greeted) {
+      greeted = true;
       var hello = (state.agent && state.agent.greeting)
         || (state.cfg && state.cfg.welcome)
         || 'Hello — how can we help?';
-      remember('ai', hello);
-      if (state.cfg && state.cfg.consentText && onlyChat()) remember('note', state.cfg.consentText);
-      /* Back after a reload with a thread already going: fetch it, so they
-         see what was said rather than a fresh greeting over an old chat. */
-      if (state.conv && !serverCount) {
-        post({ action: 'poll', conversationId: state.conv, visitorKey: state.vkey }).then(function (r) {
-          if (!r.success) return;
-          (r.messages || []).forEach(function (m) { remember(m.role, m.body); if (state.view === 'chat') bubble(m.role, m.body); });
-          serverCount = (r.messages || []).length;
-          if (r.handedOver) poll();
-        });
-      }
+      var intro = [{ role: 'ai', body: hello }];
+      if (state.cfg && state.cfg.consentText && onlyChat()) intro.push({ role: 'note', body: state.cfg.consentText });
+      history = intro.concat(history);
     }
-    history.forEach(function (m) { if (m.role === 'note') note(m.body); else bubble(m.role, m.body); });
+    lastDrawnRole = '';
+    history.forEach(draw);
     input.focus();
-    if (state.conv && serverCount) poll();
+    if (state.open) markUnread(false);
+    wakePoll();
+  }
+
+  /* A conversation to write into, made on the first message or picture. */
+  function ensureConv() {
+    if (state.conv) return Promise.resolve({ success: true });
+    return post({
+      action: 'start', widgetKey: KEY,
+      context: { page: window.location.href, referrer: document.referrer },
+    }).then(function (r) {
+      if (r.success) {
+        state.conv = r.conversationId; state.vkey = r.visitorKey;
+        cursor = '';
+        try {
+          window.sessionStorage.setItem(STORE, JSON.stringify({ conv: state.conv, vkey: state.vkey }));
+        } catch (e) { /* nothing to do; the thread just will not survive a reload */ }
+      }
+      if (!r.success) throw new Error(r.message || 'Could not start the chat.');
+      return r;
+    });
   }
 
   function send(text) {
     if (!text.trim() || state.sending) return;
     state.sending = true;
     remember('visitor', text);
+    pendingBodies.push(text);
     bubble('visitor', text);
     input.value = '';
+    lastActivity = Date.now();
 
     var thinking = bubble('ai', '…');
 
-    var go = state.conv
-      ? Promise.resolve({ success: true })
-      : post({
-          action: 'start', widgetKey: KEY,
-          context: { page: window.location.href, referrer: document.referrer },
-        }).then(function (r) {
-          if (r.success) {
-            state.conv = r.conversationId; state.vkey = r.visitorKey;
-            try {
-              window.sessionStorage.setItem(STORE, JSON.stringify({ conv: state.conv, vkey: state.vkey }));
-            } catch (e) { /* nothing to do; the thread just will not survive a reload */ }
-          }
-          return r;
-        });
-
-    go.then(function (started) {
-      if (!started.success) throw new Error(started.message || 'Could not start the chat.');
+    ensureConv().then(function () {
+      wakePoll();
       return post({
         action: 'send', conversationId: state.conv, visitorKey: state.vkey, message: text,
       });
     }).then(function (r) {
       if (thinking) thinking.remove();
       state.sending = false;
-      if (!r.success) { remember('note', r.message || 'That could not be sent.'); note(r.message || 'That could not be sent.'); return; }
-
-      /* Counted as the server stores them — theirs, and every reply — so the
-         poll below shows only what arrived since. */
-      serverCount += 1 + (r.messages || []).length;
-      (r.messages || []).forEach(function (m) { remember(m.role, m.body); bubble(m.role, m.body); });
+      if (!r.success) {
+        var at = pendingBodies.indexOf(text);
+        if (at !== -1) pendingBodies.splice(at, 1);
+        say(r.message || 'That could not be sent.');
+        return;
+      }
+      claimOwn(r.message);
+      (r.messages || []).forEach(function (m) { addMessage(m); });
 
       /* Said plainly rather than hidden. A chat that has quietly stopped
          thinking should offer the alternative rather than look broken. */
-      if (r.degraded) {
-        var d = 'The assistant is unavailable at the moment — a person will pick this up.';
-        remember('note', d); note(d);
+      if (r.degraded) say('The assistant is unavailable at the moment — a person will pick this up.');
+      if (r.handedOver && !toldHandover) {
+        toldHandover = true;
+        say('A colleague has joined and will reply here.');
       }
-      if (r.handedOver) {
-        remember('note', 'A colleague has joined and will reply here.');
-        note('A colleague has joined and will reply here.');
-        poll();
-      }
-      if (r.tool && r.tool.message) { remember('note', r.tool.message); note(r.tool.message); }
+      if (r.tool && r.tool.message) say(r.tool.message);
       if (r.tool && r.tool.data && r.tool.data.bookingSlug && log) {
         var a = el('a', 'align-self:flex-start;font-size:13px;font-weight:700;color:' + accent() + ';text-decoration:underline;', 'Pick a time');
         a.href = ORIGIN + '/book/' + r.tool.data.bookingSlug;
@@ -359,6 +682,7 @@
         a.rel = 'noopener';
         log.appendChild(a);
       }
+      wakePoll();
     }).catch(function (e) {
       if (thinking) thinking.remove();
       state.sending = false;
@@ -366,27 +690,40 @@
     });
   }
 
-  /* Once a human is on the thread, ask for their replies. Every fifteen
-     seconds: often enough to feel live, rare enough that a busy support inbox
-     is not a load test. */
-  var polling = null;
-  function poll() {
-    if (polling || !state.conv) return;
-    polling = window.setInterval(function () {
-      post({ action: 'poll', conversationId: state.conv, visitorKey: state.vkey }).then(function (r) {
-        if (!r.success) return;
-        var msgs = r.messages || [];
-        if (msgs.length > serverCount) {
-          msgs.slice(serverCount).forEach(function (m) {
-            if (m.role === 'visitor') return;
-            remember(m.role, m.body);
-            if (state.view === 'chat') bubble(m.role, m.body);
-          });
-          serverCount = msgs.length;
-        }
+  function sendImage(file) {
+    if (state.sending) return;
+    state.sending = true;
+    lastActivity = Date.now();
+    var wait = bubble('visitor', 'Sending picture…');
+    var shrunk;
+    shrink(file).then(function (img) {
+      shrunk = img;
+      return ensureConv();
+    }).then(function () {
+      return post({
+        action: 'attach', conversationId: state.conv, visitorKey: state.vkey,
+        image: shrunk.data, w: shrunk.w, h: shrunk.h,
       });
-    }, 15000);
+    }).then(function (r) {
+      if (wait) wait.remove();
+      state.sending = false;
+      if (!r.success) { say(r.message || 'That picture could not be sent.'); return; }
+      var a = r.message && r.message.attachments && r.message.attachments[0];
+      /* Drawn from what is already in memory rather than fetched back. */
+      if (a && !files[a.id]) files[a.id] = Promise.resolve(shrunk.data);
+      addMessage(r.message);
+      if (!toldPicture) {
+        toldPicture = true;
+        say('A person will look at your picture — the assistant cannot see images.');
+      }
+      wakePoll();
+    }).catch(function (e) {
+      if (wait) wait.remove();
+      state.sending = false;
+      say(e.message || 'That picture could not be sent.');
+    });
   }
+  var toldPicture = false;
 
   /* ── Tickets ───────────────────────────────────────────────────────────── */
 
@@ -1373,6 +1710,7 @@
       /* A session in progress is what they came back for. */
       if (live) show(liveViewName(live));
       else if (!body.firstChild) show(onlyChat() ? 'chat' : 'home');
+      chatOpened();
     }
   }
 

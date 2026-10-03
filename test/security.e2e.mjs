@@ -278,6 +278,41 @@ console.log("\nLive help — B against A's screen-sharing sessions");
   check("A deleted widget's photo stops being served", afterDelete.status === 404, String(afterDelete.status));
 }
 
+console.log("\nChat — B against A's conversations and the pictures in them");
+{
+  const w = await api('engagement.php', { action: 'save_widget', token: A.token, accountId: A.acct, record: { name: 'A chat', features: ['chat'], status: 'live' } });
+  const key = w.data.item?.public_key;
+  const st = await api('engage.php', { action: 'start', widgetKey: key }, { ip: '10.6.0.1' });
+  const conv = st.data.conversationId;
+  /* A real (tiny) PNG: the server sniffs the bytes, not the label. */
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const att = await api('engage.php', { action: 'attach', conversationId: conv, visitorKey: st.data.visitorKey, image: png }, { ip: '10.6.0.1' });
+  const fileId = att.data.message?.attachments?.[0]?.id;
+  check('A visitor can attach a picture to their own conversation', att.ok && !!fileId, JSON.stringify(att.data).slice(0, 120));
+  const own = await fetch(`${BASE}/api/engagement.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close' }, body: JSON.stringify({ action: 'file', token: A.token, accountId: A.acct, fileId }) });
+  check("A reads the picture in A's own inbox", own.status === 200 && (own.headers.get('content-type') ?? '').startsWith('image/png'), String(own.status));
+  const peek = await api('engagement.php', { action: 'file', token: B.token, accountId: B.acct, fileId });
+  check("B cannot read A's chat picture by id", peek.status === 404, `${peek.status} ${JSON.stringify(peek.data).slice(0, 80)}`);
+  const named = await api('engagement.php', { action: 'file', token: B.token, accountId: A.acct, fileId });
+  check("B cannot read it by naming A's workspace", named.status === 403, String(named.status));
+  const st2 = await api('engage.php', { action: 'start', widgetKey: key }, { ip: '10.6.0.2' });
+  const viaOther = await api('engage.php', { action: 'file', conversationId: st2.data.conversationId, visitorKey: st2.data.visitorKey, fileId }, { ip: '10.6.0.2' });
+  check("Another visitor, with their own valid key, cannot fetch it", viaOther.status === 404, String(viaOther.status));
+  const wrong = await api('engage.php', { action: 'file', conversationId: conv, visitorKey: st2.data.visitorKey, fileId }, { ip: '10.6.0.2' });
+  check('Nor by pairing the conversation with somebody else\'s key', wrong.status === 404, String(wrong.status));
+  const into = await api('engage.php', { action: 'attach', conversationId: conv, visitorKey: st2.data.visitorKey, image: png }, { ip: '10.6.0.2' });
+  check("Nor put a picture into A's visitor's conversation", into.status === 404, String(into.status));
+  const sync = await api('engagement.php', { action: 'inbox_sync', token: B.token, accountId: B.acct, since: '2000-01-01T00:00:00Z', conversationId: conv, msgSince: '2000-01-01T00:00:00Z' });
+  check("B's inbox sync sees none of A's conversations or messages by id",
+    sync.ok && sync.data.conversations.length === 0 && sync.data.messages.length === 0 && !sync.data.thread, JSON.stringify(sync.data).slice(0, 120));
+  const syncNamed = await api('engagement.php', { action: 'inbox_sync', token: B.token, accountId: A.acct, since: '2000-01-01T00:00:00Z' });
+  check("B cannot sync A's inbox by naming the workspace", syncNamed.status === 403, String(syncNamed.status));
+  const reply = await api('engagement.php', { action: 'reply', token: B.token, accountId: B.acct, conversationId: conv, message: 'hi', image: png });
+  check("B cannot reply (with a picture) into A's conversation", reply.status === 404 && d1rows(`SELECT count(*) AS n FROM crm_chat_files WHERE conversation_id = '${conv}'`)[0]?.n === 1, String(reply.status));
+  const waiting = await api('engagement.php', { action: 'support_waiting', token: B.token, accountId: A.acct });
+  check("B cannot read A's support queue", waiting.status === 403, String(waiting.status));
+}
+
 console.log('\nSessions and passwords');
 const row = d1rows(`SELECT token FROM crm_sessions WHERE email = '${A.email}' ORDER BY created_at DESC LIMIT 1`)[0];
 check('Sessions are stored as a hash, not the token', !!row && row.token.startsWith('h:') && row.token !== A.token, row?.token?.slice(0, 6));

@@ -87,7 +87,7 @@ async function readInstallKeys(env: Env): Promise<PoolKey[]> {
      WHERE u.account_id IS NULL AND u.role = 'agency' AND c.api_key != ''
      ORDER BY (c.last_error = '') DESC, (c.verified_at IS NOT NULL) DESC`,
   ).all<{ apiKey: string }>().catch(() => ({ results: [] as { apiKey: string }[] }));
-  for (const r of owned ?? []) await add(await open(r.apiKey), 'engine', 'Main key (Settings → AI Engine)');
+  for (const r of owned ?? []) await add(await open(r.apiKey), 'engine', 'Main key');
 
   const { results: backups } = await env.DB.prepare(
     'SELECT id, label, credentials FROM crm_ai_keys ORDER BY position, created_at',

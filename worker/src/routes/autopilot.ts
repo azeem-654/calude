@@ -379,7 +379,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
     if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const apiKey = await loadAiKey(env, accountId);
     if (!apiKey) {
-      return fail('No AI key is connected, so this cannot read an instruction yet. Settings → AI Engine.', 400);
+      return fail('The AI is not available on this install yet, so this cannot read an instruction.', 400);
     }
 
     const brand = await brandFor(env, accountId, project.portfolioId);

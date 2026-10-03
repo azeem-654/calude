@@ -26,6 +26,7 @@ import { recentActivity, relTime, type Activity } from './activity';
 import DayBoard from './DayBoard';
 import AutopilotPanel from './AutopilotPanel';
 import DueTasks from './DueTasks';
+import SupportWaiting from './SupportWaiting';
 import KpiTile from './KpiTile';
 import { buildKpis, shortMoney } from './kpis';
 import { useProgressBook } from './useProgressBook';
@@ -877,6 +878,10 @@ export default function Dashboard() {
 
         {/* Deal tasks with a date upon them — drawn only when something is. */}
         <DueTasks />
+
+        {/* People waiting for a person — only for a workspace that has ever
+            used Customer Engagement. */}
+        <SupportWaiting />
 
         {/*
           The "Build a campaign from your portfolio" strip stood here.
