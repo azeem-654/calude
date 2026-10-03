@@ -38,6 +38,86 @@ export interface ReelShot {
 }
 
 export const REELS: Record<string, ReelShot[]> = {
+  /*
+   * The hero: the whole platform, a whole window at a time.
+   *
+   * The owner found the first section showing "half a picture" — close crops
+   * of one diagram, zoomed to the window's width and panned, so no moment ever
+   * showed a whole screen. These are full app windows (1600×1000) of a busy
+   * sample agency — five clients in five trades, branching workflows, thirty
+   * days of prospects — and the hero shows each one entire (ShotReel `strip`).
+   */
+  hero: [
+    {
+      file: 'hero-board',
+      caption: 'AI Autopilot runs every client\'s project on the server — workflows, agents and approvals in one place.',
+      alt: 'The AI Autopilot board with five client projects, each with its active workflows',
+    },
+    {
+      file: 'hero-flow',
+      caption: 'Workflows that branch: email, wait, check for a reply, create the task, text the ones who opted in.',
+      alt: 'A branching outreach workflow with emails, waits, two conditions, a task, a stage change and a text message',
+    },
+    {
+      file: 'hero-prospecting',
+      caption: 'AI Prospecting: "real estate agents in Richmond, Virginia" — found live, websites read, every address checked.',
+      alt: 'AI Prospecting results for real estate agents in Richmond, Virginia, with checked email addresses on every row',
+    },
+    {
+      file: 'hero-daily',
+      caption: 'A project that finds its own prospects every day, and adds the reachable ones to its audience.',
+      alt: 'A project\'s Prospects tab: finding every day, today\'s count, a 30-day chart and the latest prospects',
+    },
+    {
+      file: 'hero-dashboard',
+      caption: 'The day at a glance — pipeline, revenue won, replies and what Autopilot did overnight.',
+      alt: 'The dashboard with the week\'s figures and Autopilot activity',
+    },
+    {
+      file: 'hero-pipeline',
+      caption: 'Every deal across six stages, valued and weighted, for every client in every trade.',
+      alt: 'The pipeline board with deals in six stages',
+    },
+  ],
+  /* AI Prospecting's own section — searches in different trades and towns,
+     and the daily finder that keeps a project's audience growing. */
+  prospecting: [
+    {
+      file: 'hero-prospecting',
+      caption: 'Realtors in Richmond, Virginia: 48 found live, their own websites read, every address checked.',
+      alt: 'AI Prospecting results for real estate agents in Richmond, Virginia',
+    },
+    {
+      file: 'pr-dentists',
+      caption: 'Dentists in Leeds — the same sentence works for any trade, in any town.',
+      alt: 'AI Prospecting results for dentists in Leeds',
+    },
+    {
+      file: 'pr-lawyers',
+      caption: 'Law firms in Denver, with the address each one publishes and whether it takes mail.',
+      alt: 'AI Prospecting results for law firms in Denver',
+    },
+    {
+      file: 'pr-start',
+      caption: 'Every search kept: realtors, dentists, law firms, gyms, restaurants, salons, garages, vets…',
+      alt: 'The AI Prospecting start screen with recent searches across many trades and saved lead lists',
+    },
+    {
+      file: 'pr-every-day',
+      caption: '"Search this every day" hands a search to an AI Autopilot project.',
+      alt: 'The Search this every day panel, choosing a project and how many new prospects a day',
+    },
+    {
+      file: 'hero-daily',
+      caption: 'The project finds up to your number of new, reachable prospects a day — and shows its work.',
+      alt: 'A project\'s Prospects tab with today\'s count, a 30-day chart and the latest prospects',
+    },
+    {
+      file: 'pr-daily-chart',
+      caption: 'Thirty days at a glance: added each day, the searches in its rotation, and every prospect with its check.',
+      alt: 'The daily chart of prospects added, the rotation of searches, and the latest prospects table',
+    },
+  ],
   autopilot: [
     {
       file: 'ap-describe',

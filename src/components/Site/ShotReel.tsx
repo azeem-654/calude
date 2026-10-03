@@ -32,6 +32,17 @@
  * for them to keep moving. Clicking a dot or an arrow moves to that screen
  * and the slideshow carries on from there. Pictures are lazy, and only the
  * one showing and the next are ever in the document's way.
+ *
+ * ── `strip`: every picture whole ──
+ *
+ * The hero used to show each screen as wide as the window and pan down it,
+ * so at no moment was a whole screen on view — the owner called it "half a
+ * picture". In `strip` the screen showing is drawn entire, as large as the
+ * space allows, with the one before and the one after smaller and dimmed at
+ * either side; changing screens slides the strip along. Nothing is cropped
+ * at any point of the movement, and the width a laptop has beside a 16:10
+ * picture shows the next screen rather than empty sky. A side picture is
+ * pressable, and moves the strip to it.
  */
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -48,7 +59,7 @@ const src = (file: string) =>
   `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/reel/${file}.webp`;
 
 export default function ShotReel({
-  shots, label, eager = false, chrome = true, holdMs,
+  shots, label, eager = false, chrome = true, holdMs, strip = false,
 }: {
   shots: ReelShot[];
   /** What the reel is of, for a screen reader: "AI Autopilot". */
@@ -60,6 +71,8 @@ export default function ShotReel({
   /** How long each screen holds, when it is not the phone's pan. The hero
       travels down each screen while it holds (site.css), so it needs longer. */
   holdMs?: number;
+  /** Each picture whole, with its neighbours beside it (the hero). */
+  strip?: boolean;
 }) {
   const [at, setAt] = useState(0);
   const [inView, setInView] = useState(false);
@@ -92,7 +105,7 @@ export default function ShotReel({
 
   return (
     <div
-      className={`dc-reel${inView ? ' in-view' : ''}${held ? ' held' : ''}${many ? '' : ' single'}`}
+      className={`dc-reel${inView ? ' in-view' : ''}${held ? ' held' : ''}${many ? '' : ' single'}${strip ? ' strip' : ''}`}
       ref={box}
       style={{ '--hold': `${hold}ms` } as React.CSSProperties}
       role="group"
@@ -110,7 +123,12 @@ export default function ShotReel({
             const on = i === at;
             /* Only the showing picture and the one after it are loaded early.
                The rest wait until they are close to being shown. */
-            const near = on || i === (at + 1) % shots.length;
+            const near = on || i === (at + 1) % shots.length || (strip && i === (at - 1 + shots.length) % shots.length);
+            /* Where it sits in the strip: 0 showing, -1 and 1 beside it, the
+               rest waiting off to the side they will come in from. */
+            const n = shots.length;
+            let pos = ((i - at) % n + n) % n;
+            if (pos > n / 2) pos -= n;
             return (
               <img
                 key={s.file}
@@ -125,6 +143,10 @@ export default function ShotReel({
                 /* Alternate the direction of the drift so consecutive shots do
                    not all slide the same way. */
                 data-drift={i % 2 ? 'b' : 'a'}
+                {...(strip ? {
+                  'data-pos': Math.max(-2, Math.min(2, pos)),
+                  onClick: on ? undefined : () => go(i),
+                } : {})}
               />
             );
           })}

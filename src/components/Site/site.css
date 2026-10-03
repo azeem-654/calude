@@ -2015,3 +2015,111 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   .dc-pm-win { grid-template-columns: minmax(0, 1fr); }
   .dc-pm-side { display: none; }
 }
+
+/* ── Whole pictures ──────────────────────────────────────────────────────────
+   Every reel on the page shows its screen entire. They were cropped three
+   ways — scaled 4% for the drift, cut to 4:5 and panned across on a phone,
+   and in the hero zoomed to the window's width and panned down — and the
+   owner read the result as half a screen. Each picture is now a whole app
+   window and is drawn whole; motion moves pictures, it never crops them. */
+.dc-reel-shot { object-fit: contain; object-position: 50% 50%; }
+@media (max-width: 760px) and (orientation: portrait) {
+  .dc-reel-stage { aspect-ratio: 16 / 10; }
+  .dc-reel-shot { object-fit: contain; object-position: 50% 50%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* A short settle in place of the drift: it arrives, it does not slide off an edge. */
+  .dc-reel.in-view .dc-reel-shot.on[data-drift='a'],
+  .dc-reel.in-view .dc-reel-shot.on[data-drift='b'] { animation: dc-shot-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  @media (max-width: 760px) {
+    .dc-reel.in-view .dc-reel-shot.on[data-drift='a'],
+    .dc-reel.in-view .dc-reel-shot.on[data-drift='b'] { animation: dc-shot-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  }
+}
+@keyframes dc-shot-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ── The strip (the hero) ────────────────────────────────────────────────────
+   The screen showing in the middle, whole and as large as the space allows;
+   the screens either side of it smaller and dimmed. Changing screens slides
+   the strip — every position of the movement shows whole pictures.
+
+   --strip-h is the height the pictures have. The slide's width is the
+   smaller of what that height allows for a 16:10 screen and 76% of the
+   strip, so the neighbours always have room to show. */
+.dc-reel.strip { --strip-gap: clamp(14px, 1.6vw, 28px); --side: 0.84; }
+.dc-reel.strip .dc-reel-stage {
+  aspect-ratio: 16 / 8.2;
+  height: auto;
+  background: transparent;
+  overflow: hidden;
+  --strip-h: 100%;
+}
+.dc-reel.strip .dc-reel-shot {
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: min(76%, calc(var(--strip-w, 100%) * 0.76));
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 26px 60px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: #f4f6f3;
+  opacity: 0;
+  transform: translate(-50%, -50%) !important;
+  animation: none !important;
+  transition: transform 0.95s cubic-bezier(0.65, 0, 0.25, 1), opacity 0.95s ease, filter 0.95s ease;
+  cursor: pointer;
+  z-index: 0;
+}
+.dc-reel.strip .dc-reel-shot[data-pos='0'] { opacity: 1; z-index: 2; cursor: default; }
+.dc-reel.strip .dc-reel-shot[data-pos='-1'],
+.dc-reel.strip .dc-reel-shot[data-pos='1'] { opacity: 0.42; z-index: 1; filter: saturate(0.6); }
+/* Beside it: its own width scaled by --side, a gap, on the side it belongs. */
+.dc-reel.strip .dc-reel-shot[data-pos='-1'] { transform: translate(calc(-50% - (50% + 50% * var(--side)) - var(--strip-gap)), -50%) scale(var(--side)) !important; }
+.dc-reel.strip .dc-reel-shot[data-pos='1']  { transform: translate(calc(-50% + (50% + 50% * var(--side)) + var(--strip-gap)), -50%) scale(var(--side)) !important; }
+.dc-reel.strip .dc-reel-shot[data-pos='-2'] { transform: translate(calc(-50% - 2 * (50% + 50% * var(--side)) - 2 * var(--strip-gap)), -50%) scale(var(--side)) !important; }
+.dc-reel.strip .dc-reel-shot[data-pos='2']  { transform: translate(calc(-50% + 2 * (50% + 50% * var(--side)) + 2 * var(--strip-gap)), -50%) scale(var(--side)) !important; }
+.dc-reel.strip .dc-reel-shot[data-pos='-1']:hover,
+.dc-reel.strip .dc-reel-shot[data-pos='1']:hover { opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) {
+  .dc-reel.strip .dc-reel-shot { transition: opacity 0.3s ease; }
+}
+/* A phone upright: the screen as wide as the column allows, the neighbours a
+   sliver either side so it still reads as a row to swipe through. */
+@media (max-width: 760px) and (orientation: portrait) {
+  .dc-reel.strip .dc-reel-stage { aspect-ratio: 16 / 9.6; }
+  .dc-reel.strip .dc-reel-shot { width: 88%; }
+  .dc-reel.strip { --strip-gap: 10px; --side: 0.8; }
+}
+
+/* The hero on a laptop or desktop: the strip as tall as the screen allows
+   under the words, so the middle picture is as big as a whole screen can be
+   drawn there — and the width the window has to either side of a 16:10
+   picture shows the next and the last instead of dark sky. */
+@media (min-width: 1000px) and (orientation: landscape) and (min-height: 420px) {
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { aspect-ratio: auto; height: calc(var(--hero-screen) - var(--hero-fixed)); }
+  .dc-hero-shot .dc-reel.strip .dc-reel-shot {
+    width: min(76%, calc((var(--hero-screen) - var(--hero-fixed) - 12px) * 1.6));
+    transform-origin: 50% 50%;
+    object-position: 50% 50%;
+  }
+}
+.dc-hero-shot .dc-reel.strip .dc-reel-frame { background: transparent; }
+.dc-hero-shot .dc-reel.strip .dc-reel-caption { background: transparent; text-align: center; }
+/* The strip stands on the page itself: the white panel and the shadow belonged
+   to the single screen the hero used to show, and behind a row of screens
+   they washed the neighbours out. The neighbours fade into the sky at the
+   window's edges instead of being cut by them. */
+.dc-hero-shot.dc-hero-strip { background: transparent; box-shadow: none; border-radius: 0; }
+.dc-hero-strip .dc-reel.strip .dc-reel-stage {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+}
+.dc-hero-strip .dc-reel.strip .dc-reel-shot[data-pos='-1'],
+.dc-hero-strip .dc-reel.strip .dc-reel-shot[data-pos='1'] { opacity: 0.55; }
+.dc-hero-strip .dc-reel-caption { color: var(--text); }
+.dc-hero-strip .dc-reel-text { color: var(--text); }
+/* The scan line read one wide screen; across a row of three it is a lime band
+   over the bottom of every picture. */
+.dc-hero-strip .dc-hero-scan { display: none; }

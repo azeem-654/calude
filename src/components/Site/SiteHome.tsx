@@ -433,8 +433,8 @@ export default function SiteHome() {
             {/* The hero's reel is the one that loads eagerly — it is the first
                 thing anybody sees, and waiting for it to be scrolled to would
                 mean it never starts. */}
-            <div className="dc-hero-shot">
-              <ShotReel shots={REELS.autopilot} label="AI Autopilot" eager holdMs={9000} />
+            <div className="dc-hero-shot dc-hero-strip">
+              <ShotReel shots={REELS.hero} label="The platform" eager strip chrome={false} holdMs={6200} />
               <span className="dc-hero-scan" aria-hidden="true" />
             </div>
             <EventChips className="dc-hero-chips" />

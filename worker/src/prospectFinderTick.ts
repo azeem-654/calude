@@ -93,6 +93,10 @@ export function contactOf(r: PPRow, projectId: string, now = nowIso()): Record<s
   if (r.email_status) { fields.emailStatus = r.email_status; fields.emailCheck = 'basic'; fields.emailCheckedAt = now; }
   if (r.company_number) fields.companyNumber = r.company_number;
   const [first, ...rest] = r.person_name.split(' ').filter(Boolean);
+  /* What found it goes in a field of its own: as the source line it ran to
+     sixty characters and the contact list prints the source under the name,
+     which squeezed every row of the table into a column of wrapped words. */
+  if (trade) fields.foundBy = `${trade} in ${place ?? ''}`.trim();
   return {
     /* Stable, so putting a prospect back after a stale browser save is the same contact, not a second one. */
     id: `pf-${r.id}`,
@@ -100,8 +104,10 @@ export function contactOf(r: PPRow, projectId: string, now = nowIso()): Record<s
     tags: ['prospect search', 'autopilot', r.category, EMAIL_TAG[r.email_status] ?? ''].filter(Boolean),
     source: r.source === 'manual'
       ? 'AI Prospecting · added to a project'
-      : `AI Autopilot · daily prospect finder · ${trade ?? ''} in ${place ?? ''}`.trim(),
-    createdAt: now, lastActivity: now, value: 0,
+      : 'AI Autopilot · daily prospecting',
+    /* A date, as every other writer of contacts stores it (the list prints
+       it as it is, so a full timestamp showed as one). */
+    createdAt: now, lastActivity: now.slice(0, 10), value: 0,
     company: r.name, website: r.website, address: r.address,
     ...(first ? { firstName: first, lastName: rest.join(' ') || undefined, jobTitle: r.person_role || undefined } : {}),
     customFields: fields,

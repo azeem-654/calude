@@ -639,11 +639,16 @@ export default function Contacts() {
                         <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 600, flexShrink: 0 }}>
                           {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
-                        <div>
+                        {/* A width of its own, and the second line on one line: the
+                            table gave this column whatever the long email column
+                            left, and a source and company wrapped a word per line
+                            made every row five times taller than its contents. */}
+                        <div style={{ minWidth: 190, maxWidth: 280 }}>
                           <button onClick={() => setProfileContact(contact)} style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', display: 'block' }}>
                             {contact.name}
                           </button>
-                          <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{contact.source}{contact.company ? ` · ${contact.company}` : ''}</p>
+                          <p title={`${contact.source}${contact.company ? ` · ${contact.company}` : ''}`}
+                            style={{ fontSize: '12px', color: '#94a3b8', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{contact.source}{contact.company ? ` · ${contact.company}` : ''}</p>
                           {/* Which campaign produced this contact, resolved live
                               so a renamed one reads correctly and a deleted one
                               says so. */}

@@ -13,52 +13,65 @@
  * product screen passed off as a customer's results is not.
  */
 
-const FIRST = ['Aisha','Tom','Marta','Devon','Priya','Grant','Nia','Owen','Rosa','Caleb','Hana','Iris','Marcus','Lena'];
-const LAST = ['Khan','Reilly','Vega','Brooks','Nair','Whitfield','Osei','Baptiste','Marin','Doyle','Sato','Flynn','Ellis','Ward'];
-const CO = ['Northline Logistics','Parkway Dental','Legacy Fitness','Willow Bend Clinic','Prestonwood Accountants','Creekside Studio','Harbour Law','Fenwick Interiors','Rowan Health','Bluecoat Media','Tenby Roofing','Kestrel Analytics','Alderman Group','Vine Street Cafe'];
+import { peopleAcrossIndustries, INDUSTRIES } from './demo-world.mjs';
+
+/* Seventy-two people at businesses across every industry and town in
+   demo-world.mjs — a dentist in Leeds, a realtor in Richmond, a gym in Denver —
+   because a visitor looks for their own trade in the picture, and a contact
+   list of fourteen agencies' clients told most of them it was not for them. */
+const PEOPLE = peopleAcrossIndustries(72);
+const N = PEOPLE.length;
 
 function workspace() {
   const now = Date.now();
   const iso = (d) => new Date(now + d * 86400000).toISOString();
   const day = (d) => new Date(now + d * 86400000).toISOString().slice(0, 10);
 
-  const contacts = Array.from({ length: 14 }, (_, i) => ({
-    id: `c${i}`, name: `${FIRST[i]} ${LAST[i]}`, firstName: FIRST[i], lastName: LAST[i],
-    company: CO[i], email: `${FIRST[i].toLowerCase()}@${CO[i].split(' ')[0].toLowerCase()}.com`,
-    phone: `(972) 555-0${String(100 + i).slice(-3)}`,
-    status: ['lead','prospect','customer','lead','prospect'][i % 5],
-    tags: [['website enquiry'],['referral'],['ai-sales-agent'],['event'],['inbound']][i % 5],
-    source: ['Website form','Referral','AI Sales Agent','Trade show','Google'][i % 5],
-    createdAt: iso(-40 + i), lastActivity: iso(-i), value: [0,24000,78000,0,12000][i % 5],
-    address: '18 Parker Rd, Plano, TX 75074',
+  const STATUS = ['lead', 'prospect', 'customer', 'lead', 'prospect', 'customer', 'lead'];
+  const TAGS = [['website enquiry'], ['referral'], ['ai prospecting', 'verified email'], ['event'], ['inbound', 'hot lead'], ['customer', 'vip'], ['autopilot', 'email domain ok']];
+  const SOURCES = ['Website form', 'Referral', 'AI Prospecting', 'Trade show', 'Google', 'Booking page', 'AI Autopilot'];
+  const contacts = PEOPLE.map((p, i) => ({
+    id: `c${i}`, name: `${p.first} ${p.last}`, firstName: p.first, lastName: p.last,
+    company: p.company, email: p.email, phone: p.phone,
+    status: STATUS[i % STATUS.length],
+    tags: [...TAGS[i % TAGS.length], p.industry.toLowerCase()],
+    source: SOURCES[i % SOURCES.length],
+    createdAt: iso(-60 + (i % 58)), lastActivity: day(-(i % 21)),
+    value: [0, 24000, 78000, 0, 12000, 46000, 8500][i % 7],
+    address: p.address,
+    customFields: { industry: p.industry, town: p.town },
   }));
 
   const stage = (id, name, color, picks) => ({
     id, name, color,
     deals: picks.map((i, n) => ({
-      id: `d-${id}-${n}`, title: `${CO[i]} — retainer`, contactId: `c${i}`, contactName: contacts[i].name,
-      value: [42000, 128000, 74000, 36000, 215000, 91000][(i + n) % 6],
-      stage: id, probability: [20, 45, 65, 85][['new','qualified','proposal','won'].indexOf(id)] ?? 40,
-      expectedClose: day(9 + n * 4), assignedTo: 'You', createdAt: iso(-12 + n),
+      id: `d-${id}-${n}`, title: `${contacts[i].company} — ${['retainer', 'growth plan', 'website + booking', 'annual plan', 'lead generation', 'reviews package'][(i + n) % 6]}`,
+      contactId: `c${i}`, contactName: contacts[i].name,
+      value: [42000, 128000, 74000, 36000, 215000, 91000, 18500, 56000][(i + n) % 8],
+      stage: id, probability: { new: 15, contacted: 30, qualified: 45, proposal: 65, negotiation: 80, won: 100 }[id] ?? 40,
+      expectedClose: day(5 + ((i + n) % 9) * 3), assignedTo: ['You', 'Maya', 'Jordan'][n % 3], createdAt: iso(-20 + n),
       priority: ['normal','high','urgent','normal'][n % 4],
       /* A deal sitting in the Won column had `status: 'active'` and no closing
          date, so the dashboard's "Revenue won, last 7 days" — which counts
          won deals by the day they closed — was $0 next to a $113k pipeline.
          The board said one thing and the figure above it another. */
       status: id === 'won' ? 'won' : 'active',
-      ...(id === 'won' ? { closedAt: iso(-2 - n) } : {}),
+      ...(id === 'won' ? { closedAt: iso(-1 - n) } : {}),
     })),
   });
 
   const pipelines = [{
     id: 'p1', name: 'New business',
     stages: [
-      stage('new', 'New', '#94a3b8', [0, 3, 7]),
-      stage('qualified', 'Qualified', '#0ea5e9', [1, 8]),
-      stage('proposal', 'Proposal sent', '#f59e0b', [2, 5, 11]),
-      stage('won', 'Won', '#16a34a', [4, 9]),
+      stage('new', 'New', '#94a3b8', [0, 7, 14, 21, 33, 45]),
+      stage('contacted', 'Contacted', '#6366f1', [3, 10, 26, 38, 52]),
+      stage('qualified', 'Qualified', '#0ea5e9', [1, 8, 17, 29, 41]),
+      stage('proposal', 'Proposal sent', '#f59e0b', [2, 5, 11, 23, 35]),
+      stage('negotiation', 'Negotiation', '#ec4899', [6, 19, 31, 47]),
+      stage('won', 'Won', '#16a34a', [4, 9, 16, 28, 40]),
     ],
   }];
+  void INDUSTRIES;
 
   const steps = [
     { id: 's0', day: 0, waitUnit: 'days', type: 'auto_email', subject: 'Quick question about {{company}}', body: 'Hi {{firstName}},\n\nI work with firms like {{company}} on filling the diary.\n\nWorth a look?', followUpRule: 'Stop if they reply' },
@@ -70,6 +83,9 @@ function workspace() {
     { id: 'seq-1', name: 'New business — outreach', goal: 'Book consultations', steps, status: 'active', createdAt: iso(-14), enrolledCount: 118,
       source: { origin: 'ai-sales-agent', title: 'North Texas outreach', refId: 'AI-SA-2026-0001', route: '/ai-sales-agent/AI-SA-2026-0001', at: iso(-14) } },
     { id: 'seq-2', name: 'Lapsed customers — win back', goal: 'Reopen conversations', steps: steps.slice(0, 2), status: 'draft', createdAt: iso(-5), enrolledCount: 0 },
+    { id: 'seq-3', name: 'Realtors, Virginia — listing leads', goal: 'Book demos', steps, status: 'active', createdAt: iso(-9), enrolledCount: 264 },
+    { id: 'seq-4', name: 'Dentists, Leeds — new-patient offer', goal: 'Book consultations', steps, status: 'active', createdAt: iso(-11), enrolledCount: 142 },
+    { id: 'seq-5', name: 'Gyms & studios — January push', goal: 'Sell memberships', steps: steps.slice(0, 2), status: 'active', createdAt: iso(-6), enrolledCount: 87 },
   ];
 
   const campaign = {
@@ -95,14 +111,14 @@ function workspace() {
   const emails = [];
   for (let i = 0; i < 118; i++) {
     const s = i < 4 ? 'bounced' : i < 13 ? 'replied' : i < 61 ? 'opened' : 'sent';
-    emails.push({ id: `em${i}`, contactId: `c${i % 14}`, subject: 'Quick question about Northline Logistics',
-      body: 'Hi Aisha,\n\nI work with firms like Northline Logistics on filling the diary.', direction: 'outbound',
+    emails.push({ id: `em${i}`, contactId: `c${i % N}`, subject: `Quick question about ${contacts[i % N].company}`,
+      body: `Hi ${contacts[i % N].firstName},\n\nI work with firms like ${contacts[i % N].company} on filling the diary.`, direction: 'outbound',
       status: s, createdAt: iso(-9), sentAt: iso(-9), opens: s === 'sent' ? 0 : 1, clicks: 0,
       clickedUrls: [], attachments: [], threadId: `t${i}`, sequenceId: 'seq-1' });
   }
 
   const enrolments = Array.from({ length: 118 }, (_, i) => ({
-    id: `e${i}`, contactId: `c${i % 14}`, sequenceId: 'seq-1', sequenceName: 'New business — outreach',
+    id: `e${i}`, contactId: `c${i % N}`, sequenceId: 'seq-1', sequenceName: 'New business — outreach',
     status: i < 96 ? 'active' : 'completed', currentStep: i % 3, totalSteps: 3,
     enrolledAt: iso(-12), nextSendAt: iso(1), history: [],
   }));
@@ -131,15 +147,30 @@ function workspace() {
     { id: 'a3', title: 'Onboarding', contactId: 'c9', contactName: contacts[9].name, date: day(2), time: '09:30', duration: 60, status: 'scheduled', type: 'meeting' },
     { id: 'a4', title: 'Check-in', contactId: 'c2', contactName: contacts[2].name, date: day(3), time: '11:00', duration: 30, status: 'scheduled', type: 'call' },
     { id: 'a5', title: 'Quarterly review', contactId: 'c7', contactName: contacts[7].name, date: day(4), time: '15:00', duration: 45, status: 'scheduled', type: 'meeting' },
+    /* Today and the rest of the week, across the clients' trades — a diary
+       that looks like an agency's, not a page with one meeting on it. */
+    ...[
+      [0, '08:30', 'Listing strategy call', 0, 30, 'call'], [0, '10:00', 'New-patient campaign review', 1, 45, 'meeting'],
+      [0, '11:30', 'Intake automation demo', 2, 30, 'consultation'], [0, '13:00', 'Membership offer sign-off', 3, 30, 'call'],
+      [0, '15:30', 'Catering menu shoot', 4, 60, 'meeting'], [1, '09:00', 'Quarterly results', 5, 45, 'meeting'],
+      [1, '11:00', 'Review-request rollout', 6, 30, 'call'], [1, '16:00', 'Website walkthrough', 9, 45, 'consultation'],
+      [2, '10:30', 'Lead routing workshop', 12, 60, 'meeting'], [2, '14:00', 'Discovery call', 15, 30, 'consultation'],
+      [3, '09:30', 'Proposal walkthrough', 18, 45, 'meeting'], [3, '12:00', 'Onboarding', 20, 60, 'meeting'],
+      [-1, '10:00', 'Kickoff', 24, 60, 'meeting'], [-1, '14:30', 'SMS opt-in review', 27, 30, 'call'],
+      [-2, '09:00', 'Strategy session', 30, 45, 'consultation'], [-3, '11:00', 'Check-in', 33, 30, 'call'],
+    ].map(([d, time, title, ci, duration, type], n) => ({
+      id: `a-w${n}`, title, contactId: `c${ci}`, contactName: contacts[ci].name, date: day(d), time, duration,
+      status: d < 0 ? 'completed' : 'scheduled', type,
+    })),
   ];
 
   /* Prospects the campaign found, so the roll-up has real counts rather than
      the dashes it correctly shows when nothing has been searched. */
   const leads = Array.from({ length: 214 }, (_, i) => ({
-    id: `l${i}`, campaignId: 'AI-SA-2026-0001', name: CO[i % 14],
+    id: `l${i}`, campaignId: 'AI-SA-2026-0001', name: contacts[i % N].company,
     source: 'google-places', sourceRef: `place-${i}`,
-    address: '18 Parker Rd, Plano, TX 75074', phone: '(972) 555-0101',
-    email: i < 118 ? `hello${i}@example.com` : undefined,
+    address: contacts[i % N].address, phone: contacts[i % N].phone,
+    email: i < 118 ? contacts[i % N].email : undefined,
     status: i < 118 ? 'promoted' : i < 166 ? 'qualified' : 'rejected',
     qualification: { score: 72, checks: [], contactable: ['email'], at: iso(-10) },
     createdAt: iso(-10),
@@ -162,6 +193,22 @@ function workspace() {
       goal: 'Upsell existing customers', audience: 'Active customers',
       fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
       createdAt: day(-38), sent: 96, opened: 54, clicked: 19, replied: 7, bounced: 1 },
+    { id: 'cmp-4', name: 'Realtors, Virginia — listing leads', type: 'sequence', status: 'active',
+      goal: 'Book demos', audience: 'Real estate agents found by AI Prospecting, Virginia',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-9), sent: 2640, opened: 1402, clicked: 388, replied: 171, bounced: 19 },
+    { id: 'cmp-5', name: 'Dentists, Leeds — new-patient offer', type: 'sequence', status: 'active',
+      goal: 'Book consultations', audience: 'Dental practices, Leeds and Manchester',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-11), sent: 1420, opened: 846, clicked: 231, replied: 96, bounced: 8 },
+    { id: 'cmp-6', name: 'Restaurants & cafés — catering season', type: 'email', status: 'completed',
+      goal: 'Fill the catering diary', audience: 'Restaurants, cafés and venues, Austin',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-21), sent: 980, opened: 552, clicked: 140, replied: 58, bounced: 6 },
+    { id: 'cmp-7', name: 'Law firms — intake automation', type: 'sequence', status: 'scheduled',
+      goal: 'Book discovery calls', audience: 'Law firms, Denver and Phoenix',
+      fromName: 'Alex Rivera', openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
+      createdAt: day(-2), scheduledAt: iso(1), sent: 0, opened: 0, clicked: 0, replied: 0, bounced: 0 },
   ];
 
   /*
@@ -216,8 +263,8 @@ function workspace() {
     id: `bk-${i}`,
     slotDate: day(i === 0 ? 0 : i + 1),
     slotTime: ['09:30', '11:00', '14:00', '15:30', '10:00'][i],
-    guestName: `${FIRST[i + 2]} ${LAST[i + 2]}`,
-    guestEmail: `${FIRST[i + 2].toLowerCase()}@${CO[i + 2].split(' ')[0].toLowerCase()}.com`,
+    guestName: contacts[i * 7 + 2].name,
+    guestEmail: contacts[i * 7 + 2].email,
     guestPhone: `(972) 555-01${20 + i}`,
     status: i === 0 ? 'completed' : 'confirmed',
     timezone: 'America/Chicago',
