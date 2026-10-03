@@ -48,7 +48,7 @@ export interface Prospect {
   ref: string;
   /** Which map it came from. Decides the attribution shown and the source stamp on an imported contact.
    *  'free' is OpenStreetMap's data served by Geoapify (lib/geoapify.ts). */
-  source?: 'osm' | 'google' | 'free';
+  source?: 'osm' | 'google' | 'free' | 'register';
   /** Google's place id — the one piece of a Places answer its terms let anybody keep. */
   placeId?: string;
   rating?: number | null;
@@ -64,6 +64,11 @@ export interface Prospect {
   category: string;
   lat: number;
   lon: number;
+  /** From the company register (lib/companiesHouse.ts): the company's number, its page, and its directors. */
+  companyNumber?: string;
+  registerUrl?: string;
+  incorporated?: string;
+  officers?: { name: string; role: string }[];
 }
 
 /*

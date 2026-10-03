@@ -373,6 +373,14 @@ export const fireEvent = (e: {
   contactName?: string; contactEmail?: string; contactPhone?: string;
 }) => call('enrol_event', { record: e });
 
+/**
+ * Put these contacts into one chosen workflow, whatever its trigger — AI
+ * Prospecting's "Add to a workflow". Only a switched-on workflow of this
+ * workspace; the server refuses anything else by name.
+ */
+export const enrolContacts = (automationId: string, contacts: { id: string; name?: string; email?: string; phone?: string }[]) =>
+  call('enrol_contacts', { automationId, contacts }) as Promise<Reply & { started?: number; already?: number; name?: string; field?: string }>;
+
 /** Everyone currently inside an automation, or inside one particular one. */
 export const automationRuns = (automationId?: string) =>
   call('automation_runs', automationId ? { automationId } : {});

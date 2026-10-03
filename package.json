@@ -15,6 +15,7 @@
     "test:prospects": "npx --yes tsx worker/test/prospects.test.mts",
     "test:emailverify": "npx --yes tsx worker/test/emailVerify.test.mts",
     "test:aiprospecting": "npx --yes tsx test/aiProspecting.test.mts",
+    "test:register": "npx --yes tsx worker/test/companiesHouse.test.mts",
     "staging:setup": "node scripts/staging-setup.mjs",
     "staging:check": "node scripts/staging-check.mjs",
     "test:domains": "npx --yes tsx worker/test/domains.test.mts",

@@ -9,8 +9,20 @@ import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 
-/** 'free': OpenStreetMap's data through Geoapify (or Overpass when it cannot); 'auto' asks for that first. */
-export type ProspectSource = 'free' | 'google' | 'osm';
+/**
+ * 'free': business directories — OpenStreetMap's data through Geoapify (or
+ * Overpass when it cannot); 'auto' asks for that first. 'register': verified
+ * business directories — the official company register (Companies House).
+ */
+export type ProspectSource = 'free' | 'google' | 'osm' | 'register';
+
+/** What each source is called on screen. The word "free" is not a source's name. */
+export const SOURCE_NAME: Record<ProspectSource, string> = {
+  free: 'Business directories',
+  osm: 'Business directories',
+  register: 'Verified business directories',
+  google: 'Google Maps',
+};
 
 export interface Prospect {
   ref: string;
@@ -29,6 +41,11 @@ export interface Prospect {
   ratingCount?: number | null;
   mapsUrl?: string;
   temporarilyClosed?: boolean;
+  /** From the company register: its number, its public page, when it was formed, and its serving officers. */
+  companyNumber?: string;
+  registerUrl?: string;
+  incorporated?: string;
+  officers?: { name: string; role: string }[];
 }
 
 export interface Contactable {
@@ -100,6 +117,8 @@ export interface GoogleAvailability {
   code: string;
   error: string;
   verifier: VerifierAvailability;
+  /** Verified business directories (the company register): on, or why not. */
+  register: { available: boolean; code: string; error: string };
 }
 
 /** Can this workspace search Google Maps right now? Spends nothing. */
@@ -111,6 +130,7 @@ export async function googleAvailability(): Promise<GoogleAvailability | null> {
   const v = (d.verifier ?? {}) as Partial<VerifierAvailability>;
   return {
     available: g.available === true, geoapify: f.geoapify === true, code: String(g.code ?? ''), error: String(g.error ?? ''),
+    register: (() => { const r = (d.register ?? {}) as { available?: boolean; code?: string; error?: string }; return { available: r.available === true, code: String(r.code ?? ''), error: String(r.error ?? '') }; })(),
     verifier: { available: v.available === true, provider: String(v.provider ?? ''), providerName: v.providerName, finds: v.finds === true, code: String(v.code ?? ''), left: v.left },
   };
 }
@@ -132,7 +152,7 @@ export async function searchProspects(
 ): Promise<SearchResult> {
   const d = await call('search', q);
   return {
-    source: (['free', 'google', 'osm'].includes(String(d.source)) ? d.source : '') as ProspectSource | '',
+    source: (['free', 'google', 'osm', 'register'].includes(String(d.source)) ? d.source : '') as ProspectSource | '',
     prospects: (d.prospects as Prospect[]) ?? [],
     cached: d.cached === true,
     attribution: String(d.attribution ?? ''),

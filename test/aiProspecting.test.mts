@@ -10,6 +10,7 @@
  */
 import { addressesOf, bestAddress, leadScore, parseAsk, toCsv } from '../src/services/aiProspecting.ts';
 import type { Prospect, Verdict } from '../src/services/prospects.ts';
+import { emailTag } from '../src/services/prospectImport.ts';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -49,6 +50,12 @@ eq('nothing at all is 0', leadScore(p({ website: '' }), '', undefined, null), 0)
 eq('verified email, phone, website, person, 4.6★ is 100', leadScore(p({ phone: '1', rating: 4.6 }), 'a@b.c', v('a@b.c', 'valid'), { email: 'a@b.c', name: 'A', position: '', type: 'personal', sources: 1, confidence: 1 }), 100);
 eq('a domain-only check scores less than a verified one', leadScore(p({}), 'a@b.c', v('a@b.c', 'domain_ok'), null) < leadScore(p({}), 'a@b.c', v('a@b.c', 'valid'), null), true);
 eq('an invalid address adds nothing', leadScore(p({ website: '' }), 'a@b.c', v('a@b.c', 'invalid'), null), 0);
+
+/* ── The tag an address's check puts on the contact ── */
+eq('verified → "verified email"', emailTag(v('a@b.c', 'valid')), 'verified email');
+eq('domain only → "email domain ok", never "verified"', emailTag(v('a@b.c', 'domain_ok')), 'email domain ok');
+eq('bounces → "email bounces"', emailTag(v('a@b.c', 'invalid')), 'email bounces');
+eq('never checked → no tag at all', emailTag(undefined), '');
 
 /* ── CSV ── */
 {

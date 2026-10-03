@@ -51,6 +51,8 @@ const dentist = n => ({ type: 'Feature', properties: {
 const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 /* AI Prospecting's checks: DNS over HTTPS and Hunter, on the same mock. */
 const HKEY = 'ab'.repeat(20);
+const CHKEY = '0f3c1a2b-4d5e-4f60-8a71-92b3c4d5e6f7';
+const chCalls = [];
 const hunterCalls = { verify: 0, find: 0 };
 const mock = http.createServer((req, res) => {
   const u = new URL(req.url, G);
@@ -80,6 +82,25 @@ const mock = http.createServer((req, res) => {
       return send(res, 200, { data: { emails: [] } });
     }
   }
+  /* Companies House: the key is the Basic-auth username. */
+  if (u.pathname === '/search/companies' || u.pathname === '/advanced-search/companies' || u.pathname.startsWith('/company/')) {
+    if (req.headers.authorization !== `Basic ${Buffer.from(`${CHKEY}:`).toString('base64')}`) return send(res, 401, { error: 'Invalid Authorization' });
+    if (u.pathname === '/search/companies') return send(res, 200, { items: [] });
+    if (u.pathname === '/advanced-search/companies') {
+      chCalls.push(u.search);
+      if (u.searchParams.getAll('sic_codes').join(',') !== '69201,69202,69203' || u.searchParams.get('company_status') !== 'active' || u.searchParams.get('location') !== 'Leeds') return send(res, 404, {});
+      return send(res, 200, { hits: 2, items: [
+        { company_name: 'PARK ROW ACCOUNTANTS LTD', company_number: '01234567', company_status: 'active', date_of_creation: '2015-04-01', registered_office_address: { address_line_1: '9 Park Row', locality: 'Leeds', postal_code: 'LS1 5HD' }, sic_codes: ['69201'] },
+        { company_name: 'KIRKGATE TAX LLP', company_number: 'OC765432', company_status: 'active', registered_office_address: { address_line_1: '2 Kirkgate', locality: 'Leeds' }, sic_codes: ['69203'] },
+      ] });
+    }
+    const m = /^\/company\/([^/]+)\/officers$/.exec(u.pathname);
+    if (m && m[1] === '01234567') return send(res, 200, { items: [
+      { name: 'SHAH, Priya', officer_role: 'director' },
+      { name: 'OLD, Gone', officer_role: 'director', resigned_on: '2020-01-01' },
+    ] });
+    if (m) return send(res, 200, { items: [] });
+  }
   if (u.searchParams.get('apiKey') !== GEOKEY) return send(res, 401, { statusCode: 401, message: 'Invalid apiKey' });
   if (u.pathname === '/v1/geocode/search') {
     const t = (u.searchParams.get('text') ?? '').toLowerCase();
@@ -103,7 +124,7 @@ const persist = path.resolve('.wrangler-audit');
 fs.rmSync(persist, { recursive: true, force: true });
 const sql = q => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command ${JSON.stringify(q)}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))[0].results;
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GEOAPIFY_BASE:${G}`, `DOH_BASE:${G}/dns-query`, `EMAIL_VERIFIER_BASE:${G}`];
+const vars = [`APP_ORIGIN:${B}`, `GEOAPIFY_BASE:${G}`, `DOH_BASE:${G}/dns-query`, `EMAIL_VERIFIER_BASE:${G}`, `COMPANIES_HOUSE_BASE:${G}`];
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
 wr.stdout.on('data', c => { wlog += c; }); wr.stderr.on('data', c => { wlog += c; });
@@ -178,7 +199,7 @@ let listId = '';
   await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 }).catch(() => {});
   body = await page.innerText('body');
   ok('…and runs as a plan: searched, then every address found given the free check',
-    /Searched the free directory for dentists in Leeds/.test(body) && /Checked 20 addresses — format, domain and mail server/.test(body), body.slice(0, 1200));
+    /Searched business directories for dentists in Leeds/.test(body) && /Checked 20 addresses — format, domain and mail server/.test(body), body.slice(0, 1200));
   ok('…the free check says the domain takes mail, never "Verified"',
     await page.locator('tr', { hasText: 'hello@leedsdental1.example' }).locator('.aip-badge[data-s="domain_ok"]').count() === 1
     && await page.locator('.aip-badge[data-s="valid"]').count() === 0);
@@ -213,7 +234,7 @@ let listId = '';
   let contacts = await stored(page, 'crm_contacts');
   const dental = (contacts ?? []).filter(c => /^Leeds Dental/.test(c.name));
   ok('…and five contacts, as prospects, stamped with the search, no place id from the free directory',
-    dental.length === 5 && dental.every(c => c.status === 'prospect' && /^Free directory .* · dentists in Leeds$/.test(c.source) && !c.customFields?.googlePlaceId), JSON.stringify(dental[0]));
+    dental.length === 5 && dental.every(c => c.status === 'prospect' && /^Business directory .* · dentists in Leeds$/.test(c.source) && !c.customFields?.googlePlaceId), JSON.stringify(dental[0]));
 
   /* Import 1..7 into the same list: two new, five already there. */
   for (const n of [1, 2, 3, 4, 5, 6, 7]) await tick(n);
@@ -383,7 +404,7 @@ console.log('\nAI Prospecting');
   await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 });
   let body = await page.innerText('body');
   ok('a typed sentence is understood and run — the question shown, the plan under it',
-    await page.locator('.aip-bubble', { hasText: 'Find dentists in Leeds with a website' }).count() === 1 && /Searched the free directory for dentists in Leeds/.test(body), body.slice(0, 900));
+    await page.locator('.aip-bubble', { hasText: 'Find dentists in Leeds with a website' }).count() === 1 && /Searched business directories for dentists in Leeds/.test(body), body.slice(0, 900));
   ok('…the boxes show how it was understood', await page.locator('[data-field="prospects.trade"]').inputValue() === 'dentists' && await page.locator('[data-field="prospects.place"]').inputValue() === 'Leeds');
   ok('…and "with a website" narrows what is shown', (await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'With website' }).getAttribute('aria-pressed')) === 'true');
 
@@ -476,6 +497,134 @@ console.log('\nAI Prospecting');
   await m.page.screenshot({ path: 'test-results/ai-prospecting-390.png', fullPage: true });
   await m.page.goto(`${B}/`, { waitUntil: 'networkidle' });
   ok('@390: the dashboard section fits', (await overflow(m.page)) <= 0 && await m.page.getByTestId('prospecting-panel').isVisible(), String(await overflow(m.page)));
+  await m.ctx.close();
+}
+
+/* ── Sources by name, a new search, every address, the register, and "Add to…" ── */
+console.log('\nAI Prospecting — sources, bulk emails, Add to…');
+{
+  const CT = (await api('auth.php', { action: 'login', email: CE, password: CPW })).token;
+  /* A switched-on workflow, a paused one, and a draft campaign, as the app would have saved them. */
+  const now = new Date().toISOString();
+  const autos = [
+    { id: 'auto-intro', name: 'Dentist intro', status: 'active', createdAt: now, enrolledCount: 0, completedCount: 0,
+      nodes: [{ id: 't', type: 'trigger', label: 'Start', config: { event: 'form_submitted' }, nextId: 'w' }, { id: 'w', type: 'wait', label: 'Wait', config: { days: '1' }, nextId: '' }] },
+    { id: 'auto-paused', name: 'Old nurture', status: 'paused', createdAt: now, enrolledCount: 0, completedCount: 0,
+      nodes: [{ id: 't', type: 'trigger', label: 'Start', config: { event: 'form_submitted' }, nextId: 'w' }, { id: 'w', type: 'wait', label: 'Wait', config: { days: '1' }, nextId: '' }] },
+  ];
+  const camps = [{ id: 'camp-draft', name: 'Leeds dentists intro', type: 'email', status: 'draft', sent: 0, opened: 0, clicked: 0, replied: 0, createdAt: now }];
+  const seeded = await api('data.php', { action: 'bulk_set', token: CT, accountId: ACCT, items: { crm_automations: JSON.stringify(autos), crm_campaigns: JSON.stringify(camps) } });
+  ok('(seeded a workflow and a draft campaign)', seeded.success !== false, JSON.stringify(seeded));
+  const ch = await api('companies-house.php', { token: T, action: 'save', apiKey: CHKEY });
+  ok('the owner connects the company register; it is proved with Basic auth', ch.success && ch.tested?.ok === true, JSON.stringify(ch));
+
+  const { ctx, page } = await signIn(1280);
+  await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
+  const where = page.getByRole('group', { name: 'Where to search' });
+  const names = (await where.getByRole('button').allInnerTexts()).map(x => x.trim());
+  ok('three sources, named for what they are — none called "free"',
+    names.join('|') === 'Business directories|Verified business directories|Google Maps' && !/free/i.test(names.join(' ')), names.join('|'));
+
+  /* Business directories: everything read, every address shown. */
+  await page.getByLabel('Who to look for').fill('dentists in Leeds');
+  await page.keyboard.press('Enter');
+  await page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 });
+  ok('"Start a new search" is on the bar once there is a search', await page.getByRole('button', { name: 'Start a new search' }).first().isVisible());
+  const all = page.getByRole('button', { name: /^Find all emails \(\d+ websites\)/ });
+  ok('"Find all emails" offers every website not read yet', await all.isEnabled(), await page.locator('.aip-bulk').innerText().catch(() => ''));
+  await all.click();
+  await page.getByText(/Read \d+ more websites for the addresses they publish/).waitFor({ timeout: 120_000 });
+  ok('…reads them all and says so, then every website is read', await page.getByRole('button', { name: 'All websites read' }).isDisabled());
+  ok('…and shows every address, each with its own check', (await page.getByRole('button', { name: /Best address only/ }).count()) === 1
+    && /Every email address/i.test(await page.locator('table[aria-label="Businesses found"] thead').innerText()));
+  ok('the copy button counts the addresses it would copy, leaving out the one that bounces', /Copy 19 addresses/.test(await page.locator('.aip-bulk').innerText()), await page.locator('.aip-bulk').innerText());
+  ok('rows already in Contacts say so', await page.getByRole('row').filter({ has: page.getByRole('checkbox', { name: 'Tick Leeds Dental 1', exact: true }) }).locator('.aip-tag[data-t="known"]').count() === 1);
+  ok('a verified address is tagged "Verified email"', /Verified email/.test(await page.getByRole('row').filter({ has: page.getByRole('checkbox', { name: 'Tick Leeds Dental 1', exact: true }) }).innerText()));
+
+  /* Add to a workflow. */
+  for (const n of [10, 13]) await page.getByRole('checkbox', { name: `Tick Leeds Dental ${n}`, exact: true }).check();
+  const bar = page.getByRole('toolbar', { name: 'With the ticked businesses' });
+  ok('ticking shows what can be done with them', /2 ticked/.test(await bar.innerText()) && /Add to a workflow/.test(await bar.innerText()) && /Add to an AI project/.test(await bar.innerText()) && /Add to an email campaign/.test(await bar.innerText()));
+  await bar.getByRole('button', { name: /Add to a workflow/ }).click();
+  const wf = page.getByRole('region', { name: 'Add to a workflow' });
+  ok('a paused workflow is offered but cannot be chosen, and says why', await wf.getByRole('radio', { name: /Old nurture/ }).isDisabled() && /switch it on in Marketing/.test(await wf.innerText()));
+  await wf.getByRole('radio', { name: /Dentist intro/ }).check();
+  await wf.getByRole('checkbox', { name: /Clause 3 of the acceptable use policy/ }).check();
+  await wf.getByRole('button', { name: /Add 2 to “Dentist intro”/ }).click();
+  await page.getByText(/2 started “Dentist intro”/).waitFor({ timeout: 15_000 }).catch(() => {});
+  ok('…they start the workflow, said plainly', /2 started “Dentist intro”/.test(await page.innerText('body')), (await page.innerText('body')).slice(0, 600));
+  const runs = sql("SELECT contact_name, trigger_kind FROM crm_automation_runs WHERE automation_id = 'auto-intro'");
+  ok('…two runs on the server, started by hand', runs.length === 2 && runs.every(r => r.trigger_kind === 'manual') && runs.some(r => r.contact_name === 'Leeds Dental 10'), JSON.stringify(runs));
+  const forged = await api('engagement.php', { token: CT, accountId: ACCT, action: 'enrol_contacts', automationId: 'auto-paused', contacts: [{ id: 'x' }] });
+  ok('the server refuses a workflow that is not on', forged.success === false && /not switched on/.test(forged.error), JSON.stringify(forged));
+
+  /* Add to a draft campaign. */
+  await page.getByRole('checkbox', { name: 'Tick Leeds Dental 16', exact: true }).check();
+  await bar.getByRole('button', { name: /Add to an email campaign/ }).click();
+  const cp = page.getByRole('region', { name: 'Add to an email campaign' });
+  await cp.getByRole('radio', { name: /Leeds dentists intro/ }).check();
+  await cp.getByRole('checkbox', { name: /Clause 3 of the acceptable use policy/ }).check();
+  await cp.getByRole('button', { name: /Add 1 to “Leeds dentists intro”/ }).click();
+  await page.waitForTimeout(600);
+  const c2 = (await stored(page, 'crm_campaigns') ?? []).find(c => c.id === 'camp-draft');
+  const l2 = (await stored(page, 'crm_contact_lists') ?? []).find(l => l.id === c2?.audienceListId);
+  ok('a draft campaign is pointed at the list they are now on', c2?.audience === 'list' && !!l2 && l2.memberIds.length >= 1, JSON.stringify({ c2, l2 }));
+
+  /* Add to the AI project built earlier from a list. */
+  await page.getByRole('checkbox', { name: 'Tick Leeds Dental 19', exact: true }).check();
+  await bar.getByRole('button', { name: /Add to an AI project/ }).click();
+  const pj = page.getByRole('region', { name: 'Add to an AI project' });
+  await pj.getByRole('radio').first().waitFor({ timeout: 15_000 });
+  await pj.getByRole('radio').first().check();
+  ok('the project with a list says it adds to that list', /Adds them to its list “Dentists — Leeds test”/.test(await pj.innerText()), await pj.innerText());
+  await pj.getByRole('checkbox', { name: /Clause 3 of the acceptable use policy/ }).check();
+  await pj.getByRole('button', { name: /^Add 1 to/ }).click();
+  await page.getByText(/Autopilot proposes them in batches of 20/).waitFor({ timeout: 15_000 }).catch(() => {});
+  const lp = (await stored(page, 'crm_contact_lists') ?? []).find(l => l.id === listId);
+  ok('…and the project\'s own list grows by one', lp?.memberIds.length === 8, JSON.stringify(lp?.memberIds.length));
+
+  /* Start a new search clears it all. */
+  await page.getByRole('button', { name: 'Start a new search' }).first().click();
+  ok('"Start a new search" empties the page and the boxes', /Who do you want to sell to\?/.test(await page.innerText('body'))
+    && await page.locator('[data-field="prospects.trade"]').inputValue() === '' && await page.locator('table[aria-label="Businesses found"]').count() === 0);
+
+  /* Verified business directories. */
+  await where.getByRole('button', { name: 'Verified business directories' }).click();
+  await page.getByLabel('Who to look for').fill('unicorn groomers in Leeds');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const dead = await page.evaluate(() => (window.__deadEnds ?? []).length);
+  ok('a trade the register has no type for is refused on the trade box, not a dead end', dead === 0 && /has no type for "unicorn groomers"/.test(await page.innerText('body')), String(dead));
+  await page.getByLabel('Who to look for').fill('accountants in Leeds');
+  await page.keyboard.press('Enter');
+  await page.getByText('Park Row Accountants LTD', { exact: true }).waitFor({ timeout: 20_000 });
+  const body = await page.innerText('body');
+  ok('the register answers with active companies, their directors, and why there are no emails',
+    /Searched the company register \(Companies House\) for accountants in Leeds/.test(body) && /Priya Shah \(Director\)/.test(body) && !/Gone Old/.test(body)
+    && /The register lists no websites or email addresses/.test(body) && /Registered company/.test(body), body.slice(0, 1500));
+  ok('…asked for active companies by trade code, with attribution', chCalls.length === 1 && /Open Government Licence/.test(body));
+  await page.getByRole('checkbox', { name: 'Tick Park Row Accountants LTD', exact: true }).check();
+  await page.locator('[data-field="prospects.listName"]').fill('Leeds accountants');
+  await page.getByRole('checkbox', { name: /Clause 3 of the acceptable use policy/ }).check();
+  await page.getByRole('button', { name: /Add 1 to a new list/ }).click();
+  await page.waitForTimeout(600);
+  const acc = (await stored(page, 'crm_contacts') ?? []).find(c => c.name === 'Park Row Accountants LTD');
+  ok('a register import names the director, the company number and the source',
+    acc?.firstName === 'Priya' && acc.lastName === 'Shah' && acc.jobTitle === 'Director' && acc.customFields?.companyNumber === '01234567'
+    && acc.tags.includes('company register') && /^Company register \(Companies House\)/.test(acc.source), JSON.stringify(acc));
+  ok('@1280: no sideways scroll', (await overflow(page)) <= 0, String(await overflow(page)));
+  await page.screenshot({ path: 'test-results/ai-prospecting-register.png' });
+  await ctx.close();
+
+  const m = await signIn(390);
+  await m.page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
+  await m.page.getByLabel('Who to look for').fill('dentists in Leeds');
+  await m.page.keyboard.press('Enter');
+  await m.page.getByText(/Checked \d+ address/).waitFor({ timeout: 60_000 });
+  await m.page.getByRole('checkbox', { name: 'Tick Leeds Dental 1', exact: true }).check();
+  ok('@390: the ticked-actions bar is on screen and nothing scrolls sideways',
+    await m.page.getByRole('toolbar', { name: 'With the ticked businesses' }).isVisible() && (await overflow(m.page)) <= 0, String(await overflow(m.page)));
+  await m.page.screenshot({ path: 'test-results/ai-prospecting-390-actions.png' });
   await m.ctx.close();
 }
 

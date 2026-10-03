@@ -238,6 +238,44 @@ export async function enrolOnEvent(env: Env, accountId: string, ev: TriggerEvent
   }
 }
 
+/**
+ * Put named people into one workflow, by hand — AI Prospecting's "Add to a
+ * workflow". The trigger is not asked: the person chose this workflow for
+ * these contacts, which is exactly what a trigger would otherwise decide.
+ *
+ * Only a live (`active`) graph of this workspace, found through `loadGraphs`,
+ * so an id from another tenant is simply not found. The same unique index as
+ * `enrolOnEvent` keeps anybody from entering the same graph twice.
+ */
+export async function enrolInto(
+  env: Env, accountId: string, automationId: string,
+  people: { id: string; name?: string; email?: string; phone?: string }[],
+): Promise<{ ok: boolean; started: number; already: number; error: string; name: string }> {
+  const graphs = await loadGraphs(env, accountId);
+  const a = graphs.find(g => g.id === automationId);
+  if (!a) return { ok: false, started: 0, already: 0, error: 'That workflow is not in this workspace any more.', name: '' };
+  if (a.status !== 'active') return { ok: false, started: 0, already: 0, error: `"${a.name}" is not switched on, so nobody would move through it. Switch it on first.`, name: a.name };
+  const trigger = a.nodes.find(n => n.type === 'trigger');
+  const firstId = trigger?.nextId ?? a.nodes.find(n => n.id !== trigger?.id)?.id ?? '';
+  if (!firstId) return { ok: false, started: 0, already: 0, error: `"${a.name}" has no steps yet.`, name: a.name };
+  let started = 0;
+  for (const p of people) {
+    if (!p.id) continue;
+    const r = await env.DB.prepare(
+      `INSERT OR IGNORE INTO crm_automation_runs
+         (id, account_id, automation_id, automation_name, contact_id, contact_name, contact_email, contact_phone,
+          node_id, due_at, status, trigger_kind, trigger_ref, workflow_source, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,'active','manual','',?,?,?)`,
+    ).bind(
+      rid('ar'), accountId, a.id, String(a.name ?? '').slice(0, 160),
+      p.id.slice(0, 80), String(p.name ?? '').slice(0, 120), String(p.email ?? '').slice(0, 190), String(p.phone ?? '').slice(0, 40),
+      firstId, nowIso(), a.source ?? 'marketing', nowIso(), nowIso(),
+    ).run().catch(() => null);
+    if (r?.meta?.changes) started += 1;
+  }
+  return { ok: true, started, already: people.length - started, error: '', name: a.name };
+}
+
 /* ── The tick ─────────────────────────────────────────────────────────────── */
 
 interface RunRow {

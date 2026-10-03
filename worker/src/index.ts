@@ -51,6 +51,7 @@ import { handleSystemMail } from './routes/systemMail';
 import { handleAiKeys } from './routes/aikeys';
 import { handleGeoapify } from './routes/geoapify';
 import { handleEmailVerifier } from './routes/emailVerifier';
+import { handleCompaniesHouse } from './routes/companiesHouse';
 import { handlePlatform } from './routes/platform';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -92,6 +93,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,
   '/api/email-verifier.php': handleEmailVerifier,
+  '/api/companies-house.php': handleCompaniesHouse,
   '/api/affiliate.php': handleAffiliate,
   '/api/resell.php': handleResell,
   '/api/resell-webhook.php': handleResellWebhook,

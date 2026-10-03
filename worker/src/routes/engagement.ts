@@ -12,7 +12,7 @@ import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { cleanSlug, publicKey, recordEvent, rid } from '../lib/engagement';
 import { voiceStatus } from '../lib/voice';
-import { enrolOnEvent } from '../lib/automationEngine';
+import { enrolInto, enrolOnEvent } from '../lib/automationEngine';
 import { cleanSdp, iceServers, markPresent, offers, RING_SECONDS, sweepLive } from '../lib/liveHelp';
 import { clearAvatar, saveAvatar } from '../lib/widgetAvatar';
 import { createEvent } from '../lib/googleCalendar';
@@ -39,6 +39,8 @@ interface Req {
   personId?: string;
   /* Automations — which graph's runs, and which run's history */
   automationId?: string;
+  /** enrol_contacts: who goes into the chosen workflow. */
+  contacts?: Record<string, unknown>[];
   runId?: string;
   /* Forms, agents, knowledge, widgets — saved whole */
   record?: Record<string, unknown>;
@@ -751,6 +753,19 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       contactPhone: s(d.record?.contactPhone, 40),
     });
     return json({ success: true, started });
+  }
+
+  /* Named contacts into one chosen workflow (AI Prospecting's "Add to a workflow"). */
+  if (act === 'enrol_contacts') {
+    const automationId = s(d.automationId, 80);
+    const people = (Array.isArray(d.contacts) ? d.contacts : []).slice(0, 200).map((c: Record<string, unknown>) => ({
+      id: s(c?.id, 80), name: s(c?.name, 120), email: s(c?.email, 190), phone: s(c?.phone, 40),
+    })).filter((c: { id: string }) => c.id);
+    if (!automationId) return fail('Choose a workflow.', 200, { field: 'addto.workflow' });
+    if (!people.length) return fail('Nobody to add.');
+    const r = await enrolInto(env, accountId, automationId, people);
+    if (!r.ok) return fail(r.error, 200, { field: 'addto.workflow' });
+    return json({ success: true, started: r.started, already: r.already, name: r.name });
   }
 
   if (act === 'automation_runs') {

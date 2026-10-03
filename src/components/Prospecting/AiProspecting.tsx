@@ -7,14 +7,15 @@
  * The sentence is understood (`parseAsk`) and run as a plan whose every step
  * is a real call, shown as it runs and reporting what it actually found:
  * search the directory, read each business's own website for the address it
- * publishes, and check every address — free checks always, the mail server
+ * publishes, and check every address — the address checks always, the mail server
  * itself when the owner has connected a verifier. Nothing in the thread is a
  * canned message; a step that found nothing says so.
  *
  * ── Where leads come from, and where they do not ──
  *
- * The free directory (OpenStreetMap, through Geoapify), Google Maps on the
- * owner's key, each business's own website, and — with the owner's Hunter
+ * Business directories (OpenStreetMap, through Geoapify), verified business
+ * directories (the company register), Google Maps on the owner's key, each
+ * business's own website, and — with the owner's Hunter
  * key — addresses Hunter saw published on the web. Not LinkedIn, not Apollo:
  * their terms forbid exactly this, and a lead list built on a breach of terms
  * is a liability the customer did not know they had. See services/aiProspecting.ts.
@@ -32,16 +33,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowUp, Bot, Bookmark, CheckCircle2, Download, Filter, Globe, ListChecks, Loader, Mail, MailCheck, MapPin,
-  Plus, Search, Send, ShieldCheck, Sparkles, Users, X,
+  ArrowUp, BadgeCheck, Bot, Bookmark, CheckCircle2, Copy, Download, Eye, EyeOff, Filter, GitBranch, Globe, ListChecks, Loader,
+  Mail, MailCheck, MapPin, Plus, RotateCcw, Search, Send, ShieldCheck, Sparkles, Users, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useProspectSearch, outcomeText, AUTO_READ, type ImportOutcome } from './useProspectSearch';
 import { Attribution, ImportPanel, Notice, SearchProblems } from './ProspectParts';
-import { LeadTable, PlanSteps, VerifyTool, useLeadRows, type LeadFilter } from './AiParts';
+import { LeadTable, PlanSteps, ProgressBar, SkeletonRows, Thinking, VerifyTool, useLeadRows, type LeadFilter } from './AiParts';
+import AddTo, { type AddMode } from './AddTo';
+import { SOURCE_NAME, type ProspectSource } from '../../services/prospects';
 import { suggestListName, type SavedSearch } from '../../services/prospectImport';
 import { listKindOf, loadLists, type ContactList } from '../../services/contactLists';
-import { ago, askTitle, toCsv } from '../../services/aiProspecting';
+import { addressesOf, ago, askTitle, toCsv } from '../../services/aiProspecting';
 import type { Contact } from '../../types';
 import './prospecting.css';
 import './aiProspecting.css';
@@ -85,6 +88,9 @@ export default function AiProspecting() {
   const [done, setDone] = useState<ImportOutcome | null>(null);
   const [version, setVersion] = useState(0);
   const [find, setFind] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [addMode, setAddMode] = useState<AddMode | null>(null);
+  const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const thread = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
@@ -93,7 +99,7 @@ export default function AiProspecting() {
   const verifier = s.google?.verifier;
   const deepReady = !!verifier?.available;
   const deepWhy = !verifier ? '' : verifier.code === 'trial_ended'
-    ? 'Mailbox checks stopped when the trial ended; the free checks still run.'
+    ? 'Mailbox checks stopped when the trial ended; the address checks still run.'
     : 'Mailbox checks are switched off until the owner connects an email verifier (Settings → Platform services).';
 
   const lists = useMemo(() => loadLists()
@@ -108,8 +114,15 @@ export default function AiProspecting() {
   const recent = s.history.filter(h => !h.saved && hits(h));
   const shownLists = lists.filter(l => !q || l.name.toLowerCase().includes(q));
 
+  /** Start a new search: an empty page, the composer ready. */
+  const startNew = () => {
+    s.reset(); setView('leads'); setDone(null); setSaving(false); setAddMode(null); setSaid(null);
+    setText(''); setAskError(''); setFilter('all'); setShowAll(false);
+    window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 30);
+  };
+
   const go = async (sentence?: string, from?: SavedSearch['source']) => {
-    setAskError(''); setDone(null); setSaving(false); setView('leads'); setFilter('all');
+    setAskError(''); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setView('leads'); setFilter('all');
     const typed = (sentence ?? text).trim();
     const line = typed || (s.trade.trim() && s.place.trim() ? `${s.trade.trim()} in ${s.place.trim()}` : '');
     if (!line) { setAskError('Say who to look for — "dentists in Leeds", "cafés near Bristol".'); return; }
@@ -168,6 +181,32 @@ export default function AiProspecting() {
   const toDeep = [...new Set(target.map(p => s.emailFor(p)).filter(e => e && s.checks[e]?.level !== 'mailbox' && s.checks[e]?.status !== 'invalid'))];
   const scope = s.chosen.length ? 'ticked' : 'shown';
 
+  /* Every website not read yet, across the whole result — the bulk button. */
+  const allUnread = results.filter(p => p.website && !p.email && !s.found[p.website]).map(p => p.website);
+  const readAll = async () => {
+    const sites = allUnread;
+    s.step('read', { label: `Reading all ${sites.length} remaining websites for the addresses they publish`, state: 'running', badge: 'Websites' });
+    const r = await s.lookupSites(sites, 'Reading websites');
+    s.step('read', { label: `Read ${r.read} more websites for the addresses they publish`, detail: r.error || `${r.emails} address${r.emails === 1 ? '' : 'es'} found`, state: r.error ? 'failed' : 'done', badge: 'Websites', count: r.emails });
+    const fresh = Object.values(r.fresh).flatMap(c => c.emails);
+    if (fresh.length) await s.verifyList(fresh, false);
+    setShowAll(true);
+  };
+  /* Every address on the shown rows, one per line — the ones known to bounce left out. */
+  const allAddresses = [...new Set(rows.flatMap(r => addressesOf(r.p, s.found)).filter(e => s.checks[e]?.status !== 'invalid'))];
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(allAddresses.join('\n'));
+      setSaid({ ok: true, text: `Copied ${allAddresses.length} address${allAddresses.length === 1 ? '' : 'es'}.` });
+    } catch {
+      setSaid({ ok: false, text: 'The browser would not let the page copy — use Export instead.' });
+    }
+  };
+  const tickWhere = (f: (r: (typeof rows)[number]) => boolean) => {
+    s.pickAll(false);
+    for (const r of rows) if (f(r)) s.toggle(r.p.ref);
+  };
+
   const readMore = async () => {
     const sites = unread.slice(0, AUTO_READ);
     s.step('read', { label: `Reading ${sites.length} more websites`, state: 'running', badge: 'Websites' });
@@ -202,11 +241,16 @@ export default function AiProspecting() {
   };
   const openSave = () => {
     if (!s.chosen.length) s.pickAll(true);
+    setAddMode(null);
     setSaving(true);
     window.setTimeout(() => importRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
-  const exportCsv = () => {
-    const blob = new Blob([`﻿${toCsv(rows)}`], { type: 'text/csv;charset=utf-8' });
+  const openAdd = (m: AddMode) => {
+    setSaving(false); setAddMode(m); setDone(null);
+    window.setTimeout(() => importRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
+  const exportCsv = (only?: Set<string>) => {
+    const blob = new Blob([`﻿${toCsv(only ? rows.filter(r => only.has(r.p.ref)) : rows)}`], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `${(s.searched ? `${s.searched.trade}-${s.searched.place}` : 'prospects').replace(/[^\w-]+/g, '-').toLowerCase()}.csv`;
@@ -215,10 +259,14 @@ export default function AiProspecting() {
   };
 
   const working = s.busy || s.enriching || s.verifying || s.finding || s.steps.some(x => x.state === 'running');
-  const sources = [
-    { id: 'free' as const, label: 'Free directory' },
-    { id: 'google' as const, label: 'Google Maps' },
+  /* Three sources, named for what they are. Each says why when it is not on. */
+  const sources: { id: ProspectSource; label: string; tip: string; Icon: typeof MapPin }[] = [
+    { id: 'free', label: SOURCE_NAME.free, tip: 'OpenStreetMap\'s businesses, with phone and website — the results are yours to keep', Icon: MapPin },
+    { id: 'register', label: SOURCE_NAME.register, tip: s.google?.register.available ? 'The official company register (UK Companies House): active companies, with their directors' : (s.google?.register.error ?? ''), Icon: BadgeCheck },
+    { id: 'google', label: SOURCE_NAME.google, tip: s.google?.available ? 'Google Maps — the widest coverage, with ratings' : (s.google?.error ?? ''), Icon: Globe },
   ];
+  const running = s.steps.find(x => x.state === 'running');
+  const thinking = s.busy ? `Searching ${s.source === 'google' ? 'Google Maps' : s.source === 'register' ? 'the company register' : 'business directories'} for ${s.trade || 'businesses'} in ${s.place || 'that place'}` : running?.label ?? '';
 
   return (
     <div className="aip" data-noinvert ref={frame}>
@@ -227,8 +275,7 @@ export default function AiProspecting() {
         <div className="aip-side-head">
           <span className="aip-mark" aria-hidden="true"><Sparkles size={14} /></span>
           <h1>AI Prospecting</h1>
-          <button type="button" className="aip-icon-btn" aria-label="New search" title="New search"
-            onClick={() => { setView('leads'); setDone(null); setText(''); s.setSource(s.source); document.getElementById('aip-ask')?.focus(); }}>
+          <button type="button" className="aip-icon-btn" aria-label="Start a new search" title="Start a new search" onClick={startNew}>
             <Plus size={15} />
           </button>
         </div>
@@ -275,7 +322,7 @@ export default function AiProspecting() {
           <span className="aip-side-status">
             {deepReady
               ? <><ShieldCheck size={12} /> {verifier?.providerName} connected · {verifier?.left?.verify ?? 0} mailbox checks left today{verifier?.finds ? ` · ${verifier?.left?.find ?? 0} web searches` : ''}</>
-              : <><MailCheck size={12} /> Free checks: format, domain, mail server</>}
+              : <><MailCheck size={12} /> Address checks: format, domain, mail server</>}
           </span>
         </div>
       </aside>
@@ -287,8 +334,11 @@ export default function AiProspecting() {
           <span className="aip-top-brand" aria-hidden="true"><span className="aip-mark"><Sparkles size={13} /></span> AI Prospecting ·</span>
           <h2 title={s.asked || undefined}>{title}</h2>
           <span style={{ flex: 1 }} />
+          {(s.searched || s.busy || view === 'verify' || s.error) && (
+            <button type="button" className="aip-btn aip-new" onClick={startNew} disabled={s.busy}><RotateCcw size={13} /> Start a new search</button>
+          )}
           {results.length > 0 && view === 'leads' && <>
-            <button type="button" className="aip-btn" onClick={exportCsv}><Download size={13} /> Export</button>
+            <button type="button" className="aip-btn" onClick={() => exportCsv()}><Download size={13} /> Export</button>
             <button type="button" className="aip-btn" data-accent="true" onClick={openSave}><Bookmark size={13} /> Save as list</button>
           </>}
         </header>
@@ -308,9 +358,9 @@ export default function AiProspecting() {
                 {EXAMPLES.map(x => <button key={x} type="button" className="aip-chip" onClick={() => void go(x)}><Sparkles size={11} /> {x}</button>)}
               </div>
               <div className="aip-how">
-                <div><MapPin size={15} /><b>Find</b><span>Businesses by trade and town — free directory or Google Maps.</span></div>
+                <div><MapPin size={15} /><b>Find</b><span>Businesses by trade and town — business directories, verified business directories or Google Maps.</span></div>
                 <div><Globe size={15} /><b>Enrich</b><span>The address each one publishes on its own site{verifier?.finds ? ', and named people the web shows' : ''}.</span></div>
-                <div><ShieldCheck size={15} /><b>Verify</b><span>Format, domain and mail server for free{deepReady ? '; the mailbox itself with your verifier' : ''}.</span></div>
+                <div><ShieldCheck size={15} /><b>Verify</b><span>Format, domain and mail server on every address{deepReady ? ', and the mailbox itself' : ''} — tagged Verified when it is.</span></div>
               </div>
               <p className="aip-fine">
                 Never LinkedIn or bought data, and never a guessed address — only what a business chose to publish.
@@ -321,10 +371,14 @@ export default function AiProspecting() {
           {view === 'leads' && (s.searched || s.busy || s.error) && <>
             {s.asked && <div className="aip-bubble">{s.asked}</div>}
             <div className="aip-answer">
-              <p className="aip-lead"><Sparkles size={14} /> {s.busy
-                ? 'Searching…'
-                : `I searched ${s.searched?.source === 'google' ? 'Google Maps' : 'the free directory'}, read each business's own website for the address it publishes, and checked every address I found.`}</p>
+              {!s.busy && s.searched && (
+                <p className="aip-lead"><Sparkles size={14} /> {s.searched.source === 'register'
+                  ? 'I searched the official company register for active companies and named their directors.'
+                  : `I searched ${s.searched.source === 'google' ? 'Google Maps' : 'business directories'}, read each business's own website for the address it publishes, and checked every address I found.`}</p>
+              )}
               <PlanSteps steps={s.steps} />
+              {thinking && <Thinking text={`${thinking}…`} />}
+              {s.progress && <ProgressBar {...s.progress} />}
               <SearchProblems s={s} />
               {results.length > 0 && (
                 <p className="aip-summary">
@@ -332,6 +386,8 @@ export default function AiProspecting() {
                 </p>
               )}
             </div>
+
+            {s.busy && <SkeletonRows />}
 
             {results.length > 0 && (
               <section className="aip-card" aria-label="Results">
@@ -348,11 +404,27 @@ export default function AiProspecting() {
                     ))}
                   </div>
                 </div>
-                <LeadTable s={s} rows={rows} />
+                <div className="aip-bulk" aria-label="Every email address">
+                  <button type="button" className="aip-chip" data-accent="true" disabled={working || !allUnread.length} onClick={() => void readAll()}
+                    title={allUnread.length ? 'Reads every website not read yet, eight at a time, and checks each address found' : 'Every website here has been read'}>
+                    <Mail size={12} /> {allUnread.length ? `Find all emails (${allUnread.length} websites)` : 'All websites read'}
+                  </button>
+                  <button type="button" className="aip-chip" aria-pressed={showAll} onClick={() => setShowAll(v => !v)}>
+                    {showAll ? <EyeOff size={12} /> : <Eye size={12} />} {showAll ? 'Best address only' : 'Show all email addresses'}
+                  </button>
+                  <button type="button" className="aip-chip" disabled={!allAddresses.length} onClick={() => void copyAll()}>
+                    <Copy size={12} /> Copy {allAddresses.length} address{allAddresses.length === 1 ? '' : 'es'}
+                  </button>
+                  <span className="aip-muted">{rows.filter(r => r.v?.status === 'valid').length} verified · {rows.filter(r => r.email).length} with an address</span>
+                </div>
+                <LeadTable s={s} rows={rows} showAll={showAll} />
                 <div className="aip-card-foot">
                   <span className="aip-muted">Showing {rows.length} of {results.length}{filter !== 'all' ? ' (filtered)' : ''}</span>
                   <span style={{ flex: 1 }} />
+                  <span className="aip-muted">Tick:</span>
                   <button type="button" className="pp-link" onClick={() => s.pickAll(true)}>Tick all</button>
+                  <button type="button" className="pp-link" onClick={() => tickWhere(r => !!r.email && !r.blocked)}>With email</button>
+                  <button type="button" className="pp-link" onClick={() => tickWhere(r => r.v?.status === 'valid')}>Verified</button>
                   <button type="button" className="pp-link" onClick={() => s.pickAll(false)}>Clear</button>
                   {s.nextPage && (
                     <button type="button" className="aip-chip" onClick={() => void s.loadMore()} disabled={s.more}>
@@ -383,9 +455,10 @@ export default function AiProspecting() {
                   <ShieldCheck size={12} /> {deepReady ? `Verify ${Math.min(60, toDeep.length)} mailbox${toDeep.length === 1 ? '' : 'es'}` : 'Verify mailboxes — needs a verifier'}
                 </button>
                 <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save as list</button>
-                <button type="button" className="aip-chip" onClick={exportCsv}><Download size={12} /> Export CSV</button>
+                <button type="button" className="aip-chip" onClick={() => exportCsv()}><Download size={12} /> Export CSV</button>
               </div>
             )}
+            {said && <div role="status" className="aip-note" data-ok={said.ok}>{said.text}</div>}
             {!deepReady && results.length > 0 && verifier && <p className="aip-fine" style={{ margin: '0 4px' }}>{deepWhy}</p>}
 
             {done && (
@@ -397,7 +470,14 @@ export default function AiProspecting() {
               </section>
             )}
 
-            {results.length > 0 && (saving || s.picked.size > 0) && (
+            {results.length > 0 && addMode && (
+              <div ref={importRef}>
+                <AddTo s={s} mode={addMode} suggested={suggested} go={navigate} onClose={() => setAddMode(null)}
+                  onDone={m => { setAddMode(null); setSaid({ ok: true, text: m }); setVersion(v => v + 1); }} />
+              </div>
+            )}
+
+            {results.length > 0 && !addMode && (saving || s.picked.size > 0) && (
               <section className="aip-card" ref={importRef} aria-label="Save as a list">
                 <div className="aip-card-head">
                   <span className="aip-card-title"><Bookmark size={14} /> Save {s.chosen.length || ''} as a list</span>
@@ -417,14 +497,28 @@ export default function AiProspecting() {
           </>}
         </div>
 
+        {/* ── What to do with the ticked ones — on screen whenever any are ticked ── */}
+        {view === 'leads' && s.picked.size > 0 && (
+          <div className="aip-actionbar" role="toolbar" aria-label="With the ticked businesses">
+            <b>{s.picked.size} ticked</b>
+            <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save to a list</button>
+            <button type="button" className="aip-chip" onClick={() => openAdd('workflow')}><GitBranch size={12} /> Add to a workflow</button>
+            <button type="button" className="aip-chip" onClick={() => openAdd('project')}><Bot size={12} /> Add to an AI project</button>
+            <button type="button" className="aip-chip" onClick={() => openAdd('campaign')}><Send size={12} /> Add to an email campaign</button>
+            <button type="button" className="aip-chip" onClick={() => exportCsv(s.picked)}><Download size={12} /> Export ticked</button>
+            <button type="button" className="aip-icon-btn" aria-label="Untick all" title="Untick all" onClick={() => { s.pickAll(false); setAddMode(null); }}><X size={13} /></button>
+          </div>
+        )}
+
         {/* ── The composer ── */}
-        <form className="aip-composer" onSubmit={e => { e.preventDefault(); void go(); }}>
+        <form className="aip-composer" data-working={working || undefined} onSubmit={e => { e.preventDefault(); void go(); }}>
           <div className="aip-composer-strip">
             <span className="aip-strip-label"><Sparkles size={12} /> Search</span>
-            <div role="group" aria-label="Which map to search" className="aip-sources">
+            <div role="group" aria-label="Where to search" className="aip-sources">
               {sources.map(t => (
-                <button key={t.id} type="button" aria-pressed={s.source === t.id} onClick={() => s.setSource(t.id)}>
-                  <MapPin size={11} /> {t.label}
+                <button key={t.id} type="button" aria-pressed={s.source === t.id} onClick={() => s.setSource(t.id)} title={t.tip}
+                  data-off={(t.id === 'google' && s.google && !s.google.available) || (t.id === 'register' && s.google && !s.google.register.available) || undefined}>
+                  <t.Icon size={11} /> {t.label}
                 </button>
               ))}
             </div>
@@ -432,7 +526,7 @@ export default function AiProspecting() {
             <span className="aip-strip-tools" aria-label="Also used">
               <span title="Each business's own website is read for the address it publishes"><Globe size={11} /> Websites</span>
               {verifier?.finds && <span title="Addresses Hunter saw published on the web"><Users size={11} /> Hunter</span>}
-              <span title={deepReady ? `Mailboxes checked with ${verifier?.providerName}` : 'Format, domain and mail server checked for free'}><ShieldCheck size={11} /> {deepReady ? 'Mailbox checks' : 'Free checks'}</span>
+              <span title={deepReady ? `Mailboxes checked with ${verifier?.providerName}` : 'Format, domain and mail server checked on every address'}><ShieldCheck size={11} /> {deepReady ? 'Mailbox checks' : 'Address checks'}</span>
             </span>
           </div>
           <div className="aip-composer-box">
@@ -464,7 +558,7 @@ function HistoryItem({ h, s, run, active }: { h: SavedSearch; s: ReturnType<type
     <div className="aip-hist" data-active={active || undefined}>
       <button type="button" className="aip-hist-main" onClick={run} aria-label={`Search ${h.trade} in ${h.place} again`}>
         <b>{askTitle(h.trade, h.place)}</b>
-        <small>{h.count} lead{h.count === 1 ? '' : 's'} · {h.source === 'google' ? 'Google Maps' : 'Free directory'} · {ago(h.at)}</small>
+        <small>{h.count} lead{h.count === 1 ? '' : 's'} · {SOURCE_NAME[h.source] ?? h.source} · {ago(h.at)}</small>
       </button>
       <button type="button" className="aip-hist-icon" onClick={() => s.saveSearch(h)} data-on={h.saved || undefined}
         aria-label={h.saved ? `Unpin ${h.trade} in ${h.place}` : `Pin ${h.trade} in ${h.place}`} title={h.saved ? 'Unpin' : 'Pin'}>

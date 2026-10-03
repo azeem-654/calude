@@ -64,6 +64,8 @@ export interface Env {
   GOOGLE_TOKEN_URL?: string;
   /** Where Geoapify is asked instead, in tests only (lib/geoapify.ts). */
   GEOAPIFY_BASE?: string;
+  /** Where Companies House is asked instead, in tests only (lib/companiesHouse.ts). */
+  COMPANIES_HOUSE_BASE?: string;
   /** Where the email verifier (Hunter, ZeroBounce, MillionVerifier) is asked instead, in tests only (lib/emailVerify.ts). */
   EMAIL_VERIFIER_BASE?: string;
   /** Where DNS-over-HTTPS is asked for MX records instead, in tests only (lib/emailVerify.ts). */

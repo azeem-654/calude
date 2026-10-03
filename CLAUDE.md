@@ -346,6 +346,36 @@ exactly this, and the site says so. `npm run test:emailverify` and
 `npm run test:aiprospecting` (pure); `npm run test:prospecting` drives it with
 DoH and Hunter mocks (`EMAIL_VERIFIER_BASE`), in both themes.
 
+**Sources are named for what they are, never "free"** (`SOURCE_NAME` in
+services/prospects.ts): *Business directories* (`free` — Geoapify/Overpass),
+*Verified business directories* (`register` — `lib/companiesHouse.ts`, UK
+Companies House on the owner's key, `crm_install_providers` kind
+`companies_house`, card on Platform services, `routes/companiesHouse.ts`
+owner-only) and *Google Maps*. The register is searched by SIC code
+(`sicFor`; a trade with none is refused on `prospects.trade`, never guessed),
+`company_status=active` only, directors for the first 20 of a page; OGL data,
+cached a fortnight. It holds no websites or emails and the screen says so;
+an import names the first serving director (`firstName`/`jobTitle`), tags
+`company register`, keeps `customFields.companyNumber`. `npm run test:register` (pure).
+
+**Bulk and "Add to…".** *Find all emails* reads every unread website in
+batches of 8 with a progress bar; *Show all email addresses* lists each
+address with its own check; *Copy* leaves out the bouncing. Ticked rows get
+an action bar: save to a list, or **add to an existing workflow, AI project
+or email campaign** (`AddTo.tsx`) — each imports first (same `importChosen`,
+same `RuleConfirm` clause-3 box), then: a workflow via `engagement.php
+enrol_contacts` (`enrolInto`, active graphs of this workspace only, trigger
+`manual`; suppressed addresses left out because the engine does not read the
+suppression list); a project by adding to its `brief.audience` list (or
+re-saving a briefed project with every target it had, since `saveProject`
+resets what it is not sent); a draft campaign by pointing it at the list, a
+scheduled one by `enrollInSequence` for its time (skipping suppressed and
+bouncing). Imports tag the check (`emailTag`: `verified email`, `email domain
+ok`, `risky email`, `email bounces`, replacing an older one). Rows say *In
+Contacts* and *Do not email* (suppression list). Every animation (orb, dots,
+shimmer on the cell being read or checked, scanning step, moving composer
+gradient) is tied to real work and stops under reduced motion.
+
 ### Google Maps on the owner's key
 
 Contacts → **Find businesses** (`components/Contacts/FindProspects.tsx`) and

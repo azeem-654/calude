@@ -417,3 +417,109 @@ html[data-theme="dark"] .aip-avatar { color: hsl(var(--h) 80% 82%); background: 
 .aip-dash-stat span { grid-column: 1 / -1; font-size: 11.5px; color: var(--aip-muted); }
 .aip-dash-open { grid-column: 1 / -1; justify-content: center; }
 @media (max-width: 760px) { .aip-dash { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Working, and seen to be working ──
+   Each animation is tied to something real: the orb runs only while a step is
+   running and its words are that step's label; a cell shimmers only while its
+   own website or address is being looked at. All of it stops under
+   prefers-reduced-motion (the block at the end), which motion.ts can switch. */
+.aip-new { border-color: var(--aip-accent); color: var(--aip-accent); }
+.aip-new:hover:not(:disabled) { background: var(--aip-accent-soft); }
+
+.aip-sources button[data-off]:not([aria-pressed="true"]) { opacity: 0.7; border-style: dashed; }
+
+.aip-thinking {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; width: fit-content; max-width: 100%;
+  background: var(--aip-card); border: 1px solid var(--aip-line); box-shadow: var(--aip-shadow);
+  font-size: 13px; color: var(--aip-ink-2);
+}
+.aip-think-text { min-width: 0; overflow-wrap: anywhere; }
+.aip-think-orb {
+  position: relative; width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0; display: inline-flex; align-items: center;
+  justify-content: center; color: #fff; background: var(--aip-grad); box-shadow: 0 0 0 0 rgba(255, 122, 69, 0.45);
+  animation: aip-breathe 1.8s ease-in-out infinite;
+}
+.aip-think-orb i {
+  position: absolute; inset: -5px; border-radius: 999px; border: 1.5px solid transparent;
+  border-top-color: #ff7a45; border-right-color: rgba(255, 79, 129, 0.6); animation: aip-spin 1.4s linear infinite;
+}
+.aip-think-orb i:nth-child(2) { inset: -9px; animation-duration: 2.3s; animation-direction: reverse; border-top-color: rgba(255, 179, 92, 0.7); border-right-color: transparent; }
+.aip-think-orb i:nth-child(3) { inset: -13px; animation-duration: 3.4s; opacity: 0.45; }
+.aip-dots { display: inline-flex; gap: 3px; }
+.aip-dots i { width: 4px; height: 4px; border-radius: 999px; background: var(--aip-accent); animation: aip-bounce 1s ease-in-out infinite; }
+.aip-dots i:nth-child(2) { animation-delay: 0.15s; }
+.aip-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+.aip-steps li { animation: aip-rise 0.35s ease both; }
+.aip-step-scan {
+  position: absolute; left: 30px; right: 0; bottom: 0; height: 2px; border-radius: 2px; overflow: hidden;
+  background: linear-gradient(90deg, transparent, #ff7a45, #ff4f81, transparent); background-size: 50% 100%; background-repeat: no-repeat;
+  animation: aip-scan 1.3s ease-in-out infinite;
+}
+
+.aip-progress { display: grid; gap: 6px; font-size: 12px; color: var(--aip-muted); max-width: 520px; }
+.aip-progress-track { height: 6px; border-radius: 999px; background: var(--aip-chip); overflow: hidden; }
+.aip-progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--aip-grad); transition: width 0.4s ease; }
+
+.aip-working { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--aip-muted); }
+.aip-shimmer {
+  width: 54px; height: 9px; border-radius: 5px; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--aip-chip) 0%, var(--aip-line) 40%, var(--aip-accent-soft) 50%, var(--aip-chip) 100%);
+  background-size: 200% 100%; animation: aip-shine 1.1s linear infinite;
+}
+
+.aip-skeleton { padding: 8px 16px; display: grid; gap: 2px; }
+.aip-skel-row { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--aip-line-2); animation: aip-rise 0.4s ease both; animation-delay: calc(var(--i) * 70ms); }
+.aip-skel {
+  height: 10px; border-radius: 6px; background: linear-gradient(90deg, var(--aip-chip) 0%, var(--aip-line) 50%, var(--aip-chip) 100%);
+  background-size: 200% 100%; animation: aip-shine 1.3s linear infinite;
+}
+.aip-skel-av { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; }
+
+.aip-row { animation: aip-rise 0.4s ease both; animation-delay: calc(var(--i) * 22ms); }
+
+.aip-composer[data-working] .aip-composer-strip { background-size: 200% 200%; animation: aip-flow 3s ease infinite; }
+
+/* Tags on a row: on the register, already in Contacts, do-not-email. */
+.aip-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.aip-tag {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;
+  text-decoration: none; color: var(--aip-ink-2); background: var(--aip-chip); border: 1px solid var(--aip-line);
+}
+.aip-tag[data-t="register"] { color: var(--aip-blue); background: var(--aip-blue-bg); border-color: transparent; }
+.aip-tag[data-t="blocked"] { color: var(--aip-red); background: var(--aip-red-bg); border-color: transparent; }
+.aip-badge[data-s="valid"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aip-good) 35%, transparent); }
+
+/* Every address of a business, each with its own check. */
+.aip-all { display: grid; gap: 5px; min-width: 0; }
+.aip-all-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+
+.aip-bulk { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 16px 12px; }
+.aip-bulk .aip-muted { margin-left: auto; }
+
+.aip-actionbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 9px clamp(14px, 3vw, 34px);
+  background: var(--aip-card); border-top: 1px solid var(--aip-line); box-shadow: 0 -8px 24px rgba(17, 19, 24, 0.06);
+  animation: aip-rise 0.25s ease both;
+}
+.aip-actionbar > b { font-size: 12.5px; color: var(--aip-ink); margin-right: 4px; }
+.aip-actionbar .aip-icon-btn { margin-left: auto; }
+.aip-targets { display: grid; gap: 6px; max-height: 280px; overflow-y: auto; }
+
+@keyframes aip-spin { to { transform: rotate(360deg); } }
+@keyframes aip-breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 122, 69, 0.4); } 50% { box-shadow: 0 0 0 7px rgba(255, 122, 69, 0); } }
+@keyframes aip-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-4px); opacity: 1; } }
+@keyframes aip-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes aip-scan { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+@keyframes aip-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes aip-flow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aip-think-orb, .aip-think-orb i, .aip-dots i, .aip-steps li, .aip-step-scan, .aip-shimmer, .aip-skel, .aip-skel-row,
+  .aip-row, .aip-actionbar, .aip-composer[data-working] .aip-composer-strip { animation: none !important; }
+  .aip-progress-track span { transition: none; }
+}
+@media (max-width: 900px) {
+  /* On a phone the page scrolls, so the bar rides the bottom of the window while the results are on it. */
+  .aip-actionbar { position: sticky; bottom: 0; z-index: 2; }
+}

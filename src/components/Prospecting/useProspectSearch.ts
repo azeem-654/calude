@@ -12,8 +12,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   findPeople, googleAvailability, lookupContacts, searchProspects, verifyEmails,
-  type Contactable, type GoogleAvailability, type Prospect, type ProspectSource, type Verdict,
+  SOURCE_NAME, type Contactable, type GoogleAvailability, type Prospect, type ProspectSource, type Verdict,
 } from '../../services/prospects';
+import type { Contact } from '../../types';
 import { addressesOf, parseAsk, type Ask } from '../../services/aiProspecting';
 import {
   emailOf, planImport, prospectRows, recordSearch, loadSearches, toggleSaved, forgetSearch,
@@ -35,6 +36,8 @@ export interface ImportOutcome {
   list: ContactList | null;
   /** Of the already-known, how many had a blank this search filled. */
   filled: number;
+  /** Everybody ticked, as the contacts they now are — new and already-known. */
+  contacts: Contact[];
 }
 
 /** One line of the plan AI Prospecting shows: a real step, with what it actually found. */
@@ -43,7 +46,7 @@ export interface Step {
   label: string;
   detail: string;
   state: 'running' | 'done' | 'failed' | 'skipped';
-  /** Who answered — "Free directory", "Websites", "Hunter" — drawn as a badge. */
+  /** Who answered — "Business directories", "Websites", "Hunter" — drawn as a badge. */
   badge: string;
   count?: number;
 }
@@ -88,6 +91,12 @@ export function useProspectSearch() {
   const [asked, setAsked] = useState('');
   const [want, setWant] = useState<Ask['want']>({ email: false, website: false, phone: false });
   const [steps, setSteps] = useState<Step[]>([]);
+  /* What is being worked on right now, row by row — the table shimmers those
+     cells, so the work is seen happening where its answer will land. */
+  const [reading, setReading] = useState<Set<string>>(new Set());
+  const [checking, setChecking] = useState<Set<string>>(new Set());
+  /* A long pass (every website, every mailbox) says how far it has got. */
+  const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const step = useCallback((id: Step['id'], patch: Partial<Step> & Pick<Step, 'label' | 'state' | 'badge'>) => {
     setSteps(prev => {
       const i = prev.findIndex(x => x.id === id);
@@ -106,8 +115,15 @@ export function useProspectSearch() {
 
   const clear = useCallback(() => {
     setError(''); setErrorCode(''); setResults(null); setNextPage(''); setPicked(new Set()); setFound({}); setMoreError('');
-    setChecks({}); setSteps([]);
+    setChecks({}); setSteps([]); setProgress(null);
   }, []);
+
+  /** Start a new search: nothing shown, nothing typed, the source kept. */
+  const reset = useCallback(() => {
+    clear();
+    setSearched(null); setAsked(''); setTrade(''); setPlace(''); setAnswered('');
+    setWant({ email: false, website: false, phone: false });
+  }, [clear]);
 
   const setSource = useCallback((s: ProspectSource) => { setSourceState(s); clear(); }, [clear]);
 
@@ -141,11 +157,14 @@ export function useProspectSearch() {
    * the new lookups, so a caller in the middle of a pipeline does not have to
    * wait for React to hand them back.
    */
-  const lookupSites = useCallback(async (sites: string[]) => {
+  const lookupSites = useCallback(async (sites: string[], label = '') => {
     const fresh: Record<string, Contactable> = {};
     let error = '';
     for (let i = 0; i < sites.length; i += 8) {
-      const r = await lookupContacts(sites.slice(i, i + 8));
+      const batch = sites.slice(i, i + 8);
+      setReading(new Set(batch));
+      if (label) setProgress({ label, done: i, total: sites.length });
+      const r = await lookupContacts(batch);
       if (r.error) { error = r.error; break; }
       Object.assign(fresh, r.contacts);
       setFound(f => {
@@ -154,6 +173,8 @@ export function useProspectSearch() {
         return next;
       });
     }
+    setReading(new Set());
+    if (label) setProgress(null);
     const emails = Object.values(fresh).reduce((n, c) => n + c.emails.length, 0);
     return { read: Object.keys(fresh).length, emails, fresh, error };
   }, []);
@@ -170,6 +191,8 @@ export function useProspectSearch() {
     let ran = 0;
     setVerifying(true);
     for (let i = 0; i < list.length; i += 20) {
+      setChecking(new Set(list.slice(i, i + 20)));
+      if (list.length > 20) setProgress({ label: deep ? 'Asking mail servers' : 'Checking addresses', done: i, total: list.length });
       const r = await verifyEmails(list.slice(i, i + 20), deep);
       if (r.error) { error = r.error; break; }
       Object.assign(got, r.verdicts);
@@ -180,7 +203,8 @@ export function useProspectSearch() {
          twenty; the rest get the free check in one more pass, not a refusal each. */
       if (deep && r.deep.code && r.deep.code !== 'verify_budget') deep = false;
     }
-    setVerifying(false);
+    setVerifying(false); setChecking(new Set());
+    if (list.length > 20) setProgress(null);
     return { verdicts: got, note, error, ran };
   }, []);
 
@@ -220,16 +244,26 @@ export function useProspectSearch() {
     setTrade(a.trade); setPlace(a.place);
     const src = from ?? source;
     if (from) setSourceState(from);
-    const where = src === 'google' ? 'Google Maps' : 'Free directory';
-    const whereText = src === 'google' ? 'Google Maps' : 'the free directory';
+    const where = SOURCE_NAME[src];
+    const whereText = src === 'google' ? 'Google Maps' : src === 'register' ? 'the company register (Companies House)' : 'business directories';
     const list = await run({ source: src, trade: a.trade, place: a.place });
     setAsked(text.trim()); setWant(a.want);
     if (!list) {
       step('search', { label: `Searched ${whereText} for ${a.trade} in ${a.place}`, detail: 'The search was refused — see why below.', state: 'failed', badge: where });
       return { error: '', want: a.want };
     }
-    step('search', { label: `Searched ${whereText} for ${a.trade} in ${a.place}`, detail: `${list.length} found`, state: 'done', badge: where, count: list.length });
+    const named = list.filter(p => p.officers?.length).length;
+    step('search', {
+      label: `Searched ${whereText} for ${a.trade} in ${a.place}`,
+      detail: src === 'register' ? `${list.length} active compan${list.length === 1 ? 'y' : 'ies'}${named ? `, ${named} with their directors named` : ''}` : `${list.length} found`,
+      state: 'done', badge: where, count: list.length,
+    });
     if (!list.length) return { error: '', want: a.want };
+    if (src === 'register') {
+      /* The register holds no websites, so there is nothing to read — said, not skipped silently. */
+      step('read', { label: 'The register lists no websites or email addresses', detail: 'Directors are named instead. Search the web for named people, or switch to business directories for websites.', state: 'skipped', badge: 'Register' });
+      return { error: '', want: a.want };
+    }
 
     const sites = list.filter(p => p.website && !p.email).map(p => p.website).slice(0, AUTO_READ);
     const onMap = list.filter(p => p.email).length;
@@ -249,7 +283,7 @@ export function useProspectSearch() {
 
     const emails = [...new Set(list.flatMap(p => addressesOf(p, fresh)))];
     if (emails.length) {
-      step('verify', { label: `Checking ${emails.length} address${emails.length === 1 ? '' : 'es'} — format, domain and mail server`, state: 'running', badge: 'Free check' });
+      step('verify', { label: `Checking ${emails.length} address${emails.length === 1 ? '' : 'es'} — format, domain and mail server`, state: 'running', badge: 'Address check' });
       const v = await verifyList(emails, false);
       const vs = Object.values(v.verdicts);
       const bad = vs.filter(x => x.status === 'invalid').length;
@@ -257,7 +291,7 @@ export function useProspectSearch() {
       step('verify', {
         label: `Checked ${vs.length} address${vs.length === 1 ? '' : 'es'} — format, domain and mail server`,
         detail: v.error ? v.error : `${okd} take mail${bad ? `, ${bad} would bounce` : ''}${vs.length - okd - bad ? `, ${vs.length - okd - bad} risky or unclear` : ''}`,
-        state: v.error ? 'failed' : 'done', badge: 'Free check', count: okd,
+        state: v.error ? 'failed' : 'done', badge: 'Address check', count: okd,
       });
     }
     return { error: '', want: a.want };
@@ -350,14 +384,20 @@ export function useProspectSearch() {
       list = loadLists().find(l => l.id === list!.id) ?? list;
     }
     setPicked(new Set());
-    return { created: made.length, already: plan.known.length, list, filled: fills.length };
+    const byId = new Map(contacts.map(c => [c.id, c]));
+    const now = [...made, ...plan.known.map(k => ({ ...(byId.get(k.contact.id) ?? k.contact), ...k.fill }))];
+    return { created: made.length, already: plan.known.length, list, filled: fills.length, contacts: now };
   }, [chosen, answered, searched, found, checks, contacts, bulkImportContacts, updateContacts]);
 
   const googleDown = source === 'google' && !!google && !google.available;
-  const offerFree = source === 'google' && (googleDown || KEY_REFUSAL.test(errorCode));
+  const registerDown = source === 'register' && !!google && !google.register.available;
+  /* Whichever chosen source is not on, and why — said before anybody types. */
+  const downError = googleDown ? google!.error : registerDown ? google!.register.error : '';
+  const offerFree = (source === 'google' && (googleDown || KEY_REFUSAL.test(errorCode))) || registerDown;
 
   return {
-    source, setSource, answered, google, googleDown, offerFree,
+    source, setSource, answered, google, googleDown, registerDown, downError, offerFree, reset,
+    reading, checking, progress,
     trade, setTrade, place, setPlace,
     busy, more, enriching, error, errorCode, moreError,
     results, attribution, cached, nextPage, searched,
@@ -384,10 +424,11 @@ export function outcomeText(o: ImportOutcome): string {
 }
 
 /** One line under the title saying where this search goes and what that means. */
-export function sourceLine(s: Pick<ProspectSearch, 'source' | 'googleDown'>): string {
+export function sourceLine(s: Pick<ProspectSearch, 'source' | 'googleDown' | 'registerDown'>): string {
   /* "Included" directly above "needs the Google Maps key" read as a
      contradiction; until the owner's key is set it is not. */
   if (s.source === 'google' && s.googleDown) return 'From Google Maps — not switched on for this app yet.';
   if (s.source === 'google') return 'From Google Maps. Included — nothing for you to connect.';
-  return 'From the free business directory. Nothing to connect, and the results are yours to keep.';
+  if (s.source === 'register') return s.registerDown ? 'From the company register — not switched on for this app yet.' : 'From the official company register: active companies, with their directors.';
+  return 'From business directories. Nothing to connect, and the results are yours to keep.';
 }

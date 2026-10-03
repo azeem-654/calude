@@ -49,7 +49,7 @@ export function SourceTabs({ s }: { s: ProspectSearch }) {
   return (
     <div role="group" aria-label="Which map to search" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
       {([
-        { id: 'free' as const, label: 'Free directory' },
+        { id: 'free' as const, label: 'Business directories' },
         { id: 'google' as const, label: 'Google Maps' },
       ]).map(t => {
         const on = s.source === t.id;
@@ -108,16 +108,18 @@ export function SearchHint({ s }: { s: ProspectSearch }) {
 export function SearchProblems({ s }: { s: ProspectSearch }) {
   return (<>
     {/* Said before the search, not after a refusal. */}
-    {s.googleDown && !s.error && s.google && <Notice text={s.google.error} />}
+    {s.downError && !s.error && <Notice text={s.downError} />}
     {s.error && <Notice text={s.error} />}
     {s.offerFree && (
       <button type="button" className="pp-btn" style={{ justifySelf: 'start' }} onClick={() => s.setSource('free')}>
-        <MapPin size={12} /> Search the free directory instead — nothing to set up
+        <MapPin size={12} /> Search business directories instead — nothing to set up
       </button>
     )}
     {s.results && s.results.length === 0 && (
       <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.65 }}>
-        {s.searched?.source === 'google'
+        {s.searched?.source === 'register'
+          ? 'No active company on the register matches that type of business in that place. The register searches registered offices, so try the nearest city, or business directories for sole traders.'
+          : s.searched?.source === 'google'
           ? 'Google found nothing for that. Try a broader word — "dentist" rather than "cosmetic dentistry" — or a larger town nearby.'
           : `Nothing mapped for that. Try a broader word — "dentist" rather than "cosmetic dentistry" — or a larger town nearby. It means nobody has added them to the map, not that they do not exist${s.google?.available ? '; the Google Maps tab may have them' : ''}.`}
       </p>
@@ -125,7 +127,7 @@ export function SearchProblems({ s }: { s: ProspectSearch }) {
   </>);
 }
 
-const SOURCE_SHORT: Record<string, string> = { free: 'Free directory', google: 'Google Maps', osm: 'OpenStreetMap' };
+const SOURCE_SHORT: Record<string, string> = { free: 'Business directories', google: 'Google Maps', osm: 'OpenStreetMap', register: 'Verified business directories' };
 
 /** Recent and saved searches, one press to run again. */
 export function SearchHistory({ s, limit = 8 }: { s: ProspectSearch; limit?: number }) {
@@ -287,8 +289,34 @@ export function Attribution({ s }: { s: ProspectSearch }) {
     <p style={{ margin: 0, fontSize: 10.5, color: 'var(--pp-faint, #9aa1ad)', textAlign: 'center' }}>
       {s.answered === 'google'
         ? `Results from ${s.attribution}.`
-        : `Business data: ${s.attribution}, used under the Open Database Licence.`}
+        : s.answered === 'register'
+          /* The register's own credit names its licence (OGL), not OSM's. */
+          ? `Business data: ${s.attribution}.`
+          : `Business data: ${s.attribution}, used under the Open Database Licence.`}
     </p>
+  );
+}
+
+/**
+ * Clause 3, as the box somebody ticks before found businesses become contacts.
+ *
+ * One component wherever an import happens — saving to a list, or adding to a
+ * workflow, a project or a campaign — so no door into Contacts words the rule
+ * differently, and none skips it.
+ */
+export function RuleConfirm({ confirmed, onChange }: { confirmed: boolean; onChange: (on: boolean) => void }) {
+  return (
+    /* Not a disclaimer to click past. It is the rule, and it is the
+       customer's judgement to make rather than ours to imply. */
+    <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', background: 'var(--pp-soft, #f4f7fb)', borderRadius: 11, padding: '11px 12px' }}>
+      <input type="checkbox" checked={confirmed} onChange={e => onChange(e.target.checked)}
+        style={{ marginTop: 2, accentColor: ACCENT, cursor: 'pointer', flexShrink: 0 }} />
+      <span style={{ fontSize: 11.5, color: 'var(--pp-soft-ink, #1e3a5f)', lineHeight: 1.65 }}>
+        These are businesses whose contact details they published, and what I am offering is relevant
+        to what they do. I will not add them to a campaign that is not, and I will honour anyone who
+        asks me to stop. (Clause 3 of the acceptable use policy.)
+      </span>
+    </label>
   );
 }
 
@@ -374,17 +402,7 @@ export function ImportPanel({ s, initial, suggested, onDone, listsVersion = 0 }:
         </label>
       </div>
 
-      {/* Not a disclaimer to click past. It is the rule, and it is the
-          customer's judgement to make rather than ours to imply. */}
-      <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', background: 'var(--pp-soft, #f4f7fb)', borderRadius: 11, padding: '11px 12px' }}>
-        <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}
-          style={{ marginTop: 2, accentColor: ACCENT, cursor: 'pointer', flexShrink: 0 }} />
-        <span style={{ fontSize: 11.5, color: 'var(--pp-soft-ink, #1e3a5f)', lineHeight: 1.65 }}>
-          These are businesses whose contact details they published, and what I am offering is relevant
-          to what they do. I will not add them to a campaign that is not, and I will honour anyone who
-          asks me to stop. (Clause 3 of the acceptable use policy.)
-        </span>
-      </label>
+      <RuleConfirm confirmed={confirmed} onChange={setConfirmed} />
 
       {err && <Notice text={err.text} />}
 

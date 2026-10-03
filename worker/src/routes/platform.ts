@@ -23,6 +23,7 @@
  */
 import { geoState } from './geoapify';
 import { verifierState } from './emailVerifier';
+import { registerState } from './companiesHouse';
 import { body, fail, json } from '../lib/http';
 import { userFromToken, type Env, type SessionUser } from '../lib/db';
 import { googleCreds } from '../lib/googleAuth';
@@ -147,6 +148,26 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
         ? 'Not set. The free directory still works on OpenStreetMap\'s own servers, which are slower and ask commercial apps not to rely on them.'
         : state === 'ok' ? `Working. ${g.creditsToday} of today's ${g.cap} free credits used (20 businesses a credit; searches are kept a fortnight and not paid for twice).`
           : state === 'error' ? 'Geoapify refused it the last time it was used — see the reason below. Searches fall back to OpenStreetMap meanwhile.'
+            : 'Saved, not yet proved. Press "Test connection" below.',
+      checkedAt: g.set && g.status !== 'unknown' ? g.updatedAt : null,
+      lastError: g.lastError,
+      where: { label: 'Below, on this tab' },
+      optional: true,
+    });
+  }
+
+  /* ── Companies House — "Verified business directories" in AI Prospecting ── */
+  {
+    const g = await registerState(env);
+    const state: State = !g.set ? 'off' : g.status === 'ok' ? 'ok' : g.status === 'error' ? 'error' : 'unchecked';
+    services.push({
+      id: 'companies_house', name: 'Company register (Companies House)',
+      powers: 'AI Prospecting → Verified business directories: active UK companies by trade and town, with their directors',
+      state,
+      detail: state === 'off'
+        ? 'Not set. The Verified business directories tab tells customers it is not switched on; business directories and Google Maps are unaffected.'
+        : state === 'ok' ? 'Working. Searches and director lists are kept a fortnight, so a repeated search costs nothing.'
+          : state === 'error' ? 'Companies House refused it the last time it was used — see the reason below.'
             : 'Saved, not yet proved. Press "Test connection" below.',
       checkedAt: g.set && g.status !== 'unknown' ? g.updatedAt : null,
       lastError: g.lastError,

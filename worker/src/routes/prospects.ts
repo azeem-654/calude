@@ -34,6 +34,7 @@ import { userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { findContacts, searchProspects } from '../lib/prospects';
 import { BUDGET, PROVIDERS, checkEmails, findPeople, installVerifier, usage } from '../lib/emailVerify';
 import { trialForWorkspace } from '../lib/trial';
+import { REGISTER_ATTRIBUTION, installRegisterKey, markRegisterKey, searchRegister } from '../lib/companiesHouse';
 import { rateLimit } from '../lib/rateLimit';
 import { GEOAPIFY_ATTRIBUTION, installGeoKey, markGeoKey, searchGeoapify } from '../lib/geoapify';
 import {
@@ -83,6 +84,9 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
          its key, OpenStreetMap's own servers when not. Said so the screen
          can name which. */
       free: { available: true, geoapify: !!(await installGeoKey(env)) },
+      /* The company register: on only when the owner has set its key, and
+         not after a trial — the key's request allowance is the install's. */
+      register: await registerStatus(env, accountId),
       /* Which mailbox checks and web searches the owner has connected, and how
          much of this workspace's allowance is left — so the screen offers only
          what will run, and says why the rest will not. */
@@ -94,7 +98,7 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
     /* 'auto' is the AI Sales Agent's: the free directory, which costs the
        owner nothing — Google only when it is asked for by name. */
     const asked = String(d.source ?? 'google');
-    const source = asked === 'osm' ? 'osm' : asked === 'free' || asked === 'auto' ? 'free' : 'google';
+    const source = asked === 'osm' ? 'osm' : asked === 'register' ? 'register' : asked === 'free' || asked === 'auto' ? 'free' : 'google';
     let line = String(d.query ?? '').trim().slice(0, 200);
     let trade = String(d.trade ?? '').trim().slice(0, 80);
     let place = String(d.place ?? '').trim().slice(0, 80);
@@ -113,6 +117,26 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       if (place.replace(/[^\p{L}\p{N}]/gu, '').length < 2) return fail('Say where to look — a town or a city.', 200, { field: 'prospects.place' });
     } else if (line.length < 3) {
       return fail('Say what kind of business to look for, and where.');
+    }
+
+    if (source === 'register') {
+      if (line) return fail('Say the kind of business and the place, like "dentists in Leeds".');
+      const st = await registerStatus(env, accountId);
+      if (!st.available) return fail(st.error, 200, { code: st.code });
+      for (const b of [{ what: 'register-hour', max: 30, windowSeconds: 3600 }, { what: 'register-day', max: 120, windowSeconds: 86_400 }]) {
+        const v = await rateLimit(env, { ...b, who: accountId });
+        if (!v.allowed) return fail(`That is a lot of register searches — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
+      }
+      const key = (await installRegisterKey(env))!;
+      const r = await searchRegister(env, key.key, trade, place, String(d.pageToken ?? ''));
+      if (!r.ok) {
+        if (r.code === 'bad_key') await markRegisterKey(env, false, r.error);
+        /* No type for the trade is the customer's to fix, on the trade box. */
+        return fail(r.code === 'bad_key' ? 'The company register refused this app\'s key — the owner has been told on their Platform services screen.' : r.error,
+          200, r.code === 'no_category' ? { field: 'prospects.trade', code: r.code } : { code: r.code });
+      }
+      if (key.status !== 'ok' && !r.cached) await markRegisterKey(env, true);
+      return json({ success: true, source: 'register', prospects: r.prospects, cached: r.cached, nextPageToken: r.next, attribution: REGISTER_ATTRIBUTION });
     }
 
     if (source === 'free') {
@@ -245,6 +269,16 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
   }
 
   return fail(`"${act}" is not something this endpoint does.`);
+}
+
+async function registerStatus(env: Env, accountId: string): Promise<{ available: boolean; code: string; error: string }> {
+  if (!(await installRegisterKey(env))) {
+    return { available: false, code: 'no_key', error: 'Verified business directories are not switched on for this app yet — the owner connects the company register in Settings → Platform services.' };
+  }
+  if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended') {
+    return { available: false, code: 'trial_ended', error: 'Your 7-day free trial has ended, so register searches have stopped. Choose a plan under Plan & billing to carry on.' };
+  }
+  return { available: true, code: '', error: '' };
 }
 
 async function verifierStatus(env: Env, accountId: string) {

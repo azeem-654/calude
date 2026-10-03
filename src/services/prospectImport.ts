@@ -25,8 +25,9 @@ export interface Searched { source: ProspectSource; trade: string; place: string
 /** Where a row came from, in the words that go on its `source` stamp. */
 export function sourceLabel(answered: ProspectSource | ''): string {
   return answered === 'google' ? 'Google Maps'
-    : answered === 'free' ? 'Free directory (OpenStreetMap via Geoapify)'
-      : 'OpenStreetMap';
+    : answered === 'free' ? 'Business directory (OpenStreetMap via Geoapify)'
+      : answered === 'register' ? 'Company register (Companies House)'
+        : 'OpenStreetMap';
 }
 
 /**
@@ -36,6 +37,20 @@ export function sourceLabel(answered: ProspectSource | ''): string {
  */
 export function emailOf(p: Prospect, found: Record<string, Contactable>, checks: Record<string, Verdict> = {}): string {
   return bestAddress(p, found, checks);
+}
+
+/**
+ * The tag an address's check puts on the contact, so "verified emails only"
+ * is one click in Contacts and an audience rule anywhere. Nothing for an
+ * address that was never checked — no tag is not the same as a bad one.
+ */
+export const EMAIL_TAGS = new Set(['verified email', 'email domain ok', 'risky email', 'email bounces']);
+export function emailTag(v: Verdict | undefined): string {
+  if (!v) return '';
+  return v.status === 'valid' ? 'verified email'
+    : v.status === 'domain_ok' ? 'email domain ok'
+      : v.status === 'risky' ? 'risky email'
+        : v.status === 'invalid' ? 'email bounces' : '';
 }
 
 /**
@@ -60,7 +75,12 @@ export function prospectRows(
     const fields: Record<string, string> = {
       ...(answered === 'google' && p.placeId ? { googlePlaceId: p.placeId } : {}),
       ...(v ? { emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt } : {}),
+      ...(p.companyNumber ? { companyNumber: p.companyNumber } : {}),
     };
+    /* With no named person behind the address, the register's first serving
+       director is the person to write to — named by law, and current. */
+    const officer = !person && p.officers?.length ? p.officers[0] : null;
+    const who = person ? { name: person.name, role: person.position } : officer ? { name: officer.name, role: officer.role } : null;
     return {
       name: p.name,
       email,
@@ -68,7 +88,7 @@ export function prospectRows(
       status: 'prospect',
       /* Tagged with where and what, because a list of 40 businesses with no
          label is unusable a week later. */
-      tags: ['prospect search', p.category].filter(Boolean),
+      tags: ['prospect search', p.category, emailTag(v), p.companyNumber ? 'company register' : ''].filter(Boolean),
       /* The stamp says what made the row, so a list full of found businesses
          can still be told apart from people who asked to hear from you — which
          is the distinction the sending rules turn on. */
@@ -81,7 +101,7 @@ export function prospectRows(
       address: p.address,
       /* A named person Hunter saw published goes on as the person to write to;
          the row stays the business, so dedupe by name still finds it. */
-      ...(person ? { firstName: person.name.split(' ')[0], lastName: person.name.split(' ').slice(1).join(' ') || undefined, jobTitle: person.position || undefined } : {}),
+      ...(who ? { firstName: who.name.split(' ')[0], lastName: who.name.split(' ').slice(1).join(' ') || undefined, jobTitle: who.role || undefined } : {}),
       /* The place id is the part of a Google answer that may be kept, and the
          one that finds this business on Google again. Only Google results carry
          one; the free directory's ids are its own and are not stored. */
@@ -163,6 +183,9 @@ export function planImport(rows: Omit<Contact, 'id'>[], contacts: Contact[], che
       const v = mail ? checks[mail] : undefined;
       if (v) {
         fill.customFields = { ...(fill.customFields ?? hit.customFields ?? {}), emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt };
+        /* The new check's tag replaces the old one — an address cannot be both verified and bouncing. */
+        const kept = (fill.tags ?? hit.tags ?? []).filter(t => !EMAIL_TAGS.has(t));
+        fill.tags = [...kept, emailTag(v)].filter(Boolean);
       }
       /* The person the web named, when the record has nobody yet and the address is theirs. */
       if (!hit.firstName && row.firstName && mail === row.email.toLowerCase()) {

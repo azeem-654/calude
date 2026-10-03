@@ -184,6 +184,14 @@ await p.locator('[data-field="places.installKey"]').fill('AIzaTooShort');
 await p.locator('#platform-google-maps').getByRole('button', { name: 'Save key', exact: true }).click();
 await settle();
 ok('Settings → Platform services: a malformed Google Maps key is refused at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+/* The company register card. */
+{
+  const card = p.locator('#platform-companies-house');
+  await card.locator('[data-field="register.key"]').fill('not a key');
+  await card.getByRole('button', { name: 'Save key', exact: true }).click();
+  await settle();
+  ok('Settings → Platform services: a malformed Companies House key is refused at a box on screen', (await deadEnds()).length === 0 && /does not look like/.test(await card.innerText()), JSON.stringify(await deadEnds()));
+}
 /* The email finder & verifier card: every service it offers, a malformed key each. */
 for (const name of ['Hunter', 'ZeroBounce', 'MillionVerifier']) {
   const card = p.locator('#platform-email-verifier');
