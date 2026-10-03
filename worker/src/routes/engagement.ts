@@ -13,7 +13,8 @@ import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { cleanSlug, publicKey, recordEvent, rid } from '../lib/engagement';
 import { voiceStatus } from '../lib/voice';
 import { enrolOnEvent } from '../lib/automationEngine';
-import { cleanSdp, iceServers, offersScreen, sweepLive } from '../lib/liveHelp';
+import { cleanSdp, iceServers, markPresent, offers, RING_SECONDS, sweepLive } from '../lib/liveHelp';
+import { clearAvatar, saveAvatar } from '../lib/widgetAvatar';
 import { createEvent } from '../lib/googleCalendar';
 
 interface Req {
@@ -41,6 +42,8 @@ interface Req {
   record?: Record<string, unknown>;
   /* Live help — the answering browser's half of the handshake */
   sdp?: string;
+  /* A widget's photo, as a data URL made in the browser; '' removes it. */
+  image?: string;
 }
 
 const s = (v: unknown, max = 400) => String(v ?? '').trim().slice(0, max);
@@ -307,7 +310,8 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     widget: {
       table: 'crm_widgets',
       cols: ['name', 'agent_id', 'allowed_hosts', 'title', 'subtitle', 'welcome', 'launcher', 'accent',
-        'position', 'offline_text', 'consent_text', 'features', 'form_id', 'booking_slug', 'show_branding', 'in_app', 'status'],
+        'position', 'offline_text', 'consent_text', 'features', 'form_id', 'booking_slug', 'show_branding', 'in_app',
+        'agent_name', 'status'],
     },
     voice_agent: {
       table: 'crm_voice_agents',
@@ -328,10 +332,13 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     return json({ success: true, items: results ?? [] });
   }
 
-  if (act.startsWith('save_')) {
+  /* Only the record types above. `save_settings` shares the prefix and has its
+     own handler further down; answering it here as an unknown record type is
+     how the Settings tab's Save — the business name the widget shows as
+     "Azeem from …" — silently never saved. */
+  if (act.startsWith('save_') && saveable[act.slice(5)]) {
     const what = act.slice(5);
     const spec = saveable[what];
-    if (!spec) return fail('Unknown record type.', 400);
 
     const rec = d.record ?? {};
     const id = s(rec.id, 80) || rid(what.slice(0, 3));
@@ -413,7 +420,32 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     if (!spec) return fail('Unknown record type.', 400);
     await env.DB.prepare(`DELETE FROM ${spec.table} WHERE id = ? AND account_id = ?`)
       .bind(s(d.id, 80), accountId).run();
+    /* Its photo goes with it; left behind it would still answer at its address. */
+    if (what === 'widget') {
+      await env.DB.prepare('DELETE FROM crm_widget_avatars WHERE widget_id = ? AND account_id = ?')
+        .bind(s(d.id, 80), accountId).run();
+    }
     return json({ success: true });
+  }
+
+  /*
+   * The photo on a widget. Its own action rather than a field of save_widget:
+   * the picture is checked by its bytes and stored apart from the row
+   * (lib/widgetAvatar.ts), and a widget saved from a form that never showed
+   * the picture must not lose it.
+   */
+  if (act === 'widget_avatar') {
+    const id = s(d.id, 80);
+    const w = await env.DB.prepare('SELECT id FROM crm_widgets WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first();
+    if (!w) return fail('Save the widget first, then add a photo.', 404, { field: 'agentAvatar' });
+    if (!d.image) {
+      await clearAvatar(env, accountId, id);
+      return json({ success: true, key: '' });
+    }
+    const r = await saveAvatar(env, accountId, id, d.image);
+    if (!r.ok) return fail(r.message, 422, { field: 'agentAvatar' });
+    return json({ success: true, key: r.key });
   }
 
   /* ── Submissions ──────────────────────────────────────────────────────── */
@@ -659,7 +691,7 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       `SELECT id, name, email, topic, page_url AS pageUrl, verified_email AS verifiedEmail,
               verified_account AS verifiedAccount, status, ended_reason AS endedReason,
               sharer_state AS sharerState, agent_email AS agentEmail, agent_name AS agentName,
-              meet_url AS meetUrl, (offer != '') AS ready,
+              meet_url AS meetUrl, (offer != '') AS ready, kind,
               created_at AS createdAt, joined_at AS joinedAt, ended_at AS endedAt
        FROM crm_live_sessions WHERE account_id = ? ORDER BY created_at DESC LIMIT 60`,
     ).bind(accountId).all();
@@ -673,30 +705,61 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       success: true, sessions: results ?? [],
       /* Said rather than implied by an empty list: "nobody has asked" and
          "nobody can ask" are different, and only one is fixed on this screen. */
-      enabled: (widgets ?? []).some(w => offersScreen(w.features)),
+      enabled: (widgets ?? []).some(w => offers(w.features, 'screen') || offers(w.features, 'voice')),
+      screen: (widgets ?? []).some(w => offers(w.features, 'screen')),
+      voice: (widgets ?? []).some(w => offers(w.features, 'voice')),
       relay: !!(env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN),
       meetReady: !!meet,
     });
   }
 
-  /* The app-wide alert asks this every half minute from every open tab, so it
-     is a read and nothing else — no sweep. A request whose page stopped asking
-     is left out by its heartbeat rather than by closing it here. */
+  /* The app-wide alert asks this from every open, visible tab — every few
+     seconds when the workspace takes calls, because a call rings for barely a
+     minute — so it is reads and nothing else: no sweep, and the one write
+     (presence, for the widget's "online" dot) happens at most once a minute.
+     A request whose page stopped asking is left out by its heartbeat rather
+     than by closing it here, and a call that has rung out by its age. */
   if (act === 'live_waiting') {
     const cut = new Date(Date.now() - 3 * 60_000).toISOString();
-    const row = await env.DB.prepare(
-      "SELECT count(*) AS n FROM crm_live_sessions WHERE account_id = ? AND status = 'waiting' AND seen_at >= ?",
-    ).bind(accountId, cut).first<{ n: number }>();
     const { results: widgets } = await env.DB.prepare(
       "SELECT features FROM crm_widgets WHERE account_id = ? AND status = 'live'",
     ).bind(accountId).all<{ features: string }>();
-    return json({ success: true, waiting: Number(row?.n ?? 0), enabled: (widgets ?? []).some(w => offersScreen(w.features)) });
+    const voice = (widgets ?? []).some(w => offers(w.features, 'voice'));
+    const screen = (widgets ?? []).some(w => offers(w.features, 'screen'));
+    if (!voice && !screen) return json({ success: true, waiting: 0, calls: [], enabled: false, voice, screen });
+    await markPresent(env, accountId);
+    const row = await env.DB.prepare(
+      "SELECT count(*) AS n FROM crm_live_sessions WHERE account_id = ? AND status = 'waiting' AND kind != 'voice' AND seen_at >= ?",
+    ).bind(accountId, cut).first<{ n: number }>();
+    const ringCut = new Date(Date.now() - RING_SECONDS * 1000).toISOString();
+    const { results: calls } = voice ? await env.DB.prepare(
+      `SELECT id, name, email, verified_email AS verifiedEmail, topic, (offer != '') AS ready, created_at AS createdAt
+       FROM crm_live_sessions
+       WHERE account_id = ? AND status = 'waiting' AND kind = 'voice' AND seen_at >= ? AND created_at >= ?
+       ORDER BY created_at ASC LIMIT 5`,
+    ).bind(accountId, cut, ringCut).all() : { results: [] };
+    return json({ success: true, waiting: Number(row?.n ?? 0), calls: calls ?? [], enabled: true, voice, screen });
+  }
+
+  /* Not taking this call. Said to the caller at once (their page asks every
+     two seconds while it rings) with a message and a ticket offered instead,
+     rather than leaving them listening to a ring nobody will answer. */
+  if (act === 'live_decline') {
+    const res = await env.DB.prepare(
+      `UPDATE crm_live_sessions SET status = 'ended', ended_reason = 'declined', ended_at = ?, updated_at = ?
+       WHERE id = ? AND account_id = ? AND status = 'waiting' AND kind = 'voice'`,
+    ).bind(now, now, s(d.id, 80), accountId).run();
+    if (!res.meta.changes) return fail('That call has already been answered or has ended.', 409, { code: 'gone' });
+    await recordEvent(env, accountId, {
+      kind: 'live.declined', refId: s(d.id, 80), summary: `${user?.name || who} declined a call from the website`,
+    });
+    return json({ success: true });
   }
 
   if (act === 'live_session') {
     const row = await env.DB.prepare(
       `SELECT id, name, email, topic, status, offer, answer, agent_email AS agentEmail,
-              sharer_state AS sharerState, meet_url AS meetUrl, ended_reason AS endedReason
+              sharer_state AS sharerState, meet_url AS meetUrl, ended_reason AS endedReason, kind
        FROM crm_live_sessions WHERE id = ? AND account_id = ?`,
     ).bind(s(d.id, 80), accountId).first<Record<string, string>>();
     if (!row) return fail('That session could not be found.', 404);
@@ -712,17 +775,24 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     if (!sdp) return fail('That connection description was not usable.', 422);
     /* First to join wins, in one statement. Two people pressing Join at once
        must not both believe they are connected while one of them is looking at
-       nothing. */
+       nothing. A call that has rung out is not answerable even if no poll
+       has closed it yet: its caller has been, or is about to be, told that
+       nobody was free. */
+    const ringCut = new Date(Date.now() - RING_SECONDS * 1000).toISOString();
     const res = await env.DB.prepare(
       `UPDATE crm_live_sessions
        SET answer = ?, status = 'live', agent_email = ?, agent_name = ?, joined_at = ?, updated_at = ?
-       WHERE id = ? AND account_id = ? AND status = 'waiting' AND answer = '' AND offer != ''`,
-    ).bind(sdp, who, user?.name ?? '', now, now, s(d.id, 80), accountId).run();
+       WHERE id = ? AND account_id = ? AND status = 'waiting' AND answer = '' AND offer != ''
+         AND (kind != 'voice' OR created_at >= ?)`,
+    ).bind(sdp, who, user?.name ?? '', now, now, s(d.id, 80), accountId, ringCut).run();
     if (!res.meta.changes) {
       return fail('Somebody else has joined this one already, or they have left.', 409, { code: 'taken' });
     }
+    const k = await env.DB.prepare('SELECT kind FROM crm_live_sessions WHERE id = ? AND account_id = ?')
+      .bind(s(d.id, 80), accountId).first<{ kind: string }>();
     await recordEvent(env, accountId, {
-      kind: 'live.joined', refId: s(d.id, 80), summary: `${user?.name || who} joined a screen share`,
+      kind: 'live.joined', refId: s(d.id, 80),
+      summary: `${user?.name || who} ${k?.kind === 'voice' ? 'answered a call' : 'joined a screen share'}`,
     });
     return json({ success: true });
   }

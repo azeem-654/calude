@@ -77,6 +77,7 @@ import { runAutomations } from './lib/automationEngine';
 import { runProjectAgents } from './lib/projectAgents';
 import { runHousekeeping } from './lib/housekeeping';
 import { handleLogo } from './lib/brandLogo';
+import { handleWidgetAvatar } from './lib/widgetAvatar';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -204,6 +205,9 @@ const ROUTES: Record<string, Handler> = {
      Public by necessity — a mail client has no session — so every address is
      signed. See lib/brandLogo.ts. */
   '/api/logo.php': handleLogo,
+  /* The photo on a chat widget, drawn on other people's websites. Public;
+     the address is a random key that names nothing else. lib/widgetAvatar.ts. */
+  '/api/widget-avatar.php': handleWidgetAvatar,
 
   '/api/diagnostics.php': handleDiagnostics,
   '/api/install.php': async () => handleInstall(),

@@ -1,6 +1,11 @@
 /**
  * Live help — the pieces both sides of a screen-sharing session share.
  *
+ * A voice call ("Call us now", migration 0061) is the same session with a
+ * microphone instead of a screen: `kind` says which, and everything below
+ * holds for both — except how long a request waits, which differs because a
+ * person listening to a ring will not wait twenty minutes.
+ *
  * The public route (`engage.ts`) serves the person sharing their screen; the
  * signed-in route (`engagement.ts`) serves the person watching. Both need the
  * same answer to "how do two browsers find each other", the same rule for
@@ -85,9 +90,21 @@ export function cleanSdp(v: unknown): string {
 export const WAIT_MINUTES = 20;
 const GONE_MINUTES = 3;
 
+/**
+ * How long a voice call rings before the visitor is told nobody is free.
+ *
+ * Not the twenty minutes a screen-share request waits. Somebody sharing a
+ * screen has said what is wrong and can keep working while they wait; somebody
+ * who pressed "Call us now" is sitting listening to a ring, and a minute and a
+ * quarter of that is already longer than most people hold. After it they are
+ * offered a message or a ticket instead, which is the honest answer.
+ */
+export const RING_SECONDS = 75;
+
 /** Close what has gone stale for one workspace. Cheap: one indexed update. */
 export async function sweepLive(env: Env, accountId: string): Promise<void> {
   const waitCut = new Date(Date.now() - WAIT_MINUTES * 60_000).toISOString();
+  const ringCut = new Date(Date.now() - RING_SECONDS * 1000).toISOString();
   const goneCut = new Date(Date.now() - GONE_MINUTES * 60_000).toISOString();
   const now = nowIso();
   await env.DB.prepare(
@@ -95,19 +112,56 @@ export async function sweepLive(env: Env, accountId: string): Promise<void> {
      SET status = 'ended', ended_at = ?, updated_at = ?,
          ended_reason = CASE WHEN seen_at < ? THEN 'left' ELSE 'expired' END
      WHERE account_id = ? AND status IN ('waiting', 'live')
-       AND (seen_at < ? OR (status = 'waiting' AND created_at < ?))`,
-  ).bind(now, now, goneCut, accountId, goneCut, waitCut).run().catch(() => undefined);
+       AND (seen_at < ? OR (status = 'waiting' AND created_at < CASE WHEN kind = 'voice' THEN ? ELSE ? END))`,
+  ).bind(now, now, goneCut, accountId, goneCut, ringCut, waitCut).run().catch(() => undefined);
 }
 
 /** How often the sharer's page must ask for `seen_at` to be worth rewriting. */
 export const SEEN_EVERY_MS = 45_000;
 
-/** Does this widget offer screen sharing? */
-export function offersScreen(features: unknown): boolean {
+/** Does this widget offer one of its features ("screen", "voice", …)? */
+export function offers(features: unknown, feature: string): boolean {
   try {
     const list = JSON.parse(String(features ?? '[]')) as unknown;
-    return Array.isArray(list) && list.includes('screen');
+    return Array.isArray(list) && list.includes(feature);
   } catch {
     return false;
   }
+}
+
+/** Does this widget offer screen sharing? */
+export const offersScreen = (features: unknown): boolean => offers(features, 'screen');
+
+/** The two kinds of live session; each is switched on by the widget feature of the same name. */
+export type LiveKind = 'screen' | 'voice';
+export const liveKind = (v: unknown): LiveKind => (v === 'voice' ? 'voice' : 'screen');
+
+/* ── Is anybody there ─────────────────────────────────────────────────────── */
+
+/** Somebody's page asked within this long: a person could pick up. */
+const PRESENT_SECONDS = 120;
+
+/**
+ * A signed-in page of this workspace is open and visible right now.
+ *
+ * Written by the business side's incoming-call check, which only asks while
+ * the page is visible, and at most once a minute — a read every few seconds
+ * from every open tab must not become a write every few seconds.
+ */
+export async function markPresent(env: Env, accountId: string): Promise<void> {
+  const cut = new Date(Date.now() - 60_000).toISOString();
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT INTO crm_live_presence (account_id, seen_at) VALUES (?, ?)
+     ON CONFLICT(account_id) DO UPDATE SET seen_at = excluded.seen_at
+     WHERE crm_live_presence.seen_at < ?`,
+  ).bind(accountId, now, cut).run().catch(() => undefined);
+}
+
+/** Whether a person at this workspace could pick up now. */
+export async function isPresent(env: Env, accountId: string): Promise<boolean> {
+  const cut = new Date(Date.now() - PRESENT_SECONDS * 1000).toISOString();
+  const row = await env.DB.prepare('SELECT 1 AS ok FROM crm_live_presence WHERE account_id = ? AND seen_at >= ?')
+    .bind(accountId, cut).first<{ ok: number }>().catch(() => null);
+  return !!row;
 }

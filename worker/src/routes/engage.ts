@@ -32,7 +32,10 @@ import {
 import { think, type AgentConfig, type Turn } from '../lib/agentBrain';
 import { runTool } from '../lib/agentTools';
 import { enrolOnEvent } from '../lib/automationEngine';
-import { cleanSdp, iceServers, offersScreen, SEEN_EVERY_MS, WAIT_MINUTES } from '../lib/liveHelp';
+import {
+  cleanSdp, iceServers, isPresent, liveKind, offers, RING_SECONDS, SEEN_EVERY_MS, WAIT_MINUTES,
+} from '../lib/liveHelp';
+import { avatarUrl } from '../lib/widgetAvatar';
 
 interface Req {
   action?: string;
@@ -65,6 +68,8 @@ interface Req {
   sdp?: string;
   state?: string;
   reason?: string;
+  /* 'screen' (the default) or 'voice' — "Call us now", no screen. */
+  kind?: string;
 }
 
 const MAX_BODY = 4000;
@@ -76,7 +81,8 @@ async function widgetFor(env: Env, key: string) {
     `SELECT id, account_id AS accountId, agent_id AS agentId, allowed_hosts AS allowedHosts,
             title, subtitle, welcome, launcher, accent, position, offline_text AS offlineText,
             consent_text AS consentText, features, form_id AS formId, booking_slug AS bookingSlug,
-            show_branding AS showBranding, status
+            show_branding AS showBranding, status,
+            agent_name AS agentName, agent_avatar_key AS agentAvatarKey
      FROM crm_widgets WHERE public_key = ?`,
   ).bind(key).first<Record<string, unknown>>();
 }
@@ -166,6 +172,12 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
           .bind(String(w.agentId)).first<Record<string, unknown>>()
       : null;
 
+    /* The business's own name, for "Azeem from Acme" — what they typed in
+       Customer Engagement → Settings, or nothing; never guessed. */
+    const biz = await env.DB.prepare('SELECT business_name AS name FROM crm_engage_settings WHERE account_id = ?')
+      .bind(String(w.accountId)).first<{ name: string }>().catch(() => null);
+    const live = offers(w.features, 'voice') || offers(w.features, 'screen');
+
     return withCors(json({
       success: true,
       widget: {
@@ -174,6 +186,16 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
         features: w.features, showBranding: w.showBranding,
         bookingSlug: w.bookingSlug, formId: w.formId,
         offlineText: w.offlineText,
+        /* Who the visitor is talking to. The photo is an absolute address on
+           this Worker because the page drawing it is somebody else's. */
+        agentName: String(w.agentName ?? ''),
+        agentAvatar: avatarUrl(new URL(req.url).origin, String(w.agentAvatarKey ?? '')),
+        businessName: String(biz?.name ?? ''),
+        /* A person at the business has a page open right now (lib/liveHelp.ts
+           markPresent). Only known for a widget offering a call or a screen
+           share — that check is what writes it — so for any other widget it
+           is null, "not known", and the widget claims nothing either way. */
+        online: live ? await isPresent(env, String(w.accountId)) : null,
       },
       /* Named rather than assumed: a widget with no live agent can still take a
          ticket, and saying so beats a chat box that answers nothing. */
@@ -570,8 +592,11 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     if (!hostAllowed(String(w.allowedHosts ?? ''), origin)) {
       return withCors(fail('This is not enabled for this website.', 403));
     }
-    if (!offersScreen(w.features)) {
-      return withCors(fail('Screen sharing is not switched on for this chat.', 403, { code: 'off' }));
+    const kind = liveKind(d.kind);
+    if (!offers(w.features, kind)) {
+      return withCors(fail(kind === 'voice'
+        ? 'Calls are not switched on for this chat.'
+        : 'Screen sharing is not switched on for this chat.', 403, { code: 'off' }));
     }
     /* On top of the shared budget: each request is a row and an alert to a
        real person, so a handful an hour from one address is plenty. */
@@ -602,24 +627,27 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     await env.DB.prepare(
       `INSERT INTO crm_live_sessions
        (id, account_id, widget_id, conversation_id, person_id, name, email, topic, page_url,
-        verified_email, verified_account, share_key, seen_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        verified_email, verified_account, share_key, seen_at, created_at, updated_at, kind)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).bind(
       id, accountId, String(w.id), String(d.conversationId ?? '').slice(0, 80), personId,
       name, email, topic, String(d.context?.page ?? '').slice(0, 400),
       me?.email ?? '', await provenWorkspace(env, me, d.context?.workspace),
-      key, now, now, now,
+      key, now, now, now, kind,
     ).run();
 
     await recordEvent(env, accountId, {
-      kind: 'live.requested', personId, refId: id,
-      summary: `${name || email || 'A visitor'} wants to share their screen${topic ? ` — ${topic.slice(0, 80)}` : ''}`,
+      kind: kind === 'voice' ? 'live.call' : 'live.requested', personId, refId: id,
+      summary: `${name || email || 'A visitor'} ${kind === 'voice' ? 'is calling from the website' : 'wants to share their screen'}${topic ? ` — ${topic.slice(0, 80)}` : ''}`,
     });
 
     const ice = await iceServers(env);
     return withCors(json({
       success: true, sessionId: id, shareKey: key,
       iceServers: ice.servers, relay: ice.relay,
+      /* How long the caller's page should ring before saying nobody is free.
+         The server ends it at the same moment, so the two cannot disagree. */
+      ringSeconds: kind === 'voice' ? RING_SECONDS : 0,
     }));
   }
 
@@ -627,7 +655,8 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const row = await env.DB.prepare(
       `SELECT id, account_id AS accountId, share_key AS shareKey, status, ended_reason AS endedReason,
               answer, meet_url AS meetUrl, agent_name AS agentName, sharer_state AS sharerState,
-              seen_at AS seenAt, created_at AS createdAt
+              seen_at AS seenAt, created_at AS createdAt, kind,
+              name, email, person_id AS personId
        FROM crm_live_sessions WHERE id = ?`,
     ).bind(String(d.sessionId ?? '').slice(0, 80)).first<Record<string, string>>();
     /* One answer for "no such session" and "wrong key", as for conversations. */
@@ -660,12 +689,22 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
        than left for a sweep that only runs when the business looks. */
     let status = row.status;
     let endedReason = row.endedReason;
-    if (status === 'waiting' && Date.parse(row.createdAt) < Date.now() - WAIT_MINUTES * 60_000) {
-      await env.DB.prepare(
+    const waitMs = row.kind === 'voice' ? RING_SECONDS * 1000 : WAIT_MINUTES * 60_000;
+    if (status === 'waiting' && Date.parse(row.createdAt) < Date.now() - waitMs) {
+      const res = await env.DB.prepare(
         "UPDATE crm_live_sessions SET status = 'ended', ended_reason = 'expired', ended_at = ?, updated_at = ? WHERE id = ? AND status = 'waiting'",
       ).bind(now, now, row.id).run();
       status = 'ended';
       endedReason = 'expired';
+      /* A missed call is worth telling the business about after the fact; a
+         screen-share request that waited twenty minutes already sat on their
+         Live help screen the whole time. Once, by the row that changed. */
+      if (row.kind === 'voice' && res.meta.changes) {
+        await recordEvent(env, row.accountId, {
+          kind: 'live.missed', personId: row.personId, refId: row.id,
+          summary: `Missed call from ${row.name || row.email || 'a website visitor'}${row.email && row.name ? ` (${row.email})` : ''}`,
+        });
+      }
     }
 
     /* The heartbeat is written only now and then, and when the connection

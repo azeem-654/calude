@@ -251,6 +251,31 @@ console.log("\nLive help — B against A's screen-sharing sessions");
   const house = await api('engage.php', { action: 'house' });
   check("A customer's widget cannot become the app's own help button", house.data.widgetKey !== key, 'house key is a tenant widget');
   await api('engagement.php', { action: 'live_end', token: A.token, accountId: A.acct, id: sid });
+
+  /* "Call us now": the same table, and Decline is a new route taking an id. */
+  const cw = await api('engagement.php', { action: 'save_widget', token: A.token, accountId: A.acct, record: { name: 'A calls', features: ['voice'], status: 'live' } });
+  const cs = await api('engage.php', { action: 'live_start', kind: 'voice', widgetKey: cw.data.item?.public_key, name: 'Caller' }, { ip: '10.7.0.3' });
+  const decline = await api('engagement.php', { action: 'live_decline', token: B.token, accountId: B.acct, id: cs.data.sessionId });
+  const ringing = d1rows(`SELECT status FROM crm_live_sessions WHERE id = '${cs.data.sessionId}'`)[0];
+  check("B cannot decline A's incoming call by id", !decline.ok && ringing?.status === 'waiting', JSON.stringify([decline.data, ringing]));
+  const calls = await api('engagement.php', { action: 'live_waiting', token: B.token, accountId: B.acct });
+  check("B's incoming-call check never lists A's calls", !JSON.stringify(calls.data).includes(cs.data.sessionId), JSON.stringify(calls.data).slice(0, 160));
+  await api('engagement.php', { action: 'live_decline', token: A.token, accountId: A.acct, id: cs.data.sessionId });
+
+  /* The widget's photo: set by id, served by a random key. */
+  const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+  const setB = await api('engagement.php', { action: 'widget_avatar', token: B.token, accountId: B.acct, id: cw.data.item?.id, image: tiny });
+  const keyRow = d1rows(`SELECT agent_avatar_key AS k FROM crm_widgets WHERE id = '${cw.data.item?.id}'`)[0];
+  check("B cannot set the photo on A's widget by id", !setB.ok && setB.status === 404 && !keyRow?.k, JSON.stringify([setB.data, keyRow]));
+  const setA = await api('engagement.php', { action: 'widget_avatar', token: A.token, accountId: A.acct, id: cw.data.item?.id, image: tiny });
+  const clearB = await api('engagement.php', { action: 'widget_avatar', token: B.token, accountId: B.acct, id: cw.data.item?.id, image: '' });
+  const stillThere = await fetch(`${BASE}/api/widget-avatar.php?k=${setA.data.key}`);
+  check("B cannot remove the photo on A's widget by id", setA.ok && !clearB.ok && stillThere.status === 200, JSON.stringify([setA.data, clearB.data, stillThere.status]));
+  const html = await api('engagement.php', { action: 'widget_avatar', token: A.token, accountId: A.acct, id: cw.data.item?.id, image: `data:image/png;base64,${Buffer.from('<html><script>alert(1)</script>').toString('base64')}` });
+  check('A page posing as a PNG is never stored as a photo', !html.ok && html.status === 422, JSON.stringify(html.data));
+  await api('engagement.php', { action: 'delete_widget', token: A.token, accountId: A.acct, id: cw.data.item?.id });
+  const afterDelete = await fetch(`${BASE}/api/widget-avatar.php?k=${setA.data.key}`);
+  check("A deleted widget's photo stops being served", afterDelete.status === 404, String(afterDelete.status));
 }
 
 console.log('\nSessions and passwords');

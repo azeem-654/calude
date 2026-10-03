@@ -30,6 +30,10 @@ const NOTIFY: Record<string, { subject: (s: string) => string; setting: string }
      chat that needs a person, only more so. The email is the backstop — the
      app itself shows a waiting request within seconds. */
   'live.requested': { subject: () => 'Somebody is waiting to share their screen', setting: 'notify_new_conversation' },
+  /* A call nobody picked up, not every call: by the time this tick runs a
+     call has been answered or has stopped ringing, and an email for one that
+     was answered is noise. The caller was offered a message or a ticket. */
+  'live.missed': { subject: () => 'Missed call from your website', setting: 'notify_new_conversation' },
   'form.submitted': { subject: s => `Form: ${s}`, setting: 'notify_new_submission' },
 };
 
