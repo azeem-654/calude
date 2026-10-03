@@ -429,6 +429,9 @@ export interface Campaign {
   status: 'draft' | 'active' | 'paused' | 'completed' | 'scheduled';
   goal?: string;
   audience?: string;
+  /** When `audience` is 'list': which contact list, and its name at the time it was chosen. */
+  audienceListId?: string;
+  audienceListName?: string;
   fromName?: string;
   fromEmail?: string;
   replyTo?: string;

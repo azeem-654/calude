@@ -44,6 +44,39 @@ export interface ContactList {
   color: string;
   createdAt: string;
   createdBy: string;
+  /**
+   * Who is on it, as far as sending is concerned.
+   *
+   * `cold` — strangers: businesses found in a directory, who never asked to
+   * hear from anybody. `owned` — people who did: customers, subscribers,
+   * enquiries. Absent on every list made before this existed, and on lists
+   * made by hand; `listKindOf` then decides from who is in it. Set to `cold`
+   * by Prospecting, which is the one place that knows for certain.
+   *
+   * It matters because the rules differ — a cold list goes a few at a time,
+   * each batch waiting for a person (worker/src/lib/autopilotPlan.ts), and
+   * the sending plan sizes a pool of lookalike domains for it rather than one
+   * address on the company's own (services/sendingPlan.ts, `listKind`).
+   */
+  kind?: ListKind;
+  /** What made it, when that was not a person in Contacts. */
+  origin?: 'prospecting';
+}
+
+export type ListKind = 'cold' | 'owned';
+
+/**
+ * Whether a list is strangers or people who asked.
+ *
+ * A list says so when it knows. Otherwise one prospect in it makes it cold:
+ * a prospect is somebody who has not asked to hear from you, and treating a
+ * list that holds even a few of them as opted-in is how the few get mailed
+ * like customers. Mirrored on the server in autopilotTick.ts, which decides
+ * for itself rather than trusting a brief.
+ */
+export function listKindOf(list: Pick<ContactList, 'kind'>, members: Pick<Contact, 'status'>[]): ListKind {
+  if (list.kind) return list.kind;
+  return members.some(c => c.status === 'prospect') ? 'cold' : 'owned';
 }
 
 /* ── Fields a rule can address ── */
@@ -226,7 +259,7 @@ const COLORS = ['#6366f1', '#f59e0b', '#22c55e', '#ec4899', '#0ea5e9', '#8b5cf6'
 
 export function createList(input: {
   name: string; type: 'smart' | 'static'; rules?: ListRule[]; match?: 'all' | 'any';
-  memberIds?: string[]; createdBy: string;
+  memberIds?: string[]; createdBy: string; kind?: ListKind; origin?: ContactList['origin'];
 }): ContactList {
   const lists = loadLists();
   const list: ContactList = {
@@ -239,6 +272,8 @@ export function createList(input: {
     color: COLORS[lists.length % COLORS.length],
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy,
+    ...(input.kind ? { kind: input.kind } : {}),
+    ...(input.origin ? { origin: input.origin } : {}),
   };
   saveLists([...lists, list]);
   return list;

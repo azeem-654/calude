@@ -23,6 +23,7 @@ import { useApp } from '../../context/AppContext';
 import { writeCampaign, rewriteEmail } from '../../services/aiWrite';
 import AiCampaignSetup, { type AiSetup } from './AiCampaignSetup';
 import { WizardBackdrop, WizardFlow, WizardSplit, WizardTitle } from '../shared/WizardChrome';
+import { listKindOf, listMembers, loadLists, type ContactList } from '../../services/contactLists';
 
 /* ─── Sender profile store ─── */
 export interface SenderProfileRecord {
@@ -47,7 +48,10 @@ type CampaignGoal = 'announce' | 'promote' | 'nurture' | 'welcome' | 'reengage' 
    exists because the only other options were four fixed segments, so somebody
    with twelve addresses on a bit of paper had no way to send to them without
    first importing them as contacts they did not want to keep. */
-type AudienceSegment = 'all' | 'leads' | 'customers' | 'prospects' | 'manual';
+/* 'list' is one of the workspace's contact lists (services/contactLists.ts) —
+   the same lists Contacts shows as chips and Prospecting fills. The four
+   segments are statuses; a list is the group somebody actually chose. */
+type AudienceSegment = 'all' | 'leads' | 'customers' | 'prospects' | 'manual' | 'list';
 type ToneType = 'professional' | 'friendly' | 'urgent' | 'educational';
 
 interface WizardStep extends CampaignStep {}
@@ -74,6 +78,8 @@ interface WizardState {
   audience: AudienceSegment;
   /** Addresses typed or pasted straight into the wizard. */
   manualList: string;
+  /** The contact list chosen when `audience` is 'list'. */
+  listId: string;
   subject: string;
   previewText: string;
   emailBody: string;
@@ -1407,7 +1413,10 @@ export function manualContacts(raw: string): Contact[] {
 }
 
 /* ─── Step 4: Audience ─── */
-function StepAudience({ state, onChange, counts }: { state: WizardState; onChange: (u: Partial<WizardState>) => void; counts: Record<AudienceSegment, number> }) {
+function StepAudience({ state, onChange, counts, lists }: {
+  state: WizardState; onChange: (u: Partial<WizardState>) => void; counts: Record<AudienceSegment, number>;
+  lists: { list: ContactList; count: number; cold: boolean }[];
+}) {
   const audiences = [
     { id: 'all' as const,       label: 'All contacts', desc: 'Everyone in your CRM', count: counts.all },
     { id: 'leads' as const,     label: 'Leads',        desc: 'Status = lead',        count: counts.leads },
@@ -1416,6 +1425,7 @@ function StepAudience({ state, onChange, counts }: { state: WizardState; onChang
   ];
   const parsed = parseAddressList(state.manualList);
   const manual = state.audience === 'manual';
+  const chosenList = state.audience === 'list' ? lists.find(l => l.list.id === state.listId) : undefined;
 
   return (
     <div>
@@ -1435,6 +1445,54 @@ function StepAudience({ state, onChange, counts }: { state: WizardState; onChang
             </div>
           </button>
         ))}
+      </div>
+
+      {/*
+        A contact list.
+
+        The four segments are statuses, which is not how anybody thinks about a
+        send: "the dentists I found in Leeds" is a list, made in Contacts or in
+        Prospecting, and it is chosen here by name.
+      */}
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }}>Your contact lists</p>
+        {!lists.length ? (
+          <p style={{ fontSize: 12.5, color: '#94a3b8', margin: 0, lineHeight: 1.55 }}>
+            No lists yet. Make one in Contacts, or fill one from a search in Prospecting.
+          </p>
+        ) : (
+          <div role="radiogroup" aria-label="Contact lists" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: 8 }}>
+            {lists.map(({ list, count, cold }) => {
+              const on = state.audience === 'list' && state.listId === list.id;
+              return (
+                <button key={list.id} role="radio" aria-checked={on} data-list={list.id}
+                  onClick={() => onChange({ audience: 'list', listId: list.id })}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: `2px solid ${on ? '#17191c' : '#e2e8f0'}`, borderRadius: 10, backgroundColor: on ? '#f0f1f3' : 'white', cursor: 'pointer', textAlign: 'left', minWidth: 0 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: on ? '#eceef1' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <List size={15} color={on ? '#17191c' : '#94a3b8'} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflowWrap: 'anywhere' }}>{list.name}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                      {count.toLocaleString()} contacts · {list.type === 'smart' ? 'smart list' : 'hand-picked'}{cold ? ' · strangers' : ''}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {chosenList?.cold && (
+          /* Strangers, said where the decision is made rather than after the
+             send. The wording is the rule the customer agreed to when they
+             added them (Prospecting's import), not a new one. */
+          <div role="note" style={{ marginTop: 10, padding: '11px 13px', backgroundColor: '#fffbeb', borderRadius: 10, border: '1px solid #fde68a', fontSize: 12.5, color: '#92400e', lineHeight: 1.6 }}>
+            <strong>Nobody on “{chosenList.list.name}” asked to hear from you.</strong> They are businesses whose details
+            were published — so send only what is relevant to what they do, keep the first send small, and honour
+            anyone who asks you to stop (clause 3 of the acceptable use policy). Sending to many strangers from your
+            main address is the quickest way to land it in spam.
+          </div>
+        )}
       </div>
 
       {/*
@@ -1493,7 +1551,7 @@ function StepAudience({ state, onChange, counts }: { state: WizardState; onChang
       {!manual && counts[state.audience] === 0 && (
         <div style={{ padding: '14px 16px', backgroundColor: '#fef9c3', borderRadius: 10, border: '1px solid #fde68a', marginTop: 14 }}>
           <p style={{ margin: 0, fontSize: 13, color: '#92400e', fontWeight: 500, lineHeight: 1.55 }}>
-            Nobody is in this segment yet. Add them in <strong>Contacts</strong>, or type the addresses
+            {state.audience === 'list' ? 'Nobody is on this list yet.' : 'Nobody is in this segment yet.'} Add them in <strong>Contacts</strong>, or type the addresses
             in above for a one-off send.
           </p>
         </div>
@@ -1523,10 +1581,13 @@ function campaignGate(email: string): string {
 /* ─── Step 5: Review & Launch ─── */
 interface SendLog { email: string; name: string; status: 'pending' | 'sent' | 'failed'; error?: string; }
 
-function StepReview({ state, counts, contacts, onLaunch }: {
+function StepReview({ state, counts, contacts, listAudience, listName, onLaunch }: {
   state: WizardState;
   counts: Record<AudienceSegment, number>;
   contacts: Contact[];
+  /** Who is on the chosen contact list right now, when the audience is a list. */
+  listAudience: Contact[];
+  listName: string;
   onLaunch: (sendNow: boolean, scheduledAt: string, sentCount: number, audience: Contact[]) => void;
 }) {
   const navigate = useNavigate();
@@ -1569,6 +1630,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
        filtered. These never become contacts — they exist for the length of
        this send. */
     if (state.audience === 'manual') return manualContacts(state.manualList);
+    if (state.audience === 'list') return listAudience;
     if (state.audience === 'all') return contacts;
     const statusMap: Record<string, string> = { leads: 'lead', customers: 'customer', prospects: 'prospect' };
     const status = statusMap[state.audience];
@@ -1737,7 +1799,7 @@ function StepReview({ state, counts, contacts, onLaunch }: {
     { label: 'Type', value: typeLabel },
     { label: 'Goal', value: goalLabel },
     { label: 'Steps', value: `${state.steps.length} ${isSMS ? 'SMS' : 'email'}${state.steps.length !== 1 ? 's' : ''}` },
-    { label: 'Audience', value: `${counts[state.audience].toLocaleString()} contacts` },
+    { label: 'Audience', value: `${counts[state.audience].toLocaleString()} contacts${state.audience === 'list' && listName ? ` on “${listName}”` : ''}` },
     ...(state.fromEmail ? [{ label: 'From', value: `${state.fromName} <${state.fromEmail}>` }] : []),
     ...(state.sendDays.length > 0 ? [{ label: 'Send days', value: state.sendDays.map(d => dayLabels[d]).join(', ') }] : []),
   ];
@@ -1899,14 +1961,19 @@ function StepReview({ state, counts, contacts, onLaunch }: {
 }
 
 /* ─── Main Wizard ─── */
-export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign }: {
+export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign, initialListId }: {
   contacts: Contact[];
   onClose: () => void;
   onAdd: (c: Omit<Campaign, 'id'>) => Campaign;
   editCampaign?: Campaign;
+  /** Opened from a list (Prospecting's "Send a campaign to this list"): it starts as the audience. */
+  initialListId?: string;
 }) {
   useEscapeKey(true, onClose);
-  const { addSequence, updateCampaign } = useApp();
+  const { addSequence, updateCampaign, pipelines, appointments } = useApp();
+  /* Read once: a list does not change while this wizard is open, and smart
+     lists are evaluated against the same pipelines and diary Contacts uses. */
+  const [allLists] = useState<ContactList[]>(() => loadLists());
   const [step, setStep] = useState(1);
   /**
    * How this campaign is being written.
@@ -1947,6 +2014,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       sendDays: c.sendDays ?? ['mon', 'tue', 'wed', 'thu', 'fri'],
       sendHoursFrom: c.sendHoursFrom ?? '09:00', sendHoursTo: c.sendHoursTo ?? '17:00',
       audience: (c.audience as AudienceSegment) ?? 'all',
+      listId: c.audienceListId ?? '',
       subject: c.subject ?? '', previewText: c.previewText ?? '',
       emailBody: c.emailBody ?? '', smsBody: c.smsBody ?? '',
       /* Fresh ids: two campaigns sharing a step id means editing one edits both. */
@@ -1974,6 +2042,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
         sendHoursFrom: editCampaign.sendHoursFrom || '09:00', sendHoursTo: editCampaign.sendHoursTo || '17:00',
         audience: (editCampaign.audience as AudienceSegment) || 'all',
         manualList: '',
+        listId: editCampaign.audienceListId ?? '',
         subject: editCampaign.subject || '', previewText: editCampaign.previewText || '',
         emailBody: editCampaign.emailBody || '', smsBody: editCampaign.smsBody || '',
         steps,
@@ -1985,7 +2054,12 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       fromName: '', fromEmail: '', replyTo: '',
       openTracking: true, clickTracking: true, stopOnReply: true, stopOnBounce: true,
       sendDays: ['mon', 'tue', 'wed', 'thu', 'fri'], sendHoursFrom: '09:00', sendHoursTo: '17:00',
-      audience: 'all', manualList: '', subject: '', previewText: '', emailBody: '', smsBody: '', steps: [],
+      /* Opened from a list: that list is the audience from the start, and
+         step 4 shows it chosen rather than asking again. */
+      ...(initialListId && allLists.some(l => l.id === initialListId)
+        ? { audience: 'list' as const, listId: initialListId }
+        : { audience: 'all' as const, listId: '' }),
+      manualList: '', subject: '', previewText: '', emailBody: '', smsBody: '', steps: [],
     };
   });
 
@@ -1993,8 +2067,17 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     setState(prev => ({ ...prev, ...updates }));
   }, []);
 
+  const listCtx = React.useMemo(() => ({ pipelines, appointments }), [pipelines, appointments]);
+  const listOptions = React.useMemo(() => allLists.map(list => {
+    let members: Contact[] = [];
+    try { members = listMembers(list, contacts, listCtx); } catch { /* a rule that cannot be evaluated selects nobody */ }
+    return { list, members, count: members.length, cold: listKindOf(list, members) === 'cold' };
+  }), [allLists, contacts, listCtx]);
+  const chosenList = state.audience === 'list' ? listOptions.find(o => o.list.id === state.listId) : undefined;
+
   const counts: Record<AudienceSegment, number> = {
     all:       contacts.length,
+    list:      chosenList?.count ?? 0,
     leads:     contacts.filter(c => c.status === 'lead').length,
     customers: contacts.filter(c => c.status === 'customer').length,
     prospects: contacts.filter(c => c.status === 'prospect').length,
@@ -2047,8 +2130,9 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
     if (step === 1) return <StepBrief state={state} onChange={update} />;
     if (step === 2) return <StepAIWorkflow state={state} onChange={update} setup={aiSetup} />;
     if (step === 3) return <StepSenderSettings state={state} onChange={update} />;
-    if (step === 4) return <StepAudience state={state} onChange={update} counts={counts} />;
-    return <StepReview state={state} counts={counts} contacts={contacts} onLaunch={handleLaunch} />;
+    if (step === 4) return <StepAudience state={state} onChange={update} counts={counts} lists={listOptions} />;
+    return <StepReview state={state} counts={counts} contacts={contacts}
+      listAudience={chosenList?.members ?? []} listName={chosenList?.list.name ?? ''} onLaunch={handleLaunch} />;
   };
 
   const handleLaunch = (sendNow: boolean, scheduledAt: string, sentCount: number, audience: Contact[]) => {
@@ -2058,6 +2142,12 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign 
       // one nobody ever finished, and nothing was watching it either way.
       status: sendNow ? 'active' : (scheduledAt ? 'scheduled' : 'draft'),
       goal: state.goal, audience: state.audience,
+      /* The list by id and by name: the id to pick it again when the campaign
+         is edited or copied, the name so the card can say who it went to
+         after the list itself is renamed or deleted. */
+      ...(state.audience === 'list' && chosenList
+        ? { audienceListId: chosenList.list.id, audienceListName: chosenList.list.name }
+        : {}),
       fromName: state.fromName, fromEmail: state.fromEmail, replyTo: state.replyTo,
       openTracking: state.openTracking, clickTracking: state.clickTracking,
       stopOnReply: state.stopOnReply, stopOnBounce: state.stopOnBounce,
