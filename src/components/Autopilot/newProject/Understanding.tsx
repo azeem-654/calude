@@ -24,8 +24,10 @@ const SOURCE_NOTE: Record<string, string> = {
   link: 'from your link', ai: 'understood by the AI', you: 'you said', default: 'chosen for you',
 };
 
-export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, portfolios }: {
+export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, portfolios, lists = [] }: {
   portfolios: { id: string; name: string }[];
+  /** The workspace's contact lists, so a chosen one is named rather than shown as an id. */
+  lists?: { id: string; name: string }[];
   stages: Stage[];
   state: IntakeState | null;
   finished: boolean;
@@ -95,7 +97,7 @@ export default function Understanding({ stages, state, finished, questionCount, 
               {known.map(([id, k]) => {
                 const q = QUESTIONS[id] ?? state.extraQuestions.find(x => x.id === id);
                 if (!q) return null;
-                const text = describeAnswer(q, k.value, portfolios);
+                const text = describeAnswer(q, k.value, portfolios, lists);
                 if (!text) return null;
                 return (
                   <div key={id} className="np-known-row">

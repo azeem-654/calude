@@ -10,12 +10,13 @@
  * five honest ways to answer it and a dropdown would hide four.
  */
 import TemplatePicker from './TemplatePicker';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { Building2, Globe, Upload, PenLine, Sparkles, Check, Image as ImageIcon, UserCircle2, Loader, AlertTriangle, RefreshCcw } from 'lucide-react';
 import { GROUP_TITLE, type Question } from '../../../services/projectSolutions';
 import type { Attachment, IntakeState, KnownSource, Screen, WorkspaceFacts } from '../../../services/projectIntake';
 import { readAttachment } from './attachments';
 import { MANUAL_FIELDS, PROFILE_FIELDS, profileSource, type ProfileCheck } from './questionRules';
+import { listChoices } from './contactFacts';
 import { LayoutField, ThemeField, ColourField, LogoField, type LogoFieldState } from './DesignFields';
 import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
@@ -357,6 +358,16 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
     );
   }
 
+  /* ── A contact list ── */
+  if (q.id === 'contactList') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <ListPicker value={vals[0] ?? ''} onPick={v => answer(q.id, v, 'you')} />
+      </div>
+    );
+  }
+
   /* ── Choices ── */
   if (q.type === 'single' || q.type === 'multi') {
     const toggle = (v: string) => {
@@ -397,6 +408,60 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
         {aiButton && <div className="np-opts">{aiButton}</div>}
         {skip}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The workspace's hand-picked lists, one press each.
+ *
+ * Says how many on each have an email address — a list of forty businesses
+ * with six addresses is a project that writes to six — and whether they are
+ * strangers, because that changes how Autopilot sends to them: a few at a
+ * time, each batch waiting for the customer.
+ */
+function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => void }) {
+  const { lists, smart } = useMemo(() => listChoices(), []);
+  const picked = lists.find(l => l.id === value);
+  if (!lists.length) {
+    return (
+      <div style={{ display: 'grid', gap: 8 }}>
+        <span style={{ fontSize: 13.5, color: '#9a3412', lineHeight: 1.55 }}>
+          This workspace has no hand-picked contact lists yet{smart ? ` (${smart} smart list${smart === 1 ? '' : 's'}, which a project cannot follow)` : ''}.
+          Fill one in Prospecting or make one in Contacts, then come back — or choose another answer above.
+        </span>
+        <a href="/prospecting" target="_blank" rel="noopener noreferrer" className="np-tool" style={{ justifySelf: 'start', textDecoration: 'none' }}>Open Prospecting</a>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div className="np-opts" role="radiogroup" aria-label="Contact lists" data-field="project.contactList">
+        {lists.map(l => (
+          <button key={l.id} type="button" role="radio" className="np-opt" aria-pressed={l.id === value} aria-checked={l.id === value}
+            data-list={l.id} onClick={() => onPick(l.id)}>
+            <span>{l.name}</span>
+            <small>{l.count} {l.count === 1 ? 'contact' : 'contacts'} · {l.withEmail} with an email{l.cold ? ' · strangers' : ''}</small>
+          </button>
+        ))}
+      </div>
+      {picked?.cold && (
+        <span style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.55 }}>
+          Nobody on “{picked.name}” asked to hear from you, so Autopilot treats them as cold: it starts them a
+          few at a time, and every batch waits for you to approve it — whatever the project&rsquo;s other settings say.
+        </span>
+      )}
+      {picked && picked.withEmail === 0 && (
+        <span style={{ fontSize: 12.5, color: '#9a3412', lineHeight: 1.55 }}>
+          Nobody on this list has an email address yet, so there is nobody to write to. In Prospecting,
+          “Look up email addresses” reads each business&rsquo;s own website for one.
+        </span>
+      )}
+      {smart > 0 && (
+        <span style={{ fontSize: 12, color: '#6b7280' }}>
+          {smart} smart list{smart === 1 ? ' is' : 's are'} not shown — {smart === 1 ? 'it is' : 'they are'} worked out in your browser, and Autopilot runs on the server.
+        </span>
+      )}
     </div>
   );
 }

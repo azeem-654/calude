@@ -27,7 +27,7 @@ import { encryptSecret } from './lib/crypto';
 import { loadSmsConfig, sendSms } from './lib/sms';
 import { normaliseTarget, planPool, type PoolState } from './lib/sendingPool';
 import { ensureProjectPipeline } from './lib/projectPipeline';
-import { focusOf } from './lib/projectBrief';
+import { audienceOf, focusOf } from './lib/projectBrief';
 import { pageBlocks, pageDesignOf } from './lib/designLayouts';
 import { logoAddress } from './lib/brandLogo';
 import {
@@ -55,6 +55,7 @@ const BLOG_POSTS_KEY = 'crm_blog_posts';
 const SOCIAL_KEY = 'crm_social_posts';
 const SHORTS_KEY = 'crm_shorts';
 const ONBOARDING_KEY = 'crm_onboarding';
+const LISTS_KEY = 'crm_contact_lists';
 
 /** A day between plans. Anything shorter and the same advice repeats. */
 const PLAN_EVERY_MS = 20 * 60 * 60 * 1000;
@@ -152,8 +153,11 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
   ]);
   const mailbox = await loadMailbox(env, accountId);
   const sms = await loadSmsConfig(env, accountId);
+  const people = parse<Contact[]>(contacts, []);
 
   return {
+    projectId: run?.id,
+    audience: await audienceFor(env, accountId, run, people),
     /* What this project is for, so the planner can leave out the work that
        belongs to a different kind of business. */
     kind: (run?.kind ?? 'general') as Workspace['kind'],
@@ -161,7 +165,7 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
        project older than the brief, which is what keeps them planning as
        before. */
     focus: focusOf(run?.brief),
-    contacts: parse<Contact[]>(contacts, []),
+    contacts: people,
     sequences: parse<Sequence[]>(sequences, []),
     enrolments: parse<Enrolment[]>(enrolments, []),
     pipelines: parse<Pipeline[]>(pipelines, []),
@@ -176,6 +180,37 @@ async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise
     commerce: await commerceFor(env, accountId),
     tomorrow: await bookingsTomorrow(env, accountId),
     today: await todayFor(env, accountId),
+  };
+}
+
+/**
+ * The contact list this project writes to, read from the workspace itself.
+ *
+ * The brief only names the list. Who is on it comes from `crm_contact_lists`
+ * as it is now — somebody may have added ten more since the project was made
+ * — and whether they are strangers is decided here, the same way the app's
+ * `listKindOf` does: the list says so, or one prospect on it makes it cold.
+ * A brief is written by a browser and is not trusted to say that a list of
+ * found businesses is opted-in.
+ */
+async function audienceFor(env: Env, accountId: string, run: RunRow | undefined, people: Contact[]): Promise<Workspace['audience']> {
+  const want = audienceOf(run?.brief);
+  if (!want) return undefined;
+  const named = (() => {
+    try { return String((JSON.parse(run?.brief ?? '{}') as { audience?: { listName?: string } }).audience?.listName ?? ''); } catch { return ''; }
+  })();
+  const lists = parse<{ id?: string; name?: string; type?: string; memberIds?: string[]; kind?: string }[]>(
+    await dataGet(env.DB, accountId, LISTS_KEY), []);
+  const list = Array.isArray(lists) ? lists.find(l => l?.id === want.listId) : undefined;
+  if (!list) return { listId: want.listId, name: named || 'that list', found: false, memberIds: [], cold: true };
+  const name = String(list.name ?? named ?? 'that list').slice(0, 120);
+  if (list.type !== 'static') return { listId: want.listId, name, found: true, smart: true, memberIds: [], cold: true };
+  const ids = new Set((Array.isArray(list.memberIds) ? list.memberIds : []).map(String));
+  const members = people.filter(c => ids.has(c.id));
+  return {
+    listId: want.listId, name, found: true,
+    memberIds: members.map(c => c.id),
+    cold: list.kind === 'cold' || (list.kind !== 'owned' && members.some(c => c.status === 'prospect')),
   };
 }
 
@@ -565,7 +600,9 @@ async function planFor(
      * up, everything after runs without asking — which is the difference
      * between supervised and interrogative.
      */
-    const permission = a.permission ? (guardrails[a.permission] ?? 'approval') : 'on';
+    const set = a.permission ? (guardrails[a.permission] ?? 'approval') : 'on';
+    /* 'on' is not enough for a batch of strangers — see `alwaysAsk`. */
+    const permission = a.alwaysAsk && set === 'on' ? 'approval' : set;
     if (permission === 'off') continue;
 
     /*

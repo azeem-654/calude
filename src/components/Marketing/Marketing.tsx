@@ -93,7 +93,16 @@ function AutopilotSequenceNote({ onOpen }: { onOpen: () => void }) {
 function CampaignsTab({ onOpenSequences }: { onOpenSequences: () => void }) {
   const navigate = useNavigate();
   const { campaigns, addCampaign, updateCampaign, deleteCampaign, toggleCampaignStatus, contacts } = useApp();
-  const [showModal, setShowModal] = useState(false);
+  /* `?new=campaign&list=<id>` opens the wizard with that list as the audience
+     — Prospecting's "Send a campaign to this list". Read once and then taken
+     out of the address, so closing the wizard does not reopen it on reload. */
+  const [params, setParams] = useSearchParams();
+  const [startList] = useState(() => (params.get('new') === 'campaign' ? params.get('list') ?? '' : ''));
+  const [showModal, setShowModal] = useState(() => params.get('new') === 'campaign');
+  useEffect(() => {
+    if (!params.has('new') && !params.has('list')) return;
+    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); return n; }, { replace: true });
+  }, [params, setParams]);
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
@@ -214,7 +223,7 @@ function CampaignsTab({ onOpenSequences }: { onOpenSequences: () => void }) {
                     <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>
                       {campaignDate(campaign.createdAt)} · {campaign.type.toUpperCase()}
                       {campaign.goal ? ` · ${campaign.goal}` : ''}
-                      {campaign.audience ? ` · ${campaign.audience}` : ''}
+                      {campaign.audience === 'list' ? ` · ${campaign.audienceListName ?? 'a contact list'}` : campaign.audience ? ` · ${campaign.audience}` : ''}
                     </p>
                     {campaign.source && (
                       <div style={{ marginTop: 5 }}><SourceTag source={campaign.source} /></div>
@@ -250,7 +259,7 @@ function CampaignsTab({ onOpenSequences }: { onOpenSequences: () => void }) {
 
       {/* Create wizard */}
       {showModal && (
-        <CampaignWizard contacts={contacts} onClose={() => setShowModal(false)} onAdd={addCampaign} />
+        <CampaignWizard contacts={contacts} onClose={() => setShowModal(false)} onAdd={addCampaign} initialListId={startList || undefined} />
       )}
 
       {/* Edit wizard */}

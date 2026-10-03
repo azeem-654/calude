@@ -55,7 +55,7 @@ export default function Autopilot() {
   /* The board loads itself. This is bumped only when a project is created, so
      a new column appears without the whole screen reloading. */
   const [boardKey, setBoardKey] = useState(0);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(() => { try { return new URLSearchParams(window.location.search).get('new') === '1'; } catch { return false; } });
 
   /*
    * Where somebody lands coming back from paying.
@@ -71,6 +71,14 @@ export default function Autopilot() {
      reload — somebody sent a colleague "look at the template gallery" should
      get the template gallery. */
   const view = params.get('view') === 'templates' ? 'templates' : 'projects';
+  /* `?new=1&list=<id>` opens the New Project wizard working from that list —
+     Prospecting's "Use this list in a new Autopilot project". Read once, then
+     taken out of the address so closing the wizard does not reopen it. */
+  const [presetList] = useState(() => (params.get('new') === '1' ? params.get('list') ?? '' : ''));
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); return n; }, { replace: true });
+  }, [params, setParams]);
 
   const load = useCallback(async () => {
     /* Together, so the page cannot show a reply queue beside a board that has
@@ -219,6 +227,7 @@ export default function Autopilot() {
         {creating && (
           <NewProject
             portfolios={portfolios}
+            presetListId={presetList || undefined}
             onClose={() => setCreating(false)}
             onCreated={id => {
               setCreating(false);

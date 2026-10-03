@@ -178,6 +178,53 @@ const find = (w: Workspace, prefix: string) => planNext(w).find(a => a.key.start
   ok('every play names a channel', planNext({ ...everything, kind: 'general' }).every(a => a.channels.length > 0));
 }
 
+
+/* ── A project that writes to one contact list ──
+   The list is the audience, all of it and only it — and a list of strangers
+   goes a few at a time, each batch waiting for a person. */
+{
+  const seqs = [
+    { id: 'seq-other', name: 'Other project', status: 'active', steps: [{ channel: 'email' }], source: { projectId: 'pj-2' } },
+    { id: 'seq-mine', name: 'Dentist intro', status: 'active', steps: [{ channel: 'email' }], source: { projectId: 'pj-1' } },
+  ];
+  const listed = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, email: `d${i}@dental.example`, status: 'prospect', createdAt: hoursAgo(24 * 40) }));
+  const walkIn = { id: 'w1', email: 'new@enquiry.example', status: 'lead', createdAt: hoursAgo(2) };
+  const base = ws({
+    projectId: 'pj-1', sequences: seqs, contacts: [...listed, walkIn, { id: 'p-noemail', status: 'prospect' }],
+    audience: { listId: 'list-1', name: 'Dentists — Leeds, Oct', found: true, memberIds: [...listed.map(c => c.id), 'p-noemail'], cold: true },
+  });
+  const plan = planNext(base);
+  const a = plan.find(x => x.key.startsWith('enrol-list'));
+  ok('a list project plans its list', !!a, plan.map(x => x.key).join(' '));
+  ok('…onto its own sequence, not the first one in the workspace', a?.effect.type === 'enrol' && a.effect.sequenceId === 'seq-mine', JSON.stringify(a?.effect));
+  ok('…twenty strangers at a time, everybody with an address, nobody without',
+    a?.effect.type === 'enrol' && a.effect.contactIds.length === 20 && !a.effect.contactIds.includes('p-noemail'), JSON.stringify(a?.effect));
+  ok('…always waiting for a person, and saying why', a?.alwaysAsk === true && /found in a directory/.test(a.because) && /10 more/.test(a.because), a?.because);
+  ok('…and nobody off the list: the enquiry from this morning is not enrolled by this project',
+    !plan.some(x => x.effect.type === 'enrol' && x.effect.contactIds.includes('w1')), plan.map(x => x.key).join(' '));
+
+  const owned = planNext({ ...base, audience: { ...base.audience!, cold: false } }).find(x => x.key.startsWith('enrol-list'));
+  ok('a list of people who asked goes in larger batches and follows the guardrail',
+    owned?.effect.type === 'enrol' && owned.effect.contactIds.length === 30 && !owned.alwaysAsk, JSON.stringify(owned));
+
+  const enrolled = planNext({ ...base, enrolments: listed.map((c, i) => ({ id: `e${i}`, contactId: c.id, sequenceId: 'seq-mine', status: 'active' })) });
+  ok('nobody already in a sequence is started again', !enrolled.some(x => x.key.startsWith('enrol-list')), enrolled.map(x => x.key).join(' '));
+
+  const gone = planNext({ ...base, audience: { ...base.audience!, found: false, memberIds: [] } });
+  ok('a deleted list is said, by name, rather than silently writing to nobody',
+    gone.some(x => x.kind === 'error' && /no longer exists/.test(x.summary) && /Dentists/.test(x.summary)), gone.map(x => x.summary).join(' | '));
+  const smart = planNext({ ...base, audience: { ...base.audience!, smart: true, memberIds: [] } });
+  ok('a smart list is refused by name', smart.some(x => x.kind === 'error' && /smart list/.test(x.summary)));
+  const blank = planNext({ ...base, contacts: [{ id: 'p-noemail', status: 'prospect' }], audience: { ...base.audience!, memberIds: ['p-noemail'] } });
+  ok('a list with no addresses says so', blank.some(x => /Nobody on "Dentists — Leeds, Oct" has an email/.test(x.summary)), blank.map(x => x.summary).join(' | '));
+
+  const noList = planNext({ ...base, audience: undefined });
+  ok('without a list, the project still picks up new enquiries as before',
+    noList.some(x => x.effect.type === 'enrol' && x.effect.contactIds.includes('w1')), noList.map(x => x.key).join(' '));
+  const noSeq = planNext({ ...base, sequences: [] });
+  ok('a list project with no sequence yet is offered one to write', noSeq.some(x => x.key === 'write-sequence'), noSeq.map(x => x.key).join(' '));
+}
+
 for (const line of out) console.log(line);
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed}/${out.length} passed`);

@@ -181,7 +181,14 @@ export default function Contacts() {
   /* ── Part 5: lists, merge, ownership ── */
   const actor = useMemo(() => currentActor(), []);
   const [lists, setLists] = useState<ContactList[]>(() => loadLists());
-  const [activeList, setActiveList] = useState<string | null>(null);
+  /* `?list=<id>` opens on that list — Prospecting links here with the list it
+     just filled, so the customer sees the people rather than being told. */
+  const [activeList, setActiveList] = useState<string | null>(() => {
+    try {
+      const id = new URLSearchParams(window.location.search).get('list');
+      return id && loadLists().some(l => l.id === id) ? id : null;
+    } catch { return null; }
+  });
   const [showMerge, setShowMerge] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
 
@@ -781,7 +788,7 @@ export default function Contacts() {
         </div>
       </div>
 
-      {showFind && <FindProspects onClose={() => setShowFind(false)} />}
+      {showFind && <FindProspects onClose={() => setShowFind(false)} onImported={() => setLists(loadLists())} />}
       {showModal && <ContactModal onClose={() => setShowModal(false)} onSave={addContact} />}
       {editContact && <ContactModal initial={editContact} onClose={() => setEditContact(null)} onSave={(updates) => { updateContact(editContact.id, updates); setEditContact(null); }} />}
       {showImport && (

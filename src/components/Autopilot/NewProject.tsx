@@ -67,6 +67,7 @@ import Requirements from './newProject/Requirements';
 import Review from './newProject/Review';
 import Build from './newProject/Build';
 import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProject/buildRunner';
+import { listChoices } from './newProject/contactFacts';
 import './newProject/newProject.css';
 
 type Phase = 'describe' | 'understand' | 'questions' | 'blueprint' | 'requirements' | 'review' | 'build' | 'domains';
@@ -89,15 +90,33 @@ const EXAMPLES = [
 
 const pause = (ms: number) => new Promise(r => window.setTimeout(r, ms));
 
-export default function NewProject({ portfolios, onClose, onCreated }: {
+export default function NewProject({ portfolios, onClose, onCreated, presetListId }: {
   portfolios: Portfolio[];
   onClose: () => void;
   /** Called with the new project's id when the customer goes into it. */
   onCreated: (projectId?: string) => void;
+  /**
+   * A contact list to work from, when the wizard was opened from one
+   * (Prospecting's "Use this list in a new Autopilot project"). It answers
+   * "where are the contacts" and "which list" for any project that asks —
+   * and the list question is still shown, chosen, so it can be changed.
+   */
+  presetListId?: string;
 }) {
   const { addNotification, addWebsite, addFunnel } = useApp();
   const [phase, setPhase] = useState<Phase>('describe');
-  const [describe, setDescribe] = useState<DescribeValue>({ prompt: '', picked: '', files: [], links: [], voicePending: false });
+  /* Read once: the lists do not change while the wizard is open, and the
+     names are what "what I already know" says instead of an id. */
+  const [lists] = useState(() => listChoices().lists);
+  const preset = lists.find(l => l.id === presetListId) ?? null;
+  const [describe, setDescribe] = useState<DescribeValue>(() => ({
+    /* A starting sentence, not a submission — the customer reads it and says
+       what they are offering before anything is understood. */
+    /* Worded to match Email Outreach without the AI, and with no "to …"
+       that the audience reader would take for who the emails are about. */
+    prompt: preset ? `Email outreach for the businesses on my contact list “${preset.name}”: a short email sequence about our offer that books calls with the interested ones.` : '',
+    picked: '', files: [], links: [], voicePending: false,
+  }));
 
   /* ── What the workspace already knows ── */
   const ws: WorkspaceFacts = useMemo(() => {
@@ -188,6 +207,20 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
   const bp: Blueprint | null = useMemo(() => (state ? buildBlueprint(state, {
     companyName: company, website: String(state.known.website?.value ?? ''), files, links,
   }) : null), [state, company, files, links]);
+
+  /* The list the wizard was opened from, for whichever project asks where its
+     contacts are — applied again when the customer picks another solution. */
+  const withPreset = useCallback((st: IntakeState): IntakeState => {
+    if (!preset || !allQuestions(st).some(q => q.id === 'contactList')) return st;
+    return {
+      ...st,
+      known: {
+        ...st.known,
+        contactSource: { value: 'list', source: 'you', note: 'the list you started from' },
+        contactList: { value: preset.id, source: 'you', note: 'the list you started from' },
+      },
+    };
+  }, [preset]);
 
   /* ── Understand ── */
   const runUnderstanding = useCallback(async () => {
@@ -287,6 +320,12 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
         : { state: 'warn', detail: 'Kept for the build — spreadsheets and images are used either way.' });
     }
 
+    /* The list the wizard was opened from, for whichever project asks where
+       its contacts are. Set after the AI's facts, so a guess from the prompt
+       ("find new ones") cannot overrule a list somebody chose by pressing a
+       button on it. */
+    st = withPreset(st);
+
     /* The four quick ones. Each is real work — a catalogue search, a template
        count, a look at the workspace, the question list — and each is shown
        finishing rather than all at once, so it can be read. */
@@ -314,7 +353,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
 
     setState(st);
     setUnderstood(true);
-  }, [describe, files, links, ws]);
+  }, [describe, files, links, ws, withPreset]);
 
   /* ── Answering ── */
   const answer = useCallback((id: string, value: string | string[] | null, source: KnownSource = 'you') => {
@@ -440,6 +479,9 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
        project gains its posts (and so a post layout) from an answer given on
        an earlier screen. Known ones are filtered out when the screen is drawn. */
     for (const id of DESIGN_QUESTION_IDS) if (!state.known[id] && !open.includes(id)) open.push(id);
+    /* Known, and still shown: an audience is the one answer worth seeing
+       before anybody is written to, and it is one press to change. */
+    if (state.known.contactList && !open.includes('contactList')) open.push('contactList');
     /* Known is not the same as enough. A site that was read but did not say
        what the business is called still needs the business screen. */
     if (profileGap(state, files, profile)) open.unshift(...businessIds(state).filter(id => !open.includes(id)));
@@ -654,7 +696,7 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em', marginTop: 6 }}>WHAT I KNOW SO FAR</span>
           {Object.entries(state.known).filter(([id]) => QUESTIONS[id]).slice(0, 12).map(([id, k]) => {
             const q = QUESTIONS[id];
-            const text = describeAnswer(q, k.value, portfolios);
+            const text = describeAnswer(q, k.value, portfolios, lists);
             if (!text) return null;
             return (
               <span key={id} style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.45 }}>
@@ -709,16 +751,16 @@ export default function NewProject({ portfolios, onClose, onCreated }: {
               )}
               {phase === 'understand' && (
                 <Understanding
-                  stages={stages} state={state} finished={understood} portfolios={ws.portfolios}
+                  stages={stages} state={state} finished={understood} portfolios={ws.portfolios} lists={lists}
                   questionCount={state ? allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).length : 0}
                   onChangeSolution={keys => setState(s => {
                     if (!s) return s;
                     const known = { ...extractKnown(s.prompt, keys, ws, files, links) };
                     for (const [id, k] of Object.entries(s.known)) if (!known[id]) known[id] = k;
-                    return {
+                    return withPreset({
                       ...s, solutionKeys: keys, strength: keys[0] === CUSTOM ? 'custom' : 'strong', known,
                       summary: keys[0] === CUSTOM ? 'Built from scratch around what you described.' : `You chose ${solutionByKey(keys[0])?.label}.`,
-                    };
+                    });
                   })}
                 />
               )}

@@ -9,7 +9,7 @@
  */
 import {
   applyOps, buildBlueprint, initialState, parseCsv, parseEdit, pendingQuestions,
-  productsFromCsv, imageFor, screensOf, capsOf, kindOf, briefOf,
+  productsFromCsv, imageFor, screensOf, capsOf, kindOf, briefOf, validValue, allQuestions, applies,
   type IntakeState, type WorkspaceFacts, type Attachment,
 } from '../src/services/projectIntake';
 import { SOLUTIONS } from '../src/services/projectSolutions';
@@ -181,6 +181,27 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('edit: nonsense is admitted, not guessed', parseEdit('purple monkey dishwasher', s, bp) === null);
   const brief = briefOf(bp, s.prompt);
   ok('brief carries planner channels and no node graphs', Array.isArray(brief.plannerChannels) && !JSON.stringify(brief).includes('"nodes"'));
+}
+
+
+/* ── A contact list as the audience ──
+   Chosen from a picker, so only a list id is an answer; it reaches the brief
+   only when "a contact list I have" is the answer to where the contacts are. */
+{
+  const s = initialState('Email dentists about a free staff check-up and book calls with the interested ones.', 'email-outreach', ONE, [], []);
+  const q = allQuestions(s).find(x => x.id === 'contactList');
+  ok('outreach asks which list, but only once "a contact list" is the answer',
+    !!q && !applies(q, s.known) && applies(q, { ...s.known, contactSource: { value: 'list', source: 'you' } }));
+  ok('a list id is a valid answer; a sentence is not', validValue(q!, 'list-1759400000000-123') === 'list-1759400000000-123' && validValue(q!, 'the dentists list') === null);
+  const picked: IntakeState = applyOps(s, { set: { contactSource: 'list', contactList: 'list-1759400000000-123' } });
+  const bp = buildBlueprint(picked, CTX);
+  ok('the blueprint names the list as its audience and says only they are written to',
+    bp.audienceListId === 'list-1759400000000-123' && bp.limits.some(l => /Only the people on that list/.test(l)), JSON.stringify(bp.limits));
+  const brief = briefOf(bp, s.prompt, 'Dentists — Leeds, Oct') as { audience?: { listId: string; listName: string } };
+  ok('the brief carries it for the planner', brief.audience?.listId === 'list-1759400000000-123' && brief.audience.listName === 'Dentists — Leeds, Oct', JSON.stringify(brief.audience));
+  const back = buildBlueprint(applyOps(picked, { set: { contactSource: 'crm' } }), CTX);
+  ok('switching back to "already in Protected Central" drops the audience', back.audienceListId === null && !('audience' in briefOf(back, s.prompt)));
+  ok('a list of strangers sizes the sending', allQuestions(picked).some(x => x.id === 'dailyVolume' && applies(x, picked.known)));
 }
 
 console.log(out.join('\n'));

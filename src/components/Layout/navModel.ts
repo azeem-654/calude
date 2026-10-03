@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -76,6 +76,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Customers',
     items: [
       { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history', icon: Users, aka: ['people', 'leads', 'crm', 'customers'] },
+      /* Beside Contacts, because that is where what it finds goes — and the
+         word somebody types looking for it is rarely "prospecting". */
+      { path: '/prospecting', label: 'Prospecting', desc: 'Find businesses to sell to, and keep them in lists', icon: Crosshair, aka: ['find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists'] },
       { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
       /* Beside the inbox on purpose: this is where the conversations in that
