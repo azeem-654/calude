@@ -20,7 +20,7 @@ import {
   Trash2, Check, Loader, GitBranch, Play, Settings2, Sliders, ChevronRight,
 } from 'lucide-react';
 import {
-  AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor, previewStep, SAMPLE_CONTACT,
+  AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, editorChoices, lookFor, previewStep, SAMPLE_CONTACT,
 } from './workflowNodes';
 import type { AgentRunResult, WorkflowNode } from '../../services/autopilot';
 import { T, nodeDark } from './theme';
@@ -114,7 +114,7 @@ export const STEP_FIELDS: Record<string, FieldDef[]> = {
   ai: [
     {
       key: 'source', label: 'What it reads', kind: 'select',
-      options: Object.entries(AGENT_SOURCES).map(([value, v]) => ({ value, label: v.label })),
+      options: editorChoices(AGENT_SOURCES).map(([value, v]) => ({ value, label: v.label })),
       hint: 'The material it writes from. Everything else it says comes from this.',
     },
     {
@@ -131,7 +131,7 @@ export const STEP_FIELDS: Record<string, FieldDef[]> = {
     },
     {
       key: 'produces', label: 'What it makes', kind: 'select',
-      options: Object.entries(AGENT_OUTPUTS).map(([value, v]) => ({ value, label: v.label })),
+      options: editorChoices(AGENT_OUTPUTS).map(([value, v]) => ({ value, label: v.label })),
     },
     {
       key: 'platform', label: 'For which platform', kind: 'select',

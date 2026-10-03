@@ -59,6 +59,8 @@ export const lookFor = (type: string): NodeLook =>
  */
 
 export interface AgentSource {
+  /** Only the daily prospect finder's step uses it; the editor does not offer it. */
+  finderOnly?: boolean;
   label: string;
   /** The one line under it in the picker. */
   hint: string;
@@ -107,9 +109,18 @@ export const AGENT_SOURCES: Record<string, AgentSource> = {
     urlHint: 'Starts with UC. Open the channel, click a video, then "…more" under the description.',
     urlPlaceholder: 'UCxxxxxxxxxxxxxxxxxxxxxx',
   },
+  /* The daily prospect finder's source. Only its step uses it — the editor
+     does not offer it for writing posts (see `editorChoices`). */
+  directory: {
+    label: 'Business directories',
+    hint: 'Searched live every day for the kinds of business and the places this project prospects in — set on its Prospects tab.',
+    needsUrl: false,
+    finderOnly: true,
+  },
 };
 
 export interface AgentOutput {
+  finderOnly?: boolean;
   label: string;
   /** Where the finished thing lands, named as the customer knows it. */
   where: string;
@@ -120,7 +131,13 @@ export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
   social: { label: 'Social posts, as images', where: 'Social Creator', route: '/social-creator' },
   blog: { label: 'A blog post', where: 'Blog', route: '/blog-automation' },
   email_campaign: { label: 'An email campaign', where: 'Campaigns', route: '/marketing?tab=sequences' },
+  /* Made by the project's daily prospect finder (worker/src/prospectFinderTick.ts), never chosen in the editor. */
+  prospects: { label: 'New prospects', where: "this project's audience", route: '/autopilot', finderOnly: true },
 };
+
+/** The sources and outputs somebody may pick in the step editor — not the finder's own. */
+export const editorChoices = <T extends { finderOnly?: boolean }>(table: Record<string, T>, current?: string) =>
+  Object.entries(table).filter(([k, v]) => !v.finderOnly || k === current);
 
 /** How often a scheduled workflow runs, in the words on the form. */
 export const CADENCES: Record<string, string> = {
@@ -171,6 +188,9 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
     return named ? `${ev} — ${named}` : ev;
   }
   if (type === 'ai') {
+    if (c('produces') === 'prospects') {
+      return `Searches business directories → up to ${Number(c('perDay')) || 20} new prospects a day → this project's audience`;
+    }
     const src = AGENT_SOURCES[c('source') || 'portfolio'];
     const out = AGENT_OUTPUTS[c('produces') || 'social'];
     if (!src || !out) return 'Not set up yet';
@@ -573,6 +593,17 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
   }
 
   if (node.type === 'ai') {
+    if (c('produces') === 'prospects') {
+      return {
+        headline: `Finds up to ${Number(c('perDay')) || 20} new prospects a day: ${c('trades') || 'the kinds of business set'} in ${c('places') || 'the places set'}.`,
+        blocked: '',
+        notes: [
+          'It searches live, reads each business\'s website for the address it publishes, checks it, and adds the new ones to this project\'s audience. It sends nothing.',
+          'Your outreach is proposed to them in batches of 20, and each batch waits for your approval.',
+          'Change what it looks for, and where, on the project\'s Prospects tab.',
+        ],
+      };
+    }
     const src = AGENT_SOURCES[c('source') || 'portfolio'];
     const out = AGENT_OUTPUTS[c('produces') || 'social'];
     if (!src || !out) {

@@ -176,3 +176,53 @@ export function ago(iso: string, now = Date.now()): string {
   const d = Math.round(h / 24);
   return d === 1 ? '1d' : `${d}d`;
 }
+
+/* ── Neighbouring audiences ── */
+
+const RELATED: [RegExp, string[]][] = [
+  [/real estate|realtor|estate agent/, ['real estate brokers', 'property managers', 'mortgage brokers', 'home inspectors']],
+  [/dent/, ['orthodontists', 'dental clinics', 'opticians', 'physiotherapists']],
+  [/caf|coffee/, ['bakeries', 'restaurants', 'delis', 'tea rooms']],
+  [/account|bookkeep/, ['financial advisers', 'solicitors', 'mortgage brokers', 'insurance brokers']],
+  [/hair|salon|barber/, ['barbers', 'beauty salons', 'nail salons', 'spas']],
+  [/plumb/, ['electricians', 'heating engineers', 'builders', 'roofers']],
+  [/restaurant/, ['cafés', 'pubs', 'takeaways', 'hotels']],
+  [/gym|fitness/, ['personal trainers', 'yoga studios', 'physiotherapists', 'sports shops']],
+  [/lawyer|solicitor|attorney/, ['accountants', 'financial advisers', 'estate agents', 'insurance brokers']],
+  [/contractor|builder|construction/, ['roofers', 'electricians', 'plumbers', 'architects']],
+];
+
+/**
+ * Other kinds of business worth trying beside `trade` — suggestions only: the
+ * customer picks which, because a related audience is a judgement about what
+ * they sell, not something to assume.
+ */
+export function relatedTrades(trade: string): string[] {
+  const t = trade.toLowerCase();
+  return (RELATED.find(([re]) => re.test(t))?.[1] ?? []).filter(x => x !== t);
+}
+
+/**
+ * The place in a sentence like "sell to real estate agents in Virginia and …":
+ * the capitalised words after in/across/around/near. Capitals, because "in
+ * person" and "in bulk" are not places.
+ */
+export function placeIn(text: string): string | null {
+  const m = /\b(?:in|across|around|near|throughout)\s+((?:[A-Z][\p{L}.'-]+)(?:(?:,\s*|\s+)(?:[A-Z][\p{L}.'-]+)){0,3})/u.exec(text);
+  if (!m) return null;
+  const p = m[1].replace(/\s+(?:And|With|To|For)$/, '').trim();
+  return p.length >= 2 ? p : null;
+}
+
+/**
+ * Who a "sell … to X" sentence is selling to — the audience, which must not be
+ * mistaken for the customer's own trade. "Sell my software to real estate
+ * agents" is not a real-estate business.
+ */
+export function sellingTo(text: string): string | null {
+  const m = /\b(?:sell|selling|market|marketing|pitch|offer|offering)\b[^.]*?\bto\s+([a-z][a-z0-9&' -]{2,60}?)(?=\s+(?:in|near|around|across|throughout|and|who|that|with|so)\b|[.,;!?]|$)/i.exec(text);
+  if (!m) return null;
+  const phrase = m[1].trim().replace(/^(the|some|more|local)\s+/i, '');
+  if (!phrase || phrase.split(/\s+/).length > 6 || /^(them|it|us|me|people|customers|clients|businesses)$/i.test(phrase)) return null;
+  return phrase;
+}

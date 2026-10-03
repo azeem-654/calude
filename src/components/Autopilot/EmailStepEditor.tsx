@@ -46,8 +46,10 @@ const BUSINESS = [
   { token: '{{bookingLink}}', label: 'Booking link' },
   { token: '{{website}}', label: 'Your website' },
   { token: '{{senderName}}', label: 'Your name' },
+  /* Their own signed link to say yes to texts (worker/src/lib/smsConsent.ts); the line is dropped where no link can be made. */
+  { token: '{{smsOptInLink}}', label: 'Text opt-in link' },
 ];
-const KNOWN = new Set(['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName']);
+const KNOWN = new Set(['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink']);
 
 interface Contact { id?: string; name?: string; firstName?: string; lastName?: string; email?: string; company?: string; jobTitle?: string; phone?: string }
 
@@ -63,6 +65,7 @@ function fill(text: string, c: Contact, biz: Record<string, string>): string {
     firstName: (c.firstName ?? full.split(' ')[0] ?? '').trim(),
     lastName: (c.lastName ?? full.split(' ').slice(1).join(' ')).trim(),
     name: full, company: c.company ?? '', jobTitle: c.jobTitle ?? '', email: c.email ?? '', phone: c.phone ?? '',
+    smsOptInLink: '[their own link to say yes to texts]',
     ...biz,
   };
   return text

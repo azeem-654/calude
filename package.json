@@ -16,6 +16,7 @@
     "test:emailverify": "npx --yes tsx worker/test/emailVerify.test.mts",
     "test:aiprospecting": "npx --yes tsx test/aiProspecting.test.mts",
     "test:register": "npx --yes tsx worker/test/companiesHouse.test.mts",
+    "test:finder": "npx --yes tsx worker/test/finderPlan.test.mts",
     "staging:setup": "node scripts/staging-setup.mjs",
     "staging:check": "node scripts/staging-check.mjs",
     "test:domains": "npx --yes tsx worker/test/domains.test.mts",
@@ -56,6 +57,7 @@
     "test:mapslink": "npx --yes tsx worker/test/mapsLink.test.mts",
     "test:platform": "node test/platform.e2e.mjs",
     "test:prospecting": "node test/prospecting.e2e.mjs",
+    "test:autoprospects": "node test/autopilotProspecting.e2e.mjs",
     "test:aikeys": "node test/aikeys.e2e.mjs"
   },
   "dependencies": {

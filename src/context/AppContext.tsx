@@ -6,6 +6,7 @@ import type { DesignPost } from '../components/SocialCreator/types';
 import { mockPipelines } from '../data/mockData';
 import { onServerRejection, CLOUD_REFRESH_EVENT } from '../services/serverData';
 import { fireEvent } from '../services/engagement';
+import { forgetFoundContacts } from '../services/finders';
 import { withoutTwilio } from '../services/legacyTwilio';
 
 interface Notification {
@@ -378,6 +379,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const deleteContact = (id: string) => {
     setContacts(prev => { const next = prev.filter(c => c.id !== id); saveLS('crm_contacts', next); return next; });
+    /* A prospect a daily finder added: tell the server it was deleted on purpose,
+       or the finder's repair pass would put it back. */
+    if (id.startsWith('pf-')) void forgetFoundContacts([id]);
     notify('Contact deleted', 'info');
   };
   const bulkImportContacts = (newContacts: Omit<Contact, 'id'>[]): Contact[] => {

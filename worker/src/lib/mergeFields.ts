@@ -29,6 +29,8 @@ import type { Env } from './db';
 export interface Person {
   name?: string; firstName?: string; lastName?: string;
   email?: string; phone?: string; company?: string; jobTitle?: string;
+  /** Their own signed link to say yes to texts (lib/smsConsent.ts) — made by the sender only when the text asks for it. */
+  smsOptInLink?: string;
 }
 
 export interface Business {
@@ -41,7 +43,7 @@ export interface Business {
 export const EMPTY_BUSINESS: Business = { myCompany: '', website: '', bookingLink: '', senderName: '' };
 
 /** The fields a customer may use, for the editor's buttons and the AI's rules. */
-export const MERGE_FIELDS = ['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName'] as const;
+export const MERGE_FIELDS = ['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink'] as const;
 
 export function personalise(text: string, c: Person, biz: Business = EMPTY_BUSINESS): string {
   const full = (c.name ?? '').trim();
@@ -52,8 +54,10 @@ export function personalise(text: string, c: Person, biz: Business = EMPTY_BUSIN
     email: c.email ?? '', phone: c.phone ?? '',
     company: c.company ?? '', jobTitle: c.jobTitle ?? '',
     myCompany: biz.myCompany, website: biz.website, bookingLink: biz.bookingLink, senderName: biz.senderName,
+    smsOptInLink: c.smsOptInLink ?? '',
   };
-  const BUSINESS = new Set(['myCompany', 'website', 'bookingLink', 'senderName']);
+  /* Fields a line is pointless without: "Say yes here: " with no link is dropped, not sent. */
+  const BUSINESS = new Set(['myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink']);
   return text
     .split('\n')
     .filter(line => {

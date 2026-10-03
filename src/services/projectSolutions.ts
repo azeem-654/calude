@@ -453,7 +453,7 @@ const Q: Record<string, Question> = {
     options: [
       { value: 'crm', label: 'Already in Protected Central' },
       { value: 'upload', label: 'A spreadsheet I will import', hint: 'Contacts → Import takes a CSV' },
-      { value: 'find', label: 'Find new ones for me', hint: 'Researched and added as leads, with your approval' },
+      { value: 'find', label: 'Find new ones for me, every day', hint: 'Searched live, addresses checked, added to this project — you approve each batch before it is emailed' },
       { value: 'list', label: 'A contact list I have', hint: 'Including the lists you fill in Prospecting' },
     ],
   },
@@ -473,6 +473,53 @@ const Q: Record<string, Question> = {
     prompt: 'Which contact list?',
     help: 'Only the people on it are written to by this project. Smart lists are not offered — they are worked out in your browser, and Autopilot runs on the server.',
     showIf: { id: 'contactSource', in: ['list'] },
+  },
+  /*
+   * The daily prospect finder, when the contacts are to be found
+   * (worker/src/prospectFinderTick.ts). Trades and places are comma lists in
+   * the answer, drawn by Questions.tsx as chips — places with "add its towns",
+   * so a state becomes the towns a finder can work through one by one.
+   */
+  prospectTrades: {
+    id: 'prospectTrades', group: 'contacts', type: 'text', need: 'required',
+    prompt: 'What kinds of business should it find?',
+    help: 'Searched live every day. Add neighbouring kinds of business to widen the audience.',
+    placeholder: 'real estate agents, property managers',
+    showIf: { id: 'contactSource', in: ['find'] },
+  },
+  prospectPlaces: {
+    id: 'prospectPlaces', group: 'contacts', type: 'text', need: 'required',
+    prompt: 'Where should it look?',
+    help: 'Towns, one after another. A state or county can be split into its towns.',
+    placeholder: 'Richmond, Virginia',
+    showIf: { id: 'contactSource', in: ['find'] },
+  },
+  prospectPerDay: {
+    id: 'prospectPerDay', group: 'contacts', type: 'single', need: 'optional',
+    prompt: 'How many new prospects a day?',
+    help: 'Each one has an address that was checked. They are proposed to your outreach 20 at a time, each batch waiting for you.',
+    options: [
+      { value: '10', label: '10 a day' }, { value: '20', label: '20 a day' }, { value: '40', label: '40 a day' }, { value: '60', label: '60 a day' },
+    ],
+    aiDecides: '20',
+    showIf: { id: 'contactSource', in: ['find'] },
+  },
+  /*
+   * Texting found businesses only with their say-so. An email is not consent
+   * to texts (in the US the TCPA and state laws such as Virginia's apply per
+   * message), so "yes" here adds an opt-in link to the outreach emails and a
+   * texting workflow that starts only for those who opt in.
+   */
+  prospectSms: {
+    id: 'prospectSms', group: 'contacts', type: 'single', need: 'optional',
+    prompt: 'Also text the ones who say yes to texts?',
+    help: 'Only after they opt in through a link in your email — never cold.',
+    options: [
+      { value: 'yes', label: 'Yes — offer texts in the email', hint: 'Texts start only for those who agree' },
+      { value: 'no', label: 'No, email only' },
+    ],
+    aiDecides: 'no',
+    showIf: { id: 'contactSource', in: ['find'] },
   },
   contactCount: {
     id: 'contactCount', group: 'contacts', type: 'single', need: 'optional',
@@ -1096,12 +1143,52 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     purpose: 'Follows up with people who showed interest and then went quiet.',
   });
   if (stale) wfs.push(stale);
+  /* Finding them: the daily prospect finder, a scheduled step the engine runs
+     (worker/src/prospectFinderTick.ts). It sends nothing, so the build switches
+     it on; it fills the project's audience, which the outreach then works. */
+  const trades = one(a.prospectTrades).split(',').map(x => x.trim()).filter(Boolean);
+  const places = one(a.prospectPlaces).split(';').flatMap(x => x.split(/\s*\|\s*/)).map(x => x.trim()).filter(Boolean);
+  const perDay = Number(one(a.prospectPerDay, '20')) || 20;
+  if (source === 'find') {
+    wfs.unshift({
+      key: 'finder', name: 'Find new prospects daily', origin: 'generated',
+      purpose: `Searches business directories live every day for ${trades.join(', ') || 'your audience'}${places.length ? ` in ${places.slice(0, 3).join('; ')}${places.length > 3 ? ` and ${places.length - 3} more` : ''}` : ''}, reads each website for the address it publishes, checks it, and adds up to ${perDay} new prospects a day to this project.`,
+      nodes: [
+        { id: 'n0', type: 'trigger', label: 'Every day', config: { event: 'schedule', cadence: 'daily' }, nextId: 'n1' },
+        { id: 'n1', type: 'ai', label: 'Find new prospects', config: { source: 'directory', produces: 'prospects', perDay: String(perDay), trades: trades.join(', '), places: places.join('; ') }, nextId: null },
+      ],
+      schedule: 'Every day, a few at a time',
+      agents: [{ name: 'Prospecting Agent', role: 'Searches live, reads websites, checks every address, adds the new ones' }],
+      output: { label: 'New prospects', route: '/autopilot' },
+      sends: false, channel: 'contacts',
+    });
+  }
+  const wantsSms = source === 'find' && one(a.prospectSms) === 'yes';
+  if (wantsSms) {
+    /* The opt-in link on every outreach email — dropped from the email when no link can be made (no app address). */
+    for (const w of wfs) {
+      for (const n of w.nodes ?? []) {
+        if (n.type === 'send_email' && n.config.body && !n.config.body.includes('smsOptInLink')) {
+          n.config = { ...n.config, body: `${n.config.body}\n\nP.S. Would a text be easier? Say yes here and we will text you instead: {{smsOptInLink}}` };
+        }
+      }
+    }
+    wfs.push({
+      key: 'sms-optin', name: 'Text the prospects who opt in', origin: 'generated',
+      purpose: 'Starts when somebody agrees to texts through the link in your email, and sends them a first text. Nobody else is texted.',
+      nodes: [
+        { id: 'n0', type: 'trigger', label: 'They agreed to texts', config: { event: 'tag_added', tag: 'sms opt-in' }, nextId: 'n1' },
+        { id: 'n1', type: 'send_sms', label: 'Say thanks, and what is next', config: { message: 'Hi {{firstName}}, thanks for saying yes to texts from {{myCompany}}. What is the best time for a quick call this week? Reply STOP to opt out.' }, nextId: null },
+      ],
+      schedule: 'When someone opts in', agents: [], sends: true, channel: 'sms',
+    });
+  }
   return {
     workflows: wfs,
     setup,
     outputs: [
       `A ${one(a.sequenceLength, '5')}-email sequence written from your offer`,
-      source === 'find' ? 'New leads matching your audience, added to Contacts' : '',
+      source === 'find' ? `Up to ${perDay} new prospects a day, found live and added to this project's audience` : '',
       fromList ? 'The sequence sent to the people on the contact list you chose' : '',
       reply === 'draft' ? 'Drafted answers to replies' : '',
       booking !== 'none' ? 'Booked calls from interested people' : '',
@@ -1112,18 +1199,21 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     ],
     approvals: [
       'You approve the sequence before the first email sends',
-      source === 'find' ? 'You approve each batch of new leads before they are added' : '',
+      source === 'find' ? 'You approve each batch of new prospects before anybody on it is emailed' : '',
       fromList ? 'You approve each batch from the list before it is emailed' : '',
       reply === 'draft' ? 'You send each drafted reply' : '',
     ].filter(Boolean),
     manual: booking === 'own' ? ['Take the calls booked through your own link'] : ['Take the calls people book'],
     planner: ['email', ...(source === 'find' ? ['contacts' as Channel] : []), ...(opts.page ? ['site' as Channel] : []), ...(booking !== 'none' ? ['book' as Channel] : [])],
-    requirements: ['contacts', 'mailbox', 'pipeline', ...(booking === 'page' ? ['bookingPage' as RequirementId] : [])],
+    requirements: ['contacts', 'mailbox', 'pipeline', ...(booking === 'page' ? ['bookingPage' as RequirementId] : []), ...(wantsSms ? ['sms' as RequirementId] : [])],
     limits: [
       source === 'upload' ? 'The list is imported in Contacts — Autopilot works from what is there.' : '',
       /* Said because it is the difference from every other outreach project,
          which picks up anybody new in the workspace. */
       fromList ? 'Only the people on that list are written to by this project — anybody new in Contacts is left alone unless you add them to it.' : '',
+      source === 'find' ? 'A place has only so many listed businesses: when every search is run to its end the finder says so and asks for more places or kinds of business.' : '',
+      /* Texting strangers is regulated (in the US, the TCPA and state laws like Virginia's); an email is not consent. */
+      source === 'find' && wantsSms ? 'Texts go only to prospects who opt in — the outreach email carries a link where they can say yes to texts.' : '',
     ].filter(Boolean),
   };
 }
@@ -1146,9 +1236,9 @@ export const SOLUTIONS: Solution[] = [
     label: 'Lead Generation',
     blurb: 'Find people who fit, start the conversation, and book the interested ones.',
     example: 'Find businesses that need what we sell, email them and book calls with the interested ones.',
-    keywords: [['lead', 2.5], ['leads', 2.5], ['lead generation', 3.5], ['prospect', 2.5], ['prospects', 2.5], ['find clients', 3], ['new clients', 2.5], ['new customers', 2.5], ['book calls', 2], ['meetings', 1.5]],
+    keywords: [['lead', 2.5], ['leads', 2.5], ['lead generation', 3.5], ['prospect', 2.5], ['prospects', 2.5], ['find clients', 3], ['find customers', 3], ['new clients', 2.5], ['new customers', 2.5], ['book calls', 2], ['meetings', 1.5]],
     channels: ['contacts', 'email', 'book', 'site'],
-    questions: ['business', 'website', 'audience', 'location', 'contactSource', 'contactList', 'offer', 'emailGoal', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
+    questions: ['business', 'website', 'audience', 'location', 'contactSource', 'contactList', 'prospectTrades', 'prospectPlaces', 'prospectPerDay', 'prospectSms', 'offer', 'emailGoal', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
     build: a => merge(empty(), {
       ...outreachPart({ ...a, contactSource: a.contactSource ?? 'find' }, { page: true }),
       outputs: ['A page for the offer, so the email has somewhere to point'],
@@ -1161,7 +1251,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Send a five-email outreach sequence to Amazon sellers and book interested prospects.',
     keywords: [['outreach', 3.5], ['cold email', 4], ['email sequence', 3.5], ['sequence', 2], ['email campaign', 2], ['emails', 1.5], ['email', 1.5], ['follow-up', 1], ['follow up', 1]],
     channels: ['email', 'contacts', 'book'],
-    questions: ['business', 'website', 'audience', 'contactSource', 'contactList', 'offer', 'emailGoal', 'sequenceLength', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
+    questions: ['business', 'website', 'audience', 'contactSource', 'contactList', 'prospectTrades', 'prospectPlaces', 'prospectPerDay', 'prospectSms', 'offer', 'emailGoal', 'sequenceLength', 'booking', 'bookingUrl', 'sender', 'mailbox', 'dailyVolume', 'replyHandling'],
     build: a => merge(empty(), outreachPart(a)),
   },
   {
@@ -1363,7 +1453,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'I have 10,000 previous customers. Create an email reactivation campaign.',
     keywords: [['reactivat', 4.5], ['re-engage', 4.5], ['reengage', 4.5], ['win back', 4.5], ['winback', 4.5], ['previous customers', 4], ['past customers', 4], ['old customers', 4], ['lapsed', 3.5], ['dormant', 3.5], ['existing customers', 2.5]],
     channels: ['email'],
-    questions: ['business', 'contactSource', 'contactList', 'contactCount', 'emailGoal', 'offer', 'sequenceLength', 'sender', 'mailbox', 'booking', 'bookingUrl', 'replyHandling'],
+    questions: ['business', 'contactSource', 'contactList', 'prospectTrades', 'prospectPlaces', 'prospectPerDay', 'prospectSms', 'contactCount', 'emailGoal', 'offer', 'sequenceLength', 'sender', 'mailbox', 'booking', 'bookingUrl', 'replyHandling'],
     build: a => {
       const base = outreachPart({ ...a, contactSource: a.contactSource ?? 'crm' });
       const win = fromTemplate('dormant-winback', 'winback', 'email', { purpose: 'Writes to people who have not bought in a while with a reason to come back — not "just checking in".' });
@@ -1409,7 +1499,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Find homeowners thinking of selling in my area and book valuations.',
     keywords: [['real estate', 4.5], ['estate agent', 4.5], ['property', 3.5], ['properties', 3], ['homeowner', 3], ['homeowners', 3], ['valuation', 3.5], ['realtor', 4.5], ['landlord', 2.5], ['listings', 2.5]],
     channels: ['contacts', 'email', 'book', 'site'],
-    questions: ['business', 'propertySide', 'location', 'contactSource', 'contactList', 'offer', 'booking', 'bookingUrl', 'mailbox', 'dailyVolume'],
+    questions: ['business', 'propertySide', 'location', 'contactSource', 'contactList', 'prospectTrades', 'prospectPlaces', 'prospectPerDay', 'prospectSms', 'offer', 'booking', 'bookingUrl', 'mailbox', 'dailyVolume'],
     build: a => {
       const base = outreachPart(a, { page: true });
       const nurture = fromTemplate('dormant-winback', 'nurture', 'email', { purpose: 'Stays in touch with people who are not moving this month — most will, eventually.' });
@@ -1455,7 +1545,7 @@ export const SOLUTIONS: Solution[] = [
     example: 'Find warehouse candidates in the West Midlands and invite them to apply.',
     keywords: [['recruit', 4], ['recruitment', 4.5], ['recruiting', 4], ['candidates', 4], ['candidate', 3.5], ['hiring', 3.5], ['vacancy', 3.5], ['vacancies', 3.5], ['jobs', 2], ['staffing', 4]],
     channels: ['contacts', 'email'],
-    questions: ['business', 'recruitSide', 'roles', 'location', 'contactSource', 'contactList', 'offer', 'mailbox', 'dailyVolume'],
+    questions: ['business', 'recruitSide', 'roles', 'location', 'contactSource', 'contactList', 'prospectTrades', 'prospectPlaces', 'prospectPerDay', 'prospectSms', 'offer', 'mailbox', 'dailyVolume'],
     build: a => {
       const base = outreachPart(a);
       const qual = fromTemplate('ai-lead-qualification', 'qualify', 'contacts', { purpose: 'Sorts replies into worth-a-call and not-yet, so you only phone the right ones.' });

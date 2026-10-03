@@ -52,6 +52,8 @@ import { handleAiKeys } from './routes/aikeys';
 import { handleGeoapify } from './routes/geoapify';
 import { handleEmailVerifier } from './routes/emailVerifier';
 import { handleCompaniesHouse } from './routes/companiesHouse';
+import { handleFinders } from './routes/finders';
+import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -77,6 +79,7 @@ import { runDigests } from './autopilotDigest';
 import { runEngageDispatch } from './engageDispatch';
 import { runAutomations } from './lib/automationEngine';
 import { runProjectAgents } from './lib/projectAgents';
+import { runProspectFinders } from './prospectFinderTick';
 import { runHousekeeping } from './lib/housekeeping';
 import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
@@ -94,6 +97,10 @@ const ROUTES: Record<string, Handler> = {
   '/api/geoapify.php': handleGeoapify,
   '/api/email-verifier.php': handleEmailVerifier,
   '/api/companies-house.php': handleCompaniesHouse,
+  /* A project's prospects and its daily prospect finder (prospectFinderTick.ts). */
+  '/api/finders.php': handleFinders,
+  /* A found business saying yes to texts — public, signed per contact (lib/smsConsent.ts). */
+  '/api/sms-optin.php': handleSmsOptin,
   '/api/affiliate.php': handleAffiliate,
   '/api/resell.php': handleResell,
   '/api/resell-webhook.php': handleResellWebhook,
@@ -342,6 +349,14 @@ export default {
        */
       const setups = await runPendingSetups(env);
 
+      /*
+       * Daily prospect finders before Autopilot, for the same reason: the
+       * people a finder adds to a project's audience are what the planner
+       * proposes to its outreach, and finding them after planning would make
+       * each one wait a day. One small, bounded step per finder per tick.
+       */
+      const finders = await runProspectFinders(env).catch(e => ({ ran: 0, added: 0, found: 0, notes: [String(e)] }));
+
       const auto = await runAutopilot(env);
       /*
        * Replies before sends, for the same reason planning comes before both:
@@ -477,6 +492,7 @@ export default {
            nothing new in it is the ordinary case, and folding it into a
            success count would make a quiet week look like a busy one. */
         agents: { ran: agents.ran, produced: agents.produced, skipped: agents.skipped, failed: agents.failed },
+        finders: { ran: finders.ran, found: finders.found, added: finders.added },
         ...(reputation.ran ? { reputation: { checked: reputation.checked, added: reputation.added, failed: reputation.failed, requestsSent: reputation.requestsSent, requestsFailed: reputation.requestsFailed } } : {}),
         /* Absent on most ticks, which is the point of the gate. */
         ...(swept.ran ? { housekeeping: { deleted: swept.deleted } } : {}),

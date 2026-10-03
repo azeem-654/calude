@@ -31,7 +31,9 @@ import {
 } from '../../../services/autopilot';
 import { saveProduct } from '../../../services/commerce';
 import { flushNow } from '../../../services/serverData';
-import { loadLists } from '../../../services/contactLists';
+import { createList, loadLists } from '../../../services/contactLists';
+import { currentActor } from '../../../services/contactPermissions';
+import { runFinderStep, saveFinder } from '../../../services/finders';
 import { understand } from '../../../services/intake';
 import { tailorEmails } from './emailWriter';
 import {
@@ -197,7 +199,9 @@ export async function runBuild(
     update(steps, say);
   };
   const result: BuildResult = { ok: false, projectId: '', fatal: '', created: { workflows: 0, activated: 0, products: 0 }, problems: [] };
-  const { bp, state } = inp;
+  const { state } = inp;
+  /* `let`: a project that finds its own prospects is given its new list as its audience below. */
+  let { bp } = inp;
   const business = val(state, 'business');
 
   /* ── 1 · The business ── */
@@ -286,6 +290,16 @@ export async function runBuild(
      second ago may still be in the sync's debounce, and a project whose
      audience the server cannot find plans "that list is gone" on its first
      tick. */
+  /* A project that finds its own prospects needs somewhere to put them: a new
+     list of strangers, made here, saved up before the project names it as its
+     audience (the planner reads the audience from the server). */
+  const finderSpec = bp.workflows.find(w => w.key === 'finder');
+  let finderList = '';
+  if (finderSpec && !bp.audienceListId) {
+    const made = createList({ name: `${bp.name.trim() || 'Autopilot project'} — prospects`, type: 'static', memberIds: [], createdBy: currentActor().name, kind: 'cold', origin: 'prospecting' });
+    finderList = made.id;
+    bp = { ...bp, audienceListId: made.id };
+  }
   if (bp.audienceListId) await flushNow();
   const p = await saveProject({
     name: bp.name.trim().slice(0, 150) || 'Autopilot project',
@@ -309,6 +323,29 @@ export async function runBuild(
   const ids: Record<string, string> = {};
   for (const w of bp.workflows) {
     set(`wf:${w.key}`, { state: 'now' }, w.origin === 'ai' ? `I’m writing ${w.name} from your description.` : `I’m building ${w.name}.`);
+    /* The daily prospect finder is made by the server with its engine state
+       (routes/finders.ts `save`), which also creates its workflow, switched on. */
+    if (w.key === 'finder') {
+      const cfg = w.nodes?.find(n => n.config?.produces === 'prospects')?.config ?? {};
+      const trades = String(cfg.trades ?? '').split(',').map(x => x.trim()).filter(Boolean);
+      const places = String(cfg.places ?? '').split(';').map(x => x.trim()).filter(Boolean);
+      const listId = bp.audienceListId ?? finderList;
+      const r = await saveFinder({
+        projectId: p.id, trades, places, perDay: Number(cfg.perDay) || 20, source: 'free',
+        listId: listId ?? undefined, listName: loadLists().find(l => l.id === listId)?.name ?? '',
+      });
+      if (r.success && r.workflowId) {
+        ids[w.key] = r.workflowId;
+        result.created.workflows++;
+        set(`wf:${w.key}`, { state: 'done', detail: `On — the first prospects arrive within minutes, up to ${Number(cfg.perDay) || 20} a day. Watch them on the project's Prospects tab.` });
+        /* Its first step now, so the Prospects tab has something to show when the customer opens the project. */
+        if (r.finderId) void runFinderStep(p.id, r.finderId);
+      } else {
+        result.problems.push(`${w.name}: ${r.error ?? 'not saved'}`);
+        set(`wf:${w.key}`, { state: 'warn', detail: `${r.error ?? 'It could not be set up.'} You can set it up from the project's Prospects tab.` });
+      }
+      continue;
+    }
     if (w.origin === 'ai') {
       const r = await buildWorkflow(p.id, w.instruction ?? w.purpose);
       if (r.ok) { result.created.workflows++; set(`wf:${w.key}`, { state: 'done', detail: r.message }); }

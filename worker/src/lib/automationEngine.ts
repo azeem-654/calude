@@ -42,6 +42,7 @@ import { loadSmsConfig, sendSms } from './sms';
 import { canSend, cannotSendReason, deliver, fromAddressOf } from './deliver';
 import { wrapEmail } from './designLayouts';
 import { logoAddress } from './brandLogo';
+import { optInLink, prospectSmsBlock } from './smsConsent';
 
 /**
  * The project client's logo as an absolute, signed address — a mail client
@@ -516,7 +517,10 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           const biz = bizCache.get(bizKey)!;
           const subject = personalise(String(node.config?.subject ?? '') || `A message from ${mailbox!.from.name || 'us'}`, contact, biz);
           const cfg = (k: string) => String(node.config?.[k] ?? '').trim();
-          let html = textToHtml(personalise(String(node.config?.body ?? node.config?.preview ?? ''), contact, biz));
+          const bodyText = String(node.config?.body ?? node.config?.preview ?? '');
+          /* Their own opt-in link, made only when the email asks for it. */
+          const person = bodyText.includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+          let html = textToHtml(personalise(bodyText, person, biz));
           /* The frame the wizard's email layout chose. `plain` — the default,
              and every step written before layouts — is left exactly as it was. */
           if (cfg('emailLayout') && cfg('emailLayout') !== 'plain') {
@@ -549,6 +553,9 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
         } else if (!canSms) {
           await log(env, accountId, run.id, node.id, node.type, 'skipped', 'No SMS sender is connected to this workspace.');
           report.notes.push(`"${a.name}" wanted to send a text but no SMS sender is connected.`);
+        } else if (await prospectSmsBlock(env, accountId, contact, to)) {
+          /* A found business that has not said yes to texts is never texted. */
+          await log(env, accountId, run.id, node.id, node.type, 'skipped', await prospectSmsBlock(env, accountId, contact, to));
         } else {
           /* Plain text, always. An SMS node whose body was pasted from an email
              step would otherwise post markup to somebody's phone. */

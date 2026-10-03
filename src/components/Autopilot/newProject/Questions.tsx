@@ -17,6 +17,7 @@ import type { Attachment, IntakeState, KnownSource, Screen, WorkspaceFacts } fro
 import { readAttachment } from './attachments';
 import { MANUAL_FIELDS, PROFILE_FIELDS, profileSource, type ProfileCheck } from './questionRules';
 import { listChoices } from './contactFacts';
+import { PlacesField, TradesField, tradesOf } from './ProspectFields';
 import { LayoutField, ThemeField, ColourField, LogoField, type LogoFieldState } from './DesignFields';
 import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
@@ -354,6 +355,25 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
             {vals[0] === 'link' ? 'Link added as a reference. ' : ''}{imgs.length ? `${imgs.length} example image${imgs.length === 1 ? '' : 's'} attached.` : ''}
           </span>
         )}
+      </div>
+    );
+  }
+
+  /* ── The daily prospect finder: who, where, and a live look ── */
+  if (q.id === 'prospectTrades') {
+    return (
+      <div className="np-q">
+        {head}{help}
+        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')} />
+      </div>
+    );
+  }
+  if (q.id === 'prospectPlaces') {
+    const trades = tradesOf(String(state.known.prospectTrades?.value ?? ''));
+    return (
+      <div className="np-q">
+        {head}{help}
+        <PlacesField value={vals[0] ?? ''} trades={trades} onChange={v => answer(q.id, v || null, 'you')} />
       </div>
     );
   }

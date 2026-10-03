@@ -23,7 +23,7 @@
  * turned on sees the same bubbles, still.
  */
 import { useNavigate } from 'react-router-dom';
-import { FileText, Image as ImageIcon, Mail, Globe, Film, Sparkles, ChevronRight } from 'lucide-react';
+import { FileText, Image as ImageIcon, Mail, Globe, Film, Sparkles, ChevronRight, Target } from 'lucide-react';
 import { T } from './theme';
 
 export interface Produced {
@@ -44,6 +44,7 @@ const KINDS: Record<string, { icon: typeof FileText; where: string }> = {
   website: { icon: Globe, where: 'Websites' },
   funnel: { icon: Globe, where: 'Funnels' },
   short: { icon: Film, where: 'Shorts' },
+  prospects: { icon: Target, where: 'Contacts' },
 };
 
 const kindOf = (k: string) => KINDS[k] ?? { icon: Sparkles, where: 'the app' };

@@ -204,6 +204,17 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('a list of strangers sizes the sending', allQuestions(picked).some(x => x.id === 'dailyVolume' && applies(x, picked.known)));
 }
 
+/* Who somebody sells to is the audience to find, not the kind of business they are. */
+{
+  const va = initialState('I want to sell my products to real estate agents in Virginia and find customers through email campaigns and SMSs.', undefined, EMPTY, [], []);
+  ok('"sell … to real estate agents" is finding customers, not an estate agency', va.solutionKeys[0] === 'lead-generation' && !va.solutionKeys.includes('real-estate') && !va.solutionKeys.includes('ecommerce'), JSON.stringify(va.solutionKeys));
+  ok('…and who, where and the texts are read from the sentence',
+    /real estate agent/i.test(String(va.known.prospectTrades?.value ?? '')) && /Virginia/.test(String(va.known.prospectPlaces?.value ?? '')) && va.known.prospectSms?.value === 'yes',
+    JSON.stringify({ t: va.known.prospectTrades, p: va.known.prospectPlaces, s: va.known.prospectSms }));
+  const dn = initialState('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.', undefined, EMPTY, [], []);
+  ok('"sell my dental supplies to dentists" is lead generation too', dn.solutionKeys[0] === 'lead-generation', JSON.stringify(dn.solutionKeys));
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed} passed, ${failed} failed`);

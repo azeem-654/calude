@@ -31,6 +31,7 @@ import { enrolContacts } from '../../services/engagement';
 import { enrollInSequence } from '../../services/contactEmail';
 import { isSuppressed } from '../../services/deliverability';
 import { flushNow } from '../../services/serverData';
+import { recordProjectProspects } from '../../services/finders';
 import { loadLists } from '../../services/contactLists';
 import type { Contact } from '../../types';
 import { Notice, RuleConfirm } from './ProspectParts';
@@ -142,6 +143,12 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
           });
           if (!saved.success) { setErr(`They were saved on “${r.list?.name}”, but the project could not be pointed at it: ${saved.error ?? 'no answer'}.`); return; }
         }
+        /* Counted on the project's Prospects tab beside what its daily finder adds. */
+        await recordProjectProspects(p.id, r.contacts.map(c => ({
+          ref: `contact:${c.id}`, contactId: c.id, name: c.name, email: c.email, phone: c.phone, website: c.website ?? '',
+          address: c.address ?? '', category: c.tags?.[1] ?? '', emailStatus: c.customFields?.emailStatus ?? '',
+          foundAt: c.customFields?.foundAt ?? '', query: s.searched ? `${s.searched.trade}|${s.searched.place}` : '',
+        })));
         const reach = r.contacts.filter(mailable).length;
         onDone(`${r.contacts.length} on “${p.name}”'s list “${r.list?.name}” — ${reach} can be emailed. Autopilot proposes them in batches of 20 and asks you before each one, because they never asked to hear from you.`);
         return;

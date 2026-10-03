@@ -85,6 +85,15 @@ export async function tailorEmails(nodes: WorkflowNode[], ctx: TailorContext): P
   emails.forEach((e, i) => {
     if (!written.has(e.id)) Object.assign(byId.get(e.id)!.config, plainEmail(e.label, i, emails.length, ctx));
   });
+  /* The texting opt-in P.S. is the only way a found business can say yes to
+     texts, so a rewritten email keeps it — the writer is asked for a better
+     email, not for a decision about consent. */
+  for (const e of emails) {
+    const ps = String(e.config.body ?? '').split('\n').find(l => /\{\{\s*smsOptInLink\s*\}\}/.test(l));
+    const n = byId.get(e.id)!;
+    const body = String(n.config.body ?? '');
+    if (ps && !/\{\{\s*smsOptInLink\s*\}\}/.test(body)) n.config.body = `${body.trimEnd()}\n\n${ps}`;
+  }
   const how: Tailored['how'] = written.size === emails.length ? 'ai' : 'plain';
   note = how === 'ai'
     ? `${emails.length} email${emails.length === 1 ? '' : 's'} written for ${ctx.business.companyName}.`

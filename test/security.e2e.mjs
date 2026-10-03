@@ -119,6 +119,12 @@ const rev = await api('revenue.php', { action: 'summary', token: B.token, accoun
 check("B cannot read A's revenue", !rev.ok, JSON.stringify(rev.data).slice(0, 120));
 const revPj = await api('revenue.php', { action: 'summary', token: B.token, accountId: B.acct, days: 30, projectId: pj.data.id });
 check("B cannot scope a report to A's project", !revPj.ok, JSON.stringify(revPj.data).slice(0, 120));
+const fOv = await api('finders.php', { action: 'overview', token: B.token, accountId: A.acct, projectId: pj.data.id });
+check("B cannot read A's daily prospecting", !fOv.ok, JSON.stringify(fOv.data).slice(0, 120));
+const fSave = await api('finders.php', { action: 'save', token: B.token, accountId: B.acct, projectId: pj.data.id, trades: ['dentists'], places: ['Leeds'], perDay: 10 });
+check("B cannot start a finder on A's project from B's workspace", !fSave.ok, JSON.stringify(fSave.data).slice(0, 120));
+const fRec = await api('finders.php', { action: 'record', token: B.token, accountId: B.acct, projectId: pj.data.id, rows: [{ ref: 'x', name: 'x' }] });
+check("B cannot add prospects to A's project", !fRec.ok, JSON.stringify(fRec.data).slice(0, 120));
 const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
 check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
 const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });

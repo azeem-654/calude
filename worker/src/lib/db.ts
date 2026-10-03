@@ -110,6 +110,35 @@ export async function dataPut(db: D1Database, accountId: string, key: string, va
   ).bind(accountId, key, value, nowIso()).run();
 }
 
+/**
+ * Change one stored document without losing anybody else's change to it.
+ *
+ * The browser owns most of these documents and saves them whole; a plain
+ * read-modify-write from the server, landing between the browser's read and
+ * its save, would silently drop one side. This writes only if the document is
+ * still the one that was read (its `updated_at`), and otherwise reads it again
+ * and re-applies the change — up to three times, then reports that it could
+ * not, so the caller tries on its next pass rather than forcing it.
+ */
+export async function dataUpdate(
+  db: D1Database, accountId: string, key: string, change: (current: string | null) => string | null,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await db.prepare('SELECT v, updated_at AS at FROM crm_data WHERE account_id = ? AND k = ?')
+      .bind(accountId, key).first<{ v: string | null; at: string }>();
+    const next = change(row?.v ?? null);
+    if (next === null) return true;
+    const at = nowIso();
+    const r = row
+      ? await db.prepare('UPDATE crm_data SET v = ?, updated_at = ? WHERE account_id = ? AND k = ? AND updated_at = ?')
+        .bind(next, at, accountId, key, row.at).run()
+      : await db.prepare('INSERT OR IGNORE INTO crm_data (account_id, k, v, updated_at) VALUES (?, ?, ?, ?)')
+        .bind(accountId, key, next, at).run();
+    if (r.meta?.changes) return true;
+  }
+  return false;
+}
+
 export async function dataList(db: D1Database, accountId: string): Promise<Record<string, string>> {
   const { results } = await db.prepare('SELECT k, v FROM crm_data WHERE account_id = ?')
     .bind(accountId).all<{ k: string; v: string }>();

@@ -32,7 +32,7 @@ import {
   Workflow as WorkflowIcon, Bot, BarChart3, Settings as SettingsIcon,
   Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle,
   ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2,
-  Image as ImageIcon, Activity, Clock, LayoutDashboard,
+  Image as ImageIcon, Activity, Clock, LayoutDashboard, Target,
 } from 'lucide-react';
 import {
   fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
@@ -55,6 +55,7 @@ import StepDrawer from './StepDrawer';
 import ProjectLogo from './ProjectLogo';
 import ProjectOverview from './ProjectOverview';
 import ProjectSchedule from './ProjectSchedule';
+import ProjectProspects from './ProjectProspects';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
@@ -90,7 +91,7 @@ const ACCENT = T.accent;
  * One tab now, with a view switch inside it. Same list, two ways of looking at
  * it, one source.
  */
-type Tab = 'overview' | 'workflows' | 'agents' | 'activity' | 'assets' | 'schedule' | 'analytics' | 'settings';
+type Tab = 'overview' | 'workflows' | 'prospects' | 'agents' | 'activity' | 'assets' | 'schedule' | 'analytics' | 'settings';
 
 /*
  * Overview first. It is the blueprint the customer approved and the latest
@@ -102,6 +103,8 @@ type Tab = 'overview' | 'workflows' | 'agents' | 'activity' | 'assets' | 'schedu
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'workflows', label: 'Workflows', icon: WorkflowIcon },
+  /* Beside the workflows: the people the project is finding, day by day. */
+  { id: 'prospects', label: 'Prospects', icon: Target },
   { id: 'agents', label: 'AI Agents', icon: Bot },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'assets', label: 'Assets', icon: ImageIcon },
@@ -170,14 +173,16 @@ export default function ProjectCard({
   /* Overview for a project built from a blueprint, or one somebody was just
      sent to; Workflows, as it always was, for projects older than blueprints —
      their Overview has little to say and their owners know where they work. */
-  const [tab, setTab] = useState<Tab>(focused || project.brief ? 'overview' : 'workflows');
+  /* `?tab=prospects` — the finder's step links here — opens that tab on the project it names. */
+  const asked = (): Tab | null => (focused && new URLSearchParams(window.location.search).get('tab') === 'prospects' ? 'prospects' : null);
+  const [tab, setTab] = useState<Tab>(() => asked() ?? (focused || project.brief ? 'overview' : 'workflows'));
   /* Sent here after the card was already on screen: open the Overview then too.
      Adjusted during render rather than in an effect, which would draw the old
      tab for a frame first. */
   const [seenFocus, setSeenFocus] = useState(focused);
   if (focused !== seenFocus) {
     setSeenFocus(focused);
-    if (focused) setTab('overview');
+    if (focused) setTab(asked() ?? 'overview');
   }
   /* Grid to recognise a picture, list to read a name. Not stored: it is a
      glance, not a preference, and a remembered one is a setting to explain. */
@@ -640,6 +645,8 @@ export default function ProjectCard({
           )}
 
           {tab === 'schedule' && <ProjectSchedule flows={flows} runs={runs} />}
+
+          {tab === 'prospects' && <ProjectProspects project={project} />}
 
           {/* ── Workflows ──
               "Create workflow" sits above both states, always. It used to live

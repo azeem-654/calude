@@ -37,6 +37,7 @@
  * so abandoning halfway leaves nothing behind.
  */
 import ResultPreview from './newProject/ResultPreview';
+import { FinderReview } from './newProject/ProspectFields';
 import { DEFAULT_THEME, resolveTheme } from '../../services/designOptions';
 import { TEMPLATE_CATALOG } from '../shared/pageTemplates';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -777,6 +778,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               {phase === 'blueprint' && bp && (
                 <>
                   <BlueprintView bp={bp} onRename={name => setState(s => (s ? { ...s, name } : s))} />
+                  {bp.workflows.some(w => w.key === 'finder') && (
+                    <FinderReview trades={String(state?.known.prospectTrades?.value ?? '')} places={String(state?.known.prospectPlaces?.value ?? '')}
+                      onAnswer={(id, v) => answer(id, v, 'you')} />
+                  )}
                   {(() => {
                     const said = (id: string) => String(withDefaults(state!).known[id]?.value ?? '');
                     return (

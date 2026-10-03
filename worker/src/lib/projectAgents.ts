@@ -34,6 +34,7 @@
  * empty" is exactly the kind of number that makes a customer stop believing the
  * rest of the screen.
  */
+import { loadFinder, stepFinder } from '../prospectFinderTick';
 import { dataGet, dataPut, nowIso, type Env } from './db';
 import { loadAiKey, researchWeb } from './ai';
 import { readSite, urlProblem } from './readSite';
@@ -439,6 +440,12 @@ async function runAgentNode(
   const cfg = node.config ?? {};
   const c = (k: string) => String(cfg[k] ?? '').trim();
 
+  /* The daily prospect finder is a step like this one on the board, but its
+     work happens on every tick through the day (prospectFinderTick.ts), not
+     once at the scheduled hour. Run now takes one real step; the schedule
+     only reports how today is going. It needs no AI key. */
+  if (c('produces') === 'prospects') return finderStepFor(env, accountId, project.id, workflowId, force);
+
   const apiKey = await loadAiKey(env, accountId);
   /* The workspace's key, the operator's, then the deployment's. None of the
      three is an operator problem, not something the customer can fix, so it is
@@ -752,6 +759,21 @@ export async function pruneAgentRuns(env: Env): Promise<void> {
          SELECT id FROM crm_agent_runs ORDER BY created_at DESC LIMIT 5000)`,
     ).run();
   } catch { /* housekeeping only */ }
+}
+
+async function finderStepFor(env: Env, accountId: string, projectId: string, workflowId: string, force: boolean): Promise<Produced> {
+  const row = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND workflow_id = ?')
+    .bind(accountId, projectId, workflowId).first<{ id: string }>().catch(() => null);
+  const f = row ? await loadFinder(env, row.id, accountId) : null;
+  if (!f) return { outcome: 'failed', detail: 'This workflow has no prospect finder behind it — set one up on the project\'s Prospects tab.' };
+  if (!force) {
+    return { outcome: 'ok', detail: `Finds through the day: ${f.day_added} added today of ${f.per_day}.`, link: { kind: 'prospects', id: f.id, label: 'Prospects', route: `/autopilot?project=${encodeURIComponent(projectId)}&tab=prospects` } };
+  }
+  const r = await stepFinder(env, f);
+  return {
+    outcome: r.ran ? 'ok' : 'skipped', detail: r.detail || 'Nothing to do right now.',
+    link: { kind: 'prospects', id: f.id, label: 'Prospects', route: `/autopilot?project=${encodeURIComponent(projectId)}&tab=prospects` },
+  };
 }
 
 /** One agent step, run now because somebody pressed the button. */

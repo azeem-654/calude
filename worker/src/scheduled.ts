@@ -24,6 +24,7 @@ import { dataGet, dataPut } from './lib/db';
 import { logDelivery } from './lib/deliveryLog';
 import { loadMailbox } from './routes/mailbox';
 import { loadSmsConfig, sendSms } from './lib/sms';
+import { optInLink, prospectSmsBlock } from './lib/smsConsent';
 import { canSend, cannotSendReason, CAN_SEND_SQL, deliver, fromAddressOf } from './lib/deliver';
 
 /* Keys the browser syncs up. Same names it uses locally. */
@@ -76,7 +77,7 @@ export function isPersonStep(step: { type?: string } | undefined): boolean {
   return t === 'phone_call' || t.startsWith('li_');
 }
 interface Sequence { id: string; name: string; status: string; steps: Step[] }
-interface Contact { id: string; name?: string; firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; jobTitle?: string }
+interface Contact { id: string; name?: string; firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; jobTitle?: string; status?: string }
 
 /** The per-run ceiling. A workspace with a huge backlog is spread over ticks
  *  rather than being allowed to exhaust the Worker's time budget in one go. */
@@ -209,7 +210,9 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     if (seq.status === 'paused') continue;
 
     if (!biz) biz = await businessFor(env, accountId, null, mailbox?.from.name ?? '');
-    const html = textToHtml(personalise(step.body ?? '', contact, biz));
+    /* Their own opt-in link, only when the step asks for it. */
+    const person = (step.body ?? '').includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+    const html = textToHtml(personalise(step.body ?? '', person, biz));
     const subject = personalise(step.subject ?? '', contact, biz);
 
     /*
@@ -228,13 +231,16 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
       /* SMS is plain text. Sending the HTML body of an email step would post
          markup to somebody's phone. */
       const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
-      const r = await sendSms(env, sms!, target, text, accountId);
+      /* A found business that has not said yes to texts is never texted —
+         treated like an opt-out: the step is passed over, not retried. */
+      const block = await prospectSmsBlock(env, accountId, contact, target);
+      const r = block ? { ok: false, error: block, suppressed: true } : await sendSms(env, sms!, target, text, accountId);
       out = { ok: r.ok, error: r.error };
       /* An opt-out is not a failure to retry or a fault to fix — it is the
          person's decision, and it is worth naming as that in the log. */
       if (r.suppressed) {
         suppressed = true;
-        note(report, accountId, `${target} has opted out, so the text was not sent.`);
+        note(report, accountId, block || `${target} has opted out, so the text was not sent.`);
       }
     } else {
       const r = await deliver(mailbox!, {

@@ -38,7 +38,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, BadgeCheck, Bookmark, Bot, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch,
+  AlertTriangle, BadgeCheck, Bookmark, Bot, CalendarClock, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch,
   Globe, Lightbulb, Loader, Mail, MailCheck, MapPin, MoreHorizontal, PanelLeft, Pin, PlayCircle, Plus, RotateCcw, Search, Send,
   ShieldCheck, Sparkles, Target, Users, X,
 } from 'lucide-react';
@@ -47,13 +47,14 @@ import { useProspectSearch, outcomeText, AUTO_READ, type ImportOutcome } from '.
 import { Attribution, ImportPanel, Notice, SearchProblems } from './ProspectParts';
 import { COLUMNS, LeadTable, PlanSteps, ProgressBar, SkeletonRows, Thinking, VerifyTool, useLeadRows, type ColumnId, type LeadFilter } from './AiParts';
 import AddTo, { type AddMode } from './AddTo';
+import DailySearch from './DailySearch';
 import { HowItWorks, Ideas, StartScreen, tradeIcon, tradeTone } from './AiStart';
 import { InsightsRail, KpiRow, ProgressCard, Robot, clock, type Insight } from './AiResults';
 import MicButton from './MicButton';
 import { SOURCE_NAME, type ProspectSource } from '../../services/prospects';
 import { suggestListName, type SavedSearch } from '../../services/prospectImport';
 import { listKindOf, loadLists, type ContactList } from '../../services/contactLists';
-import { addressesOf, ago, askTitle, parseAsk, toCsv } from '../../services/aiProspecting';
+import { addressesOf, ago, askTitle, parseAsk, relatedTrades, toCsv } from '../../services/aiProspecting';
 import type { Contact } from '../../types';
 import './prospecting.css';
 import './aiProspecting.css';
@@ -90,16 +91,6 @@ function Kebab({ label, items }: { label: string; items: { label: string; onClic
   );
 }
 
-/** Other kinds of business worth trying in the same place. */
-const RELATED: [RegExp, string[]][] = [
-  [/dent/, ['orthodontists', 'dental clinics', 'opticians', 'physiotherapists']],
-  [/caf|coffee/, ['bakeries', 'restaurants', 'delis', 'tea rooms']],
-  [/account|bookkeep/, ['financial advisers', 'solicitors', 'mortgage brokers', 'insurance brokers']],
-  [/hair|salon|barber/, ['barbers', 'beauty salons', 'nail salons', 'spas']],
-  [/plumb/, ['electricians', 'heating engineers', 'builders', 'roofers']],
-  [/restaurant/, ['cafés', 'pubs', 'takeaways', 'hotels']],
-  [/gym|fitness/, ['personal trainers', 'yoga studios', 'physiotherapists', 'sports shops']],
-];
 
 export default function AiProspecting() {
   const { contacts } = useApp();
@@ -124,6 +115,8 @@ export default function AiProspecting() {
   const [moreLists, setMoreLists] = useState(false);
   const [cols, setCols] = useState<Set<ColumnId>>(() => new Set(COLUMNS.map(c => c.id)));
   const [colsOpen, setColsOpen] = useState(false);
+  const [daily, setDaily] = useState(false);
+  const [dailyProject, setDailyProject] = useState('');
   const importRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
 
@@ -151,7 +144,7 @@ export default function AiProspecting() {
 
   /** Start a new search: back to the first screen, nothing typed. */
   const startNew = () => {
-    s.reset(); setView('leads'); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setDrawer(false);
+    s.reset(); setView('leads'); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setDrawer(false); setDaily(false); setDailyProject('');
     setText(''); setAskError(''); setFilter('all'); setShowAll(false);
     window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 30);
   };
@@ -346,7 +339,7 @@ export default function AiProspecting() {
   const trade = (s.searched?.trade ?? '').toLowerCase();
   const related = [...new Set([
     ...[...new Set(results.map(p => p.category.toLowerCase()).filter(c => c && !trade.includes(c.replace(/s$/, ''))))].slice(0, 3),
-    ...(RELATED.find(([re]) => re.test(trade))?.[1] ?? []),
+    ...relatedTrades(trade),
   ])].slice(0, 5);
   const TradeIcon = tradeIcon(trade);
 
@@ -620,8 +613,23 @@ export default function AiProspecting() {
                       <ShieldCheck size={12} /> {deepReady ? `Verify ${Math.min(60, toDeep.length)} mailbox${toDeep.length === 1 ? '' : 'es'}` : 'Verify mailboxes — needs a verifier'}
                     </button>
                     <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save as list</button>
+                    <button type="button" className="aip-chip" data-accent="true" onClick={() => { setDaily(true); setAddMode(null); setSaving(false); scrollTo(); }}
+                      title="An AI Autopilot project searches this live every day and adds the new ones to its audience">
+                      <CalendarClock size={12} /> Search this every day
+                    </button>
                     <button type="button" className="aip-chip" onClick={() => exportCsv()}><Download size={12} /> Export CSV</button>
                   </div>
+                )}
+                {daily && s.searched && (
+                  <div ref={importRef}>
+                    <DailySearch trade={s.searched.trade} place={s.searched.place} source={s.searched.source} onClose={() => setDaily(false)}
+                      onDone={(m, projectId) => { setDaily(false); setSaid({ ok: true, text: m }); setDailyProject(projectId); }} />
+                  </div>
+                )}
+                {dailyProject && (
+                  <button type="button" className="aip-chip" style={{ justifySelf: 'start' }} onClick={() => navigate(`/autopilot?project=${encodeURIComponent(dailyProject)}&tab=prospects`)}>
+                    <CalendarClock size={12} /> Open the project's Prospects tab
+                  </button>
                 )}
                 {said && <div role="status" className="aip-note" data-ok={said.ok}>{said.text}</div>}
 

@@ -101,6 +101,7 @@ jobs:
           npm run test:emailverify
           npm run test:aiprospecting
           npm run test:register
+          npm run test:finder
 
       - name: Test the domain search
         run: npm run test:domains

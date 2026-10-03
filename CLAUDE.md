@@ -46,6 +46,8 @@ endpoint by writing `worker/src/routes/<name>.ts` and registering it in the
 A cron fires every 5 minutes, and the order in `worker/src/index.ts`
 `scheduled()` is deliberate:
 
+0. `runProspectFinders` — each project's daily finder adds prospects first,
+   so Autopilot can enrol them on the same tick.
 1. `runAutopilot` — plan (once a day) and execute (every tick). Enrolling
    somebody is what makes a message due, so planning after sending would make
    every lead it picks up wait a full tick.
@@ -402,6 +404,65 @@ ok`, `risky email`, `email bounces`, replacing an older one). Rows say *In
 Contacts* and *Do not email* (suppression list). Every animation (orb, dots,
 shimmer on the cell being read or checked, scanning step, moving composer
 gradient) is tied to real work and stops under reduced motion.
+
+### Autopilot prospecting — a project finds its own prospects every day
+
+A project can run a **finder**: kinds of business × places, searched live on a
+rotation, websites read, addresses checked, and up to `per_day` new prospects
+added to the project's audience list every day. Pure plan in
+`worker/src/lib/finderPlan.ts` (`nextJob`: search → read → rest/exhausted;
+12 searches and 150 website reads a day, 6 reads a tick, `PER_DAY_MAX` 100),
+the driver in `worker/src/prospectFinderTick.ts` (2 finders a tick, on the cron
+**before** `runAutopilot`, so a prospect added this tick can be enrolled on
+it), the API in `routes/finders.ts` (`/api/finders.php`: `save` — with `append`
+to merge a rotation —, `overview`, `set_status`, `run_step`, `expand_place`,
+`record`, `removed`, `sync`; every action workspace-checked and the project
+must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
+`crm_project_prospects` — unique per project and `ref`, `crm_finder_runs`,
+`crm_sms_consents`). `npm run test:finder` (pure) and `npm run test:autoprospects`
+(self-contained: Geoapify + DNS mock :8848, wrangler :8918, fresh D1 in
+`.wrangler-autoprospects`, needs a `VITE_BASE=/` build).
+
+- **A finder is a workflow.** `save` writes "Find new prospects daily" (schedule
+  trigger → an `ai` node with `source: 'directory'`, `produces: 'prospects'`);
+  `runProjectAgents` hands that node to the finder (`finderStepFor`) before any
+  AI key is asked for. Switching the workflow off pauses the finder and the
+  tick skips a finder whose workflow is not active. The editor does not offer
+  `directory`/`prospects` (`finderOnly`, `editorChoices`) — only `save` makes one.
+- **Daily searches never use Google** (paid per search, its terms forbid
+  keeping results): Geoapify while today's shared credits are under 2,000,
+  else Overpass; `register` uses Companies House. A rotation run to its end
+  is `exhausted` and says so; adding a place or trade starts it again.
+- **Contacts stay browser-owned.** The finder writes `crm_contacts` and the
+  list server-side with `dataUpdate` (compare-and-swap on `updated_at`), and a
+  `reconcile` pass puts back any found contact a stale browser save dropped.
+  A contact the customer deletes (`pf-…` ids, `forgetFoundContacts`) is
+  tombstoned `removed` and never re-added. `ProspectSync` pulls new ones into
+  the browser on load and on return to the tab.
+- **Screens.** A project's **Prospects** tab (`ProjectProspects.tsx`,
+  `?tab=prospects`): status, KPIs, 30-day chart, the rotation, latest
+  prospects, the step log, and the set-up form (`finder.trades`,
+  `finder.places`, `finder.perDay`, `finder.list`). AI Prospecting's
+  **Search this every day** (`DailySearch.tsx`) appends the search on screen
+  to a project's rotation. The wizard asks `prospectTrades` / `prospectPlaces`
+  / `prospectPerDay` / `prospectSms` when contacts are to be found, reads them
+  from the sentence when it can ("sell my products to real estate agents in
+  Virginia" — the *selling-to* clause is the audience, not the business, so
+  `matchSolutions` drops it before scoring), offers a region's towns
+  (`citiesIn`, largest first), and shows the finder's who/where with a live
+  sample on the blueprint (`FinderReview`) because an answered question is
+  not asked. The build makes the cold list, the finder, and starts a first step.
+- **Texts only after a yes.** A prospect is never texted on the strength of an
+  email. `{{smsOptInLink}}` (a P.S. the wizard adds when texts were asked
+  for, kept through email tailoring) is a per-contact HMAC link
+  (`lib/smsConsent.ts`, install secret `sms_optin`, needs `APP_ORIGIN`) to
+  `/api/sms-optin.php`: GET only shows the form (scanners), POST needs the box
+  ticked and an E.164 number, rate-limited per IP. A yes records
+  `crm_sms_consents`, clears that number's STOP, puts the number and the
+  `sms opt-in` tag on the contact and fires `tag_added` — the wizard's "Text
+  the prospects who opt in" workflow (a draft) starts on it.
+  `prospectSmsBlock` gates the engine and the sequence sender: a `prospect`
+  without consent for that number is skipped, by name.
 
 ### Google Maps on the owner's key
 

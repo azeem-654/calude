@@ -237,3 +237,18 @@
 /* ── Result preview (ResultPreview) ── */
 .np-prev-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); }
 .np-prev-post { aspect-ratio: 1 / 1; border-radius: 12px; overflow: hidden; position: relative; box-shadow: 0 1px 2px rgba(16,24,40,0.08); }
+
+/* ── Prospecting: who, where, and who it would find today (ProspectFields.tsx) ── */
+.np-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border: 1px solid #e6e9f0; border-radius: 12px; background: #fff; }
+.np-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; padding: 4px 6px 4px 10px; border-radius: 999px; background: #eef0ff; color: #4338ca; }
+.np-chip button { border: 0; background: none; color: inherit; cursor: pointer; display: inline-flex; padding: 1px; }
+.np-chip-input { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 180px; color: #9aa3b2; min-width: 0; }
+.np-chip-input input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 13.5px; color: #17191c; background: transparent; }
+.np-opt.np-opt-sm { padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.np-finder { display: grid; gap: 10px; margin-top: 18px; padding: 16px; border-radius: 18px; background: #fff; border: 1px solid #e6e8ef; min-width: 0; }
+.np-sample { display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; background: #f8f7ff; border: 1px solid #e0dcff; }
+.np-sample-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 6px; }
+.np-sample-list li { display: grid; gap: 1px; padding: 8px 10px; border-radius: 10px; background: #fff; border: 1px solid #eceef4; font-size: 12.5px; min-width: 0; }
+.np-sample-list li b { color: #17191c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-sample-list li span { color: #6b7280; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-sample-list li em { font-style: normal; font-size: 11px; color: #16a34a; font-weight: 600; }

@@ -220,6 +220,23 @@ await settle();
 ok('Find businesses: a missing place is refused at its box', (await deadEnds()).length === 0 && /Say where to look/.test(await findDialog.innerText()), JSON.stringify(await deadEnds()));
 await findDialog.getByRole('button', { name: 'Close' }).click();
 
+/* ── 2e · A project's Prospects tab: splitting a region names the places box ── */
+{
+  const me = await api('auth.php', { action: 'login', email: EMAIL, password: PASSWORD });
+  const acct = me.workspaces?.[0]?.accountId ?? me.user?.accountId;
+  const pf = await api('projects.php', { token: me.token, accountId: acct, action: 'save_portfolio', name: 'Forms client', profile: { description: 'A test client' } });
+  const pjr = await api('projects.php', { token: me.token, accountId: acct, action: 'save_project', name: 'Forms project', objective: 'Find dentists', portfolioId: pf.id });
+  if (!pjr.id) console.log('project not made', pjr);
+  await resetDeadEnds();
+  await p.goto(`${B}/autopilot?project=${encodeURIComponent(pjr.id)}&tab=prospects`, { waitUntil: 'networkidle' });
+  await settle();
+  const region = p.getByLabel('A state or county to split into towns');
+  await region.fill('!!', { timeout: 15_000 });
+  await p.getByRole('button', { name: /Add its towns/ }).click();
+  await settle();
+  ok('Prospects tab: a place that is not one is refused at its box', (await deadEnds()).length === 0 && /Say where/.test(await p.innerText('body')), JSON.stringify(await deadEnds()));
+}
+
 /* ── 3 · The guard catches what it is for ──
    A refusal naming a box that does not exist anywhere must be recorded and
    reported — otherwise every pass above proves nothing. */

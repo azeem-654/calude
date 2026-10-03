@@ -32,6 +32,7 @@ import {
   DEFAULT_LAYOUT, LAYOUT_QUESTION, designConfig, layoutLabel, themeLabel, type DesignKind,
 } from './designOptions';
 import type { LaunchStep } from './launchPlan';
+import { placeIn, sellingTo } from './aiProspecting';
 
 /* ── Inputs ───────────────────────────────────────────────────────────────── */
 
@@ -146,7 +147,15 @@ function has(text: string, phrase: string): boolean {
  * "a blog and social posts" is content marketing, not a blog with a rider.
  */
 export function matchSolutions(prompt: string, picked?: string): MatchResult {
-  const text = norm(prompt);
+  /* Who somebody sells *to* is not what their business is: "sell my software
+     to real estate agents" must not score the real-estate solution, which is
+     for estate agencies. The audience phrase is taken out before scoring, and
+     the request is what it plainly is — finding customers. */
+  const target = sellingTo(prompt);
+  /* The whole "sell my products to …" clause goes, not just the audience:
+     "products" there is what they sell to businesses, not a shop to build. */
+  const clause = target ? new RegExp(`\\b(?:sell|selling|market|marketing|pitch|offer|offering)\\b[^.]*?\\bto\\s+${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i') : null;
+  const text = norm((clause ? prompt.replace(clause, ' ') : prompt) + (target ? ' find clients' : ''));
   const scores = SOLUTIONS
     .filter(s => s.key !== CUSTOM)
     .map(s => ({ key: s.key, score: s.keywords.reduce((sum, [p, w]) => sum + (has(text, p) ? w : 0), 0) }))
@@ -354,8 +363,15 @@ export function extractKnown(
     put('contactCount', bucket(n, [[499, '<500'], [2000, '500-2000'], [10000, '2000-10000']], '10000+'), 'prompt', `${n.toLocaleString()}, from your request`);
   }
   if (/\b(find|search for|discover|source)\b/.test(t) && asked.has('contactSource')) put('contactSource', 'find', 'prompt', 'find new ones, from your request');
-  const who = audienceIn(prompt);
+  /* "Sell my products to real estate agents in Virginia": the people after "to" are who it is for. */
+  const who = sellingTo(prompt) ?? audienceIn(prompt);
   if (who) put('audience', who, 'prompt', fromYou);
+  /* The daily prospect finder: the same audience as kinds of business, the place as where. */
+  const where = placeIn(prompt);
+  if (where) put('location', where, 'prompt', fromYou);
+  if (who) put('prospectTrades', who, 'prompt', 'who you want to sell to, from your request');
+  if (where) put('prospectPlaces', where, 'prompt', 'where, from your request');
+  if (/\bsms(?:e?s)?\b|\btexts?\b|\btext messages?\b|\btexting\b/.test(t)) put('prospectSms', 'yes', 'prompt', 'you asked for texts too — only to those who opt in');
   const len = /\b(3|three|5|five|7|seven)[- ](?:step |part )?emails?\b/.exec(t);
   if (len) put('sequenceLength', String(numberIn(len[1])), 'prompt', fromYou);
   if (/\b(book|booking|meeting|call|calls|appointment)s?\b/.test(t)) put('emailGoal', 'booking', 'prompt', fromYou);
@@ -958,6 +974,13 @@ export function validValue(q: Question, v: unknown): string | string[] | null {
   if (q.id === 'contactList') {
     const s = String(Array.isArray(v) ? v[0] : v ?? '').trim();
     return LIST_ID.test(s) ? s : null;
+  }
+  /* A finder's places are a state's towns, "; "-separated — longer than a sentence, and cut on a whole name. */
+  if (q.id === 'prospectPlaces') {
+    const parts = (Array.isArray(v) ? v.map(String) : String(v ?? '').split(';')).map(x => x.trim()).filter(Boolean);
+    let out = '';
+    for (const part of parts) { const next = out ? `${out}; ${part}` : part; if (next.length > 1600) break; out = next; }
+    return out || null;
   }
   if (q.type === 'text' || q.type === 'number') {
     const s = String(Array.isArray(v) ? v.join(', ') : v ?? '').trim().slice(0, 400);

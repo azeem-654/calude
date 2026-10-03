@@ -306,3 +306,44 @@ export async function testGeoKey(env: Env, key: string): Promise<{ ok: boolean; 
   if (g.status === 200) return { ok: true, error: '' };
   return { ok: false, error: refusal(g.status, g.body).error };
 }
+
+/* ── A region, as its towns ── */
+
+export interface PlaceExpansion { kind: string; places: string[]; error: string }
+
+/**
+ * "Virginia" → its cities and towns, largest first — for a daily finder that
+ * works a state town by town rather than as one search capped at 500.
+ *
+ * A place that is already a town comes back as itself. A state, county or
+ * country is asked for the populated places inside its own boundary, sorted by
+ * the population OpenStreetMap records where it has one. Cached a fortnight:
+ * towns do not move. Costs a geocode and a page of places (about six credits).
+ */
+export async function citiesIn(env: Env, key: string, place: string, max = 20): Promise<PlaceExpansion> {
+  const p = place.toLowerCase().replace(/[^\p{L}\p{N} ,-]/gu, '').trim().slice(0, 80);
+  if (!p) return { kind: '', places: [], error: 'Say where.' };
+  const hit = await cached<PlaceExpansion>(env, `geoapify-cities|${p}|${max}`);
+  if (hit) return hit;
+  const g = await geoFetch(env, `/v1/geocode/search?text=${encodeURIComponent(place)}&limit=1&format=json&apiKey=${encodeURIComponent(key)}`);
+  await spend(env, 1);
+  if (g.status !== 200) return { kind: '', places: [], error: refusal(g.status, g.body).error };
+  const r = ((g.body.results ?? []) as { place_id?: string; result_type?: string; state?: string; county?: string; country?: string; city?: string; formatted?: string }[])[0];
+  if (!r?.place_id) return { kind: '', places: [], error: `Could not find a place called "${place}".` };
+  const kind = String(r.result_type ?? '');
+  if (!['state', 'county', 'country'].includes(kind)) return { kind, places: [place.trim()], error: '' };
+  const region = r.state || r.county || r.country || place.trim();
+  const q = await geoFetch(env, `/v2/places?categories=${encodeURIComponent('populated_place.city,populated_place.town')}&filter=${encodeURIComponent(`place:${r.place_id}`)}&limit=100&apiKey=${encodeURIComponent(key)}`);
+  await spend(env, 5);
+  if (q.status !== 200) return { kind, places: [place.trim()], error: refusal(q.status, q.body).error };
+  const towns = ((q.body.features ?? []) as { properties?: { name?: string; datasource?: { raw?: { population?: string | number } } } }[])
+    .map(f => ({ name: String(f.properties?.name ?? '').trim(), pop: Number(f.properties?.datasource?.raw?.population ?? 0) || 0 }))
+    .filter(t => t.name && t.name.length < 60);
+  const seen = new Set<string>();
+  const places = towns.sort((a, b) => b.pop - a.pop)
+    .filter(t => { const k = t.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .slice(0, max).map(t => `${t.name}, ${region}`);
+  const out = { kind, places: places.length ? places : [place.trim()], error: '' };
+  await keep(env, `geoapify-cities|${p}|${max}`, out);
+  return out;
+}
