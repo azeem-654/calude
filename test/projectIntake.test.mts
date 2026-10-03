@@ -211,6 +211,8 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('…and who, where and the texts are read from the sentence',
     /real estate agent/i.test(String(va.known.prospectTrades?.value ?? '')) && /Virginia/.test(String(va.known.prospectPlaces?.value ?? '')) && va.known.prospectSms?.value === 'yes',
     JSON.stringify({ t: va.known.prospectTrades, p: va.known.prospectPlaces, s: va.known.prospectSms }));
+  const vaBrief = briefOf(buildBlueprint(va, CTX), va.prompt) as { smsOptIn?: boolean };
+  ok('…and the brief tells the planner its own sequences offer texts too', vaBrief.smsOptIn === true, JSON.stringify(vaBrief).slice(0, 300));
   const dn = initialState('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.', undefined, EMPTY, [], []);
   ok('"sell my dental supplies to dentists" is lead generation too', dn.solutionKeys[0] === 'lead-generation', JSON.stringify(dn.solutionKeys));
 }

@@ -9,6 +9,8 @@
  * searches, or kept searching after today's leads were in would cost money and
  * find nothing new — so those are what this holds still.
  */
+import { OPT_IN_PS, OPT_IN_WORKFLOW, briefWantsOptIn, withOptIn } from '../src/lib/optInText';
+import { OPT_IN_PS as CLIENT_PS, OPT_IN_WORKFLOW as CLIENT_WF } from '../../src/services/projectSolutions';
 import { DAY_LIMITS, afterSearch, forDay, isKnown, keyOf, knownIndex, nextJob, nextRunAt, rotation, rotationState, type FinderState } from '../src/lib/finderPlan';
 
 const out: string[] = [];
@@ -76,6 +78,16 @@ const base = (o: Partial<FinderState> = {}): FinderState => ({
   ok('the same name and phone, written differently', isKnown(k, { name: 'Kirk and Sons Property', phone: '757-555-0199' }));
   ok('the same name and website host', isKnown(k, { name: 'Harbour Realty', website: 'harbourrealty.com' }));
   ok('a different business with the same name is not', !isKnown(k, { name: 'Harbour Realty', phone: '+1 202 555 0000', website: 'other.com' }));
+}
+
+/* ── The texting offer in the planner's own sequences ── */
+{
+  ok('the planner and the wizard offer texts in the same words', OPT_IN_PS === CLIENT_PS && OPT_IN_WORKFLOW === CLIENT_WF);
+  ok('a brief that asked for texts says so', briefWantsOptIn({ smsOptIn: true }));
+  ok('…and so does one made before the flag, by its texting workflow', briefWantsOptIn({ workflows: [{ name: 'Find new prospects daily' }, { name: OPT_IN_WORKFLOW }] }));
+  ok('a brief without texts, or none at all, does not', !briefWantsOptIn({ workflows: [{ name: 'Follow up' }] }) && !briefWantsOptIn(null) && !briefWantsOptIn('x'));
+  const once = withOptIn('Hello {{firstName}},\n\nThanks.\n\n');
+  ok('the offer goes once, at the end', once.endsWith(OPT_IN_PS) && withOptIn(once) === once && once.split('smsOptInLink').length === 2, once);
 }
 
 console.log(out.join('\n'));

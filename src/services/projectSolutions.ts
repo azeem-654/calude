@@ -42,6 +42,11 @@ import { LAYOUTS, THEMES, DEFAULT_LAYOUT, DEFAULT_THEME } from './designOptions'
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────── */
 
+/* The offer of texts, word for word as the planner appends it to its own
+   sequences (worker/src/lib/optInText.ts — test:finder keeps them equal). */
+export const OPT_IN_PS = 'P.S. Would a text be easier? Say yes here and we will text you instead: {{smsOptInLink}}';
+export const OPT_IN_WORKFLOW = 'Text the prospects who opt in';
+
 /**
  * What a project works in.
  *
@@ -49,6 +54,7 @@ import { LAYOUTS, THEMES, DEFAULT_LAYOUT, DEFAULT_THEME } from './designOptions'
  * the blueprint also names things only a workflow does — `support`, `tasks`.
  * `plannerChannelsFor` narrows it to what the planner understands.
  */
+
 export type Channel =
   | 'social' | 'blog' | 'email' | 'sms' | 'shop' | 'book' | 'site' | 'video'
   | 'contacts' | 'sales' | 'reviews' | 'support' | 'tasks';
@@ -1169,12 +1175,12 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     for (const w of wfs) {
       for (const n of w.nodes ?? []) {
         if (n.type === 'send_email' && n.config.body && !n.config.body.includes('smsOptInLink')) {
-          n.config = { ...n.config, body: `${n.config.body}\n\nP.S. Would a text be easier? Say yes here and we will text you instead: {{smsOptInLink}}` };
+          n.config = { ...n.config, body: `${n.config.body}\n\n${OPT_IN_PS}` };
         }
       }
     }
     wfs.push({
-      key: 'sms-optin', name: 'Text the prospects who opt in', origin: 'generated',
+      key: 'sms-optin', name: OPT_IN_WORKFLOW, origin: 'generated',
       purpose: 'Starts when somebody agrees to texts through the link in your email, and sends them a first text. Nobody else is texted.',
       nodes: [
         { id: 'n0', type: 'trigger', label: 'They agreed to texts', config: { event: 'tag_added', tag: 'sms opt-in' }, nextId: 'n1' },

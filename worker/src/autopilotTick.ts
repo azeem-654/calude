@@ -19,6 +19,7 @@
  * it inline and save a few minutes, but then two code paths could send the same
  * email, and the failure mode of that is a customer receiving it twice.
  */
+import { briefWantsOptIn, withOptIn } from './lib/optInText';
 import { signTrackedLinks } from './lib/trackSign';
 import { dataGet, dataPut, installSecret, nowIso, type Env } from './lib/db';
 import { addr } from './lib/http';
@@ -1190,6 +1191,10 @@ async function carryOutWrite(
     const steps = (v.steps ?? []).slice(0, 6).filter(st => (st.subject ?? '').trim() && (st.body ?? '').trim());
     if (!steps.length) return { ok: false, detail: 'The model returned a sequence with no usable steps.' };
 
+    /* A project whose owner asked for texts offers them in every email it
+       sends, the planner's included — otherwise a prospect enrolled here could
+       only ever be emailed, while the wizard's own emails carried the offer. */
+    const optIn = briefWantsOptIn(parse<unknown>(run.brief ?? null, null));
     const id = `seq-${crypto.randomUUID()}`;
     const seqs = parse<Record<string, unknown>[]>(await dataGet(env.DB, accountId, SEQ_KEY), []);
     seqs.unshift({
@@ -1214,7 +1219,7 @@ async function carryOutWrite(
         day: Math.min(Math.max(Math.round(Number(st.day) || (i * 2)), 0), 90),
         waitUnit: 'days',
         subject: String(st.subject).slice(0, 200),
-        body: String(st.body).slice(0, 8000),
+        body: optIn ? withOptIn(String(st.body).slice(0, 7800)) : String(st.body).slice(0, 8000),
         channel: 'email',
       })),
     });

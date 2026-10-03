@@ -944,6 +944,9 @@ export function briefOf(bp: Blueprint, prompt: string, audienceName = ''): Recor
        they are strangers (worker/src/lib/autopilotPlan.ts). The name is for
        the project's Overview and is never trusted for anything. */
     ...(bp.audienceListId ? { audience: { listId: bp.audienceListId, ...(audienceName ? { listName: audienceName.slice(0, 120) } : {}) } } : {}),
+    /* Read by the planner: its own sequences carry the opt-in P.S. too, so a
+       prospect is offered texts whichever of the two wrote to them. */
+    ...(bp.workflows.some(w => w.key === 'sms-optin') ? { smsOptIn: true } : {}),
     createdWith: 'wizard-v2',
   };
 }
