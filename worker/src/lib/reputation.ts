@@ -503,7 +503,7 @@ export async function draftReply(env: Env, accountId: string, profile: Profile, 
   const refused = await aiBudget(env, accountId);
   if (refused) return { ok: false, code: 'ai_budget', error: refused };
   const key = await loadAiKey(env, accountId);
-  if (!key) return { ok: false, code: 'no_ai', error: 'No AI key is available to this workspace, so a reply cannot be drafted. Write it yourself, or add a key in Settings → AI Engine.' };
+  if (!key) return { ok: false, code: 'no_ai', error: 'No AI key is available to this workspace, so a reply cannot be drafted. Write it yourself for now — the AI is not available on this install yet.' };
   const prompt = `You are the owner/manager of a business replying publicly to a customer review on Google. Write a short, sincere public reply.
 
 === BUSINESS ===

@@ -319,7 +319,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const key = await loadAiKey(env, accountId);
     if (!key) {
-      return fail('No AI key is connected to this workspace, so nothing can be read into a portfolio. Add one under Settings \u2192 AI Engine, or fill the client in by hand.');
+      return fail('No AI key is connected to this workspace, so nothing can be read into a portfolio. Fill the client in by hand for now — the AI is not available on this install yet.');
     }
 
     let title = '';

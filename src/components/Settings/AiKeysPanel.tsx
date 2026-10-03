@@ -121,7 +121,7 @@ export default function AiKeysPanel() {
                   <button style={icon} disabled={!!busy || bi < 0 || bi >= backups.length - 1} aria-label="Try later" title="Try later" onClick={async () => apply(await moveAiKey(k.id!, 'down'))}><ArrowDown size={13} /></button>
                   <button style={{ ...icon, color: '#b42318' }} disabled={!!busy} aria-label="Remove this key" title="Remove" onClick={async () => { if (confirm(`Remove "${k.label}"?`)) apply(await removeAiKey(k.id!), 'Removed.'); }}><Trash2 size={13} /></button>
                 </>}
-                {k.source === 'engine' && <span style={{ fontSize: 11.5, color: MUTED, alignSelf: 'center' }}>Change it in Settings → AI Engine</span>}
+                {k.source === 'engine' && <span style={{ fontSize: 11.5, color: MUTED, alignSelf: 'center' }}>Change it in “Main AI key” above</span>}
               </div>
             </div>
           );

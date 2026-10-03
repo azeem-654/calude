@@ -27,6 +27,7 @@ import { API_BASE } from '../../services/apiBase';
 import { sessionToken } from '../../services/auth';
 import PlacesKeyPanel from './PlacesKeyPanel';
 import AiKeysPanel from './AiKeysPanel';
+import AiEngineCard from './AiEngineCard';
 import GeoapifyKeyPanel from './GeoapifyKeyPanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
 
@@ -145,6 +146,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
         )}
       </div>
 
+      <div id="platform-ai-main" style={{ scrollMarginTop: 16 }}><AiEngineCard /></div>
       <div id="platform-ai-keys" style={{ scrollMarginTop: 16 }}><AiKeysPanel /></div>
       <div id="platform-geoapify" style={{ scrollMarginTop: 16 }}><GeoapifyKeyPanel /></div>
       <div id="platform-google-maps" style={{ scrollMarginTop: 16 }}><PlacesKeyPanel /></div>

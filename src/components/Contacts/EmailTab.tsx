@@ -252,7 +252,7 @@ function Composer({ contact, onSent }: { contact: Contact; onSent: () => void })
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" style={{ ...inp, flex: 1 }} />
           <button onClick={suggestSubjects} disabled={aiBusy || !hasGeminiKey()}
-            title={hasGeminiKey() ? 'Suggest subject lines with AI' : 'Add a Gemini API key in Settings → AI Engine'}
+            title={hasGeminiKey() ? 'Suggest subject lines with AI' : 'Writing is unavailable right now'}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '9px 12px', borderRadius: 9, border: 'none', background: hasGeminiKey() ? INK : '#e2e8f0', color: hasGeminiKey() ? '#fff' : '#94a3b8', fontSize: 11.5, fontWeight: 700, cursor: hasGeminiKey() && !aiBusy ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}>
             {aiBusy ? <Loader size={12} className="spin" /> : <Sparkles size={12} color={hasGeminiKey() ? '#c7f441' : '#94a3b8'} />} AI subjects
           </button>

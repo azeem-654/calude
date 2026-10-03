@@ -556,7 +556,9 @@ implementations of that list would drift the first time either changed.
 
 **The AI key is the operator's — and there may be several.** `loadAiKey` tries the workspace's own key, then
 the install's, then `env.AI_API_KEY`. The install's keys are a pool
-(`lib/aiPool.ts`): the installation key, the owner's AI Engine key, then the
+(`lib/aiPool.ts`): the installation key, the owner's main key (the **Main AI key** card on Platform
+services, `AiEngineCard.tsx` — no longer a Settings tab: customers are never asked
+for a key), then the
 owner's backups (Settings → Platform services → **AI keys**, `routes/aikeys.ts`,
 table `crm_ai_keys`, migration 0059), then `AI_API_KEY`. `loadAiKey` returns the
 first and files the rest under it; `askGemini*`, `researchWeb` and `/api/ai.php`
@@ -592,6 +594,24 @@ widget sends the cookie placeholder, so a signed-in customer's request is
 stamped `verified_email` from their session — never from the body. Viewing
 only; nobody can click on the customer's machine, and the screens say so.
 `npm run test:livehelp` drives two real browsers through a session.
+
+**Chat is live both ways, by id and by cursor.** The widget polls `engage.php
+poll` whenever a conversation exists (3 s open, 12 s closed, 30 s hidden,
+stopped after 30 min idle) with the server's `cursor`; the inbox polls
+`engagement.php inbox_sync` every 4 s while visible. Both re-read a 10 s
+overlap and de-duplicate by message id — never count messages. Every message
+bumps `crm_conversations.updated_at`; `last_visitor_at` / `agent_seen_at` make
+"unread", and `needs_human_since` (set when a visitor is left waiting for a
+person, cleared by a person's reply or "give back to AI") feeds the
+dashboard's **Waiting for support** card and the nav badge (`support_waiting`,
+shared through `services/supportPulse.ts`). **Pictures** in a chat
+(`lib/chatFiles.ts`, table `crm_chat_files`, migration 0060) are held in D1
+because there is no R2 binding: images only, sniffed from the bytes, ≤ 1.5 MB
+after the browser shrinks them, rate-limited per conversation, served only to
+a POST (visitor: conversation + key, never on an internal note; business:
+workspace) with `nosniff` and a sandbox CSP. A picture never goes to the
+assistant, which cannot see it — it marks the conversation as waiting for a
+person. `npm run test:chatlive` (fresh D1, `BASE`/`PERSIST`).
 
 ## Trials, sign-ups and keeping trial customers
 
