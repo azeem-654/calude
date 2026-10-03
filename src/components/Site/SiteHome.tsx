@@ -233,7 +233,7 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
      "what it does" cannot list what it does not do yet. */
   ...(featureReady('prospects') ? [{
     group: 'Prospect', icon: Search,
-    items: ['AI Prospecting from one sentence', 'Free business directory & Google Maps', 'The emails businesses publish', 'Email verification', 'Lead lists & CSV export'],
+    items: ['AI Prospecting from one sentence', 'Business directories & Google Maps', 'The emails businesses publish', 'Email verification', 'Daily prospecting on Autopilot'],
   }] : []),
   { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
