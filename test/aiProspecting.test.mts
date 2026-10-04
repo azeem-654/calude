@@ -8,7 +8,8 @@
  * decides what is imported — an address a check already said would bounce
  * must never be the one used.
  */
-import { addressesOf, bestAddress, leadScore, parseAsk, toCsv } from '../src/services/aiProspecting.ts';
+import { addressesOf, bestAddress, leadScore, parseAsk, splitTradePlace, toCsv } from '../src/services/aiProspecting.ts';
+import { extractKnown } from '../src/services/projectIntake.ts';
 import type { Prospect, Verdict } from '../src/services/prospects.ts';
 import { emailTag } from '../src/services/prospectImport.ts';
 
@@ -63,6 +64,16 @@ eq('never checked → no tag at all', emailTag(undefined), '');
   const line = csv.split('\r\n')[1];
   ok('a formula in a business name is defused', line.startsWith(`"'=HYPERLINK(""http://evil"")"`), line);
   ok('a comma is quoted, and the check is in words', line.includes('"Line 1, Leeds"') && line.includes(',Contact verified,'), line);
+}
+
+/* A place typed into the trade box is a place, not part of the trade. */
+{
+  const x = splitTradePlace('commercial properties in virginia');
+  ok('"commercial properties in virginia" is a trade and a place', x.trade === 'commercial properties' && x.place === 'Virginia', JSON.stringify(x));
+  ok('a plain trade is left alone', JSON.stringify(splitTradePlace('dentists')) === JSON.stringify({ trade: 'dentists', place: '' }));
+  const k = extractKnown('Find me commercial properties in virginia and email them to book appointments', ['lead-generation'], { portfolios: [] });
+  ok('the request\'s audience keeps its place out of the trade', String(k.prospectTrades?.value ?? '') === 'commercial properties' && String(k.prospectPlaces?.value ?? '') === 'Virginia',
+    JSON.stringify({ t: k.prospectTrades?.value, p: k.prospectPlaces?.value }));
 }
 
 console.log(out.join('\n'));

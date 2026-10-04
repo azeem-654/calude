@@ -6,7 +6,7 @@
  */
 import type { Booking, ScheduleAvailability } from '../types';
 import { API_BASE } from './apiBase';
-import { getActiveAccountId } from './tenancy';
+import { customerBusinessName, getActiveAccountId } from './tenancy';
 import { withoutTwilio } from './legacyTwilio';
 
 
@@ -17,6 +17,13 @@ async function call(body: Record<string, unknown>): Promise<Record<string, unkno
     });
     return await r.json();
   } catch { return null; }
+}
+
+/** An untouched default slug ('meeting' — whoever published first holds it) becomes the business's own name with a short tail. */
+export function bookingSlugFor(s: ScheduleAvailability, name = ''): string {
+  if (s.slug && s.slug !== 'meeting') return s.slug;
+  const base = (name || customerBusinessName()).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'meet';
+  return `${base}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /**

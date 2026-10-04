@@ -32,7 +32,7 @@ import {
   DEFAULT_LAYOUT, LAYOUT_QUESTION, designConfig, layoutLabel, themeLabel, type DesignKind,
 } from './designOptions';
 import type { LaunchStep } from './launchPlan';
-import { placeIn, sellingTo } from './aiProspecting';
+import { placeIn, sellingTo, splitTradePlace } from './aiProspecting';
 
 /* ── Inputs ───────────────────────────────────────────────────────────────── */
 
@@ -244,6 +244,9 @@ export function audienceIn(text: string): string | null {
     const words = phrase.split(/\s+/);
     if (!phrase || words.length > 6 || /^(them|it|us|me|people|customers|clients|out)$/i.test(phrase)) continue;
     if (/^(a|an|one|five|three|seven|\d)\b/i.test(phrase)) continue;
+    /* "email them to book appointments" — "to" there starts what the email is
+       for, not who it goes to. */
+    if (/^(book|get|set|schedule|arrange|sell|offer|promote|ask|invite|drive|generate|grow|win|make|bring|start|see|join|buy|try|sign|visit|call|reply|learn|find)\b/i.test(phrase)) continue;
     return phrase;
   }
   return null;
@@ -367,9 +370,10 @@ export function extractKnown(
   const who = sellingTo(prompt) ?? audienceIn(prompt);
   if (who) put('audience', who, 'prompt', fromYou);
   /* The daily prospect finder: the same audience as kinds of business, the place as where. */
-  const where = placeIn(prompt);
+  const split = who ? splitTradePlace(who) : { trade: '', place: '' };
+  const where = placeIn(prompt) ?? (split.place || null);
   if (where) put('location', where, 'prompt', fromYou);
-  if (who) put('prospectTrades', who, 'prompt', 'who you want to sell to, from your request');
+  if (split.trade) put('prospectTrades', split.trade, 'prompt', 'who you want to sell to, from your request');
   if (where) put('prospectPlaces', where, 'prompt', 'where, from your request');
   if (/\bsms(?:e?s)?\b|\btexts?\b|\btext messages?\b|\btexting\b/.test(t)) put('prospectSms', 'yes', 'prompt', 'you asked for texts too — only to those who opt in');
   const len = /\b(3|three|5|five|7|seven)[- ](?:step |part )?emails?\b/.exec(t);

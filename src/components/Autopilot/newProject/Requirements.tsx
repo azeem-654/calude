@@ -12,18 +12,20 @@
  * missing; the step that needs it says so when it gets there, rather than the
  * whole project refusing to exist.
  */
-import { CheckCircle2, CircleDashed, HelpCircle, ExternalLink, AlertCircle, Loader } from 'lucide-react';
+import { CheckCircle2, CircleDashed, HelpCircle, ExternalLink, AlertCircle, Loader, Search } from 'lucide-react';
 import { REQUIREMENT_INFO, type RequirementId } from '../../../services/projectSolutions';
 import type { Readiness } from '../../../services/projectReadiness';
 import { contactCount } from './contactFacts';
 
 const CHECKED: Partial<Record<RequirementId, keyof Readiness>> = { mailbox: 'mailbox', sms: 'sms', payments: 'payments' };
 
-export default function Requirements({ ids, ready, mailboxPlan }: {
+export default function Requirements({ ids, ready, mailboxPlan, finder }: {
   ids: RequirementId[];
   ready: Readiness | null;
   /** The answer to "do you have an address to send from?", when it was asked. */
   mailboxPlan: string;
+  /** The project finds its own contacts: who, where and how many a day. */
+  finder?: { trades: string[]; places: string[]; perDay: number } | null;
 }) {
   return (
     <div style={{ display: 'grid', gap: 18 }}>
@@ -40,13 +42,18 @@ export default function Requirements({ ids, ready, mailboxPlan }: {
           /* Contacts is counted, not assumed: "Included" next to an empty list
              was how a project that emails people started with nobody in it. */
           const people = id === 'contacts' ? contactCount() : -1;
-          const state = id === 'contacts' ? (people > 0 ? 'ready' : 'missing') : key ? (ready ? ready[key] : 'checking') : info.kind;
-          const tone = state === 'ready' || state === 'included' ? { bg: '#e8f6ee', fg: '#0f7b3d', label: state === 'ready' ? 'Connected' : 'Included' }
+          /* A project that finds its own contacts has them coming: the finder
+             is part of what is being built, so an empty workspace today is not
+             something for the customer to fix. */
+          const finding = id === 'contacts' && !!finder;
+          const state = finding ? 'finding' : id === 'contacts' ? (people > 0 ? 'ready' : 'missing') : key ? (ready ? ready[key] : 'checking') : info.kind;
+          const tone = state === 'finding' ? { bg: '#eef2ff', fg: '#4c39d1', label: 'Found by this project' }
+            : state === 'ready' || state === 'included' ? { bg: '#e8f6ee', fg: '#0f7b3d', label: state === 'ready' ? 'Connected' : 'Included' }
             : state === 'missing' ? { bg: '#fff4ed', fg: '#9a3412', label: 'Not set up yet' }
               : state === 'optional' ? { bg: '#f1f5f9', fg: '#475569', label: 'Optional' }
                 : state === 'checking' ? { bg: '#f1f5f9', fg: '#94a3b8', label: 'Checking…' }
                   : { bg: '#f1f5f9', fg: '#475569', label: 'Could not check' };
-          const Icon = state === 'ready' || state === 'included' ? CheckCircle2 : state === 'missing' ? AlertCircle : state === 'checking' ? Loader : state === 'unknown' ? HelpCircle : CircleDashed;
+          const Icon = state === 'finding' ? Search : state === 'ready' || state === 'included' ? CheckCircle2 : state === 'missing' ? AlertCircle : state === 'checking' ? Loader : state === 'unknown' ? HelpCircle : CircleDashed;
           return (
             <div key={id} className="np-bp-box np-rise" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               <Icon size={18} color={tone.fg} className={state === 'checking' ? 'spin' : undefined} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -57,7 +64,8 @@ export default function Requirements({ ids, ready, mailboxPlan }: {
                 </span>
                 <span style={{ display: 'block', fontSize: 13, color: '#6b7280', marginTop: 3, lineHeight: 1.5 }}>
                   {info.why}
-                  {id === 'contacts' && (people > 0 ? ` ${people} in this workspace.` : ' None yet — import a list, or your forms and booking page will add people as they arrive.')}
+                  {finding && finder && ` This project finds its own: ${finder.trades.join(', ') || 'the businesses you named'}${finder.places.length ? ` in ${finder.places.length > 3 ? `${finder.places.slice(0, 3).join('; ')} and ${finder.places.length - 3} more` : finder.places.join('; ')}` : ''}, up to ${finder.perDay} new a day. The search starts the moment you build it, and you watch the first ones arrive.${people > 0 ? ` ${people} already in this workspace.` : ''}`}
+                  {id === 'contacts' && !finding && (people > 0 ? ` ${people} in this workspace.` : ' None yet — import a list, or your forms and booking page will add people as they arrive.')}
                   {id === 'mailbox' && state === 'missing' && mailboxPlan === 'buy' && ' You chose to have one set up — domains and mailboxes are picked right after the project is created.'}
                   {state === 'unknown' && ' We could not reach the setting to check — that is not the same as it being missing.'}
                 </span>

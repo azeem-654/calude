@@ -51,7 +51,7 @@ export const finderOverview = (projectId: string) => call<FinderOverview>('overv
 export const saveFinder = (p: {
   projectId: string; trades: string[]; places: string[]; perDay: number; source?: 'free' | 'register';
   listId?: string; listName?: string; append?: boolean;
-}) => call<{ finderId: string; workflowId: string; listId: string }>('save', p);
+}) => call<{ finderId: string; workflowId: string; listId: string; trades: string[]; places: string[] }>('save', p);
 export const setFinderStatus = (projectId: string, finderId: string, status: 'active' | 'paused') => call('set_status', { projectId, finderId, status });
 export const runFinderStep = (projectId: string, finderId: string) => call<{ ran: boolean; job: string; detail: string; added: number; found: number }>('run_step', { projectId, finderId });
 export const expandPlace = (place: string) => call<{ kind: string; places: string[]; note: string }>('expand_place', { place });

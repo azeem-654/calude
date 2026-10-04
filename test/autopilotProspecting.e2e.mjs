@@ -37,6 +37,8 @@ const G = `http://127.0.0.1:${MOCK}`;
 let fail = 0, pass = 0;
 const ok = (name, cond, detail = '') => { if (cond) pass++; else fail++; console.log(`${cond ? '  ✓' : '  ✗'} ${name}${cond ? '' : ` — ${String(detail).slice(0, 700)}`}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* SHOTS=<dir> keeps a picture of each new wizard screen, at the width it is checked at. */
+const shot = async (page, name) => { if (process.env.SHOTS) { fs.mkdirSync(process.env.SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.SHOTS, `${name}.png`), fullPage: false }); } };
 if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ npm run build'); process.exit(2); }
 
 /* ── The mock: Geoapify (Leeds 63 dentists, York 5, Virginia's towns) and DNS ── */
@@ -294,10 +296,43 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   ok('…and a live sample of who it would find today', sawSample || (/found live at/.test(ft) && /Leeds Dental 1/.test(ft)), ft.slice(0, 600));
   const bp = await np.innerText();
   ok('the blueprint has the daily finder and the opt-in texting workflow', /Find new prospects daily/.test(bp) && /Text the prospects who opt in/.test(bp), bp.slice(0, 1200));
+  /* Our booking page, when the project uses it: a preview and the basics, right here. */
+  if (/Booking page/.test(bp) || await np.getByRole('region', { name: 'Your booking page' }).count()) {
+    const book = np.getByRole('region', { name: 'Your booking page' }).first();
+    ok('the blueprint shows the booking page it will link to, editable in place', (await book.count()) > 0 && /Pick a day/.test(await book.innerText()), bp.slice(0, 400));
+    if (await book.count()) {
+      await book.locator('[data-field="booking.title"]').fill('Free supply review');
+      await book.getByRole('button', { name: '45 min' }).click();
+      const pv = await book.getByRole('figure').innerText();
+      ok('…and the preview follows an edit at once', /Free supply review/.test(pv) && /45 min/.test(pv), pv.slice(0, 300));
+      await book.scrollIntoViewIfNeeded(); await shot(page, 'booking-1280');
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+      await book.scrollIntoViewIfNeeded(); await shot(page, 'booking-390');
+      ok('@390: the booking editor and preview fit the phone', await page.evaluate(() => [...document.querySelectorAll('.np-book')].every(e => e.scrollWidth <= e.clientWidth + 1)));
+      await page.setViewportSize({ width: 1280, height: 860 }); await page.waitForTimeout(300);
+      await book.getByText(/Live at/).waitFor({ timeout: 10_000 }).catch(() => {});
+      const live = sql(`SELECT slug, public FROM crm_booking_config WHERE account_id = '${ACCT}'`);
+      ok('…and it is published as edited, so the emails have a link to give', live.length === 1 && /Free supply review/.test(JSON.stringify(live[0])), JSON.stringify(live).slice(0, 300));
+    }
+  }
   await cta.click(); await page.waitForTimeout(400);
+  /* Connections: contacts the project finds itself are not "not set up yet". */
+  await np.getByText('Found by this project').scrollIntoViewIfNeeded().catch(() => {}); await shot(page, 'connections');
+  const conn = await np.innerText();
+  ok('connections: contacts are found by this project, not missing', /Found by this project/.test(conn) && /searching starts|search starts/i.test(conn) && !/Contacts\s*Not set up yet/.test(conn), conn.slice(0, 900));
   await cta.click(); await page.waitForTimeout(300);
+  await shot(page, 'review');
+  const review = await np.innerText();
+  ok('review: says which prospects it finds and when it starts', /Prospects it finds/i.test(review) && /dentists/.test(review), review.slice(0, 700));
   await np.getByRole('button', { name: /Build My Autopilot/ }).click();
   await np.getByRole('heading', { name: /Your Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
+  /* The first prospects, found in front of the customer — not "nobody to email yet". */
+  const live = np.getByRole('region', { name: 'Finding your first prospects' });
+  await live.waitFor({ timeout: 10_000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector('[aria-label="Finding your first prospects"]')?.getAttribute('aria-busy') === 'false', null, { timeout: 90_000 }).catch(() => {});
+  if (await live.count()) { await live.scrollIntoViewIfNeeded(); await page.waitForTimeout(1200); await shot(page, 'build'); }
+  const lt = (await live.count()) ? await live.innerText() : await np.innerText();
+  ok('the build finds the first prospects while the customer watches', /prospects? added to this project/.test(lt) && /Searched dentists in Leeds|Read \d+ websites/.test(lt) && !/Nobody to email yet/.test(await np.innerText()), lt.slice(0, 900));
   const fresh = sql(`SELECT f.id, f.trades, f.places, f.list_id, p.brief FROM crm_prospect_finders f JOIN crm_projects p ON p.id = f.project_id WHERE f.account_id = '${ACCT}' AND f.project_id != '${PID}'`);
   ok('the build sets up the finder with its own list as the project\'s audience', fresh.length === 1 && /dentists/.test(fresh[0].trades) && /Leeds/.test(fresh[0].places)
     && fresh[0].list_id && fresh[0].brief.includes(fresh[0].list_id), JSON.stringify(fresh).slice(0, 500));

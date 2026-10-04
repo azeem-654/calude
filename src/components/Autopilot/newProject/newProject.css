@@ -252,3 +252,56 @@
 .np-sample-list li b { color: #17191c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-sample-list li span { color: #6b7280; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-sample-list li em { font-style: normal; font-size: 11px; color: #16a34a; font-weight: 600; }
+
+/* The first prospects, found on the Build screen (FinderLive.tsx). */
+.np-finder-live { display: grid; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid #ddd6fe; background: #faf9ff; }
+.np-finder-live-ic { width: 34px; height: 34px; border-radius: 11px; background: #eef2ff; color: #4c39d1; display: grid; place-items: center; flex-shrink: 0; }
+.np-finder-live-n { display: grid; grid-template-columns: auto auto; column-gap: 5px; align-items: baseline; flex-shrink: 0; text-align: right; }
+.np-finder-live-n b { font-size: 18px; color: #17191c; font-variant-numeric: tabular-nums; }
+.np-finder-live-n small { font-size: 11.5px; color: #6b7280; text-align: left; }
+.np-finder-live-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.np-finder-live-log li { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: #334155; line-height: 1.5; padding: 7px 10px; border-radius: 10px; background: #fff; border: 1px solid #eceef4; }
+.np-finder-live-log li svg { flex-shrink: 0; margin-top: 2px; }
+.np-finder-live-log li[data-failed] { background: #fffaf2; border-color: #fcd9a8; color: #92400e; }
+.np-finder-live-link { justify-self: start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #5b46e5; text-decoration: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .np-finder-live-log li { animation: npFinderIn .35s ease both; }
+  @keyframes npFinderIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}
+@media (max-width: 520px) {
+  .np-finder-live > div:first-child { flex-wrap: wrap; }
+  .np-finder-live-n { text-align: left; }
+}
+
+/* The booking page, set up where it is chosen (BookingSetup.tsx): the basics beside a preview of the page. */
+.np-book { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 14px; border-radius: 16px; background: #f8f7ff; border: 1px solid #e0dcff; margin-top: 4px; }
+.np-book-form { display: grid; gap: 11px; align-content: start; min-width: 0; }
+.np-book-field { display: grid; gap: 6px; min-width: 0; }
+.np-book-field > span { font-size: 12.5px; font-weight: 700; color: #334155; }
+.np-book-field textarea { resize: vertical; min-height: 54px; font-family: inherit; }
+.np-book-time { width: auto !important; min-width: 0; padding: 7px 10px !important; }
+.np-book-warn { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: #92400e; }
+.np-book-status { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 12.5px; color: #6b7280; min-height: 18px; }
+.np-book-status[data-state="live"] { color: #0f7b3d; font-weight: 600; }
+.np-book-status[data-state="refused"] { color: #9a3412; }
+.np-book-status a { color: #5b46e5; display: inline-flex; gap: 3px; align-items: center; word-break: break-all; }
+.np-book-preview { margin: 0; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.np-book-preview figcaption { font-size: 11.5px; color: #6b7280; text-align: center; }
+.np-book-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 24px -12px rgba(30, 27, 75, .25); }
+.np-book-card-head { display: grid; gap: 4px; padding: 14px 16px; border-bottom: 1px solid #eef0f4; }
+.np-book-card-head small { font-size: 11.5px; color: #6b7280; font-weight: 600; }
+.np-book-card-head b { font-size: 17px; color: #17191c; overflow-wrap: anywhere; }
+.np-book-card-head span { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: #475569; }
+.np-book-card-head p { margin: 4px 0 0; font-size: 12.5px; color: #475569; line-height: 1.5; overflow-wrap: anywhere; }
+.np-book-card-body { display: grid; gap: 8px; padding: 12px 16px 16px; }
+.np-book-card-label { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; color: #334155; }
+.np-book-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.np-book-days span { display: grid; place-items: center; gap: 0; padding: 5px 0; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: #cbd5e1; }
+.np-book-days span small { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.np-book-days span[data-open] { color: #4c39d1; background: #eef2ff; }
+.np-book-days span[data-on] { color: #fff; background: #5b46e5; }
+.np-book-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.np-book-slots span { text-align: center; padding: 7px 4px; border-radius: 9px; border: 1px solid #c7d2fe; color: #4c39d1; font-size: 12px; font-weight: 700; }
+@media (max-width: 760px) {
+  .np-book { grid-template-columns: minmax(0, 1fr); }
+}

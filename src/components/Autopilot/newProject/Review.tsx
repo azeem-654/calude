@@ -6,7 +6,8 @@
  * way a paragraph is not. Every number here is the length of a list the build
  * is about to walk.
  */
-import { Workflow, Bot, Clock, PackageCheck, Hand, Plug, ArrowRightLeft } from 'lucide-react';
+import { Workflow, Bot, Clock, PackageCheck, Hand, Plug, ArrowRightLeft, Search } from 'lucide-react';
+import { finderSpecOf } from './contactFacts';
 import type { Blueprint } from '../../../services/projectIntake';
 import { REQUIREMENT_INFO } from '../../../services/projectSolutions';
 
@@ -21,6 +22,20 @@ export default function Review({ bp }: { bp: Blueprint }) {
     { icon: Plug, label: 'Connected systems', value: String(connected.length), list: connected },
     { icon: ArrowRightLeft, label: 'Handed to you', value: bp.destinations.length ? String(bp.destinations.length) : 'None', list: bp.destinations.map(d => d.label) },
   ];
+  /* Where the people come from, when the project finds them — the answer to
+     "who will this email?" on the screen that is checked before building. */
+  const finder = finderSpecOf(bp.workflows);
+  if (finder) {
+    rows.unshift({
+      icon: Search, label: 'Prospects it finds', value: `${finder.perDay}/day`,
+      list: [
+        `${finder.trades.join(', ')}${finder.places.length ? ` in ${finder.places.length > 3 ? `${finder.places.slice(0, 3).join('; ')} and ${finder.places.length - 3} more` : finder.places.join('; ')}` : ''}`,
+        'Searching starts the moment it is built — you watch the first ones arrive',
+        'Each website read for its address, every address checked',
+        'Written to in batches of 20, each waiting for your approval',
+      ],
+    });
+  }
   return (
     <div style={{ display: 'grid', gap: 18 }}>
       <div>

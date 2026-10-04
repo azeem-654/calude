@@ -18,6 +18,7 @@ import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
 import { citiesIn, installGeoKey } from '../lib/geoapify';
+import { regionTowns } from '../lib/regions';
 import { DAY_LIMITS, PER_DAY_MAX, rotationState } from '../lib/finderPlan';
 import { contactOf, loadFinder, stateOf, stepFinder, type FinderRow } from '../prospectFinderTick';
 
@@ -65,9 +66,16 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
     const v = await rateLimit(env, { what: 'finder-expand', who: accountId, max: 30, windowSeconds: 3600 });
     if (!v.allowed) return fail('That is a lot of places to look up — try again shortly.', 429);
     const geo = await installGeoKey(env);
-    /* Without the directory key there is nobody to ask for a state's towns: say so, and keep the place as typed. */
-    if (!geo) return json({ success: true, kind: '', places: [place], note: 'Add the towns you want, one at a time — this app cannot list a region\'s towns until its business directory key is set.' });
+    /* The states, nations and provinces in lib/regions.ts are answered without
+       a key; anything else needs the directory's own list, and says so. */
+    const known = regionTowns(place, 20);
+    if (!geo) {
+      return json(known
+        ? { success: true, kind: 'state', places: known, note: '' }
+        : { success: true, kind: '', places: [place], note: 'Add the towns you want, one at a time — this app can only list the towns of a state, nation or province until its business directory key is set.' });
+    }
     const r = await citiesIn(env, geo.key, place);
+    if (known && (r.error || r.places.length <= 1)) return json({ success: true, kind: 'state', places: known, note: '' });
     return json({ success: true, kind: r.kind, places: r.places, note: r.error });
   }
 
@@ -154,6 +162,20 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
       trades = words([...parse<string[]>(cur.trades, []), ...trades], 8);
       places = words([...parse<string[]>(cur.places, []), ...places], 40);
     }
+    /* A whole state cannot be searched in one go on the free directory, and the
+       rotation is meant to work a region town by town, largest first — so a
+       region is saved as its towns, which the Prospects tab then lists. */
+    /* "commercial properties in virginia" typed into the trade box is a trade
+       and a place; searched whole it is a business type that exists nowhere. */
+    const stated: string[] = [];
+    trades = words(trades.map(t => {
+      const m = /^(.+?)\s+(?:in|near|around|across|throughout)\s+(.{2,})$/i.exec(t);
+      if (!m) return t;
+      stated.push(m[2].trim());
+      return m[1].trim();
+    }), 8);
+    if (!places.length) places = words(stated, 40);
+    places = words(places.flatMap(p => regionTowns(p) ?? [p]), 40);
     if (!trades.length) return fail('Say what kind of business to find.', 200, { field: 'finder.trades' });
     if (!places.length) return fail('Say where to find them.', 200, { field: 'finder.places' });
     const list = listId || cur?.list_id || '';

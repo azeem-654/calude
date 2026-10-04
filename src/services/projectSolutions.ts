@@ -39,6 +39,7 @@ import { TEMPLATE_CATALOG } from '../components/shared/pageTemplates';
 import type { WorkflowNode } from './autopilot';
 import { TEMPLATES } from '../components/Autopilot/workflowTemplates';
 import { LAYOUTS, THEMES, DEFAULT_LAYOUT, DEFAULT_THEME } from './designOptions';
+import { splitTradePlace } from './aiProspecting';
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────── */
 
@@ -1133,7 +1134,8 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
   const setup: SetupStep[] = [];
   if (source === 'upload') setup.push({ key: 'import', label: 'Import your contact list', by: 'you', route: '/contacts' });
   const fromList = source === 'list' && /^list-/.test(one(a.contactList));
-  if (booking === 'page') setup.push({ key: 'booking', label: 'Publish a booking page with your real availability', by: 'you', route: '/scheduling' });
+  /* Set up and published in the wizard itself (BookingSetup.tsx), and again by the build — not a job left for later. */
+  if (booking === 'page') setup.push({ key: 'booking', label: 'Publish your booking page — the days and hours you set here', by: 'autopilot', route: '/scheduling' });
   const mailbox = one(a.mailbox, 'later');
   setup.push({
     key: 'mailbox',
@@ -1152,8 +1154,10 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
   /* Finding them: the daily prospect finder, a scheduled step the engine runs
      (worker/src/prospectFinderTick.ts). It sends nothing, so the build switches
      it on; it fills the project's audience, which the outreach then works. */
-  const trades = one(a.prospectTrades).split(',').map(x => x.trim()).filter(Boolean);
+  const typed = one(a.prospectTrades).split(',').map(x => splitTradePlace(x)).filter(x => x.trade);
+  const trades = [...new Set(typed.map(x => x.trade))];
   const places = one(a.prospectPlaces).split(';').flatMap(x => x.split(/\s*\|\s*/)).map(x => x.trim()).filter(Boolean);
+  if (!places.length) places.push(...new Set(typed.map(x => x.place).filter(Boolean)));
   const perDay = Number(one(a.prospectPerDay, '20')) || 20;
   if (source === 'find') {
     wfs.unshift({
@@ -1408,7 +1412,7 @@ export const SOLUTIONS: Solution[] = [
         setup: [
           one(a.calendar) === 'google'
             ? { key: 'calendar', label: 'Connect Google Calendar', by: 'you', route: '/settings?tab=integrations' }
-            : { key: 'booking', label: 'Publish a booking page with your real availability', by: 'you', route: '/scheduling' },
+            : { key: 'booking', label: 'Publish your booking page — the days and hours you set here', by: 'autopilot', route: '/scheduling' },
           { key: 'noshow-tag', label: 'Mark missed appointments as no-shows in the calendar, so the rebooking starts', by: 'you', route: '/calendar' },
         ],
         outputs: ['Reminders before each appointment', 'A rebooking message after a no-show', 'Rebooked appointments'],

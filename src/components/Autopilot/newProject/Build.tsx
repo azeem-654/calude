@@ -14,6 +14,7 @@ import { CheckCircle2, Circle, Loader, AlertTriangle, XCircle, ArrowRight, Exter
 import AutopilotBot from '../AutopilotBot';
 import { percentOf, type BuildResult, type BuildStep } from './buildRunner';
 import ContactsCheck from './ContactsCheck';
+import FinderLive from './FinderLive';
 import type { WorkflowNode } from '../../../services/autopilot';
 
 export default function Build({ steps, say, result, reach = [] }: {
@@ -96,7 +97,9 @@ export default function Build({ steps, say, result, reach = [] }: {
         </div>
       )}
 
-      {done && !failed && <ContactsCheck flows={reach} />}
+      {/* A project that finds its own contacts is shown finding them, not told it has nobody to email. */}
+      {done && !failed && result!.finder && <FinderLive {...result!.finder} />}
+      {done && !failed && !result!.finder && <ContactsCheck flows={reach} />}
     </div>
   );
 }

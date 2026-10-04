@@ -42,6 +42,7 @@
  */
 import { nowIso, type Env } from './db';
 import { fetchPage, readable, urlProblem } from './readSite';
+import { regionTowns, splitPlace } from './regions';
 
 export interface Prospect {
   /** OSM element (`node/1`) or `google:<place id>`, so the same business found twice is recognisably the same. */
@@ -99,24 +100,80 @@ const CACHE_SECONDS = 14 * 24 * 3600;
  */
 export const safeTerm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim().slice(0, 40);
 
+/*
+ * OSM's own values for the trades people ask for most. Matching the typed word
+ * against the tags finds "dentist" but not "real estate agents" (the tag is
+ * `estate_agent`) nor "commercial property" (no tag says that at all), so
+ * those searches came back empty, or ran long enough to time out. These are
+ * constants from this file, never from the request, so they may carry `|`
+ * and `_` that safeTerm would strip.
+ */
+const OSM_TAGS: [RegExp, string][] = [
+  [/\b(estate agent|real estate|realtor|realty|letting|propert)/, 'estate_agent|property_management|real_estate'],
+  [/\b(dentist|dental|orthodont)/, 'dentist|orthodontist'],
+  [/\b(lawyer|solicitor|attorney|law firm|legal)/, 'lawyer|attorney|notary'],
+  [/\b(accountant|accounting|bookkeep|tax advis)/, 'accountant|tax_advisor'],
+  [/\b(insurance)/, 'insurance'],
+  [/\b(mortgage|financial advis|wealth)/, 'financial|financial_advisor|mortgage'],
+  [/\b(architect)/, 'architect'],
+  [/\b(marketing|advertising)/, 'advertising_agency|marketing'],
+  [/\b(it support|software|web design|tech company)/, 'it|computer|software'],
+  [/\b(gym|fitness|personal train)/, 'fitness_centre|fitness_center|gym'],
+  [/\b(cafe|café|coffee)/, 'cafe|coffee'],
+  [/\b(restaurant)/, 'restaurant'],
+  [/\b(hotel|motel|guest ?house|b&b)/, 'hotel|motel|guest_house'],
+  [/\b(hair|barber|salon)/, 'hairdresser|barber|beauty'],
+  [/\b(vet\b|vets\b|veterinar)/, 'veterinary'],
+  [/\b(car repair|auto repair|mechanic|garage)/, 'car_repair'],
+  [/\b(plumb)/, 'plumber'],
+  [/\b(electrician)/, 'electrician'],
+  [/\b(roof)/, 'roofer'],
+  [/\b(photograph)/, 'photographer|photo'],
+  [/\b(florist|flower)/, 'florist'],
+  [/\b(baker)/, 'bakery'],
+  [/\b(chiropract)/, 'chiropractor'],
+  [/\b(pharmac|chemist)/, 'pharmacy|chemist'],
+  [/\b(driving school)/, 'driving_school'],
+  [/\b(wedding venue|event venue|events venue)/, 'events_venue'],
+];
+
+/** OSM tag values for a trade, as a vetted regex alternation — or null for the typed word. */
+export function osmTagsFor(trade: string): string | null {
+  const t = ` ${trade.toLowerCase()} `;
+  return OSM_TAGS.find(([re]) => re.test(t))?.[1] ?? null;
+}
+
 /**
  * OSM does not have a "plumber" field — it has `craft`, `shop`, `office`,
- * `amenity` and `healthcare`, and a given trade lives in a different one
- * depending on who mapped it. So all five are searched for the word, plus the
- * business name, and anything with no business tag at all is left out.
+ * `amenity`, `healthcare`, `leisure` and `tourism`, and a given trade lives in
+ * a different one depending on who mapped it. So all of them are searched,
+ * plus the business name, and anything with no business tag at all is left out.
+ *
+ * "Richmond, Virginia" is the town named Richmond *inside Virginia*: every
+ * area called Richmond, intersected with the state — not the London borough or
+ * the one in California, and not an area called "richmond virginia", which
+ * does not exist and is what this used to ask for.
  */
 export function overpassQuery(trade: string, place: string): string {
   const t = safeTerm(trade);
-  const p = safeTerm(place);
+  const { town, region } = splitPlace(place);
+  const p = safeTerm(town);
+  const r = region ? safeTerm(region) : '';
+  const tags = osmTagsFor(trade);
+  const match = tags ? `"^(${tags})$"` : `"${t}"`;
+  const inArea = r ? 'nwr(area.a)(area.r)' : 'nwr(area.a)';
   return `[out:json][timeout:20];
-area["name"~"^${p}$",i]["boundary"="administrative"]->.a;
+area["name"~"^${p}$",i]["boundary"="administrative"]->.a;${r ? `
+area["name"~"^${r}$",i]["boundary"="administrative"]["admin_level"="4"]->.r;` : ''}
 (
-  nwr(area.a)["craft"~"${t}",i];
-  nwr(area.a)["shop"~"${t}",i];
-  nwr(area.a)["office"~"${t}",i];
-  nwr(area.a)["healthcare"~"${t}",i];
-  nwr(area.a)["amenity"~"${t}",i];
-  nwr(area.a)["name"~"${t}",i]["website"];
+  ${inArea}["craft"~${match},i];
+  ${inArea}["shop"~${match},i];
+  ${inArea}["office"~${match},i];
+  ${inArea}["healthcare"~${match},i];
+  ${inArea}["amenity"~${match},i];
+  ${inArea}["leisure"~${match},i];
+  ${inArea}["tourism"~${match},i];
+  ${inArea}["name"~"${t}",i]["website"];
 );
 out center tags 80;`;
 }
@@ -135,7 +192,7 @@ export function toProspect(el: OsmElement): Prospect | null {
   /* An unnamed shop is a dot on a map, not a business anybody can contact. */
   if (!name) return null;
 
-  const category = t.craft || t.shop || t.office || t.healthcare || t.amenity || '';
+  const category = t.craft || t.shop || t.office || t.healthcare || t.amenity || t.leisure || t.tourism || '';
   /* A point tagged only with a name and a website is a guess; require that
      somebody classified it as a business of some kind. */
   if (!category) return null;
@@ -163,6 +220,8 @@ export interface SearchResult {
   /** True when this came from the cache. Shown, because it explains the speed. */
   cached: boolean;
   error: string;
+  /** Set when a whole region was asked for and its largest town searched instead — said, not hidden. */
+  note?: string;
 }
 
 export async function searchProspects(env: Env, trade: string, place: string, fresh = false): Promise<SearchResult> {
@@ -170,6 +229,16 @@ export async function searchProspects(env: Env, trade: string, place: string, fr
   const p = safeTerm(place);
   if (t.length < 2) return { prospects: [], cached: false, error: 'Say what kind of business to look for.' };
   if (p.length < 2) return { prospects: [], cached: false, error: 'Say where to look — a town or a city.' };
+
+  /* A whole state is too big for Overpass — it runs past its time limit and
+     the customer is told the directory is unreachable. Its largest town is
+     searched instead, and the answer says so; the daily finder works the rest
+     of the region town by town (finders.ts `save` lists them). */
+  const towns = regionTowns(place);
+  if (towns) {
+    const r = await searchProspects(env, trade, towns[0], fresh);
+    return { ...r, note: `${place} is searched a town at a time, largest first — these are from ${towns[0]}.` };
+  }
 
   const key = `${t}|${p}`;
   const now = Math.floor(Date.now() / 1000);

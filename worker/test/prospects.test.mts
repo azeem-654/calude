@@ -15,6 +15,7 @@
 import { harvest, overpassQuery, safeTerm, toProspect, type OsmElement } from '../src/lib/prospects';
 import { PROSPECT_FIELDS, fromPlace, type GooglePlace } from '../src/lib/googlePlaces';
 import { categoriesFor, toGeoProspect } from '../src/lib/geoapify';
+import { regionTowns, splitPlace } from '../src/lib/regions';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -147,6 +148,23 @@ ok('a named point with no business tag is a guess, not a lead',
     p?.ref === 'geoapify:abc' && p.source === 'free' && p.phone === '01904 555 000' && p.website === 'https://smile.example/'
     && p.address === '4 High St, York YO1 7HU, United Kingdom' && p.category === 'dentist', JSON.stringify(p));
   ok('a place with no name is dropped', toGeoProspect({ properties: { place_id: 'x', categories: ['healthcare.dentist'] } }, 'healthcare.dentist') === null);
+}
+
+/* ── A state is worked a town at a time; a town is the one in its state ── */
+{
+  const towns = regionTowns('Virginia');
+  ok('a whole state becomes its towns, largest first', towns?.[0] === 'Virginia Beach, Virginia' && towns.includes('Richmond, Virginia'), JSON.stringify(towns));
+  ok('lower case and two-letter codes are the same state', regionTowns('virginia')?.[0] === 'Virginia Beach, Virginia' && regionTowns('VA')?.[0] === 'Virginia Beach, Virginia');
+  ok('a town is not a region', regionTowns('Richmond, Virginia') === null && regionTowns('Leeds') === null);
+  ok('"Richmond, VA" is Richmond inside Virginia', JSON.stringify(splitPlace('Richmond, VA')) === JSON.stringify({ town: 'Richmond', region: 'Virginia' }));
+  const q = overpassQuery('real estate agent', 'Richmond, Virginia');
+  ok('the town is searched inside its state, not as an area named "richmond virginia"',
+    q.includes('area["name"~"^richmond$",i]') && q.includes('area["name"~"^virginia$",i]') && q.includes('nwr(area.a)(area.r)') && !q.includes('richmond virginia'), q);
+  ok('a trade is matched to OSM\'s own tag, not the typed words', q.includes('["office"~"^(estate_agent|property_management|real_estate)$",i]'), q);
+  const free = overpassQuery('commercial propertie', 'Leeds');
+  ok('a commercial property search asks for estate agents and property managers', free.includes('estate_agent|property_management'), free);
+  ok('an unknown region is not used to narrow the search', !overpassQuery('dentist', 'Leeds, UK').includes('area.r'));
+  ok('Geoapify maps commercial property to estate agents', categoriesFor('commercial properties') === 'office.estate_agent,service.estate_agent');
 }
 
 console.log(out.join('\n'));

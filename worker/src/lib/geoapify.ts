@@ -112,7 +112,7 @@ const TRADES: [RegExp, string][] = [
   [/\b(lawyer|solicitor|attorney|legal|law firm)/, 'office.lawyer'],
   [/\bnotar/, 'office.notary'],
   [/\b(accountant|accounting|bookkeep|tax)/, 'office.accountant,office.tax_advisor'],
-  [/\b(estate agent|real estate|realtor|letting|property agent)/, 'office.estate_agent,service.estate_agent'],
+  [/\b(estate agent|real estate|realtor|realty|letting|propert)/, 'office.estate_agent,service.estate_agent'],
   [/\binsurance/, 'office.insurance'],
   [/\barchitect/, 'office.architect'],
   [/\b(marketing|advertising|creative agency|design agency)/, 'office.advertising_agency'],

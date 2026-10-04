@@ -301,6 +301,14 @@ fortnight in `crm_prospect_cache`. Credits are counted per UTC day in
 refused key, an outage, or a trade with **no** Geoapify category (plumbers,
 roofers: Geoapify has none), the search goes to Overpass (`searchProspects`,
 singularised word), also free. Attribution comes back with every answer.
+Overpass cannot search a whole state (it times out), and a place like
+"Richmond, Virginia" is the area named Richmond *intersected with* Virginia —
+`lib/regions.ts` knows the US states, the UK nations and the larger
+Canadian/Australian provinces with their largest towns, so a region is
+searched at its largest town (the answer's `note` says so), `expand_place`
+answers without a Geoapify key, and a finder's `save` stores a region as its
+towns. Common trades are matched to OSM's own tag values (`osmTagsFor`:
+"real estate" → `estate_agent`), not the typed words.
 **Google's terms forbid saving business names and addresses**; the Google tab
 remains for customers who ask, budgeted as below. `npm run test:platform`
 covers the free directory against a Geoapify mock (`GEOAPIFY_BASE`).
@@ -490,7 +498,19 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   `matchSolutions` drops it before scoring), offers a region's towns
   (`citiesIn`, largest first), and shows the finder's who/where with a live
   sample on the blueprint (`FinderReview`) because an answered question is
-  not asked. The build makes the cold list, the finder, and starts a first step.
+  not asked. "commercial properties in virginia" typed as a trade is split
+  into trade and place (`splitTradePlace`, client and `save`). The build makes
+  the cold list and the finder; the Build screen then runs its first steps in
+  front of the customer (`FinderLive.tsx`, `run_step`) instead of saying
+  "nobody to email yet", and Connections/Review say the contacts are **found
+  by this project**. A sample that could not run says the finder retries — it
+  is not shown as the project failing.
+- **Booking page in the wizard.** Picking our booking page (question
+  `booking` = `page`, and on the blueprint when `bookingPage` is required)
+  shows `BookingSetup.tsx`: title, length, where, days, hours, a line — beside
+  a preview drawn from the same `crm_schedule`, published as edited with
+  `publishBookingConfig` (and again by the build), because `{{bookingLink}}`
+  is only filled once a page is published.
 - **Texts only after a yes.** A prospect is never texted on the strength of an
   email. `{{smsOptInLink}}` (a P.S. the wizard adds when texts were asked
   for, kept through email tailoring) is a per-contact HMAC link

@@ -66,6 +66,8 @@ import { screenBlocker, profileGap, profileSource, type ProfileCheck } from './n
 import BlueprintView, { EditPanel, type EditMessage } from './newProject/BlueprintView';
 import Requirements from './newProject/Requirements';
 import Review from './newProject/Review';
+import { finderSpecOf } from './newProject/contactFacts';
+import BookingSetup from './newProject/BookingSetup';
 import Build from './newProject/Build';
 import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProject/buildRunner';
 import { listChoices } from './newProject/contactFacts';
@@ -768,7 +770,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               {phase === 'questions' && state && screen && (
                 <Questions
                   design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f), brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website' }}
-                  screen={screen} state={state} ws={ws} files={files} answer={answer}
+                  screen={screen} state={state} ws={ws} files={files} answer={answer} company={company}
                   profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}
                   onLink={url => setDescribe(d => ({ ...d, links: [...d.links.filter(l => l.url !== url), { url, role: 'reference' }] }))}
@@ -781,6 +783,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   {bp.workflows.some(w => w.key === 'finder') && (
                     <FinderReview trades={String(state?.known.prospectTrades?.value ?? '')} places={String(state?.known.prospectPlaces?.value ?? '')}
                       onAnswer={(id, v) => answer(id, v, 'you')} />
+                  )}
+                  {/* The booking page the emails will link to, when this project uses ours — editable here as on the question. */}
+                  {bp.requirements.includes('bookingPage') && (
+                    <div style={{ marginTop: 18 }}><BookingSetup business={company} /></div>
                   )}
                   {(() => {
                     const said = (id: string) => String(withDefaults(state!).known[id]?.value ?? '');
@@ -799,7 +805,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                 </>
               )}
               {phase === 'requirements' && bp && (
-                <Requirements ids={bp.requirements} ready={ready} mailboxPlan={String(state?.known.mailbox?.value ?? '')} />
+                <Requirements ids={bp.requirements} ready={ready} mailboxPlan={String(state?.known.mailbox?.value ?? '')} finder={finderSpecOf(bp.workflows)} />
               )}
               {phase === 'review' && bp && <Review bp={bp} />}
               {phase === 'build' && <Build steps={steps} say={say} result={result} reach={(bp?.workflows ?? []).filter(w => w.sends).map(w => ({ name: w.name, nodes: w.nodes }))} />}

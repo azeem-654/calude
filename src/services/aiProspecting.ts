@@ -203,7 +203,21 @@ const RELATED: [RegExp, string[]][] = [
   [/gym|fitness/, ['personal trainers', 'yoga studios', 'physiotherapists', 'sports shops']],
   [/lawyer|solicitor|attorney/, ['accountants', 'financial advisers', 'estate agents', 'insurance brokers']],
   [/contractor|builder|construction/, ['roofers', 'electricians', 'plumbers', 'architects']],
+  [/propert|real estate|realt|estate agent/, ['real estate agents', 'property managers', 'mortgage brokers', 'insurance agencies']],
 ];
+
+/**
+ * "commercial properties in virginia" typed or heard as one kind of business
+ * is a kind of business and a place. Searched whole it is a trade no
+ * directory has — the wizard once did exactly that, on a whole state, and
+ * timed out in front of the customer.
+ */
+export function splitTradePlace(trade: string): { trade: string; place: string } {
+  const m = /^(.+?)\s+(?:in|near|around|across|throughout)\s+(.{2,})$/i.exec(trade.trim());
+  if (!m) return { trade: trade.trim(), place: '' };
+  const place = m[2].trim().replace(/\b\p{Ll}/gu, c => c.toUpperCase());
+  return { trade: m[1].trim(), place };
+}
 
 /**
  * Other kinds of business worth trying beside `trade` — suggestions only: the
@@ -220,9 +234,18 @@ export function relatedTrades(trade: string): string[] {
  * the capitalised words after in/across/around/near. Capitals, because "in
  * person" and "in bulk" are not places.
  */
+/* States, nations and provinces, for a request typed in lower case —
+   "realtors in virginia". Names only; the Worker's lib/regions.ts has their
+   towns. Capitals are otherwise required, because "in person" is not a place. */
+const REGIONS = 'alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|england|scotland|wales|northern ireland|ontario|quebec|british columbia|alberta|new south wales|victoria|queensland|western australia|south australia';
+const REGION_RE = new RegExp(`\\b(?:in|across|around|near|throughout)\\s+(${REGIONS})\\b`, 'i');
+
 export function placeIn(text: string): string | null {
   const m = /\b(?:in|across|around|near|throughout)\s+((?:[A-Z][\p{L}.'-]+)(?:(?:,\s*|\s+)(?:[A-Z][\p{L}.'-]+)){0,3})/u.exec(text);
-  if (!m) return null;
+  if (!m) {
+    const r = REGION_RE.exec(text);
+    return r ? r[1].replace(/\b\p{Ll}/gu, c => c.toUpperCase()) : null;
+  }
   const p = m[1].replace(/\s+(?:And|With|To|For)$/, '').trim();
   return p.length >= 2 ? p : null;
 }

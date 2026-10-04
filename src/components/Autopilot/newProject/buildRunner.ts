@@ -33,7 +33,10 @@ import { saveProduct } from '../../../services/commerce';
 import { flushNow } from '../../../services/serverData';
 import { createList, loadLists } from '../../../services/contactLists';
 import { currentActor } from '../../../services/contactPermissions';
-import { runFinderStep, saveFinder } from '../../../services/finders';
+import { saveFinder } from '../../../services/finders';
+import { bookingSlugFor, publishBookingConfig } from '../../../services/booking';
+import { getSession } from '../../../services/auth';
+import type { ScheduleAvailability } from '../../../types';
 import { understand } from '../../../services/intake';
 import { tailorEmails } from './emailWriter';
 import {
@@ -110,6 +113,8 @@ export interface BuildResult {
   created: { workflows: number; activated: number; products: number };
   first?: { label: string; route: string; detail: string };
   problems: string[];
+  /** The daily prospect finder this build made — the Build screen runs its first steps in front of the customer. */
+  finder?: { projectId: string; finderId: string; perDay: number; trades: string[]; places: string[] };
 }
 
 const val = (st: IntakeState, id: string) => {
@@ -337,9 +342,13 @@ export async function runBuild(
       if (r.success && r.workflowId) {
         ids[w.key] = r.workflowId;
         result.created.workflows++;
-        set(`wf:${w.key}`, { state: 'done', detail: `On — the first prospects arrive within minutes, up to ${Number(cfg.perDay) || 20} a day. Watch them on the project's Prospects tab.` });
-        /* Its first step now, so the Prospects tab has something to show when the customer opens the project. */
-        if (r.finderId) void runFinderStep(p.id, r.finderId);
+        set(`wf:${w.key}`, { state: 'done', detail: `On — searching starts now, up to ${Number(cfg.perDay) || 20} new prospects a day.` });
+        /* Its first steps are run by the Build screen once everything else is
+           made (FinderLive), so the customer watches the first prospects arrive
+           rather than being told they will. */
+        if (r.finderId) {
+          result.finder = { projectId: p.id, finderId: r.finderId, perDay: Number(cfg.perDay) || 20, trades: r.trades ?? trades, places: r.places ?? places };
+        }
       } else {
         result.problems.push(`${w.name}: ${r.error ?? 'not saved'}`);
         set(`wf:${w.key}`, { state: 'warn', detail: `${r.error ?? 'It could not be set up.'} You can set it up from the project's Prospects tab.` });
@@ -404,6 +413,26 @@ export async function runBuild(
         ? 'On. Everything they make is saved for you to check — nothing is published.'
         : `${on} of ${agentFlows.length} switched on. The rest can be switched on from the project.`,
     });
+  }
+
+  /* ── 4a · Our booking page, published ──
+     The emails' {{bookingLink}} is the published page (worker lib/mergeFields.ts);
+     a page never published leaves every booking line blank. The wizard's editor
+     publishes as it is edited — this covers a page nobody touched. */
+  if (bp.requirements.includes('bookingPage')) {
+    const token = getSession()?.token;
+    let sched: ScheduleAvailability | null = null;
+    try { sched = JSON.parse(localStorage.getItem('crm_schedule') || 'null') as ScheduleAvailability | null; } catch { sched = null; }
+    if (token && sched?.weekly) {
+      if (!sched.slug || sched.slug === 'meeting') {
+        sched = { ...sched, slug: bookingSlugFor(sched) };
+        localStorage.setItem('crm_schedule', JSON.stringify(sched));
+      }
+      const r = await publishBookingConfig(token, sched);
+      if (!r.ok) result.problems.push(`Booking page: ${r.error ?? 'not published'} — publish it from the Scheduling screen.`);
+    } else if (token) {
+      result.problems.push('Booking page: not set up yet — open Scheduling to publish it, so the emails have a link to give.');
+    }
   }
 
   /* ── 4b · The website or funnel they picked ──

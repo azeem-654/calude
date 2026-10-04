@@ -10,6 +10,7 @@
  * five honest ways to answer it and a dropdown would hide four.
  */
 import TemplatePicker from './TemplatePicker';
+import BookingSetup from './BookingSetup';
 import { useMemo, useRef } from 'react';
 import { Building2, Globe, Upload, PenLine, Sparkles, Check, Image as ImageIcon, UserCircle2, Loader, AlertTriangle, RefreshCcw } from 'lucide-react';
 import { GROUP_TITLE, type Question } from '../../../services/projectSolutions';
@@ -33,7 +34,7 @@ export interface DesignHooks {
   prefer: 'website' | 'funnel';
 }
 
-export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design }: {
+export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design, company }: {
   screen: Screen;
   design: DesignHooks;
   /** The business as read so far, and the two ways to change it. */
@@ -44,6 +45,8 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
   ws: WorkspaceFacts;
   files: Attachment[];
   answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
+  /** The business's name as the wizard knows it — the booking page is titled and addressed with it. */
+  company?: string;
   onFiles: (atts: Attachment[]) => void;
   onLink: (url: string) => void;
   index: number;
@@ -74,7 +77,7 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
         )}
       </div>
       {screen.questions.map(q => (
-        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} />
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} />
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
@@ -164,9 +167,9 @@ function ProfileFound({ state, files, profile, onProfile, onRead }: {
   );
 }
 
-function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
+function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }: {
   q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
-  design: DesignHooks;
+  design: DesignHooks; company?: string;
   answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
   onFiles: (atts: Attachment[]) => void;
   onLink: (url: string) => void;
@@ -364,7 +367,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
     return (
       <div className="np-q">
         {head}{help}
-        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')} />
+        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')}
+          onPlace={p => { if (!String(state.known.prospectPlaces?.value ?? '').trim()) answer('prospectPlaces', p, 'you'); }} />
       </div>
     );
   }
@@ -412,6 +416,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design }: {
           {aiButton}
         </div>
         {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
+        {/* Our booking page, shown and set up the moment it is picked — not on another screen later. */}
+        {q.id === 'booking' && vals[0] === 'page' && <BookingSetup business={company} />}
         {skip}
       </div>
     );

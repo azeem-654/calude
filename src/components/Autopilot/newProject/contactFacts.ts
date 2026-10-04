@@ -57,3 +57,14 @@ export function entryOf(nodes: WorkflowNode[] = []): string {
   const d = nodeDetail('trigger', t.config ?? {});
   return d && d !== t.label ? `${t.label} — ${d}` : t.label || 'When it is started';
 }
+
+/** The daily prospect finder a blueprint would build — who, where, how many — or null. */
+export function finderSpecOf(workflows: { key: string; nodes?: WorkflowNode[] }[]): { trades: string[]; places: string[]; perDay: number } | null {
+  const cfg = workflows.find(w => w.key === 'finder')?.nodes?.find(n => n.config?.produces === 'prospects')?.config;
+  if (!cfg) return null;
+  return {
+    trades: String(cfg.trades ?? '').split(',').map(x => x.trim()).filter(Boolean),
+    places: String(cfg.places ?? '').split(';').map(x => x.trim()).filter(Boolean),
+    perDay: Number(cfg.perDay) || 20,
+  };
+}

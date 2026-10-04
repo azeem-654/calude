@@ -174,7 +174,7 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       const word = trade.toLowerCase().split(/\s+/).map(w => w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w).join(' ');
       const r = await searchProspects(env, word, place, fresh);
       if (r.error) return fail(r.error);
-      return json({ success: true, source: 'osm', prospects: r.prospects, cached: r.cached, nextPageToken: '', attribution: '© OpenStreetMap contributors', fetchedAt });
+      return json({ success: true, source: 'osm', prospects: r.prospects, cached: r.cached, nextPageToken: '', attribution: '© OpenStreetMap contributors', fetchedAt, note: r.note ?? '' });
     }
 
     if (source === 'osm') {
