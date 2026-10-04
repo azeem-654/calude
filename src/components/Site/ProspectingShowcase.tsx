@@ -24,9 +24,9 @@ import {
   Flower2, Globe, HeartPulse, Home, Hotel, KeyRound, Landmark, ListChecks, MapPin, Megaphone, MessageSquareText,
   Monitor, PartyPopper, PawPrint, Repeat, Scale, Scissors, Search, ShieldCheck, Sparkles, Stethoscope, UtensilsCrossed, Zap,
 } from 'lucide-react';
-import ShotReel from './ShotReel';
+import FeatureStage from './FeatureStage';
 import { REELS } from './reels';
-import { useReveal, useRevealGroup } from './useReveal';
+import { useReveal } from './useReveal';
 import { motionReduced } from '../../services/motion';
 
 const PROSPECTING = [
@@ -102,38 +102,32 @@ function TradeRow({ items, reverse }: { items: Trade[]; reverse?: boolean }) {
   );
 }
 
+/* What a search says as it runs — beside the screens on a wide window. */
+const CHIPS = [
+  { icon: Search, title: '51 found live', sub: 'Realtors in Richmond, Virginia' },
+  { icon: Globe, title: 'Websites read', sub: 'The address each one publishes' },
+  { icon: ShieldCheck, title: '33 mailboxes verified', sub: 'Checked before you send' },
+  { icon: CalendarClock, title: '20 new every day', sub: 'Added to an Autopilot project' },
+];
+
 export default function ProspectingShowcase() {
-  const head = useReveal<HTMLDivElement>();
-  const list = useRevealGroup<HTMLDivElement>('.dc-show-item');
-  const pic = useReveal<HTMLDivElement>();
   const trades = useReveal<HTMLDivElement>();
   const daily = useReveal<HTMLDivElement>();
   const [still] = useState(() => motionReduced());
   const half = Math.ceil(TRADES.length / 2);
   return (
-    <section className="dc-showcase dc-prospect" id="prospecting" aria-label="AI Prospecting">
-      <div className="dc-show">
-        <div className="dc-show-head reveal" ref={head}>
-          <span className="dc-eyebrow">AI Prospecting</span>
-          <h2>Say who to sell to. <em>Get leads you can reach — every day.</em></h2>
-          <p>
-            One sentence finds the businesses, reads the email address each one publishes on its own website, and
-            checks it before you send. <b>Every lead is found live, the moment you ask</b> — and stamped with when.
-          </p>
-          <div className="dc-show-list stagger" ref={list}>
-            {PROSPECTING.map(a => (
-              <div key={a.title} className="dc-show-item">
-                <span className="dc-tile-icon"><a.icon size={15} /></span>
-                <div><b>{a.title}</b><span>{a.body}</span></div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="reveal dc-prospect-reel" ref={pic}>
-          <ShotReel shots={REELS.prospecting} label="AI Prospecting" holdMs={6000} />
-        </div>
-      </div>
-
+    <FeatureStage
+      id="prospecting"
+      className="dc-prospect"
+      eyebrow="AI Prospecting"
+      title={<>Say who to sell to. <em>Get leads you can reach — every day.</em></>}
+      body={<>One sentence finds the businesses, reads the email address each one publishes on its own website, and
+        checks it before you send. <b>Every lead is found live, the moment you ask</b> — and stamped with when.</>}
+      label="AI Prospecting"
+      shots={REELS.prospecting}
+      features={PROSPECTING}
+      chips={CHIPS}
+      after={<>
       <div className={`dc-trades reveal${still ? ' still' : ''}`} ref={trades}>
         <div className="dc-trades-head">
           <h3>Whoever you sell to.</h3>
@@ -182,6 +176,7 @@ export default function ProspectingShowcase() {
           <figcaption>Sample project — the same chart its Prospects tab draws.</figcaption>
         </figure>
       </div>
-    </section>
+      </>}
+    />
   );
 }

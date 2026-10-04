@@ -852,9 +852,10 @@ The widget's launcher reads "Help" (with a green dot only when `online`) and
 opens a home panel listing exactly the enabled features (`homeOptions`: "Start
 an online call", "Share your screen with us", "Live chat", "Submit a ticket"),
 also read by the marketing-site teaser (`data-pc-teaser`, ≥720px wide): a
-see-through frosted card above the launcher on every page until the visitor
-closes it (then gone for the visit), back when the widget is closed, its rows
-sliding in and the first icon breathing — none of it under reduced motion. `CornerHelp` names the same options. The owner's photo and name are
+see-through frosted card above the launcher on **every page load** (closing it
+hides it for that page only — nothing about a dismissal is remembered), back
+when the widget is closed, its rows sliding in, the first icon breathing and
+each icon in a small loop of its own — none of it under reduced motion. `CornerHelp` names the same options. The owner's photo and name are
 per widget (`agent_name`; the photo via `engagement.php widget_avatar`,
 checked by magic bytes, PNG/JPEG ≤256px, served at
 `/api/widget-avatar.php?k=<random key>`, `lib/widgetAvatar.ts`) and reach the
@@ -932,11 +933,24 @@ in `.wrangler-reels`) and a mock directory, DNS and mailbox verifier (:8857), se
 a busy sample agency (`site-seed.mjs` + `demo-world.mjs`: five clients in five
 trades, branching five-column workflows, 30 days of a daily finder, 72 contacts
 across 25 industries, all on `.example`), and photographs every shot in
-`src/components/Site/reels.ts` as a **whole app window** (1920×1200 → 1600 WebP).
-Never crop a shot or zoom it to the page's width — the owner read that as "half a
-picture"; the hero shows each whole in ShotReel's `strip`. A shot with no recipe
-stops the run. The launch film is re-rendered from `marketing/launch-film`
-(its README has the kit and the honesty table).
+`src/components/Site/reels.ts` **three ways**: the whole desktop window at
+1920×1200, 1.5× (`<file>.webp`, 2400 wide, and `<file>-sm.webp`, 1200), and the
+app's own phone layout at 390×720, 3× (`<file>-m.webp`). `PHONE_ONLY=1` retakes
+just the phone ones. A shot with no recipe stops the run.
+
+**Readable at every size** (ShotReel): every reel is a strip — the screen
+showing drawn whole, its neighbours dimmed beside it, the strip sliding along,
+never a crop. On a wide screen each slide opens whole, zooms into its `focus`
+(the region worth reading, `FOCUS` in reels.ts, read off a 10% grid laid over
+the capture — re-check it when a picture is retaken), holds, and zooms back out.
+A phone gets the phone layout instead, because no zoom makes a whole desktop
+window readable at 390px. **Full size** (and a click on the slide) opens the
+whole desktop screen in a viewer portalled to `<body>` — on a phone at twice
+the width, to pan and pinch. The product sections are `FeatureStage`
+(title on top, the wide strip, feature blocks under it with looping icons,
+event chips floating beside the screens at ≥1380px); the launch film is
+re-rendered from `marketing/launch-film` (its README has the kit and the
+honesty table).
 
 Recurring traps when writing those checks:
 
@@ -1002,7 +1016,9 @@ to make and run the product, as the owner lists them). The third row is called
 note says what it means here — the platforms it is built and runs on, not an
 endorsement or an agreement; none of those companies has one with us. A name
 goes on the first two rows when the integration exists, not when it is
-wanted. A partner that gets integrated moves up a row.
+wanted. A partner that gets integrated moves up a row. **The public site shows
+only the first two rows** (`partners={false}`); the sign-in screen keeps all
+three.
 
 Generated records carry a `source` stamp (`src/types/provenance.ts`) naming what
 created them, so a list full of generated rows can still be traced back.

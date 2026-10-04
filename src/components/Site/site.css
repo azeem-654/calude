@@ -2214,3 +2214,193 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   0%, 12%, 100% { border-color: var(--edge); }
   4% { border-color: rgba(200, 242, 77, 0.55); }
 }
+
+/* ── Readable reels (ShotReel) ───────────────────────────────────────────────
+   Each slide is a box that clips its picture, so the zoom into the part worth
+   reading never spills out of it. Wide screens: a 16:10 app window, zoomed by
+   `.zoom` to its focus (the transform is computed per shot in ShotReel).
+   Phones: the app's own phone screen, taller than wide, almost at its size. */
+.dc-reel.strip { --shot-ar: 1.6; }
+.dc-reel.strip .dc-reel-shot {
+  overflow: hidden;
+  aspect-ratio: var(--shot-ar);
+  height: auto;
+  border-radius: 12px;
+}
+.dc-reel.strip .dc-reel-shot picture,
+.dc-reel.strip .dc-shot-img { display: block; width: 100%; height: 100%; }
+.dc-reel.strip .dc-shot-img {
+  object-fit: cover;
+  object-position: 50% 0;
+  transform-origin: 0 0;
+  transition: transform 1.15s cubic-bezier(0.65, 0, 0.25, 1);
+  will-change: transform;
+}
+.dc-reel.strip .dc-reel-shot.zoom .dc-shot-img { transform: translate(var(--zx, 0), var(--zy, 0)) scale(var(--zs, 1)); }
+.dc-reel.strip .dc-reel-shot.on { cursor: zoom-in; }
+/* While it is zoomed, a ring says this is a closer look at the same screen. */
+.dc-reel.strip .dc-reel-shot::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgba(200, 242, 77, 0); transition: box-shadow 0.6s ease;
+}
+.dc-reel.strip .dc-reel-shot.zoom::after { box-shadow: inset 0 0 0 2px rgba(200, 242, 77, 0.55); }
+
+/* Sections: wider slides than the hero's, the neighbours a strip either side. */
+.dc-reel.strip .dc-reel-stage { aspect-ratio: 16 / 8.6; }
+.dc-reel.strip .dc-reel-shot { width: min(80%, calc(var(--strip-w, 100%) * 0.8)); }
+.dc-reel.strip .dc-reel-frame { background: transparent; border: 0; box-shadow: none; overflow: visible; position: relative; }
+
+/* The way to see it at full size, over the slide's corner. */
+.dc-reel-open {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(10, 14, 18, 0.72); color: #fff;
+  font: 600 12.5px/1 inherit; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.dc-reel-open:hover { background: rgba(10, 14, 18, 0.9); }
+.dc-reel-open:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .dc-reel.strip { --shot-ar: 0.5417; --side: 0.82; --strip-gap: 10px; }
+  .dc-reel.strip .dc-reel-stage { aspect-ratio: auto; height: min(calc(78vw / 0.5417 + 8px), calc(100vh - 190px)); }
+  @supports (height: 100svh) {
+    .dc-reel.strip .dc-reel-stage { height: min(calc(78vw / 0.5417 + 8px), calc(100svh - 190px)); }
+  }
+  .dc-reel.strip .dc-reel-shot { width: auto; height: calc(100% - 8px); }
+  .dc-reel.strip .dc-shot-img { transform: none !important; }
+  .dc-reel-open { align-self: center; width: auto; }
+}
+/* The hero on a phone: same, a little shorter so the prompt and caption fit. */
+@media (max-width: 760px) {
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: min(calc(72vw / 0.5417 + 8px), calc(100vh - 230px)); }
+  @supports (height: 100svh) {
+    .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: min(calc(72vw / 0.5417 + 8px), calc(100svh - 230px)); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-reel.strip .dc-shot-img, .dc-reel.strip .dc-reel-shot::after { transition: none; }
+}
+
+/* ── Full size ── */
+.dc-viewer {
+  position: fixed; inset: 0; z-index: 2147483000; background: rgba(4, 7, 10, 0.92); font-family: Inter, system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center; padding: 56px 64px 40px;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.dc-viewer-body { max-width: min(1700px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.dc-viewer-img { display: block; max-width: 100%; max-height: calc(100vh - 140px); width: auto; height: auto; border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); background: #f4f6f3; }
+.dc-viewer-cap { margin: 0; color: #e7ece4; font-size: 14px; text-align: center; max-width: 900px; }
+.dc-viewer-btn {
+  position: fixed; z-index: 2147483001; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(20, 26, 32, 0.85); color: #fff; cursor: pointer;
+}
+.dc-viewer-btn:focus-visible { outline: 2px solid #c8f24d; outline-offset: 2px; }
+.dc-viewer-x { top: 12px; right: 12px; }
+.dc-viewer-prev { left: 12px; top: 50%; transform: translateY(-50%); }
+.dc-viewer-next { right: 12px; top: 50%; transform: translateY(-50%); }
+@media (max-width: 760px) {
+  /* The whole desktop window at twice the phone's width: pan it both ways,
+     pinch it closer. */
+  .dc-viewer { align-items: flex-start; justify-content: flex-start; overflow: auto; padding: 60px 12px 70px; }
+  .dc-viewer-body { max-width: none; align-items: flex-start; }
+  .dc-viewer-img { max-height: none; max-width: none; width: 210vw; }
+  .dc-viewer-cap { max-width: calc(100vw - 24px); text-align: left; }
+  .dc-viewer-prev, .dc-viewer-next { top: auto; bottom: 14px; transform: none; }
+}
+
+/* ── Feature stages (FeatureStage.tsx) ───────────────────────────────────────
+   Title on top, the screens as a wide slideshow, the feature blocks under it.
+   The show is as wide as the page allows (up to 1560px) so a screen is drawn
+   as large as it can be; the chips float over the dimmed neighbours either
+   side, never over the screen being read. */
+.dc-stage { position: relative; padding: clamp(60px, 8vw, 110px) clamp(16px, 3vw, 40px) clamp(30px, 4vw, 50px); }
+.dc-stage-head { max-width: 860px; margin: 0 auto clamp(26px, 3.6vw, 44px); text-align: center; }
+.dc-stage-head h2 { font-size: clamp(30px, 4.2vw, 56px); line-height: 1.05; letter-spacing: -0.035em; color: var(--text); margin: 14px 0 0; }
+.dc-stage-head h2 em { font-style: normal; background: linear-gradient(92deg, var(--lime), var(--mint)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.dc-stage-head p { margin: 16px auto 0; max-width: 720px; color: var(--muted); font-size: clamp(15px, 1.25vw, 18px); line-height: 1.65; }
+.dc-stage-head .dc-btn { margin-top: 22px; }
+.dc-stage-head .dc-pills { justify-content: center; margin-top: 16px; }
+.dc-stage-show { position: relative; max-width: 1560px; margin: 0 auto; }
+.dc-stage-show .dc-reel-caption { max-width: 1240px; margin-left: auto; margin-right: auto; }
+.dc-stage-show .dc-reel-text { color: var(--text); }
+
+.dc-stage-chips { position: absolute; inset: 0 0 64px; pointer-events: none; display: none; }
+.dc-stage-chip {
+  position: absolute; display: flex; align-items: center; gap: 10px; width: 214px; padding: 10px 12px;
+  border-radius: 14px; background: rgba(14, 19, 24, 0.82); border: 1px solid rgba(200, 242, 77, 0.22);
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.8); color: var(--text);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.dc-stage-chip b { display: block; font-size: 13px; }
+.dc-stage-chip small { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+.dc-stage-chip-ic { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; background: rgba(200, 242, 77, 0.14); color: var(--lime); }
+.dc-stage-chip-0 { left: 0; top: 14%; }
+.dc-stage-chip-1 { right: 0; top: 24%; }
+.dc-stage-chip-2 { left: 1%; bottom: 18%; }
+.dc-stage-chip-3 { right: 1%; bottom: 10%; }
+@media (min-width: 1380px) {
+  .dc-stage-chips { display: block; }
+  /* Room for them: the slide a little narrower, the neighbours a little wider. */
+  .dc-stage-show.has-chips .dc-reel.strip .dc-reel-shot { width: min(74%, calc(var(--strip-w, 100%) * 0.74)); }
+}
+
+.dc-stage-feats {
+  max-width: 1240px; margin: clamp(28px, 4vw, 48px) auto 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 14px;
+}
+.dc-stage-feats.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dc-stage-feats.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .dc-stage-feats.three, .dc-stage-feats.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .dc-stage-feats.three, .dc-stage-feats.four { grid-template-columns: 1fr; } }
+.dc-stage-feat {
+  display: flex; gap: 13px; align-items: flex-start; padding: 16px; border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease;
+}
+.dc-stage-feat:hover { border-color: rgba(200, 242, 77, 0.35); background: rgba(255, 255, 255, 0.055); transform: translateY(-2px); }
+.dc-stage-feat b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+.dc-stage-feat span { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.dc-stage-ic { width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0; display: grid; place-items: center; background: rgba(200, 242, 77, 0.12); color: var(--lime); }
+.dc-stage-ic-in { display: flex; }
+.dc-prospect .dc-stage-ic, .dc-prospect .dc-stage-chip-ic { background: rgba(255, 138, 87, 0.14); color: #ff9a6a; }
+.dc-prospect .dc-stage-head h2 em { background: linear-gradient(90deg, #ffb35c, #ff7a45 50%, #ff4f81); -webkit-background-clip: text; background-clip: text; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .dc-stage-chip { animation: dc-chip-float 6s ease-in-out infinite; }
+  .dc-stage-chip-1 { animation-duration: 7s; animation-delay: -2s; }
+  .dc-stage-chip-2 { animation-duration: 6.5s; animation-delay: -4s; }
+  .dc-stage-chip-3 { animation-duration: 7.5s; animation-delay: -1s; }
+  /* Each icon in its own small loop, staggered so they never move together. */
+  .dc-stage-ic-in { animation: dc-ic-bob 2.6s ease-in-out infinite; }
+  .dc-stage-feat:nth-child(3n+2) .dc-stage-ic-in { animation-name: dc-ic-tilt; animation-duration: 3.2s; }
+  .dc-stage-feat:nth-child(3n) .dc-stage-ic-in { animation-name: dc-ic-pulse; animation-duration: 2.8s; }
+  .dc-stage-feat:nth-child(2) .dc-stage-ic-in { animation-delay: -0.6s; }
+  .dc-stage-feat:nth-child(3) .dc-stage-ic-in { animation-delay: -1.2s; }
+  .dc-stage-feat:nth-child(4) .dc-stage-ic-in { animation-delay: -1.8s; }
+  .dc-stage-feat:nth-child(5) .dc-stage-ic-in { animation-delay: -0.3s; }
+  .dc-stage-feat:nth-child(6) .dc-stage-ic-in { animation-delay: -2.1s; }
+  .dc-stage-chip-ic svg { animation: dc-ic-pulse 2.4s ease-in-out infinite; }
+}
+@keyframes dc-chip-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+@keyframes dc-ic-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes dc-ic-tilt { 0%, 60%, 100% { transform: rotate(0); } 70% { transform: rotate(-12deg); } 80% { transform: rotate(9deg); } 90% { transform: rotate(-4deg); } }
+@keyframes dc-ic-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.14); opacity: 0.8; } }
+
+/* The platform section and the agent chain: their slideshows at full width
+   too, the tab's card above the screens rather than squeezed beside them. */
+.dc-own { grid-template-columns: 1fr !important; max-width: 1560px; justify-items: center; }
+.dc-own-lead { max-width: 760px; text-align: center; }
+.dc-own-shot, .dc-flow-shot { width: 100%; max-width: 1560px; border: 0; border-radius: 0; box-shadow: none; overflow: visible; background: transparent !important; }
+.dc-own-shot .dc-reel-caption, .dc-flow-shot .dc-reel-caption { padding: 0; max-width: 1240px; margin-left: auto; margin-right: auto; }
+.dc-flow-shot .dc-reel-text, .dc-own-shot .dc-reel-text { color: var(--text); }
+.dc-stage .dc-daily { max-width: 1240px; margin-left: auto; margin-right: auto; }
+.dc-stage .dc-trades { max-width: 1560px; margin-left: auto; margin-right: auto; }
+/* A short phone: the hero's prompt, picture, caption and controls must all fit
+   one screen (test:sitefit), so the picture gives up the height. */
+@media (max-width: 760px) and (max-height: 700px) {
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: calc(100vh - 330px); }
+  @supports (height: 100svh) {
+    .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: calc(100svh - 330px); }
+  }
+  .dc-hero-shot .dc-reel-text { font-size: 13px; }
+}

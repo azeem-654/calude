@@ -9,6 +9,9 @@ none — it trains the owner to ignore it.
 
 ---
 
+> **Step by step:** `docs/OWNER-GUIDE.md` is this list as one-click-at-a-time
+> instructions, in the order to do them.
+
 ## ⚠ DO THESE — nobody else can
 
 Everything below needs the owner's own hands: a password, somebody else's

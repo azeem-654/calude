@@ -1718,9 +1718,15 @@
   /*
    * The teaser: on the marketing site only (the page asks for it with
    * `data-pc-teaser`), a card above the launcher naming the ways in. It is
-   * there on every page, a moment after the widget is — a visitor who wants
-   * to talk to somebody should not have to find out that they can — until
-   * they close it, which holds for the visit, or open the widget.
+   * there on every page load, a moment after the widget is — a visitor who
+   * wants to talk to somebody should not have to find out that they can.
+   * Closing it or opening the widget puts it away for that page only: the
+   * owner asked for it to be open again on each load, so nothing about a
+   * dismissal is remembered.
+   *
+   * Each option's icon moves in a small loop of its own — the call rings, the
+   * screen glows, the chat bubble bobs, the ticket tilts — staggered so they
+   * never move together, and all still for somebody who asked for less motion.
    *
    * It is see-through (frosted, not opaque) so the page scrolling behind it
    * stays visible: it is always present, so it must not hide what somebody is
@@ -1733,7 +1739,6 @@
    */
   var teaserCard = null;
   var teaserTimer = 0;
-  var TEASED = 'pc_teased_' + KEY;
   function teaserStyles() {
     if (document.getElementById('pc-teaser-css')) return;
     var st = document.createElement('style');
@@ -1748,12 +1753,23 @@
       + '.pc-tease-row:hover .pc-tease-ic{transform:scale(1.12) rotate(-6deg)}'
       + '.pc-tease-ic{transition:transform .2s ease}'
       + '.pc-tease-pulse{animation:pcTeasePulse 2.4s ease-out infinite}'
-      + '@media (prefers-reduced-motion: reduce){.pc-tease,.pc-tease-row,.pc-tease-pulse{animation:none!important}.pc-tease-row,.pc-tease-ic{transition:none!important}.pc-tease-row:hover{transform:none}}';
+      /* One small loop per kind of icon, on the glyph inside its tile so the
+         tile's own pulse and hover still apply. */
+      + '@keyframes pcIcRing{0%,62%,100%{transform:rotate(0)}66%{transform:rotate(-14deg)}72%{transform:rotate(12deg)}78%{transform:rotate(-9deg)}84%{transform:rotate(6deg)}90%{transform:rotate(0)}}'
+      + '@keyframes pcIcBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5px)}}'
+      + '@keyframes pcIcGlow{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.75}}'
+      + '@keyframes pcIcTilt{0%,70%,100%{transform:rotate(0)}78%{transform:rotate(-10deg)}86%{transform:rotate(8deg)}93%{transform:rotate(0)}}'
+      + '.pc-tease-glyph{display:flex;transform-origin:50% 60%;animation-iteration-count:infinite;animation-timing-function:ease-in-out}'
+      + '.pc-g-voice{animation-name:pcIcRing;animation-duration:2.6s}'
+      + '.pc-g-screen{animation-name:pcIcGlow;animation-duration:2.2s}'
+      + '.pc-g-chat{animation-name:pcIcBob;animation-duration:1.8s}'
+      + '.pc-g-ticket{animation-name:pcIcTilt;animation-duration:3s}'
+      + '.pc-g-meet{animation-name:pcIcBob;animation-duration:2.4s}'
+      + '@media (prefers-reduced-motion: reduce){.pc-tease,.pc-tease-row,.pc-tease-pulse,.pc-tease-glyph{animation:none!important}.pc-tease-row,.pc-tease-ic{transition:none!important}.pc-tease-row:hover{transform:none}}';
     document.head.appendChild(st);
   }
   function teaser() {
-    if (!TEASER || onlyChat()) return;
-    try { if (window.sessionStorage.getItem(TEASED)) return; } catch (e) { /* private mode: show it */ }
+    if (!TEASER || onlyChat() || teaserClosed) return;
     teaserTimer = window.setTimeout(function () {
       if (state.open || live || teaserCard || window.innerWidth < 720 || window.innerHeight < 560) return;
       var opts = homeOptions().filter(function (o) { return o.view !== 'status'; }).slice(0, 4);
@@ -1794,7 +1810,10 @@
         /* The first way in — a call, when there is one — breathes, so the eye
            finds it; the rest stay still. */
         ic.className = 'pc-tease-ic' + (i === 0 ? ' pc-tease-pulse' : '');
-        ic.appendChild(icon(ICONS[o.key], 15));
+        var glyph = el('span', 'animation-delay:' + (i * 380) + 'ms;');
+        glyph.className = 'pc-tease-glyph pc-g-' + (o.view === 'voice' || o.key === 'voice' ? 'voice' : o.view === 'screen' || o.key === 'screen' ? 'screen' : o.view === 'chat' || o.key === 'chat' ? 'chat' : o.view === 'ticket' || o.key === 'ticket' ? 'ticket' : 'meet');
+        glyph.appendChild(icon(ICONS[o.key], 15));
+        ic.appendChild(glyph);
         b.appendChild(ic);
         b.appendChild(el('span', '', o.label));
         b.onclick = function () {
@@ -1808,9 +1827,12 @@
       root.insertBefore(teaserCard, launcher);
     }, 1200);
   }
-  function dropTeaser(forGood) {
+  /* `closed` (the cross) keeps it away for the rest of this page; opening and
+     closing the widget brings it back. Nothing outlives the page. */
+  var teaserClosed = false;
+  function dropTeaser(closed) {
     window.clearTimeout(teaserTimer);
-    if (forGood) { try { window.sessionStorage.setItem(TEASED, '1'); } catch (e) { /* private mode */ } }
+    if (closed) teaserClosed = true;
     if (teaserCard) { teaserCard.remove(); teaserCard = null; }
   }
 

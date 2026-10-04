@@ -13,7 +13,8 @@
  * canvas and limits. Each row is labelled with which it is.
  *
  * A company goes on the first two rows when the code talks to it (or, for
- * the second, when the social creator has a format for it) — not before.
+ * the second, when the product writes in that format — a post, a clip, an
+ * article, a review reply) — not before.
  *
  * The third row is the tools the owner used to make and run Protected
  * Central, as the owner lists them. The owner asked for it to read
@@ -60,6 +61,15 @@ const CONNECTS: Brand[] = [
   { id: 'geoapify', name: 'Geoapify', role: 'Business directory search' },
   { id: 'openstreetmap', name: 'OpenStreetMap', role: 'Business directory data' },
   { id: 'companieshouse', name: 'Companies House', role: 'UK company register' },
+  { id: 'googlebusiness', name: 'Google Business Profile', role: 'Every review, and replies posted back' },
+  { id: 'gmail', name: 'Gmail', role: 'Send from your own mailbox' },
+  { id: 'microsoft365', name: 'Microsoft 365', role: 'Send from your own mailbox' },
+  { id: 'activecampaign', name: 'ActiveCampaign', role: 'Email sending' },
+  { id: 'smtp2go', name: 'SMTP2GO', role: 'Email sending' },
+  { id: 'mailtrap', name: 'Mailtrap', role: 'Email sending' },
+  { id: 'porkbun', name: 'Porkbun', role: 'Domains, bought for you' },
+  { id: 'migadu', name: 'Migadu', role: 'Mailboxes, set up for you' },
+  { id: 'youtube', name: 'YouTube', role: 'Channels your agents read' },
 ];
 
 const WRITES_FOR: Brand[] = [
@@ -71,6 +81,11 @@ const WRITES_FOR: Brand[] = [
   { id: 'youtube', name: 'YouTube', role: 'Titles & descriptions' },
   { id: 'pinterest', name: 'Pinterest', role: 'Pins' },
   { id: 'meta', name: 'Meta', role: 'Facebook ad videos' },
+  { id: 'youtube', name: 'YouTube Shorts', role: 'Vertical clips, captioned' },
+  { id: 'instagram', name: 'Instagram Reels', role: 'Vertical clips, captioned' },
+  { id: 'wordpress', name: 'WordPress', role: 'Articles, published on schedule' },
+  { id: 'google', name: 'Google Search', role: 'Articles checked against nine SEO rules' },
+  { id: 'googlebusiness', name: 'Google Business Profile', role: 'Replies to reviews' },
 ];
 
 const PARTNERS: Brand[] = [
@@ -114,27 +129,32 @@ function Row({ label, items, reverse }: { label: string; items: Brand[]; reverse
         </div>
         {/* What is shown when motion is off: each mark once, wrapped. */}
         <div className="ww-static" aria-hidden="true">
-          {items.map(b => <Mark key={b.id} b={b} />)}
+          {items.map(b => <Mark key={b.name} b={b} />)}
         </div>
         <ul className="ww-sr">
-          {items.map(b => <li key={b.id}>{b.name}: {b.role}</li>)}
+          {items.map(b => <li key={b.name}>{b.name}: {b.role}</li>)}
         </ul>
       </div>
     </div>
   );
 }
 
-export default function WorksWith({ title = 'Integrations & tools', compact = false }: { title?: string; compact?: boolean }) {
+/* `partners`: the third row and its note. The public site leaves it out —
+   the owner asked for the home page to show what the product connects to and
+   writes for, which a visitor can check in the product. */
+export default function WorksWith({ title = 'Integrations & tools', compact = false, partners = true }: { title?: string; compact?: boolean; partners?: boolean }) {
   return (
-    <section className={`ww${compact ? ' ww-compact' : ''}`} aria-label={title}>
+    <section className={`ww${compact ? ' ww-compact' : ''}`} aria-label={title || 'Integrations'}>
       {title && <p className="ww-title">{title}</p>}
       <Row label="Connects to" items={CONNECTS} />
       <Row label="Writes for" items={WRITES_FOR} reverse />
-      <Row label="Technology partners*" items={PARTNERS} />
-      <p className="ww-note">
-        * The enterprise-grade platforms Protected Central is built and runs on. Named as the
-        technology we use — not an endorsement by, or a formal agreement with, any of them.
-      </p>
+      {partners && <>
+        <Row label="Technology partners*" items={PARTNERS} />
+        <p className="ww-note">
+          * The enterprise-grade platforms Protected Central is built and runs on. Named as the
+          technology we use — not an endorsement by, or a formal agreement with, any of them.
+        </p>
+      </>}
     </section>
   );
 }

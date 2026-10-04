@@ -59,7 +59,12 @@ const RAW = '/tmp/site-reel-raw';
    card without scrolling sideways; written out at 1600 wide, which stays sharp
    where the hero draws it largest. */
 const VIEW = { width: 1920, height: 1200 };
-const WEBP_W = 1600;
+/* Each shot three ways: the desktop window at 1.5× (2400 wide, for a big
+   screen and for the zoom into its focus), the same at 1200 for a smaller
+   one, and the app's own phone layout at 390×720, 3×, for a phone — where no
+   zoom can make a whole desktop window readable (ShotReel). */
+const SCALE = 1.5;
+const PHONE = { width: 390, height: 720 };
 const GEOKEY = 'reel'.repeat(8);
 const HKEY = 'cd'.repeat(20);
 
@@ -523,8 +528,9 @@ d1(`UPDATE crm_users SET trial_ends_at = NULL WHERE account_id = ${q(ACCT)}; DEL
 /* ── Photographing ───────────────────────────────────────────────────────── */
 
 const browser = await pw.chromium.launch();
-const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
-await ctx.addInitScript(([token, acct]: string[]) => {
+const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE });
+const phoneCtx = await browser.newContext({ viewport: PHONE, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+const signIn = ([token, acct]: string[]) => {
   localStorage.setItem('crm_session', JSON.stringify({
     token, backend: 'php', user: { email: 'alex@riverastudio.com', name: 'Alex Rivera', role: 'agency', accountId: acct },
   }));
@@ -544,8 +550,11 @@ await ctx.addInitScript(([token, acct]: string[]) => {
   localStorage.setItem('crm_sidebar_mode', JSON.stringify('hidden'));
   /* Still frames: nothing mid-animation in a photograph. */
   localStorage.setItem('crm_motion', 'reduced');
-}, [TOK, ACCT]);
-const page = await ctx.newPage();
+};
+await ctx.addInitScript(signIn, [TOK, ACCT]);
+await phoneCtx.addInitScript(signIn, [TOK, ACCT]);
+/* The recipes drive whichever window is being photographed. */
+let page = await ctx.newPage();
 const errs: string[] = [];
 page.on('pageerror', e => errs.push(`${page.url()}: ${e.message}`));
 
@@ -590,8 +599,11 @@ const focusProject = (id: string, tab = '') => go(`/autopilot?project=${encodeUR
 /** A project's card on its Workflows tab, where the diagrams are drawn. */
 const workflowsOf = async (id: string) => {
   await focusProject(id);
-  await page.locator(`#project-${id}`).getByRole('tab', { name: /^Workflows/ }).first().click()
-    .catch(() => page.locator(`#project-${id}`).getByText(/^Workflows \(\d+\)$/).first().click());
+  /* A phone draws the tabs differently; if neither form is there, the card
+     is photographed on the tab it opened on rather than failing the shot. */
+  await page.locator(`#project-${id}`).getByRole('tab', { name: /^Workflows/ }).first().click({ timeout: 6000 })
+    .catch(() => page.locator(`#project-${id}`).getByText(/^Workflows/).first().click({ timeout: 6000 }))
+    .catch(() => {});
   await page.waitForTimeout(1500);
 };
 
@@ -695,40 +707,55 @@ if (missing.length) throw new Error(`no capture recipe for: ${missing.join(', ')
 
 const only = process.argv.slice(2);
 const taken: string[] = [];
-for (const file of REEL_FILES as string[]) {
-  if (only.length && !only.includes(file)) continue;
-  try {
-    await RECIPES[file]();
-  } catch (e) {
-    console.log(`FAILED  ${file}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
-    process.exitCode = 1;
-    continue;
+async function photograph(suffix: string) {
+  for (const file of REEL_FILES as string[]) {
+    if (only.length && !only.includes(file)) continue;
+    try {
+      await RECIPES[file]();
+    } catch (e) {
+      console.log(`FAILED  ${file}${suffix}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+      process.exitCode = 1;
+      continue;
+    }
+    const broken = await page.evaluate(() => /ran into a problem|something went wrong/i.test(document.body.innerText));
+    if (broken) { console.log(`REFUSED ${file}${suffix} — the screen is showing an error`); process.exitCode = 1; continue; }
+    await page.screenshot({ path: `${RAW}/${file}${suffix}.png` });
+    taken.push(`${file}${suffix}`);
   }
-  const broken = await page.evaluate(() => /ran into a problem|something went wrong/i.test(document.body.innerText));
-  if (broken) { console.log(`REFUSED ${file} — the screen is showing an error`); process.exitCode = 1; continue; }
-  await page.screenshot({ path: `${RAW}/${file}.png` });
-  taken.push(file);
 }
+/* PHONE_ONLY=1 retakes just the phone pictures (the desktop ones are kept). */
+if (!process.env.PHONE_ONLY) await photograph('');
+page = await phoneCtx.newPage();
+page.on('pageerror', e => errs.push(`phone ${page.url()}: ${e.message}`));
+await photograph('-m');
 
 /* PNG → WebP in the browser that took them: Chromium encodes WebP natively,
    so there is no second tool to install or forget. */
 const conv = await ctx.newPage();
 await conv.goto('about:blank');
-for (const file of taken) {
-  const b64 = fs.readFileSync(`${RAW}/${file}.png`).toString('base64');
-  const data = await conv.evaluate(async ([src, wide]: [string, number]) => {
+const encode = async (raw: string, wide: number, quality: number) => {
+  const b64 = fs.readFileSync(raw).toString('base64');
+  return conv.evaluate(async ([src, w, qq]: [string, number, number]) => {
     const img = new Image();
     await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = `data:image/png;base64,${src}`; });
     const c = document.createElement('canvas');
-    c.width = wide;
-    c.height = Math.round(img.naturalHeight * (wide / img.naturalWidth));
+    c.width = Math.min(w, img.naturalWidth);
+    c.height = Math.round(img.naturalHeight * (c.width / img.naturalWidth));
     const g = c.getContext('2d')!;
     g.imageSmoothingQuality = 'high';
     g.drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/webp', 0.84).split(',')[1];
-  }, [b64, WEBP_W] as [string, number]);
-  fs.writeFileSync(`${OUT}/${file}.webp`, Buffer.from(data, 'base64'));
-  console.log(`wrote   ${file}.webp  ${(fs.statSync(`${OUT}/${file}.webp`).size / 1024).toFixed(0)}kB`);
+    return c.toDataURL('image/webp', qq).split(',')[1];
+  }, [b64, wide, quality] as [string, number, number]);
+};
+const write = (name: string, data: string) => {
+  fs.writeFileSync(`${OUT}/${name}.webp`, Buffer.from(data, 'base64'));
+  console.log(`wrote   ${name}.webp  ${(fs.statSync(`${OUT}/${name}.webp`).size / 1024).toFixed(0)}kB`);
+};
+for (const name of taken) {
+  const raw = `${RAW}/${name}.png`;
+  if (name.endsWith('-m')) { write(name, await encode(raw, 1170, 0.8)); continue; }
+  write(name, await encode(raw, 2400, 0.8));
+  write(`${name}-sm`, await encode(raw, 1200, 0.82));
 }
 
 console.log(errs.length ? `PAGE ERRORS:\n  ${errs.join('\n  ')}` : 'no page errors');

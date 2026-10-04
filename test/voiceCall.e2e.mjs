@@ -419,7 +419,7 @@ ok('the widget fits a phone screen', !!box && box.x >= 0 && box.x + box.width <=
 const s390 = await site.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 ok('no horizontal overflow on the customer\'s page at 390px', s390 === 0, `${s390}px`);
 
-/* ── The teaser: on every page, wide screens only, gone when closed ── */
+/* ── The teaser: on every page load, wide screens only, closed only for that page ── */
 const ctxC = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const mk = await ctxC.newPage();
 mk.on('pageerror', e => errs.push(`teaser: ${String(e).slice(0, 160)}`));
@@ -438,10 +438,14 @@ ok('and is see-through', /rgba\(.*, 0?\.\d+\)/.test(tBg), tBg);
 await mk.reload();
 await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
 ok('it is there again on the next page', await teaser.count() === 1);
+const glyphs = await teaser.locator('.pc-tease-glyph').evaluateAll(ns => ns.map(n => getComputedStyle(n).animationName));
+ok('each option\'s icon moves in a loop of its own', glyphs.length >= 3 && glyphs.every(a => a && a !== 'none') && new Set(glyphs).size >= 3, JSON.stringify(glyphs));
 await teaser.getByRole('button', { name: 'Dismiss' }).click();
+await mk.waitForTimeout(2500);
+ok('closed, it stays away on this page', await mk.getByRole('complementary', { name: 'Ways to reach us' }).count() === 0);
 await mk.reload();
-await mk.waitForTimeout(9500);
-ok('closed, it does not come back in the same visit', await mk.getByRole('complementary', { name: 'Ways to reach us' }).count() === 0);
+await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
+ok('…and is open again on the next load', await teaser.count() === 1);
 const ctxD = await browser.newContext({ viewport: { width: 390, height: 780 } });
 const phone = await ctxD.newPage();
 await phone.route('http://acme.localhost:9911/**', r => r.fulfill({

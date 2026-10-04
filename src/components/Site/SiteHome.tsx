@@ -30,7 +30,7 @@ import {
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
   Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
   PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar, KeyRound, Eye,
-  Workflow,
+  Workflow, CalendarCheck,
 } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
@@ -46,6 +46,7 @@ import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
 import ProspectingShowcase from './ProspectingShowcase';
+import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
 import './site.css';
@@ -200,6 +201,15 @@ const AUTOPILOT = [
   { icon: ShieldCheck, title: 'Nothing sends unasked', body: 'Anything that emails or texts starts as a draft. What each project may do on its own is a setting you can change.' },
 ];
 
+/* What a project's board says as it works — the kind of line it writes, shown
+   beside the screens on a wide window. Illustrations of the events, not figures. */
+const AUTOPILOT_CHIPS = [
+  { icon: Workflow, title: '3 workflows built', sub: 'From one sentence, waiting for your yes' },
+  { icon: Mail, title: '20 follow-ups ready', sub: 'Each batch waits for approval' },
+  { icon: CalendarCheck, title: 'Call booked', sub: 'A reply became a meeting' },
+  { icon: ImageIcon, title: 'Posts drafted', sub: 'In your colours, for tomorrow' },
+];
+
 /* ── The chain, as a diagram ─────────────────────────────────────────────── */
 
 /* What an Autopilot agent reads, and where what it makes lands. Both lists are
@@ -270,41 +280,30 @@ const TRUST: { icon: typeof Send; title: string; body: string }[] = [
  */
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
 
-function Tile({ t }: { t: Tile }) {
-  return (
-    <article className={`dc-tile dc-${t.tone}${t.span === 3 ? ' dc-wide' : ''}`}>
-      <div className="dc-tile-head">
-        <span className="dc-tile-icon"><t.icon size={15} /></span>
-        <h3>{t.title}</h3>
-      </div>
-      <p>{t.body}</p>
-      <ShotReel shots={REELS[t.reel]} label={t.title} />
-    </article>
-  );
-}
-
+/* A chapter is a feature stage: its modules' screens in one wide slideshow,
+   and each module as a block under it — the screens get the page's width
+   instead of a tile's. */
 function ChapterBlock({ c }: { c: Chapter }) {
-  const head = useReveal<HTMLDivElement>();
-  const grid = useRevealGroup<HTMLDivElement>('.dc-tile');
-
+  const seen = new Set<string>();
+  const shots = c.tiles.flatMap(t => REELS[t.reel]).filter(x => (seen.has(x.file) ? false : (seen.add(x.file), true)));
   return (
-    <section className="dc-chapter" id={c.id} aria-label={`${c.lead} ${c.emph}`}>
-      <div className="dc-chapter-head reveal" ref={head}>
-        <span className="dc-eyebrow">{c.eyebrow}</span>
-        <h2>{c.lead} <em>{c.emph}</em></h2>
-        <p>{c.body}</p>
-        <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>
-          Start free <ArrowRight size={15} />
-        </a>
-        <div className="dc-pills">
-          {c.pills.map(p => <span key={p} className="dc-pill"><Check size={11} /> {p}</span>)}
-        </div>
+    <FeatureStage
+      id={c.id}
+      className="dc-chapter-stage"
+      eyebrow={c.eyebrow}
+      title={<>{c.lead} <em>{c.emph}</em></>}
+      body={c.body}
+      label={`${c.lead} ${c.emph}`}
+      shots={shots}
+      features={c.tiles.map(t => ({ icon: t.icon, title: t.title, body: t.body }))}
+    >
+      <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>
+        Start free <ArrowRight size={15} />
+      </a>
+      <div className="dc-pills">
+        {c.pills.map(p => <span key={p} className="dc-pill"><Check size={11} /> {p}</span>)}
       </div>
-
-      <div className="dc-bento stagger" ref={grid}>
-        {c.tiles.map(t => <Tile key={t.id} t={t} />)}
-      </div>
-    </section>
+    </FeatureStage>
   );
 }
 
@@ -333,8 +332,6 @@ export default function SiteHome() {
   const source = useReveal<HTMLDivElement>();
   const flow = useReveal<HTMLDivElement>();
   const ctaShot = useReveal<HTMLDivElement>();
-  const showHead = useReveal<HTMLDivElement>();
-  const showList = useRevealGroup<HTMLDivElement>('.dc-show-item');
 
   /* Whether the chips beside the hero's picture have room to sit beside it.
      Measured, not guessed from a breakpoint: the picture's width depends on
@@ -455,7 +452,7 @@ export default function SiteHome() {
       {/* ── What it connects to, and what it writes for. Two rows, labelled,
              because they are two different claims (WorksWith.tsx). ── */}
       <div className="dc-works">
-        <WorksWith title="Integrations, and our technology partners" />
+        <WorksWith title="What it connects to, and what it writes for" partners={false} />
       </div>
 
       {/* ── The band under the hero.
@@ -469,33 +466,19 @@ export default function SiteHome() {
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because
              it is the part a visitor has not seen on another platform. ── */}
-      <section className="dc-showcase" id="autopilot" aria-label="AI Autopilot">
-        <div className="dc-show">
-          <div className="dc-show-head reveal" ref={showHead}>
-            <span className="dc-eyebrow">AI Autopilot</span>
-            <h2>Describe it once. <em>It builds and runs it.</em></h2>
-            <p>
-              Say what the business needs — more reviews, quotes that do not go quiet, a post every
-              morning — and Autopilot turns it into workflows you can read, then runs them on the
-              server every five minutes, whether or not anybody is logged in.
-            </p>
-            <div className="dc-show-list stagger" ref={showList}>
-              {AUTOPILOT.map(a => (
-                <div key={a.title} className="dc-show-item">
-                  <span className="dc-tile-icon"><a.icon size={15} /></span>
-                  <div><b>{a.title}</b><span>{a.body}</span></div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="dc-show-reel">
-            {/* The hero shows these from the first; here they start from the
-                board it all runs from, so the same reel is not seen twice in
-                the same order. */}
-            <ShotReel shots={[...REELS.autopilot].reverse()} label="AI Autopilot" />
-          </div>
-        </div>
-      </section>
+      <FeatureStage
+        id="autopilot"
+        className="dc-autopilot-stage"
+        eyebrow="AI Autopilot"
+        title={<>Describe it once. <em>It builds and runs it.</em></>}
+        body={<>Say what the business needs — more reviews, quotes that do not go quiet, a post every
+          morning — and Autopilot turns it into workflows you can read, then runs them on the
+          server every five minutes, whether or not anybody is logged in.</>}
+        label="AI Autopilot"
+        shots={REELS.autopilot}
+        features={AUTOPILOT}
+        chips={AUTOPILOT_CHIPS}
+      />
 
       {/* ── AI Prospecting ──
              Straight after Autopilot: it is where the people Autopilot writes

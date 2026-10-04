@@ -35,6 +35,12 @@ export interface ReelShot {
   caption: string;
   /** For somebody who cannot see the picture. Says what is on it. */
   alt: string;
+  /**
+   * The part of the screen worth reading, as fractions of the whole picture —
+   * [left, top, width, height]. On a wide screen the slide opens whole, zooms
+   * into this and back out (ShotReel). Absent, the slide stays whole.
+   */
+  focus?: [number, number, number, number];
 }
 
 export const REELS: Record<string, ReelShot[]> = {
@@ -192,6 +198,50 @@ export const REELS: Record<string, ReelShot[]> = {
     { file: 'pipe-board', caption: 'Every deal on one board.', alt: 'The pipeline board' },
   ],
 };
+
+/*
+ * Where each screen is worth reading — [left, top, width, height] of the
+ * desktop picture, read off a 10% grid laid over the captures. ShotReel opens
+ * the slide whole, zooms here, holds, and zooms back out. Retake a picture and
+ * its region may move: check it on the grid (scripts/site-reels.mts) before
+ * shipping new captures.
+ */
+const FOCUS: Record<string, [number, number, number, number]> = {
+  'hero-board': [0.06, 0.47, 0.56, 0.36],
+  'hero-flow': [0.06, 0.1, 0.52, 0.36],
+  'hero-prospecting': [0.05, 0.37, 0.5, 0.32],
+  'hero-daily': [0.05, 0.18, 0.5, 0.34],
+  'hero-dashboard': [0.06, 0.14, 0.5, 0.31],
+  'hero-pipeline': [0.05, 0.12, 0.5, 0.32],
+  'ap-describe': [0.21, 0.14, 0.44, 0.3],
+  'ap-diagram': [0.05, 0.1, 0.48, 0.32],
+  'ap-step': [0.6, 0, 0.4, 0.4],
+  'ap-gallery': [0.05, 0.15, 0.48, 0.34],
+  'ap-board': [0.05, 0.15, 0.5, 0.34],
+  'pr-start': [0.2, 0.12, 0.5, 0.34],
+  'pr-dentists': [0.04, 0.25, 0.5, 0.32],
+  'pr-lawyers': [0.04, 0.25, 0.5, 0.32],
+  'pr-every-day': [0.03, 0.44, 0.48, 0.3],
+  'pr-daily-chart': [0.03, 0, 0.5, 0.32],
+  'dashboard': [0.05, 0.08, 0.5, 0.32],
+  'contacts-list': [0.03, 0.1, 0.5, 0.32],
+  'contacts-profile': [0.56, 0, 0.44, 0.44],
+  'pipe-board': [0.05, 0.1, 0.5, 0.34],
+  'pipe-table': [0.05, 0.1, 0.5, 0.34],
+  'mkt-campaigns': [0.05, 0.08, 0.5, 0.34],
+  'mkt-sequences': [0.05, 0.08, 0.5, 0.32],
+  'eng-forms': [0.17, 0.08, 0.5, 0.32],
+  'eng-tickets': [0.17, 0.08, 0.5, 0.32],
+  'funnels-list': [0.05, 0.08, 0.5, 0.34],
+  'sites-list': [0.05, 0.08, 0.5, 0.34],
+  'social-gallery': [0.15, 0.08, 0.55, 0.38],
+  'social-editor': [0.15, 0.2, 0.62, 0.4],
+  'blog-projects': [0.05, 0.08, 0.5, 0.34],
+  'cal-week': [0.05, 0.08, 0.5, 0.34],
+  'agency': [0.05, 0.08, 0.5, 0.34],
+  'analytics': [0.05, 0.08, 0.5, 0.34],
+};
+for (const list of Object.values(REELS)) for (const shot of list) shot.focus ??= FOCUS[shot.file];
 
 /** Every distinct file, for the capture script. */
 export const REEL_FILES: string[] = [...new Set(Object.values(REELS).flat().map(s => s.file))];
