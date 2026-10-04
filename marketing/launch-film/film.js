@@ -811,6 +811,7 @@ const T = {
   /* Drawn for v2; the start times only need to be apart, `place` moves them. */
   money: [300, 320.4], streams: [330, 348.9], blog: [360, 374.6], shorts: [380, 395.2],
   gallery: [400, 411.6], reviews: [420, 433.9], resell: [440, 452.5], affiliate: [460, 471.7],
+  prospect: [480, 499], daily: [510, 527.5],
 };
 /* Every scene is drawn against T, then moved to the slot its voice lines
    occupy (NT, from timing.mjs) once all of them exist — see the bottom. */
@@ -899,6 +900,10 @@ cp('money', { kick: 'Autopilot · Your shop', lines: ['Sales that keep', '^comin
   bullets: [['camera', 'Posts your products on schedule'], ['link', 'A fresh payment link when an order stalls'], ['heart-handshake', 'Thanks every buyer the moment they pay']] });
 cp('streams', { kick: 'Multiple projects', lines: ['Set up once.', '~Many ~streams.'], sub: 'Each project starts from a sentence or your voice — then keeps working.',
   bullets: [['camera', 'Social Media Growth'], ['shopping-bag', 'E-commerce Store'], ['target', 'Lead Generation'], ['newspaper', 'Blog & SEO']] });
+cp('prospect', { kick: 'AI Prospecting', lines: ['Say who you', '~sell ~to.'], sub: 'Any trade, any town — found live, websites read, every address checked.',
+  bullets: [['search', 'Business directories and Google Maps'], ['globe', 'The email each business publishes'], ['shield-check', 'Checked before you send']] });
+cp('daily', { kick: 'Autopilot · Every day', lines: ['New prospects,', '^every ^morning.'], sub: 'Town by town, checked and added to your project. Outreach waits for your yes.',
+  bullets: [['repeat', 'Works through every town'], ['users', 'Up to your number a day'], ['message-square', 'Texts only to those who say yes']] });
 cp('lib', { kick: 'Template library', lines: ['Start from', '^33 ^ready-made', '^AI ^workflows.'], sub: 'Built from what businesses ask for most.' });
 cp('guard', { kick: 'Guardrails', lines: ['You stay', '~in ~control.'], sub: "Anything that sends waits for your yes — until you decide it doesn't have to.",
   bullets: [['sliders-horizontal', 'Off, Ask me or On — per ability'], ['check-circle-2', 'Approve from the board in one click'], ['scroll-text', 'Every action written down']] });
@@ -1478,6 +1483,186 @@ sStreams.render = (t) => {
   setText(q(r, '#sProj'), String(PROJ.filter((p, i) => grow[i] > 0.05).length));
 };
 
+/* ── AI Prospecting: one sentence, any trade, any town ───────────────── */
+/* The screen as AiResults.tsx draws it: the composer, the four stages, and the
+   table with its check and the time each row was found. The searches change
+   trade and town while it runs — realtors, dentists, law firms, gyms — because
+   whoever is watching is looking for their own customers in it. Invented
+   businesses on `.example` addresses; the window says DEMO WORKSPACE. */
+const BP = T.prospect[0];
+const PSEARCH = [
+  { ask: 'real estate agents in Richmond, Virginia', at: 0.4, found: 51, mail: 44, ok: 33, icon: 'home', rows: [
+    ['Monument Real Estate Group', 'team@monumentrealestategroup.example', 'valid'], ['Keystone Realty', 'hello@keystonerealty.example', 'valid'],
+    ['Brightline Homes', 'enquiries@brightlinehomes.example', 'valid'], ['Capitol Realty Co.', 'team@capitolrealty.example', 'risky'],
+    ['Blue Ridge Realty', 'bookings@blueridgerealty.example', 'valid'], ['Lighthouse Estates', 'office@lighthouseestates.example', 'valid'],
+    ['Old Dominion Property Partners', 'info@olddominionpp.example', 'valid']] },
+  { ask: 'dentists in Leeds', at: 9.0, found: 58, mail: 52, ok: 41, icon: 'stethoscope', rows: [
+    ['Parkway Dental Care', 'hello@parkwaydental.example', 'valid'], ['Kingsley Smile Studio', 'info@kingsleysmile.example', 'valid'],
+    ['Riverside Family Dentistry', 'reception@riversidefd.example', 'valid'], ['Cedar Orthodontics', 'hello@cedarortho.example', 'risky'],
+    ['Northgate Dental Group', 'team@northgatedental.example', 'valid'], ['Willow Dental Practice', 'office@willowdental.example', 'valid'],
+    ['Ashton Dental Care', 'contact@ashtondental.example', 'valid']] },
+  { ask: 'law firms in Denver, Colorado', at: 11.6, found: 48, mail: 43, ok: 35, icon: 'scale', rows: [
+    ['Harbour Law', 'office@harbourlaw.example', 'valid'], ['Whitfield & Grant Partners', 'intake@whitfieldgrant.example', 'valid'],
+    ['Ellison Legal', 'hello@ellisonlegal.example', 'valid'], ['Marlowe Attorneys', 'contact@marlowe.example', 'valid'],
+    ['Prescott Law Group', 'team@prescottlaw.example', 'risky'], ['Calloway Legal', 'info@callowaylegal.example', 'valid'],
+    ['Ashford Solicitors', 'office@ashfordlaw.example', 'valid']] },
+  { ask: 'gyms in Austin, Texas', at: 14.0, found: 47, mail: 42, ok: 30, icon: 'dumbbell', rows: [
+    ['Legacy Fitness', 'hello@legacyfitness.example', 'valid'], ['Ironhouse Strength Club', 'team@ironhouse.example', 'valid'],
+    ['Peak Performance', 'info@peakperformance.example', 'valid'], ['Forge Athletic Club', 'join@forgeathletic.example', 'valid'],
+    ['Momentum Training', 'hello@momentumtx.example', 'risky'], ['Elevate Gym', 'front@elevategym.example', 'valid'],
+    ['Core Fitness Midtown', 'office@corefitness.example', 'valid']] },
+];
+const PSTAGES = [['search', 'Searching directories'], ['globe', 'Reading websites'], ['mail-check', 'Checking addresses'], ['shield-check', 'Verifying mailboxes']];
+const PTRADES = [['home', 'Realtors'], ['stethoscope', 'Dentists'], ['scale', 'Law firms'], ['dumbbell', 'Gyms'], ['utensils-crossed', 'Restaurants'], ['scissors', 'Salons'], ['car', 'Garages'], ['paw-print', 'Vets'], ['calculator', 'Accountants']];
+const badge = k => k === 'valid'
+  ? `<span class="pill" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;font-size:11.5px;padding:3px 9px">${ico('shield-check', 12)}Verified</span>`
+  : `<span class="pill" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:11.5px;padding:3px 9px">${ico('alert-triangle', 12)}Catch-all</span>`;
+const sProspect = winScene(...T.prospect, 'wProspect', '<b>Customers</b><span>›</span>AI Prospecting', `
+  <div class="abs" style="left:24px;right:24px;top:16px;display:flex;align-items:center;gap:12px">
+    <span style="width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#ffb35c,#ff7a45 48%,#ff4f81);color:#fff;display:flex;align-items:center;justify-content:center">${ico('sparkles', 21)}</span>
+    <div><div class="h2" style="font-size:24px">AI Prospecting</div><div class="muted" style="font-size:13px;font-weight:650">Freshly searched, checked as it goes</div></div>
+    <span class="pill" style="margin-left:auto;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0"><span class="dot" style="background:#22c55e;width:8px;height:8px"></span>Live data</span></div>
+  <div class="card abs" style="left:24px;right:24px;top:76px;padding:12px 14px;display:flex;align-items:center;gap:10px">
+    ${ico('search', 18, '#9aa3b2')}<span id="pAsk" style="font-size:17px;font-weight:650;color:#17191c;flex:1;white-space:nowrap;overflow:hidden"></span>
+    <span id="pGo" class="btn" style="padding:9px 16px;color:#fff;font-size:14.5px;background:linear-gradient(135deg,#8b5cf6,#6d28d9)">${ico('sparkles', 15)}Search with AI</span></div>
+  <div class="abs" style="left:24px;right:24px;top:140px;display:flex;gap:7px;flex-wrap:nowrap;overflow:hidden">${PTRADES.map((x, i) => `<span class="ptr pill" data-i="${i}" style="background:#fff;border:1px solid #e6e9f0;color:#475569;font-size:12.5px">${ico(x[0], 13)}${x[1]}</span>`).join('')}</div>
+  <div class="card abs" style="left:24px;right:24px;top:184px;padding:12px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+    ${PSTAGES.map((s, i) => `<div class="pst" style="display:flex;align-items:center;gap:9px;opacity:.35"><span class="pstI" style="width:30px;height:30px;border-radius:50%;border:2px solid #d4d8e2;display:flex;align-items:center;justify-content:center;color:#9aa3b2">${ico(s[0], 15)}</span><div><div style="font-size:13px;font-weight:750;color:#17191c">${s[1]}</div><div class="pstN muted" style="font-size:12px;font-weight:650">waiting</div></div></div>`).join('')}</div>
+  <div class="abs" style="left:24px;right:24px;top:262px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+    ${[['building-2', 'Businesses found', 'pF', '#7c3aed'], ['mail', 'Email addresses', 'pM', '#0d9488'], ['shield-check', 'Mailboxes verified', 'pV', '#16a34a'], ['clock', 'Found', 'pT', '#ea580c']].map(k => `<div class="card" style="padding:11px 14px;display:flex;align-items:center;gap:10px"><span style="width:34px;height:34px;border-radius:10px;background:${k[3]}14;color:${k[3]};display:flex;align-items:center;justify-content:center">${ico(k[0], 17)}</span><div><div id="${k[2]}" style="font-size:22px;font-weight:820;letter-spacing:-0.02em;color:#0b0b0b;font-variant-numeric:tabular-nums">0</div><div class="muted" style="font-size:11.5px;font-weight:650">${k[1]}</div></div></div>`).join('')}</div>
+  <div class="card abs" style="left:24px;right:24px;top:338px;bottom:20px;overflow:hidden">
+    <div style="display:grid;grid-template-columns:34px 1.25fr 1.5fr 104px 92px;gap:10px;padding:10px 16px;border-bottom:1px solid #eef0f4" class="kicker"><span></span><span>Business</span><span>Email</span><span>Check</span><span>Found</span></div>
+    ${Array.from({ length: 7 }, (_, i) => `<div class="prow" style="display:grid;grid-template-columns:34px 1.25fr 1.5fr 104px 92px;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid #f2f3f7;opacity:0">
+      <span class="pbox" style="width:18px;height:18px;border-radius:5px;border:2px solid #cbd2de;display:inline-flex;align-items:center;justify-content:center;color:#fff"></span>
+      <span style="display:flex;align-items:center;gap:9px;min-width:0"><span class="pic" style="width:30px;height:30px;border-radius:9px;background:#f4f1ff;color:#6d28d9;display:flex;align-items:center;justify-content:center;flex-shrink:0"></span><b class="pn" style="font-size:14px;font-weight:750;color:#17191c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></b></span>
+      <span class="pe" style="font-size:13px;font-weight:650;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></span>
+      <span class="pb"></span>
+      <span class="pt muted" style="font-size:12.5px;font-weight:650;display:flex;align-items:center;gap:5px"><span class="dot" style="background:#22c55e;width:7px;height:7px"></span><i style="font-style:normal"></i></span></div>`).join('')}
+    <div id="pBar" class="abs" style="left:14px;right:14px;bottom:12px;padding:10px 14px;border-radius:14px;background:#17191c;color:#fff;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700;opacity:0">
+      <span id="pTicked">0 ticked</span><span style="opacity:.5">·</span>Add to
+      ${['Workflow', 'Campaign'].map(x => `<span class="pill" style="background:rgba(255,255,255,.1);color:#fff">${x}</span>`).join('')}
+      <span id="pProj" class="pill" style="background:linear-gradient(135deg,#ffb35c,#ff7a45);color:#1a1205">${ico('sparkles', 13)}AI Autopilot project</span></div>
+  </div>`);
+PSEARCH.forEach(s => { sfx(BP + s.at + 1.0, 'whoosh_soft', 0.3); s.rows.forEach((_, i) => sfx(BP + s.at + 1.6 + i * 0.14, 'tick', 0.12)); });
+[1.9, 2.7, 3.5, 4.3].forEach(x => sfx(BP + x, 'pop', 0.22));
+const clockAt = L => { const m = 41 + Math.floor(L / 3); return `9:${String(m).padStart(2, '0')} AM`; };
+sProspect.render = (t) => {
+  const r = sProspect.root, L = t - BP;
+  let si = 0; PSEARCH.forEach((s, i) => { if (L >= s.at) si = i; });
+  const S = PSEARCH[si], l = L - S.at;
+  /* The first search is typed; the later ones arrive whole, faster. */
+  if (si === 0) typeInto(q(r, '#pAsk'), S.ask, L, 0.4, 1.7); else setText(q(r, '#pAsk'), S.ask);
+  press(q(r, '#pGo'), l, si === 0 ? 1.75 : 0.05);
+  r.querySelectorAll('.ptr').forEach(c => {
+    const on = PTRADES[+c.dataset.i][0] === S.icon;
+    c.style.background = on ? '#f4f1ff' : '#fff'; c.style.borderColor = on ? '#c4b5fd' : '#e6e9f0'; c.style.color = on ? '#6d28d9' : '#475569';
+  });
+  /* The four stages, each lit with what it found. The first search runs them
+     one by one; the montage after it lands done. */
+  const stageAt = si === 0 ? [1.9, 2.7, 3.5, 4.3] : [0.3, 0.45, 0.6, 0.75];
+  const vals = [`${S.found} found`, `${S.found - 2} read`, `${S.mail} take mail`, `${S.ok} confirmed`];
+  r.querySelectorAll('.pst').forEach((p, i) => {
+    const on = l >= stageAt[i];
+    p.style.opacity = on ? '1' : '.35';
+    const I = q(p, '.pstI'); I.style.borderColor = on ? '#22c55e' : '#d4d8e2'; I.style.color = on ? '#16a34a' : '#9aa3b2'; I.style.background = on ? '#ecfdf5' : '#fff';
+    setText(q(p, '.pstN'), on ? vals[i] : (l >= stageAt[i] - 0.8 ? 'working…' : 'waiting'));
+  });
+  const cnt = (from, a, b) => Math.round(from * seg(l, a, b, eo));
+  setText(q(r, '#pF'), fmt(cnt(S.found, stageAt[0] - 0.4, stageAt[0] + 0.3)));
+  setText(q(r, '#pM'), fmt(cnt(S.mail, stageAt[2] - 0.4, stageAt[2] + 0.3)));
+  setText(q(r, '#pV'), fmt(cnt(S.ok, stageAt[3] - 0.4, stageAt[3] + 0.3)));
+  setText(q(r, '#pT'), l >= stageAt[0] ? clockAt(L) : '—');
+  const rowsAt = si === 0 ? 2.0 : 0.35;
+  const ticks = L >= 15.6 ? Math.min(7, Math.floor((L - 15.6) / 0.16) + 1) : 0;
+  r.querySelectorAll('.prow').forEach((row, i) => {
+    const d = S.rows[i];
+    appear(row, l, rowsAt + i * 0.14, 0.35, 10, 1);
+    setText(q(row, '.pn'), d[0]); setText(q(row, '.pe'), d[1]);
+    const pb = q(row, '.pb'); if (pb.dataset.k !== `${si}-${i}`) { pb.innerHTML = badge(d[2]); q(row, '.pic').innerHTML = ico(S.icon, 15); pb.dataset.k = `${si}-${i}`; }
+    setText(q(row, '.pt i'), clockAt(S.at + rowsAt));
+    const tk = i < ticks;
+    const bx = q(row, '.pbox'); bx.style.background = tk ? '#6d28d9' : '#fff'; bx.style.borderColor = tk ? '#6d28d9' : '#cbd2de'; bx.innerHTML = tk ? ico('check', 12) : '';
+    row.style.background = tk ? '#faf8ff' : '#fff';
+  });
+  const bar = q(r, '#pBar'); const bp = seg(L, 15.7, 16.2, eo5);
+  bar.style.opacity = String(bp); bar.style.transform = `translateY(${((1 - bp) * 24).toFixed(1)}px)`;
+  setText(q(r, '#pTicked'), `${Math.max(ticks, 1)} ticked`);
+  press(q(r, '#pProj'), L, 17.4);
+};
+
+/* ── Every day, on AI Autopilot: the finder, approvals, texts by consent ── */
+/* A project's Prospects tab (ProjectProspects.tsx): status, today's count,
+   the 30-day chart and the rotation, with the step log ticking; beside it the
+   batch waiting for approval, and the opt-in page a prospect says yes on
+   (/api/sms-optin.php) — which tags them and starts the texting workflow. */
+const BD = T.daily[0];
+const DBARS = [19, 20, 18, 12, 11, 19, 20, 20, 18, 19, 13, 12, 20, 19, 18, 20, 20, 11, 14, 19, 20, 18, 19, 20, 12, 13, 18, 20, 19];
+const DROT = ['realtors · Richmond', 'property managers · Richmond', 'mortgage brokers · Richmond', 'realtors · Virginia Beach', 'property managers · Norfolk', 'realtors · Norfolk'];
+const DLOG = [
+  [1.4, 'search', 'Searched real estate agents in Richmond — 51 found'], [3.0, 'globe', 'Read 6 websites — 6 published an address'],
+  [4.4, 'mail-check', 'Checked 6 addresses — 6 take mail'], [5.8, 'user-plus', 'Added 6 to “Virginia realtors — daily”'],
+];
+const sDaily = winScene(...T.daily, 'wDaily', '<b>AI Autopilot</b><span>›</span>Brightline Realty<span>›</span>Prospects', `
+  <div class="abs" style="left:24px;right:24px;top:16px;display:flex;align-items:center;gap:12px">
+    <div><div class="h2" style="font-size:23px">Daily prospecting</div><div class="muted" style="font-size:13px;font-weight:650">real estate agents, property managers, mortgage brokers · Richmond, Virginia Beach, Norfolk · 20 a day</div></div>
+    <span class="pill" style="margin-left:auto;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0"><span class="dot" style="background:#22c55e;width:8px;height:8px"></span>Finding every day</span></div>
+  <div class="abs" style="left:24px;top:82px;width:556px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+    ${[['zap', 'Added today', 'dA', '#7c3aed'], ['users', 'In the audience', 'dU', '#0d9488'], ['repeat', 'Searches in rotation', 'dR', '#ea580c']].map(k => `<div class="card" style="padding:12px 14px"><span style="color:${k[3]}">${ico(k[0], 17)}</span><div id="${k[2]}" style="font-size:25px;font-weight:820;letter-spacing:-0.02em;color:#0b0b0b;font-variant-numeric:tabular-nums;margin-top:4px">0</div><div class="muted" style="font-size:12px;font-weight:650">${k[1]}</div></div>`).join('')}</div>
+  <div class="card abs" style="left:24px;top:200px;width:556px;height:218px;padding:14px 16px">
+    <div class="kicker">Added to the audience, day by day</div>
+    <div style="position:absolute;left:16px;right:16px;bottom:34px;height:128px;display:flex;align-items:flex-end;gap:4px;border-bottom:1px solid #eef0f4">
+      ${DBARS.map(() => '<i class="dbar" style="flex:1;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#8b5cf6,#6d28d9);height:0"></i>').join('')}
+      <i id="dToday" style="flex:1;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#ffb35c,#ff7a45);height:0"></i></div>
+    <div class="muted" style="position:absolute;left:16px;right:16px;bottom:10px;display:flex;justify-content:space-between;font-size:11.5px;font-weight:650"><span>30 days ago</span><span>today</span></div></div>
+  <div class="card abs" style="left:24px;top:430px;width:556px;padding:12px 16px">
+    <div class="kicker">Searches in the rotation</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${DROT.map((x, i) => `<span class="drot pill" data-i="${i}" style="background:#fff;border:1px solid #e6e9f0;color:#334155;font-size:12px">${x}</span>`).join('')}</div></div>
+  <div class="card abs" style="left:24px;top:572px;width:556px;bottom:20px;padding:12px 16px;overflow:hidden">
+    <div class="kicker">What it did, step by step</div>
+    ${DLOG.map(d => `<div class="dlog" style="display:flex;align-items:center;gap:9px;margin-top:8px;font-size:13px;font-weight:650;color:#334155;opacity:0"><span style="color:#16a34a">${ico(d[1], 15)}</span>${d[2]}</div>`).join('')}</div>
+  <div class="card abs" id="dAppr" style="left:596px;right:24px;top:82px;padding:16px;opacity:0">
+    <div class="kicker">Waiting on you</div>
+    <div style="font-size:16px;font-weight:780;color:#17191c;margin-top:8px;line-height:1.3">Start the next 20 Virginia realtors on “Prospect outreach”</div>
+    <div class="muted" style="font-size:12.5px;font-weight:620;margin-top:6px;line-height:1.45">Cold lists go 20 at a time, each batch waiting for you.</div>
+    <div style="display:flex;gap:8px;margin-top:12px"><span id="dOk" class="btn" style="padding:9px 16px;background:#17191c;color:#fff;font-size:14px">${ico('check', 15)}Approve</span><span class="btn" style="padding:9px 14px;border:1px solid #e6e9f0;color:#334155;font-size:14px">Not yet</span></div>
+    <div id="dSent" style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:720;color:#15803d;opacity:0">${ico('send', 14)}<span id="dSentT">20 emails sending</span></div></div>
+  <div class="card abs" id="dOpt" style="left:596px;right:24px;top:322px;padding:16px;opacity:0">
+    <div class="kicker">Their own page · texts by consent</div>
+    <div style="margin-top:10px;border:1px solid #e6e9f0;border-radius:14px;padding:12px;background:#fbfbfd">
+      <div style="font-size:15px;font-weight:780;color:#17191c">Texts from Brightline Realty</div>
+      <div class="muted" style="font-size:12px;font-weight:600;margin-top:4px;line-height:1.4">Would a text be easier? Leave your mobile number.</div>
+      <div style="margin-top:9px;padding:8px 10px;border:1px solid #d6dae1;border-radius:9px;font-size:14px;font-weight:650;color:#17191c;background:#fff"><span id="dPhone"></span></div>
+      <div style="display:flex;gap:8px;align-items:flex-start;margin-top:9px;font-size:11.5px;font-weight:600;color:#475569;line-height:1.4"><span id="dAgree" style="width:16px;height:16px;border-radius:4px;border:2px solid #cbd2de;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:#fff"></span>I agree to receive text messages about this offer. Reply STOP to opt out.</div>
+      <span id="dYes" class="btn" style="margin-top:10px;padding:8px 14px;background:#17191c;color:#fff;font-size:13px">Yes, text me</span></div>
+    <div id="dTag" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;opacity:0">
+      <span class="pill" style="background:#f4f1ff;color:#6d28d9;border:1px solid #ddd6fe">${ico('tag', 12)}sms opt-in</span>
+      <span class="pill" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0">${ico('message-square', 12)}“Text the prospects who opt in” started</span></div></div>`);
+DLOG.forEach(d => sfx(BD + d[0], 'tick', 0.18)); sfx(BD + 8.6, 'pop', 0.35); sfx(BD + 10.2, 'coin', 0.3); sfx(BD + 12.4, 'whoosh_soft', 0.35);
+sDaily.render = (t) => {
+  const r = sDaily.root, L = t - BD;
+  const today = Math.round(20 * seg(L, 1.0, 7.6, x => x));
+  setText(q(r, '#dA'), `${today} / 20`);
+  setText(q(r, '#dU'), fmt(495 + today));
+  setText(q(r, '#dR'), '9');
+  r.querySelectorAll('.dbar').forEach((b, i) => { b.style.height = `${(DBARS[i] / 20) * 100 * seg(L, 0.2 + i * 0.03, 0.8 + i * 0.03, eo)}%`; });
+  q(r, '#dToday').style.height = `${(today / 20) * 100}%`;
+  const cur = Math.min(DROT.length - 1, Math.floor(L / 3.4));
+  r.querySelectorAll('.drot').forEach(c => {
+    const on = +c.dataset.i === cur;
+    c.style.background = on ? '#f4f1ff' : '#fff'; c.style.borderColor = on ? '#a78bfa' : '#e6e9f0'; c.style.color = on ? '#6d28d9' : '#334155';
+  });
+  r.querySelectorAll('.dlog').forEach((d, i) => appear(d, L, DLOG[i][0], 0.35, 10, 1));
+  appear(q(r, '#dAppr'), L, 8.4, 0.5, 18, 0.96);
+  press(q(r, '#dOk'), L, 10.0);
+  q(r, '#dSent').style.opacity = String(seg(L, 10.2, 10.6));
+  setText(q(r, '#dSentT'), `${Math.min(20, Math.round(20 * seg(L, 10.3, 12.0, x => x)))} of 20 emails sent from your mailbox`);
+  appear(q(r, '#dOpt'), L, 12.2, 0.5, 18, 0.96);
+  typeInto(q(r, '#dPhone'), '+1 804 555 0101', L, 13.0, 14.3);
+  const ag = L >= 14.6; const a = q(r, '#dAgree'); a.style.background = ag ? '#6d28d9' : '#fff'; a.style.borderColor = ag ? '#6d28d9' : '#cbd2de'; a.innerHTML = ag ? ico('check', 11) : '';
+  press(q(r, '#dYes'), L, 15.3);
+  q(r, '#dTag').style.opacity = String(seg(L, 15.8, 16.3));
+};
+
 /* ── Blog & SEO: a month planned, nine checks, published to WordPress ── */
 const BB = T.blog[0];
 const CHECKS = ['Long enough to be worth indexing', 'The keyword is in the title', 'The keyword appears early', 'The keyword is in a heading', 'Not stuffed', 'Links to a page that earns', 'Title fits in a search result', 'Description fits and sells', 'Broken into sections'];
@@ -1807,6 +1992,11 @@ sAff.render = (t) => {
    (130–150 a month) is September's: 142 commits reached testing in the
    twenty days the history covers — re-check it before re-rendering. */
 const SHIPPED = [
+  ['Oct 3', 'AI Autopilot finds new prospects every day', 'New'],
+  ['Oct 3', 'AI Prospecting: live leads, every address checked', 'New module'],
+  ['Oct 3', 'Texts to prospects only after they say yes', 'New'],
+  ['Oct 3', '"Call us now": browser calls with your customers', 'New'],
+  ['Oct 2', 'Live chat with pictures, and who is waiting for support', 'New'],
   ['Oct 1', 'Revenue by project: what each Autopilot project earned', 'New'],
   ['Oct 1', 'Reviews read from Google, answered with AI', 'New module'],
   ['Oct 1', 'Affiliate program: 40% of every payment, for life', 'New'],
@@ -1931,7 +2121,7 @@ s11.render = (t) => {
 /* Must run after every scene and its sounds exist: `place` moves the cues
    registered so far, and the toasts and cursor below are timed with `at`. */
 CUR_SCENE = null;
-[[s2, 's2'], [sPlan, 'plan'], [sCanvas, 'canvas'], [s3, 's3'], [sMoney, 'money'], [sStreams, 'streams'],
+[[s2, 's2'], [sPlan, 'plan'], [sCanvas, 'canvas'], [s3, 's3'], [sMoney, 'money'], [sStreams, 'streams'], [sProspect, 'prospect'], [sDaily, 'daily'],
  [sLib, 'lib'], [sGuard, 'guard'], [sReply, 'reply'], [s4, 's4'], [s5, 's5'], [s6, 's6'], [sBlog, 'blog'],
  [sShorts, 'shorts'], [sGallery, 'gallery'], [sWeb, 'web'], [sReviews, 'reviews'], [s7, 's7'], [sLive, 'live'],
  [s8, 's8'], [sAgency, 'agency'], [sResell, 'resell'], [sAff, 'affiliate'], [sDev, 'dev'], [s9, 'trust'],
@@ -1943,6 +2133,7 @@ const TOASTS = [
   [at(s4, 19.55), at(s4, 21.2), 'Lead qualified.'], [at(s5, 22.95), at(s5, 24.5), 'Campaign ready.'],
   [at(s6, 30.65), at(s6, 32.3), 'New content asset created.'], [at(s7, 35.5), at(s7, 36.9), 'Ticket routed to Support.'],
   [at(sPlan, B1 + 10.6), at(sPlan, B1 + 11.8), 'Building 5 workflows…'], [at(sReply, B5 + 7.3), at(sReply, B5 + 8.6), 'Reply sent to Maria.'],
+  [at(sProspect, BP + 17.7), at(sProspect, BP + 18.9), '7 gyms added to an Autopilot project.'], [at(sDaily, BD + 16.1), at(sDaily, BD + 17.3), 'Opt-in recorded — texting started.'],
 ];
 TOASTS.forEach(x => sfx(x[0], 'notify', 0.45));
 function renderToast(t) {

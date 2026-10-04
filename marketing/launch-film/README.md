@@ -1,4 +1,4 @@
-# Launch film — 16:9, about five minutes (v3, 4:56)
+# Launch film — 16:9, about five and a half minutes (v4, 5:31)
 
 The long product film on protectedcentral.com (`public/site/launch/launch-16x9.*`).
 It is not part of the app build. It lives here so it can be re-rendered when the
@@ -62,6 +62,35 @@ outer 11% (119px) of the frame: the opening title, the trust heading and the
 offer were moved inward, and the toast was raised. A small
 "protectedcentral.com · 7-day free trial" tag sits in the lower left through
 every product scene (`renderLowerThird`) — most people watch part of an ad.
+
+## v4: AI Prospecting, and the scenes it needed
+
+Two scenes after "Many projects", each checked against the code:
+
+| Scene | What is real | Kept honest by |
+|---|---|---|
+| AI Prospecting | One sentence → the four stages (directories, websites, address checks, mailbox verification), counted figures, every row time-stamped (AiResults.tsx); ticked rows added to an Autopilot project (AddTo.tsx) | Invented businesses on `.example` addresses, DEMO WORKSPACE; mailbox "Verified" needs the owner's verifier, which the site says |
+| Every day, on Autopilot | A project's Prospects tab (ProjectProspects.tsx): status, today's count of the daily number, 30-day chart, rotation, step log; cold outreach 20 at a time waiting for approval (autopilotPlan.ts); the opt-in page and the `sms opt-in` tag that starts the texting workflow (smsOptin.ts) | Texts are shown only after the box is ticked — the film never implies texting strangers |
+
+The searches change trade and town while the first scene runs (realtors,
+dentists, law firms, gyms), and the trade chips name a dozen more, because
+whoever is watching looks for their own customers in it. "Recently shipped"
+gained the October releases (checked against `git log origin/staging`).
+
+The kit is no longer kept anywhere: rebuild it in a scratch directory with
+`npm i ffmpeg-static @fontsource-variable/inter lucide-static`,
+`pip install piper-tts`, the `en_US-ryan-high` voice from
+huggingface.co/rhasspy/piper-voices, `inter.woff2` copied from the font
+package, and `icons.js` written from every quoted lucide name in film.js:
+
+```js
+// mkicons.mjs — width/height set to 100% so each icon fills its 1em .ico box
+for (const n of quotedNames(film.js)) if (exists(`node_modules/lucide-static/icons/${n}.svg`)) out[n] = svg(n);
+fs.writeFileSync('icons.js', `window.ICONS = ${JSON.stringify(out)};`);
+```
+
+Piper 1.8 reads the line on stdin: `echo "$text" | piper -m en_US-ryan-high.onnx
+--length-scale 0.88 --noise-scale 0.72 --noise-w-scale 0.9 --sentence-silence 0.12 -f vo/<id>.wav`.
 
 ## Rendering
 

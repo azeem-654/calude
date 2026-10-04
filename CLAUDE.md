@@ -884,6 +884,18 @@ and on their side) and fails if the hero's picture or the launch film does not
 fit on the screen — size things on the site by the window's height as well as
 its width.
 
+**The site's pictures are the running app.** `npx tsx scripts/site-reels.mts
+[file…]` (after a `VITE_BASE=/` build) starts its own wrangler (:8797, fresh D1
+in `.wrangler-reels`) and a mock directory, DNS and mailbox verifier (:8857), seeds
+a busy sample agency (`site-seed.mjs` + `demo-world.mjs`: five clients in five
+trades, branching five-column workflows, 30 days of a daily finder, 72 contacts
+across 25 industries, all on `.example`), and photographs every shot in
+`src/components/Site/reels.ts` as a **whole app window** (1920×1200 → 1600 WebP).
+Never crop a shot or zoom it to the page's width — the owner read that as "half a
+picture"; the hero shows each whole in ShotReel's `strip`. A shot with no recipe
+stops the run. The launch film is re-rendered from `marketing/launch-film`
+(its README has the kit and the honesty table).
+
 Recurring traps when writing those checks:
 
 - Scope locators to the dialog. The nav behind an overlay has buttons whose

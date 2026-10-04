@@ -423,7 +423,7 @@ export default function SiteHome() {
               <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
                 Start your 7-day free trial <ArrowRight size={16} />
               </a>
-              <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 5-minute tour</a>
+              <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 5½-minute tour</a>
             </div>
           </div>
           <div className="dc-hero-stage dc-lead-3" ref={stage} data-chips="off">

@@ -1,7 +1,7 @@
 /**
  * The launch film, full length, as the second thing on the page.
  *
- * About five minutes, rendered from marketing/launch-film and re-encoded for
+ * About five and a half minutes, rendered from marketing/launch-film and re-encoded for
  * the web (public/site/launch/: an HLS ladder, and one MP4). It is drawn for 16:9 — the
  * product window on the right, the words on the left. There used to be a
  * square cut for portrait screens, cropped from a taller ad with blurred
@@ -186,7 +186,7 @@ export default function LaunchFilm() {
   const signup = appHref('/signup');
 
   return (
-    <section className="dc-film" id="film" aria-label="Protected Central in five minutes" ref={wrap}>
+    <section className="dc-film" id="film" aria-label="Protected Central in five and a half minutes" ref={wrap}>
       {/* The band is the full width; the frame inside it is as wide as the
           crop allows, and the band's own ground carries on from the film's. */}
       <div className="dc-film-band">
@@ -215,7 +215,7 @@ export default function LaunchFilm() {
         </div>
       </div>
       <div className="dc-film-foot">
-        <p>Protected Central in five minutes. Screens show a demo workspace with example data and example figures.</p>
+        <p>Protected Central in five and a half minutes. Screens show a demo workspace with example data and example figures.</p>
         {!sound && (
           <button type="button" className="dc-film-sound" onClick={withSound}>
             <Volume2 size={16} /> Watch with sound
