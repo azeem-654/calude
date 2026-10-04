@@ -314,7 +314,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
   await page.getByLabel('Who to look for').fill('dentists in York');
   await page.keyboard.press('Enter');
-  await page.getByText(/Checked \d+ address|Read \d+ websites/).first().waitFor({ timeout: 60_000 }).catch(() => {});
+  await page.getByText(/Checked \d+ contact|Read \d+ websites/).first().waitFor({ timeout: 60_000 }).catch(() => {});
   await page.getByRole('button', { name: /Search this every day/ }).click();
   const panel = page.getByRole('region', { name: 'Search this every day' });
   await panel.getByRole('radio', { name: /Leeds dentists/ }).check({ timeout: 10_000 });

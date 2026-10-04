@@ -46,6 +46,7 @@ import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
 import ProspectingShowcase from './ProspectingShowcase';
+import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
 import './site.css';
 
@@ -454,7 +455,7 @@ export default function SiteHome() {
       {/* ── What it connects to, and what it writes for. Two rows, labelled,
              because they are two different claims (WorksWith.tsx). ── */}
       <div className="dc-works">
-        <WorksWith title="Integrations, and the tools we build with" />
+        <WorksWith title="Integrations, and our technology partners" />
       </div>
 
       {/* ── The band under the hero.
@@ -540,6 +541,11 @@ export default function SiteHome() {
           <ShotReel shots={REELS.autopilot.slice(1, 3)} label="A workflow, drawn as it runs" />
         </div>
       </section>
+
+      {/* ── Live in the cloud ──
+             After the agents, because it answers the question they raise:
+             do they stop when I close my laptop? ── */}
+      <CloudSection />
 
       {/* ── Platform / ownership ── */}
       <section className="dc-platform" id="platform">

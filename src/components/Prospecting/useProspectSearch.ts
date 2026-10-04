@@ -12,13 +12,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   findPeople, googleAvailability, lookupContacts, searchProspects, verifyEmails,
-  SOURCE_NAME, type Contactable, type GoogleAvailability, type Prospect, type ProspectSource, type Verdict,
+  type Contactable, type GoogleAvailability, type Prospect, type ProspectSource, type Verdict,
 } from '../../services/prospects';
 import type { Contact } from '../../types';
 import { addressesOf, parseAsk, type Ask } from '../../services/aiProspecting';
 import {
   emailOf, planImport, prospectRows, recordSearch, loadSearches, toggleSaved, forgetSearch,
-  type SavedSearch, type Searched,
+  loadSnapshot, saveSnapshot, keepable,
+  type SavedSearch, type Searched, type SearchSnapshot,
 } from '../../services/prospectImport';
 import { addToStaticList, createList, loadLists, type ContactList } from '../../services/contactLists';
 import { currentActor } from '../../services/contactPermissions';
@@ -51,7 +52,7 @@ export interface Step {
   count?: number;
 }
 
-/** How many businesses the first pass reads websites for, unasked. The rest are a press away. */
+/** How many more websites one "Find emails on more websites" press reads. The first pass reads them all. */
 export const AUTO_READ = 16;
 
 /** A refusal about the key, the trial or the budget is not fixed by typing differently. */
@@ -108,6 +109,9 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
   const [fetchedAt, setFetchedAt] = useState('');
   const [prevCount, setPrevCount] = useState<number | null>(null);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
+  /* Set when the results on screen were reopened from a past search rather
+     than found just now — the page says when they were found. */
+  const [restoredAt, setRestoredAt] = useState('');
   const step = useCallback((id: Step['id'], patch: Partial<Step> & Pick<Step, 'label' | 'state' | 'badge'>) => {
     setSteps(prev => {
       const i = prev.findIndex(x => x.id === id);
@@ -126,7 +130,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
 
   const clear = useCallback(() => {
     setError(''); setErrorCode(''); setResults(null); setNextPage(''); setPicked(new Set()); setFound({}); setMoreError('');
-    setChecks({}); setSteps([]); setProgress(null);
+    setChecks({}); setSteps([]); setProgress(null); setRestoredAt('');
   }, []);
 
   /** Start a new search: nothing shown, nothing typed, the source kept. */
@@ -165,6 +169,27 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     setAsked(''); setWant({ email: false, website: false, phone: false });
     void run({ source: s.source, trade: s.trade, place: s.place });
   }, [run]);
+
+  /**
+   * Reopen a past search with what it found — rows, the addresses read off
+   * their websites, every check with its date, the step log — instead of
+   * running it all again. Null when there is nothing kept for it (a Google
+   * search, or one from before results were kept); the caller then searches.
+   */
+  const restore = useCallback((h: Pick<SavedSearch, 'source' | 'trade' | 'place'>): SearchSnapshot | null => {
+    const snap = loadSnapshot(h);
+    if (!snap) return null;
+    clear();
+    setSourceState(snap.source); setTrade(snap.trade); setPlace(snap.place);
+    setResults(snap.results); setFound(snap.found ?? {}); setChecks(snap.checks ?? {});
+    setSteps((snap.steps ?? []).filter(x => x.state !== 'running') as Step[]);
+    setAnswered(snap.answered); setAttribution(snap.attribution ?? ''); setCached(false); setNextPage('');
+    setSearched({ source: snap.source, trade: snap.trade, place: snap.place });
+    setAsked(snap.asked ?? ''); setWant(snap.want ?? { email: false, website: false, phone: false });
+    setStartedAt(snap.startedAt ?? ''); setFetchedAt(snap.fetchedAt ?? ''); setPrevCount(null);
+    setRestoredAt(snap.savedAt || snap.fetchedAt || '');
+    return snap;
+  }, [clear]);
 
   /**
    * Read websites for their published addresses, eight to a request (the
@@ -259,33 +284,38 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     setTrade(a.trade); setPlace(a.place);
     const src = from ?? source;
     if (from) setSourceState(from);
-    const where = SOURCE_NAME[src];
-    const whereText = src === 'google' ? 'Google Maps' : src === 'register' ? 'the company register (Companies House)' : 'business directories';
+    /* The log on the results names no source — the customer asked for
+       businesses, not for an account of the suppliers. Licences' credits stay
+       on the card (Attribution); the loading messages say what is searched. */
+    const where = 'Search';
     const list = await run({ source: src, trade: a.trade, place: a.place });
     setAsked(text.trim()); setWant(a.want);
     if (!list) {
-      step('search', { label: `Searched ${whereText} for ${a.trade} in ${a.place}`, detail: 'The search was refused — see why below.', state: 'failed', badge: where });
+      step('search', { label: `Searched for ${a.trade} in ${a.place}`, detail: 'The search was refused — see why below.', state: 'failed', badge: where });
       return { error: '', want: a.want };
     }
     const named = list.filter(p => p.officers?.length).length;
     step('search', {
-      label: `Searched ${whereText} for ${a.trade} in ${a.place}`,
+      label: `Searched for ${a.trade} in ${a.place}`,
       detail: src === 'register' ? `${list.length} active compan${list.length === 1 ? 'y' : 'ies'}${named ? `, ${named} with their directors named` : ''}` : `${list.length} found`,
       state: 'done', badge: where, count: list.length,
     });
     if (!list.length) return { error: '', want: a.want };
     if (src === 'register') {
       /* The register holds no websites, so there is nothing to read — said, not skipped silently. */
-      step('read', { label: 'The register lists no websites or email addresses', detail: 'Directors are named instead. Search the web for named people, or switch to business directories for websites.', state: 'skipped', badge: 'Register' });
+      step('read', { label: 'Registered companies come with no websites or email addresses', detail: 'Directors are named instead. Search the web for named people, or search all businesses for websites.', state: 'skipped', badge: 'Websites' });
       return { error: '', want: a.want };
     }
 
-    const sites = list.filter(p => p.website && !p.email).map(p => p.website).slice(0, AUTO_READ);
+    /* Every website, not the first sixteen: the most addresses a search can
+       give is what it is for, and a press to get the rest was a press most
+       people never found. Eight to a request, with a bar for a long list. */
+    const sites = [...new Set(list.filter(p => p.website && !p.email).map(p => p.website))];
     const onMap = list.filter(p => p.email).length;
     let fresh: Record<string, Contactable> = {};
     if (sites.length) {
-      step('read', { label: `Reading ${sites.length} websites for the addresses they publish`, state: 'running', badge: 'Websites' });
-      const r = await lookupSites(sites);
+      step('read', { label: `Searching ${sites.length} websites for the addresses they publish`, state: 'running', badge: 'Websites' });
+      const r = await lookupSites(sites, sites.length > 8 ? 'Searching websites for email addresses' : '');
       fresh = r.fresh;
       step('read', {
         label: `Read ${r.read} websites for the addresses they publish`,
@@ -298,15 +328,15 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
 
     const emails = [...new Set(list.flatMap(p => addressesOf(p, fresh)))];
     if (emails.length) {
-      step('verify', { label: `Checking ${emails.length} address${emails.length === 1 ? '' : 'es'} — format, domain and mail server`, state: 'running', badge: 'Address check' });
+      step('verify', { label: `Verifying ${emails.length} contact${emails.length === 1 ? '' : 's'} — format, domain and mail server`, state: 'running', badge: 'Contact check' });
       const v = await verifyList(emails, false);
       const vs = Object.values(v.verdicts);
       const bad = vs.filter(x => x.status === 'invalid').length;
       const okd = vs.filter(x => x.status === 'valid' || x.status === 'domain_ok').length;
       step('verify', {
-        label: `Checked ${vs.length} address${vs.length === 1 ? '' : 'es'} — format, domain and mail server`,
+        label: `Checked ${vs.length} contact${vs.length === 1 ? '' : 's'} — format, domain and mail server`,
         detail: v.error ? v.error : `${okd} take mail${bad ? `, ${bad} would bounce` : ''}${vs.length - okd - bad ? `, ${vs.length - okd - bad} risky or unclear` : ''}`,
-        state: v.error ? 'failed' : 'done', badge: 'Address check', count: okd,
+        state: v.error ? 'failed' : 'done', badge: 'Contact check', count: okd,
       });
     }
     return { error: '', want: a.want };
@@ -404,6 +434,20 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     return { created: made.length, already: plan.known.length, list, filled: fills.length, contacts: now };
   }, [chosen, answered, searched, found, checks, contacts, bulkImportContacts, updateContacts]);
 
+  /* Keep what this search has found, each time a pass adds to it — not while
+     a pass is still running, so a reopened search never shows a half-read
+     list as finished. Google's results are never kept (prospectImport). */
+  const working = busy || verifying || finding || reading.size > 0 || checking.size > 0 || steps.some(x => x.state === 'running');
+  useEffect(() => {
+    if (!searched || !results || working || !keepable(searched.source) || !keepable(answered)) return;
+    const t = window.setTimeout(() => saveSnapshot({
+      source: searched.source, answered, trade: searched.trade, place: searched.place,
+      asked, want, results, found, checks, steps, attribution, startedAt, fetchedAt,
+      savedAt: restoredAt || new Date().toISOString(),
+    }), 400);
+    return () => window.clearTimeout(t);
+  }, [searched, results, working, answered, asked, want, found, checks, steps, attribution, startedAt, fetchedAt, restoredAt]);
+
   const googleDown = source === 'google' && !!google && !google.available;
   const registerDown = source === 'register' && !!google && !google.register.available;
   /* Whichever chosen source is not on, and why — said before anybody types. */
@@ -412,7 +456,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
 
   return {
     source, setSource, answered, google, googleDown, registerDown, downError, offerFree, reset,
-    reading, checking, progress, live, startedAt, fetchedAt, prevCount,
+    reading, checking, progress, live, startedAt, fetchedAt, prevCount, restoredAt, restore,
     trade, setTrade, place, setPlace,
     busy, more, enriching, error, errorCode, moreError,
     results, attribution, cached, nextPage, searched,

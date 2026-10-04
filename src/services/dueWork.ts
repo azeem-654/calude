@@ -9,10 +9,10 @@
  * promise is timed follow-up, that is the difference between working and not.
  *
  * This runs them on a timer from the app shell instead, so they advance on any
- * screen. It is honest about what that does not fix: a browser cannot be a
- * scheduler. With every tab closed, nothing runs. The app says so where it
- * matters rather than implying a server is minding the queue — see
- * describeReach() below, which the campaign page shows.
+ * screen while the app is open. It is no longer the only driver: the Worker's
+ * cron (every five minutes) sends sequence steps and, once a one-off email is
+ * ten minutes overdue, that too — with every tab closed. describeReach() below
+ * says so on the campaign page.
  *
  * The lock is not paranoia. Two tabs open on the same workspace would otherwise
  * both find the same message due and both send it, and the customer receives
@@ -187,6 +187,6 @@ export function startDueWork(
  * to change if this ever moves to a server.
  */
 export function describeReach(): string {
-  return 'Follow-ups go out while ProtectedCentral is open in a browser — the schedule is checked every minute. '
-    + 'Nothing is sent while every tab is closed, so a sequence resumes when you next open the app rather than sending on the exact minute.';
+  return 'Follow-ups go out from the cloud — the schedule is checked every five minutes, whether or not anybody has the app open. '
+    + 'With the app open they are also checked every minute, so a step can go out a little sooner.';
 }

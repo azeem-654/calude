@@ -34,13 +34,13 @@
  *
  * Whatever the widget's `features` name: chat, a ticket (raised and looked up
  * again), a booking link, and live help — sharing a screen with somebody at the
- * business, or a voice call with them in the browser ("Call us now"). With
+ * business, or a voice call with them in the browser ("Start an online call"). With
  * chat alone it opens straight into the chat, as it always has; with more, the
  * launcher reads "Help" and opens onto a home panel listing each way in, with
  * the owner's photo and name ("Azeem from Protected Central") when set.
  *
- * `data-pc-teaser` (the marketing site sets it) adds a one-time-per-session
- * card above the launcher after a few seconds, naming the same ways in.
+ * `data-pc-teaser` (the marketing site sets it) adds a see-through card above
+ * the launcher, naming the same ways in, on every page until it is closed.
  */
 (function () {
   'use strict';
@@ -162,7 +162,7 @@
       home: (state.cfg && state.cfg.title) || 'Help',
       chat: (state.cfg && state.cfg.title) || 'Chat',
       screen: 'Share your screen',
-      voice: 'Call us',
+      voice: 'Online call',
       ticket: 'Submit a ticket',
       status: 'Check a ticket',
     };
@@ -183,14 +183,14 @@
     var o = [];
     if (has('voice')) {
       o.push({
-        key: 'phone', view: 'voice', label: 'Call us now',
+        key: 'phone', view: 'voice', label: 'Start an online call',
         hint: cfg.online === true ? 'A voice call in your browser — someone is here now'
           : cfg.online === false ? 'A voice call in your browser — nobody may be free right now'
             : 'A voice call in your browser, using your microphone',
       });
     }
     if (has('screen')) o.push({ key: 'screen', view: 'screen', label: 'Share your screen with us', hint: 'Show us the problem and we talk you through it' });
-    if (has('chat')) o.push({ key: 'chat', view: 'chat', label: 'Chat with us', hint: state.agent ? 'Answered straight away, a person when needed' : 'Write to us here and we reply here' });
+    if (has('chat')) o.push({ key: 'chat', view: 'chat', label: 'Live chat', hint: state.agent ? 'Answered straight away, a person when needed' : 'Write to us here and we reply here' });
     if (has('ticket')) {
       o.push({ key: 'ticket', view: 'ticket', label: 'Submit a ticket', hint: 'Tell us what happened — we reply by email' });
       o.push({ key: 'search', view: 'status', label: 'Check a ticket', hint: 'See where one you raised has got to' });
@@ -841,7 +841,7 @@
    * reach it, polls until the other side has posted theirs, and from then on
    * the picture, their voice and the small messages go directly.
    *
-   * "Call us now" is the same session with a microphone and no screen
+   * "Start an online call" is the same session with a microphone and no screen
    * (`kind: 'voice'`). It rings in the business's app for RING_SECONDS
    * (lib/liveHelp.ts) — the server says how long — and if nobody answers, or
    * somebody presses Decline, the caller is told so plainly and offered a
@@ -870,7 +870,7 @@
      widget actually offers. */
   function fallbacks(into, lead) {
     if (has('chat')) {
-      var c = el('button', BTN, lead ? 'Leave us a message' : 'Chat with us instead');
+      var c = el('button', BTN, lead ? 'Leave us a message' : 'Live chat instead');
       c.onclick = function () { show('chat'); };
       into.appendChild(c);
     }
@@ -941,7 +941,7 @@
     body.appendChild(w);
   }
 
-  /* ── "Call us now" ── */
+  /* ── "Start an online call" ── */
 
   function voiceView() {
     if (live && live.kind === 'voice') { liveView(true); return; }
@@ -1705,8 +1705,9 @@
     state.open = !state.open;
     panel.style.display = state.open ? 'flex' : 'none';
     launcher.style.display = state.open ? 'none' : 'flex';
+    if (!state.open) teaser();
     if (state.open) {
-      dropTeaser(true);
+      dropTeaser(false);
       /* A session in progress is what they came back for. */
       if (live) show(liveViewName(live));
       else if (!body.firstChild) show(onlyChat() ? 'chat' : 'home');
@@ -1715,32 +1716,60 @@
   }
 
   /*
-   * The teaser: once a session, on the marketing site only (the page asks for
-   * it with `data-pc-teaser`), a small card above the launcher after eight
-   * seconds naming the ways in. Never on a narrow screen, where it would sit
-   * on top of what somebody is reading; never moving for somebody who asked
-   * for less motion; gone for the session as soon as it is closed or the
-   * widget is opened.
+   * The teaser: on the marketing site only (the page asks for it with
+   * `data-pc-teaser`), a card above the launcher naming the ways in. It is
+   * there on every page, a moment after the widget is — a visitor who wants
+   * to talk to somebody should not have to find out that they can — until
+   * they close it, which holds for the visit, or open the widget.
+   *
+   * It is see-through (frosted, not opaque) so the page scrolling behind it
+   * stays visible: it is always present, so it must not hide what somebody is
+   * reading. Browsers without `backdrop-filter` get a lighter solid card
+   * instead, because unblurred text behind text is unreadable.
+   *
+   * Never on a narrow screen, where even a see-through card sits on most of
+   * what somebody is reading. The entrance and the soft pulse on the first
+   * option are skipped for somebody who asked for less motion.
    */
   var teaserCard = null;
   var teaserTimer = 0;
   var TEASED = 'pc_teased_' + KEY;
+  function teaserStyles() {
+    if (document.getElementById('pc-teaser-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pc-teaser-css';
+    st.textContent = ''
+      + '@keyframes pcTeaseIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}'
+      + '@keyframes pcTeaseRow{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}'
+      + '@keyframes pcTeasePulse{0%{box-shadow:0 0 0 0 var(--pc-ring)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}'
+      + '.pc-tease{animation:pcTeaseIn .35s cubic-bezier(.2,.8,.2,1) both}'
+      + '.pc-tease-row{animation:pcTeaseRow .35s ease both;transition:background .15s ease,transform .15s ease}'
+      + '.pc-tease-row:hover,.pc-tease-row:focus-visible{background:rgba(255,255,255,.55)!important;transform:translateX(3px)}'
+      + '.pc-tease-row:hover .pc-tease-ic{transform:scale(1.12) rotate(-6deg)}'
+      + '.pc-tease-ic{transition:transform .2s ease}'
+      + '.pc-tease-pulse{animation:pcTeasePulse 2.4s ease-out infinite}'
+      + '@media (prefers-reduced-motion: reduce){.pc-tease,.pc-tease-row,.pc-tease-pulse{animation:none!important}.pc-tease-row,.pc-tease-ic{transition:none!important}.pc-tease-row:hover{transform:none}}';
+    document.head.appendChild(st);
+  }
   function teaser() {
     if (!TEASER || onlyChat()) return;
-    try { if (window.sessionStorage.getItem(TEASED)) return; } catch (e) { return; }
+    try { if (window.sessionStorage.getItem(TEASED)) return; } catch (e) { /* private mode: show it */ }
     teaserTimer = window.setTimeout(function () {
-      if (state.open || live || window.innerWidth < 720 || window.innerHeight < 560) return;
+      if (state.open || live || teaserCard || window.innerWidth < 720 || window.innerHeight < 560) return;
       var opts = homeOptions().filter(function (o) { return o.view !== 'status'; }).slice(0, 4);
       if (!opts.length) return;
-      try { window.sessionStorage.setItem(TEASED, '1'); } catch (e) { /* shown once more next page */ }
+      teaserStyles();
 
-      var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var glass = window.CSS && CSS.supports && (CSS.supports('backdrop-filter', 'blur(4px)') || CSS.supports('-webkit-backdrop-filter', 'blur(4px)'));
       teaserCard = el('div', 'position:relative;width:min(300px,calc(100vw - 40px));box-sizing:border-box;margin-bottom:12px;padding:14px 14px 10px;'
-        + 'background:#fff;border:1px solid #e6e9f0;border-radius:16px;box-shadow:0 18px 44px -16px rgba(15,23,42,.45);color:#0f172a;'
-        + (still ? '' : 'opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease;'));
+        + (glass
+          ? 'background:rgba(255,255,255,.58);-webkit-backdrop-filter:blur(7px) saturate(1.5);backdrop-filter:blur(7px) saturate(1.5);'
+          : 'background:rgba(255,255,255,.94);')
+        + 'border:1px solid rgba(255,255,255,.7);border-radius:16px;box-shadow:0 18px 44px -16px rgba(15,23,42,.45);color:#0f172a;');
+      teaserCard.className = 'pc-tease';
       teaserCard.setAttribute('role', 'complementary');
       teaserCard.setAttribute('aria-label', 'Ways to reach us');
-      var x = el('button', 'position:absolute;top:8px;right:8px;display:flex;background:none;border:0;color:#64748b;cursor:pointer;padding:3px;');
+      var x = el('button', 'position:absolute;top:8px;right:8px;display:flex;background:none;border:0;color:#475569;cursor:pointer;padding:3px;');
       x.type = 'button';
       x.setAttribute('aria-label', 'Dismiss');
       x.appendChild(icon(ICONS.close, 15));
@@ -1754,16 +1783,22 @@
       top.appendChild(el('div', 'font-size:14px;font-weight:800;line-height:1.35;',
         cfg.agentName ? 'Questions? Talk to ' + cfg.agentName + (cfg.businessName ? ' at ' + cfg.businessName : '') : 'Questions? We are here to help.'));
       teaserCard.appendChild(top);
-      opts.forEach(function (o) {
-        var b = el('button', 'display:flex;align-items:center;gap:9px;width:100%;padding:8px 6px;border:0;border-top:1px solid #f1f3f7;background:none;'
-          + 'color:#0f172a;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-align:left;');
+      opts.forEach(function (o, i) {
+        var b = el('button', 'display:flex;align-items:center;gap:9px;width:100%;padding:8px 6px;border:0;border-top:1px solid rgba(15,23,42,.08);background:none;'
+          + 'border-radius:8px;color:#0f172a;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-align:left;'
+          + 'animation-delay:' + (120 + i * 70) + 'ms;');
         b.type = 'button';
-        var ic = el('span', 'display:flex;color:' + accent() + ';');
-        ic.appendChild(icon(ICONS[o.key], 16));
+        b.className = 'pc-tease-row';
+        var ic = el('span', 'display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;flex-shrink:0;'
+          + 'background:' + accent() + '1f;color:' + accent() + ';--pc-ring:' + accent() + '55;');
+        /* The first way in — a call, when there is one — breathes, so the eye
+           finds it; the rest stay still. */
+        ic.className = 'pc-tease-ic' + (i === 0 ? ' pc-tease-pulse' : '');
+        ic.appendChild(icon(ICONS[o.key], 15));
         b.appendChild(ic);
         b.appendChild(el('span', '', o.label));
         b.onclick = function () {
-          dropTeaser(true);
+          dropTeaser(false);
           if (o.go) { o.go(); return; }
           if (!state.open) toggle();
           show(o.view);
@@ -1771,8 +1806,7 @@
         teaserCard.appendChild(b);
       });
       root.insertBefore(teaserCard, launcher);
-      if (!still) window.requestAnimationFrame(function () { if (teaserCard) { teaserCard.style.opacity = '1'; teaserCard.style.transform = 'none'; } });
-    }, 8000);
+    }, 1200);
   }
   function dropTeaser(forGood) {
     window.clearTimeout(teaserTimer);

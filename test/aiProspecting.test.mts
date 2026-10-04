@@ -62,7 +62,7 @@ eq('never checked → no tag at all', emailTag(undefined), '');
   const csv = toCsv([{ p: p({ name: '=HYPERLINK("http://evil")', address: 'Line 1, Leeds' }), email: 'a@b.c', v: v('a@b.c', 'valid'), person: null, score: 55 }]);
   const line = csv.split('\r\n')[1];
   ok('a formula in a business name is defused', line.startsWith(`"'=HYPERLINK(""http://evil"")"`), line);
-  ok('a comma is quoted, and the check is in words', line.includes('"Line 1, Leeds"') && line.includes(',Verified,'), line);
+  ok('a comma is quoted, and the check is in words', line.includes('"Line 1, Leeds"') && line.includes(',Contact verified,'), line);
 }
 
 console.log(out.join('\n'));

@@ -535,7 +535,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
           <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0 }}>Live help</h3>
         </div>
         <p style={{ fontSize: 13, color: MUTED, margin: '0 0 12px', lineHeight: 1.6, maxWidth: '76ch' }}>
-          Customers who pressed <strong style={{ color: INK }}>Share your screen</strong> or <strong style={{ color: INK }}>Call us now</strong> in
+          Customers who pressed <strong style={{ color: INK }}>Share your screen</strong> or <strong style={{ color: INK }}>Start an online call</strong> in
           a chat widget. Join a share to see what they see and talk them through it; answer a call to talk. Picture and
           voice go between the two browsers, encrypted; nothing is recorded, and this app never receives it.
         </p>
@@ -543,7 +543,7 @@ export default function EngageLive({ onChange }: { onChange?: () => void }) {
         {loaded && !info.enabled && (
           <Notice>
             No live widget offers screen sharing or calls yet, so nobody can ask. Open <strong>Widgets</strong>, edit one, tick
-            <strong> Share your screen</strong> or <strong>Call us now</strong> and make it live.
+            <strong> Share your screen</strong> or <strong>Start an online call</strong> and make it live.
           </Notice>
         )}
         {loaded && info.enabled && !info.relay && (

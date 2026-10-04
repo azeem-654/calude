@@ -77,3 +77,14 @@
   .ww { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
   .ww .ww-label { text-align: center; margin-top: 6px; }
 }
+
+/* The asterisk on "Technology partners", spelled out. */
+.ww-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.5);
+}
+.ww-compact .ww-note { font-size: 10px; }

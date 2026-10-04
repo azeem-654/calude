@@ -294,6 +294,63 @@ const JUNK_LOCAL = /^(no-?reply|donotreply|postmaster|abuse|webmaster|hostmaster
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}/gi;
 
+/*
+ * Addresses a page publishes but does not spell out. Cloudflare's "email
+ * protection" swaps every address on a site behind it for a hex string that
+ * its script decodes in the visitor's browser (`data-cfemail`, or
+ * `/cdn-cgi/l/email-protection#…`) — a very large share of small-business
+ * sites, all of which read as "no address" to a plain fetch. HTML entities
+ * (`info&#64;shop.com`) and "info [at] shop [dot] com" are the other common
+ * disguises. Decoding them reads what the business published, nothing more.
+ */
+export function decodeCfEmail(hex: string): string {
+  if (!/^[0-9a-f]{4,}$/i.test(hex) || hex.length % 2) return '';
+  const key = parseInt(hex.slice(0, 2), 16);
+  let out = '';
+  for (let i = 2; i < hex.length; i += 2) out += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ key);
+  return out;
+}
+
+export function unmask(html: string): string {
+  const extra: string[] = [];
+  for (const m of html.matchAll(/data-cfemail="([0-9a-f]+)"/gi)) extra.push(decodeCfEmail(m[1]));
+  for (const m of html.matchAll(/email-protection#([0-9a-f]+)/gi)) extra.push(decodeCfEmail(m[1]));
+  const text = html
+    .replace(/&#0*64;|&#x0*40;|&commat;|%40/gi, '@')
+    .replace(/&#0*46;|&#x0*2e;|&period;/gi, '.')
+    .replace(/\s*[[(]\s*at\s*[\])]\s*/gi, '@')
+    .replace(/\s*[[(]\s*dot\s*[\])]\s*/gi, '.');
+  return `${text}\n${extra.filter(Boolean).join('\n')}`;
+}
+
+/*
+ * The site's own way to its contact details, read off the home page: the
+ * first links whose address or words say contact, about, team or impressum,
+ * on the same site. Better than guessing "/contact" — a page called
+ * "/get-in-touch" or "/kontakt" was never found that way.
+ */
+export function contactLinks(html: string, base: string): string[] {
+  let origin = '';
+  try { origin = new URL(base).origin; } catch { return []; }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]{0,120}?)<\/a>/gi)) {
+    const href = m[1].trim();
+    const words = `${href} ${m[2].replace(/<[^>]+>/g, ' ')}`.toLowerCase();
+    if (!/contact|get-in-touch|get in touch|reach us|about|team|impressum|kontakt|enquir|find-us|find us/.test(words)) continue;
+    let u: URL;
+    try { u = new URL(href, `${origin}/`); } catch { continue; }
+    if (u.origin !== origin || /\.(pdf|jpe?g|png|gif|zip|docx?)$/i.test(u.pathname)) continue;
+    const key = u.pathname.replace(/\/+$/, '') || '/';
+    if (key === '/' || seen.has(key)) continue;
+    seen.add(key);
+    /* Contact pages before about pages: they are where an address is put. */
+    if (/contact|touch|reach|kontakt|enquir/.test(words)) out.unshift(u.href); else out.push(u.href);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
 export function harvest(text: string, host: string): string[] {
   const found = new Set<string>();
   for (const raw of text.match(EMAIL_RE) ?? []) {
@@ -330,9 +387,10 @@ async function hasMx(domain: string): Promise<boolean | null> {
 /**
  * Read one business's site for a published address.
  *
- * The home page first, then the two pages that carry contact details when the
- * home page does not. Three fetches at most: the point is to find the address
- * a business chose to publish, not to crawl anybody.
+ * The home page first, then the pages its own links call contact, about or
+ * team, and only then the usual guesses. Four fetches at most — eight sites a
+ * request stays well inside a Worker's subrequest limit — because the point
+ * is to find the address a business chose to publish, not to crawl anybody.
  */
 export async function findContacts(env: Env, website: string, fresh = false): Promise<Contactable> {
   const blank: Contactable = { emails: [], mx: null };
@@ -356,17 +414,25 @@ export async function findContacts(env: Env, website: string, fresh = false): Pr
   const base = website.replace(/\/+$/, '');
   const emails = new Set<string>();
   let live = false;
-  for (const path of ['', '/contact', '/contact-us']) {
-    if (emails.size) break;
+  const queue = [base];
+  const tried = new Set<string>();
+  const MAX_PAGES = 4;
+  while (queue.length && tried.size < MAX_PAGES && !emails.size) {
+    const url = queue.shift()!;
+    if (tried.has(url)) continue;
+    tried.add(url);
     /* The page as fetched, not `readSite`'s reading of it: that refuses a page
        under forty words, and a contact page is often exactly that short —
        the address it exists to publish was being thrown away with it. The
        HTML also carries `mailto:` links the visible text does not. */
-    const page = await fetchPage(`${base}${path}`).catch(() => null);
+    const page = await fetchPage(url).catch(() => null);
     if (!page?.ok) continue;
-    if (path === '') live = true;
+    if (url === base) {
+      live = true;
+      queue.push(...contactLinks(page.html, base), `${base}/contact`, `${base}/contact-us`, `${base}/about`);
+    }
     const { title, text } = readable(page.html);
-    for (const e of harvest(`${text}\n${title}\n${page.html.slice(0, 400_000)}`, host)) emails.add(e);
+    for (const e of harvest(`${text}\n${title}\n${unmask(page.html.slice(0, 400_000))}`, host)) emails.add(e);
   }
 
   const mx = await hasMx(host.replace(/^www\./, ''));

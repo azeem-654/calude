@@ -17,7 +17,7 @@ import { findSuppression } from '../../services/deliverability';
 import { sameBusiness } from '../../services/prospectImport';
 import type { Prospect, Verdict } from '../../services/prospects';
 import {
-  SCORE_RULE, STATUS_LABEL, leadScore, personFor, verdictSentence, addressesOf,
+  SCORE_RULE, checkLabel, leadScore, personFor, verdictSentence, addressesOf,
 } from '../../services/aiProspecting';
 import { useApp } from '../../context/AppContext';
 import type { ProspectSearch, Step } from './useProspectSearch';
@@ -28,9 +28,10 @@ export function CheckBadge({ v, email }: { v?: Verdict; email: string }) {
   if (!email) return null;
   if (!v) return <span className="aip-badge" data-s="none" title="Not checked yet">Not checked</span>;
   const Icon = v.status === 'valid' ? ShieldCheck : v.status === 'invalid' ? AlertTriangle : v.status === 'risky' ? AlertTriangle : v.status === 'domain_ok' ? MailCheck : Info;
+  const when = v.checkedAt ? ` Checked ${new Date(v.checkedAt).toLocaleString()}.` : '';
   return (
-    <span className="aip-badge" data-s={v.status} title={verdictSentence(v)}>
-      <Icon size={10} /> {v.status === 'valid' ? 'Verified email' : STATUS_LABEL[v.status]}
+    <span className="aip-badge" data-s={v.status} title={`${verdictSentence(v)}${when}`}>
+      <Icon size={10} /> {checkLabel(v)}
     </span>
   );
 }

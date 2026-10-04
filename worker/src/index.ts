@@ -55,6 +55,7 @@ import { handleCompaniesHouse } from './routes/companiesHouse';
 import { handleFinders } from './routes/finders';
 import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
+import { handleCloud } from './routes/cloud';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
 import { handleRevenue } from './routes/revenue';
@@ -77,7 +78,7 @@ import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
 import { runEngageDispatch } from './engageDispatch';
-import { runAutomations } from './lib/automationEngine';
+import { applyContactChangesInCloud, runAutomations } from './lib/automationEngine';
 import { runProjectAgents } from './lib/projectAgents';
 import { runProspectFinders } from './prospectFinderTick';
 import { runHousekeeping } from './lib/housekeeping';
@@ -93,6 +94,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/system-mail.php': handleSystemMail,
   /* The owner's keys for everybody, in one read. Owner only. */
   '/api/platform.php': handlePlatform,
+  '/api/cloud.php': handleCloud,
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,
   '/api/email-verifier.php': handleEmailVerifier,
@@ -375,6 +377,10 @@ export default {
        * have got your enquiry".
        */
       const flows = await runAutomations(env);
+      /* What those automations asked to change on a contact, applied to the
+         synced list now rather than whenever somebody next opens the app. */
+      const cloudChanges = await applyContactChangesInCloud(env).catch(() => ({ applied: 0 }));
+      if (cloudChanges.applied) console.log(`[cron] ${cloudChanges.applied} contact change(s) applied in the cloud`);
       /*
        * Scheduled agents after the contact passes and before the batch.
        *

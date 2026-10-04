@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import TaskBadge from './TaskBadge';
 import SupportBadge from './SupportBadge';
+import CloudBadge from './CloudBadge';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
@@ -422,6 +423,7 @@ export default function TopNav() {
 
       {/* Right: circular icon buttons + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <CloudBadge />
         <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn" style={circleBtn}>
           {theme === 'dark' ? <Sun size={16} strokeWidth={2.2} /> : <Moon size={16} strokeWidth={2.2} />}
         </button>

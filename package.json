@@ -57,6 +57,7 @@
     "test:mapslink": "npx --yes tsx worker/test/mapsLink.test.mts",
     "test:platform": "node test/platform.e2e.mjs",
     "test:prospecting": "node test/prospecting.e2e.mjs",
+    "test:cloud": "node test/cloudRun.e2e.mjs",
     "test:autoprospects": "node test/autopilotProspecting.e2e.mjs",
     "test:aikeys": "node test/aikeys.e2e.mjs"
   },

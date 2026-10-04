@@ -45,7 +45,7 @@ const TOOL_OPTIONS = [
    widgets always have; anything more puts a short menu in front of it. */
 const FEATURE_OPTIONS = [
   { id: 'chat', label: 'Chat' },
-  { id: 'voice', label: 'Call us now (voice, in the browser)' },
+  { id: 'voice', label: 'Start an online call (voice, in the browser)' },
   { id: 'screen', label: 'Share your screen' },
   { id: 'ticket', label: 'Raise and check a ticket' },
   { id: 'meeting', label: 'Book a call (needs a booking page below)' },

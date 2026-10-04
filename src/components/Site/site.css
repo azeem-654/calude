@@ -2147,3 +2147,70 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 /* The scan line read one wide screen; across a row of three it is a lime band
    over the bottom of every picture. */
 .dc-hero-strip .dc-hero-scan { display: none; }
+
+/* ── Live in the cloud (CloudSection.tsx) ── */
+.dc-cloud { text-align: center; }
+.dc-cloud-scene { max-width: 1080px; margin: 0 auto; }
+.dc-cloud-top {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(14px, 3vw, 34px);
+  margin-bottom: clamp(24px, 3.4vw, 38px);
+}
+.dc-cloud-device {
+  display: grid; justify-items: center; gap: 8px;
+  color: rgba(242, 245, 241, 0.32);
+}
+.dc-cloud-device small { font-size: 12px; color: var(--muted); }
+.dc-cloud-link { display: flex; gap: 7px; }
+.dc-cloud-link i { width: 7px; height: 7px; border-radius: 50%; background: rgba(200, 242, 77, 0.35); }
+.dc-cloud-core {
+  display: grid; justify-items: center; gap: 6px;
+  padding: 26px 30px; border-radius: 22px;
+  border: 1px solid rgba(200, 242, 77, 0.28);
+  background: radial-gradient(circle at 50% 30%, rgba(200, 242, 77, 0.14), var(--glass) 70%);
+}
+.dc-cloud-core strong { font-size: 17px; letter-spacing: -0.02em; }
+.dc-cloud-core small { font-size: 12px; color: var(--muted); }
+.dc-cloud-icon { position: relative; color: var(--lime); display: inline-flex; }
+.dc-cloud-icon b {
+  position: absolute; right: -2px; bottom: 4px; width: 11px; height: 11px; border-radius: 50%;
+  background: #22c55e; border: 2px solid var(--ink-2);
+}
+.dc-cloud-runs {
+  list-style: none; margin: clamp(22px, 3vw, 34px) 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 10px;
+}
+.dc-cloud-runs li {
+  display: grid; justify-items: center; align-content: start; gap: 4px; padding: 14px 10px; border-radius: 16px;
+  border: 1px solid var(--edge); background: var(--glass);
+}
+.dc-cloud-runs b { font-size: 13.5px; }
+.dc-cloud-runs small { font-size: 11.5px; color: var(--muted); }
+.dc-cloud-runs .dc-tile-icon { background: rgba(200, 242, 77, 0.14); color: var(--lime); }
+
+@media (max-width: 640px) {
+  .dc-cloud-top { flex-direction: column; }
+  .dc-cloud-link { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dc-cloud-icon svg { animation: dc-cloud-blink 2.4s ease-in-out infinite; }
+  .dc-cloud-icon b { animation: dc-cloud-ping 2.4s ease-out infinite; }
+  .dc-cloud-link i { animation: dc-cloud-flow 1.5s ease-in-out infinite; }
+  .dc-cloud-link i:nth-child(2) { animation-delay: 0.2s; }
+  .dc-cloud-link i:nth-child(3) { animation-delay: 0.4s; }
+  .dc-cloud-runs li { animation: dc-cloud-tick 7s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 1s); }
+}
+@keyframes dc-cloud-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes dc-cloud-ping {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); }
+  70% { box-shadow: 0 0 0 9px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+@keyframes dc-cloud-flow { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; background: var(--lime); } }
+@keyframes dc-cloud-tick {
+  0%, 12%, 100% { border-color: var(--edge); }
+  4% { border-color: rgba(200, 242, 77, 0.55); }
+}

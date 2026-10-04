@@ -57,6 +57,24 @@ A cron fires every 5 minutes, and the order in `worker/src/index.ts`
 
 Then `recordTick` writes what happened into `crm_ticks`.
 
+**"Live in the cloud" is read from `crm_ticks`.** `/api/cloud.php` `status`
+(`routes/cloud.ts`, any member of the workspace) answers the last tick's time,
+`live` (under 20 minutes ago) and what the cron minds for this workspace;
+`services/cloudPulse.ts` shares it between the cloud in the top bar
+(`Layout/CloudBadge.tsx`, on every screen — pulsing only when live, amber when
+late, grey when unreadable) and the dashboard strip (`Dashboard/CloudLive.tsx`).
+The site's **Live in the cloud** section (`Site/CloudSection.tsx`) lists only
+what the cron does with nobody signed in. Two things that used to wait for a
+browser now run there too: a one-off email scheduled for one contact
+(`runOneOffEmails` in scheduled.ts, once it is 10 minutes overdue so an open
+tab sends it first; claimed `sending` by compare-and-swap) and automation
+changes to a contact (`applyContactChangesInCloud`, stamping
+`server_applied_at`, migration 0064 — the browser still re-applies them, so a
+stale save cannot lose one). Still browser-only: merging captured leads into
+Contacts, Blog Automation's month writing, onboarding content generation, and
+publishing social posts (always a person's press). `npm run test:cloud`
+(self-contained: SMTP sink :8858, wrangler :8928, fresh D1) covers all of it.
+
 **A scheduled run has no request, so it has no origin.** Anything needing an
 absolute URL (a Stripe return address, the link in the digest) reads
 `env.APP_ORIGIN`, set in `wrangler.jsonc`. Unset, those paths report that they
@@ -341,6 +359,27 @@ Found column and kept on an imported contact (`customFields.foundAt`); the
 website read adds `live` (did it answer) and `checkedAt`. The Contacts dialog
 still takes the caches. `test:prospecting` proves a repeated search asks the
 directory again.
+
+**A recent search reopens, it is not re-run.** Each search's rows, website
+reads, checks (with their dates) and step log are kept in
+`crm_prospect_results` (`saveSnapshot` in prospectImport.ts, one per search in
+the history, ≤ 900 KB, synced like any workspace key); clicking it in the side
+panel calls `restore` and shows "saved search, found <date>" with **Search
+again, live**. A Google search is never kept (Google's terms) and so is run
+again. The first pass now reads **every** website (not 16), and
+`findContacts` follows the home page's own contact/about links and decodes
+Cloudflare-protected and entity-encoded addresses (`unmask`), four fetches a
+site at most.
+
+**The results name no supplier.** Tabs are *All businesses*, *Registered
+companies*, *With ratings & reviews* (`TAB_NAME`); the rail is "What was
+searched"; the step log says "Searched for …". Only the loading line names
+sources (`useStage`, each line true of the tab chosen — "Searching Google
+Maps" only on the Google tab), and the licences' credit stays in small type
+(`Attribution`). `SOURCE_NAME` remains the provenance stamp on imports and the
+Contacts dialog. Checks read **Contact verified · <date>** (a verifier said
+the mailbox takes mail) or **Contact checked · <date>** (format, domain, mail
+server) — never "verified" for a domain check.
 
 **Its dark mode is its own.** The page and the dashboard panel carry
 `data-noinvert` and define both palettes on `.aip, .aip-vars` (switched by
@@ -810,9 +849,12 @@ drawn where unsupported; who is talking from `getStats` audio levels) —
 `widget.js` `audioPanel`, `Engagement/LiveAudio.tsx`.
 
 The widget's launcher reads "Help" (with a green dot only when `online`) and
-opens a home panel listing exactly the enabled features (`homeOptions`, also
-read by the marketing-site teaser, `data-pc-teaser`, once a session, ≥720px
-wide). `CornerHelp` names the same options. The owner's photo and name are
+opens a home panel listing exactly the enabled features (`homeOptions`: "Start
+an online call", "Share your screen with us", "Live chat", "Submit a ticket"),
+also read by the marketing-site teaser (`data-pc-teaser`, ≥720px wide): a
+see-through frosted card above the launcher on every page until the visitor
+closes it (then gone for the visit), back when the widget is closed, its rows
+sliding in and the first icon breathing — none of it under reduced motion. `CornerHelp` names the same options. The owner's photo and name are
 per widget (`agent_name`; the photo via `engagement.php widget_avatar`,
 checked by magic bytes, PNG/JPEG ≤256px, served at
 `/api/widget-avatar.php?k=<random key>`, `lib/widgetAvatar.ts`) and reach the
@@ -951,11 +993,16 @@ bounces.
 
 **Logos say only what is true.** `shared/WorksWith.tsx` is the logo strip on
 the sign-in screen and the site, in three labelled rows: *connects to* (the
-code calls it), *writes for* (the social creator has its format) and *built
-with* (the tools the owner used to make the product, as the owner lists them).
-It is not a partner list — none of those companies has an agreement with us —
-and a name goes on the first two rows when the integration exists, not when it
-is wanted. A *built with* name that gets integrated moves up a row.
+code calls it — Google, Gemini, Maps, Meet, Stripe, Creem, Cloudflare,
+Openprovider, the six email providers, Twilio, WordPress, Printful, the three
+verifiers, Geoapify, OpenStreetMap, Companies House), *writes for* (the social
+creator has its format) and *technology partners\** (the tools the owner used
+to make and run the product, as the owner lists them). The third row is called
+"partners" because the owner asked for the word, and carries an asterisk whose
+note says what it means here — the platforms it is built and runs on, not an
+endorsement or an agreement; none of those companies has one with us. A name
+goes on the first two rows when the integration exists, not when it is
+wanted. A partner that gets integrated moves up a row.
 
 Generated records carry a `source` stamp (`src/types/provenance.ts`) naming what
 created them, so a list full of generated rows can still be traced back.

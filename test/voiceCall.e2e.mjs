@@ -245,7 +245,7 @@ const dlg = site.getByRole('dialog');
 const menu = await dlg.innerText();
 const options = await dlg.locator('button').evaluateAll(bs => bs.map(b => b.innerText.split('\n')[0]).filter(t => t && !/^(Back|Close)$/.test(t)));
 ok('the home panel lists exactly what this widget offers, in order',
-  JSON.stringify(options) === JSON.stringify(['Call us now', 'Chat with us', 'Submit a ticket', 'Check a ticket']), JSON.stringify(options));
+  JSON.stringify(options) === JSON.stringify(['Start an online call', 'Live chat', 'Submit a ticket', 'Check a ticket']), JSON.stringify(options));
 ok('and says who answers, from where', /Azeem from Acme Ltd/.test(menu), menu.slice(0, 200));
 const face = await dlg.locator('img').first().evaluate(i => ({ w: i.naturalWidth, src: i.src })).catch(() => null);
 ok('with the owner\'s photo, loaded', !!face && face.w > 0 && face.src.includes('widget-avatar.php'), JSON.stringify(face));
@@ -266,7 +266,7 @@ await app.goto(`${B}/`, { waitUntil: 'domcontentloaded' });
 await app.waitForTimeout(2500);
 
 async function call(name) {
-  await dlg.getByRole('button', { name: /Call us now/ }).click();
+  await dlg.getByRole('button', { name: /Start an online call/ }).click();
   const form = await dlg.innerText();
   if (await dlg.getByLabel('Your name').count()) await dlg.getByLabel('Your name').fill(name);
   if (await dlg.getByLabel(/Email/).count()) await dlg.getByLabel(/Email/).fill('caller@visitor.example');
@@ -419,7 +419,7 @@ ok('the widget fits a phone screen', !!box && box.x >= 0 && box.x + box.width <=
 const s390 = await site.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 ok('no horizontal overflow on the customer\'s page at 390px', s390 === 0, `${s390}px`);
 
-/* ── The teaser: once a visit, wide screens only, gone when closed ── */
+/* ── The teaser: on every page, wide screens only, gone when closed ── */
 const ctxC = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const mk = await ctxC.newPage();
 mk.on('pageerror', e => errs.push(`teaser: ${String(e).slice(0, 160)}`));
@@ -428,13 +428,16 @@ await mk.route('http://acme.localhost:9911/**', r => r.fulfill({
 }));
 await mk.goto('http://acme.localhost:9911/');
 const teaser = mk.getByRole('complementary', { name: 'Ways to reach us' });
-await mk.waitForTimeout(3000);
-ok('the teaser waits before it appears', await teaser.count() === 0);
 await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
 const tText = await teaser.innerText().catch(() => '');
-ok('and then names the same ways in as the home panel', /Call us now/.test(tText) && /Chat with us/.test(tText) && /Submit a ticket/.test(tText) && !/Share your screen/.test(tText), tText);
+ok('the teaser appears and names the same ways in as the home panel', /Start an online call/.test(tText) && /Live chat/.test(tText) && /Submit a ticket/.test(tText) && !/Share your screen/.test(tText), tText);
 const tBox = await teaser.boundingBox().catch(() => null);
 ok('it sits on screen', !!tBox && tBox.x >= 0 && tBox.x + tBox.width <= 1280 && tBox.y >= 0, JSON.stringify(tBox));
+const tBg = await teaser.evaluate(n => getComputedStyle(n).backgroundColor);
+ok('and is see-through', /rgba\(.*, 0?\.\d+\)/.test(tBg), tBg);
+await mk.reload();
+await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
+ok('it is there again on the next page', await teaser.count() === 1);
 await teaser.getByRole('button', { name: 'Dismiss' }).click();
 await mk.reload();
 await mk.waitForTimeout(9500);

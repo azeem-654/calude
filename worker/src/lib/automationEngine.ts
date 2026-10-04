@@ -35,7 +35,7 @@
 import { businessFor, personalise, textToHtml, type Business } from './mergeFields';
 import { signTrackedLinks } from './trackSign';
 import type { Env } from './db';
-import { dataGet } from './db';
+import { dataGet, dataUpdate } from './db';
 import { logDelivery } from './deliveryLog';
 import { loadMailbox } from '../routes/mailbox';
 import { loadSmsConfig, sendSms } from './sms';
@@ -636,4 +636,82 @@ export async function pruneAutomationLog(env: Env): Promise<void> {
          SELECT id FROM crm_automation_log ORDER BY created_at DESC LIMIT 10000)`,
     ).run();
   } catch { /* housekeeping only */ }
+}
+
+
+/* ── Contact changes, applied in the cloud ─────────────────────────────────
+ *
+ * The engine records a tag, a field or an owner for a contact in
+ * `crm_contact_changes` rather than writing `crm_contacts`, because the
+ * browser is that document's writer (services/engagement.ts). That left the
+ * change nowhere the cron could see until somebody opened the Engagement
+ * screen — a campaign scheduled for a tag missed the contact tagged at 3am.
+ *
+ * So the tick applies them to the synced copy too, with a compare-and-swap
+ * (`dataUpdate`) so an edit uploaded at the same moment is not overwritten,
+ * and stamps `server_applied_at`. It leaves `applied_at` alone: the browser
+ * still applies each change to its own copy (adding a tag that is already
+ * there changes nothing), so a stale browser save that drops one gets it back.
+ * A change for a contact the list does not hold yet — a capture not merged —
+ * is left for a later tick, as the browser does.
+ */
+const CLOUD_CHANGES_PER_TICK = 300;
+
+export async function applyContactChangesInCloud(env: Env): Promise<{ applied: number }> {
+  let rows: { id: string; account_id: string; contact_id: string; kind: string; field: string; value: string }[] = [];
+  try {
+    const r = await env.DB.prepare(
+      `SELECT id, account_id, contact_id, kind, field, value FROM crm_contact_changes
+       WHERE server_applied_at IS NULL AND applied_at IS NULL
+       ORDER BY created_at LIMIT ?`,
+    ).bind(CLOUD_CHANGES_PER_TICK).all<typeof rows[number]>();
+    rows = r.results ?? [];
+  } catch { return { applied: 0 }; } /* migration 0064 not applied yet */
+  if (!rows.length) return { applied: 0 };
+
+  const byAccount = new Map<string, typeof rows>();
+  for (const r of rows) byAccount.set(r.account_id, [...(byAccount.get(r.account_id) ?? []), r]);
+
+  let applied = 0;
+  const at = new Date().toISOString();
+  for (const [accountId, changes] of byAccount) {
+    let done: string[] = [];
+    const ok = await dataUpdate(env.DB, accountId, 'crm_contacts', cur => {
+      done = [];
+      let contacts: Record<string, unknown>[];
+      try { contacts = JSON.parse(cur || '[]') as Record<string, unknown>[]; } catch { return null; }
+      if (!Array.isArray(contacts)) return null;
+      const byId = new Map(contacts.map(c => [String(c.id ?? ''), c]));
+      let touched = false;
+      for (const ch of changes) {
+        const c = byId.get(ch.contact_id);
+        if (!c) continue;
+        const tags = Array.isArray(c.tags) ? (c.tags as unknown[]).map(String) : [];
+        if (ch.kind === 'add_tag') {
+          if (!tags.some(t => t.toLowerCase() === ch.value.toLowerCase())) { c.tags = [...tags, ch.value]; touched = true; }
+        } else if (ch.kind === 'remove_tag') {
+          const next = tags.filter(t => t.toLowerCase() !== ch.value.toLowerCase());
+          if (next.length !== tags.length) { c.tags = next; touched = true; }
+        } else if (ch.kind === 'assign') {
+          c.assignedTo = ch.value; touched = true;
+        } else if (ch.kind === 'set_field') {
+          /* Never the id — the same rule as the browser's. */
+          const field = ch.field.trim();
+          if (field && field !== 'id') { c[field] = ch.value; touched = true; }
+        }
+        /* A contact an automation changed has changed: `updatedAt` moves, so
+           "recently updated" shows it. */
+        c.updatedAt = at;
+        done.push(ch.id);
+      }
+      return touched ? JSON.stringify(contacts) : null;
+    });
+    if (!ok || !done.length) continue;
+    for (const id of done) {
+      await env.DB.prepare('UPDATE crm_contact_changes SET server_applied_at = ? WHERE id = ? AND server_applied_at IS NULL')
+        .bind(at, id).run();
+    }
+    applied += done.length;
+  }
+  return { applied };
 }

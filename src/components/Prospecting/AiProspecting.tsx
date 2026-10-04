@@ -51,7 +51,7 @@ import DailySearch from './DailySearch';
 import { HowItWorks, Ideas, StartScreen, tradeIcon, tradeTone } from './AiStart';
 import { InsightsRail, KpiRow, ProgressCard, Robot, clock, type Insight } from './AiResults';
 import MicButton from './MicButton';
-import { SOURCE_NAME, type ProspectSource } from '../../services/prospects';
+import type { ProspectSource } from '../../services/prospects';
 import { suggestListName, type SavedSearch } from '../../services/prospectImport';
 import { listKindOf, loadLists, type ContactList } from '../../services/contactLists';
 import { addressesOf, ago, askTitle, parseAsk, relatedTrades, toCsv } from '../../services/aiProspecting';
@@ -91,6 +91,37 @@ function Kebab({ label, items }: { label: string; items: { label: string; onClic
   );
 }
 
+
+/* The search choices, named for what they give. `SOURCE_NAME` (who supplies
+   it) is still what an imported contact's provenance stamp says. */
+const TAB_NAME: Record<ProspectSource, string> = {
+  free: 'All businesses', osm: 'All businesses', register: 'Registered companies', google: 'With ratings & reviews',
+};
+
+/*
+ * While the search itself is out, the line under the robot walks through what
+ * that search is doing — each line true of the source chosen: the directory
+ * search asks business directories and OpenStreetMap's map listings; the
+ * ratings search asks Google Maps; the register search asks the verified
+ * company register. A line never names a source that is not being asked.
+ */
+const STAGES_BY_SOURCE: Record<ProspectSource, string[]> = {
+  free: ['Searching business directories', 'Searching map listings', 'Collecting phone numbers and websites'],
+  osm: ['Searching business directories', 'Searching map listings', 'Collecting phone numbers and websites'],
+  register: ['Searching verified business directories', 'Searching the company register', 'Reading the directors\' names'],
+  google: ['Searching Google Maps', 'Searching Google Maps listings', 'Collecting ratings, phone numbers and websites'],
+};
+function useStage(busy: boolean, source: ProspectSource, startedAt: string): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!busy) return;
+    const t = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(t);
+  }, [busy]);
+  const list = STAGES_BY_SOURCE[source] ?? STAGES_BY_SOURCE.free;
+  const since = startedAt ? Math.max(0, now - Date.parse(startedAt)) : 0;
+  return list[Math.min(Math.floor(since / 1700), list.length - 1)];
+}
 
 export default function AiProspecting() {
   const { contacts } = useApp();
@@ -162,6 +193,17 @@ export default function AiProspecting() {
     if (r.error) setAskError(r.error);
     /* "…with an email" narrows what is shown; the search itself is the same. */
     if (r.want) setFilter(r.want.email ? 'email' : r.want.phone ? 'phone' : r.want.website ? 'website' : 'all');
+  };
+
+  /* A recent search opens with what it found — at once, with when it was
+     found — rather than searching from scratch. Only a search with nothing
+     kept (a Google one, or one from before results were kept) runs again. */
+  const open = (h: SavedSearch) => {
+    const snap = s.restore(h);
+    if (!snap) { void go(`${h.trade} in ${h.place}`, h.source); return; }
+    setAskError(''); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setView('leads'); setDrawer(false); setShowAll(false);
+    const w = snap.want;
+    setFilter(w?.email ? 'email' : w?.phone ? 'phone' : w?.website ? 'website' : 'all');
   };
 
   /* The dashboard's box hands a sentence over as ?q=. Run once, then forget it. */
@@ -293,14 +335,16 @@ export default function AiProspecting() {
   };
 
   const working = s.busy || s.enriching || s.verifying || s.finding || s.steps.some(x => x.state === 'running');
-  /* Three sources, named for what they are. Each says why when it is not on. */
+  /* Three ways to search, named for what they give rather than who supplies
+     it — the results screen names no supplier. Each says why when it is off. */
   const sources: { id: ProspectSource; label: string; tip: string; Icon: typeof MapPin; off: boolean }[] = [
-    { id: 'free', label: SOURCE_NAME.free, tip: 'OpenStreetMap\'s businesses, with phone and website — searched live, yours to keep', Icon: MapPin, off: false },
-    { id: 'register', label: SOURCE_NAME.register, tip: s.google?.register.available ? 'The official company register (UK Companies House): active companies, with their directors' : (s.google?.register.error ?? ''), Icon: BadgeCheck, off: !!s.google && !s.google.register.available },
-    { id: 'google', label: SOURCE_NAME.google, tip: s.google?.available ? 'Google Maps — the widest coverage, with ratings' : (s.google?.error ?? ''), Icon: Globe, off: !!s.google && !s.google.available },
+    { id: 'free', label: TAB_NAME.free, tip: 'Local businesses with phone and website — searched live, yours to keep', Icon: MapPin, off: false },
+    { id: 'register', label: TAB_NAME.register, tip: s.google?.register.available ? 'Active registered companies (UK), with their directors' : (s.google?.register.error ?? ''), Icon: BadgeCheck, off: !!s.google && !s.google.register.available },
+    { id: 'google', label: TAB_NAME.google, tip: s.google?.available ? 'The widest coverage, with star ratings and review counts' : (s.google?.error ?? ''), Icon: Globe, off: !!s.google && !s.google.available },
   ];
   const running = s.steps.find(x => x.state === 'running');
-  const thinking = s.busy ? `Searching ${s.source === 'google' ? 'Google Maps' : s.source === 'register' ? 'the company register' : 'business directories'} for ${s.trade || 'businesses'} in ${s.place || 'that place'}` : running?.label ?? '';
+  const stage = useStage(s.busy, s.source, s.startedAt);
+  const thinking = s.busy ? `${stage} for ${s.trade || 'businesses'} in ${s.place || 'that place'}` : running?.label ?? '';
 
   /* ── What the rail says — every line counted from what is on screen ── */
   const answered = s.answered || s.searched?.source || s.source;
@@ -314,12 +358,12 @@ export default function AiProspecting() {
   const blocked = rows.filter(r => r.blocked).length;
   const withSite = results.filter(p => p.website).length;
   const scanned: { name: string; detail: string; state: 'done' | 'running' | 'waiting' | 'off' }[] = [
-    { name: answered === 'osm' ? `${SOURCE_NAME.free} (OpenStreetMap)` : SOURCE_NAME[answered as ProspectSource] ?? 'Directory', detail: s.busy ? 'Searching…' : `${results.length} found`, state: s.busy ? 'running' : 'done' },
-    ...(answered === 'register' ? [{ name: 'Directors (register)', detail: `${results.filter(p => p.officers?.length).length} named`, state: 'done' as const }] : []),
-    { name: 'Official websites', detail: s.reading.size ? `reading ${s.reading.size}…` : read.length ? `${read.length} read · ${up} up` : withSite ? 'Waiting' : 'None to read', state: s.reading.size ? 'running' : read.length ? 'done' : 'waiting' },
-    { name: 'Address checks', detail: s.checking.size ? 'checking…' : checked ? `${checked} checked · ${takes} take mail` : 'Waiting', state: s.checking.size ? 'running' : checked ? 'done' : 'waiting' },
-    ...(s.steps.some(x => x.id === 'web') ? [{ name: 'Web search (Hunter)', detail: `${s.steps.find(x => x.id === 'web')?.count ?? 0} found`, state: s.finding ? 'running' as const : 'done' as const }] : []),
-    { name: deepReady ? `Mailboxes (${verifier?.providerName})` : 'Mailbox verification', detail: deepReady ? (verifiedN ? `${verifiedN} verified` : 'Not run yet') : 'Not connected', state: deepReady ? (verifiedN ? 'done' : 'waiting') : 'off' },
+    { name: 'Business search', detail: s.busy ? 'Searching…' : `${results.length} found`, state: s.busy ? 'running' : 'done' },
+    ...(answered === 'register' ? [{ name: 'Directors', detail: `${results.filter(p => p.officers?.length).length} named`, state: 'done' as const }] : []),
+    { name: 'Websites', detail: s.reading.size ? `reading ${s.reading.size}…` : read.length ? `${read.length} read · ${up} up` : withSite ? 'Waiting' : 'None to read', state: s.reading.size ? 'running' : read.length ? 'done' : 'waiting' },
+    { name: 'Contact checks', detail: s.checking.size ? 'checking…' : checked ? `${checked} checked · ${takes} take mail` : 'Waiting', state: s.checking.size ? 'running' : checked ? 'done' : 'waiting' },
+    ...(s.steps.some(x => x.id === 'web') ? [{ name: 'People search', detail: `${s.steps.find(x => x.id === 'web')?.count ?? 0} found`, state: s.finding ? 'running' as const : 'done' as const }] : []),
+    { name: 'Mailbox verification', detail: deepReady ? (verifiedN ? `${verifiedN} verified` : 'Not run yet') : 'Not connected', state: deepReady ? (verifiedN ? 'done' : 'waiting') : 'off' },
   ];
   const insights: Insight[] = [
     ...(checked ? [{ Icon: ShieldCheck, title: `${takes} address${takes === 1 ? '' : 'es'} take mail`, sub: `${Math.round((takes / checked) * 100)}% of ${checked} checked${verifiedN ? ` · ${verifiedN} mailboxes verified` : ''}`, act: () => setFilter('checked') }] : []),
@@ -330,10 +374,10 @@ export default function AiProspecting() {
     ...(!deepReady && checked ? [{ Icon: MailCheck, title: 'Mailboxes not verified yet', sub: deepWhy }] : []),
   ];
   const sourceChips = [
-    SOURCE_NAME[(s.searched?.source ?? s.source) as ProspectSource] ?? 'Directory',
-    ...(answered === 'register' ? ['Directors'] : ['Official websites']),
-    'Address validation',
-    ...(deepReady ? [`${verifier?.providerName} mailbox checks`] : []),
+    'Business search',
+    ...(answered === 'register' ? ['Directors'] : ['Websites']),
+    'Contact verification',
+    ...(deepReady ? ['Mailbox checks'] : []),
   ];
   /* Other kinds of business in the same place: the categories that came back, then neighbours of the trade. */
   const trade = (s.searched?.trade ?? '').toLowerCase();
@@ -373,9 +417,9 @@ export default function AiProspecting() {
             return (
               <div key={`${h.source}|${h.trade}|${h.place}`} className="aip-hist" data-active={active || undefined}>
                 <span className="aip-hist-tile" data-tone={tradeTone(h.trade)}><Icon size={15} /></span>
-                <button type="button" className="aip-hist-main" onClick={() => void go(`${h.trade} in ${h.place}`, h.source)} aria-label={`Search ${h.trade} in ${h.place} again`}>
+                <button type="button" className="aip-hist-main" onClick={() => open(h)} aria-label={`Open ${h.trade} in ${h.place}`}>
                   <b>{h.saved && <Pin size={10} className="aip-pinned" />}{askTitle(h.trade, h.place)}</b>
-                  <small>{h.count} lead{h.count === 1 ? '' : 's'} · {SOURCE_NAME[h.source] ?? h.source}</small>
+                  <small>{h.count} lead{h.count === 1 ? '' : 's'}</small>
                 </button>
                 <span className="aip-hist-age">{ago(h.at)}</span>
                 <Kebab label={`More for ${h.trade} in ${h.place}`} items={[
@@ -475,7 +519,7 @@ export default function AiProspecting() {
                     <span className="aip-bot-say" aria-live="polite">
                       {working ? `${thinking || 'Working'}…`
                         : results.length ? `I found ${results.length} live, read ${read.length} website${read.length === 1 ? '' : 's'} and checked ${checked} address${checked === 1 ? '' : 'es'}. Tick the ones you want.`
-                          : s.error ? 'That search stopped — the reason is below.' : 'I\'ll search the directories, read their websites and check every address for you.'}
+                          : s.error ? 'That search stopped — the reason is below.' : 'I\'ll find the businesses, search their websites and verify every contact for you.'}
                     </span>
                   </span>
                 </section>
@@ -540,8 +584,16 @@ export default function AiProspecting() {
                     <div className="aip-card-head">
                       <span className="aip-card-title"><Sparkles size={14} /> Search results
                         <span className="aip-pill" aria-live="polite">{results.length} found{s.picked.size > 0 ? ` · ${s.picked.size} ticked` : ''}</span>
-                        <span className="aip-muted">· {rows.filter(r => r.email).length} emails · {s.searched?.place} · <span className="aip-live-dot" aria-hidden="true" /> found live {clock(s.fetchedAt)}</span>
+                        <span className="aip-muted">· {rows.filter(r => r.email).length} emails · {s.searched?.place} · {s.restoredAt
+                          ? <>saved search, found {new Date(s.fetchedAt || s.restoredAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</>
+                          : <><span className="aip-live-dot" aria-hidden="true" /> found live {clock(s.fetchedAt)}</>}</span>
                       </span>
+                      {s.restoredAt && s.searched && (
+                        <button type="button" className="aip-chip" disabled={working} onClick={() => void go(`${s.searched!.trade} in ${s.searched!.place}`, s.searched!.source)}
+                          title="Runs this search again now, live, and reads every website and address again">
+                          <Search size={12} /> Search again, live
+                        </button>
+                      )}
                       <span style={{ flex: 1 }} />
                       <span className="aip-menu-wrap">
                         <button type="button" className="aip-btn" aria-expanded={colsOpen} onClick={() => setColsOpen(o => !o)}><Columns3 size={13} /> Columns</button>

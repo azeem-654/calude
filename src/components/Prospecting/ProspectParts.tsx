@@ -282,17 +282,17 @@ function EnrichButton({ s }: { s: ProspectSearch }) {
   );
 }
 
-/** Both maps ask to be named where their results are shown. */
+/*
+ * The data's licences ask for this credit wherever their results are shown —
+ * the Open Database Licence (OpenStreetMap), the Open Government Licence (the
+ * register) and Google's terms — so it stays, in the smallest type on the
+ * card. It is the only place a source is named on AI Prospecting's results.
+ */
 export function Attribution({ s }: { s: ProspectSearch }) {
   if (!s.attribution || !s.results?.length) return null;
   return (
-    <p style={{ margin: 0, fontSize: 10.5, color: 'var(--pp-faint, #9aa1ad)', textAlign: 'center' }}>
-      {s.answered === 'google'
-        ? `Results from ${s.attribution}.`
-        : s.answered === 'register'
-          /* The register's own credit names its licence (OGL), not OSM's. */
-          ? `Business data: ${s.attribution}.`
-          : `Business data: ${s.attribution}, used under the Open Database Licence.`}
+    <p style={{ margin: 0, fontSize: 10, color: 'var(--pp-faint, #9aa1ad)', textAlign: 'center' }}>
+      {s.answered === 'google' || s.answered === 'register' ? s.attribution : `${s.attribution} · ODbL`}
     </p>
   );
 }

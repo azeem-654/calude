@@ -1,0 +1,81 @@
+/* The cloud in the top bar (CloudBadge.tsx). The pulse is tied to a real
+   state — a recent cron run — and stops for anybody who asked for less motion. */
+.cb-wrap { position: relative; flex-shrink: 0; }
+.cb-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 13px 0 11px; border-radius: 999px; border: none;
+  background: #fff; color: #17191c; cursor: pointer; font: inherit;
+  font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em;
+  box-shadow: 0 1px 2px rgba(23, 25, 28, 0.06);
+}
+.cb-icon { position: relative; display: inline-flex; }
+.cb-live .cb-icon { color: #0e9f6e; }
+.cb-late .cb-icon { color: #b7791f; }
+.cb-unknown .cb-icon { color: #8a8f98; }
+.cb-dot {
+  position: absolute; right: -3px; bottom: -1px; width: 7px; height: 7px; border-radius: 50%;
+  background: #22c55e; border: 1.5px solid #fff;
+}
+.cb-label { white-space: nowrap; }
+.cb-live .cb-label { color: #0b7a55; }
+
+.cb-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 300;
+  width: 320px; max-width: calc(100vw - 24px); box-sizing: border-box;
+  background: #fff; color: #17191c; border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 16px 40px -8px rgba(23, 25, 28, 0.22);
+  font-size: 12.5px; line-height: 1.55;
+}
+.cb-pop p { margin: 8px 0 0; color: #3d4250; }
+.cb-pop-head { display: flex; gap: 10px; align-items: center; }
+.cb-pop-head strong { display: block; font-size: 14px; }
+.cb-pop-head small { display: block; color: #6b7280; font-size: 11.5px; margin-top: 1px; }
+.cb-pop-icon {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; background: #f0f1f3;
+}
+.cb-pop-icon.cb-live { background: #e7f8f0; color: #0e9f6e; }
+.cb-pop-icon.cb-late { background: #fdf3e1; color: #b7791f; }
+.cb-minding b { color: #17191c; }
+.cb-warn { color: #8a5a00 !important; }
+
+/* On a phone the bar has no room for words; the cloud alone says it. */
+@media (max-width: 900px) {
+  .cb-label { display: none; }
+  .cb-pill { width: 40px; padding: 0; justify-content: center; }
+}
+/* On a phone the cloud sits at the left of its row, so a popup hung from its
+   right edge would open off the screen; it spans the screen instead. */
+@media (max-width: 600px) {
+  .cb-pop { position: fixed; top: 64px; left: 12px; right: 12px; width: auto; max-width: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cb-live .cb-icon svg { animation: cb-blink 2.4s ease-in-out infinite; }
+  .cb-live .cb-dot { animation: cb-ping 2.4s ease-out infinite; }
+}
+@keyframes cb-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes cb-ping {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+/* The dashboard strip (Dashboard/CloudLive.tsx). */
+.cl-strip {
+  display: flex; gap: 14px; align-items: center;
+  padding: 14px 18px; border-radius: 18px; background: #fff;
+  border: 1px solid #e6e9f0; box-shadow: 0 1px 2px rgba(23, 25, 28, 0.05);
+}
+.cl-strip.cb-live { border-color: #bfe9d6; background: linear-gradient(90deg, #f1fbf6, #fff 60%); }
+.cl-strip.cb-late { border-color: #f3dcae; background: #fffaf0; }
+.cl-icon {
+  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+  display: inline-flex !important; align-items: center; justify-content: center; background: #f0f1f3;
+}
+.cl-strip.cb-live .cl-icon { background: #e1f6ec; }
+.cl-strip.cb-late .cl-icon { background: #fbedd2; }
+.cl-strip .cb-dot { right: 7px; bottom: 8px; }
+.cl-text { display: grid; gap: 2px; min-width: 0; font-size: 12.5px; line-height: 1.5; color: #3d4250; }
+.cl-text strong { font-size: 14px; color: #17191c; }
+.cl-minding { color: #6b7280; }

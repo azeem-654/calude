@@ -21,8 +21,8 @@
  * The button reads "Help" with a green dot when somebody here has the app
  * open (the widget draws it; see public/widget.js) rather than a bare round
  * icon nobody recognised as more than chat. On the marketing site, where
- * nobody is signed in, the widget may also show a one-time teaser naming
- * the ways in.
+ * nobody is signed in, the widget also shows a see-through card above it
+ * naming the ways in, until the visitor closes it.
  *
  * No such widget yet: customers see nothing — a button that opens onto nothing
  * is worse than no button — and the install owner sees a placeholder that says
@@ -63,8 +63,8 @@ function inject(key: string, who: { name: string; email: string; workspace: stri
   s.src = `${API_BASE || window.location.origin}/widget.js`;
   s.async = true;
   s.setAttribute('data-pc-widget', key);
-  /* Signed out is the marketing site: there, and only there, the widget may
-     offer its teaser card once a visit. Inside the app it would be one more
+  /* Signed out is the marketing site: there, and only there, the widget
+     keeps its card of the ways in open above the launcher. Inside the app it would be one more
      thing in the corner of somebody who is working. */
   if (!who) s.setAttribute('data-pc-teaser', '');
   if (who) {

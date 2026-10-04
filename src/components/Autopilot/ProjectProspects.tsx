@@ -36,7 +36,7 @@ import { createList, loadLists } from '../../services/contactLists';
 import { flushNow } from '../../services/serverData';
 import { currentActor } from '../../services/contactPermissions';
 
-const STATUS_WORD: Record<string, string> = { valid: 'Verified email', domain_ok: 'Domain OK', risky: 'Risky', invalid: 'Invalid' };
+const STATUS_WORD: Record<string, string> = { valid: 'Contact verified', domain_ok: 'Contact checked', risky: 'Risky', invalid: 'Invalid' };
 const when = (iso: string) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });

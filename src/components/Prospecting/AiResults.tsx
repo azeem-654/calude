@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import type { ProspectSearch, Step } from './useProspectSearch';
 import type { LeadRow } from './AiParts';
-import { SOURCE_NAME } from '../../services/prospects';
 
 /* ── Time ── */
 
@@ -79,9 +78,9 @@ export function Robot({ working }: { working: boolean }) {
 /* ── Progress ── */
 
 const STAGES: { id: Step['id']; label: string; also?: Step['id'] }[] = [
-  { id: 'search', label: 'Searching directories' },
-  { id: 'read', label: 'Reading websites', also: 'web' },
-  { id: 'verify', label: 'Checking addresses' },
+  { id: 'search', label: 'Searching businesses' },
+  { id: 'read', label: 'Searching websites', also: 'web' },
+  { id: 'verify', label: 'Verifying contacts' },
   { id: 'deep', label: 'Verifying mailboxes' },
 ];
 
@@ -106,7 +105,6 @@ export function ProgressCard({ s, sources }: { s: ProspectSearch; sources: strin
   const secs = useElapsed(s.startedAt, running);
   const R = 34, C = 2 * Math.PI * R;
   const what = `${s.searched?.trade ?? s.trade} in ${s.searched?.place ?? s.place}`;
-  const sourceName = SOURCE_NAME[s.searched?.source ?? s.source];
   return (
     <section className="aip-card aip-progress-card" aria-label="Progress">
       <div className="aip-ring" role="img" aria-label={`${pct}% done`}>
@@ -121,7 +119,8 @@ export function ProgressCard({ s, sources }: { s: ProspectSearch; sources: strin
         <span>
           <Clock size={11} /> {running
             ? `Started ${clock(s.startedAt)} · ${secs}s so far`
-            : s.fetchedAt ? `Fetched live from ${sourceName} at ${stamp(s.fetchedAt)}` : ''}
+            : s.restoredAt ? `Saved search · found ${stamp(s.fetchedAt || s.restoredAt)}`
+              : s.fetchedAt ? `Fetched live at ${stamp(s.fetchedAt)}` : ''}
         </span>
       </div>
       <ol className="aip-timeline">
@@ -276,7 +275,7 @@ export function InsightsRail({ s, rows, insights, scanned }: {
         <PinMap rows={rows} place={place} />
       </section>
       <section className="aip-card aip-rail-card">
-        <div className="aip-rail-head"><ShieldCheck size={14} /> <b>Sources scanned</b></div>
+        <div className="aip-rail-head"><ShieldCheck size={14} /> <b>What was searched</b></div>
         <ul className="aip-scanned">
           {scanned.map(x => (
             <li key={x.name} data-state={x.state}>

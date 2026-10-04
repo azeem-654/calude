@@ -188,9 +188,9 @@ export default function CornerHelp() {
           </p>
           <div style={{ display: 'grid', gap: 6 }}>
             {/* The widget's own names and order, the first one the strong one. */}
-            {canCall && <button type="button" style={PRIMARY} onClick={() => openChat('voice')}><Phone size={14} /> Call us now</button>}
+            {canCall && <button type="button" style={PRIMARY} onClick={() => openChat('voice')}><Phone size={14} /> Start an online call</button>}
             {canScreen && <button type="button" style={canCall ? SECONDARY : PRIMARY} onClick={() => openChat('screen')}><Monitor size={14} /> Share your screen with us</button>}
-            {canChat && <button type="button" style={canCall || canScreen ? SECONDARY : PRIMARY} onClick={() => openChat('chat')}><MessageSquare size={14} /> Chat with us</button>}
+            {canChat && <button type="button" style={canCall || canScreen ? SECONDARY : PRIMARY} onClick={() => openChat('chat')}><MessageSquare size={14} /> Live chat</button>}
             {canTicket && !canChat && !canScreen && !canCall && <button type="button" style={PRIMARY} onClick={() => openChat('ticket')}><Ticket size={14} /> Submit a ticket</button>}
             {!canChat && !canScreen && !canCall && !canTicket && features.length > 0 && (
               <button type="button" style={PRIMARY} onClick={() => openChat('home')}><LifeBuoy size={14} /> Get help</button>

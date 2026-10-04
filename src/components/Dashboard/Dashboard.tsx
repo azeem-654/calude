@@ -27,6 +27,7 @@ import DayBoard from './DayBoard';
 import AutopilotPanel from './AutopilotPanel';
 import DueTasks from './DueTasks';
 import SupportWaiting from './SupportWaiting';
+import CloudLive from './CloudLive';
 import ProspectingPanel from './ProspectingPanel';
 import KpiTile from './KpiTile';
 import { buildKpis, shortMoney } from './kpis';
@@ -876,6 +877,10 @@ export default function Dashboard() {
             the page that is still happening, so it gets a section rather than a
             line. */}
         <AutopilotPanel />
+
+        {/* Whether that work is running in the cloud right now — from the
+            cron's own last run, not a constant. */}
+        <CloudLive />
 
         {/* Deal tasks with a date upon them — drawn only when something is. */}
         <DueTasks />

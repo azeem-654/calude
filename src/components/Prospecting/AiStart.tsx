@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import type { ProspectSearch } from './useProspectSearch';
 import type { ProspectSource } from '../../services/prospects';
-import { SOURCE_NAME } from '../../services/prospects';
 
 /** An icon for a trade, for the chips and the recent searches. A guess at a picture, never at data. */
 export function tradeIcon(trade: string): typeof Building2 {
@@ -127,7 +126,7 @@ export function StartScreen({ s, text, setText, onGo, error, sources, onExample,
       <span className="aip-eyebrow"><Sparkles size={13} /> AI Prospecting</span>
       <h3 className="aip-hero">Who do you want to sell to?</h3>
       <p className="aip-hero-sub">
-        Say it in a sentence. AI Prospecting searches the business directories, reads each business's own website for the
+        Say it in a sentence. AI Prospecting finds the businesses, searches each one's own website for the
         address it publishes, and checks every address before you send to it.
       </p>
       <div className="aip-live-promise" role="note">
@@ -152,7 +151,7 @@ export function StartScreen({ s, text, setText, onGo, error, sources, onExample,
         <div className="aip-step3" data-tone="violet">
           <span className="aip-step3-icon"><Search size={18} /></span>
           <b>1. Find</b>
-          <span>Businesses by trade and town — from {SOURCE_NAME.free.toLowerCase()}, {SOURCE_NAME.register.toLowerCase()} and Google Maps, searched live.</span>
+          <span>Businesses by trade and town, searched live.</span>
           <span className="aip-illu aip-illu-find" aria-hidden="true"><i /><i /><i /><MapPin size={14} /><MapPin size={11} /></span>
         </div>
         <div className="aip-step3" data-tone="orange">
@@ -190,9 +189,9 @@ export function HowItWorks({ onClose }: { onClose: () => void }) {
         </div>
         <ol className="aip-how-list">
           <li><b>You say who.</b> "Dentists in Leeds with a website" — or the two boxes. "With a website / an email / a phone" narrows what is shown.</li>
-          <li><b>It searches live.</b> {SOURCE_NAME.free} (OpenStreetMap's businesses), {SOURCE_NAME.register} (the official company register, with directors) or Google Maps — asked at that moment, never a stored list.</li>
+          <li><b>It searches live.</b> All businesses, registered companies with their directors, or businesses with ratings and reviews — asked at that moment, never a stored list.</li>
           <li><b>It reads their websites.</b> The address each business chose to publish, from its own pages, right then. Never a guessed firstname@ address.</li>
-          <li><b>It checks every address.</b> Format, domain and mail server; with a verifier connected, whether the mailbox exists. Each result is tagged — Verified email, Domain OK, Risky, Invalid.</li>
+          <li><b>It checks every address.</b> Format, domain and mail server; with a verifier connected, whether the mailbox exists. Each result is tagged with the day it was checked — Contact verified (the mailbox answered), Contact checked (domain and mail server), Risky, Invalid.</li>
           <li><b>You choose where they go.</b> Tick them and save to a contact list, or add them to a workflow, an AI project or an email campaign. Nobody is emailed until you start something that emails.</li>
         </ol>
         <p className="aip-fine" style={{ padding: '0 18px 16px' }}>

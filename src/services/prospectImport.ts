@@ -222,8 +222,9 @@ export function suggestListName(trade: string, place: string, when = new Date())
  * the tenant layer scopes it, and the sync takes it to the server like every
  * other workspace record), so a colleague in the same workspace sees the
  * searches that were run and nobody has to remember how "dentists" was spelt
- * last time. Results are not kept: Google's terms forbid it, and the free
- * directory's are cached on the server already.
+ * last time. What each search found is kept beside it (below), so reopening
+ * one shows its results rather than searching from scratch — except a Google
+ * search, whose results Google's terms forbid keeping.
  */
 const SEARCHES_KEY = 'crm_prospect_searches';
 
@@ -262,7 +263,9 @@ export function rememberSearch(list: SavedSearch[], s: Omit<SavedSearch, 'at' | 
 }
 
 export function recordSearch(s: Omit<SavedSearch, 'at' | 'saved'>): SavedSearch[] {
-  return storeSearches(rememberSearch(loadSearches(), s));
+  const list = storeSearches(rememberSearch(loadSearches(), s));
+  pruneSnapshots(list);
+  return list;
 }
 
 export function toggleSaved(s: SavedSearch): SavedSearch[] {
@@ -270,5 +273,93 @@ export function toggleSaved(s: SavedSearch): SavedSearch[] {
 }
 
 export function forgetSearch(s: SavedSearch): SavedSearch[] {
-  return storeSearches(loadSearches().filter(x => !sameSearch(x, s)));
+  const left = storeSearches(loadSearches().filter(x => !sameSearch(x, s)));
+  pruneSnapshots(left);
+  return left;
+}
+
+/* ── What a search found, kept so it can be reopened ─────────────────────
+ *
+ * Reopening a recent search used to run it again from the start: the
+ * directory, every website, every address check — a minute of waiting for an
+ * answer the customer already had. The rows, the addresses read off their
+ * websites, the checks (each with its own date) and the step log are kept
+ * here, one snapshot per search in the history, and the page shows them at
+ * once with when they were found; "Search again, live" is still a press away.
+ *
+ * A Google search is never kept: Google's terms let a place id be stored and
+ * restrict the rest, so a Google search in the history is run again.
+ *
+ * The key syncs to the server like every workspace record, which caps a value
+ * at 2 MB; the snapshots are kept well under that, oldest dropped first.
+ */
+const SNAPSHOTS_KEY = 'crm_prospect_results';
+const SNAPSHOT_BYTES = 900_000;
+
+export interface SearchSnapshot {
+  source: ProspectSource;
+  answered: ProspectSource | '';
+  trade: string;
+  place: string;
+  /** The sentence it was asked as, when it was. */
+  asked: string;
+  want: { email: boolean; website: boolean; phone: boolean };
+  results: Prospect[];
+  found: Record<string, Contactable>;
+  checks: Record<string, Verdict>;
+  steps: { id: string; label: string; detail: string; state: string; badge: string; count?: number }[];
+  attribution: string;
+  startedAt: string;
+  fetchedAt: string;
+  /** When this snapshot was last written — after the last pass that changed it. */
+  savedAt: string;
+}
+
+export const snapshotKey = (s: Pick<SavedSearch, 'source' | 'trade' | 'place'>) => `${s.source}|${norm(s.trade)}|${norm(s.place)}`;
+
+/** Whether a search's results may be kept at all. */
+export const keepable = (source: ProspectSource | '') => source !== 'google';
+
+function loadSnapshots(): Record<string, SearchSnapshot> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SNAPSHOTS_KEY) || '{}');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, SearchSnapshot> : {};
+  } catch { return {}; }
+}
+
+function storeSnapshots(all: Record<string, SearchSnapshot>) {
+  /* Newest first, and only as many as fit. */
+  const kept: Record<string, SearchSnapshot> = {};
+  let bytes = 2;
+  for (const [k, v] of Object.entries(all).sort((a, b) => (b[1].savedAt || '').localeCompare(a[1].savedAt || ''))) {
+    const size = JSON.stringify(v).length + k.length + 4;
+    if (bytes + size > SNAPSHOT_BYTES) continue;
+    kept[k] = v;
+    bytes += size;
+  }
+  try { localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(kept)); } catch { /* storage full or blocked */ }
+}
+
+export function loadSnapshot(s: Pick<SavedSearch, 'source' | 'trade' | 'place'>): SearchSnapshot | null {
+  if (!keepable(s.source)) return null;
+  const snap = loadSnapshots()[snapshotKey(s)];
+  return snap && Array.isArray(snap.results) ? snap : null;
+}
+
+export function saveSnapshot(snap: SearchSnapshot): void {
+  if (!keepable(snap.source) || !keepable(snap.answered)) return;
+  const all = loadSnapshots();
+  all[snapshotKey(snap)] = snap;
+  /* Only searches still in the history keep their results. */
+  const live = new Set(loadSearches().map(snapshotKey));
+  for (const k of Object.keys(all)) if (!live.has(k)) delete all[k];
+  storeSnapshots(all);
+}
+
+function pruneSnapshots(history: SavedSearch[]) {
+  const all = loadSnapshots();
+  const live = new Set(history.map(snapshotKey));
+  let changed = false;
+  for (const k of Object.keys(all)) if (!live.has(k)) { delete all[k]; changed = true; }
+  if (changed) storeSnapshots(all);
 }

@@ -113,12 +113,25 @@ export function leadScore(p: Prospect, email: string, v: Verdict | undefined, pe
 /* ── What a check found, in words ─────────────────────────────────────── */
 
 export const STATUS_LABEL: Record<CheckStatus, string> = {
-  valid: 'Verified',
-  domain_ok: 'Domain OK',
+  valid: 'Contact verified',
+  domain_ok: 'Contact checked',
   risky: 'Risky',
   invalid: 'Invalid',
   unknown: 'Not checked',
 };
+
+/*
+ * "Contact verified" only for a mailbox a verifier said will take the mail;
+ * a domain-level check — format, domain, mail server — is "Contact checked".
+ * Calling the second "verified" would tell somebody an address cannot bounce
+ * when nobody asked the mailbox. Both carry the day they were checked.
+ */
+export function checkLabel(v: Verdict): string {
+  const day = v.checkedAt ? ` · ${new Date(v.checkedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+  if (v.status === 'valid') return `Contact verified${day}`;
+  if (v.status === 'domain_ok') return `Contact checked${day}`;
+  return `${STATUS_LABEL[v.status]}${v.status === 'unknown' ? '' : day}`;
+}
 
 const REASONS: Record<string, string> = {
   mailbox_exists: 'The mail server confirmed this mailbox exists.',

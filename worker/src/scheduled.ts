@@ -20,7 +20,7 @@
 import { businessFor, personalise, textToHtml, type Business } from './lib/mergeFields';
 import { signTrackedLinks } from './lib/trackSign';
 import type { Env } from './lib/db';
-import { dataGet, dataPut } from './lib/db';
+import { dataGet, dataPut, dataUpdate } from './lib/db';
 import { logDelivery } from './lib/deliveryLog';
 import { loadMailbox } from './routes/mailbox';
 import { loadSmsConfig, sendSms } from './lib/sms';
@@ -370,6 +370,7 @@ export async function runScheduledSends(env: Env): Promise<TickReport> {
     report.accounts++;
     try {
       await runAccount(env, row.account_id, report);
+      await runOneOffEmails(env, row.account_id, report);
     } catch (e) {
       /* One workspace's bad data must not stop every other workspace's mail. */
       note(report, row.account_id, `This workspace's turn failed — ${e instanceof Error ? e.message : String(e)}`);
@@ -377,6 +378,95 @@ export async function runScheduledSends(env: Env): Promise<TickReport> {
   }
 
   return report;
+}
+
+/* ── One email to one contact, scheduled for later ───────────────────────────
+ *
+ * Contacts → Email → "Send later" writes a row with `status: 'scheduled'` into
+ * `crm_contact_emails`, and only the browser's due-work loop sent it — so an
+ * email scheduled for Monday morning went out whenever somebody next opened
+ * the app. This sends it from here, with nobody signed in.
+ *
+ * It waits until a row is ten minutes overdue. With the app open the
+ * browser's loop sends a due row within a minute and syncs that it did, so a
+ * row still scheduled ten minutes later is one no browser is going to send;
+ * sending sooner would race an open tab and the contact would get it twice.
+ *
+ * Each row is claimed before it is sent (`sending`, compare-and-swap on the
+ * blob), so two ticks — or a tick and a browser save — cannot both send it,
+ * and its outcome is written once the provider has answered: `sent`, or
+ * `failed` with the reason. A failed row is not retried — the same as the
+ * browser, where a failure is shown on the contact for a person to resend.
+ */
+const ONE_OFF_GRACE_MS = 10 * 60_000;
+const SUPPRESS_KEY = 'crm_suppression_list';
+
+interface ScheduledEmail {
+  id: string; contactId: string; subject?: string; body?: string; status: string;
+  scheduledFor?: string; toEmail?: string; sentAt?: string; error?: string; channel?: string;
+}
+
+async function runOneOffEmails(env: Env, accountId: string, report: TickReport): Promise<void> {
+  const raw = await dataGet(env.DB, accountId, EMAILS_KEY);
+  if (!raw || !raw.includes('"scheduled"')) return;
+  const cutoff = Date.now() - ONE_OFF_GRACE_MS;
+  const isDue = (r: ScheduledEmail) => r.status === 'scheduled' && !!r.scheduledFor
+    && new Date(r.scheduledFor).getTime() <= cutoff && r.channel !== 'sms';
+  if (!parseJson<ScheduledEmail[]>(raw, []).some(isDue)) return;
+
+  const mailbox = await loadMailbox(env, accountId);
+  if (!canSend(mailbox)) {
+    note(report, accountId, 'An email scheduled for one contact is due, but this workspace has no working mailbox. Connect one in Settings → Email & SMS.');
+    return;
+  }
+
+  /* Claim first. Whatever is claimed here is sent below and nowhere else. */
+  let claimed: ScheduledEmail[] = [];
+  const ok = await dataUpdate(env.DB, accountId, EMAILS_KEY, cur => {
+    const rows = parseJson<ScheduledEmail[]>(cur, []);
+    claimed = rows.filter(isDue).slice(0, MAX_SENDS_PER_ACCOUNT);
+    if (!claimed.length) return null;
+    const ids = new Set(claimed.map(r => r.id));
+    return JSON.stringify(rows.map(r => (ids.has(r.id) ? { ...r, status: 'sending' } : r)));
+  });
+  if (!ok || !claimed.length) return;
+
+  const contacts = parseJson<Contact[]>(await dataGet(env.DB, accountId, CONTACTS_KEY), []);
+  const suppressed = new Set(parseJson<{ email?: string }[]>(await dataGet(env.DB, accountId, SUPPRESS_KEY), [])
+    .map(x => String(x.email ?? '').toLowerCase()).filter(Boolean));
+  const biz = await businessFor(env, accountId, null, mailbox!.from.name ?? '');
+  const outcome = new Map<string, { status: string; error?: string; sentAt?: string }>();
+
+  for (const em of claimed) {
+    const contact = contacts.find(c => c.id === em.contactId);
+    const to = String(em.toEmail || contact?.email || '').trim().toLowerCase();
+    if (!to) { outcome.set(em.id, { status: 'failed', error: 'The contact has no email address.' }); continue; }
+    if (suppressed.has(to)) { outcome.set(em.id, { status: 'failed', error: `${to} is on the do-not-email list, so it was not sent.` }); continue; }
+    const subject = personalise(em.subject ?? '', contact ?? {}, biz);
+    const html = textToHtml(personalise(em.body ?? '', contact ?? {}, biz));
+    const r = await deliver(mailbox!, {
+      fromName: mailbox!.from.name || 'CRM',
+      fromEmail: fromAddressOf(mailbox!),
+      to, subject,
+      html: await signTrackedLinks(env, html),
+      replyTo: mailbox!.from.replyTo || undefined,
+    });
+    await logDelivery(env, accountId, {
+      channel: 'email', source: 'manual', sourceId: em.id, sourceName: 'Scheduled email',
+      stepIndex: 0, contactId: String(em.contactId ?? ''), recipient: to, subject,
+      status: r.ok ? 'sent' : 'failed', detail: r.error ?? '', sentFrom: mailbox!.from.email ?? '',
+    });
+    if (r.ok) { report.sent++; outcome.set(em.id, { status: 'sent', sentAt: new Date().toISOString() }); }
+    else { report.failed++; outcome.set(em.id, { status: 'failed', error: r.error || 'Send failed' }); note(report, accountId, `${to} — ${(r.error || 'Send failed').slice(0, 140)}`); }
+  }
+
+  await dataUpdate(env.DB, accountId, EMAILS_KEY, cur => {
+    const rows = parseJson<ScheduledEmail[]>(cur, []);
+    return JSON.stringify(rows.map(r => {
+      const o = outcome.get(r.id);
+      return o && r.status === 'sending' ? { ...r, ...o, error: o.error } : r;
+    }));
+  });
 }
 
 /* ── Campaigns that start on their own ───────────────────────────────────── */
