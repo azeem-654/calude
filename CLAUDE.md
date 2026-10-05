@@ -875,7 +875,16 @@ also read by the marketing-site teaser (`data-pc-teaser`, ≥720px wide): a
 see-through frosted card above the launcher on **every page load** (closing it
 hides it for that page only — nothing about a dismissal is remembered), back
 when the widget is closed, its rows sliding in, the first icon breathing and
-each icon in a small loop of its own — none of it under reduced motion. `CornerHelp` names the same options. The owner's photo and name are
+each icon in a small loop of its own — none of it under reduced motion.
+The launcher itself has two looks: on the site (`data-pc-teaser`) the owner's
+reference design — a pill of stacked frosted glass (coloured sheet edges
+underneath, cyan → white → pink → peach tint, dark text) with a round glass
+lens holding a soft bloom of petals; the tint drifts, the bloom turns, a light
+passes over, the pill floats, and the blur deepens while the page scrolls. In
+the app it is plain and still, because a button moving in the corner all day
+is an annoyance; `ProtectedCentralChat.appMode()` switches a widget loaded
+signed out (the card goes too), and HelpLauncher calls it whenever somebody
+is signed in. `CornerHelp` names the same options. The owner's photo and name are
 per widget (`agent_name`; the photo via `engagement.php widget_avatar`,
 checked by magic bytes, PNG/JPEG ≤256px, served at
 `/api/widget-avatar.php?k=<random key>`, `lib/widgetAvatar.ts`) and reach the
