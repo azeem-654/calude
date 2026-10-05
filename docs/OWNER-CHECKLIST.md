@@ -1092,3 +1092,19 @@ hours, plus whenever somebody presses Refresh.
    "Mark as replied"). Nothing pretends to have posted.
 6. Once approved: Reviews → Settings → Review Sources → **Connect Google
    Business Profile** → choose the location. Tick this item off here.
+
+### 27. The phone apps — added 2026-10-05
+
+Two apps, Android and iPhone: **Protected Central** (the whole product) and
+**PC Support** (calls, screen shares, chats and tickets, with the phone ringing
+even when the app is closed). Everything is ready to publish; what is left is
+yours because it needs your store accounts. The click-by-click is
+**docs/MOBILE-APPS.md**:
+
+- [ ] Part 0 — install the two Android `.apk` files on your phone and try them.
+- [ ] Part 1 — Google Play developer account ($25 once) and Apple Developer Program ($99/yr).
+- [ ] Part 2.1 — the four `ANDROID_*` GitHub secrets (the upload key was sent to you — keep it safe).
+- [ ] Part 2.2–2.6 — create both apps in Play Console, upload the `.aab` files, listing, app content.
+- [ ] Part 3 — register the two bundle IDs, create both apps in App Store Connect, the four Apple GitHub secrets, run **Build phone apps**, submit.
+- [ ] Part 4 — push alerts: Firebase (`GOOGLE_SERVICES_JSON` in GitHub, `FCM_SERVICE_ACCOUNT` in Cloudflare) and the Apple push key (`APNS_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID` in Cloudflare), on both Workers. Then rebuild Android.
+- [ ] Make the review account (`review@protectedcentral.com`) both stores ask for.

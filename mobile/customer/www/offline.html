@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Protected Central — offline</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(120% 80% at 10% 0%, #1b2a7a 0%, #0b1030 55%, #060816 100%); color: #e8eaf6; font: 16px/1.5 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; padding: 24px; box-sizing: border-box; text-align: center; }
+  .card { max-width: 340px; display: grid; gap: 14px; justify-items: center; }
+  svg { width: 56px; height: 56px; }
+  h1 { margin: 0; font-size: 21px; }
+  p { margin: 0; color: #aab0d6; }
+  button { margin-top: 6px; border: 0; border-radius: 12px; padding: 12px 20px; font: 600 15px system-ui, sans-serif; background: #c8f560; color: #10131d; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z" fill="#c8f560"/><circle cx="12" cy="11" r="3" fill="#0b1030"/></svg>
+    <h1>No connection</h1>
+    <p>Protected Central needs the internet to reach your workspace. Your work is safe on the server — nothing was lost.</p>
+    <button type="button" onclick="location.replace('https://app.protectedcentral.com/')">Try again</button>
+  </div>
+</body>
+</html>

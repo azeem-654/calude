@@ -1,0 +1,10 @@
+# Keys and per-install service files never live in the repository — they are
+# GitHub secrets (docs/MOBILE-APPS.md) or stay on the owner's computer.
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+passwords.txt

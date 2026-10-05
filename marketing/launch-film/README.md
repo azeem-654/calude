@@ -155,3 +155,24 @@ node abr-check.mjs       # ABR OK
 
 The voice is a neural voice, not a person — record a human read before paid
 media. The music is synthesised (`mix.mjs`), so there is nothing to clear.
+
+## Paid-social cut-downs (`ads.mjs`, 2026-10-05)
+
+`node ads.mjs [cut…]` in the kit directory makes, from the v4 master:
+
+| Cut | What it is | Shapes |
+|---|---|---|
+| `15s_autopilot` | hook → "tell AI what you want" → trial card | 9:16, 4:5, 1:1, 16:9 |
+| `15s_prospecting` | "Need more customers? Say who you sell to" → trial card | 9:16, 4:5, 1:1, 16:9 |
+| `30s` | hook → Autopilot → Prospecting → trial card | 9:16, 4:5, 1:1, 16:9 |
+| `60s` | adds the build, the server running it, and the whole Prospecting story | 9:16, 4:5, 1:1, 16:9 |
+| `full` | the whole film re-laid for phones (the 16:9 master is the original) | 9:16, 4:5 |
+
+Ranges are whole voice lines, starting just after each scene's 0.45 s
+cross-fade. In 9:16, 4:5 and 1:1 a product scene is **re-laid, not cropped**:
+the film's own words (left) stacked above its product window (right), each
+feathered into a canvas made from the frame's own background. 9:16 keeps the
+words below the top 14% where Reels and Stories draw their own rows. Title
+and end cards are kept whole. The audio is re-mixed from the same voice files,
+cues and music (`mix.mjs`), so no word is cut. Every cut comes with an `.srt`
+of the voice, to upload as captions; most feed video plays without sound.

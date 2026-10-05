@@ -22,6 +22,7 @@
  *  - **Everything is rate limited per address**, because every endpoint here
  *    creates rows for anonymous callers.
  */
+import { alertFor, pushToWorkspace } from '../lib/push';
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
@@ -328,6 +329,13 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
        of section 54 — an agent who has picked up a conversation is not competing
        with a bot for the next word. */
     if (conv.handledBy !== 'ai') {
+      /* …and the person is told on their phone — once every two minutes per
+         conversation, so a visitor typing five lines is one buzz, not five. */
+      const quiet = await rateLimit(env, { what: 'push-chat', who: String(conv.id), max: 1, windowSeconds: 120 }).catch(() => ({ allowed: false }));
+      if (quiet.allowed) {
+        const alert = alertFor('chat.message', String(conv.id), text.slice(0, 160));
+        if (alert) await Promise.race([pushToWorkspace(env, accountId, alert).catch(() => null), new Promise(r => setTimeout(r, 4000))]);
+      }
       return withCors(json({ success: true, handedOver: true, message: mine, messages: [] }));
     }
 

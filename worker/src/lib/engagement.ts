@@ -6,6 +6,7 @@
  * what happened, and tell the rest of the app. Doing that once here is what
  * stops three channels drifting into three different ideas of what a lead is.
  */
+import { alertFor, pushToWorkspace } from './push';
 import { nowIso, type Env } from './db';
 
 export const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -123,6 +124,11 @@ export async function recordEvent(env: Env, accountId: string, e: {
     /* A timeline entry must never be the thing that fails a booking or loses a
        lead. The capture itself has already been written by the time this runs. */
   }
+  /* The ones somebody should hear about on their phone: a call, a screen
+     share, a chat handed to a person, a new ticket (lib/push.ts). Bounded and
+     never thrown — the visitor's request is waiting on this. */
+  const alert = alertFor(e.kind, e.refId ?? '', String(e.summary ?? ''));
+  if (alert) await Promise.race([pushToWorkspace(env, accountId, alert).catch(() => null), new Promise(r => setTimeout(r, 4000))]);
 }
 
 /**

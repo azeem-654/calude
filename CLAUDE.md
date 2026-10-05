@@ -882,6 +882,32 @@ checked by magic bytes, PNG/JPEG ≤256px, served at
 public config as `agentName` / `agentAvatar` / `businessName`.
 `npm run test:voicecall` (same arguments as `test:livehelp`, plus `PERSIST=`).
 
+## Phone apps — two Capacitor shells around the live site
+
+`mobile/` holds **Protected Central** (`customer/`, `com.protectedcentral.app`)
+and **PC Support** (`support/`, `com.protectedcentral.support`), Android and
+iPhone each; `mobile/README.md` for developers, `docs/MOBILE-APPS.md` for the
+owner's store steps. Both load app.protectedcentral.com (`server.url`), so a
+web release is in the apps at once and the cookie session stays same-origin.
+They append `ProtectedCentralApp/1.0 (<customer|support>; <android|ios>[; push])`
+to the user agent; `services/nativeApp.ts` reads it and **hides plan purchases**
+(`canBuyPlans` — Apple 3.1.1 / Play billing), **hides Google sign-in** (Google
+refuses web-view OAuth), and `shared/NativeBridge.tsx` registers for push and
+opens the support app on the inbox. Never call the push plugin without
+`; push`: Android's crashes the app without `google-services.json`
+(`build.sh` adds the flag only when the file is there).
+**Push** (`lib/push.ts`, `/api/push.php`, `crm_push_devices`, migration 0065):
+iPhone straight to APNs (`APNS_KEY`/`APNS_KEY_ID`/`APNS_TEAM_ID`), Android via
+FCM (`FCM_SERVICE_ACCOUNT`); calls, screen shares, escalated chats and tickets
+from `recordEvent`, a visitor's message on a human-held chat from `engage.ts`
+(one per two minutes per conversation); off and said so on Platform services
+until the secrets are set. Native changes live in `mobile/native.mjs`
+(idempotent — re-run after `npx cap add`); builds in
+`.github/workflows/mobile.yml` (Android signed from `ANDROID_KEYSTORE_*`;
+iPhone compiled unsigned, or archived and uploaded to TestFlight with the App
+Store Connect key). Keys never enter the repository. `npm run test:push`
+(pure, real signatures against mocks), `npm run test:nativeapp` (fresh D1).
+
 ## Trials, sign-ups and keeping trial customers
 
 **Every sign-up is on a 7-day trial, no card** (`worker/src/lib/trial.ts`).

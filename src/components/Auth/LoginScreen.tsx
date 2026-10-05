@@ -1,3 +1,4 @@
+import { inNativeApp } from '../../services/nativeApp';
 import { useEffect, useRef, useState } from 'react';
 import { Mail, ArrowRight, ArrowLeft, Loader, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { login, bootstrap, register, hasAnyUser, authStatus, requestLoginCode, verifyLoginCode, googleStart, lastSignIn, forgetSignIn, SIGNED_OUT_REASON, type LastSignIn } from '../../services/auth';
@@ -236,7 +237,8 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
       }
       setSignupsOpen(st.signupsOpen !== false);
       setTestLogin(st.testLogin ?? null);
-      setGoogle(st.google);
+      /* Google refuses sign-in inside an app's web view; the email code and password remain. */
+      setGoogle(st.google && !inNativeApp());
       /* No way to send a code yet: sign-up opens on the password form, and the
          code buttons are not drawn, rather than offering a path that can only
          answer "we cannot send codes". */

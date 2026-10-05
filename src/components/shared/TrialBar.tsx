@@ -17,6 +17,7 @@
  * trials, or when the server could not be asked. Locking somebody out because
  * a request failed would be the worst way for this to be wrong.
  */
+import { canBuyPlans } from '../../services/nativeApp';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, CalendarCheck, Check, Clock, Loader, Lock, X } from 'lucide-react';
@@ -54,7 +55,7 @@ export default function TrialBar() {
       return (
         <div role="status" style={{ ...BAR, background: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' }}>
           <Lock size={14} /> <b>Your free trial has ended.</b>
-          <span>Choose a plan to switch the AI back on — everything you made is still here.</span>
+          <span>{canBuyPlans() ? 'Choose a plan to switch the AI back on — everything you made is still here.' : 'Everything you made is still here.'}</span>
         </div>
       );
     }
@@ -69,14 +70,14 @@ export default function TrialBar() {
     <div role="status" style={{ ...BAR, ...(lastDays ? { background: '#fff7ed', color: '#9a3412', borderColor: '#fed7aa' } : {}) }}>
       <Clock size={14} />
       <b>{t.daysLeft === 1 ? 'Last day' : `${t.daysLeft} days left`} in your free trial.</b>
-      <span style={{ color: 'inherit', opacity: 0.8 }}>No card needed until you choose a plan.</span>
+      {canBuyPlans() && <span style={{ color: 'inherit', opacity: 0.8 }}>No card needed until you choose a plan.</span>}
       <span style={{ display: 'inline-flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
         {acct?.kickoffUrl && (
           <a href={acct.kickoffUrl} target="_blank" rel="noopener noreferrer" style={GHOST}>
             <CalendarCheck size={13} /> Book a free kickoff call
           </a>
         )}
-        <button type="button" style={SOLID} onClick={() => nav('/billing')}>Choose a plan <ArrowRight size={13} /></button>
+        {canBuyPlans() && <button type="button" style={SOLID} onClick={() => nav('/billing')}>Choose a plan <ArrowRight size={13} /></button>}
         {!lastDays && (
           <button type="button" aria-label="Hide for now" style={{ ...GHOST, padding: 6 }}
             onClick={() => { setClosed(true); try { sessionStorage.setItem(CLOSED_KEY, '1'); } catch { /* private mode */ } }}>
@@ -113,11 +114,11 @@ function TrialEnded({ kickoffUrl, onBilling, onExport }: { kickoffUrl: string; o
           Your 7-day free trial has ended
         </h2>
         <p style={{ margin: '8px 0 20px', color: '#5b6270', fontSize: 14.5, lineHeight: 1.6 }}>
-          Everything you built is still here. Choose a plan to keep Autopilot, the AI writing and your workflows running.
+          Everything you built is still here.{canBuyPlans() ? ' Choose a plan to keep Autopilot, the AI writing and your workflows running.' : ' Plans are not available in the app.'}
           You can still download all of it, at any time, from Settings → Security &amp; Privacy.
         </p>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
-          {PLANS.map((p, i) => (
+        <div style={{ display: canBuyPlans() ? 'grid' : 'none', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
+          {canBuyPlans() && PLANS.map((p, i) => (
             <div key={p.id} style={{ border: i === 1 ? '2px solid #17191c' : '1px solid #e3e6ea', borderRadius: 16, padding: 16, display: 'grid', gap: 10, alignContent: 'start' }}>
               <div style={{ fontWeight: 800 }}>{p.name}</div>
               <div style={{ fontSize: 26, fontWeight: 800 }}>${p.price}<small style={{ fontSize: 13, color: '#6b7280', fontWeight: 600 }}>/month</small></div>

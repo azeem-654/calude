@@ -1,0 +1,12 @@
+{
+  "name": "protected-central-mobile",
+  "private": true,
+  "description": "The two native shells \u2014 Protected Central and Protected Central Support \u2014 around app.protectedcentral.com. See README.md.",
+  "scripts": {
+    "sync": "npm run sync -w customer && npm run sync -w support"
+  },
+  "workspaces": [
+    "customer",
+    "support"
+  ]
+}

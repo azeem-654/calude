@@ -18,6 +18,7 @@
  * purpose (billing.ts `config`): a reseller's customers should not learn whose
  * rails the product runs on, and it may not be Stripe at all.
  */
+import { canBuyPlans } from '../../services/nativeApp';
 import { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle2, AlertTriangle, Loader, ExternalLink, ShieldCheck, Clock, Lock } from 'lucide-react';
 import { getSession } from '../../services/auth';
@@ -120,7 +121,7 @@ export default function ClientBilling() {
         </div>
         {status.line && <p style={{ color: '#3f4247', fontSize: 14, lineHeight: 1.55, margin: '12px 0 0' }}>{status.line}</p>}
 
-        {paid && (
+        {paid && canBuyPlans() && (
           <div style={{ marginTop: 18 }}>
             <p style={{ color: MUTED, fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>
               Update your card, download invoices or cancel in the payment provider's secure portal.
@@ -134,7 +135,13 @@ export default function ClientBilling() {
         )}
       </div>
 
-      {!paid && !owner && acct !== undefined && (
+      {/* In the phone apps plans are not sold (services/nativeApp.ts — the stores' billing rules). */}
+      {!canBuyPlans() && !owner && (
+        <p style={{ color: MUTED, fontSize: 13.5, lineHeight: 1.55, margin: '0 0 18px' }}>
+          Plans and payments are not available in the app. Everything in your workspace works here the same as anywhere else.
+        </p>
+      )}
+      {!paid && !owner && acct !== undefined && canBuyPlans() && (
         <>
           <div style={{ fontSize: 15, fontWeight: 800, color: INK, margin: '4px 0 12px' }}>Choose a plan</div>
           {payments === false && (

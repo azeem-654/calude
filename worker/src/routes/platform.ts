@@ -21,6 +21,7 @@
  *
  * Owner only, on the server. A customer forcing the tab open gets a 403.
  */
+import { apnsConfigured, serviceAccount } from '../lib/push';
 import { geoState } from './geoapify';
 import { verifierState } from './emailVerifier';
 import { registerState } from './companiesHouse';
@@ -290,6 +291,27 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
       detail: turn ? 'TURN_KEY_ID and TURN_KEY_API_TOKEN are set on this Worker.' : 'Optional. Without it a few customers behind strict firewalls cannot share their screen; Google Meet is the fallback.',
       checkedAt: null, lastError: '',
       where: { label: 'Cloudflare → Workers & Pages → Settings → Variables and Secrets (OWNER-CHECKLIST section 25)' },
+    });
+    const fcm = !!serviceAccount(env);
+    services.push({
+      id: 'push-android', name: 'Android phone alerts (Firebase Cloud Messaging)', optional: true,
+      powers: 'The Android apps ringing for calls, waiting chats and new tickets with the app closed',
+      state: fcm ? 'unchecked' : env.FCM_SERVICE_ACCOUNT ? 'error' : 'off',
+      detail: fcm ? 'FCM_SERVICE_ACCOUNT is set on this Worker.'
+        : env.FCM_SERVICE_ACCOUNT ? 'FCM_SERVICE_ACCOUNT is set but is not a service-account JSON key (it needs client_email, private_key and project_id).'
+          : 'Optional. Without it the Android apps alert only while they are open. docs/MOBILE-APPS.md, part 4.',
+      checkedAt: null, lastError: '',
+      where: { label: 'Cloudflare → Workers & Pages → Settings → Variables and Secrets' },
+    });
+    const apns = apnsConfigured(env);
+    services.push({
+      id: 'push-ios', name: 'iPhone alerts (Apple Push Notifications)', optional: true,
+      powers: 'The iPhone apps ringing for calls, waiting chats and new tickets with the app closed',
+      state: apns ? 'unchecked' : 'off',
+      detail: apns ? `APNS_KEY, APNS_KEY_ID and APNS_TEAM_ID are set${env.APNS_SANDBOX ? ' (sandbox — for builds run from Xcode)' : ''}.`
+        : 'Optional. Without it the iPhone apps alert only while they are open. docs/MOBILE-APPS.md, part 4.',
+      checkedAt: null, lastError: '',
+      where: { label: 'Cloudflare → Workers & Pages → Settings → Variables and Secrets' },
     });
     const voices = Object.keys(VOICE_PROVIDERS).length;
     services.push({

@@ -14,6 +14,7 @@ import { Loader } from 'lucide-react';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import DueWorkRunner from './components/shared/DueWorkRunner';
 import ProspectSync from './components/shared/ProspectSync';
+import NativeBridge from './components/shared/NativeBridge';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import AiProspecting from './components/Prospecting/AiProspecting';
@@ -148,6 +149,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <IconRail />
       <DueWorkRunner />
       <ProspectSync />
+      <NativeBridge />
       <HelpLauncher />
       <CornerHelp />
       {/* The 62px is the floating icon rail's width. The rail is hidden below

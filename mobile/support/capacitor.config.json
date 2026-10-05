@@ -1,0 +1,42 @@
+{
+  "appId": "com.protectedcentral.support",
+  "appName": "PC Support",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.protectedcentral.com",
+    "allowNavigation": [
+      "app.protectedcentral.com",
+      "testing.protectedcentral.com"
+    ],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "appendUserAgent": "ProtectedCentralApp/1.0 (support; android)",
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "ios": {
+    "appendUserAgent": "ProtectedCentralApp/1.0 (support; ios; push)",
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    },
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "backgroundColor": "#0b1030",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0b1030",
+      "overlaysWebView": false
+    }
+  }
+}

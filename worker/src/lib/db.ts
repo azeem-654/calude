@@ -53,6 +53,22 @@ export interface Env {
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
   /**
+   * Push notifications to the phone apps (lib/push.ts): a Google service
+   * account's whole JSON key, with the Firebase Cloud Messaging role. A
+   * Cloudflare secret; unset, nothing is pushed and Platform services says so.
+   * FCM_BASE / FCM_TOKEN_URL point a test at a mock.
+   */
+  FCM_SERVICE_ACCOUNT?: string;
+  FCM_BASE?: string;
+  FCM_TOKEN_URL?: string;
+  /** iPhone alerts straight to Apple (lib/push.ts): the .p8 key's text, its id and the team id. */
+  APNS_KEY?: string;
+  APNS_KEY_ID?: string;
+  APNS_TEAM_ID?: string;
+  /** Set to send to Apple's sandbox (a build run from Xcode); unset for TestFlight and the App Store. */
+  APNS_SANDBOX?: string;
+  APNS_BASE?: string;
+  /**
    * Google endpoints for Reputation (lib/reputation.ts). Unset in production;
    * test/reputation.e2e.mjs points them at a local mock so the requests this
    * sends can be checked, not just a mock of this module's own answers.

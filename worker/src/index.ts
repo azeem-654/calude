@@ -53,6 +53,7 @@ import { handleGeoapify } from './routes/geoapify';
 import { handleEmailVerifier } from './routes/emailVerifier';
 import { handleCompaniesHouse } from './routes/companiesHouse';
 import { handleFinders } from './routes/finders';
+import { handlePush } from './routes/push';
 import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
 import { handleCloud } from './routes/cloud';
@@ -101,6 +102,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/companies-house.php': handleCompaniesHouse,
   /* A project's prospects and its daily prospect finder (prospectFinderTick.ts). */
   '/api/finders.php': handleFinders,
+  '/api/push.php': handlePush,
   /* A found business saying yes to texts — public, signed per contact (lib/smsConsent.ts). */
   '/api/sms-optin.php': handleSmsOptin,
   '/api/affiliate.php': handleAffiliate,
