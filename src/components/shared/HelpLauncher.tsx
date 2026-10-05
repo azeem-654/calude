@@ -57,8 +57,22 @@ function loadHouseKey(): Promise<string> {
   return houseKey;
 }
 
+/* The widget loaded signed out (the site look: glass, motion, the card) and
+   somebody has now signed in without a reload: the app gets the plain, still
+   launcher — a button moving in the corner all day is the annoyance the owner
+   asked to be rid of. */
+type PcChat = { appMode?: () => void };
+function quietWidget() {
+  const w = (window as unknown as { ProtectedCentralChat?: PcChat }).ProtectedCentralChat;
+  if (w?.appMode) { w.appMode(); return; }
+  window.addEventListener('pc-widget-ready', () => (window as unknown as { ProtectedCentralChat?: PcChat }).ProtectedCentralChat?.appMode?.(), { once: true });
+}
+
 function inject(key: string, who: { name: string; email: string; workspace: string } | null) {
-  if (document.querySelector('script[data-pc-widget]')) return;
+  if (document.querySelector('script[data-pc-widget]')) {
+    if (who) quietWidget();
+    return;
+  }
   const s = document.createElement('script');
   s.src = `${API_BASE || window.location.origin}/widget.js`;
   s.async = true;

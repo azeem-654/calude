@@ -1644,6 +1644,7 @@
       if (lead) launcher.appendChild(lead);
       else {
         var bub = el('span', 'display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.18);flex-shrink:0;');
+        bub.className = 'pc-launch-ic';
         bub.appendChild(icon(onlyChat() ? ICONS.chat : ICONS.help, 18));
         launcher.appendChild(bub);
       }
@@ -1695,6 +1696,7 @@
 
     root.appendChild(panel); root.appendChild(launcher);
     document.body.appendChild(root);
+    siteLauncher();
     teaser();
     /* The widget arrives after the page; a page waiting to offer its options
        is told rather than left polling. */
@@ -1769,7 +1771,7 @@
     document.head.appendChild(st);
   }
   function teaser() {
-    if (!TEASER || onlyChat() || teaserClosed) return;
+    if (!TEASER || !SITE || onlyChat() || teaserClosed) return;
     teaserTimer = window.setTimeout(function () {
       if (state.open || live || teaserCard || window.innerWidth < 720 || window.innerHeight < 560) return;
       var opts = homeOptions().filter(function (o) { return o.view !== 'status'; }).slice(0, 4);
@@ -1836,9 +1838,68 @@
     if (teaserCard) { teaserCard.remove(); teaserCard = null; }
   }
 
+  /*
+   * The launcher on the marketing site (`data-pc-teaser`): frosted glass the
+   * page shows through, its colour drifting slowly, a light sweeping across
+   * it now and then, a soft glow breathing out of it and the icon bobbing —
+   * so a visitor notices that somebody can be reached. The blur deepens while
+   * the page scrolls under it ("dynamic"), then settles.
+   *
+   * Inside the app none of this: somebody working on their dashboard all day
+   * does not want a button moving in the corner, so the app's launcher is the
+   * plain solid one, and `appMode()` (HelpLauncher, on sign-in) takes the
+   * site look off a widget that was loaded signed out. Nothing moves for
+   * somebody who asked for less motion.
+   */
+  var SITE = TEASER && !COMPACT;
+  var scrollTimer = 0;
+  function onScrollBlur() {
+    if (!SITE || !launcher) return;
+    launcher.classList.add('pc-launch-scroll');
+    window.clearTimeout(scrollTimer);
+    scrollTimer = window.setTimeout(function () { if (launcher) launcher.classList.remove('pc-launch-scroll'); }, 450);
+  }
+  function siteLauncher() {
+    if (!SITE || !launcher) return;
+    if (!document.getElementById('pc-launch-css')) {
+      var a = accent();
+      var st = document.createElement('style');
+      st.id = 'pc-launch-css';
+      st.textContent = ''
+        + '@keyframes pcLaunchDrift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}'
+        + '@keyframes pcLaunchGlow{0%{box-shadow:0 12px 30px -10px ' + a + '99,0 0 0 0 ' + a + '55}70%{box-shadow:0 12px 30px -10px ' + a + '99,0 0 0 12px ' + a + '00}100%{box-shadow:0 12px 30px -10px ' + a + '99,0 0 0 0 ' + a + '00}}'
+        + '@keyframes pcLaunchSheen{0%{transform:translateX(-140%) skewX(-22deg)}55%,100%{transform:translateX(360%) skewX(-22deg)}}'
+        + '@keyframes pcLaunchBob{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-2px) rotate(-8deg)}60%{transform:translateY(0) rotate(6deg)}}'
+        + '.pc-launch-site{position:relative;overflow:hidden;isolation:isolate;'
+        + 'background:linear-gradient(115deg,' + a + 'b3,' + a + '73 45%,#22d3ee73 70%,' + a + 'b3)!important;background-size:240% 240%!important;'
+        + '-webkit-backdrop-filter:blur(12px) saturate(1.7);backdrop-filter:blur(12px) saturate(1.7);'
+        + 'border:1px solid rgba(255,255,255,.42)!important;text-shadow:0 1px 2px rgba(15,23,42,.25);'
+        + 'transition:transform .2s ease,-webkit-backdrop-filter .35s ease,backdrop-filter .35s ease;'
+        + 'animation:pcLaunchDrift 7s ease-in-out infinite,pcLaunchGlow 2.8s ease-out infinite}'
+        + '.pc-launch-site::after{content:"";position:absolute;top:-20%;bottom:-20%;left:0;width:38%;z-index:-1;'
+        + 'background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:pcLaunchSheen 4.8s ease-in-out infinite;pointer-events:none}'
+        + '.pc-launch-site .pc-launch-ic{animation:pcLaunchBob 2.4s ease-in-out infinite;transform-origin:50% 70%}'
+        + '.pc-launch-site:hover{transform:translateY(-2px) scale(1.02)}'
+        + '.pc-launch-site.pc-launch-scroll{-webkit-backdrop-filter:blur(20px) saturate(1.9);backdrop-filter:blur(20px) saturate(1.9)}'
+        /* Without backdrop-filter a see-through button over text is unreadable: more solid. */
+        + '@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){.pc-launch-site{background:linear-gradient(115deg,' + a + ',' + a + 'e6 60%,' + a + ')!important}}'
+        + '@media (prefers-reduced-motion: reduce){.pc-launch-site,.pc-launch-site::after,.pc-launch-site .pc-launch-ic{animation:none!important}.pc-launch-site{transition:none}.pc-launch-site:hover{transform:none}}';
+      document.head.appendChild(st);
+    }
+    launcher.classList.add('pc-launch-site');
+    window.addEventListener('scroll', onScrollBlur, { passive: true });
+  }
+
   /* So the page it sits on can open it from its own button — "Contact
      support" in a menu — without drawing a second launcher. */
   window.ProtectedCentralChat = {
+    /* Signed in: the plain launcher, no card, nothing moving (HelpLauncher). */
+    appMode: function () {
+      SITE = false;
+      dropTeaser(true);
+      window.removeEventListener('scroll', onScrollBlur);
+      if (launcher) { launcher.classList.remove('pc-launch-site', 'pc-launch-scroll'); launcher.style.background = accent(); }
+    },
     open: function (view) {
       if (!panel) return;
       if (!state.open) toggle();

@@ -438,6 +438,22 @@ ok('and is see-through', /rgba\(.*, 0?\.\d+\)/.test(tBg), tBg);
 await mk.reload();
 await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
 ok('it is there again on the next page', await teaser.count() === 1);
+/* The launcher on the site: frosted glass, moving in a loop, the blur deepening while the page scrolls. */
+const launch = mk.getByRole('button', { name: /^Open the chat/ });
+const lk = await launch.evaluate(n => { const c = getComputedStyle(n); return { cls: n.className, anim: c.animationName, blur: c.backdropFilter || c.webkitBackdropFilter || '', bg: c.backgroundImage }; });
+ok('on the site the launcher is frosted glass that moves in a loop', /pc-launch-site/.test(lk.cls) && /pcLaunchDrift/.test(lk.anim) && /pcLaunchGlow/.test(lk.anim) && /blur\(12px\)/.test(lk.blur) && /gradient/.test(lk.bg), JSON.stringify(lk));
+await mk.evaluate(() => { document.body.style.minHeight = '3000px'; window.scrollBy(0, 400); });
+await mk.waitForTimeout(80);
+const scrolled = await launch.evaluate(n => n.className);
+ok('…its blur deepens while the page scrolls under it', /pc-launch-scroll/.test(scrolled), scrolled);
+if (process.env.SHOTS) await launch.screenshot({ path: `${process.env.SHOTS}/launcher-site.png` });
+/* Signed in (HelpLauncher calls appMode): plain, still, no card. */
+await mk.evaluate(() => window.ProtectedCentralChat.appMode());
+const quiet = await launch.evaluate(n => { const c = getComputedStyle(n); return { cls: n.className, anim: c.animationName, blur: c.backdropFilter || '' }; });
+ok('in app mode the launcher is plain and still, and the card is gone', !/pc-launch-site/.test(quiet.cls) && quiet.anim === 'none' && !/blur/.test(quiet.blur)
+  && await mk.getByRole('complementary', { name: 'Ways to reach us' }).count() === 0, JSON.stringify(quiet));
+await mk.reload();
+await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
 const glyphs = await teaser.locator('.pc-tease-glyph').evaluateAll(ns => ns.map(n => getComputedStyle(n).animationName));
 ok('each option\'s icon moves in a loop of its own', glyphs.length >= 3 && glyphs.every(a => a && a !== 'none') && new Set(glyphs).size >= 3, JSON.stringify(glyphs));
 await teaser.getByRole('button', { name: 'Dismiss' }).click();
@@ -446,6 +462,20 @@ ok('closed, it stays away on this page', await mk.getByRole('complementary', { n
 await mk.reload();
 await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
 ok('…and is open again on the next load', await teaser.count() === 1);
+{
+  const ctxE = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const appLike = await ctxE.newPage();
+  await appLike.route('http://acme.localhost:9911/**', r => r.fulfill({
+    contentType: 'text/html', body: `${page}<script src="${B}/widget.js" data-pc-widget="${key}" async></script>`,
+  }));
+  await appLike.goto('http://acme.localhost:9911/');
+  const l2 = appLike.getByRole('button', { name: /^Open the chat/ });
+  await l2.waitFor({ timeout: 9000 }).catch(() => undefined);
+  await appLike.waitForTimeout(1500);
+  const still = await l2.evaluate(n => getComputedStyle(n).animationName + '|' + n.className).catch(() => 'missing');
+  ok('inside the app (no data-pc-teaser) the launcher never animates', still.startsWith('none|') && !/pc-launch-site/.test(still), still);
+  await ctxE.close();
+}
 const ctxD = await browser.newContext({ viewport: { width: 390, height: 780 } });
 const phone = await ctxD.newPage();
 await phone.route('http://acme.localhost:9911/**', r => r.fulfill({
