@@ -1649,7 +1649,7 @@
         launcher.appendChild(bub);
       }
       launcher.appendChild(el('span', '', label));
-      if (online) launcher.appendChild(onlineDot(accent()));
+      if (online) { var od = onlineDot(accent()); od.className = 'pc-online-dot'; launcher.appendChild(od); }
     }
     /* "Open the chat" stays at the front of the name for every widget — it
        is what a screen reader user, and every test that drives this, listens
@@ -1861,34 +1861,71 @@
   }
   function siteLauncher() {
     if (!SITE || !launcher) return;
+    /*
+     * The owner's reference: a pill of stacked frosted glass — the sheets
+     * showing as coloured edges underneath — tinted cyan → white → pink →
+     * peach, with a round glass lens on the left holding a soft bloom of
+     * petals, and dark text. The loop is slow: the tint drifts, the bloom
+     * turns and swells, a light passes over the glass, and the whole pill
+     * floats a couple of pixels.
+     */
     if (!document.getElementById('pc-launch-css')) {
-      var a = accent();
       var st = document.createElement('style');
       st.id = 'pc-launch-css';
       st.textContent = ''
         + '@keyframes pcLaunchDrift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}'
-        + '@keyframes pcLaunchGlow{0%{box-shadow:0 12px 30px -10px ' + a + '99,0 0 0 0 ' + a + '55}70%{box-shadow:0 12px 30px -10px ' + a + '99,0 0 0 12px ' + a + '00}100%{box-shadow:0 12px 30px -10px ' + a + '99,0 0 0 0 ' + a + '00}}'
-        + '@keyframes pcLaunchSheen{0%{transform:translateX(-140%) skewX(-22deg)}55%,100%{transform:translateX(360%) skewX(-22deg)}}'
-        + '@keyframes pcLaunchBob{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-2px) rotate(-8deg)}60%{transform:translateY(0) rotate(6deg)}}'
-        + '.pc-launch-site{position:relative;overflow:hidden;isolation:isolate;'
-        + 'background:linear-gradient(115deg,' + a + 'b3,' + a + '73 45%,#22d3ee73 70%,' + a + 'b3)!important;background-size:240% 240%!important;'
-        + '-webkit-backdrop-filter:blur(12px) saturate(1.7);backdrop-filter:blur(12px) saturate(1.7);'
-        + 'border:1px solid rgba(255,255,255,.42)!important;text-shadow:0 1px 2px rgba(15,23,42,.25);'
-        + 'transition:transform .2s ease,-webkit-backdrop-filter .35s ease,backdrop-filter .35s ease;'
-        + 'animation:pcLaunchDrift 7s ease-in-out infinite,pcLaunchGlow 2.8s ease-out infinite}'
-        + '.pc-launch-site::after{content:"";position:absolute;top:-20%;bottom:-20%;left:0;width:38%;z-index:-1;'
-        + 'background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:pcLaunchSheen 4.8s ease-in-out infinite;pointer-events:none}'
-        + '.pc-launch-site .pc-launch-ic{animation:pcLaunchBob 2.4s ease-in-out infinite;transform-origin:50% 70%}'
-        + '.pc-launch-site:hover{transform:translateY(-2px) scale(1.02)}'
-        + '.pc-launch-site.pc-launch-scroll{-webkit-backdrop-filter:blur(20px) saturate(1.9);backdrop-filter:blur(20px) saturate(1.9)}'
-        /* Without backdrop-filter a see-through button over text is unreadable: more solid. */
-        + '@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){.pc-launch-site{background:linear-gradient(115deg,' + a + ',' + a + 'e6 60%,' + a + ')!important}}'
-        + '@media (prefers-reduced-motion: reduce){.pc-launch-site,.pc-launch-site::after,.pc-launch-site .pc-launch-ic{animation:none!important}.pc-launch-site{transition:none}.pc-launch-site:hover{transform:none}}';
+        + '@keyframes pcLaunchFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}'
+        + '@keyframes pcBloom{0%{transform:rotate(0) scale(1)}50%{transform:rotate(180deg) scale(1.14)}100%{transform:rotate(360deg) scale(1)}}'
+        + '.pc-launch-site{position:relative;overflow:visible;isolation:isolate;color:#1e293b!important;font-weight:700!important;font-size:16px!important;letter-spacing:.01em;'
+        + 'padding:7px 24px 7px 7px!important;min-height:56px!important;gap:12px!important;'
+        + 'background:linear-gradient(100deg,rgba(158,235,255,.9) 0%,rgba(255,255,255,.88) 30%,rgba(247,192,238,.88) 66%,rgba(255,214,190,.9) 100%)!important;'
+        + 'background-size:220% 100%!important;border:1px solid rgba(255,255,255,.9)!important;'
+        + '-webkit-backdrop-filter:blur(16px) saturate(1.6);backdrop-filter:blur(16px) saturate(1.6);'
+        /* The stacked sheets: thin coloured edges stepping down under the pill, then the shadow it casts. */
+        + 'box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.45),'
+        + '0 3px 0 -1px rgba(103,232,249,.85),0 6px 0 -2px rgba(196,181,253,.75),0 9px 0 -3px rgba(249,168,212,.65),'
+        + '0 12px 0 -4px rgba(255,255,255,.75),0 28px 44px -18px rgba(30,27,75,.5)!important;'
+        + 'transition:-webkit-backdrop-filter .35s ease,backdrop-filter .35s ease;'
+        + 'animation:pcLaunchDrift 8s ease-in-out infinite,pcLaunchFloat 5s ease-in-out infinite}'
+        + '.pc-launch-site::after{content:"";position:absolute;inset:0;border-radius:inherit;z-index:-1;overflow:hidden;pointer-events:none;'
+        + 'background:linear-gradient(90deg,transparent 0,rgba(255,255,255,.65) 50%,transparent 100%) no-repeat;background-size:34% 100%;'
+        + 'animation:pcLaunchSheenBg 5.5s ease-in-out infinite}'
+        + '@keyframes pcLaunchSheenBg{0%{background-position:-60% 0}55%,100%{background-position:160% 0}}'
+        + '.pc-launch-site:hover{filter:brightness(1.03) saturate(1.1)}'
+        + '.pc-launch-site.pc-launch-scroll{-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8)}'
+        /* The lens and its bloom. */
+        + '.pc-launch-orb{position:relative;width:42px;height:42px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;overflow:hidden;'
+        + 'background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.98),rgba(255,255,255,.62) 58%,rgba(226,232,240,.7));'
+        + 'box-shadow:inset 0 1px 2px rgba(255,255,255,.95),inset 0 -3px 6px rgba(148,163,184,.35),0 2px 6px rgba(15,23,42,.14)}'
+        /* Soft layered petals: two rings of wide, blurred petals, one turned against the other, round a hot centre. */
+        + '.pc-launch-bloom{position:relative;width:30px;height:30px;border-radius:50%;animation:pcBloom 7s ease-in-out infinite}'
+        + '.pc-launch-bloom::before,.pc-launch-bloom::after{content:"";position:absolute;inset:0;border-radius:50%;'
+        + '-webkit-mask:radial-gradient(circle,#000 30%,rgba(0,0,0,.85) 52%,transparent 74%);mask:radial-gradient(circle,#000 30%,rgba(0,0,0,.85) 52%,transparent 74%)}'
+        + '.pc-launch-bloom::before{background:repeating-conic-gradient(from 0deg,#c084fc 0deg 26deg,rgba(192,132,252,0) 26deg 45deg);filter:blur(1.4px);opacity:.95}'
+        + '.pc-launch-bloom::after{background:radial-gradient(circle,#ff2d8a 0 14%,rgba(255,45,138,.55) 30%,rgba(255,45,138,0) 46%),'
+        + 'repeating-conic-gradient(from 22deg,#f472b6 0deg 24deg,rgba(244,114,182,0) 24deg 45deg);filter:blur(1px);transform:scale(.82)}'
+        + '.pc-launch-site .pc-online-dot{box-shadow:0 0 0 2px rgba(255,255,255,.95)!important}'
+        /* Without backdrop-filter the glass would show text through it unblurred: more solid. */
+        + '@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){.pc-launch-site{background:linear-gradient(100deg,#c8f1fb,#ffffff 30%,#f7d3f0 66%,#ffe1cf)!important}}'
+        + '@media (prefers-reduced-motion: reduce){.pc-launch-site,.pc-launch-site::after,.pc-launch-bloom{animation:none!important}.pc-launch-site{transition:none}}';
       document.head.appendChild(st);
+    }
+    /* The lens takes the place of the photo or the icon bubble on the site. */
+    var first = launcher.firstChild;
+    if (first && !(first.classList && first.classList.contains('pc-launch-orb'))) {
+      var orb = el('span', '');
+      orb.className = 'pc-launch-orb';
+      orb.setAttribute('aria-hidden', 'true');
+      orb.appendChild(el('span', ''));
+      orb.firstChild.className = 'pc-launch-bloom';
+      siteLead = first;
+      launcher.replaceChild(orb, first);
     }
     launcher.classList.add('pc-launch-site');
     window.addEventListener('scroll', onScrollBlur, { passive: true });
   }
+  /* What the lens replaced, put back by appMode. */
+  var siteLead = null;
 
   /* So the page it sits on can open it from its own button — "Contact
      support" in a menu — without drawing a second launcher. */
@@ -1898,7 +1935,12 @@
       SITE = false;
       dropTeaser(true);
       window.removeEventListener('scroll', onScrollBlur);
-      if (launcher) { launcher.classList.remove('pc-launch-site', 'pc-launch-scroll'); launcher.style.background = accent(); }
+      if (launcher) {
+        launcher.classList.remove('pc-launch-site', 'pc-launch-scroll');
+        launcher.style.background = accent();
+        var orb = launcher.querySelector('.pc-launch-orb');
+        if (orb && siteLead) launcher.replaceChild(siteLead, orb);
+      }
     },
     open: function (view) {
       if (!panel) return;

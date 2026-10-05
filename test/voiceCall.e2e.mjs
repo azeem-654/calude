@@ -441,16 +441,20 @@ ok('it is there again on the next page', await teaser.count() === 1);
 /* The launcher on the site: frosted glass, moving in a loop, the blur deepening while the page scrolls. */
 const launch = mk.getByRole('button', { name: /^Open the chat/ });
 const lk = await launch.evaluate(n => { const c = getComputedStyle(n); return { cls: n.className, anim: c.animationName, blur: c.backdropFilter || c.webkitBackdropFilter || '', bg: c.backgroundImage }; });
-ok('on the site the launcher is frosted glass that moves in a loop', /pc-launch-site/.test(lk.cls) && /pcLaunchDrift/.test(lk.anim) && /pcLaunchGlow/.test(lk.anim) && /blur\(12px\)/.test(lk.blur) && /gradient/.test(lk.bg), JSON.stringify(lk));
+ok('on the site the launcher is frosted, stacked glass that moves in a loop', /pc-launch-site/.test(lk.cls) && /pcLaunchDrift/.test(lk.anim) && /pcLaunchFloat/.test(lk.anim) && /blur\(16px\)/.test(lk.blur) && /gradient/.test(lk.bg), JSON.stringify(lk));
+const bloom = await launch.locator('.pc-launch-orb .pc-launch-bloom').evaluate(n => getComputedStyle(n).animationName).catch(() => 'missing');
+ok('…with the glass lens and its turning bloom in place of the icon', bloom === 'pcBloom', bloom);
 await mk.evaluate(() => { document.body.style.minHeight = '3000px'; window.scrollBy(0, 400); });
 await mk.waitForTimeout(80);
 const scrolled = await launch.evaluate(n => n.className);
 ok('…its blur deepens while the page scrolls under it', /pc-launch-scroll/.test(scrolled), scrolled);
-if (process.env.SHOTS) await launch.screenshot({ path: `${process.env.SHOTS}/launcher-site.png` });
+/* A page clip, not an element screenshot: the launcher floats, and Playwright waits for an element to stand still. */
+if (process.env.SHOTS) { const bb = await launch.boundingBox(); if (bb) await mk.screenshot({ path: `${process.env.SHOTS}/launcher-site.png`, clip: { x: bb.x - 30, y: bb.y - 30, width: bb.width + 60, height: bb.height + 60 } }); }
 /* Signed in (HelpLauncher calls appMode): plain, still, no card. */
 await mk.evaluate(() => window.ProtectedCentralChat.appMode());
 const quiet = await launch.evaluate(n => { const c = getComputedStyle(n); return { cls: n.className, anim: c.animationName, blur: c.backdropFilter || '' }; });
 ok('in app mode the launcher is plain and still, and the card is gone', !/pc-launch-site/.test(quiet.cls) && quiet.anim === 'none' && !/blur/.test(quiet.blur)
+  && await launch.locator('.pc-launch-orb').count() === 0
   && await mk.getByRole('complementary', { name: 'Ways to reach us' }).count() === 0, JSON.stringify(quiet));
 await mk.reload();
 await teaser.waitFor({ timeout: 9000 }).catch(() => undefined);
