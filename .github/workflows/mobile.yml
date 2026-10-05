@@ -45,6 +45,12 @@ concurrency:
   group: mobile-build
   cancel-in-progress: false
 
+# `shell: bash` runs with -eo pipefail, so `xcodebuild … | tail` fails when
+# xcodebuild does; the runner's default shell has no pipefail and would not.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   plan:
     runs-on: ubuntu-latest
