@@ -787,13 +787,15 @@ system that asks for less). The Customers pill is not lit while AI
 Prospecting is open. The icons on the right are **one dark pill** (`.nav-corner`, the owner's
 reference): a violet "+" (`QuickCreate` — a menu of screens that make things,
 nothing created on its own), a hairline, outline icons, and the person's face
-at the end. The face is `useMyAvatar()` (`services/userAvatar.ts`): their own
-photo (Settings → Profile, `ProfilePhoto.tsx`; `/api/user-avatar.php`,
+at the end. The face is `shared/UserFace.tsx`: the person's own photo
+(Settings → Profile, `ProfilePhoto.tsx`; `/api/user-avatar.php`,
 `routes/userAvatar.ts`, migration 0067 — keyed by email, bytes sniffed like a
-widget photo, ≤256 px, served by a random key; `test:isolation` covers it),
-otherwise an illustrated avatar drawn in the browser from their address
-(DiceBear Lorelei, bundled — design CC0, code MIT — so no third party is
-asked). The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
+widget photo, ≤256 px, served by a random key, read once a page by
+`useMyAvatar()`; `test:isolation` covers it), and until there is one the
+**animated orb** (`OrbAvatar`, `.orb-av` in index.css — the owner's
+reference: a milky glass sphere whose blue/violet/pink liquid ribbon swells to
+fill it and folds back into a wave; drawn in CSS, sized by `--s`). Saving or
+removing a photo swaps every face on the page at once. The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
 inside: blue when the cron ran in the last 20 minutes, amber when late, out
 when unreadable; the words are kept for screen readers. The lit parts carry
 `data-noinvert`, so dark mode does not turn them inside out. `test:isolation`
@@ -803,7 +805,7 @@ checks four widths as the owner, and that 1440 and up is one line.
 
 `Dashboard/Dashboard.tsx` opens on **the welcome** (`Welcome.tsx`, the owner's
 references): a dark band with the greeting and the name lit, the person's face
-in a sunburst ring (their photo or illustrated avatar, with "Add your photo"
+in a sunburst ring (their photo or the animated orb, with "Add your photo"
 until there is one), and a glass card of today's real appointments — the next
 with "in 53m", the rest in time pills; a day with nothing says so. Under it
 every section is a **numbered block** in `.dash-grid`: one column below
@@ -813,6 +815,11 @@ nothing leaves an empty block, which is hidden and not numbered; the numbers
 are written by the page from where the blocks landed (top to bottom, then
 left to right), not from the source order. Blocks keep their own height —
 stretching a block to its neighbour pulled the grids inside it apart.
+**No sample figures.** The pipeline board, deal journey, suggested actions,
+growth chart and Business progress read only this workspace's records; with
+none they say so (they once drew invented deals, "5 executed / 42% win rate",
+a +34% curve and sample department scores, and a new customer took them for
+their own). The growth rate is the real one and may be negative.
 
 ## A project's workflows
 

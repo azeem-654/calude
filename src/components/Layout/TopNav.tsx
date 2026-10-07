@@ -18,7 +18,7 @@ import { getSession, logout } from '../../services/auth';
 import { getTheme, toggleTheme } from '../../services/theme';
 import { LogoMark } from '../shared/Logo';
 import AiBloom from '../shared/AiBloom';
-import { useMyAvatar } from '../../services/userAvatar';
+import UserFace from '../shared/UserFace';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
@@ -65,7 +65,6 @@ export default function TopNav() {
   const accounts = loadSubAccounts();
   const active = activeAccount();
   const brand = activeBranding();
-  const me = useMyAvatar();
   const [userOpen, setUserOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState(getTheme());
@@ -578,7 +577,7 @@ export default function TopNav() {
         </div>
         <div ref={userRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button onClick={() => setUserOpen(v => !v)} className="nav-me" aria-label="Your account" title={session?.user.name || 'Your account'}>
-            <img src={me.src} alt="" />
+            <UserFace size={38} />
           </button>
           {userOpen && (
             <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 16, padding: 6, minWidth: 220, zIndex: 300, boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)' }}>

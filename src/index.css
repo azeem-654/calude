@@ -456,9 +456,12 @@ button:focus-visible, a:focus-visible {
 
 /* The bar measured itself (TopNav.tsx, data-fit). `tight` closes the pills up
    so the row stays on one line; `wrap` is the last resort, a row of its own. */
-.app-header[data-fit="tight"] { gap: 10px !important; }
-.app-header[data-fit="tight"] .pill-link { padding: 8px 8px !important; font-size: 12.5px !important; }
-.app-header[data-fit="tight"] .pill-link.nav-hero { padding: 4px 14px 4px 4px !important; font-size: 13.5px !important; }
+.app-header[data-fit="tight"] { gap: 8px !important; }
+.app-header[data-fit="tight"] .pill-link { padding: 8px 7px !important; font-size: 12.5px !important; }
+.app-header[data-fit="tight"] .pill-link.nav-hero { padding: 3px 12px 3px 3px !important; font-size: 13px !important; gap: 6px !important; }
+.app-header[data-fit="tight"] .nav-hero .ai-lens { width: 28px !important; height: 28px !important; }
+.app-header[data-fit="tight"] .nav-corner .icon-btn { width: 32px !important; height: 32px !important; }
+.app-header[data-fit="tight"] .nav-corner-div { margin: 0 4px; }
 /* The workspace's initial and its menu stay; its name gives way to the pills. */
 .app-header[data-fit="tight"] .ws-name { display: none; }
 .app-header[data-fit="wrap"] {
@@ -1681,4 +1684,63 @@ main section { min-width: 0; }
 /* A picture inside something kept out of the dark-mode inversion is already
    the right way round; inverting it again would show it in negative. */
 html[data-theme="dark"] [data-noinvert] img,
-html[data-theme="dark"] [data-noinvert] video { filter: none; }
+html[data-theme="dark"] [data-noinvert] video,
+html[data-theme="dark"] [data-noinvert] [data-noinvert] { filter: none; }
+
+/* ── The orb (shared/UserFace.tsx) ───────────────────────────────────────────
+ * The default picture of anybody who has not added a photo — the owner's
+ * reference video: a milky glass sphere holding a blue, violet and pink liquid
+ * ribbon that swells until it fills the sphere, turns, and folds back into a
+ * wave. Four soft shapes inside a blurred layer make the liquid; the glass is
+ * a highlight and a lilac rim drawn over it. Sized by --s, so it reads the
+ * same at 38 px and at 112 px. */
+.orb-av {
+  position: relative; display: block; flex-shrink: 0; overflow: hidden; isolation: isolate;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 46%, #fdfcff 0%, #f3f0ff 52%, #e2dbff 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.85), inset 0 0 calc(var(--s) * 0.14) rgba(150, 128, 255, 0.55);
+}
+.orb-fluid {
+  position: absolute; inset: -12%;
+  filter: blur(calc(var(--s) * 0.06)) saturate(1.2);
+  transform: rotate(-18deg);
+}
+.orb-fluid i { position: absolute; display: block; border-radius: 50%; }
+/* The ribbon's body: a long blue S, lower left to upper right. */
+.orb-b1 { left: 10%; top: 40%; width: 56%; height: 30%; background: radial-gradient(closest-side, #1636ff, #2d4dff 55%, rgba(60, 90, 255, 0) 100%); }
+.orb-b2 { left: 34%; top: 30%; width: 58%; height: 30%; background: radial-gradient(closest-side, #2241ff, #3f63ff 55%, rgba(80, 110, 255, 0) 100%); }
+/* Its violet and pink edges. */
+.orb-b3 { left: 8%; top: 31%; width: 40%; height: 22%; background: radial-gradient(closest-side, rgba(255, 105, 214, 0.95), rgba(170, 80, 255, 0.6) 60%, rgba(170, 80, 255, 0) 100%); }
+.orb-b4 { left: 58%; top: 22%; width: 36%; height: 22%; background: radial-gradient(closest-side, rgba(255, 120, 200, 0.9), rgba(140, 90, 255, 0.55) 60%, rgba(140, 90, 255, 0) 100%); }
+/* The glass over it: a highlight top left, and the rim catching the light. */
+.orb-glass {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background:
+    radial-gradient(ellipse 52% 30% at 36% 16%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0) 72%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.28) 74%, rgba(196, 184, 255, 0.55) 100%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .orb-fluid { animation: orb-turn 9s ease-in-out infinite; }
+  .orb-b1 { animation: orb-swell-a 4.6s ease-in-out infinite; }
+  .orb-b2 { animation: orb-swell-b 4.6s ease-in-out infinite; }
+  .orb-b3 { animation: orb-tint-a 4.6s ease-in-out infinite; }
+  .orb-b4 { animation: orb-tint-b 4.6s ease-in-out infinite; }
+}
+/* Wave → swollen until it fills the glass → wave again, turning as it goes. */
+@keyframes orb-turn { 0% { transform: rotate(-18deg); } 50% { transform: rotate(150deg); } 100% { transform: rotate(342deg); } }
+@keyframes orb-swell-a {
+  0%, 100% { transform: translate(0, 0) scale(1, 1); }
+  45%, 58% { transform: translate(14%, -22%) scale(1.9, 3); }
+}
+@keyframes orb-swell-b {
+  0%, 100% { transform: translate(0, 0) scale(1, 1); }
+  45%, 58% { transform: translate(-12%, 18%) scale(1.8, 3); }
+}
+@keyframes orb-tint-a {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.95; }
+  50% { transform: translate(40%, -6%) scale(1.6); opacity: 0.7; }
+}
+@keyframes orb-tint-b {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.9; }
+  50% { transform: translate(-6%, 36%) scale(1.7); opacity: 0.75; }
+}

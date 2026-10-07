@@ -5,8 +5,8 @@
  * Nick", a face in a ring in the middle) and a glass calendar card ("Wed
  * March 9 · 6 events today", times in pills, "in 53m"). So: the greeting with
  * the name lit, what today holds in words, the person's face in a sunburst
- * ring (their photo, or the illustrated avatar drawn from their address —
- * services/userAvatar.ts), and a glass card of today's real appointments.
+ * ring (their photo, or until they add one the animated orb —
+ * shared/UserFace.tsx), and a glass card of today's real appointments.
  *
  * Every figure here is counted from the workspace's own records; a day with
  * nothing booked says so rather than showing sample meetings.
@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarDays, ArrowRight, Camera } from 'lucide-react';
 import type { Appointment } from '../../types';
 import { useMyAvatar } from '../../services/userAvatar';
+import UserFace from '../shared/UserFace';
 
 /** "14:30" or older "2:30 PM" → minutes past midnight, or null. */
 function minutesOf(t: string): number | null {
@@ -74,7 +75,7 @@ export default function Welcome({ greeting, firstName, appointments, openDeals, 
   ];
 
   return (
-    <section className="dw" aria-label="Welcome">
+    <section className="dw" aria-label="Welcome" data-noinvert>
       <div className="dw-copy">
         <span className="dw-date">{now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
         <h1 className="dw-hello">
@@ -92,7 +93,7 @@ export default function Welcome({ greeting, firstName, appointments, openDeals, 
           </defs>
           <path d={TEETH} fill="url(#dw-ring-g)" opacity=".55" />
         </svg>
-        <img src={me.src} alt={me.photo ? 'Your photo' : 'Your avatar'} className="dw-avatar" data-testid="welcome-avatar" />
+        <UserFace size={112} className="dw-avatar" testId="welcome-avatar" />
         <span className="dw-online" aria-hidden="true" />
         {!me.photo && (
           <button type="button" className="dw-photo" onClick={() => navigate('/settings?tab=profile')}>

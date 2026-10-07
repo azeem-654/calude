@@ -133,6 +133,30 @@ export default function ProgressBoard({ book }: { book: Book }) {
     backgroundColor: TILE_BG, borderRadius: 22, border: `1px solid ${TILE_LINE}`, padding: '16px 18px',
   };
 
+  /*
+   * Too few records to score: say so, instead of the board. It used to draw
+   * sample scores (45, 47, 58, "+10.6 points") under a one-line caption, and
+   * a new customer read them as their own business. The board appears as soon
+   * as there is enough of their own to score.
+   */
+  if (!book.real) {
+    return (
+      <div data-noinvert style={{ backgroundColor: PLANE, borderRadius: 26, border: `1px solid ${TILE_LINE}`, padding: '18px 18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0, fontSize: 21, fontWeight: 800, color: p.textStrong, letterSpacing: '-0.025em' }}>Business progress</h3>
+          <button onClick={() => navigate('/analytics')} className="press" style={ctaStyle()}>Full analytics <ArrowUpRight size={13} /></button>
+        </div>
+        <div style={{ ...TILE, marginTop: 14, textAlign: 'center', padding: '24px 20px' }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: p.textStrong }}>Not enough of your own records to score yet</p>
+          <p style={{ margin: '6px auto 0', maxWidth: 520, fontSize: 12.5, lineHeight: 1.55, color: p.textDim }}>
+            Every department is scored out of 100 from what you do here — contacts, deals, campaigns, bookings, posts and pages.
+            Add a few and the scores appear; nothing is shown until they are yours.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div data-noinvert style={{
       backgroundColor: PLANE, borderRadius: 26,
@@ -149,9 +173,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
             Business progress
           </h3>
           <p style={{ margin: '3px 0 0', fontSize: 11.5, color: p.textDim }}>
-            {book.real
-              ? `Every department scored out of 100 from your own records · ${book.recordCount.toLocaleString()} records`
-              : 'Sample figures until you have enough records — they become yours as you use the app'}
+            {`Every department scored out of 100 from your own records · ${book.recordCount.toLocaleString()} records`}
           </p>
         </div>
         <button onClick={() => navigate('/analytics')} className="press" style={ctaStyle()}>

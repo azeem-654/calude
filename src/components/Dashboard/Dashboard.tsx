@@ -292,8 +292,9 @@ function StatusChip({ status }: { status: string }) {
 }
 
 /* ── Expected business growth (history + projection) ── */
-function GrowthForecast({ history, growthPct }: { history: { m: string; v: number }[]; growthPct: number }) {
+function GrowthForecast({ history, growthPct, empty }: { history: { m: string; v: number }[]; growthPct: number; empty?: boolean }) {
   const animPct = useCountUp(growthPct, 1200);
+  const navigate = useNavigate();
   const last = history[history.length - 1]?.v ?? 30000;
   const futureMonths = ['Next mo.', '+2 mo.', '+3 mo.'];
   const monthly = growthPct / 100 / 3;
@@ -309,6 +310,21 @@ function GrowthForecast({ history, growthPct }: { history: { m: string; v: numbe
   const projectedQuarter = futureMonths.reduce((s, _, i) => s + last * Math.pow(1 + monthly, i + 1), 0);
   const animProjected = useCountUp(Math.round(projectedQuarter / 1000), 1200);
 
+  if (empty) {
+    return (
+      <div style={FROST}>
+        <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: '2px 4px 0', letterSpacing: '-0.02em' }}>Expected Business Growth</h3>
+        <div style={{ ...CARD, padding: '26px 22px', marginTop: 14, textAlign: 'center' }}>
+          <p style={{ fontSize: 13.5, fontWeight: 700, color: INK, margin: 0 }}>No revenue history to draw yet</p>
+          <p style={{ fontSize: 12.5, color: MUTED, margin: '6px auto 14px', maxWidth: 380, lineHeight: 1.55 }}>
+            The chart and the next-quarter projection start once deals have been won in two different months — read from your own pipeline, never a sample.
+          </p>
+          <button type="button" className="dash-chip press" onClick={() => navigate('/pipelines')}>Open pipelines <ArrowRight size={11} strokeWidth={2.6} /></button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={FROST}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '2px 4px 14px' }}>
@@ -318,8 +334,8 @@ function GrowthForecast({ history, growthPct }: { history: { m: string; v: numbe
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ backgroundColor: INK, borderRadius: 14, padding: '9px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 19, fontWeight: 800, color: '#c7f441', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Rocket size={14} /> +{animPct}%
+            <div style={{ fontSize: 19, fontWeight: 800, color: growthPct >= 0 ? '#c7f441' : '#ff8fa3', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Rocket size={14} /> {animPct >= 0 ? '+' : ''}{animPct}%
             </div>
             <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Growth</div>
           </div>
@@ -665,42 +681,37 @@ export default function Dashboard() {
   const pipelineStages = pipelines[0]?.stages ?? [];
   const allDeals: Deal[] = pipelineStages.flatMap(s => s.deals);
 
-  /* Journey columns from real pipeline stages (demo rows if empty) */
-  const DEMO_COLS = [
-    { name: 'Lead Capture', deals: [{ title: 'Qualify inbound lead', contactName: 'Emily Chen' }, { title: 'Acknowledge new enquiry', contactName: 'Tom Becker' }] },
-    { name: 'Qualification', deals: [{ title: 'Identify budget range', contactName: 'Sarah Johnson' }, { title: 'Identify decision maker', contactName: 'Mike Davis' }, { title: 'Map pain points', contactName: 'Ana Silva' }] },
-    { name: 'Proposal', deals: [{ title: 'Estimate delivery time', contactName: 'James Carter' }, { title: 'Send pricing proposal', contactName: 'Lisa Wong' }, { title: 'Review contract terms', contactName: 'Robert Martinez' }] },
-    { name: 'Closing', deals: [{ title: 'Final negotiation call', contactName: 'Emily Chen' }, { title: 'Customer satisfaction check', contactName: 'Sara Lee' }] },
-  ];
-  const journeyCols = pipelineStages.length >= 2 && allDeals.length > 0
+  /*
+   * The pipeline board, the deal journey and the suggested actions are read
+   * from this workspace's own deals, and only from them.
+   *
+   * They used to fall back to sample deals ("Qualify inbound lead", a $48,000
+   * "Request Processing"), a table of invented people and "5 executed, 7
+   * active, 42% win rate" whenever the pipeline was empty — so a customer who
+   * had just signed up opened their dashboard to somebody else's business,
+   * presented as theirs. An empty pipeline now says it is empty.
+   */
+  const STAGE_NAMES = ['Lead Capture', 'Qualification', 'Proposal', 'Closing'];
+  const journeyCols = pipelineStages.length >= 2
     ? pipelineStages.slice(0, 4).map(s => ({ name: s.name, deals: s.deals.slice(0, 3).map(d => ({ title: d.title, contactName: d.contactName })) }))
-    : DEMO_COLS;
+    : STAGE_NAMES.map(name => ({ name, deals: [] as { title: string; contactName: string }[] }));
 
-  /* Black accent card = biggest active deal (or demo) */
+  /* Black accent card = the biggest active deal, when there is one. */
   const topDeal = [...allDeals].filter(d => (d.status ?? 'active') === 'active').sort((a, b) => b.value - a.value)[0];
-  const accent = topDeal ? { title: topDeal.title, value: topDeal.value } : { title: 'Request Processing', value: 48000 };
+  const accent = topDeal ? { title: topDeal.title, value: topDeal.value } : null;
 
-  /* Knowledge table rows from deals (or demo) */
-  const tableRows = (allDeals.length > 0
-    ? allDeals.slice(0, 4).map(d => ({
-        subject: d.title,
-        status: d.status === 'won' ? 'executed' : d.status === 'lost' ? 'pending' : 'active',
-        start: new Date(d.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        end: d.expectedClose ? new Date(d.expectedClose).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
-        user: d.assignedTo || d.contactName || '—',
-      }))
-    : [
-        { subject: 'Design Sprint', status: 'executed', start: 'Sep 30', end: 'Oct 1', user: 'Sam Frank' },
-        { subject: 'Meeting Lead', status: 'scheduled', start: 'Oct 1', end: 'Oct 1', user: 'Nikki Olay' },
-        { subject: 'Quote Follow-up', status: 'active', start: 'Oct 2', end: 'Oct 4', user: 'John Doe' },
-        { subject: 'Renewal Review', status: 'pending', start: 'Oct 3', end: 'Oct 8', user: 'Maria Kim' },
-      ]
-  );
+  const tableRows = allDeals.slice(0, 4).map(d => ({
+    subject: d.title,
+    status: d.status === 'won' ? 'executed' : d.status === 'lost' ? 'pending' : 'active',
+    start: new Date(d.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    end: d.expectedClose ? new Date(d.expectedClose).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
+    user: d.assignedTo || d.contactName || '—',
+  }));
 
-  const wonCount = allDeals.filter(d => d.status === 'won').length || 5;
-  const activeCount = allDeals.filter(d => (d.status ?? 'active') === 'active').length || 7;
+  const wonCount = allDeals.filter(d => d.status === 'won').length;
+  const activeCount = allDeals.filter(d => (d.status ?? 'active') === 'active').length;
   const lostCount = allDeals.filter(d => d.status === 'lost').length;
-  const winRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : 42;
+  const winRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : 0;
 
   /* ── The four headline figures, counted from real records ── */
   const kpis = useMemo(
@@ -765,14 +776,17 @@ export default function Dashboard() {
     }
   });
   const hasRealHistory = [...realByMonth.values()].filter(v => v > 0).length >= 2;
-  const DEMO_CURVE = [21000, 24500, 23000, 29500, 33000, 38500];
-  const growthHistory = historyMonths.map((m, i) => ({
-    m: MONTH_NAMES[m],
-    v: hasRealHistory ? (realByMonth.get(m) ?? 0) : DEMO_CURVE[i],
-  }));
-  const growthPct = Math.min(34, Math.max(5, Math.round(
-    ((growthHistory[5].v - growthHistory[0].v) / Math.max(growthHistory[0].v, 1)) * 100 / 2
-  )));
+  /* Won revenue by month, as it is. No sample curve: with fewer than two
+     months of won deals the card says so instead of drawing a history the
+     business does not have. */
+  const growthHistory = historyMonths.map(m => ({ m: MONTH_NAMES[m], v: realByMonth.get(m) ?? 0 }));
+  /* Half the six-month change, as a rate for the next quarter — and it may be
+     negative. It used to be held between +5% and +34%, which showed a
+     shrinking business as growing. */
+  const first = growthHistory.find(h => h.v > 0)?.v ?? 0;
+  const growthPct = first > 0
+    ? Math.max(-50, Math.min(50, Math.round(((growthHistory[5].v - first) / first) * 100 / 2)))
+    : 0;
 
   /* ── Insights: flaws & tips computed from real data ── */
   const idleDeals = allDeals.filter(d =>
@@ -975,7 +989,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Black accent card in the last column (like "Request Processing") */}
-                {ci === journeyCols.length - 1 && (
+                {ci === journeyCols.length - 1 && accent && (
                   <div style={{
                     marginTop: 12, backgroundColor: INK, borderRadius: 18, padding: '16px 18px',
                     color: '#fff', boxShadow: '0 12px 28px -8px rgba(23,25,28,0.4)',
@@ -997,7 +1011,7 @@ export default function Dashboard() {
 
         {/* ── Growth forecast, and Tips & Flaws, side by side ── */}
         <div className="dash-block slide-up" style={{ animationDelay: '0.14s' }}>
-          <GrowthForecast history={growthHistory} growthPct={growthPct} />
+          <GrowthForecast history={growthHistory} growthPct={growthPct} empty={!hasRealHistory} />
         </div>
         <div className="dash-block slide-up" style={{ animationDelay: '0.14s' }}>
           <InsightsCarousel insights={insights} />
@@ -1037,6 +1051,9 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
+                  {tableRows.length === 0 && (
+                    <tr><td colSpan={5} style={{ padding: '22px 6px', textAlign: 'center', color: MUTED, fontSize: 12.5 }}>No deals yet — add one in Pipelines and it is listed here.</td></tr>
+                  )}
                   {tableRows.map((r, i) => (
                     <tr key={i}>
                       <td style={{ padding: '10px 6px', fontWeight: 700, color: INK, borderBottom: i < tableRows.length - 1 ? '1px solid #f6f7f8' : 'none', display: 'flex', alignItems: 'center', gap: 7 }}>
