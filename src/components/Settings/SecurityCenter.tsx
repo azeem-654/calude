@@ -286,7 +286,7 @@ export default function SecurityCenter() {
                 </div>
               </div>
               {s.current
-                ? <button type="button" style={BTN} onClick={() => { void logout(); window.location.href = import.meta.env.BASE_URL || '/'; }}><LogOut size={14} /> Sign out</button>
+                ? <button type="button" style={BTN} onClick={() => { void logout().then(() => { window.location.href = import.meta.env.BASE_URL || '/'; }); }}><LogOut size={14} /> Sign out</button>
                 : <button type="button" style={BTN} onClick={async () => { const r = await revokeSession(s.id); setMsg({ ok: r.ok, text: r.ok ? 'That device has been signed out.' : r.data.error ?? 'Could not sign it out.' }); void load(); }}>Sign out</button>}
             </div>
           ))}

@@ -7,7 +7,7 @@ import {
   Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
-  CheckCircle, XCircle, Info, BellOff,
+  CheckCircle, XCircle, Info, BellOff, Crosshair,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
@@ -112,6 +112,41 @@ export default function TopNav() {
     return () => ro.disconnect();
   }, []);
 
+  /*
+   * Does the bar fit on one line?
+   *
+   * It was decided by fixed breakpoints, and the bar's real width is not
+   * fixed: a long workspace name, the counts on AI Autopilot and the task
+   * badge, the cloud saying "delayed" or "live", and the owner's extra menus
+   * all change it. Between breakpoints the pills ran under the icons on the
+   * right — "Reports" painted over "Cloud live", the last menu's arrow poking
+   * out beside it. So it is measured: the pills' own widths against the room
+   * the logo, the workspace and the icons leave. When they do not fit, the
+   * pills take a row of their own, at any window width.
+   */
+  const [wrapped, setWrapped] = useState(false);
+  useEffect(() => {
+    const header = navRef.current;
+    const pills = navMenuRef.current;
+    if (!header || !pills) return;
+    const measure = () => {
+      const cs = getComputedStyle(header);
+      const gap = parseFloat(cs.columnGap || cs.gap || '0') || 0;
+      const inner = header.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+      const kids = [...header.children].filter(k => k !== pills) as HTMLElement[];
+      const others = kids.reduce((w, k) => w + k.getBoundingClientRect().width, 0) + gap * kids.length;
+      const pg = parseFloat(getComputedStyle(pills).columnGap || '0') || 0;
+      const need = [...pills.children].reduce((w, k) => w + (k as HTMLElement).getBoundingClientRect().width, 0) + pg * Math.max(0, pills.children.length - 1) + 12;
+      setWrapped(others + need > inner + 1);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
+    [...header.children].forEach(k => ro.observe(k));
+    return () => ro.disconnect();
+  }, []);
+  const onProspecting = location.pathname.startsWith('/prospecting');
+
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (navMenuRef.current && !navMenuRef.current.contains(e.target as Node)) setOpenGroup(null);
@@ -138,7 +173,7 @@ export default function TopNav() {
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   return (
-    <header ref={navRef} className="app-header" style={{
+    <header ref={navRef} className={`app-header${wrapped ? ' nav-wrapped' : ''}`} style={{
       position: 'sticky', top: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', gap: 20,
       padding: '14px 28px',
@@ -241,7 +276,9 @@ export default function TopNav() {
             .filter(i => !(i.agencyOnly && isClient))
             .filter(i => !(i.ownerOnly && !isInstallOwner));
           if (items.length === 0) return null;
-          const on = currentGroup === group.id;
+          /* AI Prospecting has a pill of its own beside AI Autopilot, so the
+             Customers pill is not lit as well while it is open. */
+          const on = currentGroup === group.id && !(group.id === 'customers' && onProspecting);
           const open = openId === group.id;
 
           const pill: React.CSSProperties = {
@@ -268,7 +305,7 @@ export default function TopNav() {
            */
           const hero = group.id === 'autopilot';
           if (hero) {
-            return (
+            return [
               <NavLink
                 key={group.id}
                 data-nav-group={group.id}
@@ -308,8 +345,21 @@ export default function TopNav() {
                     {autopilotWaiting}
                   </span>
                 )}
-              </NavLink>
-            );
+              </NavLink>,
+              /* AI Prospecting, lit the same way: it is the other module that
+                 goes and does the work — finding the people Autopilot writes to. */
+              <NavLink
+                key="prospecting"
+                data-nav-group="prospecting"
+                to="/prospecting"
+                onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
+                className={`pill-link nav-hero nav-hero-prospect${onProspecting ? ' nav-hero-on' : ''}`}
+                style={{ ...pill, padding: '10px 18px', fontSize: 13.5, fontWeight: 700, color: '#fff', backgroundColor: 'transparent', boxShadow: 'none', gap: 7 }}
+              >
+                <Crosshair size={14} strokeWidth={2.4} aria-hidden="true" />
+                AI Prospecting
+              </NavLink>,
+            ];
           }
 
           if (group.path) {

@@ -11,7 +11,7 @@
  * The local fallback is a soft gate — production security comes from the server.
  */
 import { API_BASE } from './apiBase';
-import { adoptOwnWorkspace } from './tenancy';
+import { adoptOwnWorkspace, forgetLocalWorkspaces, keepOnlyWorkspaces } from './tenancy';
 
 
 const SESSION_KEY = 'crm_session';        // global (not scoped): { token, user, backend }
@@ -353,49 +353,10 @@ export async function login(email: string, password: string): Promise<{ ok: bool
     const mfaTicket = ticketOf(res.data);
     if (mfaTicket) return { ok: false, mfaTicket, error: String(res.data.error ?? '') };
     if (res.ok) {
-      const user = res.data.user as AuthUser;
-      setSession({ token: res.data.token as string, user, backend: 'php' });
-      /*
-       * Point this browser at the workspace the server says is theirs.
-       *
-       * The tenancy layer seeds a local sub-account named `acct-<timestamp>` the
-       * first time it is asked for one, and that had already been made active by
-       * the time a newly registered account arrived here — so a new customer
-       * synced into an id their browser invented rather than the one the server
-       * issued them. Two people registering in the same millisecond would have
-       * generated the same one, and the name is guessable besides, which is not
-       * something a tenant boundary should be.
-       *
-       * Set on sign-in rather than on every render: an agency moves between its
-       * own client sub-accounts while it works, and this must not drag them home
-       * every time the app re-renders.
-       */
-      if (user.accountId) {
-        setActiveWorkspace(user.accountId);
-        adoptSessionWorkspace();
-      } else {
-        /*
-         * An owner is not bound to one workspace, so the server sends the list.
-         *
-         * Using `accountId` alone left the install owner — whose `account_id`
-         * is NULL by design — pointing at nothing on any machine that had not
-         * stored a choice, and the tenancy layer then invented
-         * `acct-<timestamp>`. They got an empty workspace, and their real one
-         * kept its invented id with nothing pointing at it.
-         *
-         * A stored choice is honoured as long as it is genuinely theirs: an
-         * agency moves between its own client sub-accounts while it works, and
-         * signing in again must not drag them home. It is only replaced when it
-         * is missing, or names a workspace this account does not own.
-         */
-        const owned = (res.data.workspaces as { accountId?: string }[] | undefined) ?? [];
-        const ids = owned.map(w => String(w.accountId ?? '')).filter(Boolean);
-        if (ids.length) {
-          let current = '';
-          try { current = window.localStorage.getItem('crm_active_account') ?? ''; } catch { current = ''; }
-          if (!current || !ids.includes(current)) setActiveWorkspace(ids[0]);
-        }
-      }
+      /* The same rule as every other way in (adoptSession): the workspace the
+         server says is theirs, an agency's stored choice kept only while it is
+         one of its own, and nobody else's workspaces left in this browser. */
+      adoptSession(res.data);
       return { ok: true };
     }
     return { ok: false, error: (res.data.error as string) || 'Login failed.' };
@@ -418,14 +379,18 @@ export async function login(email: string, password: string): Promise<{ ok: bool
 function adoptSession(data: Record<string, unknown>): void {
   const user = data.user as AuthUser;
   setSession({ token: data.token as string, user, backend: 'php' });
+  const owned = (data.workspaces as { accountId?: string }[] | undefined) ?? [];
+  const ids = owned.map(w => String(w.accountId ?? '')).filter(Boolean);
+
+  /* Only this person's workspaces stay in this browser — whatever the last
+     person to sign in here left behind goes (tenancy.ts, keepOnlyWorkspaces). */
+  try { keepOnlyWorkspaces(user.accountId ? [user.accountId, ...ids] : ids, user.email); } catch { /* storage off */ }
 
   if (user.accountId) {
     setActiveWorkspace(user.accountId);
     adoptSessionWorkspace();
     return;
   }
-  const owned = (data.workspaces as { accountId?: string }[] | undefined) ?? [];
-  const ids = owned.map(w => String(w.accountId ?? '')).filter(Boolean);
   if (!ids.length) return;
   let current = '';
   try { current = window.localStorage.getItem('crm_active_account') ?? ''; } catch { current = ''; }
@@ -545,8 +510,16 @@ export async function saveGoogleConfig(
 
 export async function logout() {
   const s = getSession();
+  /* Save what this browser holds first, then leave nothing of it behind for
+     whoever signs in here next. A save that does not finish in a few seconds
+     still leaves the next sign-in to remove it (keepOnlyWorkspaces). */
+  try {
+    const { flushNow } = await import('./serverData');
+    await Promise.race([flushNow(), new Promise(r => setTimeout(r, 3000))]);
+  } catch { /* offline: the next sign-in clears it */ }
   if (s?.backend === 'php') await php('logout', { token: s.token });
   setSession(null);
+  try { forgetLocalWorkspaces(); } catch { /* storage off */ }
 }
 
 /* ── Agency: provision & manage client logins ── */

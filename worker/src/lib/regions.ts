@@ -87,7 +87,17 @@ const ELSEWHERE: [string, string[], string[]][] = [
   ['Queensland', ['qld'], ['Brisbane', 'Gold Coast', 'Sunshine Coast', 'Townsville', 'Cairns', 'Toowoomba']],
   ['Western Australia', ['wa'], ['Perth', 'Mandurah', 'Bunbury', 'Geraldton', 'Kalgoorlie', 'Albany']],
   ['South Australia', ['sa'], ['Adelaide', 'Mount Gambier', 'Whyalla', 'Murray Bridge', 'Port Augusta', 'Port Lincoln']],
+  /* Whole countries, the same way: a search of "Australia" timed out on the
+     map's servers, so a country is searched at its largest towns. */
+  ['Australia', ['au'], ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Gold Coast', 'Canberra', 'Newcastle']],
+  ['United Kingdom', ['uk'], ['London', 'Birmingham', 'Manchester', 'Glasgow', 'Leeds', 'Liverpool', 'Bristol', 'Edinburgh']],
+  ['United States', ['usa'], ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio', 'San Diego']],
+  ['Canada', [], ['Toronto', 'Montreal', 'Vancouver', 'Calgary', 'Edmonton', 'Ottawa', 'Winnipeg', 'Mississauga']],
+  ['New Zealand', ['nz'], ['Auckland', 'Wellington', 'Christchurch', 'Hamilton', 'Tauranga', 'Dunedin']],
+  ['Ireland', [], ['Dublin', 'Cork', 'Limerick', 'Galway', 'Waterford']],
 ];
+
+const COUNTRIES = new Set(['Australia', 'United Kingdom', 'United States', 'Canada', 'New Zealand', 'Ireland']);
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -105,7 +115,8 @@ for (const [name, codes, towns] of ELSEWHERE) {
 
 /** The region a name means ("Virginia", "VA", "virginia, usa"), or null. */
 export function regionNamed(place: string): { name: string; towns: string[] } | null {
-  const p = norm(place.replace(/,?\s*(usa|us|united states|uk|united kingdom|canada|australia)$/i, ''));
+  /* "Virginia, USA" is Virginia; "Australia" alone is the country. */
+  const p = norm(place.replace(/,?\s*(usa|us|united states|uk|united kingdom|canada|australia)$/i, '')) || norm(place);
   return BY_NAME.get(p) ?? null;
 }
 
@@ -120,5 +131,8 @@ export function regionTowns(place: string, max = 12): string[] | null {
 export function splitPlace(place: string): { town: string; region: string | null } {
   const parts = place.split(',').map(x => x.trim()).filter(Boolean);
   if (parts.length < 2) return { town: place.trim(), region: null };
-  return { town: parts[0], region: regionNamed(parts[parts.length - 1])?.name ?? null };
+  /* "Leeds, UK" is Leeds: narrowing a town to a whole country only makes the
+     map's search slower (a country's boundary is enormous) and finds nothing more. */
+  const r = regionNamed(parts[parts.length - 1]);
+  return { town: parts[0], region: r && !COUNTRIES.has(r.name) ? r.name : null };
 }

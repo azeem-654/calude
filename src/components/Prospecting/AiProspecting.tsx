@@ -48,6 +48,7 @@ import { Attribution, ImportPanel, Notice, SearchProblems } from './ProspectPart
 import { COLUMNS, LeadTable, PlanSteps, ProgressBar, SkeletonRows, Thinking, VerifyTool, useLeadRows, type ColumnId, type LeadFilter } from './AiParts';
 import AddTo, { type AddMode } from './AddTo';
 import ConnectAutopilot, { type SearchSeed } from './ConnectAutopilot';
+import DirectoryMatches from './DirectoryMatches';
 import { listSearches, searchKey, setSourceStatus, applySearch, updateSearch, type ConnectionSummary, type SearchDef } from '../../services/prospectSources';
 import { HowItWorks, Ideas, StartScreen, tradeIcon, tradeTone } from './AiStart';
 import { InsightsRail, KpiRow, ProgressCard, Robot, clock, type Insight } from './AiResults';
@@ -595,6 +596,8 @@ export default function AiProspecting() {
                   )}
                 </section>
 
+                {/* Asked, even when the business search itself failed — that is when the directory matters most. */}
+                {(s.searched || (s.error && s.trade && s.place)) && <DirectoryMatches trade={s.searched?.trade ?? s.trade} place={s.searched?.place ?? s.place} />}
                 <ProgressCard s={s} sources={sourceChips} />
                 {thinking && <Thinking text={`${thinking}…`} />}
                 {s.progress && <ProgressBar {...s.progress} />}

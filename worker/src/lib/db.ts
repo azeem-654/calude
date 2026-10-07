@@ -436,6 +436,25 @@ export async function workspaceAccess(
    * is the customer's own, and the id it would then use is just a string in a
    * request. So the boundary is enforced here, once, at the point of claiming.
    */
+  /*
+   * Unowned is not the same as empty. Workspaces from before ownership was
+   * recorded, or written to by a browser before anybody claimed them, can hold
+   * records with no owner row — and the first account to name one would have
+   * claimed it, records and all. A workspace that already holds anything is
+   * claimed only by the install owner (whose own old workspaces are the ones
+   * this happens to); anybody else is refused, the same as for a foreign one.
+   */
+  const held = await db.prepare(
+    `SELECT 1 AS x FROM crm_data WHERE account_id = ?1
+     UNION ALL SELECT 1 FROM crm_projects WHERE account_id = ?1
+     UNION ALL SELECT 1 FROM crm_portfolios WHERE account_id = ?1 LIMIT 1`,
+  ).bind(accountId).first<{ x: number }>().catch(() => null);
+  /* …or by the account it was issued to at sign-up (`crm_users.account_id`),
+     for customers whose workspace predates ownership being recorded. */
+  if (held && !(user.accountId == null && user.role === 'agency') && user.accountId !== accountId) {
+    return { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+  }
+
   const limit = await resellLimitFor(db, user.email);
   if (limit >= 0) {
     const used = await workspacesOwned(db, user);

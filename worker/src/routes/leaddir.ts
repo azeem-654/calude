@@ -23,7 +23,7 @@ import { nowIso, userFromToken, workspaceAccess, type Env, type SessionUser } fr
 import { trialForWorkspace } from '../lib/trial';
 import {
   REVEAL_BUDGET, ROWS_PER_BATCH, ensureSchema, facetsOf, industriesLike, insertArgs, insertSql, key, maskEmail, maskPhone,
-  normalise, placeWhere, titleTerms, type LeadIn,
+  normalise, placeWhere, roleTerms, titleTerms, type LeadIn,
 } from '../lib/leadDir';
 
 interface Req {
@@ -290,11 +290,20 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     if (industry) {
       const all = await db.prepare("SELECT value, n FROM ld_facets WHERE kind = 'industry' AND n > 0").all<{ value: string; n: number }>();
       const inds = industriesLike(industry, all.results ?? []);
-      if (!inds.length) {
+      /* "business owners" or "CEOs" is not an industry but a role: read the
+         words as job titles and seniority (the AI Prospecting box sends whatever
+         was typed), and only then say nobody matches. */
+      const roles = inds.length ? [] : roleTerms(industry);
+      if (!inds.length && !roles.length) {
         return json({ success: true, people: [], total: 0, more: false, note: `Nobody in the directory is filed under an industry like "${industry}".`, field: 'leaddir.industry' });
       }
-      where.push(`ind_k IN (${inds.map(() => '?').join(',')})`);
-      args.push(...inds);
+      if (inds.length) {
+        where.push(`ind_k IN (${inds.map(() => '?').join(',')})`);
+        args.push(...inds);
+      } else {
+        where.push(`(${roles.map(() => 'title_k LIKE ?').join(' OR ')} OR lower(level) IN (${roles.map(() => '?').join(',')}))`);
+        args.push(...roles.map(t => `%${t}%`), ...roles);
+      }
     }
     if (place) {
       const st = await db.prepare("SELECT value FROM ld_facets WHERE kind IN ('state', 'country') AND n > 0").all<{ value: string }>();

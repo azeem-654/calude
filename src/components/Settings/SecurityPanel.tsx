@@ -164,7 +164,7 @@ export default function SecurityPanel() {
         </div>
 
         <button
-          onClick={() => { logout(); window.location.href = import.meta.env.BASE_URL || '/'; }}
+          onClick={() => { void logout().then(() => { window.location.href = import.meta.env.BASE_URL || '/'; }); }}
           style={{
             display: 'flex', alignItems: 'center', gap: 7, marginTop: 18, padding: '9px 16px',
             border: '1px solid #fecaca', borderRadius: 9, backgroundColor: '#fff',

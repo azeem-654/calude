@@ -193,6 +193,75 @@ function rawGet(id: string, key: string): string | null {
   return window.localStorage.getItem(`${PREFIX}${id}_${key}`);
 }
 
+/* ── Whose data is in this browser ──
+ *
+ * The registry (`crm_subaccounts`) and the active workspace are global keys —
+ * one per browser, not per person — and each workspace's data sits under its
+ * prefix until something removes it. So a browser one person signed out of
+ * kept their workspaces in the switcher, and their cached records on disk, for
+ * the next person to sign in on it: a new customer opened the app to somebody
+ * else's projects in their switcher. The server refuses every foreign
+ * workspace a request names, but a tenant boundary that relies on the next
+ * request is not one.
+ *
+ * At every sign-in the browser now keeps only the workspaces the server says
+ * this person owns (`keepOnlyWorkspaces`), and sign-out clears the lot once it
+ * has been saved (`forgetLocalWorkspaces`). `pc_data_owner` names whose data
+ * is here (`pc_`, so the tenant patch leaves it alone), and the per-person
+ * globals — the agency's branding, cached capabilities — go when it changes.
+ */
+const DATA_OWNER = 'pc_data_owner';
+const PERSON_GLOBALS = ['crm_agency', 'crm_server_caps', 'crm_cloud_status'];
+/* Preferences about this browser rather than anybody's records: kept. */
+const BROWSER_PREFS = new Set(['crm_theme', 'crm_motion', 'crm_sidebar_mode', 'crm_market_sim', 'crm_session']);
+
+function workspaceOfKey(k: string): string | null {
+  if (!k.startsWith(PREFIX)) return null;
+  const rest = k.slice(PREFIX.length);
+  const at = rest.indexOf('_crm_');
+  return at > 0 ? rest.slice(0, at) : null;
+}
+
+/** Remove every workspace from this browser except `allowed`, and say whose data is left. */
+export function keepOnlyWorkspaces(allowed: string[], email: string): number {
+  const ls = window.localStorage;
+  const keep = new Set(allowed.filter(Boolean));
+  const who = email.trim().toLowerCase();
+  let previous = '';
+  try { previous = ls.getItem(DATA_OWNER) ?? ''; } catch { previous = ''; }
+  const changed = !!previous && previous !== who;
+  const doomed: string[] = [];
+  for (let i = 0; i < ls.length; i++) {
+    const k = ls.key(i);
+    if (!k) continue;
+    const ws = workspaceOfKey(k);
+    if (ws !== null) { if (!keep.has(ws)) doomed.push(k); continue; }
+    /* Data written before workspaces were prefixed belongs to whoever was here then. */
+    if (changed && k.startsWith('crm_') && !BROWSER_PREFS.has(k) && k !== 'crm_subaccounts' && k !== 'crm_active_account') doomed.push(k);
+  }
+  if (changed) for (const k of PERSON_GLOBALS) doomed.push(k);
+  doomed.forEach(k => { try { ls.removeItem(k); } catch { /* storage off */ } });
+  const kept = loadSubAccounts().filter(a => keep.has(a.id));
+  saveSubAccounts(kept);
+  const active = getActiveAccountId();
+  if (active && !keep.has(active)) {
+    try { ls.removeItem('crm_active_account'); } catch { /* storage off */ }
+    const first = allowed.find(Boolean);
+    if (first) setActiveAccountId(first);
+  }
+  try { ls.setItem(DATA_OWNER, who); } catch { /* storage off */ }
+  return doomed.length;
+}
+
+/** Sign-out: nothing of this person's is left on the machine for the next one. */
+export function forgetLocalWorkspaces(): void {
+  keepOnlyWorkspaces([], '');
+  try {
+    window.localStorage.removeItem('crm_active_account');
+    window.localStorage.removeItem(DATA_OWNER);
+  } catch { /* storage off */ }
+}
+
 /* ── Registry (global) ── */
 export function loadSubAccounts(): SubAccount[] {
   try { return JSON.parse(window.localStorage.getItem('crm_subaccounts') || '[]'); } catch { return []; }

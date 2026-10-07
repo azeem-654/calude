@@ -303,8 +303,10 @@ roofers: Geoapify has none), the search goes to Overpass (`searchProspects`,
 singularised word), also free. Attribution comes back with every answer.
 Overpass cannot search a whole state (it times out), and a place like
 "Richmond, Virginia" is the area named Richmond *intersected with* Virginia —
-`lib/regions.ts` knows the US states, the UK nations and the larger
-Canadian/Australian provinces with their largest towns, so a region is
+`lib/regions.ts` knows the US states, the UK nations, the larger
+Canadian/Australian provinces and a few whole countries (Australia, the UK, the
+US, Canada, New Zealand, Ireland — never used to narrow a "town, country"
+search, `splitPlace`) with their largest towns, so a region is
 searched at its largest town (the answer's `note` says so), `expand_place`
 answers without a Geoapify key, and a finder's `save` stores a region as its
 towns. Common trades are matched to OSM's own tag values (`osmTagsFor`:
@@ -418,8 +420,11 @@ pattern guess, and guesses are what prospects.ts refuses. `bestAddress` imports
 the first address no check said would bounce; the check, and a named person's
 name and role, go onto the contact (`customFields.emailStatus`, `firstName`,
 `jobTitle`). **AI Prospecting never searches LinkedIn, Apollo or bought
-data** — their terms forbid exactly this. The owner's own lead files are a
-separate feature (the Lead Directory, below) and never feed these searches. `npm run test:emailverify` and
+data** — their terms forbid exactly this. The owner's own lead files (the Lead
+Directory, below) are shown *beside* a search, never mixed into its results:
+`DirectoryMatches.tsx` asks the directory for the same words and place — even
+when the business search failed — with addresses masked, and **See them all**
+opens `/lead-directory?industry=&place=`. `npm run test:emailverify` and
 `npm run test:aiprospecting` (pure); `npm run test:prospecting` drives it with
 DoH and Hunter mocks (`EMAIL_VERIFIER_BASE`), in both themes.
 
@@ -480,6 +485,8 @@ searches people the install owner loaded from their own files;
   name + domain/company (`dedupe`, unique). `ld_facets` keeps counts per
   industry/state/country/level/size as rows come and go — never a GROUP BY
   over the table.
+- **"business owners", "CEOs"** typed where an industry goes are read as job
+  titles and seniority (`roleTerms`) when no industry matches.
 - **Customers** see nothing until the owner opens it with a statement that they
   may share the records (`settings`, `attested_at`) — vendors usually license
   lists to the buyer alone. A search must name an industry or a place (a title
@@ -678,6 +685,22 @@ transparently rewritten to `crm_acct_<id>_<key>` for the active workspace.
 
 Client-side allowance checks are a courtesy. The server is the boundary.
 
+**A browser holds one person's workspaces at a time.** `crm_subaccounts` and
+`crm_active_account` are global keys, so a browser somebody signed out of kept
+their workspaces in the switcher and their records on disk for whoever signed
+in next — a new customer opened the app to another account's projects. Every
+sign-in (`adoptSession` in services/auth.ts, which `login` now uses too) calls
+`keepOnlyWorkspaces` with the ids the server says this person owns
+(`workspaces` in every sign-in answer, plus `user.accountId`): every other
+workspace's prefixed keys and registry entries go, and the per-person globals
+too when `pc_data_owner` names somebody else. `logout` saves (`flushNow`, 3 s
+at most) and then `forgetLocalWorkspaces`. On the server, an unowned workspace
+that **already holds records** (`crm_data`, `crm_projects`, `crm_portfolios`)
+is claimed only by the install owner or the account it was issued to
+(`crm_users.account_id`) — never by whoever names it first.
+`npm run test:isolation` (self-contained: wrangler :8939, fresh D1) covers both,
+the top bar and the directory beside AI Prospecting.
+
 ## Secrets
 
 Customer credentials — mailbox passwords, registrar and DNS API keys, Stripe
@@ -740,6 +763,18 @@ id. The rules that closed those holes:
 - Customer-facing security wording must match docs/SECURITY.md §7, and never
   anything in §8. `npm run test:security` (needs `wrangler dev`) is the
   two-tenant attack suite; extend it with every new route that takes an id.
+
+## The top bar
+
+`Layout/TopNav.tsx`: logo, workspace, the pill row, the icons. Its width
+depends on data (a workspace name, the counts on AI Autopilot and the task
+badge, the cloud's state, the owner's extra menus), so breakpoints alone let
+the pills run under the icons. It **measures itself** (`wrapped`): when the
+pills' own widths do not fit the room the rest leaves, the header gets
+`nav-wrapped` and the pills take a row of their own, at any width. AI
+Autopilot and **AI Prospecting** are the two lit pills (`nav-hero`,
+`nav-hero-prospect`); the Customers pill is not lit while AI Prospecting is
+open. `test:isolation` checks four widths as the owner.
 
 ## Commands
 

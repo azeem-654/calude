@@ -180,6 +180,17 @@ export function titleTerms(q: string): string[] {
   return [...out].slice(0, 8);
 }
 
+/** Words that say "a business" rather than which one — dropped before reading what is left as a role. */
+const GENERIC = new Set(['business', 'businesses', 'company', 'companies', 'firm', 'firms', 'people', 'person', 'persons', 'contacts', 'leads', 'decision', 'makers', 'maker', 'the', 'of', 'and', 'small', 'local', 'all']);
+
+/** "business owners" → ["owner"]; "CEOs and founders" → ["ceo", "chief executive", "founder"]. Empty when nothing is a role. */
+export function roleTerms(q: string): string[] {
+  const words = key(q).split(' ').filter(w => w && !GENERIC.has(w)).map(w => (w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w));
+  const out = new Set<string>();
+  for (const w of words) for (const t of TITLE_WORDS[w] ?? []) out.add(t);
+  return [...out].slice(0, 8);
+}
+
 export interface Where { sql: string; args: (string | number)[]; note: string }
 
 /**

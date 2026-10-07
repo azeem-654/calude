@@ -9,8 +9,8 @@
  * `cold`, because these are strangers: the sending plan and the campaign
  * wizard read that.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookUser, CheckCircle, ExternalLink, Eye, Loader, Search, UserPlus } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Contact } from '../../types';
@@ -31,7 +31,10 @@ export default function LeadDirectory() {
   const { contacts, bulkImportContacts, updateContacts } = useApp();
   const [st, setSt] = useState<DirStatus | null>(null);
   const [stErr, setStErr] = useState<{ error: string; code: string } | null>(null);
-  const [q, setQ] = useState<Query>({ industry: '', place: '', title: '', level: '', companySize: '', hasEmail: false });
+  const [params] = useSearchParams();
+  /* AI Prospecting's "See them all" opens the same search here (?industry=&place=). */
+  const [q, setQ] = useState<Query>(() => ({ industry: params.get('industry') ?? '', place: params.get('place') ?? '', title: '', level: '', companySize: '', hasEmail: false }));
+  const handed = useRef(!!(params.get('industry') || params.get('place')));
   const [asked, setAsked] = useState<Query | null>(null);
   const [people, setPeople] = useState<DirPerson[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -52,6 +55,12 @@ export default function LeadDirectory() {
     if (d.success) { setSt(d as unknown as DirStatus); setStErr(null); } else setStErr({ error: String(d.error ?? 'The lead directory could not be read.'), code: String(d.code ?? '') });
   }, []);
   useEffect(() => { void loadStatus(); }, [loadStatus]);
+  useEffect(() => {
+    if (!st || !handed.current) return;
+    handed.current = false;
+    void search();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st]);
 
   const search = async (next = false) => {
     const ask = next && asked ? asked : q;
