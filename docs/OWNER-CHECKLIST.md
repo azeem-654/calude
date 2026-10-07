@@ -19,6 +19,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 | # | What | Where | Blocks |
 |---|---|---|---|
+| 0 | **Upgrade Cloudflare to Workers Paid ($5 a month)** — on 2026-10-07 the account used up D1's free allowance of **100,000 row writes a day**, which is shared by every database on the account: the live app, testing and the Lead Directory. Until midnight UTC every write was refused — saves, sign-ins renewing, the cron, deploys (the migration step failed with code 7500). Loading the Lead Directory is what uses it: each person loaded writes about six rows (the row and its indexes), so 56,000 people is ~336,000 writes, and the 6 GB folder would be tens of millions. Workers Paid includes 50 million row writes a month, then $1 a million | Cloudflare → Workers & Pages → Plans → Workers Paid | Everything that writes, every day a large file is loaded. Do this before loading more leads |
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
