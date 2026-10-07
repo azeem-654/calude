@@ -4,7 +4,7 @@ import SupportBadge from './SupportBadge';
 import CloudBadge from './CloudBadge';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Layers, Search, Mail, Bell, ChevronDown, ChevronLeft,
+  Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
   CheckCircle, XCircle, Info, BellOff, Crosshair,
@@ -16,6 +16,7 @@ import { watchPulse, type Pulse } from '../../services/autopilotPulse';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
 import { getTheme, toggleTheme } from '../../services/theme';
+import { LogoMark } from '../shared/Logo';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
@@ -115,34 +116,46 @@ export default function TopNav() {
   /*
    * Does the bar fit on one line?
    *
-   * It was decided by fixed breakpoints, and the bar's real width is not
-   * fixed: a long workspace name, the counts on AI Autopilot and the task
-   * badge, the cloud saying "delayed" or "live", and the owner's extra menus
-   * all change it. Between breakpoints the pills ran under the icons on the
-   * right — "Reports" painted over "Cloud live", the last menu's arrow poking
-   * out beside it. So it is measured: the pills' own widths against the room
-   * the logo, the workspace and the icons leave. When they do not fit, the
-   * pills take a row of their own, at any window width.
+   * The bar's real width is not fixed: a long workspace name, the counts on AI
+   * Autopilot and the task badge, and the owner's extra menus all change it,
+   * so breakpoints alone let the pills run under the icons on the right. It is
+   * measured instead, in three steps, and the first that fits wins: the pills
+   * as drawn (`full`), the same pills a little closer together (`tight`), and
+   * only then a row of their own (`wrap`). One line is what the bar is meant to
+   * be; the second row is the fallback for a narrow window, not the look.
+   *
+   * The step is written straight onto the header as `data-fit`, not through
+   * React state: each step has to be laid out and measured in the same frame,
+   * and a re-render between them would paint the bar wrong first.
    */
-  const [wrapped, setWrapped] = useState(false);
   useEffect(() => {
     const header = navRef.current;
     const pills = navMenuRef.current;
     if (!header || !pills) return;
-    const measure = () => {
+    const fits = () => {
       const cs = getComputedStyle(header);
       const gap = parseFloat(cs.columnGap || cs.gap || '0') || 0;
       const inner = header.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
       const kids = [...header.children].filter(k => k !== pills) as HTMLElement[];
       const others = kids.reduce((w, k) => w + k.getBoundingClientRect().width, 0) + gap * kids.length;
-      const pg = parseFloat(getComputedStyle(pills).columnGap || '0') || 0;
-      const need = [...pills.children].reduce((w, k) => w + (k as HTMLElement).getBoundingClientRect().width, 0) + pg * Math.max(0, pills.children.length - 1) + 12;
-      setWrapped(others + need > inner + 1);
+      const ps = getComputedStyle(pills);
+      const pg = parseFloat(ps.columnGap || '0') || 0;
+      const pad = (parseFloat(ps.paddingLeft) || 0) + (parseFloat(ps.paddingRight) || 0);
+      const need = [...pills.children].reduce((w, k) => w + (k as HTMLElement).getBoundingClientRect().width, 0) + pg * Math.max(0, pills.children.length - 1) + pad + 4;
+      return others + need <= inner + 1;
+    };
+    const measure = () => {
+      for (const step of ['full', 'tight'] as const) {
+        header.dataset.fit = step;
+        if (fits()) return;
+      }
+      header.dataset.fit = 'wrap';
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(header);
     [...header.children].forEach(k => ro.observe(k));
+    [...pills.children].forEach(k => ro.observe(k));
     return () => ro.disconnect();
   }, []);
   const onProspecting = location.pathname.startsWith('/prospecting');
@@ -173,7 +186,7 @@ export default function TopNav() {
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   return (
-    <header ref={navRef} className={`app-header${wrapped ? ' nav-wrapped' : ''}`} style={{
+    <header ref={navRef} className="app-header" data-fit="full" style={{
       position: 'sticky', top: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', gap: 20,
       padding: '14px 28px',
@@ -181,20 +194,26 @@ export default function TopNav() {
       backdropFilter: 'blur(14px)',
       WebkitBackdropFilter: 'blur(14px)',
     }}>
-      {/* Logo — white-labeled per workspace */}
-      <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', flexShrink: 0 }}>
+      {/* Logo — white-labeled per workspace. The mark alone: the name beside it
+          cost the pill row ~170px and pushed it onto a second line, and the
+          shield is the product's name in this bar the way it is in a browser tab. */}
+      <NavLink to="/" title={brand.appName} aria-label={`${brand.appName} — home`} className="nav-logo" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', flexShrink: 0 }}>
         {brand.logoUrl
-          ? <img src={brand.logoUrl} alt="" style={{ height: 26, maxWidth: 150, objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-          : <><Layers size={22} color="#17191c" strokeWidth={2.4} /><span style={{ fontSize: 18, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>{brand.appName}</span></>}
+          ? <img src={brand.logoUrl} alt="" style={{ height: 32, maxWidth: 96, objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          : brand.appName === 'Protected Central'
+            ? <LogoMark size={36} />
+            /* A white-label name with no logo uploaded: its initial on a tile,
+               never somebody else's shield. */
+            : <span style={{ width: 36, height: 36, borderRadius: 9, background: '#17191c', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 800 }}>{brand.appName.trim()[0]?.toUpperCase() ?? '•'}</span>}
       </NavLink>
 
       {/* Sub-account switcher — agency only */}
       {active && !isClient && (
         <div ref={acctRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button onClick={() => setAcctOpen(v => !v)}
+          <button onClick={() => setAcctOpen(v => !v)} title={active.name}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 6px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#fff', boxShadow: '0 1px 2px rgba(23,25,28,0.08)', maxWidth: 190 }}>
             <span style={{ width: 22, height: 22, borderRadius: 7, background: active.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{(active.businessName || active.name || '?')[0].toUpperCase()}</span>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#17191c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{active.name}</span>
+            <span className="ws-name" style={{ fontSize: 12.5, fontWeight: 700, color: '#17191c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{active.name}</span>
             <ChevronDown size={13} color="#8a8f98" style={{ transform: acctOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
           </button>
           {acctOpen && (
@@ -312,9 +331,10 @@ export default function TopNav() {
                 to={group.path ?? '/autopilot'}
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
                 className={`pill-link nav-hero${on ? ' nav-hero-on' : ''}${autopilotLive ? ' nav-hero-live' : ''}`}
+                data-noinvert
                 style={{
                   ...pill,
-                  padding: '10px 20px',
+                  padding: '8px 18px',
                   fontSize: 13.5,
                   fontWeight: 700,
                   color: '#fff',
@@ -354,7 +374,8 @@ export default function TopNav() {
                 to="/prospecting"
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
                 className={`pill-link nav-hero nav-hero-prospect${onProspecting ? ' nav-hero-on' : ''}`}
-                style={{ ...pill, padding: '10px 18px', fontSize: 13.5, fontWeight: 700, color: '#fff', backgroundColor: 'transparent', boxShadow: 'none', gap: 7 }}
+                data-noinvert
+                style={{ ...pill, padding: '8px 16px', fontSize: 13.5, fontWeight: 700, color: '#fff', backgroundColor: 'transparent', boxShadow: 'none', gap: 7 }}
               >
                 <Crosshair size={14} strokeWidth={2.4} aria-hidden="true" />
                 AI Prospecting

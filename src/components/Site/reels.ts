@@ -38,9 +38,15 @@ export interface ReelShot {
   /**
    * The part of the screen worth reading, as fractions of the whole picture —
    * [left, top, width, height]. On a wide screen the slide opens whole, zooms
-   * into this and back out (ShotReel). Absent, the slide stays whole.
+   * into it, centred on it across, then travels down the page (ShotReel).
    */
   focus?: [number, number, number, number];
+  /**
+   * How it works and what it brings in, a line at a time, shown over the
+   * screen one after another while the page travels. Each line says what is
+   * on this screen — never a result the screen does not show.
+   */
+  notes?: string[];
 }
 
 export const REELS: Record<string, ReelShot[]> = {
@@ -241,7 +247,49 @@ const FOCUS: Record<string, [number, number, number, number]> = {
   'agency': [0.05, 0.08, 0.5, 0.34],
   'analytics': [0.05, 0.08, 0.5, 0.34],
 };
-for (const list of Object.values(REELS)) for (const shot of list) shot.focus ??= FOCUS[shot.file];
+/*
+ * The lines that come up over each screen while it is read, one at a time:
+ * what you do, what it does for you, and what comes out of it.
+ */
+const NOTES: Record<string, string[]> = {
+  'hero-board': ['Each client gets a project that runs on the server, every five minutes', 'Workflows and AI agents do the follow-up, the posts and the replies', 'You approve what matters — the rest runs itself'],
+  'hero-flow': ['A workflow emails, waits and checks for a reply', 'Replies become tasks and deals; the quiet ones get a follow-up', 'Texts go only to people who said yes'],
+  'hero-prospecting': ['Type who you want and where', 'It searches live, reads each business\'s own website and finds its address', 'Every address is checked before it reaches your list'],
+  'hero-daily': ['Set the trades, the towns and how many a day', 'The project finds new businesses every day on its own', 'Only reachable prospects join the audience — then the outreach starts'],
+  'hero-dashboard': ['Everything that happened overnight, on one screen', 'Pipeline, revenue won and replies, counted from your records', 'And what to do next, already ranked'],
+  'hero-pipeline': ['Every deal in its stage, for every client', 'Values weighted by stage, so the forecast is honest', 'Drag a deal forward the moment it moves'],
+  'pr-start': ['One sentence starts a search: a trade and a town', 'Every search is kept, with its results and checks', 'Turn any of them into a list or a daily lead source'],
+  'pr-dentists': ['The same sentence works for any trade, in any town', 'Websites read live, addresses found where the business published them', 'Checked, tagged and ready to add to a campaign'],
+  'pr-lawyers': ['Firms found with the address each one publishes', 'Whether that address takes mail, checked as it goes', 'Tick the ones you want and add them to a workflow'],
+  'pr-every-day': ['Connect a search you tested to an AI Autopilot project', 'Pick the schedule and how many verified leads a run', 'Duplicates and opt-outs are turned away automatically'],
+  'pr-daily-chart': ['Thirty days of prospects added, day by day', 'The rotation of searches the project works through', 'Every new prospect listed with its check'],
+  'dashboard': ['Your day at a glance', 'What Autopilot did while you were away', 'The next best actions, ready to press'],
+  'ap-describe': ['Say what you want in one sentence — or speak it', 'Autopilot reads your website and files for the rest', 'It builds the workflows, the content and the schedule'],
+  'ap-diagram': ['Every step drawn as it runs', 'Each fork labelled: replied, booked, opted in', 'Change any step in place with the pen'],
+  'ap-step': ['Open just the step you want to change', 'Pick from your real forms, tags and stages', 'Test it before it goes live'],
+  'ap-gallery': ['Ready-made workflows, filed by the problem they solve', 'Preview the whole flow before you use it', 'One press adds it to a project'],
+  'ap-board': ['Each project with its own agents and permissions', 'What it made, what it sent and what waits for you', 'Running on the server, even with your computer off'],
+  'contacts-list': ['Everyone you have spoken to, in one list', 'Health, stage and value on every row', 'Filter, tag and send in a couple of clicks'],
+  'contacts-profile': ['One person, with every email, deal and note', 'The next best action, suggested', 'Nothing to copy between tools'],
+  'pipe-board': ['Deals by stage, with open and weighted value', 'Tasks and timelines on every deal', 'Won deals count straight into revenue'],
+  'pipe-table': ['The same deals as a sortable table', 'Owners, values and next steps side by side', 'Spot what is stuck at a glance'],
+  'mkt-campaigns': ['Every campaign with what was sent and opened', 'Clicks and replies counted per send', 'See what works, and send more of it'],
+  'mkt-sequences': ['Multi-step sequences written with AI', 'They stop the moment somebody answers', 'Replies land in your inbox, ready to answer'],
+  'eng-forms': ['Forms that create the contact on submit', 'The follow-up starts the same minute', 'No lead waits for somebody to notice it'],
+  'eng-tickets': ['Every request gets a reference and a priority', 'Reply in the thread; the customer sees it at once', 'Nothing gets lost between inboxes'],
+  'funnels-list': ['Funnels with visitors and conversions per step', 'Revenue counted where it was made', 'Fix the step that leaks'],
+  'sites-list': ['Whole websites, built from the same login', 'Published on your own domain', 'Their forms feed straight into your contacts'],
+  'social-gallery': ['Posts on the right canvas for each platform', 'Written for you by your projects', 'Approved and published from one place'],
+  'social-editor': ['Every post is a real design', 'Change the words, colours and picture before it goes out', 'Your brand on every post'],
+  'blog-projects': ['A topic plan from your own portfolio', 'Articles written to what your buyers search for', 'Written on the schedule you set'],
+  'cal-week': ['The week on one grid', 'Who booked what, from your booking page', 'And who to call next'],
+  'agency': ['A workspace for every client', 'Each with its own plan, price and brand', 'Billed on your own processor'],
+  'analytics': ['Revenue, leads and where they came from', 'Read live from every module', 'See which project earns its keep'],
+};
+for (const list of Object.values(REELS)) for (const shot of list) {
+  shot.focus ??= FOCUS[shot.file];
+  shot.notes ??= NOTES[shot.file];
+}
 
 /** Every distinct file, for the capture script. */
 export const REEL_FILES: string[] = [...new Set(Object.values(REELS).flat().map(s => s.file))];

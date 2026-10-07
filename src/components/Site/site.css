@@ -2404,3 +2404,95 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   }
   .dc-hero-shot .dc-reel-text { font-size: 13px; }
 }
+
+/* ── The tour (ShotReel) ─────────────────────────────────────────────────────
+   Each picture is a whole page now, taller than the window it was taken in.
+   The slide is the window; the picture hangs from its top at the slide's
+   width, so "whole" is the screen as it opens, and ShotReel moves it — zoom
+   into its readable size, travel to the bottom, back out — with an inline
+   transform and transition per phase. These rules come last on purpose: they
+   replace the older picture rules above, which drew a one-window picture. */
+.dc-reel.strip .dc-reel-shot picture { position: absolute; inset: 0; display: block; width: auto; height: auto; }
+.dc-reel.strip .dc-sr-img {
+  position: absolute; top: 0; left: 0; display: block;
+  width: 100%; height: auto; max-width: none;
+  transform-origin: 0 0; will-change: transform;
+  background: #f4f6f3;
+}
+.dc-reel.strip .dc-reel-shot.on { cursor: zoom-in; }
+/* Reduced motion: the zoom and the way back arrive as a fade, not a swoop. */
+.dc-reel.calm .dc-reel-shot.on.ph-zoom .dc-sr-img,
+.dc-reel.calm .dc-reel-shot.on.ph-back .dc-sr-img { animation: dc-sr-fade 0.5s ease both; }
+@keyframes dc-sr-fade { from { opacity: 0.35; } to { opacity: 1; } }
+/* The clock under the dots keeps time whatever the motion setting: it is how
+   somebody knows the screen will change. */
+.dc-reel.calm .dc-reel-fill { animation: dc-reel-fill var(--hold, 5.2s) linear both; }
+
+/* How it works, a line at a time, over the screen being read. */
+.dc-sr-note {
+  position: absolute; left: 16px; bottom: 16px; z-index: 3;
+  max-width: min(480px, calc(100% - 32px));
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 14px; border-radius: 14px;
+  background: rgba(10, 14, 18, 0.86); color: #f2f5f1;
+  border: 1px solid rgba(200, 242, 77, 0.32);
+  box-shadow: 0 18px 40px -14px rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  font: 600 14.5px/1.4 Inter, system-ui, sans-serif; letter-spacing: -0.01em;
+  pointer-events: none;
+  animation: dc-sr-note-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dc-sr-note-n {
+  flex-shrink: 0; padding: 3px 7px; border-radius: 999px;
+  background: var(--lime, #c8f24d); color: #0b0f0c; font-size: 11px; font-weight: 800;
+}
+.dc-reel.calm .dc-sr-note { animation-name: dc-sr-fade; }
+.dc-prospect .dc-sr-note { border-color: rgba(255, 138, 87, 0.4); }
+.dc-prospect .dc-sr-note-n { background: #ff9a6a; }
+@keyframes dc-sr-note-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.dc-reel-play { margin-right: 4px; }
+
+/* A phone: the screen as wide as the column allows, the same in the hero as in
+   every section — the hero used to be drawn narrower, with the sky either side. */
+@media (max-width: 760px) {
+  .dc-reel.strip { --side: 0.86; --strip-gap: 8px; }
+  .dc-reel.strip .dc-reel-stage,
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: min(calc(88vw / 0.5417 + 8px), calc(100vh - 170px)); }
+  @supports (height: 100svh) {
+    .dc-reel.strip .dc-reel-stage,
+    .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: min(calc(88vw / 0.5417 + 8px), calc(100svh - 170px)); }
+  }
+  .dc-sr-note { left: 8px; right: 8px; bottom: 8px; max-width: none; padding: 8px 10px; font-size: 12.5px; border-radius: 12px; }
+}
+
+/* Full size is a page to scroll now, not a picture to fit. */
+.dc-viewer { align-items: flex-start; overflow-y: auto; padding: 56px 64px 40px; }
+.dc-viewer-body { width: 100%; max-width: min(1500px, 100%); }
+.dc-viewer-img { width: 100%; max-width: 100%; max-height: none; height: auto; }
+@media (max-width: 760px) {
+  .dc-viewer { padding: 60px 10px 70px; }
+  .dc-viewer-body { align-items: stretch; }
+  .dc-viewer-img { width: 100%; max-width: 100%; }
+}
+
+/* A phone upright: the picture takes the column's width, so what is around it
+   gives up height instead — the typed prompt above the hero's picture goes,
+   and "Full size", pause and the dots share one row under a short caption.
+   The whole of it still fits one screen (test:sitefit). */
+@media (max-width: 760px) and (orientation: portrait) {
+  .dc-hero-stage .dc-hero-prompt { display: none; }
+  .dc-reel.strip .dc-reel-caption { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+  .dc-reel.strip .dc-reel-text { flex-basis: 100%; font-size: 14px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .dc-reel.strip .dc-reel-open { padding: 7px 10px; }
+  .dc-reel.strip .dc-reel-open span { display: none; }
+}
+@media (max-width: 760px) and (orientation: portrait) and (max-height: 700px) {
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: calc(100vh - 220px); }
+  @supports (height: 100svh) { .dc-hero-shot .dc-reel.strip .dc-reel-stage { height: calc(100svh - 220px); } }
+}
+/* The fade into the sky at the strip's ends is for a row of screens; on a
+   phone it fogged the edges of the one being read. */
+@media (max-width: 760px) {
+  .dc-hero-strip .dc-reel.strip .dc-reel-stage { -webkit-mask-image: none; mask-image: none; }
+}

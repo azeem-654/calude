@@ -27,12 +27,32 @@
  *   - Everywhere, the screen showing can be opened full size (a click on it,
  *     or its expand button), and a phone can pinch it there.
  *
- * ── Motion is a preference ──
+ * ── The tour: whole, then zoomed in and read from top to bottom ──
  *
- * With reduced motion asked for (by the system or by this browser's own
- * setting in `services/motion.ts`), nothing advances, slides or zooms on its
- * own: the first screen is shown whole, and the arrows, dots and full-size
- * view still work by hand.
+ * The owner found the zoom "not working" and asked for something else: each
+ * screen shown whole once, then zoomed in and travelled down from its top to
+ * its bottom, so it can be read. The pictures are now the *whole page* — the
+ * window and everything under it (scripts/site-reels.mts, up to about two and
+ * a half windows on a desktop, three on a phone) — and each slide runs:
+ *
+ *   whole   the top of the page, the size of the window: the screen as it opens
+ *   zoom    into its readable size, centred on the part that matters (`focus`)
+ *   travel  down to the bottom of the page, at a reading pace
+ *   back    out to the whole screen, and on to the next
+ *
+ * The travel's length comes from the picture itself, so a long page takes
+ * longer than a short one. On a phone there is no zoom: the picture is the
+ * app's own phone layout, already at its size, and it is read top to bottom
+ * the same way. While it travels, the shot's `notes` — how it works, what it
+ * brings in — come up one at a time over the screen.
+ *
+ * ── Motion ──
+ *
+ * The tour plays with reduced motion asked for too: on many machines that
+ * setting is switched on by a battery saver, not chosen (services/motion.ts),
+ * and the owner's own reported the zoom as broken. What it changes is the
+ * movement's shape — the zoom and the way back are a fade, not a swoop — and
+ * there is always a pause button, which is what a moving picture owes anyone.
  *
  * ── Costs ──
  *
@@ -44,53 +64,61 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Maximize2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Pause, Play, X } from 'lucide-react';
 import { motionReduced } from '../../services/motion';
 import type { ReelShot } from './reels';
 
-const HOLD_MS = 7800;
-const HOLD_NARROW_MS = 6200;
-/* Whole first, then the zoom; out again before the next screen. */
-const ZOOM_IN_AT = 1300;
-const ZOOM_OUT_BEFORE = 1500;
+/* The phases of a slide, in milliseconds. */
+const WHOLE_MS = 1900;
+const WHOLE_NARROW_MS = 1500;
+const ZOOM_MS = 1300;
+const END_MS = 1300;
+const BACK_MS = 1100;
+/* How fast the page travels, in the app's own pixels a second — a reading
+   pace, not a scroll: a desktop line of the app is about 20 of them. */
+const SPEED = 165;
+const SPEED_NARROW = 105;
+const TRAVEL_MIN = 2600;
+const TRAVEL_MAX = 21000;
+/* Width of the window the pictures were taken in (scripts/site-reels.mts). */
+const APP_W = 1920;
+const APP_W_NARROW = 390;
 const narrow = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 760px)').matches;
 
 const base = () => `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/site/reel`;
 const file = (f: string, v = '') => `${base()}/${f}${v}.webp`;
 
-/** The transform that puts `focus` in the middle of the frame, as large as it fits — never past an edge. */
-function zoomFor(focus?: [number, number, number, number]): React.CSSProperties {
-  if (!focus) return {};
-  const [x, y, w, h] = focus;
-  const s = Math.min(2.6, 1 / Math.max(w, h * 1));
-  const clamp = (v: number) => Math.min(0, Math.max(1 - s, v));
-  const tx = clamp(0.5 - s * (x + w / 2));
-  const ty = clamp(0.5 - s * (y + h / 2));
-  return { '--zs': s.toFixed(3), '--zx': `${(tx * 100).toFixed(2)}%`, '--zy': `${(ty * 100).toFixed(2)}%` } as React.CSSProperties;
+type Phase = 'whole' | 'zoom' | 'travel' | 'end' | 'back';
+interface Plan { s: number; tx: number; ty: number; travel: number }
+
+/**
+ * Where the zoom goes and how long the travel takes, for a slide `fw`×`fh`
+ * showing a picture `nw`×`nh` drawn at the slide's width.
+ */
+function planFor(fw: number, fh: number, nw: number, nh: number, focus: ReelShot['focus'], small: boolean): Plan {
+  const ih = fw * (nh / nw);
+  /* Desktop: large enough that the app's 14px text reads at about 11px. */
+  const s = small ? 1 : Math.min(2.2, Math.max(1.3, (0.78 * APP_W) / fw));
+  const cx = focus ? focus[0] + focus[2] / 2 : 0.5;
+  const tx = Math.min(0, Math.max(fw - s * fw, fw / 2 - s * cx * fw));
+  const ty = Math.min(0, fh - s * ih);
+  const appPx = (-ty * (small ? APP_W_NARROW : APP_W)) / (s * fw);
+  const travel = appPx < 40 ? 0 : Math.min(TRAVEL_MAX, Math.max(TRAVEL_MIN, (appPx / (small ? SPEED_NARROW : SPEED)) * 1000));
+  return { s, tx, ty, travel };
 }
 
-function Shot({ s, eager, on }: { s: ReelShot; eager: boolean; on: boolean }) {
-  return (
-    <picture>
-      <source media="(max-width: 760px)" srcSet={file(s.file, '-m')} />
-      <img
-        src={file(s.file)}
-        srcSet={`${file(s.file, '-sm')} 1200w, ${file(s.file)} 2400w`}
-        sizes="(min-width: 1000px) 78vw, 100vw"
-        alt={on ? s.alt : ''}
-        loading={eager ? 'eager' : 'lazy'}
-        decoding="async"
-        width={2400}
-        height={1500}
-        className="dc-shot-img"
-        style={zoomFor(s.focus)}
-      />
-    </picture>
-  );
+function durations(plan: Plan | null, small: boolean) {
+  const whole = small ? WHOLE_NARROW_MS : WHOLE_MS;
+  const zoom = plan && plan.s > 1 ? ZOOM_MS : 0;
+  const travel = plan?.travel ?? 0;
+  /* A picture with nothing below the window holds a little longer instead. */
+  const end = travel ? END_MS : 2600;
+  const back = zoom || travel ? BACK_MS : 0;
+  return { whole, zoom, travel, end, back, total: whole + zoom + travel + end + back };
 }
 
-/** The screen at full size: the whole desktop picture, fitted to the window — or, on a phone, twice its width to pan and pinch. */
-function Viewer({ shots, at, onClose, onGo }: { shots: ReelShot[]; at: number; onClose: () => void; onGo: (i: number) => void }) {
+/** The screen at full size, to scroll: the whole desktop page, or on a phone its phone layout. */
+function Viewer({ shots, at, small, onClose, onGo }: { shots: ReelShot[]; at: number; small: boolean; onClose: () => void; onGo: (i: number) => void }) {
   const s = shots[at];
   const close = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -108,11 +136,8 @@ function Viewer({ shots, at, onClose, onGo }: { shots: ReelShot[]; at: number; o
   return (
     <div className="dc-viewer" role="dialog" aria-modal="true" aria-label={`${s.caption} — full size`} onClick={onClose}>
       <div className="dc-viewer-body" onClick={e => e.stopPropagation()}>
-        {/* Always the whole desktop screen: on a phone the slide already showed
-            the phone layout, and "full size" is the complete window — wider
-            than the phone, to pan and pinch. */}
-        <img src={file(s.file)} alt={s.alt} className="dc-viewer-img" />
         <p className="dc-viewer-cap">{s.caption}</p>
+        <img key={s.file} src={file(s.file, small ? '-m' : '')} alt={s.alt} className="dc-viewer-img" />
       </div>
       <button ref={close} type="button" className="dc-viewer-btn dc-viewer-x" aria-label="Close" onClick={onClose}><X size={18} /></button>
       {shots.length > 1 && <>
@@ -124,7 +149,7 @@ function Viewer({ shots, at, onClose, onGo }: { shots: ReelShot[]; at: number; o
 }
 
 export default function ShotReel({
-  shots, label, eager = false, holdMs,
+  shots, label, eager = false,
 }: {
   shots: ReelShot[];
   /** What the reel is of, for a screen reader: "AI Autopilot". */
@@ -134,18 +159,26 @@ export default function ShotReel({
   /** Kept for callers; every reel is a strip now and draws no browser bar. */
   chrome?: boolean;
   strip?: boolean;
-  /** How long each screen holds on a wide screen, zoom included. */
+  /** Kept for callers; a slide now lasts as long as its page takes to read. */
   holdMs?: number;
 }) {
   const [at, setAt] = useState(0);
   const [inView, setInView] = useState(false);
   const [held, setHeld] = useState(false);
-  const [zoom, setZoom] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.visibilityState === 'hidden');
   const [viewing, setViewing] = useState(false);
-  const [still] = useState(() => motionReduced());
+  const [phase, setPhase] = useState<Phase>('whole');
+  const [note, setNote] = useState(-1);
+  const [run, setRun] = useState(0);
+  /* Where a paused slide stopped, as the transform it had then. */
+  const [frozen, setFrozen] = useState<string | null>(null);
+  const [reduced] = useState(() => motionReduced());
   const [small] = useState(() => narrow());
-  const [hold] = useState(() => (small ? HOLD_NARROW_MS : holdMs ?? HOLD_MS));
+  const [frame, setFrame] = useState<{ w: number; h: number } | null>(null);
+  const [dims, setDims] = useState<Record<string, { w: number; h: number }>>({});
   const box = useRef<HTMLDivElement | null>(null);
+  const stage = useRef<HTMLDivElement | null>(null);
   const many = shots.length > 1;
 
   useEffect(() => {
@@ -155,36 +188,84 @@ export default function ShotReel({
     io.observe(el);
     return () => io.disconnect();
   }, []);
-
-  const paused = still || !inView || held || viewing || (typeof document !== 'undefined' && document.visibilityState === 'hidden');
-
-  /* The advancing. A timeout per shot rather than an interval, so pressing a
-     dot restarts the clock for the shot it chose. */
   useEffect(() => {
-    if (!many || paused) return;
-    const t = window.setTimeout(() => setAt(i => (i + 1) % shots.length), hold);
-    return () => window.clearTimeout(t);
-  }, [at, many, paused, shots.length, hold]);
-
-  /* The zoom: whole, then into its focus, then whole again before it leaves.
-     Not on a phone, which is shown its own phone screen instead. */
+    const vis = () => setHidden(document.visibilityState === 'hidden');
+    document.addEventListener('visibilitychange', vis);
+    return () => document.removeEventListener('visibilitychange', vis);
+  }, []);
+  /* Every slide is the same size; the one showing is measured. */
   useEffect(() => {
-    setZoom(false);
-    if (paused || small || !shots[at]?.focus) return;
-    const a = window.setTimeout(() => setZoom(true), ZOOM_IN_AT);
-    const b = window.setTimeout(() => setZoom(false), Math.max(ZOOM_IN_AT + 2000, hold - ZOOM_OUT_BEFORE));
-    return () => { window.clearTimeout(a); window.clearTimeout(b); };
-  }, [at, paused, small, hold, shots]);
+    const el = stage.current?.querySelector<HTMLElement>('.dc-reel-shot');
+    if (!el) return;
+    const measure = () => setFrame(f => (f && f.w === el.clientWidth && f.h === el.clientHeight ? f : { w: el.clientWidth, h: el.clientHeight }));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const paused = !inView || held || stopped || viewing || hidden;
+  const shot = shots[at] ?? shots[0];
+  const d = dims[shot.file];
+  const plan = frame && d ? planFor(frame.w, frame.h, d.w, d.h, shot.focus, small) : null;
+  const t = durations(plan, small);
+  const notes = shot.notes ?? [];
+
+  /*
+   * The slide's timeline: whole → zoom → travel → end → back → next. One
+   * timeout per phase, restarted whenever the slide, the size or the pause
+   * changes. Pausing holds the picture where it is (read back from the
+   * running transition); playing again starts the slide from whole.
+   */
+  useEffect(() => {
+    if (paused) {
+      const im = stage.current?.querySelector<HTMLElement>('.dc-reel-shot.on .dc-sr-img');
+      setFrozen(im ? getComputedStyle(im).transform : null);
+      return;
+    }
+    setFrozen(null);
+    setPhase('whole');
+    setNote(-1);
+    if (!plan) return;
+    const timers: number[] = [];
+    const after = (ms: number, f: () => void) => timers.push(window.setTimeout(f, ms));
+    let clock = t.whole;
+    if (t.zoom) { after(clock, () => setPhase('zoom')); clock += t.zoom; }
+    if (t.travel) after(clock, () => setPhase('travel'));
+    /* The notes: one at a time across the travel, or across the hold when the page is one window long. */
+    const span = t.travel || t.end;
+    notes.forEach((_, i) => after((t.travel ? clock : t.whole) + (i * span) / Math.max(1, notes.length), () => setNote(i)));
+    clock += t.travel;
+    after(clock, () => setPhase('end'));
+    clock += t.end;
+    if (t.back) { after(clock, () => { setPhase('back'); setNote(-1); }); clock += t.back; }
+    if (many) after(clock, () => setAt(i => (i + 1) % shots.length));
+    else after(clock, () => setRun(r => r + 1));
+    return () => timers.forEach(x => window.clearTimeout(x));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at, paused, plan?.s, plan?.tx, plan?.ty, plan?.travel, run]);
 
   const go = (i: number) => setAt((i + shots.length) % shots.length);
-  const shot = shots[at] ?? shots[0];
   const n = shots.length;
+
+  const imgStyle = (on: boolean): React.CSSProperties => {
+    if (on && frozen && frozen !== 'none') return { transform: frozen, transition: 'none' };
+    if (!on || !plan || phase === 'whole' || phase === 'back') {
+      return { transform: 'translate(0px, 0px) scale(1)', transition: on && phase === 'back' && !reduced ? `transform ${BACK_MS}ms cubic-bezier(0.65, 0, 0.25, 1)` : 'none' };
+    }
+    const atEnd = phase === 'travel' || phase === 'end';
+    return {
+      transform: `translate(${plan.tx.toFixed(1)}px, ${(atEnd ? plan.ty : 0).toFixed(1)}px) scale(${plan.s.toFixed(3)})`,
+      transition: phase === 'zoom'
+        ? (reduced ? 'none' : `transform ${ZOOM_MS}ms cubic-bezier(0.65, 0, 0.25, 1)`)
+        : phase === 'travel' ? `transform ${t.travel}ms cubic-bezier(0.42, 0, 0.58, 1)` : 'none',
+    };
+  };
 
   return (
     <div
-      className={`dc-reel strip${inView ? ' in-view' : ''}${held ? ' held' : ''}${many ? '' : ' single'}`}
+      className={`dc-reel strip${inView ? ' in-view' : ''}${paused ? ' held' : ''}${many ? '' : ' single'}${reduced ? ' calm' : ''}`}
       ref={box}
-      style={{ '--hold': `${hold}ms` } as React.CSSProperties}
       role="group"
       aria-roledescription="carousel"
       aria-label={label}
@@ -192,7 +273,7 @@ export default function ShotReel({
       onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHeld(false); }}
     >
       <div className="dc-reel-frame">
-        <div className="dc-reel-stage">
+        <div className="dc-reel-stage" ref={stage}>
           {shots.map((s, i) => {
             const on = i === at;
             let pos = ((i - at) % n + n) % n;
@@ -201,12 +282,34 @@ export default function ShotReel({
             return (
               <div
                 key={s.file}
-                className={`dc-reel-shot${on ? ' on' : ''}${on && zoom ? ' zoom' : ''}`}
+                className={`dc-reel-shot${on ? ' on' : ''}${on && phase !== 'whole' && phase !== 'back' ? ' zoom' : ''}${on ? ` ph-${phase}` : ''}`}
                 data-pos={Math.max(-2, Math.min(2, pos))}
                 aria-hidden={on ? undefined : true}
                 onClick={() => (on ? setViewing(true) : go(i))}
               >
-                <Shot s={s} on={on} eager={(eager && i === 0) || near} />
+                <picture>
+                  <source media="(max-width: 760px)" srcSet={file(s.file, '-m')} />
+                  <img
+                    src={file(s.file)}
+                    srcSet={`${file(s.file, '-sm')} 1200w, ${file(s.file)} 2000w`}
+                    sizes="(min-width: 1000px) 90vw, 100vw"
+                    alt={on ? s.alt : ''}
+                    loading={(eager && i === 0) || near ? 'eager' : 'lazy'}
+                    decoding="async"
+                    className="dc-sr-img"
+                    style={imgStyle(on)}
+                    onLoad={e => {
+                      const im = e.currentTarget;
+                      if (im.naturalWidth) setDims(m => (m[s.file]?.w === im.naturalWidth && m[s.file]?.h === im.naturalHeight ? m : { ...m, [s.file]: { w: im.naturalWidth, h: im.naturalHeight } }));
+                    }}
+                  />
+                </picture>
+                {on && note >= 0 && notes[note] && (
+                  <div className="dc-sr-note" key={`${s.file}-${note}`} aria-live="polite">
+                    <span className="dc-sr-note-n">{note + 1}/{notes.length}</span>
+                    <span>{notes[note]}</span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -218,8 +321,11 @@ export default function ShotReel({
         <button type="button" className="dc-reel-open" aria-label={`Open “${shot.caption}” full size`} onClick={() => setViewing(true)}>
           <Maximize2 size={13} /><span>Full size</span>
         </button>
-        {many && (
-          <div className="dc-reel-controls">
+        <div className="dc-reel-controls">
+          <button type="button" onClick={() => setStopped(v => !v)} aria-label={stopped ? 'Play the tour' : 'Pause the tour'} aria-pressed={stopped} className="dc-reel-arrow dc-reel-play">
+            {stopped ? <Play size={13} /> : <Pause size={13} />}
+          </button>
+          {many && <>
             <button type="button" onClick={() => go(at - 1)} aria-label="Previous screen" className="dc-reel-arrow">
               <ChevronLeft size={14} />
             </button>
@@ -234,20 +340,20 @@ export default function ShotReel({
                   className={`dc-reel-dot${i === at ? ' on' : ''}`}
                   onClick={() => go(i)}
                 >
-                  {i === at && !paused && <span key={at} className="dc-reel-fill" />}
+                  {i === at && !paused && plan && <span key={`${at}-${run}`} className="dc-reel-fill" style={{ '--hold': `${t.total}ms` } as React.CSSProperties} />}
                 </button>
               ))}
             </div>
             <button type="button" onClick={() => go(at + 1)} aria-label="Next screen" className="dc-reel-arrow">
               <ChevronRight size={14} />
             </button>
-          </div>
-        )}
+          </>}
+        </div>
       </div>
       {/* Into <body>: inside the section, a revealed (transformed) ancestor
           would trap `position: fixed` under the nav and the page's own image
           rules would cap its width. */}
-      {viewing && createPortal(<Viewer shots={shots} at={at} onClose={() => setViewing(false)} onGo={go} />, document.body)}
+      {viewing && createPortal(<Viewer shots={shots} at={at} small={small} onClose={() => setViewing(false)} onGo={go} />, document.body)}
     </div>
   );
 }

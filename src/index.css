@@ -317,40 +317,56 @@ button:focus-visible, a:focus-visible {
 .nav-hero {
   position: relative;
   z-index: 1;
-  background-image: linear-gradient(135deg, #4f46e5 0%, #7c3aed 52%, #9333ea 100%);
+  /* The owner's reference: a dark navy capsule ringed by a line of cyan light,
+     like a neon switch. The ring is a border and three shadows — the line
+     itself, the halo outside it and the glow it throws inwards — so it stays
+     crisp at any zoom and costs no image. */
+  background-image: radial-gradient(130% 160% at 28% 18%, #1c2c5c 0%, #0e1838 52%, #070d22 100%);
+  border: 1.5px solid #6edcff !important;
+  color: #eefaff !important;
+  text-shadow: 0 0 8px rgba(125, 211, 252, 0.55);
   box-shadow:
-    0 4px 14px -2px rgba(99, 62, 241, 0.45),
-    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+    0 0 0 1px rgba(56, 189, 248, 0.22),
+    0 0 9px rgba(56, 189, 248, 0.55),
+    0 0 20px -4px rgba(56, 189, 248, 0.55),
+    inset 0 0 8px rgba(56, 189, 248, 0.32);
   letter-spacing: -0.01em;
 }
 
 /* The hover rule above greys out any pill that is not the active one, which
-   would flatten the gradient the moment a pointer crossed it. */
+   would flatten the capsule the moment a pointer crossed it. */
 .pill-link.nav-hero:hover:not(.pill-active) {
   background-color: transparent !important;
-  filter: brightness(1.08);
+  filter: brightness(1.15);
 }
 
-/* AI Prospecting, lit like AI Autopilot in its own colour — the orange of its page. */
-.nav-hero-prospect {
-  background-image: linear-gradient(135deg, #f97316 0%, #ef4444 55%, #e11d48 100%);
+/* AI Prospecting: the same neon capsule, its line a shade bluer. */
+.nav-hero-prospect { border-color: #7cc4ff !important; }
+.nav-hero-prospect svg { color: #a5e8ff; filter: drop-shadow(0 0 3px rgba(125, 211, 252, 0.9)); }
+
+/* The page the pill leads to is open: the ring burns brighter. */
+.nav-hero-on {
+  border-color: #b5f1ff !important;
+  background-image: radial-gradient(130% 160% at 28% 18%, #26397a 0%, #12204a 52%, #0a1230 100%);
   box-shadow:
-    0 4px 14px -2px rgba(239, 68, 68, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
-}
-.nav-hero-prospect.nav-hero-on {
-  box-shadow:
-    0 6px 20px -2px rgba(239, 68, 68, 0.58),
-    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+    0 0 0 1px rgba(103, 232, 249, 0.4),
+    0 0 12px rgba(56, 189, 248, 0.8),
+    0 0 28px -4px rgba(56, 189, 248, 0.75),
+    inset 0 0 10px rgba(56, 189, 248, 0.45) !important;
 }
 
-/* The bar measured itself and the pills do not fit beside the logo and the
-   icons (TopNav.tsx): they take a row of their own, at any width. */
-.app-header.nav-wrapped {
+/* The bar measured itself (TopNav.tsx, data-fit). `tight` closes the pills up
+   so the row stays on one line; `wrap` is the last resort, a row of its own. */
+.app-header[data-fit="tight"] { gap: 10px !important; }
+.app-header[data-fit="tight"] .pill-link { padding: 8px 8px !important; font-size: 12.5px !important; }
+.app-header[data-fit="tight"] .pill-link.nav-hero { padding: 7px 12px !important; }
+/* The workspace's initial and its menu stay; its name gives way to the pills. */
+.app-header[data-fit="tight"] .ws-name { display: none; }
+.app-header[data-fit="wrap"] {
   flex-wrap: wrap;
   row-gap: 10px !important;
 }
-.app-header.nav-wrapped .nav-pills {
+.app-header[data-fit="wrap"] .nav-pills {
   flex-wrap: wrap;
   justify-content: center;
   order: 3;
@@ -358,13 +374,7 @@ button:focus-visible, a:focus-visible {
   border-radius: 20px !important;
   margin: 0 !important;
 }
-.app-header.nav-wrapped > nav + div { margin-left: auto; }
-
-.nav-hero-on {
-  box-shadow:
-    0 6px 20px -2px rgba(99, 62, 241, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
-}
+.app-header[data-fit="wrap"] > nav + div { margin-left: auto; }
 
 /* ── The core on the pill ──
  *
@@ -453,8 +463,10 @@ button:focus-visible, a:focus-visible {
   border-radius: 999px;
   display: inline-grid;
   place-items: center;
-  background: #fff;
-  color: #5b46e5;
+  background: #67e8f9;
+  color: #07112b;
+  text-shadow: none;
+  box-shadow: 0 0 8px rgba(103, 232, 249, 0.8);
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
@@ -467,13 +479,17 @@ button:focus-visible, a:focus-visible {
 @keyframes hero-breathe {
   0%, 100% {
     box-shadow:
-      0 4px 14px -2px rgba(99, 62, 241, 0.4),
-      0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+      0 0 0 1px rgba(56, 189, 248, 0.2),
+      0 0 8px rgba(56, 189, 248, 0.5),
+      0 0 18px -4px rgba(56, 189, 248, 0.45),
+      inset 0 0 7px rgba(56, 189, 248, 0.28);
   }
   50% {
     box-shadow:
-      0 6px 22px 0 rgba(99, 62, 241, 0.62),
-      0 0 0 1px rgba(255, 255, 255, 0.22) inset;
+      0 0 0 1px rgba(56, 189, 248, 0.32),
+      0 0 13px rgba(56, 189, 248, 0.75),
+      0 0 26px -4px rgba(56, 189, 248, 0.7),
+      inset 0 0 10px rgba(56, 189, 248, 0.42);
   }
 }
 
@@ -768,26 +784,9 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
   .pill-link { padding: 8px 10px !important; }
 }
 
-@media (max-width: 1280px) {
-  /* The header is one no-wrap row of logo + 9 nav pills + 5 icon buttons.
-     Letting it wrap is what stops it dragging the whole document sideways. */
-  .app-header {
-    flex-wrap: wrap;
-    gap: 10px !important;
-    padding: 10px 14px !important;
-  }
-
-  /* A capsule only reads as a capsule on one line. Once the pills wrap it
-     becomes a rounded panel, and it takes the full width so the rows align. */
-  .nav-pills {
-    flex-wrap: wrap;
-    justify-content: center;
-    order: 3;
-    width: 100%;
-    border-radius: 20px !important;
-    margin: 0 !important;
-  }
-}
+/* Between 900px and the widest screens the bar decides for itself whether the
+   pills fit on its one line (TopNav.tsx, data-fit) — a fixed breakpoint
+   wrapped it at 1280px even when everything fitted. */
 
 @media (max-width: 900px) {
   .app-header {

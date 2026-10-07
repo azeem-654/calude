@@ -41,20 +41,27 @@ export default function CloudBadge() {
 
   return (
     <div ref={ref} className="cb-wrap">
+      {/* A black key with the cloud lit inside it and a light under its lip —
+          the owner's reference, a backlit keyboard key. The light is the state:
+          blue when the cloud ran in the last twenty minutes, amber when it is
+          late, out when it could not be asked. */}
       <button
         type="button"
-        className={`cb-pill cb-${tone}`}
+        className={`cb-key cb-${tone}`}
         title={title}
         aria-label={title}
         aria-expanded={open}
         aria-haspopup="dialog"
         data-testid="cloud-badge"
+        data-noinvert
         onClick={() => setOpen(v => !v)}
       >
+        <span className="cb-cap" aria-hidden="true" />
         <span className="cb-icon">
-          {tone === 'unknown' && p?.state === 'unreadable' ? <CloudOff size={16} strokeWidth={2.2} /> : <Cloud size={16} strokeWidth={2.2} />}
-          {tone === 'live' && <span className="cb-dot" aria-hidden="true" />}
+          {tone === 'unknown' && p?.state === 'unreadable' ? <CloudOff size={17} strokeWidth={2.1} /> : <Cloud size={17} strokeWidth={2.1} />}
         </span>
+        <span className="cb-lip" aria-hidden="true" />
+        <span className="cb-led" aria-hidden="true" />
         <span className="cb-label">{label}</span>
       </button>
       {open && (

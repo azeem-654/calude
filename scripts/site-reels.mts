@@ -59,10 +59,11 @@ const RAW = '/tmp/site-reel-raw';
    card without scrolling sideways; written out at 1600 wide, which stays sharp
    where the hero draws it largest. */
 const VIEW = { width: 1920, height: 1200 };
-/* Each shot three ways: the desktop window at 1.5× (2400 wide, for a big
+/* Each shot three ways: the desktop page at 1.5× (2000 wide, for a big
    screen and for the zoom into its focus), the same at 1200 for a smaller
-   one, and the app's own phone layout at 390×720, 3×, for a phone — where no
-   zoom can make a whole desktop window readable (ShotReel). */
+   one, and the app's own phone layout at 390 wide, 3× (1000 wide), for a
+   phone — where no zoom can make a whole desktop window readable (ShotReel).
+   Each is the page from the window down, not the window alone. */
 const SCALE = 1.5;
 const PHONE = { width: 390, height: 720 };
 const GEOKEY = 'reel'.repeat(8);
@@ -524,6 +525,10 @@ for (const [subject, priority] of [['Booking link shows the wrong clinic hours',
 /* A paying agency, not a trial: no trial bar across the top of every picture,
    and none of the welcome notices a new sign-up is shown. */
 d1(`UPDATE crm_users SET trial_ends_at = NULL WHERE account_id = ${q(ACCT)}; DELETE FROM crm_notices;`);
+/* The cron has just run, as it has on the live site: the cloud in the top bar
+   is lit "live", not amber for a schedule that never ran here. Dated a little
+   ahead so it stays inside the twenty minutes for the whole of the run. */
+d1(`INSERT INTO crm_ticks (id, at) VALUES ('reel-tick', ${q(new Date(Date.now() + 15 * 60_000).toISOString())});`);
 
 /* ── Photographing ───────────────────────────────────────────────────────── */
 
@@ -708,6 +713,17 @@ if (missing.length) throw new Error(`no capture recipe for: ${missing.join(', ')
 
 const only = process.argv.slice(2);
 const taken: string[] = [];
+/*
+ * The whole page, not the window: ShotReel shows the window first and then
+ * reads down the page, so each picture is the page from where the recipe
+ * left it scrolled, down to its end — at most two and a half windows on a
+ * desktop and three on a phone, so a page that goes on for ever is not a
+ * twenty-second slide. Panes that scroll on their own (the AI Prospecting
+ * table, a pipeline column) are let out to their full height first, or the
+ * picture would end where the pane does.
+ */
+const MAX_H = { desk: 3000, phone: 2160 };
+const crops: Record<string, { y: number; h: number }> = {};
 async function photograph(suffix: string) {
   for (const file of REEL_FILES as string[]) {
     if (only.length && !only.includes(file)) continue;
@@ -720,7 +736,29 @@ async function photograph(suffix: string) {
     }
     const broken = await page.evaluate(() => /ran into a problem|something went wrong/i.test(document.body.innerText));
     if (broken) { console.log(`REFUSED ${file}${suffix} — the screen is showing an error`); process.exitCode = 1; continue; }
-    await page.screenshot({ path: `${RAW}/${file}${suffix}.png` });
+    const at = await page.evaluate(() => {
+      for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+        const cs = getComputedStyle(el);
+        if (!/(auto|scroll)/.test(cs.overflowY) || el.closest('[role="dialog"]')) continue;
+        if (el.clientHeight < 280 || el.scrollHeight <= el.clientHeight + 40) continue;
+        el.style.maxHeight = 'none'; el.style.height = 'auto'; el.style.overflowY = 'visible';
+        /* …and whatever holds it to the window's height (AI Prospecting's shell). */
+        for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+          const us = getComputedStyle(up);
+          if (/(hidden|clip)/.test(us.overflowY)) { up.style.overflowY = 'visible'; up.style.height = 'auto'; up.style.maxHeight = 'none'; }
+        }
+      }
+      return { y: Math.round(window.scrollY), h: document.documentElement.scrollHeight };
+    });
+    await page.waitForTimeout(400);
+    const docH = await page.evaluate(() => document.documentElement.scrollHeight);
+    const max = suffix ? MAX_H.phone : MAX_H.desk;
+    const h = Math.max(1, Math.min(max, docH - at.y));
+    /* Clipped as it is taken: a whole page at 3× can pass the 16,384-pixel
+       limit Chromium can capture in one go. */
+    crops[`${file}${suffix}`] = { y: 0, h };
+    const width = page.viewportSize()!.width;
+    await page.screenshot({ path: `${RAW}/${file}${suffix}.png`, fullPage: true, clip: { x: 0, y: at.y, width, height: h } });
     taken.push(`${file}${suffix}`);
   }
 }
@@ -734,19 +772,22 @@ await photograph('-m');
    so there is no second tool to install or forget. */
 const conv = await ctx.newPage();
 await conv.goto('about:blank');
-const encode = async (raw: string, wide: number, quality: number) => {
+/** The PNG cropped to `crop` (in CSS pixels; the PNG is `scale` times that), at `wide` pixels across. */
+const encode = async (raw: string, wide: number, quality: number, crop: { y: number; h: number }, scale: number) => {
   const b64 = fs.readFileSync(raw).toString('base64');
-  return conv.evaluate(async ([src, w, qq]: [string, number, number]) => {
+  return conv.evaluate(async ([src, w, qq, y, h, k]: [string, number, number, number, number, number]) => {
     const img = new Image();
     await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = `data:image/png;base64,${src}`; });
+    const sy = Math.min(img.naturalHeight - 1, Math.round(y * k));
+    const sh = Math.min(img.naturalHeight - sy, Math.round(h * k));
     const c = document.createElement('canvas');
     c.width = Math.min(w, img.naturalWidth);
-    c.height = Math.round(img.naturalHeight * (c.width / img.naturalWidth));
+    c.height = Math.round(sh * (c.width / img.naturalWidth));
     const g = c.getContext('2d')!;
     g.imageSmoothingQuality = 'high';
-    g.drawImage(img, 0, 0, c.width, c.height);
+    g.drawImage(img, 0, sy, img.naturalWidth, sh, 0, 0, c.width, c.height);
     return c.toDataURL('image/webp', qq).split(',')[1];
-  }, [b64, wide, quality] as [string, number, number]);
+  }, [b64, wide, quality, crop.y, crop.h, scale] as [string, number, number, number, number, number]);
 };
 const write = (name: string, data: string) => {
   fs.writeFileSync(`${OUT}/${name}.webp`, Buffer.from(data, 'base64'));
@@ -754,9 +795,9 @@ const write = (name: string, data: string) => {
 };
 for (const name of taken) {
   const raw = `${RAW}/${name}.png`;
-  if (name.endsWith('-m')) { write(name, await encode(raw, 1170, 0.8)); continue; }
-  write(name, await encode(raw, 2400, 0.8));
-  write(`${name}-sm`, await encode(raw, 1200, 0.82));
+  if (name.endsWith('-m')) { write(name, await encode(raw, 1000, 0.78, crops[name], 3)); continue; }
+  write(name, await encode(raw, 2000, 0.8, crops[name], SCALE));
+  write(`${name}-sm`, await encode(raw, 1200, 0.8, crops[name], SCALE));
 }
 
 console.log(errs.length ? `PAGE ERRORS:\n  ${errs.join('\n  ')}` : 'no page errors');

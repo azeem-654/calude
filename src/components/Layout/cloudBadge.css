@@ -1,12 +1,27 @@
 /* The cloud in the top bar (CloudBadge.tsx). The pulse is tied to a real
    state — a recent cron run — and stops for anybody who asked for less motion. */
 .cb-wrap { position: relative; flex-shrink: 0; }
-.cb-pill {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: 40px; padding: 0 13px 0 11px; border-radius: 999px; border: none;
-  background: #fff; color: #17191c; cursor: pointer; font: inherit;
-  font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em;
-  box-shadow: 0 1px 2px rgba(23, 25, 28, 0.06);
+.cb-key {
+  --cb-glow: 59, 130, 246;
+  --cb-ink: #9cc8ff;
+  position: relative; width: 42px; height: 42px; padding: 0; border: none; cursor: pointer;
+  display: grid; place-items: center; border-radius: 13px;
+  background: linear-gradient(180deg, #27282c 0%, #101113 100%);
+  box-shadow:
+    0 0 0 1px #050506,
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 6px 14px -5px rgba(0, 0, 0, 0.6);
+}
+.cb-key.cb-late { --cb-glow: 245, 158, 11; --cb-ink: #fcd38a; }
+.cb-key.cb-unknown { --cb-glow: 107, 114, 128; --cb-ink: #8b9099; }
+/* The raised cap inside the key's well. */
+.cb-cap {
+  position: absolute; inset: 4px 4px 6px; border-radius: 10px;
+  background: linear-gradient(165deg, #3d3e43 0%, #2a2b2f 50%, #1d1e21 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.7);
 }
 .cb-icon { position: relative; display: inline-flex; }
 .cb-live .cb-icon { color: #0e9f6e; }
@@ -16,8 +31,26 @@
   position: absolute; right: -3px; bottom: -1px; width: 7px; height: 7px; border-radius: 50%;
   background: #22c55e; border: 1.5px solid #fff;
 }
-.cb-label { white-space: nowrap; }
-.cb-live .cb-label { color: #0b7a55; }
+.cb-key .cb-icon {
+  margin-top: -2px; color: var(--cb-ink);
+  filter: drop-shadow(0 0 4px rgba(var(--cb-glow), 0.85));
+}
+.cb-key.cb-unknown .cb-icon { filter: none; }
+/* The light escaping under the cap's front edge. */
+.cb-lip {
+  position: absolute; left: 7px; right: 7px; bottom: 2px; height: 5px; border-radius: 0 0 8px 8px;
+  background: radial-gradient(ellipse at 50% 0%, rgba(var(--cb-glow), 0.95) 0%, rgba(var(--cb-glow), 0.35) 45%, transparent 75%);
+  filter: blur(0.6px);
+}
+.cb-led {
+  position: absolute; left: 50%; bottom: -7px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%;
+  background: rgb(var(--cb-glow)); box-shadow: 0 0 4px 1px rgba(var(--cb-glow), 0.85);
+}
+.cb-key.cb-unknown .cb-lip, .cb-key.cb-unknown .cb-led { opacity: 0.25; box-shadow: none; }
+/* The words stay for screen readers; the key says it without them. */
+.cb-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
 
 .cb-pop {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 300;
@@ -39,10 +72,10 @@
 .cb-minding b { color: #17191c; }
 .cb-warn { color: #8a5a00 !important; }
 
-/* On a phone the bar has no room for words; the cloud alone says it. */
-@media (max-width: 900px) {
-  .cb-label { display: none; }
-  .cb-pill { width: 40px; padding: 0; justify-content: center; }
+@media (max-width: 760px) {
+  .cb-key { width: 36px; height: 36px; border-radius: 11px; }
+  .cb-cap { inset: 3px 3px 5px; border-radius: 9px; }
+  .cb-led { bottom: -5px; }
 }
 /* On a phone the cloud sits at the left of its row, so a popup hung from its
    right edge would open off the screen; it spans the screen instead. */
@@ -51,9 +84,13 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .cb-live .cb-icon svg { animation: cb-blink 2.4s ease-in-out infinite; }
+  .cb-key.cb-live .cb-icon,
+  .cb-key.cb-live .cb-lip,
+  .cb-key.cb-live .cb-led { animation: cb-glow 2.6s ease-in-out infinite; }
+  .cl-strip.cb-live .cb-icon svg { animation: cb-blink 2.4s ease-in-out infinite; }
   .cb-live .cb-dot { animation: cb-ping 2.4s ease-out infinite; }
 }
+@keyframes cb-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 @keyframes cb-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes cb-ping {
   0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); }

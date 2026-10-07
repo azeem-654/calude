@@ -55,6 +55,7 @@
     "test:sources": "npx --yes tsx test/prospectSources.test.mts",
     "test:sourcese2e": "node test/prospectSources.e2e.mjs",
     "test:isolation": "node test/isolation.e2e.mjs",
+    "test:reeltour": "node test/reelTour.e2e.mjs",
     "test:leadimport": "npx --yes tsx test/leadImport.test.mts",
     "test:chatlive": "node test/chatLive.e2e.mjs",
     "test:sitefit": "node test/siteFit.e2e.mjs",

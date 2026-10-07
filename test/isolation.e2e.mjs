@@ -160,9 +160,11 @@ for (const width of [1280, 1440, 1655, 1900]) {
     const pills = [...nav.querySelectorAll('a, button')].map(p => p.getBoundingClientRect());
     const hits = pills.filter(p => p.right > r.left + 1 && p.left < r.right && p.bottom > r.top && p.top < r.bottom).length;
     const outside = pills.filter(p => p.right > nav.getBoundingClientRect().right + 1).length;
-    return { hits, outside, wrapped: header.classList.contains('nav-wrapped'), docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    return { hits, outside, fit: header.dataset.fit, docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   });
   ok(`@${width}: no pill runs under the icons, none outside its row`, geo.hits === 0 && geo.outside === 0 && geo.docOverflow <= 1, JSON.stringify(geo));
+  /* One line is the bar's look; a second row only for a window too narrow for it. */
+  if (width >= 1440) ok(`@${width}: the bar is one line`, geo.fit !== 'wrap', JSON.stringify(geo));
   const pros = page.locator('header a.nav-hero-prospect');
   ok(`@${width}: AI Prospecting has a lit pill of its own`, (await pros.count()) === 1 && /AI Prospecting/.test(await pros.innerText()));
   await page.screenshot({ path: `test-results/topbar-${width}.png`, clip: { x: 0, y: 0, width, height: 140 } });

@@ -766,15 +766,23 @@ id. The rules that closed those holes:
 
 ## The top bar
 
-`Layout/TopNav.tsx`: logo, workspace, the pill row, the icons. Its width
-depends on data (a workspace name, the counts on AI Autopilot and the task
-badge, the cloud's state, the owner's extra menus), so breakpoints alone let
-the pills run under the icons. It **measures itself** (`wrapped`): when the
-pills' own widths do not fit the room the rest leaves, the header gets
-`nav-wrapped` and the pills take a row of their own, at any width. AI
-Autopilot and **AI Prospecting** are the two lit pills (`nav-hero`,
-`nav-hero-prospect`); the Customers pill is not lit while AI Prospecting is
-open. `test:isolation` checks four widths as the owner.
+`Layout/TopNav.tsx`: the shield (`LogoMark`, no name beside it — a
+white-label workspace shows its own logo, or its initial on a tile), the
+workspace, the pill row, the icons. **It is one line.** Its width depends on
+data (a workspace name, the counts on AI Autopilot and the task badge, the
+owner's extra menus), so it **measures itself** and writes `data-fit` on the
+header — straight onto the element, not through React state, because each
+step has to be laid out and measured in the same frame: `full`, then `tight`
+(pills closer, the workspace's name hidden behind its initial), and only when
+neither fits, `wrap` (the pills on a row of their own). Phones (≤900px) always
+wrap. AI Autopilot and **AI Prospecting** are the two lit pills (`nav-hero`,
+`nav-hero-prospect`): dark navy capsules ringed by a cyan neon line, the
+owner's reference; the Customers pill is not lit while AI Prospecting is
+open. The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
+inside: blue when the cron ran in the last 20 minutes, amber when late, out
+when unreadable; the words are kept for screen readers. The lit parts carry
+`data-noinvert`, so dark mode does not turn them inside out. `test:isolation`
+checks four widths as the owner, and that 1440 and up is one line.
 
 ## Commands
 
@@ -1126,20 +1134,29 @@ in `.wrangler-reels`) and a mock directory, DNS and mailbox verifier (:8857), se
 a busy sample agency (`site-seed.mjs` + `demo-world.mjs`: five clients in five
 trades, branching five-column workflows, 30 days of a daily finder, 72 contacts
 across 25 industries, all on `.example`), and photographs every shot in
-`src/components/Site/reels.ts` **three ways**: the whole desktop window at
-1920×1200, 1.5× (`<file>.webp`, 2400 wide, and `<file>-sm.webp`, 1200), and the
-app's own phone layout at 390×720, 3× (`<file>-m.webp`). `PHONE_ONLY=1` retakes
-just the phone ones. A shot with no recipe stops the run.
+`src/components/Site/reels.ts` **three ways**, each the page from the window
+down: the desktop in a 1920×1200 window, 1.5× (`<file>.webp`, 2000 wide, and
+`<file>-sm.webp`, 1200), and the app's own phone layout in a 390×720 window,
+3× (`<file>-m.webp`, 1000 wide). `PHONE_ONLY=1` retakes just the phone ones. A
+shot with no recipe stops the run.
 
 **Readable at every size** (ShotReel): every reel is a strip — the screen
-showing drawn whole, its neighbours dimmed beside it, the strip sliding along,
-never a crop. On a wide screen each slide opens whole, zooms into its `focus`
-(the region worth reading, `FOCUS` in reels.ts, read off a 10% grid laid over
-the capture — re-check it when a picture is retaken), holds, and zooms back out.
-A phone gets the phone layout instead, because no zoom makes a whole desktop
-window readable at 390px. **Full size** (and a click on the slide) opens the
-whole desktop screen in a viewer portalled to `<body>` — on a phone at twice
-the width, to pan and pinch. The product sections are `FeatureStage`
+showing drawn whole in the middle, its neighbours dimmed beside it, the strip
+sliding along. Each picture is the **whole page** from where its recipe left
+it scrolled (up to 3,000 CSS px on a desktop, 2,160 on a phone; panes that
+scroll on their own are let out first), and each slide is a **tour**: the
+window as it opens, then zoomed to a readable size (`planFor`: the app's text
+at about 11px, centred across on `focus`), then travelled down to the bottom
+of the page at a reading pace, then back out and on — so a slide lasts as long
+as its page takes to read. A phone gets the app's own phone layout as wide as
+the column (the hero too) and the same travel without the zoom. While it
+travels, the shot's `notes` (NOTES in reels.ts — how it works, what it brings
+in, only what the screen shows) come up one at a time over it. **It plays
+with reduced motion asked for too** — on many machines a battery saver sets
+that, and the owner read a still reel as "the zoom is not working" — with the
+zoom and the way back as a fade, and a pause button on every reel. **Full
+size** (and a click on the slide) opens the whole page to scroll, portalled to
+`<body>`. The product sections are `FeatureStage`
 (title on top, the wide strip, feature blocks under it with looping icons,
 event chips floating beside the screens at ≥1380px); the launch film is
 re-rendered from `marketing/launch-film` (its README has the kit and the
