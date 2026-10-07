@@ -1093,6 +1093,18 @@ hours, plus whenever somebody presses Refresh.
 6. Once approved: Reviews → Settings → Review Sources → **Connect Google
    Business Profile** → choose the location. Tick this item off here.
 
+### 28. Your own lead directory — added 2026-10-07
+
+Load your lead files into the app and, if your licence allows it, let customers
+search them. The full guide, including what Leads.cm can and cannot do, is
+**docs/LEAD-DIRECTORY.md**:
+
+- [ ] Check you are on **Workers Paid** ($5/month). One D1 database holds 10 GB there, and 500 MB on the free plan, which is too small for your 6 GB of CSV.
+- [ ] Settings → Platform services → **Lead directory** → choose your 3.3 GB ZIP and leave the tab open (1–3 hours; choose the same file again if it stops).
+- [ ] Ask Leads.cm **in writing** whether you may share exported records with your own customers.
+- [ ] Ask a lawyer about data-broker registration (California and other states) before opening it to customers.
+- [ ] Then tick the statement and press **Open it to customers**.
+
 ### 27. The phone apps — added 2026-10-05
 
 Two apps, Android and iPhone: **Protected Central** (the whole product) and

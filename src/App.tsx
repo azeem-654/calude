@@ -18,6 +18,7 @@ import NativeBridge from './components/shared/NativeBridge';
 import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import AiProspecting from './components/Prospecting/AiProspecting';
+import LeadDirectory from './components/Prospecting/LeadDirectory';
 import Conversations from './components/Conversations/Conversations';
 import CalendarView from './components/Calendar/CalendarView';
 import Pipelines from './components/Pipelines/Pipelines';
@@ -164,6 +165,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/prospecting" element={<AiProspecting />} />
+          <Route path="/lead-directory" element={<LeadDirectory />} />
           <Route path="/ai-prospecting" element={<Navigate to="/prospecting" replace />} />
           <Route path="/engagement" element={<Engagement />} />
           <Route path="/conversations" element={<Conversations />} />

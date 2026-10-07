@@ -17,6 +17,10 @@
  * on the owner's key (place ids only kept), each business's own website, and
  * — when the owner connects it — Hunter, which reports only addresses it saw
  * published, with the pages it saw them on.
+ *
+ * The Lead Directory (/lead-directory, routes/leaddir.ts) is separate on
+ * purpose: it is the owner's own lead files, which the owner states they may
+ * share, and it never feeds this page's searches.
  */
 import type { Contactable, FoundPerson, Prospect, Verdict, CheckStatus } from './prospects';
 

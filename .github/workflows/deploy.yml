@@ -158,6 +158,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # The lead directory's own database: found by name, made the first
+      # time, and its id written into this run's wrangler.jsonc. Never fails
+      # the deploy — without it the directory says it has no database.
+      - name: Bind the lead directory database
+        run: node scripts/leads-db.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy the Worker
         run: npx wrangler deploy
         env:

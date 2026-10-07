@@ -35,7 +35,10 @@ const PROSPECTING = [
   { icon: Globe, title: 'The email they publish', body: 'Each business\'s own website is read for the address it chose to publish. Never a guessed firstname@ that bounces.' },
   { icon: ShieldCheck, title: 'Checked before you send', body: 'Format, domain and mail server on every address — and the mailbox itself, catch-alls and named people when a mailbox verifier is connected.' },
   { icon: ListChecks, title: 'Straight into work', body: 'Save a list, or add the ticked ones to a workflow, an AI Autopilot project or an email campaign — each row time-stamped with when it was found.' },
-  { icon: Ban, title: 'No scraped LinkedIn', body: 'Only sources whose terms allow it. A lead list built on somebody else\'s terms of service is a liability, not an asset.' },
+  /* This card said "No scraped LinkedIn" until the Lead Directory (the owner's
+     own lead files, which may come from a vendor that collects from LinkedIn)
+     was added beside AI Prospecting. It now says only what stays true of both. */
+  { icon: Ban, title: 'Nothing anonymous', body: 'Every lead says where it came from and when it was found, and anybody who asks to be taken out is removed and kept out.' },
 ];
 
 /* Example searches from the sample workspace — trade, town, found, with an

@@ -444,6 +444,9 @@ const lk = await launch.evaluate(n => { const c = getComputedStyle(n); return { 
 ok('on the site the launcher is frosted, stacked glass that moves in a loop', /pc-launch-site/.test(lk.cls) && /pcLaunchDrift/.test(lk.anim) && /pcLaunchFloat/.test(lk.anim) && /blur\(16px\)/.test(lk.blur) && /gradient/.test(lk.bg), JSON.stringify(lk));
 const bloom = await launch.locator('.pc-launch-orb .pc-launch-bloom').evaluate(n => getComputedStyle(n).animationName).catch(() => 'missing');
 ok('…with the glass lens and its turning bloom in place of the icon', bloom === 'pcBloom', bloom);
+/* The bloom is drawn: two rings of petals round a heart, each petal opening a beat after the last. */
+const petals = await launch.locator('.pc-launch-bloom svg .pcb-p').evaluateAll(ps => ({ n: ps.length, anim: getComputedStyle(ps[0]).animationName, delays: new Set(ps.map(p => getComputedStyle(p).animationDelay)).size })).catch(() => ({ n: 0 }));
+ok('…a bloom of petals, each breathing a beat after its neighbour', petals.n === 28 && petals.anim === 'pcPetal' && petals.delays > 10, JSON.stringify(petals));
 await mk.evaluate(() => { document.body.style.minHeight = '3000px'; window.scrollBy(0, 400); });
 await mk.waitForTimeout(80);
 const scrolled = await launch.evaluate(n => n.className);

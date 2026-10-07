@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -79,6 +79,9 @@ export const NAV_GROUPS: NavGroup[] = [
       /* Beside Contacts, because that is where what it finds goes — and the
          word somebody types looking for it is rarely "prospecting". */
       { path: '/prospecting', label: 'AI Prospecting', desc: 'Say who to sell to — find businesses, their published emails, checked', icon: Crosshair, aka: ['prospecting', 'find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists', 'email finder', 'verify email', 'email verification', 'apollo', 'linkedin'] },
+      /* The owner's own lead files, searched by person — beside AI Prospecting,
+         which finds businesses live. */
+      { path: '/lead-directory', label: 'Lead Directory', desc: 'People at businesses, by industry, place and job title', icon: BookUser, aka: ['lead directory', 'leads database', 'people search', 'b2b data', 'contacts database', 'ceo', 'decision makers', 'job title'] },
       { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
       /* Beside the inbox on purpose: this is where the conversations in that

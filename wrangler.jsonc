@@ -38,7 +38,12 @@
       // Filled in by `wrangler d1 create crmpro`.
       "database_id": "32695c14-c775-4f8e-93ce-78831e05abd8",
       "migrations_dir": "worker/migrations"
-    }
+    },
+    // The owner's lead directory (worker/src/lib/leadDir.ts): millions of rows
+    // in a database of their own, so they can never fill this one. The deploy
+    // creates it by name and puts its id here (scripts/leads-db.mjs); if it
+    // cannot, it drops this binding and the directory says it is unavailable.
+    { "binding": "LEADS", "database_name": "crmpro-leads", "database_id": "LEADS_DB_ID_SET_BY_CI" }
   ],
 
   // Two hostnames, one Worker:
@@ -118,7 +123,9 @@
           // above is the whole point — see the note at the top of this block.
           "database_id": "2f123043-500e-47cc-ab35-dd64cde622f7",
           "migrations_dir": "worker/migrations"
-        }
+        },
+        // Its own lead directory, never the live one's (scripts/leads-db.mjs).
+        { "binding": "LEADS", "database_name": "crmpro-staging-leads", "database_id": "STAGING_LEADS_DB_ID_SET_BY_CI" }
       ],
 
       // Not inherited either. Unset, the cron would read the live app's own

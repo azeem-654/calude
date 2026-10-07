@@ -1859,15 +1859,63 @@
     window.clearTimeout(scrollTimer);
     scrollTimer = window.setTimeout(function () { if (launcher) launcher.classList.remove('pc-launch-scroll'); }, 450);
   }
+  /*
+   * The bloom in the site launcher's lens, as SVG. Petals are one shape (a
+   * long teardrop, widest past the middle, round at the tip) scaled and
+   * turned; up-facing ones are longer than down-facing ones because the
+   * flower is seen a little from below, and the jitter is fixed so every
+   * visit draws the same flower. Each petal's colour runs from the hot
+   * heart to a pale tip, so where they overlap they read as translucent.
+   */
+  function bloomSvg() {
+    var P = 'M0 0C-1.2-2.5-4.2-5.5-3.6-8.2C-3.1-10.2-1-10.6 0-10.4C1-10.6 3.1-10.2 3.6-8.2C4.2-5.5 1.2-2.5 0 0Z';
+    var J = [0.6, -0.4, 0.9, -0.8, 0.3, -0.2, 0.7, -0.9, 0.1, 0.5, -0.6, 0.8, -0.3];
+    function ring(n, base, swing, wide, from, cls, dur, edge) {
+      var out = '';
+      for (var i = 0; i < n; i++) {
+        var a = from + i * (360 / n) + J[i % J.length] * 7;
+        var len = base + swing * Math.cos(a * Math.PI / 180) + J[(i + 3) % J.length] * 0.9;
+        var sy = (len / 10).toFixed(3), sx = (len / 10 * (wide + 0.08 * J[(i + 5) % J.length])).toFixed(3);
+        out += '<g transform="rotate(' + a.toFixed(1) + ')"><g transform="scale(' + sx + ' ' + sy + ')">'
+          + '<path class="pcb-p" d="' + P + '" fill="url(#pcb-' + cls + ')" stroke="rgba(255,255,255,' + edge + ')" stroke-width=".5" vector-effect="non-scaling-stroke"'
+          + ' style="animation-delay:-' + (i * dur / n).toFixed(2) + 's"/></g></g>';
+      }
+      return out;
+    }
+    return '<svg viewBox="-16 -16 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><defs>'
+      + '<linearGradient id="pcb-b" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-10.4">'
+      + '<stop offset="0" stop-color="#ff2d86" stop-opacity=".95"/><stop offset=".35" stop-color="#e040fb" stop-opacity=".85"/>'
+      + '<stop offset=".72" stop-color="#9b5cff" stop-opacity=".72"/><stop offset="1" stop-color="#6d74ff" stop-opacity=".45"/></linearGradient>'
+      + '<linearGradient id="pcb-f" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-10.4">'
+      + '<stop offset="0" stop-color="#ff1a6c"/><stop offset=".45" stop-color="#ff4aa8" stop-opacity=".9"/>'
+      + '<stop offset=".8" stop-color="#d36bff" stop-opacity=".62"/><stop offset="1" stop-color="#b98cff" stop-opacity=".4"/></linearGradient>'
+      + '<radialGradient id="pcb-h"><stop offset="0" stop-color="#fff"/><stop offset=".18" stop-color="#ffc2dc"/>'
+      + '<stop offset=".45" stop-color="#ff2d7a"/><stop offset="1" stop-color="#ff1470" stop-opacity="0"/></radialGradient>'
+      + '<filter id="pcb-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".32"/></filter>'
+      + '<filter id="pcb-softer" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".14"/></filter>'
+      + '</defs><g transform="translate(0 2) scale(1 .9)">'
+      + '<g class="pcb-back" filter="url(#pcb-soft)">' + ring(16, 12.4, 3, 0.58, 4, 'b', 4.8, '.5') + '</g>'
+      + '<g class="pcb-front" filter="url(#pcb-softer)">' + ring(12, 8.2, 2, 0.6, 15, 'f', 4.2, '.22') + '</g>'
+      + '<g class="pcb-heart"><circle r="4.6" fill="url(#pcb-h)"/><circle cx="-.4" cy="-.5" r=".75" fill="#fff" opacity=".95"/></g>'
+      + '</g></svg>';
+  }
   function siteLauncher() {
     if (!SITE || !launcher) return;
     /*
-     * The owner's reference: a pill of stacked frosted glass — the sheets
-     * showing as coloured edges underneath — tinted cyan → white → pink →
-     * peach, with a round glass lens on the left holding a soft bloom of
-     * petals, and dark text. The loop is slow: the tint drifts, the bloom
-     * turns and swells, a light passes over the glass, and the whole pill
-     * floats a couple of pixels.
+     * The owner's reference: a pill of stacked frosted glass — five sheets
+     * showing as coloured edges underneath (cyan, blue, periwinkle, lilac,
+     * white) — tinted cyan → white → orchid, with a milky glass lens on the
+     * left holding a bloom, and dark text.
+     *
+     * The bloom is drawn, not a gradient trick: two layers of long rounded
+     * petals (violet behind, magenta in front, each petal pale at its tip and
+     * glassy at the edge) fanned unevenly round a hot pink heart with a white
+     * glint, the whole thing seen slightly from below. It lives the way a
+     * flower in a breeze does — each petal opens and settles a beat after
+     * its neighbour, the two layers turn very slowly against each other, the
+     * heart glows — and opens wider under the pointer. The pill's tint
+     * drifts, a light passes over the glass and the pill floats a couple of
+     * pixels. All of it stops under reduced motion, leaving the bloom open.
      */
     if (!document.getElementById('pc-launch-css')) {
       var st = document.createElement('style');
@@ -1875,39 +1923,46 @@
       st.textContent = ''
         + '@keyframes pcLaunchDrift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}'
         + '@keyframes pcLaunchFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}'
-        + '@keyframes pcBloom{0%{transform:rotate(0) scale(1)}50%{transform:rotate(180deg) scale(1.14)}100%{transform:rotate(360deg) scale(1)}}'
-        + '.pc-launch-site{position:relative;overflow:visible;isolation:isolate;color:#1e293b!important;font-weight:700!important;font-size:16px!important;letter-spacing:.01em;'
+        + '@keyframes pcBloom{0%,100%{transform:rotate(-7deg) scale(.96)}50%{transform:rotate(7deg) scale(1.04)}}'
+        + '@keyframes pcPetal{0%,100%{transform:scale(.8,.74) rotate(-3deg);opacity:.78}50%{transform:scale(1.03,1.08) rotate(3deg);opacity:1}}'
+        + '@keyframes pcTurn{to{transform:rotate(360deg)}}'
+        + '@keyframes pcTurnBack{to{transform:rotate(-360deg)}}'
+        + '@keyframes pcHeart{0%,100%{transform:scale(.9);opacity:.85}50%{transform:scale(1.18);opacity:1}}'
+        + '.pc-launch-site{position:relative;overflow:visible;isolation:isolate;color:#111827!important;font-weight:700!important;font-size:16px!important;letter-spacing:.01em;'
         + 'padding:7px 24px 7px 7px!important;min-height:56px!important;gap:12px!important;'
-        + 'background:linear-gradient(100deg,rgba(158,235,255,.9) 0%,rgba(255,255,255,.88) 30%,rgba(247,192,238,.88) 66%,rgba(255,214,190,.9) 100%)!important;'
-        + 'background-size:220% 100%!important;border:1px solid rgba(255,255,255,.9)!important;'
+        + 'background:linear-gradient(100deg,rgba(146,230,250,.92) 0%,rgba(236,250,255,.9) 22%,rgba(255,255,255,.88) 40%,rgba(240,186,234,.9) 70%,rgba(214,134,222,.93) 100%)!important;'
+        + 'background-size:150% 100%!important;border:1px solid rgba(255,255,255,.92)!important;'
         + '-webkit-backdrop-filter:blur(16px) saturate(1.6);backdrop-filter:blur(16px) saturate(1.6);'
-        /* The stacked sheets: thin coloured edges stepping down under the pill, then the shadow it casts. */
-        + 'box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.45),'
-        + '0 3px 0 -1px rgba(103,232,249,.85),0 6px 0 -2px rgba(196,181,253,.75),0 9px 0 -3px rgba(249,168,212,.65),'
-        + '0 12px 0 -4px rgba(255,255,255,.75),0 28px 44px -18px rgba(30,27,75,.5)!important;'
+        /* The five sheets, stepping down and in under the pill, then the shadow they cast together. */
+        + 'box-shadow:inset 0 1px 0 rgba(255,255,255,.98),inset 0 -2px 3px rgba(255,255,255,.55),inset 0 0 0 1px rgba(255,255,255,.35),'
+        + '0 4px 0 -1px rgba(56,214,240,.92),0 7px 0 -2px rgba(96,165,250,.82),0 10px 0 -3px rgba(165,180,252,.78),'
+        + '0 13px 0 -4px rgba(221,214,254,.85),0 16px 0 -5px rgba(255,255,255,.9),0 32px 46px -18px rgba(30,27,75,.5)!important;'
         + 'transition:-webkit-backdrop-filter .35s ease,backdrop-filter .35s ease;'
-        + 'animation:pcLaunchDrift 8s ease-in-out infinite,pcLaunchFloat 5s ease-in-out infinite}'
+        + 'animation:pcLaunchDrift 9s ease-in-out infinite,pcLaunchFloat 5s ease-in-out infinite}'
         + '.pc-launch-site::after{content:"";position:absolute;inset:0;border-radius:inherit;z-index:-1;overflow:hidden;pointer-events:none;'
         + 'background:linear-gradient(90deg,transparent 0,rgba(255,255,255,.65) 50%,transparent 100%) no-repeat;background-size:34% 100%;'
         + 'animation:pcLaunchSheenBg 5.5s ease-in-out infinite}'
         + '@keyframes pcLaunchSheenBg{0%{background-position:-60% 0}55%,100%{background-position:160% 0}}'
         + '.pc-launch-site:hover{filter:brightness(1.03) saturate(1.1)}'
         + '.pc-launch-site.pc-launch-scroll{-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8)}'
-        /* The lens and its bloom. */
+        /* The lens: milky glass, lit from the top left, a rim of light round it. */
         + '.pc-launch-orb{position:relative;width:42px;height:42px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;overflow:hidden;'
-        + 'background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.98),rgba(255,255,255,.62) 58%,rgba(226,232,240,.7));'
-        + 'box-shadow:inset 0 1px 2px rgba(255,255,255,.95),inset 0 -3px 6px rgba(148,163,184,.35),0 2px 6px rgba(15,23,42,.14)}'
-        /* Soft layered petals: two rings of wide, blurred petals, one turned against the other, round a hot centre. */
-        + '.pc-launch-bloom{position:relative;width:30px;height:30px;border-radius:50%;animation:pcBloom 7s ease-in-out infinite}'
-        + '.pc-launch-bloom::before,.pc-launch-bloom::after{content:"";position:absolute;inset:0;border-radius:50%;'
-        + '-webkit-mask:radial-gradient(circle,#000 30%,rgba(0,0,0,.85) 52%,transparent 74%);mask:radial-gradient(circle,#000 30%,rgba(0,0,0,.85) 52%,transparent 74%)}'
-        + '.pc-launch-bloom::before{background:repeating-conic-gradient(from 0deg,#c084fc 0deg 26deg,rgba(192,132,252,0) 26deg 45deg);filter:blur(1.4px);opacity:.95}'
-        + '.pc-launch-bloom::after{background:radial-gradient(circle,#ff2d8a 0 14%,rgba(255,45,138,.55) 30%,rgba(255,45,138,0) 46%),'
-        + 'repeating-conic-gradient(from 22deg,#f472b6 0deg 24deg,rgba(244,114,182,0) 24deg 45deg);filter:blur(1px);transform:scale(.82)}'
+        + 'background:radial-gradient(circle at 34% 26%,#fff 0,rgba(255,255,255,.9) 30%,rgba(241,245,249,.72) 64%,rgba(214,222,236,.78) 100%);'
+        + 'box-shadow:inset 0 1px 2px #fff,inset 0 -3px 6px rgba(148,163,184,.38),inset 0 0 0 1px rgba(255,255,255,.7),0 2px 6px rgba(15,23,42,.16)}'
+        + '.pc-launch-orb::after{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;'
+        + 'background:radial-gradient(ellipse 60% 34% at 40% 14%,rgba(255,255,255,.75),rgba(255,255,255,0) 70%)}'
+        + '.pc-launch-bloom{display:block;width:38px;height:38px;animation:pcBloom 9s ease-in-out infinite;transition:scale .5s cubic-bezier(.2,.8,.2,1)}'
+        + '.pc-launch-site:hover .pc-launch-bloom{scale:1.12}'
+        + '.pc-launch-bloom svg{display:block;width:100%;height:100%;overflow:visible}'
+        + '.pc-launch-bloom .pcb-p{transform-box:view-box;transform-origin:0 0;animation:pcPetal 4.8s ease-in-out infinite}'
+        + '.pc-launch-bloom .pcb-front .pcb-p{animation-duration:4.2s}'
+        + '.pc-launch-bloom .pcb-back{transform-box:view-box;transform-origin:0 0;animation:pcTurn 70s linear infinite}'
+        + '.pc-launch-bloom .pcb-front{transform-box:view-box;transform-origin:0 0;animation:pcTurnBack 90s linear infinite}'
+        + '.pc-launch-bloom .pcb-heart{transform-box:view-box;transform-origin:0 0;animation:pcHeart 3.6s ease-in-out infinite}'
         + '.pc-launch-site .pc-online-dot{box-shadow:0 0 0 2px rgba(255,255,255,.95)!important}'
         /* Without backdrop-filter the glass would show text through it unblurred: more solid. */
-        + '@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){.pc-launch-site{background:linear-gradient(100deg,#c8f1fb,#ffffff 30%,#f7d3f0 66%,#ffe1cf)!important}}'
-        + '@media (prefers-reduced-motion: reduce){.pc-launch-site,.pc-launch-site::after,.pc-launch-bloom{animation:none!important}.pc-launch-site{transition:none}}';
+        + '@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){.pc-launch-site{background:linear-gradient(100deg,#c4eefa,#ffffff 36%,#f6d6f0 72%,#e8b8ea)!important}}'
+        + '@media (prefers-reduced-motion: reduce){.pc-launch-site,.pc-launch-site::after,.pc-launch-bloom,.pc-launch-bloom .pcb-p,.pc-launch-bloom .pcb-back,.pc-launch-bloom .pcb-front,.pc-launch-bloom .pcb-heart{animation:none!important}.pc-launch-site{transition:none}}';
       document.head.appendChild(st);
     }
     /* The lens takes the place of the photo or the icon bubble on the site. */
@@ -1916,8 +1971,10 @@
       var orb = el('span', '');
       orb.className = 'pc-launch-orb';
       orb.setAttribute('aria-hidden', 'true');
-      orb.appendChild(el('span', ''));
-      orb.firstChild.className = 'pc-launch-bloom';
+      var bloom = el('span', '');
+      bloom.className = 'pc-launch-bloom';
+      bloom.innerHTML = bloomSvg();
+      orb.appendChild(bloom);
       siteLead = first;
       launcher.replaceChild(orb, first);
     }

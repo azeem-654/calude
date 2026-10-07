@@ -177,6 +177,32 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     });
   }
 
+  /* The owner's own lead directory: its database, how many people are in it,
+     and whether customers may search it (routes/leaddir.ts). */
+  {
+    let total = 0, shared = false;
+    if (env.LEADS) {
+      try {
+        const r = await env.LEADS.prepare("SELECT k, v FROM ld_meta WHERE k IN ('total', 'shared')").all<{ k: string; v: string }>();
+        for (const x of r.results ?? []) { if (x.k === 'total') total = Number(x.v) || 0; if (x.k === 'shared') shared = x.v === '1'; }
+      } catch { /* no tables until the directory's first use makes them: empty */ }
+    }
+    const state: State = !env.LEADS ? 'off' : total > 0 ? 'ok' : 'unchecked';
+    services.push({
+      id: 'lead_directory', name: 'Lead directory (your own leads)',
+      powers: 'Customers → Lead Directory: people from your own lead files that customers search, with their details shown on an allowance',
+      state,
+      detail: !env.LEADS
+        ? 'No database yet — the next deploy creates it. Until then the Lead Directory says it is unavailable.'
+        : total === 0 ? 'Ready and empty. Load a CSV or ZIP below — any size; it is read in your browser and sent in pieces.'
+          : `${total.toLocaleString('en-US')} people. ${shared ? 'Customers can search it.' : 'Only you can search it until you open it to customers below.'}`,
+      checkedAt: null,
+      lastError: '',
+      where: { label: 'Below, on this tab' },
+      optional: true,
+    });
+  }
+
   /* ── Email finder & verifier — mailbox checks in AI Prospecting ── */
   {
     const v = await verifierState(env);

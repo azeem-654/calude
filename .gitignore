@@ -50,6 +50,7 @@ test-results/
 # The fresh D1 that test:prospecting makes and wipes on every run.
 .wrangler-audit/
 .wrangler-autoprospects/
+.wrangler-leaddir/
 
 # Agents' temporary working copies (git worktrees); never part of the project.
 .claude/worktrees/

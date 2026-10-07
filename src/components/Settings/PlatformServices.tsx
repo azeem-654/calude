@@ -32,6 +32,7 @@ import GeoapifyKeyPanel from './GeoapifyKeyPanel';
 import EmailVerifierPanel from './EmailVerifierPanel';
 import CompaniesHousePanel from './CompaniesHousePanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
+import LeadDirectoryAdmin from './LeadDirectoryAdmin';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -59,7 +60,7 @@ const PILL: Record<State, { text: string; bg: string; fg: string; Icon: typeof C
 };
 
 /* The two embedded below, by service id, so "Set it" can scroll to them. */
-const EMBEDDED: Record<string, string> = { google_places: 'platform-google-maps', google_oauth: 'platform-google-signin', email_verifier: 'platform-email-verifier', companies_house: 'platform-companies-house' };
+const EMBEDDED: Record<string, string> = { google_places: 'platform-google-maps', google_oauth: 'platform-google-signin', email_verifier: 'platform-email-verifier', companies_house: 'platform-companies-house', lead_directory: 'platform-lead-directory' };
 
 export default function PlatformServices({ openTab }: { openTab: (id: string) => void }) {
   const [services, setServices] = useState<Service[] | null>(null);
@@ -153,6 +154,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
       <div id="platform-geoapify" style={{ scrollMarginTop: 16 }}><GeoapifyKeyPanel /></div>
       <div id="platform-companies-house" style={{ scrollMarginTop: 16 }}><CompaniesHousePanel /></div>
       <div id="platform-email-verifier" style={{ scrollMarginTop: 16 }}><EmailVerifierPanel /></div>
+      <div id="platform-lead-directory" style={{ scrollMarginTop: 16 }}><LeadDirectoryAdmin /></div>
       <div id="platform-google-maps" style={{ scrollMarginTop: 16 }}><PlacesKeyPanel /></div>
       <div id="platform-google-signin" style={{ scrollMarginTop: 16 }}><GoogleSignInPanel /></div>
     </div>

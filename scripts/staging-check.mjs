@@ -58,6 +58,8 @@ say(/app\.protectedcentral\.com/.test(prod), 'production knows its own origin');
 
 say(/env\.DB \(crmpro-staging\)/.test(staging), 'staging is bound to crmpro-staging');
 say(!/env\.DB \(crmpro\)\s/.test(staging), 'staging is NOT bound to the live database');
+/* The lead directory too: a staging import must never land in the live one. */
+say(!/env\.LEADS \(crmpro-leads\)/.test(staging), 'staging is NOT bound to the live lead directory');
 say(/testing\.protectedcentral\.com/.test(staging), 'staging knows its own origin');
 say(!/app\.protectedcentral\.com/.test(staging), 'staging does not carry the live origin');
 

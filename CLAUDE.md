@@ -417,8 +417,9 @@ published; **an address with no source page is dropped** — that is Hunter's
 pattern guess, and guesses are what prospects.ts refuses. `bestAddress` imports
 the first address no check said would bounce; the check, and a named person's
 name and role, go onto the contact (`customFields.emailStatus`, `firstName`,
-`jobTitle`). **Never LinkedIn, Apollo or bought data** — their terms forbid
-exactly this, and the site says so. `npm run test:emailverify` and
+`jobTitle`). **AI Prospecting never searches LinkedIn, Apollo or bought
+data** — their terms forbid exactly this. The owner's own lead files are a
+separate feature (the Lead Directory, below) and never feed these searches. `npm run test:emailverify` and
 `npm run test:aiprospecting` (pure); `npm run test:prospecting` drives it with
 DoH and Hunter mocks (`EMAIL_VERIFIER_BASE`), in both themes.
 
@@ -451,6 +452,48 @@ ok`, `risky email`, `email bounces`, replacing an older one). Rows say *In
 Contacts* and *Do not email* (suppression list). Every animation (orb, dots,
 shimmer on the cell being read or checked, scanning step, moving composer
 gradient) is tied to real work and stops under reduced motion.
+
+### The Lead Directory — the owner's own lead files
+
+`/lead-directory` (Customers → Lead Directory, `Prospecting/LeadDirectory.tsx`)
+searches people the install owner loaded from their own files;
+`docs/LEAD-DIRECTORY.md` is the owner's guide (and the Leads.cm findings).
+`routes/leaddir.ts` is the API; `lib/leadDir.ts` the rules (pure).
+
+- **Its own D1 database, bound as `LEADS`** (`crmpro-leads`, staging
+  `crmpro-staging-leads`): millions of rows must never fill the product's
+  database, because a full D1 refuses every write. `scripts/leads-db.mjs`,
+  run by both deploy workflows, finds it by name, creates it the first time
+  and writes its id into that run's `wrangler.jsonc` (the committed id is a
+  placeholder); if it cannot, it drops the binding and the deploy goes on —
+  the directory then answers `no_database`. The schema is made on first use
+  (`ensureSchema`), not by migrations. `staging:check` fails if staging is
+  bound to the live directory.
+- **Loading is done by the owner's browser** (`services/leadImport.ts`): a
+  CSV, `.csv.gz` or ZIP (read from its central directory, ZIP64 included,
+  Deflate via `DecompressionStream`) of any size is streamed from disk,
+  parsed, mapped by column name (`ALIASES`) and sent 500 rows a request
+  (`import_rows`). The server counts rows per file (`ld_imports.rows_seen`);
+  the same file again (`fileKey`: name|size|mtime) re-reads and skips that
+  many — resuming depends on every row, empty ones too, being counted, and on
+  ZIP entries being read in central-directory order. Deduped by email, else
+  name + domain/company (`dedupe`, unique). `ld_facets` keeps counts per
+  industry/state/country/level/size as rows come and go — never a GROUP BY
+  over the table.
+- **Customers** see nothing until the owner opens it with a statement that they
+  may share the records (`settings`, `attested_at`) — vendors usually license
+  lists to the buyer alone. A search must name an industry or a place (a title
+  alone would scan the table); results are 50 a page by id, counted to 5,000;
+  email, phone and profile are masked until `reveal`, which spends
+  `REVEAL_BUDGET` (200/day, 2,000/month per workspace, `ld_reveals`, once per
+  person) and stops when a trial has ended. **Removed on request**
+  (`ld_removed`) stays out of later loads. Imports go to Contacts on a `cold`
+  list, tagged `lead directory`.
+- `npm run test:leadimport` (pure: parser, ZIP/ZIP64/gzip, mapping, resume,
+  the server's rules) and `npm run test:leaddir` (self-contained: wrangler
+  :8938, fresh D1 in `.wrangler-leaddir`, needs a `VITE_BASE=/` build; the
+  owner loads a ZIP through the card, customers search, reveal to the limit,
+  add to Contacts at 1280 and 390). Never commit a real lead file.
 
 ### Autopilot prospecting — a project finds its own prospects every day
 
@@ -877,10 +920,12 @@ hides it for that page only — nothing about a dismissal is remembered), back
 when the widget is closed, its rows sliding in, the first icon breathing and
 each icon in a small loop of its own — none of it under reduced motion.
 The launcher itself has two looks: on the site (`data-pc-teaser`) the owner's
-reference design — a pill of stacked frosted glass (coloured sheet edges
-underneath, cyan → white → pink → peach tint, dark text) with a round glass
-lens holding a soft bloom of petals; the tint drifts, the bloom turns, a light
-passes over, the pill floats, and the blur deepens while the page scrolls. In
+reference design — a pill of stacked frosted glass (five coloured sheet edges
+underneath, cyan → white → orchid tint, dark text) with a milky glass lens
+holding a drawn bloom (`bloomSvg`: violet petals behind magenta ones round a
+glowing heart, each petal opening a beat after its neighbour, the two rings
+turning slowly against each other); the tint drifts, a light passes over, the
+pill floats, and the blur deepens while the page scrolls. In
 the app it is plain and still, because a button moving in the corner all day
 is an annoyance; `ProtectedCentralChat.appMode()` switches a widget loaded
 signed out (the card goes too), and HelpLauncher calls it whenever somebody

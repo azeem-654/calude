@@ -9,6 +9,12 @@
 
 export interface Env {
   DB: D1Database;
+  /**
+   * The owner's lead directory (lib/leadDir.ts) — a database of its own, so
+   * millions of imported rows can never fill the product's. Absent when the
+   * deploy could not create it; the directory then says so.
+   */
+  LEADS?: D1Database;
   ASSETS: Fetcher;
   /**
    * Wraps the install secrets in crm_meta (see installSecret). A Cloudflare
