@@ -144,6 +144,26 @@ const local = page => page.evaluate(() => {
   ok('the install owner can recover an old one of their own', mine.success === true && /Somebody/.test(JSON.stringify(mine)), JSON.stringify(mine));
 }
 
+/* ── 3b. A person's own photo ── */
+{
+  /* A 1×1 PNG. */
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const svg = 'data:image/png;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64');
+  const none = await api('user-avatar.php', { token: T, action: 'get' });
+  ok('somebody with no photo has no key (the illustrated avatar is drawn in the browser)', none.success === true && none.key === '', JSON.stringify(none));
+  const bad = await api('user-avatar.php', { token: T, action: 'set', image: svg });
+  ok('an SVG dressed up as a PNG is refused', bad.success === false && bad.field === 'profile.photo', JSON.stringify(bad));
+  const set = await api('user-avatar.php', { token: T, action: 'set', image: png });
+  ok('a real photo is kept', set.success === true && /^[a-f0-9]{36}$/.test(set.key ?? ''), JSON.stringify(set));
+  const pic = await fetch(`${B}/api/user-avatar.php?k=${set.key}`);
+  ok('…and served as a PNG, never sniffed as anything else', pic.status === 200 && pic.headers.get('content-type') === 'image/png' && pic.headers.get('x-content-type-options') === 'nosniff');
+  const anon = await api('user-avatar.php', { action: 'get' });
+  ok('asking for a key needs a session', anon.success !== true);
+  await api('user-avatar.php', { token: T, action: 'clear' });
+  const gone = await fetch(`${B}/api/user-avatar.php?k=${set.key}`);
+  ok('a removed photo stops being served', gone.status === 404);
+}
+
 /* ── 4. The top bar ── */
 for (const width of [1280, 1440, 1655, 1900]) {
   const ctx = await br.newContext({ viewport: { width, height: 900 } });

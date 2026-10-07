@@ -7,7 +7,7 @@ import {
   Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
-  CheckCircle, XCircle, Info, BellOff,
+  CheckCircle, XCircle, Info, BellOff, Crosshair, Sparkles, Users,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
@@ -18,16 +18,17 @@ import { getSession, logout } from '../../services/auth';
 import { getTheme, toggleTheme } from '../../services/theme';
 import { LogoMark } from '../shared/Logo';
 import AiBloom from '../shared/AiBloom';
+import { useMyAvatar } from '../../services/userAvatar';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
 /* `icon-btn` so the phone stylesheet can shrink these; the size lives here
    because everything else about them does. */
 const circleBtn: React.CSSProperties = {
-  width: 40, height: 40, borderRadius: 999, border: 'none',
-  backgroundColor: '#fff', cursor: 'pointer',
+  width: 36, height: 36, borderRadius: 999, border: 'none',
+  backgroundColor: 'transparent', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  color: '#17191c', boxShadow: '0 1px 2px rgba(23,25,28,0.06)',
+  color: '#e8e9ee', boxShadow: 'none',
 };
 
 /** "4m ago" — a timestamp is only useful here as a distance from now. */
@@ -64,6 +65,7 @@ export default function TopNav() {
   const accounts = loadSubAccounts();
   const active = activeAccount();
   const brand = activeBranding();
+  const me = useMyAvatar();
   const [userOpen, setUserOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState(getTheme());
@@ -335,13 +337,13 @@ export default function TopNav() {
                 data-noinvert
                 style={{
                   ...pill,
-                  padding: '4px 16px 4px 4px',
-                  fontSize: 13.5,
+                  padding: '5px 20px 5px 5px',
+                  fontSize: 14.5,
                   fontWeight: 700,
                   color: '#111827',
                   backgroundColor: 'transparent',
                   boxShadow: 'none',
-                  gap: 8,
+                  gap: 9,
                 }}
               >
                 {/*
@@ -351,7 +353,7 @@ export default function TopNav() {
                   and the *rate* carries the real state: it opens faster when a
                   project would act on the next tick.
                 */}
-                <AiBloom size={28} fast={autopilotLive} />
+                <AiBloom size={34} fast={autopilotLive} />
                 {group.label}
                 {autopilotWaiting > 0 && (
                   <span className="nav-hero-count" aria-label={`${autopilotWaiting} waiting for you`}>
@@ -368,9 +370,9 @@ export default function TopNav() {
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
                 className={`pill-link nav-hero nav-hero-prospect${onProspecting ? ' nav-hero-on' : ''}`}
                 data-noinvert
-                style={{ ...pill, padding: '4px 16px 4px 4px', fontSize: 13.5, fontWeight: 700, color: '#111827', backgroundColor: 'transparent', boxShadow: 'none', gap: 8 }}
+                style={{ ...pill, padding: '5px 20px 5px 5px', fontSize: 14.5, fontWeight: 700, color: '#111827', backgroundColor: 'transparent', boxShadow: 'none', gap: 9 }}
               >
-                <AiBloom size={28} />
+                <AiBloom size={34} />
                 AI Prospecting
               </NavLink>,
             ];
@@ -485,11 +487,17 @@ export default function TopNav() {
         })}
       </nav>
 
-      {/* Right: circular icon buttons + avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      {/*
+        Right: the corner, as one dark pill — the owner's reference: a lit
+        "+" to make something, a divider, the outline icons, and the person's
+        face at the end (their photo, or their illustrated avatar).
+      */}
+      <div className="nav-corner">
+        <QuickCreate />
+        <span className="nav-corner-div" aria-hidden="true" />
         <CloudBadge />
         <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn" style={circleBtn}>
-          {theme === 'dark' ? <Sun size={16} strokeWidth={2.2} /> : <Moon size={16} strokeWidth={2.2} />}
+          {theme === 'dark' ? <Sun size={18} strokeWidth={1.8} /> : <Moon size={18} strokeWidth={1.8} />}
         </button>
         <button
           title="Go to a module (⌘K)"
@@ -497,10 +505,10 @@ export default function TopNav() {
           onClick={() => setPaletteOpen(true)}
           className="icon-btn" style={circleBtn}
         >
-          <Search size={16} strokeWidth={2.2} />
+          <Search size={18} strokeWidth={1.8} />
         </button>
         <button title="Inbox" aria-label="Inbox" onClick={() => navigate('/conversations')} className="icon-btn" style={circleBtn}>
-          <Mail size={16} strokeWidth={2.2} />
+          <Mail size={18} strokeWidth={1.8} />
         </button>
 
         <TaskBadge style={circleBtn} />
@@ -518,9 +526,9 @@ export default function TopNav() {
             onClick={() => { setBellOpen(v => { if (!v) markNotificationsRead(); return !v; }); }}
             className="icon-btn" style={{ ...circleBtn, position: 'relative' }}
           >
-            <Bell size={16} strokeWidth={2.2} />
+            <Bell size={18} strokeWidth={1.8} />
             {unreadNotifications > 0 && (
-              <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 999, backgroundColor: '#e5484d', border: '2px solid #fff', boxSizing: 'content-box' }} />
+              <span style={{ position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: 999, backgroundColor: '#ff5a6e', border: '2px solid #1c1c22', boxSizing: 'content-box' }} />
             )}
           </button>
 
@@ -569,13 +577,8 @@ export default function TopNav() {
           )}
         </div>
         <div ref={userRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button onClick={() => setUserOpen(v => !v)} style={{
-            width: 40, height: 40, borderRadius: 999, overflow: 'hidden', cursor: 'pointer', border: 'none', padding: 0,
-            boxShadow: '0 1px 2px rgba(23,25,28,0.1)', position: 'relative',
-            background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontSize: 13, fontWeight: 800,
-          }}>
-            {(session?.user.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+          <button onClick={() => setUserOpen(v => !v)} className="nav-me" aria-label="Your account" title={session?.user.name || 'Your account'}>
+            <img src={me.src} alt="" />
           </button>
           {userOpen && (
             <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 16, padding: 6, minWidth: 220, zIndex: 300, boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)' }}>
@@ -601,6 +604,50 @@ export default function TopNav() {
       </div>
       {paletteOpen && <CommandPalette onClose={closePalette} isClient={isClient} />}
     </header>
+  );
+}
+
+/**
+ * The lit "+" at the start of the corner: the things somebody starts most,
+ * one press away. Each goes to the screen that already makes it — nothing
+ * here creates a record on its own.
+ */
+function QuickCreate() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const items: { label: string; desc: string; to: string; icon: typeof Plus }[] = [
+    { label: 'New AI Autopilot project', desc: 'Describe it in a sentence', to: '/autopilot?new=1', icon: Sparkles },
+    { label: 'Find prospects', desc: 'AI Prospecting, live', to: '/prospecting', icon: Crosshair },
+    { label: 'New email campaign', desc: 'Write, schedule and send', to: '/marketing?new=campaign', icon: Send },
+    { label: 'Contacts', desc: 'Add or import people', to: '/contacts', icon: Users },
+    { label: 'Calendar', desc: 'Book a meeting', to: '/calendar', icon: CalIcon },
+  ];
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button type="button" className="nav-plus" aria-label="Create something new" title="Create something new"
+        aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+        <Plus size={18} strokeWidth={2.2} />
+      </button>
+      {open && (
+        <div role="menu" aria-label="Create" className="nav-plus-menu">
+          {items.map(it => (
+            <button key={it.to} type="button" role="menuitem" onClick={() => { setOpen(false); navigate(it.to); }}>
+              <span className="nav-plus-ic"><it.icon size={15} /></span>
+              <span><b>{it.label}</b><small>{it.desc}</small></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -44,11 +44,11 @@ export default function SupportBadge({ style }: { style: React.CSSProperties }) 
       className="icon-btn"
       style={{ ...style, position: 'relative', flexShrink: 0 }}
     >
-      <MessageSquare size={16} strokeWidth={2.2} />
+      <MessageSquare size={18} strokeWidth={1.8} />
       <span style={{
-        position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, padding: '0 5px', boxSizing: 'border-box',
+        position: 'absolute', top: -2, right: -4, minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box',
         borderRadius: 999, background: tone, color: '#fff', fontSize: 11, fontWeight: 800,
-        display: 'grid', placeItems: 'center', border: '2px solid #fff', lineHeight: 1,
+        display: 'grid', placeItems: 'center', border: '2px solid #1c1c22', lineHeight: 1,
       }}>{n > 99 ? '99+' : n}</span>
     </button>
   );

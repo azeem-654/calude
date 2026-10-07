@@ -17,6 +17,7 @@ import WhiteLabelPanel from './WhiteLabelPanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
 import PlatformServices from './PlatformServices';
 import MotionPanel from './MotionPanel';
+import ProfilePhoto from './ProfilePhoto';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
@@ -992,10 +993,9 @@ export default function Settings() {
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', marginTop: 0, marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>Profile Information</h3>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #f1f5f9' }}>
                 {/* Was a fixture: "JD", "John Doe", "Admin · Protected Central" and a
-                    Change Photo button with nothing behind it, on every account. */}
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#17191c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '28px', fontWeight: 700, flexShrink: 0 }}>
-                  {(`${profile.firstName.trim()[0] ?? ''}${profile.lastName.trim()[0] ?? ''}` || profile.email.trim()[0] || '?').toUpperCase()}
-                </div>
+                    Change Photo button with nothing behind it, on every account.
+                    Now the person's own photo, or their illustrated avatar. */}
+                <ProfilePhoto />
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px', overflowWrap: 'anywhere' }}>{`${profile.firstName} ${profile.lastName}`.trim() || profile.email}</p>
                   <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, overflowWrap: 'anywhere' }}>{getSession()?.user.role === 'client' ? 'Team member' : 'Account owner'}{profile.company.trim() ? ` · ${profile.company.trim()}` : ''}</p>

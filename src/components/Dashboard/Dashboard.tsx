@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import Header from '../Layout/Header';
+import { Toasts } from '../Layout/Header';
+import Welcome from './Welcome';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { getSession } from '../../services/auth';
@@ -845,70 +846,80 @@ export default function Dashboard() {
     },
   );
 
+  /*
+   * Number the blocks in the order they are seen — top to bottom, then left
+   * to right — not the order they are written: the two-column flow moves a
+   * half-width block up beside an earlier one, and a section that has
+   * nothing to say draws nothing and takes no number. Re-read whenever the
+   * grid's size or contents change, once a frame at most.
+   */
+  const blocksRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const grid = blocksRef.current;
+    if (!grid) return;
+    let raf = 0;
+    const renumber = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const shown = [...grid.children].filter((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains('dash-block') && el.getBoundingClientRect().height > 0);
+        const at = shown.map(el => ({ el, r: el.getBoundingClientRect() }));
+        at.sort((a, b) => (Math.abs(a.r.top - b.r.top) > 4 ? a.r.top - b.r.top : a.r.left - b.r.left));
+        at.forEach(({ el }, i) => { if (el.dataset.n !== String(i + 1)) el.dataset.n = String(i + 1); });
+        [...grid.children].forEach(el => { if (el instanceof HTMLElement && !shown.includes(el)) delete el.dataset.n; });
+      });
+    };
+    renumber();
+    const ro = new ResizeObserver(renumber);
+    ro.observe(grid);
+    [...grid.children].forEach(el => ro.observe(el));
+    const mo = new MutationObserver(renumber);
+    mo.observe(grid, { childList: true });
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); mo.disconnect(); };
+  }, []);
+
   return (
     <div ref={ground} className="dash" style={{ minHeight: '100vh', paddingBottom: 32, overflow: 'hidden' }}>
       <span className="dash-glow" aria-hidden="true" />
       <span className="dash-glow-2" aria-hidden="true" />
-      <Header
-        title={firstName ? `${greeting}, ${firstName}` : greeting}
-        subtitle={[
-          scheduledToday === 0 ? 'Nothing in the diary today' : `${scheduledToday} meeting${scheduledToday === 1 ? '' : 's'} today`,
-          `${openDeals} deal${openDeals === 1 ? '' : 's'} in motion`,
-          `${contacts.length} contact${contacts.length === 1 ? '' : 's'} on the books`,
-        ].join(' · ')}
-      />
+      {/* The welcome, the width of the page; the blocks below it. */}
+      <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 26 }}>
+        <Welcome greeting={greeting} firstName={firstName} appointments={appointments} openDeals={openDeals} contacts={contacts.length} />
+        <Toasts />
 
-      {/* Roomier than it was: the wash behind the panels is most of the effect,
-          and it only shows in the space they leave. */}
-      <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/*
+          The sections, as numbered blocks (dashboard.css, .dash-grid): one
+          column on a smaller screen, two side by side from 1280px, the wide
+          boards across the whole row. A section with nothing to say renders
+          nothing, its block collapses, and the numbering does not skip it.
+        */}
+        <div className="dash-grid" ref={blocksRef}>
 
         {/* ── What is left to set up ──
-            Above the figures for as long as it has anything to say, because a
-            workspace that cannot send yet has nothing to read in them. It
-            removes itself once every step is done. */}
-        <SetupChecklist
-          onOpenAiWizard={() => setWizardOpen(true)}
-          refreshKey={obRefresh}
-        />
+            First for as long as it has anything to say, because a workspace
+            that cannot send yet has nothing to read in the figures. It removes
+            itself once every step is done. */}
+        <div className="dash-block">
+          <SetupChecklist onOpenAiWizard={() => setWizardOpen(true)} refreshKey={obRefresh} />
+        </div>
 
-        {/* ── The module that does the work ──
-            First after the checklist, and above the figures. Everything below
-            this is a report on what already happened; this is the only thing on
-            the page that is still happening, so it gets a section rather than a
-            line. */}
-        <AutopilotPanel />
+        {/* ── The module that does the work ── the only thing on the page
+            still happening; everything after it reports what already did. */}
+        <div className="dash-block"><AutopilotPanel /></div>
 
         {/* Whether that work is running in the cloud right now — from the
             cron's own last run, not a constant. */}
-        <CloudLive />
+        <div className="dash-block wide"><CloudLive /></div>
 
-        {/* Deal tasks with a date upon them — drawn only when something is. */}
-        <DueTasks />
+        {/* Deal tasks with a date upon them, and people waiting for a person —
+            each drawn only when there is something. */}
+        <div className="dash-block"><DueTasks /></div>
+        <div className="dash-block"><SupportWaiting /></div>
 
-        {/* People waiting for a person — only for a workspace that has ever
-            used Customer Engagement. */}
-        <SupportWaiting />
+        {/* ── AI Prospecting ── where new customers come from. */}
+        <div className="dash-block"><ProspectingPanel /></div>
 
-        {/* ── AI Prospecting ──
-            Where new customers come from, one sentence away. Below the work
-            that is already waiting on somebody, above the week's figures. */}
-        <ProspectingPanel />
-
-        {/*
-          The "Build a campaign from your portfolio" strip stood here.
-
-          It opened FlowLauncher, which is the AI Sales Agent's one-shot fan-out
-          — the module that folded into AI Autopilot. Leaving it on the dashboard
-          meant two front doors to the same job, one of them belonging to a
-          module that no longer exists in the menu, so a customer could start a
-          campaign from a screen that Autopilot knows nothing about and then
-          wonder why the board never mentioned it.
-        */}
-
-        {/* ── The four numbers this week turned on ──
-            Ahead of everything else on purpose: a sales lead opening the CRM
-            wants the state of the business before they want a to-do list. */}
-        <section aria-label="This week" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* ── The four numbers this week turned on ── */}
+        <section className="dash-block" aria-label="This week" style={{ ...FROST, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '0 2px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>This week</h2>
@@ -918,22 +929,21 @@ export default function Dashboard() {
               Full analytics <ArrowRight size={11} strokeWidth={2.6} />
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(232px, 1fr))', gap: 14 }}>
+          <div className="dash-kpis">
             {kpis.map(k => <KpiTile key={k.id} kpi={k} />)}
           </div>
         </section>
 
         {/* ── Today, and the goals behind it ── */}
-        <div className="slide-up" style={{ animationDelay: '0.08s' }}>
+        <div className="dash-block wide slide-up" style={{ animationDelay: '0.08s' }}>
           <DayBoard
             appointments={appointments}
             actions={book.actions.slice(0, 8)}
             onStatusChange={(id, status) => updateAppointment(id, { status })}
           />
         </div>
-
         {/* ── Journey board ── */}
-        <div className="slide-up" style={{ ...FROST, animationDelay: '0.08s' }}>
+        <div className="dash-block wide slide-up" style={{ ...FROST, animationDelay: '0.08s' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 16px' }}>
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Pipeline</h3>
@@ -949,7 +959,7 @@ export default function Dashboard() {
 
           <StageBar stages={stageWeights} total={stageTotal} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1.15fr 1fr', gap: 14, alignItems: 'start', marginTop: 16 }}>
+          <div className="dash-journey" style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1.15fr 1fr', gap: 14, alignItems: 'start', marginTop: 16 }}>
             {journeyCols.map((col, ci) => (
               <div key={col.name}>
                 <div style={{ ...CARD, padding: '8px 12px' }}>
@@ -985,29 +995,32 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── Growth forecast + Tips & Flaws ── */}
-        <div className="slide-up" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, alignItems: 'stretch', animationDelay: '0.14s' }}>
+        {/* ── Growth forecast, and Tips & Flaws, side by side ── */}
+        <div className="dash-block slide-up" style={{ animationDelay: '0.14s' }}>
           <GrowthForecast history={growthHistory} growthPct={growthPct} />
+        </div>
+        <div className="dash-block slide-up" style={{ animationDelay: '0.14s' }}>
           <InsightsCarousel insights={insights} />
         </div>
 
         {/* ── 12-month content pipeline / AI setup ── */}
-        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+        <div className="dash-block wide slide-up" style={{ animationDelay: '0.05s' }}>
           <ContentPipelineCard onSetup={() => setWizardOpen(true)} refreshKey={obRefresh} />
         </div>
 
         {/* ── Where the business stands, department by department ── */}
-        <div className="slide-up" style={{ animationDelay: '0.05s' }}>
+        <div className="dash-block wide slide-up" style={{ animationDelay: '0.05s' }}>
           <ProgressBoard book={book} />
         </div>
 
-        {/* ── Bottom row: Live Activity | Knowledge table | Donut journey ── */}
-        <div className="slide-up" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.25fr 0.85fr', gap: 16, alignItems: 'stretch', animationDelay: '0.2s' }}>
-
+        {/* ── Live activity and the deal journey side by side; the
+            suggested actions table across the row, because it is a table. ── */}
+        <div className="dash-block slide-up" style={{ animationDelay: '0.2s' }}>
           <LiveFeed items={feed} />
+        </div>
 
           {/* Suggested Knowledge–style table */}
-          <div style={FROST}>
+          <div className="dash-block wide slide-up" style={{ ...FROST, animationDelay: '0.2s' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Suggested Actions</h3>
               <button type="button" className="dash-chip press" onClick={() => navigate('/pipelines')}>
@@ -1041,7 +1054,7 @@ export default function Dashboard() {
           </div>
 
           {/* Support/deal journey donuts */}
-          <div style={FROST}>
+          <div className="dash-block slide-up" style={{ ...FROST, animationDelay: '0.2s' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px 12px' }}>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0, letterSpacing: '-0.02em' }}>Deal Journey</h3>
               <button type="button" className="dash-chip press" onClick={() => navigate('/pipelines')}>

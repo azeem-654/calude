@@ -784,11 +784,35 @@ holding the AI bloom (`shared/AiBloom.tsx` — the website launcher's
 (`fast`) when a project would act on the next tick. All of the movement is
 behind `prefers-reduced-motion` (Settings → Profile → Animation overrules a
 system that asks for less). The Customers pill is not lit while AI
-Prospecting is open. The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
+Prospecting is open. The icons on the right are **one dark pill** (`.nav-corner`, the owner's
+reference): a violet "+" (`QuickCreate` — a menu of screens that make things,
+nothing created on its own), a hairline, outline icons, and the person's face
+at the end. The face is `useMyAvatar()` (`services/userAvatar.ts`): their own
+photo (Settings → Profile, `ProfilePhoto.tsx`; `/api/user-avatar.php`,
+`routes/userAvatar.ts`, migration 0067 — keyed by email, bytes sniffed like a
+widget photo, ≤256 px, served by a random key; `test:isolation` covers it),
+otherwise an illustrated avatar drawn in the browser from their address
+(DiceBear Lorelei, bundled — design CC0, code MIT — so no third party is
+asked). The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
 inside: blue when the cron ran in the last 20 minutes, amber when late, out
 when unreadable; the words are kept for screen readers. The lit parts carry
 `data-noinvert`, so dark mode does not turn them inside out. `test:isolation`
 checks four widths as the owner, and that 1440 and up is one line.
+
+## The dashboard
+
+`Dashboard/Dashboard.tsx` opens on **the welcome** (`Welcome.tsx`, the owner's
+references): a dark band with the greeting and the name lit, the person's face
+in a sunburst ring (their photo or illustrated avatar, with "Add your photo"
+until there is one), and a glass card of today's real appointments — the next
+with "in 53m", the rest in time pills; a day with nothing says so. Under it
+every section is a **numbered block** in `.dash-grid`: one column below
+1280px, two side by side from there, `wide` blocks across the row, a dense
+flow so a half block moves up beside an earlier one. A section that renders
+nothing leaves an empty block, which is hidden and not numbered; the numbers
+are written by the page from where the blocks landed (top to bottom, then
+left to right), not from the source order. Blocks keep their own height —
+stretching a block to its neighbour pulled the grids inside it apart.
 
 ## A project's workflows
 
