@@ -112,7 +112,7 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
   if (!project) return fail('That project is not in this workspace.', 404);
 
   if (act === 'overview') {
-    const f = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? ORDER BY created_at LIMIT 1')
+    const f = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND length(search_id) = 0 ORDER BY created_at LIMIT 1')
       .bind(accountId, projectId).first<{ id: string }>();
     const finder = f ? await loadFinder(env, f.id, accountId) : null;
     const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
@@ -154,7 +154,7 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
     const perDay = Math.max(1, Math.min(PER_DAY_MAX, Math.round(Number(d.perDay) || 20)));
     const listId = s(d.listId, 100);
     if (listId && !LIST_ID.test(listId)) return fail('That list cannot be used.', 200, { field: 'finder.list' });
-    const existing = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? ORDER BY created_at LIMIT 1')
+    const existing = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND length(search_id) = 0 ORDER BY created_at LIMIT 1')
       .bind(accountId, projectId).first<{ id: string }>();
     const cur = existing ? await loadFinder(env, existing.id, accountId) : null;
     if (cur && d.append) {

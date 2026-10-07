@@ -529,12 +529,11 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   A contact the customer deletes (`pf-…` ids, `forgetFoundContacts`) is
   tombstoned `removed` and never re-added. `ProspectSync` pulls new ones into
   the browser on load and on return to the tab.
-- **Screens.** A project's **Prospects** tab (`ProjectProspects.tsx`,
-  `?tab=prospects`): status, KPIs, 30-day chart, the rotation, latest
-  prospects, the step log, and the set-up form (`finder.trades`,
-  `finder.places`, `finder.perDay`, `finder.list`). AI Prospecting's
-  **Search this every day** (`DailySearch.tsx`) appends the search on screen
-  to a project's rotation. The wizard asks `prospectTrades` / `prospectPlaces`
+- **Screens.** A project's **Prospects** tab: its connected sources first
+  (below), then, folded, the older finder (`ProjectProspects.tsx`): status,
+  KPIs, 30-day chart, the rotation, latest prospects, the step log, and the
+  set-up form (`finder.trades`, `finder.places`, `finder.perDay`,
+  `finder.list`). The wizard asks `prospectTrades` / `prospectPlaces`
   / `prospectPerDay` / `prospectSms` when contacts are to be found, reads them
   from the sentence when it can ("sell my products to real estate agents in
   Virginia" — the *selling-to* clause is the audience, not the business, so
@@ -565,6 +564,65 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   the prospects who opt in" workflow (a draft) starts on it.
   `prospectSmsBlock` gates the engine and the sequence sender: a `prospect`
   without consent for that number is skipped, by name.
+
+### Connected searches — a tested AI Prospecting search as a project's lead source
+
+The customer builds and tests a search in AI Prospecting, then **Connect to
+AI Autopilot** (results bar, history "…" menu) — or, from a project, **Connect
+Prospect Search** (Prospects tab, Workflows tab, a fresh project too). One
+wizard both ways (`Prospecting/ConnectAutopilot.tsx`): project (or a new one) →
+workflow name and the linked search's criteria → schedule and the target of
+**verified** leads per run → verification → where leads go (CRM always; a
+list, tags, an owner, an opportunity in a pipeline, and the next workflow of
+the same project). Rules in `worker/src/lib/prospectSources.ts` — pure, no
+imports, and imported by the browser too (`services/prospectSources.ts`), so
+there is one implementation; `npm run test:sources`. API `routes/sources.ts`
+(`/api/sources.php`); migration 0066. `npm run test:sourcese2e`
+(self-contained: Geoapify + DNS mock :8849, wrangler :8919, fresh D1 in
+`.wrangler-sources`, needs a `VITE_BASE=/` build).
+
+- **A search definition** (`crm_search_definitions`, `ps-…`, one per
+  workspace and `searchKey`) holds trade, place, source, filters, exclusions
+  and a `version`. **A connection is a finder row naming it** (`search_id`)
+  plus its project workflow — the existing engine runs it; nothing is copied
+  into a second one. One search may feed many projects, and one project many
+  searches, each with its own settings. Changing what a search finds
+  (`update_search`) bumps its version and asks: **Update workflow** copies the
+  criteria into the connections (`apply_search`), **Keep existing** leaves them
+  on their version, and the source card says it is behind. AI Prospecting asks
+  the same when the search on screen differs from a connected one.
+- **Runs** (`stepFinder` when `search_id` is set): only on run days from the
+  run hour **in the customer's time zone** (`runNow`, `nextRunStart`,
+  `zonedTime`); counters belong to that local day; `manual_run` (Run now)
+  starts today's run; the target is verified leads and the run examines as
+  many candidates as that takes within `runLimits(target)`, saying so when it
+  falls short. Each candidate goes through `qualify`: website, the address
+  (published on its site or in the directory), the domain and mail-server
+  check (`strict` asks the owner's verifier for the mailbox), **duplicates
+  against the CRM and the project, the suppression list (`crm_suppression_list`,
+  `crm_suppressions`) and `crm_unsubscribes`**, exclusions, and the
+  confidence bar. **Confidence is a sum of checks that ran** (the points are
+  listed on screen) — never a guess. A rejected candidate is kept with its
+  `reject_reason` so no run examines it again; after 30 days its address,
+  phone and street are cleared (`minimiseRejected`). Qualifying leads get
+  `customFields.provenance` (search, source, licence, date) and `confidence`,
+  then the connection's tags/owner/deal, and `enrolInto` the next workflow —
+  each outcome said on the lead's line in `live`, the record the source card
+  polls (the candidate being checked, check by check, then the result). A
+  connection's workflow is drawn by `SourceFlow` (search → verify → duplicate →
+  suppression → confidence → YES/NO), with **View Prospect Search**
+  (`/prospecting?search=<id>`).
+- **Plain language**: `parseSourceCommand` (pattern-read, never an AI call)
+  and the `command` action — target, schedule, pause/resume, bar, next
+  workflow by name, connect a search by name. Anything else is answered with
+  what it can do. Every change is logged with who made it (`crm_finder_runs`,
+  kind `config`).
+- **Sources the owner can hold back**: `SOURCE_POLICY` says what each source
+  may do (Google is never run on a schedule or kept); the owner's switch per
+  source (`crm_meta.source_policy`, `lib/sourcePolicyStore.ts`, `policy`
+  action: on / kept internal / off) is asked by manual search, by connecting,
+  by Run now, and by the engine, which pauses a connection on a source
+  switched off.
 
 ### Google Maps on the owner's key
 

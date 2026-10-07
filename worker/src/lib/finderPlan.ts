@@ -75,12 +75,12 @@ export type Job =
  * more — a pile of unread candidates is work already paid for — and nothing is
  * searched once today's leads are in.
  */
-export function nextJob(s: FinderState, pendingCandidates: number, readyWaiting: number): Job {
+export function nextJob(s: FinderState, pendingCandidates: number, readyWaiting: number, limits: { searches: number; reads: number } = DAY_LIMITS): Job {
   if (s.dayAdded >= s.perDay) return { kind: 'rest', why: 'quota' };
   /* Enough ready to fill today's allowance: add them, search for nothing. */
   if (readyWaiting >= s.perDay - s.dayAdded) return { kind: 'rest', why: 'quota' };
-  if (pendingCandidates > 0) return s.dayReads >= DAY_LIMITS.reads ? { kind: 'rest', why: 'limits' } : { kind: 'read' };
-  if (s.daySearches >= DAY_LIMITS.searches) return { kind: 'rest', why: 'limits' };
+  if (pendingCandidates > 0) return s.dayReads >= limits.reads ? { kind: 'rest', why: 'limits' } : { kind: 'read' };
+  if (s.daySearches >= limits.searches) return { kind: 'rest', why: 'limits' };
   const queue = rotation(s.trades, s.places);
   if (!queue.length) return { kind: 'exhausted' };
   const done = new Set(s.doneKeys);

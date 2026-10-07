@@ -110,8 +110,8 @@ export const REELS: Record<string, ReelShot[]> = {
     },
     {
       file: 'pr-every-day',
-      caption: '"Search this every day" hands a search to an AI Autopilot project.',
-      alt: 'The Search this every day panel, choosing a project and how many new prospects a day',
+      caption: '"Connect to AI Autopilot" makes a tested search a project\'s recurring lead source.',
+      alt: 'The Connect to AI Autopilot wizard: the linked search, its criteria, and how many verified leads a run',
     },
     {
       file: 'hero-daily',

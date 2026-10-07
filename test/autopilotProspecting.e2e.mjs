@@ -343,23 +343,8 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await ctx.close();
 }
 
-/* AI Prospecting → "Search this every day". */
+/* AI Prospecting → "Connect to AI Autopilot" is covered by test/prospectSources.e2e.mjs. */
 {
-  const { ctx, page } = await signIn(1280);
-  await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await page.getByLabel('Who to look for').fill('dentists in York');
-  await page.keyboard.press('Enter');
-  await page.getByText(/Checked \d+ contact|Read \d+ websites/).first().waitFor({ timeout: 60_000 }).catch(() => {});
-  await page.getByRole('button', { name: /Search this every day/ }).click();
-  const panel = page.getByRole('region', { name: 'Search this every day' });
-  await panel.getByRole('radio', { name: /Leeds dentists/ }).check({ timeout: 10_000 });
-  await panel.getByRole('button', { name: 'Search it every day' }).click();
-  await page.getByText(/is now searched every day for "Leeds dentists"/).waitFor({ timeout: 15_000 }).catch(() => {});
-  ok('a search joins a project\'s daily rotation, said plainly', /is now searched every day for "Leeds dentists"/.test(await page.innerText('body')));
-  const f = sql(`SELECT places FROM crm_prospect_finders WHERE id = '${FID}'`)[0];
-  ok('…added to it, not replacing it', /Leeds/.test(f.places) && /York/.test(f.places), f.places);
-  await ctx.close();
-
   const m = await signIn(390);
   await m.page.goto(`${B}/autopilot?project=${encodeURIComponent(PID)}&tab=prospects`, { waitUntil: 'networkidle' });
   await m.page.getByText('Daily prospecting').waitFor({ timeout: 15_000 }).catch(() => {});

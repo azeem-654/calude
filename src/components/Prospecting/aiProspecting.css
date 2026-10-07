@@ -830,3 +830,15 @@ html[data-theme="dark"] .aip-map { background: linear-gradient(160deg, #161a2b, 
   .aip-hist-icon, .aip-example { transition: none; }
   .aip-live-dot, .aip-micbtn, .aip-robot, .aip-robot *, .aip-pin, .aip[data-screen] .aip-side, .aip-ring-bar { animation: none !important; transition: none !important; }
 }
+
+/* ── Connected to AI Autopilot ──
+   A search that feeds a project says so in the history and above its results,
+   with what each connection does — the relationship stays visible from both ends. */
+.aip-hist-conn { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--aip-accent-soft, #eef0ff); color: var(--aip-accent, #5b5bf0); white-space: nowrap; }
+.aip-conn { padding: 0; overflow: hidden; }
+.aip-conn-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 16px; border: 0; background: none; cursor: pointer; font: inherit; color: var(--aip-ink, #0f172a); text-align: left; }
+.aip-conn-row { display: grid; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--aip-line, #e5e7eb); }
+.aip-conn-row dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 16px; }
+.aip-conn-row dt { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--aip-muted, #64748b); }
+.aip-conn-row dd { margin: 2px 0 0; font-size: 13px; font-weight: 600; color: var(--aip-ink, #0f172a); overflow-wrap: anywhere; }
+.aip-conn .aip-note { margin: 0 16px 14px; padding: 10px 12px; border-radius: 10px; background: var(--aip-accent-soft, #eef0ff); color: var(--aip-ink, #0f172a); font-weight: 500; }

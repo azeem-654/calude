@@ -15,9 +15,11 @@
  *
  * Kinds of business, places (a state becomes its towns — `expandPlace`), how
  * many a day, which source, and the list they go on (the project's audience, or
- * a new one made here). The same finder is set up from the New Project wizard
- * and from AI Prospecting's "Search this every day"; all three go through
- * `saveFinder`, so there is one place that decides what a finder is.
+ * a new one made here). The same finder is set up from the New Project wizard;
+ * both go through `saveFinder`, so there is one place that decides what a
+ * finder is. A search connected from AI Prospecting is a *source* instead
+ * (ProspectSources.tsx, above this on the tab) — the same engine, with a
+ * schedule, a verified target and its own checks.
  *
  * Authored light like the rest of Autopilot (theme.ts): the app's dark mode
  * inverts it with everything else.
@@ -213,13 +215,15 @@ function Setup({ project, initial, onSaved, onCancel }: {
   );
 }
 
-export default function ProjectProspects({ project }: { project: Project }) {
+export default function ProjectProspects({ project, folded = false }: { project: Project; folded?: boolean }) {
   const navigate = useNavigate();
   const [data, setData] = useState<FinderOverview | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState('');
   const [said, setSaid] = useState('');
+  /* Beside connected searches the older set-up form waits behind one line until asked for. */
+  const [unfolded, setUnfolded] = useState(!folded);
 
   const load = useCallback(async () => {
     const r = await finderOverview(project.id);
@@ -238,6 +242,14 @@ export default function ProjectProspects({ project }: { project: Project }) {
   const f = data.finder;
   const t = data.totals;
   const today = f ? f.today : null;
+
+  if (!f && !unfolded) {
+    return (
+      <button type="button" style={{ ...btn, justifySelf: 'start' }} onClick={() => setUnfolded(true)}>
+        <Target size={13} /> Or find by kinds of business and places, every day
+      </button>
+    );
+  }
 
   if (!f || editing) {
     return (

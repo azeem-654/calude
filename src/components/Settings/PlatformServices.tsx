@@ -33,6 +33,7 @@ import EmailVerifierPanel from './EmailVerifierPanel';
 import CompaniesHousePanel from './CompaniesHousePanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
 import LeadDirectoryAdmin from './LeadDirectoryAdmin';
+import SourcePolicyPanel from './SourcePolicyPanel';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -154,6 +155,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
       <div id="platform-geoapify" style={{ scrollMarginTop: 16 }}><GeoapifyKeyPanel /></div>
       <div id="platform-companies-house" style={{ scrollMarginTop: 16 }}><CompaniesHousePanel /></div>
       <div id="platform-email-verifier" style={{ scrollMarginTop: 16 }}><EmailVerifierPanel /></div>
+      <div id="platform-source-policy" style={{ scrollMarginTop: 16 }}><SourcePolicyPanel /></div>
       <div id="platform-lead-directory" style={{ scrollMarginTop: 16 }}><LeadDirectoryAdmin /></div>
       <div id="platform-google-maps" style={{ scrollMarginTop: 16 }}><PlacesKeyPanel /></div>
       <div id="platform-google-signin" style={{ scrollMarginTop: 16 }}><GoogleSignInPanel /></div>

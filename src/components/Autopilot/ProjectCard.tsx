@@ -56,6 +56,8 @@ import ProjectLogo from './ProjectLogo';
 import ProjectOverview from './ProjectOverview';
 import ProjectSchedule from './ProjectSchedule';
 import ProjectProspects from './ProjectProspects';
+import ProspectSources, { ProspectingToday, SourceFlow } from './ProspectSources';
+import ConnectAutopilot from '../Prospecting/ConnectAutopilot';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
 import type { AutomationNode } from '../../types/marketing';
@@ -174,7 +176,13 @@ export default function ProjectCard({
      sent to; Workflows, as it always was, for projects older than blueprints —
      their Overview has little to say and their owners know where they work. */
   /* `?tab=prospects` — the finder's step links here — opens that tab on the project it names. */
-  const asked = (): Tab | null => (focused && new URLSearchParams(window.location.search).get('tab') === 'prospects' ? 'prospects' : null);
+  const asked = (): Tab | null => {
+    const t = focused ? new URLSearchParams(window.location.search).get('tab') : null;
+    return t === 'prospects' || t === 'workflows' ? t : null;
+  };
+  /* `&source=<id>` — a connection named by AI Prospecting or the wizard — is scrolled to on the Prospects tab. */
+  const [sourceFocus, setSourceFocus] = useState(() => (focused ? new URLSearchParams(window.location.search).get('source') ?? '' : ''));
+  const [connecting, setConnecting] = useState(false);
   const [tab, setTab] = useState<Tab>(() => asked() ?? (focused || project.brief ? 'overview' : 'workflows'));
   /* Sent here after the card was already on screen: open the Overview then too.
      Adjusted during render rather than in an effect, which would draw the old
@@ -637,6 +645,11 @@ export default function ProjectCard({
 
           {/* ── Overview ── */}
           {tab === 'overview' && (
+            <div style={{ marginBottom: 12 }}>
+              <ProspectingToday project={project} onOpen={id => { setSourceFocus(id); setTab('prospects'); }} />
+            </div>
+          )}
+          {tab === 'overview' && (
             <ProjectOverview
               project={project} flows={flows} runs={runs} assets={assets}
               onCreateWorkflow={() => setWizard(true)}
@@ -646,7 +659,14 @@ export default function ProjectCard({
 
           {tab === 'schedule' && <ProjectSchedule flows={flows} runs={runs} />}
 
-          {tab === 'prospects' && <ProjectProspects project={project} />}
+          {tab === 'prospects' && (
+            <div style={{ display: 'grid', gap: 14 }}>
+              <ProspectSources project={project} focus={sourceFocus} />
+              {/* The older way: kinds of business × places typed here, not a saved search —
+                  shown in full when this project has one, one line when it does not. */}
+              <ProjectProspects project={project} folded />
+            </div>
+          )}
 
           {/* ── Workflows ──
               "Create workflow" sits above both states, always. It used to live
@@ -663,7 +683,14 @@ export default function ProjectCard({
               <button onClick={() => setEditing({ workflow: null })} className="press" style={ghost()}>
                 Build from scratch
               </button>
+              <button onClick={() => setConnecting(true)} className="press" style={ghost()} data-testid="workflows-connect-search">
+                <Plus size={13} /> Connect Prospect Search
+              </button>
             </div>
+          )}
+          {connecting && (
+            <ConnectAutopilot projectId={project.id} onClose={() => setConnecting(false)}
+              onDone={() => { void read(); }} />
           )}
           {tab === 'workflows' && (
             !flows.length ? (
@@ -863,7 +890,15 @@ export default function ProjectCard({
                         </button>
                       </header>
 
-                      {isOpen && (
+                      {isOpen && (f.nodes as { config?: Record<string, unknown> }[]).some(n => n.config?.produces === 'prospects' && n.config?.searchId) && (
+                        /* A prospecting source is drawn as what it does — search, verify,
+                           check, qualify, and the two branches — rather than as its two
+                           stored steps; it is edited on the Prospects tab. */
+                        <div style={{ background: T.panel, borderTop: `1px solid ${LINE}`, padding: 12 }}>
+                          <SourceFlow nodes={f.nodes as never} />
+                        </div>
+                      )}
+                      {isOpen && !(f.nodes as { config?: Record<string, unknown> }[]).some(n => n.config?.produces === 'prospects' && n.config?.searchId) && (
                         <div style={{ background: T.panel, borderTop: `1px solid ${LINE}`, padding: 12 }}>
                           <WorkflowCanvas
                             nodes={f.nodes as unknown as AutomationNode[]}

@@ -51,6 +51,7 @@ test-results/
 .wrangler-audit/
 .wrangler-autoprospects/
 .wrangler-leaddir/
+.wrangler-sources/
 
 # Agents' temporary working copies (git worktrees); never part of the project.
 .claude/worktrees/

@@ -51,6 +51,7 @@ import { handleSystemMail } from './routes/systemMail';
 import { handleAiKeys } from './routes/aikeys';
 import { handleGeoapify } from './routes/geoapify';
 import { handleLeadDir } from './routes/leaddir';
+import { handleSources } from './routes/sources';
 import { handleEmailVerifier } from './routes/emailVerifier';
 import { handleCompaniesHouse } from './routes/companiesHouse';
 import { handleFinders } from './routes/finders';
@@ -100,6 +101,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,
   '/api/leaddir.php': handleLeadDir,
+  '/api/sources.php': handleSources,
   '/api/email-verifier.php': handleEmailVerifier,
   '/api/companies-house.php': handleCompaniesHouse,
   /* A project's prospects and its daily prospect finder (prospectFinderTick.ts). */

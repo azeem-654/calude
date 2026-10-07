@@ -36,6 +36,7 @@ import { BUDGET, PROVIDERS, checkEmails, findPeople, installVerifier, usage } fr
 import { trialForWorkspace } from '../lib/trial';
 import { REGISTER_ATTRIBUTION, installRegisterKey, markRegisterKey, searchRegister } from '../lib/companiesHouse';
 import { rateLimit } from '../lib/rateLimit';
+import { sourceRefusal } from '../lib/sourcePolicyStore';
 import { GEOAPIFY_ATTRIBUTION, installGeoKey, markGeoKey, searchGeoapify } from '../lib/geoapify';
 import {
   KEY_FAULT, NO_KEY_PROSPECTS, PAGE_TOKEN_RE, markInstallKey, meterPlaces, placesBudget, placesKeyFor, searchBusinesses,
@@ -118,6 +119,11 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       const m = /^(.+?)\s+(?:in|near|around)\s+(.+)$/i.exec(line);
       if (m) { trade = m[1].trim().slice(0, 80); place = m[2].trim().slice(0, 80); line = ''; }
     }
+
+    /* The owner may hold a source back — switched off, or kept internal while
+       its terms are unclear (lib/sourcePolicyStore.ts). Said by name. */
+    const held = await sourceRefusal(env, source, user.role === 'agency' && !user.accountId);
+    if (held) return fail(held.error, 200, { code: held.code });
 
     /* The boxes first, by name, before any key or budget is looked at: an empty
        box is the customer's to fix and costs nobody anything. */

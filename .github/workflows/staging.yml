@@ -153,6 +153,9 @@ jobs:
       - name: Test the lead directory's file reading
         run: npm run test:leadimport
 
+      - name: Test prospect sources (schedules, verification, commands)
+        run: npm run test:sources
+
       - name: Test the design step
         run: npm run test:design
 

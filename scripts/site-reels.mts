@@ -634,12 +634,13 @@ const RECIPES: Record<string, () => Promise<void>> = {
   },
   'pr-every-day': async () => {
     await aiSearch('gyms in Austin, Texas');
-    await page.getByRole('button', { name: /Search this every day/ }).first().click();
+    /* The Connect to AI Autopilot wizard, at the step that shows the linked search and its criteria. */
+    await page.getByRole('button', { name: /Connect to AI Autopilot/ }).first().click();
     await page.waitForTimeout(900);
-    const panel = page.getByRole('region', { name: 'Search this every day' });
-    await panel.getByRole('radio', { name: /Legacy Fitness/ }).check().catch(() => {});
-    await panel.scrollIntoViewIfNeeded().catch(() => {});
-    await page.evaluate(() => window.scrollBy(0, 140));
+    const dlg = page.getByRole('dialog', { name: 'Connect to AI Autopilot' });
+    await dlg.getByRole('radio', { name: /Legacy Fitness/ }).click().catch(() => {});
+    await dlg.getByTestId('connect-next').click().catch(() => {});
+    await dlg.getByTestId('source-criteria').waitFor({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(500);
   },
 

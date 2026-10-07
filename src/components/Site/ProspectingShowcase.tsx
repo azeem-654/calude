@@ -147,7 +147,7 @@ export default function ProspectingShowcase() {
           <h3>And a project that finds its own, every day.</h3>
           <p>
             Tell an AI Autopilot project "sell to real estate agents in Virginia" — in the wizard, or with
-            <b> Search this every day</b> on any search — and it keeps its audience growing on its own.
+            <b> Connect to AI Autopilot</b> on any search you have tested — and it keeps finding new verified leads on its own schedule.
           </p>
           <ol className="dc-daily-steps">
             {DAILY.map((d, i) => (

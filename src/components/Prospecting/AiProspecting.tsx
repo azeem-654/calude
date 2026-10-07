@@ -40,14 +40,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, BadgeCheck, Bookmark, Bot, CalendarClock, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch,
   Globe, Lightbulb, Loader, Mail, MailCheck, MapPin, MoreHorizontal, PanelLeft, Pin, PlayCircle, Plus, RotateCcw, Search, Send,
-  ShieldCheck, Sparkles, Target, Users, X,
+  ShieldCheck, Sparkles, Target, Users, X, Workflow,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useProspectSearch, outcomeText, AUTO_READ, type ImportOutcome } from './useProspectSearch';
 import { Attribution, ImportPanel, Notice, SearchProblems } from './ProspectParts';
 import { COLUMNS, LeadTable, PlanSteps, ProgressBar, SkeletonRows, Thinking, VerifyTool, useLeadRows, type ColumnId, type LeadFilter } from './AiParts';
 import AddTo, { type AddMode } from './AddTo';
-import DailySearch from './DailySearch';
+import ConnectAutopilot, { type SearchSeed } from './ConnectAutopilot';
+import { listSearches, searchKey, setSourceStatus, applySearch, updateSearch, type ConnectionSummary, type SearchDef } from '../../services/prospectSources';
 import { HowItWorks, Ideas, StartScreen, tradeIcon, tradeTone } from './AiStart';
 import { InsightsRail, KpiRow, ProgressCard, Robot, clock, type Insight } from './AiResults';
 import MicButton from './MicButton';
@@ -146,8 +147,15 @@ export default function AiProspecting() {
   const [moreLists, setMoreLists] = useState(false);
   const [cols, setCols] = useState<Set<ColumnId>>(() => new Set(COLUMNS.map(c => c.id)));
   const [colsOpen, setColsOpen] = useState(false);
-  const [daily, setDaily] = useState(false);
-  const [dailyProject, setDailyProject] = useState('');
+  /* Connections to AI Autopilot, by search, for the badges; and the wizard when open. */
+  const [connectFor, setConnectFor] = useState<SearchSeed | null>(null);
+  const [defs, setDefs] = useState<(SearchDef & { connections: ConnectionSummary[] })[]>([]);
+  const [connOpen, setConnOpen] = useState(false);
+  const [criteriaAsk, setCriteriaAsk] = useState<'' | 'ask' | 'done'>('');
+  const reloadDefs = () => { void listSearches().then(r => { if (r.success) setDefs(r.searches ?? []); }); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reloadDefs(); }, []);
+  const defFor = (src: string, trade: string, place: string) => defs.find(d => searchKey(d.source, d.trade, d.place) === searchKey(src, trade, place));
   const importRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
 
@@ -175,7 +183,7 @@ export default function AiProspecting() {
 
   /** Start a new search: back to the first screen, nothing typed. */
   const startNew = () => {
-    s.reset(); setView('leads'); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setDrawer(false); setDaily(false); setDailyProject('');
+    s.reset(); setView('leads'); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setDrawer(false); setConnOpen(false); setCriteriaAsk('');
     setText(''); setAskError(''); setFilter('all'); setShowAll(false);
     window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 30);
   };
@@ -205,6 +213,19 @@ export default function AiProspecting() {
     const w = snap.want;
     setFilter(w?.email ? 'email' : w?.phone ? 'phone' : w?.website ? 'website' : 'all');
   };
+
+  /* A workflow's "View Prospect Search →" opens the search it is linked to (?search=<id>). */
+  const linked = useRef(false);
+  useEffect(() => {
+    const id = params.get('search');
+    if (!id || linked.current || !defs.length) return;
+    linked.current = true;
+    const d = defs.find(x => x.id === id);
+    const next = new URLSearchParams(params); next.delete('search');
+    setParams(next, { replace: true });
+    if (d) open({ source: d.source, trade: d.trade, place: d.place, at: d.updatedAt, count: 0 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, defs]);
 
   /* The dashboard's box hands a sentence over as ?q=. Run once, then forget it. */
   const handed = useRef(false);
@@ -422,8 +443,17 @@ export default function AiProspecting() {
                   <small>{h.count} lead{h.count === 1 ? '' : 's'}</small>
                 </button>
                 <span className="aip-hist-age">{ago(h.at)}</span>
+                {(defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 && (
+                  <span className="aip-hist-conn" title="Connected to AI Autopilot"><Workflow size={10} /> Autopilot</span>
+                )}
                 <Kebab label={`More for ${h.trade} in ${h.place}`} items={[
-                  { label: 'Search again, live', onClick: () => void go(`${h.trade} in ${h.place}`, h.source) },
+                  { label: 'Run again', onClick: () => void go(`${h.trade} in ${h.place}`, h.source) },
+                  { label: 'Find more prospects', onClick: () => { open(h); window.setTimeout(() => { if (s.nextPage) void s.loadMore(); else void go(`${h.trade} in ${h.place}`, h.source); }, 60); } },
+                  { label: 'Save to list', onClick: () => { open(h); window.setTimeout(() => { s.pickAll(true); setSaving(true); scrollTo(); }, 80); } },
+                  {
+                    label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to Autopilot — connect another project' : 'Connect to AI Autopilot',
+                    onClick: () => setConnectFor({ trade: h.trade, place: h.place, source: h.source }),
+                  },
                   { label: h.saved ? 'Unpin' : 'Pin to the top', onClick: () => s.saveSearch(h) },
                   { label: 'Forget this search', onClick: () => s.forget(h) },
                 ]} />
@@ -665,24 +695,60 @@ export default function AiProspecting() {
                       <ShieldCheck size={12} /> {deepReady ? `Verify ${Math.min(60, toDeep.length)} mailbox${toDeep.length === 1 ? '' : 'es'}` : 'Verify mailboxes — needs a verifier'}
                     </button>
                     <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save as list</button>
-                    <button type="button" className="aip-chip" data-accent="true" onClick={() => { setDaily(true); setAddMode(null); setSaving(false); scrollTo(); }}
-                      title="An AI Autopilot project searches this live every day and adds the new ones to its audience">
-                      <CalendarClock size={12} /> Search this every day
+                    <button type="button" className="aip-chip" data-accent="true" data-testid="connect-autopilot-btn"
+                      onClick={() => s.searched && setConnectFor({ trade: s.searched.trade, place: s.searched.place, source: s.searched.source, query: s.asked, filters: { website: s.want.website, phone: s.want.phone } })}
+                      title="An AI Autopilot project runs this search on a schedule and adds new verified leads">
+                      <Workflow size={12} /> Connect to AI Autopilot
                     </button>
                     <button type="button" className="aip-chip" onClick={() => exportCsv()}><Download size={12} /> Export CSV</button>
                   </div>
                 )}
-                {daily && s.searched && (
-                  <div ref={importRef}>
-                    <DailySearch trade={s.searched.trade} place={s.searched.place} source={s.searched.source} onClose={() => setDaily(false)}
-                      onDone={(m, projectId) => { setDaily(false); setSaid({ ok: true, text: m }); setDailyProject(projectId); }} />
-                  </div>
-                )}
-                {dailyProject && (
-                  <button type="button" className="aip-chip" style={{ justifySelf: 'start' }} onClick={() => navigate(`/autopilot?project=${encodeURIComponent(dailyProject)}&tab=prospects`)}>
-                    <CalendarClock size={12} /> Open the project's Prospects tab
-                  </button>
-                )}
+                {s.searched && (() => {
+                  const d = defFor(s.searched.source, s.searched.trade, s.searched.place);
+                  if (!d?.connections.length) return null;
+                  const differs = d.filters.website !== s.want.website || d.filters.phone !== s.want.phone;
+                  return (
+                    <section className="aip-card aip-conn" aria-label="Autopilot connections" data-testid="autopilot-connected">
+                      <button type="button" className="aip-conn-head" aria-expanded={connOpen} onClick={() => setConnOpen(o => !o)}>
+                        <Workflow size={14} /> <b>Autopilot connected</b>
+                        <span className="aip-pill">{d.connections.length} workflow{d.connections.length === 1 ? '' : 's'}</span>
+                        <span style={{ flex: 1 }} />
+                        <small className="aip-muted">{connOpen ? 'Hide' : 'Show'}</small>
+                      </button>
+                      {connOpen && d.connections.map(c => (
+                        <div key={c.id} className="aip-conn-row">
+                          <dl>
+                            <div><dt>Project</dt><dd>{c.projectName}</dd></div>
+                            <div><dt>Workflow</dt><dd>{c.workflowName}</dd></div>
+                            <div><dt>Schedule</dt><dd>{c.scheduleText}</dd></div>
+                            <div><dt>Target</dt><dd>{c.target} verified leads a run</dd></div>
+                            <div><dt>Status</dt><dd>{c.status === 'active' ? 'Active' : c.status === 'paused' ? 'Paused' : 'Every search done'}{c.upToDate ? '' : ' · uses an earlier version of this search'}</dd></div>
+                          </dl>
+                          <div className="aip-shortcuts">
+                            <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}`)}>View project</button>
+                            <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=workflows`)}>View workflow</button>
+                            <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=prospects&source=${encodeURIComponent(c.id)}`)}>Manage connection</button>
+                            <button type="button" className="aip-chip" onClick={async () => { await setSourceStatus(c.id, c.status === 'active' ? 'paused' : 'active'); reloadDefs(); }}>{c.status === 'active' ? 'Pause' : 'Resume'}</button>
+                          </div>
+                        </div>
+                      ))}
+                      {differs && criteriaAsk !== 'done' && (
+                        <div className="aip-note" role="status" data-testid="criteria-differ">
+                          This search is connected with {d.filters.website ? 'a website required' : 'a website optional'} and {d.filters.phone ? 'a phone required' : 'a phone optional'};
+                          the one on screen asks for {s.want.website ? 'a website' : 'no website'}{s.want.phone ? ' and a phone' : ''}. Update the connected Autopilot workflow{d.connections.length === 1 ? '' : 's'} with these search changes?
+                          <span className="aip-shortcuts" style={{ marginTop: 8 }}>
+                            <button type="button" className="aip-chip" data-accent="true" onClick={async () => {
+                              const r = await updateSearch(d.id, { filters: { website: s.want.website, phone: s.want.phone } });
+                              if (r.success) await applySearch(d.id, 'update');
+                              setCriteriaAsk('done'); reloadDefs(); setSaid({ ok: !!r.success, text: r.success ? 'The connected workflows now find with these criteria.' : (r.error ?? 'It could not be changed.') });
+                            }}>Update workflow{d.connections.length === 1 ? '' : 's'}</button>
+                            <button type="button" className="aip-chip" onClick={() => setCriteriaAsk('done')}>Keep existing workflow criteria</button>
+                          </span>
+                        </div>
+                      )}
+                    </section>
+                  );
+                })()}
                 {said && <div role="status" className="aip-note" data-ok={said.ok}>{said.text}</div>}
 
                 {done && (
@@ -738,6 +804,10 @@ export default function AiProspecting() {
         )}
       </main>
 
+      {connectFor && (
+        <ConnectAutopilot search={connectFor} onClose={() => { setConnectFor(null); reloadDefs(); }}
+          onDone={c => { reloadDefs(); setSaid({ ok: true, text: `"${c.searchName}" now feeds "${c.projectName}" — ${c.scheduleText.toLowerCase()}, ${c.target} verified leads a run.` }); }} />
+      )}
       {how && <HowItWorks onClose={() => setHow(false)} />}
       {ideas && <Ideas onClose={() => setIdeas(false)} onPick={t => { setIdeas(false); if (screen !== 'start') startNew(); setView('leads'); setText(`${t} in `); s.setTrade(t); window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 40); }} />}
     </div>
