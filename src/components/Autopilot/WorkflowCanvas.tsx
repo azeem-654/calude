@@ -38,6 +38,7 @@ import type { WorkflowNode } from '../../services/autopilot';
 import { edgesOf, layout, lookFor, nodeDetail, type Edge } from './workflowNodes';
 import { branchLabels } from './templateMeta';
 import { T, nodeTone } from './theme';
+import './workflowGlass.css';
 
 const INK = T.ink;
 const MUTED = T.muted;
@@ -100,73 +101,48 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
     );
   }
 
+  /*
+   * A full-size step is a card of stacked frosted glass — the owner's
+   * reference video: a title tab across the top naming what kind of step it
+   * is (with the pen where the video has its ×), the step's own words under
+   * it, and the sheets showing as blue edges underneath. The step's colour is
+   * on its icon alone, so a board of them reads as one material.
+   */
   return (
     <div
       onClick={onEdit ? () => onEdit(node.id) : undefined}
-      className={`ap-step-card${state?.waiting ? ' ap-working' : ''}`}
+      className={`ap-step-card ap-glass${state?.waiting ? ' ap-working' : ''}`}
       style={{
         position: 'absolute', left: x, top: y, width: geo.w, height: geo.h,
-        boxSizing: 'border-box', overflow: 'hidden',
-        background: '#fff',
-        border: `1px solid ${tone.edge}`, borderRadius: 16,
-        padding: '12px 14px 12px 17px',
-        opacity: dim ? 0.9 : 1,
+        opacity: dim ? 0.94 : 1,
         cursor: onEdit ? 'pointer' : 'default',
-        boxShadow: '0 1px 2px rgba(16,24,40,0.05), 0 8px 22px -14px rgba(16,24,40,0.28)',
       }}
     >
-      {/* The step's colour, as an edge rather than a fill: enough to tell an
-          email from a wait at a glance, without every card shouting. */}
-      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: tone.fg, opacity: 0.85 }} />
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingRight: onEdit ? 30 : 0 }}>
-        <span style={{
-          width: 28, height: 28, borderRadius: 9, background: tone.bg, color: tone.fg,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}><Ic size={15} /></span>
-        <span style={{
-          fontSize: 11, fontWeight: 800, color: tone.fg, letterSpacing: '0.04em', textTransform: 'uppercase',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{look.label}</span>
+      <div className="ap-glass-tab">
+        <span className="ap-glass-ic" style={{ color: tone.fg }}><Ic size={13} /></span>
+        <span className="ap-glass-kind">{look.label}</span>
+        {/* The pen. A real button, so it is reachable by keyboard and a screen
+            reader hears what pressing it does; the whole card is also
+            clickable, for everybody using a mouse. */}
+        {onEdit && (
+          <button
+            type="button"
+            className="ap-glass-pen"
+            onClick={e => { e.stopPropagation(); onEdit(node.id); }}
+            aria-label={`Edit step: ${name}`}
+            title="Edit this step"
+          ><Pencil size={12} /></button>
+        )}
       </div>
 
-      {/* The pen. A real button, so it is reachable by keyboard and a screen
-          reader hears what pressing it does; the whole card is also
-          clickable, for everybody using a mouse. */}
-      {onEdit && (
-        <button
-          type="button"
-          onClick={e => { e.stopPropagation(); onEdit(node.id); }}
-          aria-label={`Edit step: ${name}`}
-          title="Edit this step"
-          style={{
-            position: 'absolute', top: 10, right: 10, width: 28, height: 28, padding: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            border: `1px solid ${T.line}`, borderRadius: 9, background: '#fff',
-            color: T.muted, cursor: 'pointer',
-          }}
-        ><Pencil size={13} /></button>
-      )}
+      <p className="ap-glass-name">{name}</p>
 
-      <p style={{
-        margin: 0, fontSize: 14, fontWeight: 750, color: INK, lineHeight: 1.3, letterSpacing: '-0.01em',
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>{name}</p>
-
-      {!!detail && !state?.waiting && (
-        <p style={{
-          margin: '4px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.4,
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-        }}>{detail}</p>
-      )}
+      {!!detail && !state?.waiting && <p className="ap-glass-detail">{detail}</p>}
 
       {/* What is happening here, counted from real runs standing at this node —
           never a timer. */}
       {!!state?.waiting && (
-        <p style={{
-          margin: '5px 0 0', fontSize: 11.5, fontWeight: 800, color: T.accent,
-          display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
-        }}>
+        <p className="ap-glass-here">
           <span className="ap-live-dot" style={{ background: T.accent }} />
           {state.waiting} {state.waiting === 1 ? 'person' : 'people'} here now
         </p>
@@ -178,12 +154,7 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
 /** A label on a condition's outgoing line. */
 function Pill({ x, y, text, yes }: { x: number; y: number; text: string; yes: boolean }) {
   return (
-    <span style={{
-      position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)',
-      padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 800, whiteSpace: 'nowrap',
-      background: yes ? '#ecfdf5' : '#fef2f2', color: yes ? T.good : T.bad,
-      border: `1px solid ${yes ? '#bbf7d0' : '#fecaca'}`, pointerEvents: 'none',
-    }}>{text}</span>
+    <span className={`ap-glass-pill ${yes ? 'yes' : 'no'}`} style={{ left: x, top: y }}>{text}</span>
   );
 }
 
@@ -290,7 +261,9 @@ export default function WorkflowCanvas({
 
     if (e.branch === 'no' && tx > sp.x) {
       pills.push({ key: `${e.from}-no`, x: cx, y: by + 13, text: labels!.no, yes: false });
-      return `M ${cx} ${by} V ${ty} H ${tx}`;
+      /* Down and round a soft corner into the branch. */
+      const r = Math.max(0, Math.min(26, ty - by, (tx - cx) / 2));
+      return `M ${cx} ${by} V ${ty - r} Q ${cx} ${ty} ${cx + r} ${ty} H ${tx}`;
     }
     if (e.branch === 'yes') {
       pills.push({ key: `${e.from}-yes`, x: (sx + tx) / 2 < sx + 60 ? (sx + tx) / 2 : sx + 30, y: sy, text: labels!.yes, yes: true });
@@ -298,8 +271,11 @@ export default function WorkflowCanvas({
 
     if (t.row === s.row && tx > sx) return `M ${sx} ${sy} H ${tx}`;
     if (tx > sx) {
-      const mid = sx + Math.min(22, (tx - sx) / 2);
-      return `M ${sx} ${sy} H ${mid} V ${ty} H ${tx}`;
+      /* A soft S in the gap after the step, then straight on along the
+         target's row — the curved threads of the reference, kept inside the
+         gap so they never cross a card. */
+      const g = Math.min(geo.col - geo.w, tx - sx);
+      return `M ${sx} ${sy} C ${sx + g * 0.6} ${sy} ${sx + g * 0.4} ${ty} ${sx + g} ${ty} H ${tx}`;
     }
     /* To the left: round the bottom. */
     return `M ${sx} ${sy} H ${sx + 12} V ${bottom} H ${tx - 12} V ${ty} H ${tx}`;
@@ -309,7 +285,8 @@ export default function WorkflowCanvas({
     .map(e => ({ e, d: pathFor(e) }))
     .filter((x): x is { e: Edge; d: string } => !!x.d);
 
-  const stroke = live ? T.accent : '#c7cedb';
+  /* The threads are blue, as in the reference; brighter while the workflow is live. */
+  const stroke = live ? '#4f7cf7' : '#8fb4f5';
   /* The gallery's small previews still fit to their card. The project board
      never shrinks: a long workflow keeps full-size steps and scrolls. */
   const scale = compact && room > 0 ? Math.min(1, Math.max(0.72, room / width)) : 1;
@@ -318,7 +295,7 @@ export default function WorkflowCanvas({
 
   return (
     <div style={{ position: 'relative' }} ref={box}>
-      <div ref={scroller} className="ap-canvas-scroll" onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
+      <div ref={scroller} className={`ap-canvas-scroll${compact ? '' : ' ap-glass-stage'}`} onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
         style={{ overflowX: 'auto', paddingBottom: 8 }}>
         {/* The box that takes up the scaled space, so the page lays out around
             what is visible rather than around the unscaled diagram. */}
@@ -336,14 +313,21 @@ export default function WorkflowCanvas({
                 <path d="M 0 0 L 8 4 L 0 8 z" fill={stroke} />
               </marker>
             </defs>
+            {/* A soft glow under each thread, then the thread itself. */}
+            {paths.map(({ e, d }) => (
+              <path key={`g-${e.from}-${e.branch ?? 'n'}-${e.to ?? 'end'}`} d={d} fill="none"
+                stroke={e.branch === 'no' ? 'rgba(244,114,182,0.18)' : 'rgba(96,165,250,0.22)'} strokeWidth={6}
+                strokeLinejoin="round" strokeLinecap="round" />
+            ))}
             {paths.map(({ e, d }) => (
               <path
                 key={`${e.from}-${e.branch ?? 'n'}-${e.to ?? 'end'}`}
                 d={d}
                 fill="none"
-                stroke={e.branch === 'no' ? (live ? '#f87171' : '#e6b4b4') : stroke}
-                strokeWidth={1.6}
+                stroke={e.branch === 'no' ? (live ? '#f472b6' : '#f0a9c8') : stroke}
+                strokeWidth={1.8}
                 strokeLinejoin="round"
+                strokeLinecap="round"
                 /* The travelling dash is a class, so reduced motion reaches it. */
                 className={live ? 'ap-edge-live' : undefined}
                 markerEnd={e.to ? `url(#ap-arrow-${live ? 'on' : 'off'})` : undefined}

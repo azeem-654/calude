@@ -7,7 +7,7 @@ import {
   Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
-  CheckCircle, XCircle, Info, BellOff, Crosshair,
+  CheckCircle, XCircle, Info, BellOff,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
@@ -17,6 +17,7 @@ import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '.
 import { getSession, logout } from '../../services/auth';
 import { getTheme, toggleTheme } from '../../services/theme';
 import { LogoMark } from '../shared/Logo';
+import AiBloom from '../shared/AiBloom';
 
 /* ═══ SugarCRM-style top navigation + floating icon rail ═══ */
 
@@ -334,31 +335,23 @@ export default function TopNav() {
                 data-noinvert
                 style={{
                   ...pill,
-                  padding: '8px 18px',
+                  padding: '4px 16px 4px 4px',
                   fontSize: 13.5,
                   fontWeight: 700,
-                  color: '#fff',
+                  color: '#111827',
                   backgroundColor: 'transparent',
                   boxShadow: 'none',
-                  gap: 7,
+                  gap: 8,
                 }}
               >
                 {/*
-                  The core: three rings turning at different rates around a
-                  centre that pulses.
-
-                  It never stops, because the module never does — the cron runs
-                  every five minutes whether or not anybody is looking, and a
-                  light that goes out when the tab is idle says the opposite.
-                  The *rate* still carries the real state: it turns faster and
-                  brighter when a project would act on the next tick.
+                  The bloom in its glass lens (the owner's reference video).
+                  It keeps moving because the module never stops — the cron
+                  runs every five minutes whether or not anybody is looking —
+                  and the *rate* carries the real state: it opens faster when a
+                  project would act on the next tick.
                 */}
-                <span className="nav-core" aria-hidden="true">
-                  <span className="nav-core-ring" />
-                  <span className="nav-core-ring" />
-                  <span className="nav-core-ring" />
-                  <span className="nav-core-dot" />
-                </span>
+                <AiBloom size={28} fast={autopilotLive} />
                 {group.label}
                 {autopilotWaiting > 0 && (
                   <span className="nav-hero-count" aria-label={`${autopilotWaiting} waiting for you`}>
@@ -375,9 +368,9 @@ export default function TopNav() {
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
                 className={`pill-link nav-hero nav-hero-prospect${onProspecting ? ' nav-hero-on' : ''}`}
                 data-noinvert
-                style={{ ...pill, padding: '8px 16px', fontSize: 13.5, fontWeight: 700, color: '#fff', backgroundColor: 'transparent', boxShadow: 'none', gap: 7 }}
+                style={{ ...pill, padding: '4px 16px 4px 4px', fontSize: 13.5, fontWeight: 700, color: '#111827', backgroundColor: 'transparent', boxShadow: 'none', gap: 8 }}
               >
-                <Crosshair size={14} strokeWidth={2.4} aria-hidden="true" />
+                <AiBloom size={28} />
                 AI Prospecting
               </NavLink>,
             ];

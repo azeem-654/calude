@@ -1,0 +1,120 @@
+/*
+ * A project's workflows, drawn in the owner's reference: frosted-glass cards
+ * of stacked sheets on a dotted, softly lit ground, joined by thin blue
+ * threads (WorkflowCanvas.tsx). The sheets underneath are shadows stepping
+ * down and in — no extra elements, and the card keeps the fixed size the
+ * connectors are computed from.
+ */
+.ap-glass-stage {
+  border-radius: 18px;
+  padding: 16px 12px 20px;
+  background-color: #eef2f9;
+  background-image:
+    radial-gradient(ellipse 70% 60% at 22% 0%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(rgba(100, 116, 139, 0.26) 1px, transparent 1.3px);
+  background-size: 100% 100%, 18px 18px;
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.55);
+}
+
+.ap-glass {
+  box-sizing: border-box;
+  border-radius: 18px;
+  padding: 7px 12px 12px;
+  overflow: visible;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.95) 0%, rgba(236, 244, 255, 0.86) 50%, rgba(208, 226, 252, 0.86) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  backdrop-filter: blur(10px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -8px 14px -10px rgba(96, 165, 250, 0.35),
+    0 4px 0 -1px rgba(147, 197, 253, 0.95),
+    0 5px 0 -1px rgba(255, 255, 255, 0.9),
+    0 9px 0 -3px rgba(96, 165, 250, 0.9),
+    0 10px 0 -3px rgba(255, 255, 255, 0.85),
+    0 14px 0 -5px rgba(99, 102, 241, 0.6),
+    0 15px 0 -5px rgba(255, 255, 255, 0.8),
+    0 19px 0 -7px rgba(186, 230, 253, 0.95),
+    0 30px 36px -20px rgba(30, 64, 175, 0.45);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.ap-step-card.ap-glass:hover {
+  border-color: #fff !important;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -8px 14px -10px rgba(96, 165, 250, 0.45),
+    0 0 0 2px rgba(147, 197, 253, 0.55),
+    0 4px 0 -1px rgba(147, 197, 253, 0.95),
+    0 5px 0 -1px rgba(255, 255, 255, 0.9),
+    0 9px 0 -3px rgba(96, 165, 250, 0.95),
+    0 10px 0 -3px rgba(255, 255, 255, 0.85),
+    0 14px 0 -5px rgba(99, 102, 241, 0.65),
+    0 15px 0 -5px rgba(255, 255, 255, 0.8),
+    0 19px 0 -7px rgba(186, 230, 253, 0.95),
+    0 34px 40px -20px rgba(30, 64, 175, 0.5) !important;
+}
+
+/* The title tab across the top, like the reference's "Investment Goals ×". */
+.ap-glass-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  margin: 0 -5px 9px;
+  padding: 0 4px 0 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 252, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.9), 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.ap-glass-ic {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: inline-grid; place-items: center; flex-shrink: 0;
+  background: #fff; box-shadow: 0 0 0 1px rgba(226, 232, 240, 0.9);
+}
+.ap-glass-kind {
+  flex: 1; min-width: 0;
+  font-size: 11.5px; font-weight: 650; color: #475569; letter-spacing: 0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ap-glass-pen {
+  width: 24px; height: 24px; padding: 0; flex-shrink: 0;
+  display: inline-grid; place-items: center;
+  border: none; border-radius: 50%; background: transparent; color: #334155; cursor: pointer;
+}
+.ap-glass-pen:hover { background: rgba(148, 163, 184, 0.18); }
+.ap-glass-pen:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
+
+.ap-glass-name {
+  margin: 0 2px; font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.3; letter-spacing: -0.01em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ap-glass-detail {
+  margin: 4px 2px 0; font-size: 12px; color: #64748b; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ap-glass-here {
+  margin: 6px 2px 0; font-size: 11.5px; font-weight: 800; color: #4f46e5;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+
+/* A branch's label sits on its thread as a small glass chip. */
+.ap-glass-pill {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: none;
+  padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 800; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.92); border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(203, 213, 225, 0.6);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.ap-glass-pill.yes { color: #2563eb; }
+.ap-glass-pill.no { color: #db2777; }
+
+/* A step somebody is standing on: a ring of light that breathes, drawn on its
+   own layer so the sheets' shadows stay as they are. */
+.ap-glass.ap-working { animation: none; }
+.ap-glass.ap-working::before {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.45);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ap-glass.ap-working::before { animation: ap-working 2.6s ease-in-out infinite; }
+}

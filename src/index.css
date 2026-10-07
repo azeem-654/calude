@@ -317,49 +317,117 @@ button:focus-visible, a:focus-visible {
 .nav-hero {
   position: relative;
   z-index: 1;
-  /* The owner's reference: a dark navy capsule ringed by a line of cyan light,
-     like a neon switch. The ring is a border and three shadows — the line
-     itself, the halo outside it and the glow it throws inwards — so it stays
-     crisp at any zoom and costs no image. */
-  background-image: radial-gradient(130% 160% at 28% 18%, #1c2c5c 0%, #0e1838 52%, #070d22 100%);
-  border: 1.5px solid #6edcff !important;
-  color: #eefaff !important;
-  text-shadow: 0 0 8px rgba(125, 211, 252, 0.55);
+  isolation: isolate;
+  /* The owner's reference video: a pill of stacked frosted glass, tinted
+     cyan → white → pink → peach, with a milky lens holding the AI bloom and
+     dark text. The sheets underneath are shadows stepping down and in, so the
+     stack costs no extra elements and never changes the pill's size. */
+  background-image: linear-gradient(100deg, rgba(146, 230, 250, 0.95) 0%, rgba(232, 250, 255, 0.95) 24%, #ffffff 42%, rgba(244, 190, 236, 0.95) 72%, rgba(255, 196, 160, 0.95) 100%);
+  background-size: 180% 100%;
+  background-position: 0% 0;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  color: #111827 !important;
   box-shadow:
-    0 0 0 1px rgba(56, 189, 248, 0.22),
-    0 0 9px rgba(56, 189, 248, 0.55),
-    0 0 20px -4px rgba(56, 189, 248, 0.55),
-    inset 0 0 8px rgba(56, 189, 248, 0.32);
+    inset 0 1px 0 #fff,
+    inset 0 -2px 3px rgba(255, 255, 255, 0.55),
+    0 2px 0 -0.5px rgba(56, 214, 240, 0.9),
+    0 4px 0 -1px rgba(96, 165, 250, 0.75),
+    0 6px 0 -1.5px rgba(196, 181, 253, 0.75),
+    0 12px 18px -10px rgba(30, 27, 75, 0.45);
   letter-spacing: -0.01em;
+  overflow: visible;
+}
+/* A light passing over the glass. */
+.nav-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0, rgba(255, 255, 255, 0.7) 50%, transparent 100%) no-repeat;
+  background-size: 34% 100%;
+  background-position: -60% 0;
 }
 
 /* The hover rule above greys out any pill that is not the active one, which
-   would flatten the capsule the moment a pointer crossed it. */
+   would flatten the glass the moment a pointer crossed it. */
 .pill-link.nav-hero:hover:not(.pill-active) {
   background-color: transparent !important;
-  filter: brightness(1.15);
+  filter: brightness(1.04) saturate(1.15);
 }
 
-/* AI Prospecting: the same neon capsule, its line a shade bluer. */
-.nav-hero-prospect { border-color: #7cc4ff !important; }
-.nav-hero-prospect svg { color: #a5e8ff; filter: drop-shadow(0 0 3px rgba(125, 211, 252, 0.9)); }
+/* AI Prospecting: the same glass, its tint led by the warm end — pink into
+   peach — the colours of its own page. */
+.nav-hero-prospect {
+  background-image: linear-gradient(100deg, rgba(255, 214, 170, 0.95) 0%, #fff7f0 26%, #ffffff 44%, rgba(250, 190, 226, 0.95) 72%, rgba(186, 214, 255, 0.95) 100%);
+}
 
-/* The page the pill leads to is open: the ring burns brighter. */
+/* The page the pill leads to is open: a ring of light round the glass. */
 .nav-hero-on {
-  border-color: #b5f1ff !important;
-  background-image: radial-gradient(130% 160% at 28% 18%, #26397a 0%, #12204a 52%, #0a1230 100%);
   box-shadow:
-    0 0 0 1px rgba(103, 232, 249, 0.4),
-    0 0 12px rgba(56, 189, 248, 0.8),
-    0 0 28px -4px rgba(56, 189, 248, 0.75),
-    inset 0 0 10px rgba(56, 189, 248, 0.45) !important;
+    inset 0 1px 0 #fff,
+    inset 0 -2px 3px rgba(255, 255, 255, 0.55),
+    0 0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 0 3.5px rgba(167, 139, 250, 0.55),
+    0 2px 0 -0.5px rgba(56, 214, 240, 0.9),
+    0 4px 0 -1px rgba(96, 165, 250, 0.75),
+    0 6px 0 -1.5px rgba(196, 181, 253, 0.75),
+    0 14px 22px -10px rgba(30, 27, 75, 0.5) !important;
 }
+
+/* The lens: milky glass, lit from the top left, a rim of light round it. */
+.ai-lens {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 34% 26%, #fff 0, rgba(255, 255, 255, 0.92) 30%, rgba(241, 245, 249, 0.75) 64%, rgba(214, 222, 236, 0.8) 100%);
+  box-shadow: inset 0 1px 2px #fff, inset 0 -2px 4px rgba(148, 163, 184, 0.38), inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+.ai-lens::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(ellipse 60% 34% at 40% 14%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%);
+}
+.ai-bloom { display: block; width: 92%; height: 92%; overflow: visible; }
+.ai-bloom-p, .ai-bloom-back, .ai-bloom-front, .ai-bloom-heart { transform-box: view-box; transform-origin: 0 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-hero { animation: hero-drift 9s ease-in-out infinite; }
+  .nav-hero::after { animation: hero-sheen 5.5s ease-in-out infinite; }
+  .nav-hero-prospect::after { animation-delay: -2.7s; }
+  .ai-bloom { animation: ai-sway 9s ease-in-out infinite; }
+  .ai-bloom-p { animation: ai-petal 4.8s ease-in-out infinite; }
+  .ai-bloom-front .ai-bloom-p { animation-duration: 4.2s; }
+  .ai-bloom-back { animation: ai-turn 70s linear infinite; }
+  .ai-bloom-front { animation: ai-turn 90s linear infinite reverse; }
+  .ai-bloom-heart { animation: ai-heart 3.6s ease-in-out infinite; }
+  /* Working: a project acts on the next tick — the bloom opens faster. */
+  .ai-fast .ai-bloom-p { animation-duration: 1.9s; }
+  .ai-fast .ai-bloom-front .ai-bloom-p { animation-duration: 1.6s; }
+  .ai-fast .ai-bloom-back { animation-duration: 18s; }
+  .ai-fast .ai-bloom-front { animation-duration: 24s; }
+  .ai-fast .ai-bloom-heart { animation-duration: 1.5s; }
+  .pill-link.nav-hero:hover .ai-bloom { scale: 1.12; transition: scale 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+}
+@keyframes hero-drift { 0%, 100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+@keyframes hero-sheen { 0% { background-position: -60% 0; } 55%, 100% { background-position: 160% 0; } }
+@keyframes ai-sway { 0%, 100% { transform: rotate(-7deg) scale(0.96); } 50% { transform: rotate(7deg) scale(1.04); } }
+@keyframes ai-petal { 0%, 100% { transform: scale(0.8, 0.74) rotate(-3deg); opacity: 0.78; } 50% { transform: scale(1.03, 1.08) rotate(3deg); opacity: 1; } }
+@keyframes ai-turn { to { transform: rotate(360deg); } }
+@keyframes ai-heart { 0%, 100% { transform: scale(0.9); opacity: 0.85; } 50% { transform: scale(1.18); opacity: 1; } }
 
 /* The bar measured itself (TopNav.tsx, data-fit). `tight` closes the pills up
    so the row stays on one line; `wrap` is the last resort, a row of its own. */
 .app-header[data-fit="tight"] { gap: 10px !important; }
 .app-header[data-fit="tight"] .pill-link { padding: 8px 8px !important; font-size: 12.5px !important; }
-.app-header[data-fit="tight"] .pill-link.nav-hero { padding: 7px 12px !important; }
+.app-header[data-fit="tight"] .pill-link.nav-hero { padding: 3px 12px 3px 3px !important; }
 /* The workspace's initial and its menu stay; its name gives way to the pills. */
 .app-header[data-fit="tight"] .ws-name { display: none; }
 .app-header[data-fit="wrap"] {
@@ -376,83 +444,6 @@ button:focus-visible, a:focus-visible {
 }
 .app-header[data-fit="wrap"] > nav + div { margin-left: auto; }
 
-/* ── The core on the pill ──
- *
- * Three rings turning at different rates around a pulsing centre. It never
- * stops, because the module never does: the cron fires every five minutes
- * whether or not anybody has the tab open, and a light that goes out when you
- * look away says the opposite of what is true.
- *
- * The rate is the honest part. `.nav-hero-live` — set when a project would act
- * on the next tick — turns it faster and brighter; idle, it keeps a slow
- * heartbeat rather than freezing, because a frozen light reads as broken.
- */
-.nav-core {
-  position: relative;
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  display: inline-block;
-}
-
-.nav-core-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 1.25px solid rgba(255, 255, 255, 0.55);
-  /* Each ring is a broken circle, so rotation is visible at all — a complete
-     ring turning looks identical to one standing still. */
-  border-right-color: transparent;
-  border-bottom-color: transparent;
-}
-
-/* Concentric, each a little smaller and a little dimmer. */
-.nav-core-ring:nth-child(2) {
-  inset: 3px;
-  border-color: rgba(255, 255, 255, 0.42);
-  border-left-color: transparent;
-  border-top-color: transparent;
-}
-
-.nav-core-ring:nth-child(3) {
-  inset: 5.5px;
-  border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.32);
-  border-right-color: transparent;
-  border-top-color: transparent;
-}
-
-.nav-core-dot {
-  position: absolute;
-  inset: 5.5px;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.7);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  /* Opposite directions, unrelated periods — so the three never line back up
-     into a pattern the eye can lock onto and start ignoring. */
-  .nav-core-ring:nth-child(1) { animation: core-spin 3.4s linear infinite; }
-  .nav-core-ring:nth-child(2) { animation: core-spin 2.3s linear infinite reverse; }
-  .nav-core-ring:nth-child(3) { animation: core-spin 4.9s linear infinite; }
-  .nav-core-dot { animation: core-beat 2.6s ease-in-out infinite; }
-
-  .nav-hero-live .nav-core-ring:nth-child(1) { animation-duration: 1.5s; }
-  .nav-hero-live .nav-core-ring:nth-child(2) { animation-duration: 1.05s; }
-  .nav-hero-live .nav-core-ring:nth-child(3) { animation-duration: 2.1s; }
-  .nav-hero-live .nav-core-dot { animation-duration: 1.2s; }
-}
-
-@keyframes core-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes core-beat {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 4px rgba(255, 255, 255, 0.55); }
-  50%      { transform: scale(1.32); box-shadow: 0 0 9px rgba(255, 255, 255, 0.95); }
-}
-
 /* How many things are waiting on a person, on the tab itself. A number, not a
    dot: "3" is worth crossing the room for and a dot is not. */
 .nav-hero-count {
@@ -463,34 +454,13 @@ button:focus-visible, a:focus-visible {
   border-radius: 999px;
   display: inline-grid;
   place-items: center;
-  background: #67e8f9;
-  color: #07112b;
+  background: linear-gradient(135deg, #ff4aa8, #8b5cf6);
+  color: #fff;
   text-shadow: none;
-  box-shadow: 0 0 8px rgba(103, 232, 249, 0.8);
+  box-shadow: 0 1px 4px rgba(139, 92, 246, 0.5);
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .nav-hero { animation: hero-breathe 3.6s ease-in-out infinite; }
-}
-
-@keyframes hero-breathe {
-  0%, 100% {
-    box-shadow:
-      0 0 0 1px rgba(56, 189, 248, 0.2),
-      0 0 8px rgba(56, 189, 248, 0.5),
-      0 0 18px -4px rgba(56, 189, 248, 0.45),
-      inset 0 0 7px rgba(56, 189, 248, 0.28);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px rgba(56, 189, 248, 0.32),
-      0 0 13px rgba(56, 189, 248, 0.75),
-      0 0 26px -4px rgba(56, 189, 248, 0.7),
-      inset 0 0 10px rgba(56, 189, 248, 0.42);
-  }
 }
 
 /* Icon rail buttons with custom tooltip */

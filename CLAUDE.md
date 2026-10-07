@@ -776,13 +776,31 @@ step has to be laid out and measured in the same frame: `full`, then `tight`
 (pills closer, the workspace's name hidden behind its initial), and only when
 neither fits, `wrap` (the pills on a row of their own). Phones (≤900px) always
 wrap. AI Autopilot and **AI Prospecting** are the two lit pills (`nav-hero`,
-`nav-hero-prospect`): dark navy capsules ringed by a cyan neon line, the
-owner's reference; the Customers pill is not lit while AI Prospecting is
-open. The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
+`nav-hero-prospect`), drawn from the owner's reference video: stacked frosted
+glass tinted cyan → white → pink → peach (Prospecting led by the warm end),
+the sheets as shadows underneath, a light passing over, and a milky lens
+holding the AI bloom (`shared/AiBloom.tsx` — the website launcher's
+`bloomSvg`, ported with per-instance gradient ids), which opens faster
+(`fast`) when a project would act on the next tick. All of the movement is
+behind `prefers-reduced-motion` (Settings → Profile → Animation overrules a
+system that asks for less). The Customers pill is not lit while AI
+Prospecting is open. The cloud (`CloudBadge.tsx`) is a black backlit key with the cloud lit
 inside: blue when the cron ran in the last 20 minutes, amber when late, out
 when unreadable; the words are kept for screen readers. The lit parts carry
 `data-noinvert`, so dark mode does not turn them inside out. `test:isolation`
 checks four widths as the owner, and that 1440 and up is one line.
+
+## A project's workflows
+
+`Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an
+SVG layer of links, in the owner's reference video's look
+(`workflowGlass.css`): cards of stacked frosted glass (the sheets are stepped
+shadows, so the size the connectors are computed from never changes) with a
+title tab naming the step's kind and holding its pen, on a dotted, softly lit
+ground, joined by thin blue threads with a soft glow — a soft S inside the
+gap when a link changes row, a rounded corner on a No branch (pink), branch
+labels as small glass chips. The gallery's compact previews keep their plain
+cards.
 
 ## Commands
 
