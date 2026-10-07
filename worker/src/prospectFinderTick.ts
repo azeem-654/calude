@@ -55,7 +55,6 @@ import {
   DEFAULT_DESTINATION, DEFAULT_FILTERS, DEFAULT_VERIFY, REJECT_LABEL, SOURCE_POLICY, nextRunStart, policyFor, qualify, runLimits, runNow,
   type Check, type Destination, type Filters, type RejectReason, type RunPlan, type Schedule, type Verify,
 } from './lib/prospectSources';
-import { enrolInto } from './lib/automationEngine';
 import { loadPolicy } from './lib/sourcePolicyStore';
 
 /** Leave Geoapify to people searching by hand once the install has used this much of the day. */
@@ -294,6 +293,10 @@ async function afterAdded(env: Env, f: FinderRow, conn: Connection, rows: PPRow[
     for (const r of rows) done.get(r.id)!.push(ok && stageName ? `Deal in ${stageName}` : 'No deal — that pipeline was not found');
   }
   if (d.nextWorkflowId) {
+    /* Loaded here rather than at the top: the engine brings the mail sender,
+       whose socket module exists only on Workers, and the site's screenshot
+       script imports this file under Node. */
+    const { enrolInto } = await import('./lib/automationEngine');
     const e = await enrolInto(env, f.account_id, d.nextWorkflowId, rows.map(r => ({ id: `pf-${r.id}`, name: r.name, email: r.email, phone: r.phone })));
     for (const r of rows) done.get(r.id)!.push(e.ok ? `Sent to ${e.name}` : `Not sent on: ${e.error}`);
     if (!e.ok) await log(env, f, 'error', `Next workflow: ${e.error}`);
