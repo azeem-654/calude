@@ -13,10 +13,16 @@ affected.
 - **Paid ads (Meta, Reels, Stories, TikTok, YouTube Shorts):** the `PC_Ad_…`
   files. Use **9x16** for Reels, Stories, TikTok and Shorts; **4x5** for feed;
   **1x1** for square placements; **16x9** for YouTube and landscape.
-- **The full 5½-minute film, best quality:** `PC_Film_full_<shape>.mp4` — the
-  masters, at the highest bitrate. The 16:9 and 9:16 masters are over 100 MB,
-  which GitHub will not keep in a folder, so they are in the release:
-  https://github.com/azeem-654/calude/releases/tag/ad-media-2026-10-08
+- **The full 5½-minute film, best quality:** the masters, at the highest
+  bitrate. `PC_Film_full_4x5.mp4` is one file. The 16:9 and 9:16 masters are
+  over GitHub's 100 MB limit for a single file, so each comes two ways:
+  - `PC_Film_full_<shape>_master_part1.mp4` + `_part2.mp4` — the untouched
+    master cut in two at a keyframe (no quality lost; each half plays on its
+    own). Put part 1 then part 2 on a timeline in any editor (CapCut, Premiere,
+    iMovie) and export to get the whole master back.
+  - `PC_Film_full_<shape>_single.mp4` — the whole film in one file, re-encoded
+    to just under 100 MB (about 2.4 Mb/s, two-pass). Easiest to upload as is;
+    very slightly softer than the master.
 - **Smaller copies of the full film:** `_share` (good quality, about 45 MB,
   the size most platforms and email accept), `_preview` (about 28 MB) and
   `_HQ-hevc` (about 26 MB in HEVC/H.265 — sharp for its size, but some older
@@ -49,7 +55,12 @@ affected.
 
 | File | Shape | Length | Size | Quality |
 |---|---|---|---|---|
-| [PC_Film_full_16x9.mp4](https://github.com/azeem-654/calude/releases/tag/ad-media-2026-10-08) *(in the release — over GitHub's 100 MB folder limit)* | 1920x1080 | 05:31 | 149 MB | H264, 3781 kb/s |
+| [PC_Film_full_16x9_master_part1.mp4](PC_Film_full_16x9_master_part1.mp4) | 1920x1080 | — | 78 MB | first half (2:54), untouched master |
+| [PC_Film_full_16x9_master_part2.mp4](PC_Film_full_16x9_master_part2.mp4) | 1920x1080 | — | 70 MB | second half (2:37), untouched master |
+| [PC_Film_full_16x9_single.mp4](PC_Film_full_16x9_single.mp4) | 1920x1080 | 5:31 | 93 MB | whole film, H264 2365 kb/s |
+| [PC_Film_full_9x16_master_part1.mp4](PC_Film_full_9x16_master_part1.mp4) | 1080x1920 | — | 62 MB | first half (2:46), untouched master |
+| [PC_Film_full_9x16_master_part2.mp4](PC_Film_full_9x16_master_part2.mp4) | 1080x1920 | — | 63 MB | second half (2:45), untouched master |
+| [PC_Film_full_9x16_single.mp4](PC_Film_full_9x16_single.mp4) | 1080x1920 | 5:31 | 96 MB | whole film, H264 2435 kb/s |
 | [PC_Film_full_16x9_HQ-hevc.mp4](PC_Film_full_16x9_HQ-hevc.mp4) | 1920x1080 | 05:31 | 26 MB | HEVC, 682 kb/s |
 | [PC_Film_full_16x9_preview.mp4](PC_Film_full_16x9_preview.mp4) | 1920x1080 | 05:31 | 28 MB | H264, 710 kb/s |
 | [PC_Film_full_16x9_share.mp4](PC_Film_full_16x9_share.mp4) | 1920x1080 | 05:31 | 45 MB | H264, 1146 kb/s |
@@ -57,7 +68,6 @@ affected.
 | [PC_Film_full_4x5_HQ-hevc.mp4](PC_Film_full_4x5_HQ-hevc.mp4) | 1080x1350 | 05:31 | 26 MB | HEVC, 683 kb/s |
 | [PC_Film_full_4x5_preview.mp4](PC_Film_full_4x5_preview.mp4) | 1080x1350 | 05:31 | 28 MB | H264, 711 kb/s |
 | [PC_Film_full_4x5_share.mp4](PC_Film_full_4x5_share.mp4) | 1080x1350 | 05:31 | 45 MB | H264, 1148 kb/s |
-| [PC_Film_full_9x16.mp4](https://github.com/azeem-654/calude/releases/tag/ad-media-2026-10-08) *(in the release — over GitHub's 100 MB folder limit)* | 1080x1920 | 05:31 | 125 MB | H264, 3171 kb/s |
 | [PC_Film_full_9x16_HQ-hevc.mp4](PC_Film_full_9x16_HQ-hevc.mp4) | 1080x1920 | 05:31 | 26 MB | HEVC, 682 kb/s |
 | [PC_Film_full_9x16_preview.mp4](PC_Film_full_9x16_preview.mp4) | 1080x1920 | 05:31 | 28 MB | H264, 711 kb/s |
 | [PC_Film_full_9x16_share.mp4](PC_Film_full_9x16_share.mp4) | 1080x1920 | 05:31 | 45 MB | H264, 1148 kb/s |
