@@ -19,7 +19,6 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 | # | What | Where | Blocks |
 |---|---|---|---|
-| 0 | **Upgrade Cloudflare to Workers Paid ($5 a month)** — on 2026-10-07 the account used up D1's free allowance of **100,000 row writes a day**, which is shared by every database on the account: the live app, testing and the Lead Directory. Until midnight UTC every write was refused — saves, sign-ins renewing, the cron, deploys (the migration step failed with code 7500). Loading the Lead Directory is what uses it: each person loaded writes about six rows (the row and its indexes), so 56,000 people is ~336,000 writes, and the 6 GB folder would be tens of millions. Workers Paid includes 50 million row writes a month, then $1 a million | Cloudflare → Workers & Pages → Plans → Workers Paid | Everything that writes, every day a large file is loaded. Do this before loading more leads |
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
@@ -28,7 +27,6 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 8 | **Turn on 2-step sign-in for azeem@protectedcentral.com** | app → Settings → Security & Privacy → 2-step sign-in → Turn on | The owner account can connect payments and change settings for everyone; a password alone should not be enough. See 22 |
 | 9 | **Create the mailbox `security@protectedcentral.com`** (or an alias to yours) | your mail host | The Trust Center and `/.well-known/security.txt` publish it as the place to report vulnerabilities; until it exists those reports bounce |
 | 10 | **Confirm billing is enabled on the Google Cloud project behind the AI key** | console.cloud.google.com → Billing | What the Trust Center may say about AI training. On a free-tier key Google may use prompts to improve its products; on a paid one its terms say it does not |
-| 11 | **Confirm the Cloudflare plan** (Workers Paid gives D1 Time Travel 30 days; Free gives 7) | Cloudflare → Billing | How far back the database can be restored. See docs/SECURITY.md §3.10 |
 | 12 | **Have a lawyer review the Privacy Policy and Terms of Service** — now published at /privacy and /terms-of-service, written from what the software does (`src/components/Site/legalText.ts`); create `privacy@protectedcentral.com` | a lawyer; your mail host | Launching to the public, and Google's reviewers writing to privacy@ during OAuth verification. The pages are live and linked from the home page footer; they have not been reviewed by a lawyer |
 | 13 | **Set `CREDENTIAL_WRAP_KEY`** on both Workers — a long random string, different for each, **never changed afterwards** | Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets → Add → type *Secret* | Encrypting the key that encrypts every stored password and API key. Until it is set, a database export contains both. See 23 |
 | 14 | **Add the repository secret `BACKUP_PASSPHRASE`** — a long random phrase, also kept somewhere outside GitHub | GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret | The nightly encrypted database backup (`backup.yml`). Without it the job warns and takes nothing |
@@ -55,6 +53,11 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 **Done, and no longer on the list:**
 
+- Items 0 and 11 — the Cloudflare account is on **Workers Paid** (2026-10-08).
+  The free plan's daily D1 allowances (100,000 row writes, then 5 million row
+  reads) had each run out once that week and stopped every save, sign-in and
+  deploy until midnight UTC; the paid plan includes 50 million writes and 25
+  billion reads a month, and D1 Time Travel now reaches back 30 days.
 - Item 15, on both sites — support@protectedcentral.com is connected through
   Brevo and is the System email mailbox (Settings → Email & SMS → System
   email). The Brevo API key that appeared in a screenshot was revoked and a new
@@ -1100,7 +1103,7 @@ Load your lead files into the app and, if your licence allows it, let customers
 search them. The full guide, including what Leads.cm can and cannot do, is
 **docs/LEAD-DIRECTORY.md**:
 
-- [ ] Check you are on **Workers Paid** ($5/month). One D1 database holds 10 GB there, and 500 MB on the free plan, which is too small for your 6 GB of CSV.
+- [x] Check you are on **Workers Paid** ($5/month) — done 2026-10-08. One D1 database holds 10 GB there, and 500 MB on the free plan, which is too small for your 6 GB of CSV.
 - [ ] Settings → Platform services → **Lead directory** → choose your 3.3 GB ZIP and leave the tab open (1–3 hours; choose the same file again if it stops).
 - [ ] Ask Leads.cm **in writing** whether you may share exported records with your own customers.
 - [ ] Ask a lawyer about data-broker registration (California and other states) before opening it to customers.
