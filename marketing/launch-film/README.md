@@ -194,3 +194,16 @@ the published copy.)
 node vertical.mjs <path to ffmpeg> ../../public/site/launch/launch-16x9.mp4 <outdir>
 node vertical.mjs <ffmpeg> <src> <outdir> --still 1.5 60 325   # frames to check the layout
 ```
+
+**Square pixels, checked (2026-10-08).** The first 9:16, 4:5 and 1:1 renders
+— the site's phone film and every paid-social cut — played as smeared
+horizontal streaks on phones. The pixels were right; the stream said each
+pixel was 512:27 wide (SAR), because the background is a 100-px strip of the
+frame scaled to the canvas and `scale` keeps a picture's display shape by
+writing a SAR, which the overlay inherited. A frame grabbed with ffmpeg shows
+the stored pixels and looked perfect; a player honours the SAR. Both scripts
+now end the graph with `setsar=1` and refuse to finish (`assertShape`) unless
+every output is its intended size with square pixels. The files already
+delivered were repaired without re-encoding (`-c copy -bsf:v
+h264_metadata=sample_aspect_ratio=1/1 -aspect 9:16`). To see a file as a
+player will: `ffmpeg -i f.mp4 -frames:v 1 -vf "scale=iw*sar:ih" check.jpg`.

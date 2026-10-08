@@ -17,6 +17,18 @@ const TMP = `${OUT}/tmp`;
 fs.mkdirSync(TMP, { recursive: true });
 const run = (args) => execFileSync(FF, ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' });
 
+/* Every output is checked before it is called done: square pixels, and the
+   shape it was made for. A wrong SAR is invisible in a still taken with
+   ffmpeg (it writes the stored pixels) and only shows in a player. */
+function assertShape(file, w, h) {
+  let info = '';
+  try { execFileSync(FF, ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] }); } catch (e) { info = String(e.stderr ?? ''); }
+  const m = /Video: [^\n]*?, (\d{2,5})x(\d{2,5})(?: \[SAR (\d+):(\d+) DAR (\d+):(\d+)\])?/.exec(info);
+  if (!m) throw new Error(`${file}: could not read its video stream`);
+  const sar = m[3] ? `${m[3]}:${m[4]}` : '1:1';
+  if (+m[1] !== w || +m[2] !== h || sar !== '1:1') throw new Error(`${file}: ${m[1]}x${m[2]} SAR ${sar} — expected ${w}x${h} with square pixels`);
+}
+
 /* Ranges of the master and how each is laid out (ads.mjs `full`). */
 const SEGS = [[0, 3.0, 'fit'], [3.0, 6.15, 'center'], [6.15, 320.75, 'split'], [320.75, 331.35, 'center']];
 const W = 1080, H = 1920;
@@ -50,7 +62,12 @@ function graph(kind) {
     g += `[s${i}]crop=${p.crop},scale=${p.w}:${p.h}:flags=lanczos,format=rgba[c${i}];[c${i}][m${i}]alphamerge[p${i}];`;
   });
   ps.forEach((p, i) => { g += `[bg${i}][p${i}]overlay=${p.x}:${p.y}:shortest=1[bg${i + 1}];`; });
-  return g + `[bg${ps.length}]null`;
+  /* setsar=1: the canvas is a narrow strip scaled up, and `scale` keeps the
+     strip's display shape by writing a sample aspect ratio (512:27 in 9:16).
+     The overlay inherits it, so every player that honours SAR — phones, Meta —
+     drew each frame stretched nineteen times wide. The pixels were right;
+     only the flag lied. */
+  return g + `[bg${ps.length}]setsar=1`;
 }
 const kindAt = t => SEGS.find(([a, b]) => t >= a && t < b)?.[2] ?? 'center';
 
@@ -62,7 +79,11 @@ if (flag === '--still') {
   process.exit(0);
 }
 
-/* Each range at near-lossless quality, then one continuous encode with the source's sound. */
+/* Each range at near-lossless quality, then one continuous encode with the
+   source's sound. `--web` skips straight to the web copies from the master
+   already in tmp/ (they set square pixels themselves). */
+const master = `${TMP}/vertical.mp4`;
+if (flag !== '--web') {
 const parts = SEGS.map(([a, b, kind], i) => {
   const p = `${TMP}/part${i}.mp4`;
   run(['-ss', String(a), '-to', String(b), '-i', SRC, '-filter_complex', `${graph(kind)},fps=30,format=yuv420p[v]`, '-map', '[v]', '-an', '-t', (b - a).toFixed(3),
@@ -71,22 +92,24 @@ const parts = SEGS.map(([a, b, kind], i) => {
   return p;
 });
 fs.writeFileSync(`${TMP}/list.txt`, parts.map(p => `file '${p.split('/').pop()}'`).join('\n'));
-const master = `${TMP}/vertical.mp4`;
 run(['-f', 'concat', '-safe', '0', '-i', `${TMP}/list.txt`, '-i', SRC, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'medium', '-crf', '14',
   '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'copy', '-shortest', master]);
+assertShape(master, W, H);
+}
 
 /* The web copies. One MP4 for a browser without HLS; the ladder for the rest. */
 const GOP = ['-g', '120', '-keyint_min', '120', '-sc_threshold', '0'];
 /* 720×1280: a Worker serves no file over 25 MiB, and this one is only for a
    browser that can play neither HLS nor MSE — the ladder is the real film. */
-run(['-i', master, '-vf', 'scale=720:1280:flags=lanczos', '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-b:v', '440k', '-maxrate', '800k', '-bufsize', '1600k', ...GOP,
+run(['-i', master, '-vf', 'scale=720:1280:flags=lanczos,setsar=1', '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-b:v', '440k', '-maxrate', '800k', '-bufsize', '1600k', ...GOP,
   '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart', `${OUT}/launch-9x16.mp4`]);
 run(['-ss', '10', '-i', master, '-frames:v', '1', '-q:v', '3', `${OUT}/poster-9x16.jpg`]);
+assertShape(`${OUT}/launch-9x16.mp4`, 720, 1280);
 const RUNGS = [[1920, 1080, '1400k', '2400k'], [1280, 720, '800k', '1300k'], [854, 480, '420k', '700k']];
 for (const [h, w, br, mx] of RUNGS) {
   const d = `${OUT}/hls-9x16/${h}`;
   fs.mkdirSync(d, { recursive: true });
-  run(['-i', master, '-vf', `scale=${w}:${h}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', h > 1000 ? 'high' : 'main', '-b:v', br, '-maxrate', mx, '-bufsize', mx.replace('k', '') * 2 + 'k', ...GOP,
+  run(['-i', master, '-vf', `scale=${w}:${h}:flags=lanczos,setsar=1`, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', h > 1000 ? 'high' : 'main', '-b:v', br, '-maxrate', mx, '-bufsize', mx.replace('k', '') * 2 + 'k', ...GOP,
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', h > 1000 ? '96k' : '64k', '-ar', '48000',
     '-f', 'hls', '-hls_time', '4', '-hls_playlist_type', 'vod', '-hls_segment_filename', `${d}/s%03d.ts`, `${d}/index.m3u8`]);
   console.log('rung', h);

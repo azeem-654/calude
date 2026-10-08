@@ -17,6 +17,18 @@ const FF = 'node_modules/ffmpeg-static/ffmpeg';
 const M = 'out/PC_Launch_Film_5min_16x9_v4.mp4';
 const OUT = '../ads/out';
 const run = (args) => execFileSync(FF, ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' });
+
+/* Every output is checked before it is called done: square pixels, and the
+   shape it was made for. A wrong SAR is invisible in a still taken with
+   ffmpeg (it writes the stored pixels) and only shows in a player. */
+function assertShape(file, w, h) {
+  let info = '';
+  try { execFileSync(FF, ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] }); } catch (e) { info = String(e.stderr ?? ''); }
+  const m = /Video: [^\n]*?, (\d{2,5})x(\d{2,5})(?: \[SAR (\d+):(\d+) DAR (\d+):(\d+)\])?/.exec(info);
+  if (!m) throw new Error(`${file}: could not read its video stream`);
+  const sar = m[3] ? `${m[3]}:${m[4]}` : '1:1';
+  if (+m[1] !== w || +m[2] !== h || sar !== '1:1') throw new Error(`${file}: ${m[1]}x${m[2]} SAR ${sar} — expected ${w}x${h} with square pixels`);
+}
 fs.mkdirSync(OUT, { recursive: true });
 fs.mkdirSync('../ads/tmp', { recursive: true });
 if (!fs.existsSync('../ads/tmp/bg.png')) run(['-ss', '0.02', '-i', 'out/PC_Launch_Film_5min_16x9_v4.mp4', '-frames:v', '1', '../ads/tmp/bg.png']);
@@ -88,7 +100,12 @@ function graph(shape, kind) {
     g += `[s${i}]crop=${p.crop},scale=${p.w}:${p.h},format=rgba[c${i}];[c${i}][m${i}]alphamerge[p${i}];`;
   });
   ps.forEach((p, i) => { g += `[bg${i}][p${i}]overlay=${p.x}:${p.y}:shortest=1[bg${i + 1}];`; });
-  return g + `[bg${ps.length}]null`;
+  /* setsar=1: the canvas is a narrow strip scaled up, and `scale` keeps the
+     strip's display shape by writing a sample aspect ratio (512:27 in 9:16).
+     The overlay inherits it, so every player that honours SAR — phones, Meta —
+     drew each frame stretched nineteen times wide. The pixels were right;
+     only the flag lied. */
+  return g + `[bg${ps.length}]setsar=1`;
 }
 const SHAPES = { '9x16': 1, '4x5': 1, '1x1': 1, '16x9': 1 };
 
@@ -148,6 +165,8 @@ for (const [name, segs] of Object.entries(CUTS)) {
       '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-maxrate', '14M', '-bufsize', '28M',
       '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', '30', '-g', '60', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
       '-shortest', '-movflags', '+faststart', out]);
+    const L = LAYOUT[shape] ?? { w: 1920, h: 1080 };
+    assertShape(out, L.w, L.h);
     console.log('wrote', out);
   }
 }
