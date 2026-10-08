@@ -70,6 +70,21 @@ function workspace() {
       stage('negotiation', 'Negotiation', '#ec4899', [6, 19, 31, 47]),
       stage('won', 'Won', '#16a34a', [4, 9, 16, 28, 40]),
     ],
+  }, {
+    /* Five months of won renewals and upsells before this one, so the
+       dashboard's growth chart draws this agency's own history — it shows
+       nothing until two months have won revenue, rather than a sample. */
+    id: 'p2', name: 'Renewals & upsells',
+    stages: [{
+      id: 'won', name: 'Won', color: '#16a34a',
+      deals: [[150, 2], [140, 12], [118, 22], [106, 30], [92, 36], [80, 43], [64, 49], [50, 55], [38, 61], [26, 66]].map(([ago, i], n) => ({
+        id: `d-renew-${n}`, title: `${contacts[i].company} — ${['renewal', 'upsell', 'annual renewal', 'second location'][n % 4]}`,
+        contactId: `c${i}`, contactName: contacts[i].name,
+        value: [88000, 74000, 112000, 98000, 141000, 126000, 168000, 152000, 196000, 214000][n],
+        stage: 'won', probability: 100, status: 'won', closedAt: iso(-ago), createdAt: iso(-ago - 21),
+        expectedClose: day(-ago), assignedTo: ['You', 'Maya', 'Jordan'][n % 3], priority: 'normal',
+      })),
+    }],
   }];
   void INDUSTRIES;
 

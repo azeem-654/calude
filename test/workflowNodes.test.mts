@@ -276,6 +276,40 @@ const n = (
     e.some(x => x.from === 'b' && x.branch === 'yes' && x.to === null));
 }
 
+/** Steps a condition's No line would pass behind on its way down its own column. */
+const blocked = (nodes: WorkflowNode[]) => {
+  const r = layout(nodes);
+  const at = new Map(r.placed.map(p => [p.node.id, p]));
+  const out: string[] = [];
+  for (const c of r.placed) {
+    const to = c.node.noId ? at.get(c.node.noId) : undefined;
+    if (c.node.type !== 'condition' || !to || to.row <= c.row) continue;
+    for (const o of r.placed) if (o.column === c.column && o.row > c.row && o.row <= to.row) out.push(`${c.node.id}→${to.node.id} behind ${o.node.id}`);
+  }
+  return out;
+};
+
+{
+  /* A question on the Yes path: "a big job?", then "in our area?". Handed out
+     breadth first, the outer No took the row under the spine and the inner
+     No line ran down behind it, seeming to lead into the wrong branch. */
+  const yesNested: WorkflowNode[] = [
+    n('a', 'trigger', 'Form', {}, 'b'),
+    n('b', 'condition', 'Big job?', { field: 'tag' }, null, { yesId: 'c', noId: 'f' }),
+    n('c', 'condition', 'In our area?', { field: 'tag' }, null, { yesId: 'd', noId: 'e' }),
+    n('d', 'create_task', 'Ring them', { title: 't' }),
+    n('e', 'send_email', 'Refer on', { subject: 's' }),
+    n('f', 'condition', 'Asked for prices?', { field: 'tag' }, null, { yesId: 'g', noId: 'h' }),
+    n('g', 'send_email', 'Prices', { subject: 'p' }),
+    n('h', 'send_email', 'Calendar', { subject: 'c' }),
+  ];
+  const r = layout(yesNested);
+  const row = (id: string) => r.placed.find(p => p.node.id === id)?.row;
+  ok('the inner fork takes the row just under it', row('e') === 1 && row('f') === 2 && row('h') === 3,
+    JSON.stringify(r.placed.map(p => `${p.node.id}:${p.row}:${p.column}`)));
+  ok('no No line passes behind another step', blocked(yesNested).length === 0, blocked(yesNested).join(', '));
+}
+
 {
   /* Every template in the library lays out with nothing overlapping and no
      step left disconnected. This is the check that would have caught the
@@ -287,6 +321,7 @@ const n = (
       new Set(places).size === places.length, places.join(' '));
     ok(`${t.key} · every step is placed`, r.placed.length === t.nodes.length,
       `${r.placed.length} of ${t.nodes.length}`);
+    ok(`${t.key} · no No line passes behind another step`, blocked(t.nodes).length === 0, blocked(t.nodes).join(', '));
   }
 }
 

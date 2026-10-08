@@ -366,8 +366,18 @@ const onward = (n: WorkflowNode): string | null =>
  * since: two branches landed on the same row, and a condition *inside* a branch
  * never had its own No path laid out at all — those steps fell through to the
  * "unreachable" pile at the end and were drawn as though disconnected, which
- * is the exact failure somebody reported. A row per branch, found breadth
- * first, keeps any number of forks legible.
+ * is the exact failure somebody reported. A row per branch keeps any number of
+ * forks legible.
+ *
+ * **The fork nearest the end of a row gets the row just under it.** A No line
+ * drops straight down the column of its condition before turning right. Rows
+ * were once handed out breadth first — every fork on the spine, left to right,
+ * then theirs — so with a question on a Yes path (asked "big job?", then "in
+ * our area?") the inner question's No line ran down behind the outer one's
+ * branch and seemed to lead into it. Laying out a row's forks from the right,
+ * each with all of its own branches before the next, means the rows between a
+ * condition and its branch only ever hold steps further right than it is:
+ * its column below it is always clear.
  *
  * A branch that rejoins stops at the join rather than drawing the rest of the
  * spine a second time; the connector back is what says it rejoined.
@@ -380,41 +390,42 @@ export function layout(nodes: WorkflowNode[]): { placed: Placed[]; columns: numb
   const byId = new Map(nodes.map(n => [n.id, n]));
   const placed: Placed[] = [];
   const seen = new Set<string>();
-  const queue: Placed[] = [];
 
   const walk = (startId: string | null | undefined, column: number, row: number, from?: string) => {
     let cur: WorkflowNode | undefined = startId ? byId.get(startId) : undefined;
     let col = column;
     let first = true;
+    const forks: Placed[] = [];
     while (cur && !seen.has(cur.id)) {
       seen.add(cur.id);
       const p: Placed = { node: cur, column: col, row, ...(first && from ? { from } : {}) };
       placed.push(p);
-      /* Queued rather than recursed into, so every branch of the spine is laid
-         out before any branch of a branch — which is what keeps the rows in the
-         order somebody reads them, top to bottom. */
-      if (cur.type === 'condition') queue.push(p);
+      if (cur.type === 'condition') forks.push(p);
       first = false;
       col += 1;
       const next = onward(cur);
       cur = next ? byId.get(next) : undefined;
     }
-    return col;
+    return { col, forks };
   };
 
-  /* The spine. */
-  const root = nodes.find(n => n.type === 'trigger') ?? nodes[0];
-  let endCol = root ? walk(root.id, 0, 0) : 0;
   let nextRow = 1;
+  /* A row's forks from the right, each with every branch of its own before
+     the next — see above for why. */
+  const branches = (forks: Placed[]) => {
+    for (const c of [...forks].reverse()) {
+      const noId = c.node.noId;
+      if (!noId || seen.has(noId)) continue;
+      const row = nextRow++;
+      branches(walk(noId, c.column + 1, row, c.node.id).forks);
+    }
+  };
 
-  /* Then each No branch, breadth first, each on a row of its own. */
-  while (queue.length) {
-    const c = queue.shift()!;
-    const noId = c.node.noId;
-    if (!noId || seen.has(noId)) continue;
-    walk(noId, c.column + 1, nextRow, c.node.id);
-    nextRow += 1;
-  }
+  /* The spine, then its branches. */
+  const root = nodes.find(n => n.type === 'trigger') ?? nodes[0];
+  const spine = root ? walk(root.id, 0, 0) : { col: 0, forks: [] };
+  let endCol = spine.col;
+  branches(spine.forks);
 
   /* Anything unreachable — a step left disconnected in the builder — still
      gets drawn, on a row of its own at the end. Dropping it silently would mean
@@ -424,7 +435,7 @@ export function layout(nodes: WorkflowNode[]): { placed: Placed[]; columns: numb
     const row = nextRow;
     for (const n of orphans) {
       if (seen.has(n.id)) continue;
-      endCol = walk(n.id, Math.max(0, endCol), row);
+      endCol = walk(n.id, Math.max(0, endCol), row).col;
     }
     nextRow += 1;
   }

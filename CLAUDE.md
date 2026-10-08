@@ -831,7 +831,11 @@ title tab naming the step's kind and holding its pen, on a dotted, softly lit
 ground, joined by thin blue threads with a soft glow — a soft S inside the
 gap when a link changes row, a rounded corner on a No branch (pink), branch
 labels as small glass chips. The gallery's compact previews keep their plain
-cards.
+cards. Positions come from `layout()` in `workflowNodes.ts`: Yes carries the
+spine, every No gets a row of its own, and a row's forks are laid out from the
+right, each with all its own branches first — so a No line dropping down its
+condition's column never passes behind another step (`test:nodes` checks it
+for every template).
 
 ## Commands
 
@@ -1189,27 +1193,30 @@ down: the desktop in a 1920×1200 window, 1.5× (`<file>.webp`, 2000 wide, and
 3× (`<file>-m.webp`, 1000 wide). `PHONE_ONLY=1` retakes just the phone ones. A
 shot with no recipe stops the run.
 
-**Readable at every size** (ShotReel): every reel is a strip — the screen
-showing drawn whole in the middle, its neighbours dimmed beside it, the strip
-sliding along. Each picture is the **whole page** from where its recipe left
-it scrolled (up to 3,000 CSS px on a desktop, 2,160 on a phone; panes that
-scroll on their own are let out first), and each slide is a **tour**: the
-window as it opens, then zoomed to a readable size (`planFor`: the app's text
-at about 11px, centred across on `focus`), then travelled down to the bottom
-of the page at a reading pace, then back out and on — so a slide lasts as long
-as its page takes to read. A phone gets the app's own phone layout as wide as
-the column (the hero too) and the same travel without the zoom. While it
-travels, the shot's `notes` (NOTES in reels.ts — how it works, what it brings
-in, only what the screen shows) come up one at a time over it. **It plays
-with reduced motion asked for too** — on many machines a battery saver sets
-that, and the owner read a still reel as "the zoom is not working" — with the
-zoom and the way back as a fade, and a pause button on every reel. **Full
-size** (and a click on the slide) opens the whole page to scroll, portalled to
-`<body>`. The product sections are `FeatureStage`
-(title on top, the wide strip, feature blocks under it with looping icons,
-event chips floating beside the screens at ≥1380px); the launch film is
-re-rendered from `marketing/launch-film` (its README has the kit and the
-honesty table).
+**Readable at every size** (ShotReel): every reel is a strip of slides.
+Each picture is the **whole page** from where its recipe left it scrolled (up
+to 3,000 CSS px on a desktop, 2,160 on a phone; panes that scroll on their own
+are let out first; a screen with a dialog open is the window alone). **Wider
+than a phone, there is no zoom** (the owner's call): the slide showing takes
+the section's whole width (the strip as tall as the window allows), and each
+slide opens on the **whole page fitted in**, widens to the full width at the
+top, holds a beat, travels down to the bottom at a reading pace, and moves
+**straight on to the next slide** — nothing scrolls back up (the slide just
+read stays at its bottom as it slides away). **A phone keeps its own tour**
+(the owner is happy with it — leave it): the app's own phone layout as wide
+as the column, read top to bottom and back. While it travels, the shot's
+`notes` (NOTES in reels.ts — how it works, what it brings in, only what the
+screen shows) come up one at a time over it. **It plays with reduced motion
+asked for too** — on many machines a battery saver sets that — with the
+widening and the way back as a fade, and a pause button on every reel.
+`npm run test:reeltour` checks all of it at 1440 and 390, both motion
+settings. **Full size** (and a click on the slide) opens the whole page to
+scroll, portalled to `<body>`. The product sections are `FeatureStage`
+(title on top, the wide strip, feature blocks under it with looping icons);
+the launch film is re-rendered from `marketing/launch-film` (its README has
+the kit and the honesty table). The sample workflows (`FLOWS` in
+site-reels.mts) ask three or four nested questions each and must fit five
+columns; `DESKTOP_ONLY=1` retakes just the desktop pictures.
 
 Recurring traps when writing those checks:
 

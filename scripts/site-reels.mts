@@ -315,66 +315,77 @@ const n = (id: string, type: string, label: string, config: Record<string, unkno
 /*
  * The workflows a busy business would actually run — each one a shape the
  * engine runs today (automationEngine.ts), and each drawn in five columns so
- * the whole of it fits the card: a spine that does the work for the people
- * who qualify, and a row under each question for the people who do not.
+ * the whole of it fits the card. The owner asked for full, complex ones: every
+ * flow asks three or four questions, and a question's Yes and No each lead to
+ * a question of their own before anything is sent, so the picture shows the
+ * if / else / then a real business would set up — not one fork.
  */
 const FLOWS: Record<string, { name: string; description: string; nodes: Node[] }> = {
   qualify: {
     name: 'New enquiry — qualify, route and book',
-    description: 'Big jobs go to a senior with a task and a text; the rest get the price list or the calendar',
+    description: 'Big local jobs go to a senior within the hour; out-of-area ones are referred on; the rest get prices or the calendar',
     nodes: [
       n('n0', 'trigger', 'A form is submitted', { event: 'form_submitted', formName: 'Get a quote' }, 'n1'),
-      n('n1', 'condition', 'A job over $5k?', { field: 'tag', operator: 'equals', value: 'big job' }, 'n2', { yesId: 'n2', noId: 'n5' }),
-      n('n2', 'assign_to', 'Give it to a senior', { user: 'Maya' }, 'n3'),
-      n('n3', 'create_task', 'Ring within the hour', { title: 'Big enquiry — ring within the hour' }, 'n4'),
-      n('n4', 'send_sms', 'Text: calling you shortly', { message: 'Hi {{firstName}}, thanks — Maya from {{myCompany}} will ring you within the hour.' }, null),
-      n('n5', 'condition', 'Asked for prices?', { field: 'tag', operator: 'equals', value: 'pricing' }, 'n6', { yesId: 'n6', noId: 'n8' }),
-      n('n6', 'send_email', 'Send the price list', { subject: 'Our prices, {{firstName}}', body: 'Hello {{firstName}},\n\nHere are our prices, plainly.' }, 'n7'),
-      n('n7', 'add_tag', 'Tag: priced', { tag: 'priced' }, null),
-      n('n8', 'send_email', 'Here is my calendar', { subject: 'Pick a time, {{firstName}}', body: 'Hello {{firstName}},\n\nPick any time that suits: {{bookingLink}}' }, 'n9'),
-      n('n9', 'add_tag', 'Tag: nurture', { tag: 'nurture' }, null),
+      n('n1', 'condition', 'A job over $5k?', { field: 'tag', operator: 'equals', value: 'big job' }, 'n2', { yesId: 'n2', noId: 'n7' }),
+      n('n2', 'condition', 'In our service area?', { field: 'tag', operator: 'equals', value: 'in area' }, 'n3', { yesId: 'n3', noId: 'n5' }),
+      n('n3', 'assign_to', 'Give it to a senior', { user: 'Maya' }, 'n4'),
+      n('n4', 'create_task', 'Ring within the hour', { title: 'Big enquiry — ring within the hour' }, null),
+      n('n5', 'send_email', 'Refer to a partner', { subject: 'Someone closer to you, {{firstName}}', body: 'Hello {{firstName}},\n\nWe would not do you justice from here — our partner can.' }, 'n6'),
+      n('n6', 'add_tag', 'Tag: referred out', { tag: 'referred out' }, null),
+      n('n7', 'condition', 'Asked for prices?', { field: 'tag', operator: 'equals', value: 'pricing' }, 'n8', { yesId: 'n8', noId: 'n10' }),
+      n('n8', 'send_email', 'Send the price list', { subject: 'Our prices, {{firstName}}', body: 'Hello {{firstName}},\n\nHere are our prices, plainly.' }, 'n9'),
+      n('n9', 'add_tag', 'Tag: priced', { tag: 'priced' }, null),
+      n('n10', 'condition', 'Booked a call already?', { field: 'tag', operator: 'equals', value: 'booked' }, 'n11', { yesId: 'n11', noId: 'n12' }),
+      n('n11', 'update_field', 'Stage: booked', { field: 'status', value: 'customer' }, null),
+      n('n12', 'send_email', 'Here is my calendar', { subject: 'Pick a time, {{firstName}}', body: 'Hello {{firstName}},\n\nPick any time that suits: {{bookingLink}}' }, null),
     ],
   },
   missed: {
     name: 'Missed call — text back and book',
-    description: 'Patients get a callback task; new callers get a welcome, the booking link and one reminder',
+    description: 'Patients due a check-up are offered one; other patients get a call back; new callers are welcomed by text or email, or rung',
     nodes: [
       n('n0', 'trigger', 'A tag is added', { event: 'tag_added', tag: 'missed call' }, 'n1'),
-      n('n1', 'condition', 'Already a patient?', { field: 'status', operator: 'equals', value: 'customer' }, 'n2', { yesId: 'n2', noId: 'n5' }),
-      n('n2', 'send_sms', 'Sorry we missed you', { message: 'Sorry we missed you, {{firstName}} — we will ring you back today.' }, 'n3'),
-      n('n3', 'create_task', 'Call them back today', { title: 'Missed call from a patient — call back' }, 'n4'),
-      n('n4', 'add_tag', 'Tag: callback', { tag: 'callback' }, null),
-      n('n5', 'send_email', 'New-patient welcome', { subject: 'Welcome, {{firstName}}', body: 'Hello {{firstName}},\n\nYour first check-up is on us: {{bookingLink}}' }, 'n6'),
-      n('n6', 'condition', 'Booked yet?', { field: 'tag', operator: 'equals', value: 'booked' }, 'n7', { yesId: 'n7', noId: 'n8' }),
-      n('n7', 'update_field', 'Stage: booked', { field: 'status', value: 'customer' }, null),
-      n('n8', 'send_sms', 'One reminder', { message: 'Still want that first check-up, {{firstName}}? {{bookingLink}}' }, null),
+      n('n1', 'condition', 'Already a patient?', { field: 'status', operator: 'equals', value: 'customer' }, 'n2', { yesId: 'n2', noId: 'n6' }),
+      n('n2', 'condition', 'Due a check-up?', { field: 'tag', operator: 'equals', value: 'check-up due' }, 'n3', { yesId: 'n3', noId: 'n5' }),
+      n('n3', 'send_sms', 'Missed you — book in', { message: 'Sorry we missed you, {{firstName}} — your check-up is due: {{bookingLink}}' }, 'n4'),
+      n('n4', 'add_tag', 'Tag: recall sent', { tag: 'recall sent' }, null),
+      n('n5', 'create_task', 'Call them back today', { title: 'Missed call from a patient — call back' }, null),
+      n('n6', 'condition', 'Said yes to texts?', { field: 'tag', operator: 'equals', value: 'sms opt-in' }, 'n7', { yesId: 'n7', noId: 'n9' }),
+      n('n7', 'send_sms', 'Welcome + booking link', { message: 'Hi {{firstName}}, sorry we missed you — your first check-up is on us: {{bookingLink}}' }, 'n8'),
+      n('n8', 'update_field', 'Stage: new patient', { field: 'status', value: 'lead' }, null),
+      n('n9', 'condition', 'Left an email?', { field: 'tag', operator: 'equals', value: 'has email' }, 'n10', { yesId: 'n10', noId: 'n11' }),
+      n('n10', 'send_email', 'New-patient welcome', { subject: 'Welcome, {{firstName}}', body: 'Hello {{firstName}},\n\nYour first check-up is on us: {{bookingLink}}' }, null),
+      n('n11', 'create_task', 'Ring them back', { title: 'New caller, no email — ring back' }, null),
     ],
   },
   outreach: {
     name: 'Prospect outreach — email, follow up, hand over',
-    description: 'A reply becomes a demo and a deal; opt-ins get texts; everyone else one more email',
+    description: 'A reply asking for a call becomes a demo; other replies get the case study; the quiet ones get a text if they opted in, else proof by email',
     nodes: [
       n('n0', 'trigger', 'A tag is added', { event: 'tag_added', tag: 'autopilot' }, 'n1'),
       n('n1', 'send_email', 'Open with a listing tip', { subject: 'More listings this spring, {{firstName}}?', body: 'Hello {{firstName}},\n\nOne idea for {{company}}.\n\nP.S. Would a text be easier? Say yes here and we will text you instead: {{smsOptInLink}}' }, 'n2'),
-      n('n2', 'condition', 'Replied in 3 days?', { field: 'status', operator: 'equals', value: 'replied' }, 'n3', { yesId: 'n3', noId: 'n5' }),
-      n('n3', 'create_task', 'Book the demo', { title: 'Replied — book the demo' }, 'n4'),
-      n('n4', 'update_field', 'Stage: qualified', { field: 'status', value: 'lead' }, null),
-      n('n5', 'condition', 'Said yes to texts?', { field: 'tag', operator: 'equals', value: 'sms opt-in' }, 'n6', { yesId: 'n6', noId: 'n7' }),
-      n('n6', 'send_sms', 'Text the offer', { message: 'Hi {{firstName}} — here is the offer we mentioned.' }, null),
-      n('n7', 'send_email', 'Follow up with proof', { subject: 'How Keystone did it, {{firstName}}', body: 'Hello {{firstName}},\n\nA short example.' }, null),
+      n('n2', 'condition', 'Replied in 3 days?', { field: 'status', operator: 'equals', value: 'replied' }, 'n3', { yesId: 'n3', noId: 'n6' }),
+      n('n3', 'condition', 'Wants a call?', { field: 'tag', operator: 'equals', value: 'wants a call' }, 'n4', { yesId: 'n4', noId: 'n5' }),
+      n('n4', 'create_task', 'Book the demo', { title: 'Replied — book the demo' }, null),
+      n('n5', 'send_email', 'Send the case study', { subject: 'How Keystone did it, {{firstName}}', body: 'Hello {{firstName}},\n\nA short example.' }, null),
+      n('n6', 'condition', 'Said yes to texts?', { field: 'tag', operator: 'equals', value: 'sms opt-in' }, 'n7', { yesId: 'n7', noId: 'n8' }),
+      n('n7', 'send_sms', 'Text the offer', { message: 'Hi {{firstName}} — here is the offer we mentioned.' }, null),
+      n('n8', 'send_email', 'Follow up with proof', { subject: 'Three listings in a month, {{firstName}}', body: 'Hello {{firstName}},\n\nWhat it did for an agent like you.' }, null),
     ],
   },
   reviews: {
     name: 'After the visit — reviews, rescue, referrals',
-    description: 'Happy customers are asked for a review and a referral; unhappy ones reach the owner first',
+    description: 'Happy customers are asked for a review, then a referral; unhappy ones reach the owner first, with what went wrong',
     nodes: [
       n('n0', 'trigger', 'A deal moves to Won', { event: 'deal_stage_changed', stage: 'won' }, 'n1'),
       n('n1', 'send_email', 'How did we do?', { subject: 'How did we do, {{firstName}}?', body: 'Hello {{firstName}},\n\nOne click: how was it?' }, 'n2'),
-      n('n2', 'condition', 'Happy (4–5 stars)?', { field: 'tag', operator: 'equals', value: 'happy' }, 'n3', { yesId: 'n3', noId: 'n5' }),
-      n('n3', 'send_email', 'Ask for a Google review', { subject: 'Would you say so on Google?', body: 'Hello {{firstName}},\n\nIt would mean a lot.' }, 'n4'),
+      n('n2', 'condition', 'Happy (4–5 stars)?', { field: 'tag', operator: 'equals', value: 'happy' }, 'n3', { yesId: 'n3', noId: 'n6' }),
+      n('n3', 'condition', 'Left a Google review?', { field: 'tag', operator: 'equals', value: 'reviewed' }, 'n4', { yesId: 'n4', noId: 'n5' }),
       n('n4', 'send_sms', 'Referral offer by text', { message: 'Thanks {{firstName}}! Refer a friend and you both get 20% off.' }, null),
-      n('n5', 'assign_to', 'Straight to the owner', { user: 'You' }, 'n6'),
-      n('n6', 'create_task', 'Call and put it right', { title: 'Unhappy customer — call today' }, null),
+      n('n5', 'send_email', 'Ask for a Google review', { subject: 'Would you say so on Google?', body: 'Hello {{firstName}},\n\nIt would mean a lot.' }, null),
+      n('n6', 'condition', 'Told us what went wrong?', { field: 'tag', operator: 'equals', value: 'feedback given' }, 'n7', { yesId: 'n7', noId: 'n8' }),
+      n('n7', 'create_task', 'Owner: call and put it right', { title: 'Unhappy customer — call today' }, null),
+      n('n8', 'send_email', 'Sorry — tell us more', { subject: 'We would like to put it right, {{firstName}}', body: 'Hello {{firstName}},\n\nWhat should we have done differently?' }, null),
     ],
   },
 };
@@ -752,7 +763,10 @@ async function photograph(suffix: string) {
     });
     await page.waitForTimeout(400);
     const docH = await page.evaluate(() => document.documentElement.scrollHeight);
-    const max = suffix ? MAX_H.phone : MAX_H.desk;
+    /* A dialog or side panel is fixed to the window: below it the page would
+       run on without it, so such a screen is the window alone. */
+    const fixedOver = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].some(d => d.getBoundingClientRect().height > 200));
+    const max = fixedOver ? page.viewportSize()!.height : suffix ? MAX_H.phone : MAX_H.desk;
     const h = Math.max(1, Math.min(max, docH - at.y));
     /* Clipped as it is taken: a whole page at 3× can pass the 16,384-pixel
        limit Chromium can capture in one go. */
@@ -762,11 +776,14 @@ async function photograph(suffix: string) {
     taken.push(`${file}${suffix}`);
   }
 }
-/* PHONE_ONLY=1 retakes just the phone pictures (the desktop ones are kept). */
+/* PHONE_ONLY=1 retakes just the phone pictures (the desktop ones are kept);
+   DESKTOP_ONLY=1 the other way round. */
 if (!process.env.PHONE_ONLY) await photograph('');
-page = await phoneCtx.newPage();
-page.on('pageerror', e => errs.push(`phone ${page.url()}: ${e.message}`));
-await photograph('-m');
+if (!process.env.DESKTOP_ONLY) {
+  page = await phoneCtx.newPage();
+  page.on('pageerror', e => errs.push(`phone ${page.url()}: ${e.message}`));
+  await photograph('-m');
+}
 
 /* PNG → WebP in the browser that took them: Chromium encodes WebP natively,
    so there is no second tool to install or forget. */

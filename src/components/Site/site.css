@@ -2466,6 +2466,43 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   .dc-sr-note { left: 8px; right: 8px; bottom: 8px; max-width: none; padding: 8px 10px; font-size: 12.5px; border-radius: 12px; }
 }
 
+/* ── Full width (everything wider than a phone) ──────────────────────────────
+   The owner asked for the screens to be wide enough to read without a zoom:
+   the slide showing takes the strip's whole width, its neighbours wait just
+   outside it (the strip still slides), and the strip is as tall as the window
+   allows under the caption. ShotReel opens each page whole inside that, widens
+   it to the full width and reads it down to its end. The chips that floated
+   over the neighbours would sit on the screen being read, so they go. */
+@media (min-width: 761px) {
+  .dc-reel.strip { --side: 1; --strip-gap: 40px; }
+  .dc-reel.strip .dc-reel-stage {
+    aspect-ratio: 16 / 9;
+    max-height: max(360px, calc(100vh - 190px));
+    -webkit-mask-image: none; mask-image: none;
+  }
+  @supports (height: 100svh) {
+    .dc-reel.strip .dc-reel-stage { max-height: max(360px, calc(100svh - 190px)); }
+  }
+  .dc-reel.strip .dc-reel-shot,
+  .dc-stage-show.has-chips .dc-reel.strip .dc-reel-shot,
+  .dc-hero-shot .dc-reel.strip .dc-reel-shot {
+    width: 100%; height: 100%; aspect-ratio: auto;
+    background: rgba(255, 255, 255, 0.045);
+  }
+  .dc-reel.strip .dc-reel-shot[data-pos='-1'],
+  .dc-reel.strip .dc-reel-shot[data-pos='1'] { opacity: 0; }
+  .dc-stage-chips { display: none !important; }
+  .dc-hero-strip .dc-reel.strip .dc-reel-stage { -webkit-mask-image: none; mask-image: none; }
+  /* The hero runs edge to edge across the window; keep a gutter either side. */
+  .dc-hero-shot .dc-reel.strip .dc-reel-frame { padding: 0 clamp(16px, 2.4vw, 40px); }
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { overflow: visible; clip-path: inset(-40px 0 -60px 0); }
+  /* The page fitted whole sits on a soft ground, with an edge so it reads as a page. */
+  .dc-reel.strip .dc-reel-shot.ph-whole .dc-sr-img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 24px 60px -20px rgba(0, 0, 0, 0.8); }
+}
+@media (min-width: 1000px) and (orientation: landscape) and (min-height: 420px) {
+  .dc-hero-shot .dc-reel.strip .dc-reel-stage { max-height: none; }
+}
+
 /* Full size is a page to scroll now, not a picture to fit. */
 .dc-viewer { align-items: flex-start; overflow-y: auto; padding: 56px 64px 40px; }
 .dc-viewer-body { width: 100%; max-width: min(1500px, 100%); }
