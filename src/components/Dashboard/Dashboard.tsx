@@ -769,7 +769,9 @@ export default function Dashboard() {
   const nowMonth = new Date().getMonth();
   const historyMonths = Array.from({ length: 6 }, (_, i) => (nowMonth - 5 + i + 12) % 12);
   const realByMonth = new Map<number, number>();
-  allDeals.forEach(d => {
+  /* Won revenue from every pipeline, not just the first one the board shows:
+     a business that keeps renewals in a pipeline of their own still earned it. */
+  pipelines.flatMap(p => p.stages.flatMap(s => s.deals)).forEach(d => {
     if (d.status === 'won' && d.closedAt) {
       const m = new Date(d.closedAt).getMonth();
       realByMonth.set(m, (realByMonth.get(m) ?? 0) + d.value);
