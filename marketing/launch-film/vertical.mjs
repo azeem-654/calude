@@ -77,8 +77,11 @@ run(['-f', 'concat', '-safe', '0', '-i', `${TMP}/list.txt`, '-i', SRC, '-map', '
 
 /* The web copies. One MP4 for a browser without HLS; the ladder for the rest. */
 const GOP = ['-g', '120', '-keyint_min', '120', '-sc_threshold', '0'];
-run(['-i', master, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-b:v', '1100k', '-maxrate', '1800k', '-bufsize', '3600k', ...GOP,
-  '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', `${OUT}/launch-9x16.mp4`]);
+/* 720×1280: a Worker serves no file over 25 MiB, and this one is only for a
+   browser that can play neither HLS nor MSE — the ladder is the real film. */
+run(['-i', master, '-vf', 'scale=720:1280:flags=lanczos', '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-b:v', '440k', '-maxrate', '800k', '-bufsize', '1600k', ...GOP,
+  '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart', `${OUT}/launch-9x16.mp4`]);
+run(['-ss', '10', '-i', master, '-frames:v', '1', '-q:v', '3', `${OUT}/poster-9x16.jpg`]);
 const RUNGS = [[1920, 1080, '1400k', '2400k'], [1280, 720, '800k', '1300k'], [854, 480, '420k', '700k']];
 for (const [h, w, br, mx] of RUNGS) {
   const d = `${OUT}/hls-9x16/${h}`;

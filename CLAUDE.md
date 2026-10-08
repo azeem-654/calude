@@ -1230,7 +1230,12 @@ settings. **Full size** (and a click on the slide) opens the whole page to
 scroll, portalled to `<body>`. The product sections are `FeatureStage`
 (title on top, the wide strip, feature blocks under it with looping icons);
 the launch film is re-rendered from `marketing/launch-film` (its README has
-the kit and the honesty table). The sample workflows (`FLOWS` in
+the kit and the honesty table). **Phones (≤760px) play the 9:16 film**
+(`hls-9x16/`, `launch-9x16.mp4`, `poster-9x16.jpg`, made by `vertical.mjs`;
+LaunchFilm `tall`, chosen once on arrival), the desktop the 16:9 one. The
+site's nav measures itself (`data-fit`: `full` → `tight`, the shield without
+the name → `tiny`, smaller buttons and "Try free") so it never runs off a
+phone, and its stuck bar is opaque there. The sample workflows (`FLOWS` in
 site-reels.mts) ask three or four nested questions each and must fit five
 columns; `DESKTOP_ONLY=1` retakes just the desktop pictures.
 

@@ -3,10 +3,12 @@
  *
  * About five and a half minutes, rendered from marketing/launch-film and re-encoded for
  * the web (public/site/launch/: an HLS ladder, and one MP4). It is drawn for 16:9 — the
- * product window on the right, the words on the left. There used to be a
- * square cut for portrait screens, cropped from a taller ad with blurred
- * sides; the owner asked for the full frame instead, so a phone gets the same
- * film, whole, as wide as the screen.
+ * product window on the right, the words on the left. A phone gets the same
+ * film laid out 9:16 (`hls-9x16/`, `launch-9x16.mp4`, made by
+ * marketing/launch-film/vertical.mjs): the film's own words stacked above its
+ * product window, title and end cards whole, nothing cropped — the owner found
+ * the 16:9 film "a small rectangle" in a tall screen. Same timeline, same
+ * sound, same captions; only the picture is re-laid.
  *
  * On a wide, short window — a laptop — the film is fitted to the height under
  * the nav and may lose up to 11% of itself top and bottom to fill more of the
@@ -71,8 +73,11 @@ export default function LaunchFilm() {
   const [armed, setArmed] = useState(false);
   const [sound, setSound] = useState(false);
 
-  const file = 'launch-16x9';
-  const poster = `${base}/poster-16x9.jpg`;
+  /* Chosen once, on arrival: switching streams mid-film on a rotation would restart it. */
+  const [tall] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 760px)').matches);
+  const file = tall ? 'launch-9x16' : 'launch-16x9';
+  const poster = `${base}/${tall ? 'poster-9x16' : 'poster-16x9'}.jpg`;
+  const ladder = `${base}/${tall ? 'hls-9x16' : 'hls'}/master.m3u8`;
 
   const [inView, setInView] = useState(false);
   /* How the film is fed, and whether it has something to play yet: play()
@@ -101,7 +106,7 @@ export default function LaunchFilm() {
     let gone = false;
     const mp4 = () => { hls?.destroy(); hls = null; if (!gone) { setMode('mp4'); setReady(true); } };
     if (v.canPlayType('application/vnd.apple.mpegurl')) {
-      v.src = `${base}/hls/master.m3u8`;
+      v.src = ladder;
       setMode('native');
       setReady(true);
     } else if (typeof window.MediaSource === 'undefined' && typeof (window as Window & { ManagedMediaSource?: unknown }).ManagedMediaSource === 'undefined') {
@@ -148,14 +153,14 @@ export default function LaunchFilm() {
             v.addEventListener('loadedmetadata', () => { if (at) v.currentTime = at; if (playing) v.play().catch(() => {}); }, { once: true });
           });
         });
-        h.loadSource(`${base}/hls/master.m3u8`);
+        h.loadSource(ladder);
         h.attachMedia(v);
         setMode('hls');
         setReady(true);
       }).catch(mp4);
     }
     return () => { gone = true; hls?.destroy(); };
-  }, [armed]);
+  }, [armed, ladder]);
 
   /* After the render that attached the stream, not in the observer: before it
      the element has nothing to play. */
@@ -186,7 +191,7 @@ export default function LaunchFilm() {
   const signup = appHref('/signup');
 
   return (
-    <section className="dc-film" id="film" aria-label="Protected Central in five and a half minutes" ref={wrap}>
+    <section className={`dc-film${tall ? ' tall' : ''}`} id="film" aria-label="Protected Central in five and a half minutes" ref={wrap}>
       {/* The band is the full width; the frame inside it is as wide as the
           crop allows, and the band's own ground carries on from the film's. */}
       <div className="dc-film-band">

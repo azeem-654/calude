@@ -176,3 +176,21 @@ words below the top 14% where Reels and Stories draw their own rows. Title
 and end cards are kept whole. The audio is re-mixed from the same voice files,
 cues and music (`mix.mjs`), so no word is cut. Every cut comes with an `.srt`
 of the voice, to upload as captions; most feed video plays without sound.
+
+## The phone version — 9:16 for the site (`vertical.mjs`, 2026-10-08)
+
+The site played the 16:9 film as wide as a phone, a small band in a tall
+screen. Phones (≤760px) now get `public/site/launch/hls-9x16/` (1080×1920,
+720×1280, 480×854; 4-second segments) and `launch-9x16.mp4` (720×1280, the
+fallback, under the 25 MiB a Worker serves) with `poster-9x16.jpg`; the
+desktop keeps the 16:9 film. The layout is ads.mjs's `full` cut — the film's
+words stacked above its product window, title and end cards whole — made from
+the published 16:9 MP4 with its own sound, so the captions still line up and
+nothing is re-mixed. (The kit's `icons.js` and voice files are not in the
+repository, so the film itself cannot be re-rendered from here; this works from
+the published copy.)
+
+```bash
+node vertical.mjs <path to ffmpeg> ../../public/site/launch/launch-16x9.mp4 <outdir>
+node vertical.mjs <ffmpeg> <src> <outdir> --still 1.5 60 325   # frames to check the layout
+```
