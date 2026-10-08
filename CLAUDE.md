@@ -477,8 +477,19 @@ searches people the install owner loaded from their own files;
 - **Loading is done by the owner's browser** (`services/leadImport.ts`): a
   CSV, `.csv.gz` or ZIP (read from its central directory, ZIP64 included,
   Deflate via `DecompressionStream`) of any size is streamed from disk,
-  parsed, mapped by column name (`ALIASES`) and sent 500 rows a request
-  (`import_rows`). The server counts rows per file (`ld_imports.rows_seen`);
+  parsed, mapped by column name (`ALIASES` — Leads.cm, Apollo, ZoomInfo,
+  Seamless, Lusha and CRM headers; accents, punctuation and spacing ignored)
+  and sent 500 rows a request (`import_rows`). **Before a load the owner sees
+  the mapping** (`previewFile`: which column became which field, the first
+  people as they will be kept, the encoding — UTF-8, UTF-16 or Windows-1252,
+  sniffed — and the delimiter, `,` `;` tab or `|`). **No column is thrown
+  away**: a header no alias claims is kept with the person in `extra` (JSON,
+  ≤ 2,000 chars, values masked until a reveal); street address, the file's
+  email status (read into valid/risky/invalid/unknown by `emailStatusOf`),
+  company LinkedIn, social links, SIC/NAICS and technologies have columns of
+  their own (`ADDED_COLUMNS`, added to an older table by `ensureSchema`). The
+  email is the first column that *is* an address, so a blank or "N/A" work
+  email falls through to the next. The server counts rows per file (`ld_imports.rows_seen`);
   the same file again (`fileKey`: name|size|mtime) re-reads and skips that
   many — resuming depends on every row, empty ones too, being counted, and on
   ZIP entries being read in central-directory order. Deduped by email, else
@@ -495,7 +506,12 @@ searches people the install owner loaded from their own files;
   `REVEAL_BUDGET` (200/day, 2,000/month per workspace, `ld_reveals`, once per
   person) and stops when a trial has ended. **Removed on request**
   (`ld_removed`) stays out of later loads. Imports go to Contacts on a `cold`
-  list, tagged `lead directory`.
+  list, tagged `lead directory`, **with every address checked first** — the
+  same free check as AI Prospecting (`verifyEmails`, 20 at a time), its
+  verdict on the contact (`emailStatus`/`emailCheck`/`emailCheckedAt`) and as
+  a tag (`emailTag`). The file's own "verified" is shown as **list: verified**
+  and kept as `listEmailStatus`, never in place of our check: it is the
+  seller's word. Every other field and kept column travels to the contact.
 - `npm run test:leadimport` (pure: parser, ZIP/ZIP64/gzip, mapping, resume,
   the server's rules) and `npm run test:leaddir` (self-contained: wrangler
   :8938, fresh D1 in `.wrangler-leaddir`, needs a `VITE_BASE=/` build; the

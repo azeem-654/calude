@@ -28,6 +28,7 @@ export const SCHEMA = [
     company TEXT, website TEXT, domain TEXT, email TEXT, phone TEXT, linkedin TEXT,
     industry TEXT, city TEXT, state TEXT, country TEXT, postal TEXT,
     size TEXT, revenue TEXT, founded TEXT, keywords TEXT,
+    address TEXT, email_status TEXT, company_linkedin TEXT, social TEXT, codes TEXT, technologies TEXT, extra TEXT,
     ind_k TEXT, st_k TEXT, ct_k TEXT, co_k TEXT, title_k TEXT,
     has_email INTEGER NOT NULL DEFAULT 0,
     import_id TEXT, added_at TEXT NOT NULL)`,
@@ -56,11 +57,24 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS ld_meta (k TEXT PRIMARY KEY, v TEXT)',
 ];
 
+/*
+ * Columns added after the first loads. `CREATE TABLE IF NOT EXISTS` leaves an
+ * existing table as it was, so a directory made before these existed gets
+ * them added here — every vendor column that used to be thrown away (a street
+ * address, the file's own verdict on the email, company profile, social
+ * links, SIC/NAICS, technologies) and `extra`, which keeps every other column
+ * of the file by its own header instead of dropping it.
+ */
+export const ADDED_COLUMNS = ['address', 'email_status', 'company_linkedin', 'social', 'codes', 'technologies', 'extra'] as const;
+
 let schemaReady: D1Database | null = null;
 /** Once per isolate per database. */
 export async function ensureSchema(db: D1Database): Promise<void> {
   if (schemaReady === db) return;
   await db.batch(SCHEMA.map(s => db.prepare(s)));
+  const have = new Set(((await db.prepare('PRAGMA table_info(ld_people)').all<{ name: string }>()).results ?? []).map(c => c.name));
+  const missing = ADDED_COLUMNS.filter(c => !have.has(c));
+  if (missing.length) await db.batch(missing.map(c => db.prepare(`ALTER TABLE ld_people ADD COLUMN ${c} TEXT`)));
   schemaReady = db;
 }
 
@@ -81,6 +95,9 @@ export interface LeadIn {
   company?: unknown; website?: unknown; email?: unknown; phone?: unknown; linkedin?: unknown;
   industry?: unknown; city?: unknown; state?: unknown; country?: unknown; postal?: unknown;
   size?: unknown; revenue?: unknown; founded?: unknown; keywords?: unknown;
+  address?: unknown; emailStatus?: unknown; companyLinkedin?: unknown; social?: unknown; codes?: unknown; technologies?: unknown;
+  /** Every other column of the file, by its own header. */
+  extra?: unknown;
 }
 
 export interface Lead {
@@ -89,6 +106,7 @@ export interface Lead {
   company: string; website: string; domain: string; email: string; phone: string; linkedin: string;
   industry: string; city: string; state: string; country: string; postal: string;
   size: string; revenue: string; founded: string; keywords: string;
+  address: string; email_status: string; company_linkedin: string; social: string; codes: string; technologies: string; extra: string;
   ind_k: string; st_k: string; ct_k: string; co_k: string; title_k: string; has_email: number;
 }
 
@@ -97,6 +115,37 @@ const txt = (v: unknown, max: number) => String(v ?? '').replace(/[\u0000-\u001f
 export const key = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const EMAIL = /^[a-z0-9._%+'-]+@[a-z0-9.-]+\.[a-z]{2,24}$/;
 const COUNTRY_ALIAS: Record<string, string> = { usa: 'united states', us: 'united states', 'u s': 'united states', 'u s a': 'united states', 'united states of america': 'united states', uk: 'united kingdom', 'great britain': 'united kingdom', england: 'united kingdom' };
+
+/**
+ * The file's own verdict on an address, in our four words. Vendors each have
+ * their own ("Verified", "Deliverable", "Catch-all", "Guessed", "Bounced"…);
+ * kept so a search can prefer the ones the seller checked, and never taken as
+ * our check — the address is checked again when somebody adds it to Contacts.
+ */
+export function emailStatusOf(raw: unknown): string {
+  const k = key(String(raw ?? ''));
+  if (!k) return '';
+  if (/\b(invalid|bounce|bounced|undeliverable|bad|hard bounce|do not mail|dnm|unsubscribed|spam ?trap|disposable)\b/.test(k)) return 'invalid';
+  if (/\b(catch ?all|accept ?all|risky|guess|guessed|likely|unverifiable|role)\b/.test(k)) return 'risky';
+  if (/\b(not verified|unverified|not checked|unchecked|unknown|pending)\b/.test(k)) return 'unknown';
+  if (/\b(verified|valid|deliverable|ok|safe|good|confirmed|yes|true)\b/.test(k)) return 'valid';
+  return 'unknown';
+}
+
+/** Other columns of the file, as a JSON object of short strings, at most 2,000 characters. */
+function extraOf(v: unknown): string {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return '';
+  const out: Record<string, string> = {};
+  let len = 2;
+  for (const [k0, v0] of Object.entries(v as Record<string, unknown>)) {
+    const k = txt(k0, 60), val = txt(v0, 300);
+    if (!k || !val) continue;
+    const add = k.length + val.length + 6;
+    if (len + add > 2000) break;
+    out[k] = val; len += add;
+  }
+  return Object.keys(out).length ? JSON.stringify(out) : '';
+}
 
 export function siteOf(raw: string): { website: string; domain: string } {
   let s = raw.trim();
@@ -130,6 +179,7 @@ export function normalise(r: LeadIn): Lead | null {
   const region = state ? regionNamed(state) : null;
   const st = region ? key(region.name) : key(state);
   const linkedin = txt(r.linkedin, 200);
+  const companyLinkedin = txt(r.companyLinkedin, 200);
   return {
     dedupe: email || `n:${key(name)}|${domain || key(company)}`,
     name: name || email, title, level: txt(r.level, 40), department: txt(r.department, 80),
@@ -137,6 +187,9 @@ export function normalise(r: LeadIn): Lead | null {
     linkedin: /^https?:\/\/([a-z]+\.)?linkedin\.com\//i.test(linkedin) ? linkedin : '',
     industry: txt(r.industry, 80), city, state: region ? region.name : state, country, postal: txt(r.postal, 12),
     size: txt(r.size, 40), revenue: txt(r.revenue, 30), founded: txt(r.founded, 4).replace(/\D/g, ''), keywords: txt(r.keywords, 240),
+    address: txt(r.address, 200), email_status: email ? emailStatusOf(r.emailStatus) : '',
+    company_linkedin: /^https?:\/\/([a-z]+\.)?linkedin\.com\//i.test(companyLinkedin) ? companyLinkedin : '',
+    social: txt(r.social, 300), codes: txt(r.codes, 80), technologies: txt(r.technologies, 300), extra: extraOf(r.extra),
     ind_k: key(txt(r.industry, 80)), st_k: st, ct_k: key(city), co_k: co, title_k: key(title), has_email: email ? 1 : 0,
   };
 }
@@ -144,6 +197,7 @@ export function normalise(r: LeadIn): Lead | null {
 /** The columns written, in order — `insertSql` and `insertArgs` must agree. */
 export const COLS = ['dedupe', 'name', 'title', 'level', 'department', 'company', 'website', 'domain', 'email', 'phone', 'linkedin',
   'industry', 'city', 'state', 'country', 'postal', 'size', 'revenue', 'founded', 'keywords',
+  'address', 'email_status', 'company_linkedin', 'social', 'codes', 'technologies', 'extra',
   'ind_k', 'st_k', 'ct_k', 'co_k', 'title_k', 'has_email'] as const;
 
 /** One person, unless they are already there or were removed on request. */

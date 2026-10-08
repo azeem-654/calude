@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle, FileUp, Loader, Pause, RefreshCw, Trash2, Undo2, Users } from 'lucide-react';
 import { dirCall, importFile, type DirAdmin, type ImportTick } from '../../services/leadDirectory';
+import { FIELD_LABEL, previewFile, type FilePreview } from '../../services/leadImport';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -37,6 +38,10 @@ export default function LeadDirectoryAdmin() {
   const [removeEmail, setRemoveEmail] = useState('');
   const [msg, setMsg] = useState('');
   const [undoing, setUndoing] = useState('');
+  /* A chosen file waits here, with what was detected in it, until the owner says load it. */
+  const [pending, setPending] = useState<File | null>(null);
+  const [preview, setPreview] = useState<FilePreview | null>(null);
+  const [previewErr, setPreviewErr] = useState('');
   /* Time left, worked out as each batch lands — from the rate since this run began. */
   const [left, setLeft] = useState(0);
   const ctl = useRef<AbortController | null>(null);
@@ -111,7 +116,7 @@ export default function LeadDirectoryAdmin() {
       </div>
       <p style={{ fontSize: 13, color: MUTED, margin: 0, lineHeight: 1.6 }}>
         Load your own lead files — CSV, a ZIP of CSVs, or .csv.gz, of any size. The file is read here in your browser a
-        piece at a time and only the columns the directory keeps are sent, so there is no upload limit. Customers find these people under
+        piece at a time, so there is no upload limit. Before it loads you see which column became which field; columns it does not recognise are kept with each person under their own name. Customers find these people under
         <strong> Customers → Lead Directory</strong>, see them with the email and phone hidden, and spend an allowance
         ({a ? `${a.budget.day} a day, ${fmtN(a.budget.month)} a month` : '…'}) to see them in full.
       </p>
@@ -145,8 +150,55 @@ export default function LeadDirectoryAdmin() {
             <label style={{ ...btn, justifySelf: 'start', background: running ? '#f1f5f9' : '#4f46e5', color: running ? MUTED : '#fff', borderColor: 'transparent', cursor: running ? 'default' : 'pointer' }}>
               <FileUp size={13} /> {running ? 'Loading…' : 'Choose a CSV or ZIP'}
               <input data-field="leaddir.file" type="file" accept=".csv,.zip,.gz,.tsv,.txt" disabled={running} style={{ display: 'none' }}
-                onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void run(f); }} />
+                onChange={e => {
+                  const f = e.target.files?.[0]; e.target.value = '';
+                  if (!f) return;
+                  setPending(f); setPreview(null); setPreviewErr(''); setDone(''); setError('');
+                  previewFile(f).then(setPreview).catch(err => setPreviewErr(err instanceof Error ? err.message : 'Could not read this file.'));
+                }} />
             </label>
+            {pending && !running && (
+              <div style={{ display: 'grid', gap: 8, border: `1px solid ${LINE}`, borderRadius: 12, padding: 12, background: '#fafbff' }} data-testid="lead-preview">
+                <div style={{ fontSize: 13, fontWeight: 700, color: INK, overflowWrap: 'anywhere' }}>{pending.name} · {fmtBytes(pending.size)}</div>
+                {previewErr && <div role="alert" style={note('#fef2f2', '#b42318')}>{previewErr}</div>}
+                {!preview && !previewErr && <div style={{ fontSize: 12, color: MUTED }}><Loader size={12} className="spin" /> Reading the columns…</div>}
+                {preview && <>
+                  <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                    {preview.parts.length > 1 ? `${preview.parts.length} files in the ZIP — showing the first, ${preview.parts[0]}. Each is matched by its own header. ` : ''}
+                    Read as {preview.encoding.toUpperCase()}, columns separated by {preview.delimiter === ',' ? 'commas' : preview.delimiter === ';' ? 'semicolons' : preview.delimiter === '|' ? 'pipes' : 'tabs'}.
+                    {' '}<strong>{preview.columns.filter(c => c.to !== 'kept' && c.to !== 'blank').length}</strong> of {preview.columns.length} columns matched a field;
+                    the other {preview.columns.filter(c => c.to === 'kept').length} are kept with each person under their own name — nothing in the file is thrown away.
+                  </div>
+                  {!preview.usable && <div role="alert" style={note('#fef2f2', '#b42318')}>No column here holds a name or an email address, so nobody could be loaded from it. Check the file has a header row.</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {preview.columns.map((c, i) => (
+                      <span key={i} title={c.to === 'kept' ? 'Kept as it is, under this name' : c.to === 'blank' ? 'This column has no header' : `Becomes: ${FIELD_LABEL[c.to]}`}
+                        style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 8, border: `1px solid ${c.to === 'kept' || c.to === 'blank' ? LINE : '#c7d2fe'}`, background: c.to === 'kept' || c.to === 'blank' ? '#fff' : '#eef2ff', color: c.to === 'blank' ? '#94a3b8' : INK, overflowWrap: 'anywhere' }}>
+                        {c.header || '(no header)'} <span style={{ color: MUTED }}>→ {c.to === 'kept' ? 'kept as is' : c.to === 'blank' ? 'skipped' : FIELD_LABEL[c.to]}</span>
+                      </span>
+                    ))}
+                  </div>
+                  {!!preview.sample.length && (
+                    <div style={{ fontSize: 11.5, color: '#334155', lineHeight: 1.6 }}>
+                      <strong>First people, as they will be kept:</strong>
+                      {preview.sample.map((r, i) => (
+                        <div key={i} style={{ overflowWrap: 'anywhere' }}>
+                          {[r.name || [r.first, r.last].filter(Boolean).join(' '), r.title, r.company, r.email, r.phone, [r.city, r.state, r.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                          {r.emailStatus ? <span style={{ color: MUTED }}> · file says the email is “{r.emailStatus}”</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button data-testid="lead-preview-go" disabled={!preview.usable} onClick={() => { const f = pending; setPending(null); setPreview(null); void run(f); }}
+                      style={{ ...btn, background: preview.usable ? '#4f46e5' : '#f1f5f9', color: preview.usable ? '#fff' : MUTED, borderColor: 'transparent' }}>
+                      <FileUp size={12} /> Load these people
+                    </button>
+                    <button onClick={() => { setPending(null); setPreview(null); }} style={btn}>Choose another file</button>
+                  </div>
+                </>}
+              </div>
+            )}
             {running && (
               <div style={{ display: 'grid', gap: 6 }} data-testid="lead-import-progress">
                 <div style={{ height: 8, borderRadius: 99, background: '#eef2ff', overflow: 'hidden' }}>

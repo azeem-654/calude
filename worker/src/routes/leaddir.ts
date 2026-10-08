@@ -61,7 +61,7 @@ interface Req {
 const isOwner = (u: SessionUser) => u.role === 'agency' && !u.accountId;
 
 const PAGE = 50;
-const SHOWN = 'id, name, title, level, department, company, website, domain, email, phone, linkedin, industry, city, state, country, size, revenue, founded, keywords';
+const SHOWN = 'id, name, title, level, department, company, website, domain, email, phone, linkedin, industry, city, state, country, postal, size, revenue, founded, keywords, address, email_status, company_linkedin, social, codes, technologies, extra';
 
 type Row = Record<string, string | number | boolean | null>;
 
@@ -94,12 +94,21 @@ async function revealsUsed(db: D1Database, accountId: string) {
   return { day: Number(r?.d ?? 0), month: Number(r?.m ?? 0) };
 }
 
+const hideValues = (extra: unknown): string => {
+  try { return extra ? JSON.stringify(Object.fromEntries(Object.keys(JSON.parse(String(extra)) as Record<string, string>).map(k => [k, 'hidden']))) : ''; }
+  catch { return ''; }
+};
+
 /** The person as a customer sees them before revealing: who and where, with the means of contact hidden. */
 function masked(r: Row, revealed: boolean): Row {
   if (revealed) return { ...r, revealed: true };
   return {
     ...r, email: maskEmail(String(r.email ?? '')), phone: maskPhone(String(r.phone ?? '')),
-    linkedin: r.linkedin ? 'hidden' : '', revealed: false,
+    linkedin: r.linkedin ? 'hidden' : '', address: r.address ? 'hidden' : '', social: r.social ? 'hidden' : '',
+    /* The file's other columns can hold a second address or a home phone:
+       which columns there are is shown, not what is in them. */
+    extra: hideValues(r.extra),
+    revealed: false,
   };
 }
 

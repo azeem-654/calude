@@ -1,0 +1,94 @@
+/* The launch film for phones: 9:16, the whole film re-laid, for the site.
+   node vertical.mjs <ffmpeg> <src.mp4> <outdir> [--still t…]
+
+   The site played the 16:9 film as wide as a phone — a small rectangle in a
+   tall screen. The owner asked for a 9:16 version on phones. This lays the
+   film out the way ads.mjs lays its `full` cut (the film's own words stacked
+   above its product window, title and end cards whole, all over a canvas made
+   from the frame's own background), but from the published 16:9 MP4 — whose
+   timeline is the v4 master's — and keeps that file's own sound, so nothing is
+   re-mixed and the captions still line up. Then it makes the web copies: one
+   MP4 and an HLS ladder (hls-9x16/), same 4-second segments as the 16:9 one. */
+import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+
+const [FF, SRC, OUT, flag, ...stills] = process.argv.slice(2);
+const TMP = `${OUT}/tmp`;
+fs.mkdirSync(TMP, { recursive: true });
+const run = (args) => execFileSync(FF, ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' });
+
+/* Ranges of the master and how each is laid out (ads.mjs `full`). */
+const SEGS = [[0, 3.0, 'fit'], [3.0, 6.15, 'center'], [6.15, 320.75, 'split'], [320.75, 331.35, 'center']];
+const W = 1080, H = 1920;
+const piece = (crop, w, h, f, x, y) => ({ crop, w, h, f, x, y });
+/* As ads.mjs 9x16, except the site has no Reels profile row to keep clear of,
+   so the words start nearer the top and the window sits a little higher. */
+const L = {
+  split: [piece('780:660:40:200', 1000, 846, 40, 40, 150), piece('1000:840:840:120', 1080, 908, 14, 0, 960)],
+  fit: [piece('1920:1080:0:0', 1080, 608, 60, 0, 656)],
+  center: [piece('1200:1080:360:0', 1200, 1080, 80, -60, 420)],
+};
+const masks = {};
+const mask = (w, h, f) => {
+  const p = `${TMP}/mask_${w}x${h}_${f}.png`;
+  if (!masks[p] && !fs.existsSync(p)) run(['-f', 'lavfi', '-i', `color=white:s=${w}x${h}`, '-frames:v', '1', '-vf',
+    `format=gray,geq=lum='255*clip(min(min(X/${f}\\,(W-1-X)/${f})\\,min(Y/${f}\\,(H-1-Y)/${f}))\\,0\\,1)'`, p]);
+  masks[p] = 1;
+  return p;
+};
+function graph(kind) {
+  const ps = L[kind];
+  let g = `[0:v]split=${ps.length + 1}${ps.map((_, i) => `[s${i}]`).join('')}[sb];`;
+  if (kind === 'split') g += `[sb]crop=100:1080:0:0,scale=${W}:${H},boxblur=40:2[bg0];`;
+  else {
+    const [cw, , cx] = ps[0].crop.split(':').map(Number);
+    const h2 = 2 * Math.round(H / 4);
+    g += `[sb]split[t0][b0];[t0]crop=${cw}:90:${cx}:0,scale=${W}:${h2}[tt];[b0]crop=${cw}:90:${cx}:990,scale=${W}:${H - h2}[bb];[tt][bb]vstack,boxblur=30:2[bg0];`;
+  }
+  ps.forEach((p, i) => {
+    g += `movie=${mask(p.w, p.h, p.f)},loop=-1:1,setpts=N/30/TB[m${i}];`;
+    g += `[s${i}]crop=${p.crop},scale=${p.w}:${p.h}:flags=lanczos,format=rgba[c${i}];[c${i}][m${i}]alphamerge[p${i}];`;
+  });
+  ps.forEach((p, i) => { g += `[bg${i}][p${i}]overlay=${p.x}:${p.y}:shortest=1[bg${i + 1}];`; });
+  return g + `[bg${ps.length}]null`;
+}
+const kindAt = t => SEGS.find(([a, b]) => t >= a && t < b)?.[2] ?? 'center';
+
+if (flag === '--still') {
+  for (const t of stills.map(Number)) {
+    run(['-ss', String(t), '-i', SRC, '-filter_complex', `${graph(kindAt(t))},format=yuv420p[v]`, '-map', '[v]', '-frames:v', '1', `${OUT}/still_${t}.jpg`]);
+    console.log('still', t);
+  }
+  process.exit(0);
+}
+
+/* Each range at near-lossless quality, then one continuous encode with the source's sound. */
+const parts = SEGS.map(([a, b, kind], i) => {
+  const p = `${TMP}/part${i}.mp4`;
+  run(['-ss', String(a), '-to', String(b), '-i', SRC, '-filter_complex', `${graph(kind)},fps=30,format=yuv420p[v]`, '-map', '[v]', '-an', '-t', (b - a).toFixed(3),
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-r', '30', p]);
+  console.log('part', i, kind);
+  return p;
+});
+fs.writeFileSync(`${TMP}/list.txt`, parts.map(p => `file '${p.split('/').pop()}'`).join('\n'));
+const master = `${TMP}/vertical.mp4`;
+run(['-f', 'concat', '-safe', '0', '-i', `${TMP}/list.txt`, '-i', SRC, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'medium', '-crf', '14',
+  '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'copy', '-shortest', master]);
+
+/* The web copies. One MP4 for a browser without HLS; the ladder for the rest. */
+const GOP = ['-g', '120', '-keyint_min', '120', '-sc_threshold', '0'];
+run(['-i', master, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-b:v', '1100k', '-maxrate', '1800k', '-bufsize', '3600k', ...GOP,
+  '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', `${OUT}/launch-9x16.mp4`]);
+const RUNGS = [[1920, 1080, '1400k', '2400k'], [1280, 720, '800k', '1300k'], [854, 480, '420k', '700k']];
+for (const [h, w, br, mx] of RUNGS) {
+  const d = `${OUT}/hls-9x16/${h}`;
+  fs.mkdirSync(d, { recursive: true });
+  run(['-i', master, '-vf', `scale=${w}:${h}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', h > 1000 ? 'high' : 'main', '-b:v', br, '-maxrate', mx, '-bufsize', mx.replace('k', '') * 2 + 'k', ...GOP,
+    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', h > 1000 ? '96k' : '64k', '-ar', '48000',
+    '-f', 'hls', '-hls_time', '4', '-hls_playlist_type', 'vod', '-hls_segment_filename', `${d}/s%03d.ts`, `${d}/index.m3u8`]);
+  console.log('rung', h);
+}
+fs.writeFileSync(`${OUT}/hls-9x16/master.m3u8`, ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-INDEPENDENT-SEGMENTS',
+  ...RUNGS.flatMap(([h, w, br, mx]) => [`#EXT-X-STREAM-INF:BANDWIDTH=${parseInt(mx) * 1000 + 100000},AVERAGE-BANDWIDTH=${parseInt(br) * 1000 + 80000},RESOLUTION=${w}x${h},FRAME-RATE=30.000,CODECS="${h > 1000 ? 'avc1.640028' : 'avc1.4d401f'},mp4a.40.2"`, `${h}/index.m3u8`]),
+].join('\n') + '\n');
+console.log('done');

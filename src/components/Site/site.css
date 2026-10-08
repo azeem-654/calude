@@ -331,6 +331,23 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 
 .dc-nav-cta { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .dc-links + .dc-nav-cta { margin-left: 0; }
+.dc-nav-cta .dc-btn { white-space: nowrap; }
+/* SiteHome measures the nav and steps down until it fits on one line. */
+.dc-cta-short { display: none; }
+.dc-nav[data-fit='tight'] .dc-brand span,
+.dc-nav[data-fit='tiny'] .dc-brand span { display: none; }
+.dc-nav[data-fit='tiny'] { gap: 8px; padding: 0 10px; }
+.dc-nav[data-fit='tiny'] .dc-nav-cta { gap: 6px; }
+.dc-nav[data-fit='tiny'] .dc-nav-cta .dc-btn { padding: 8px 12px; font-size: 13px; }
+.dc-nav[data-fit='tiny'] .dc-cta-long { display: none; }
+.dc-nav[data-fit='tiny'] .dc-cta-short { display: inline; }
+/* On a phone the page's words scroll right under the bar: it has to hide them,
+   not show them through. */
+@media (max-width: 760px) {
+  .dc-nav.stuck { background: #0b0d0b; }
+  /* The links are hidden here, so the buttons take the right-hand end themselves. */
+  .dc-links + .dc-nav-cta { margin-left: auto; }
+}
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 
@@ -1942,6 +1959,12 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 }
 .dc .dc-film-foot p { color: var(--muted); font-size: 13.5px; }
 .dc-film-video::cue { font: 600 clamp(14px, 1.6vw, 22px)/1.35 Inter, system-ui, sans-serif; background: rgba(4, 6, 10, 0.78); }
+/* A phone plays the 9:16 film (LaunchFilm `tall`): as wide as the screen and
+   as tall as that makes it, or the height under the nav if that is less —
+   the frame keeps the film's own shape, so nothing is cropped. */
+.dc-film.tall { --film-h: min(calc(100vw * 16 / 9), calc(var(--dc-vh) - var(--dc-nav-h))); margin-top: 28px; }
+.dc-film.tall .dc-film-frame { width: min(100%, calc(var(--film-h) * 9 / 16)); }
+.dc-film.tall .dc-film-video::cue { font-size: 15px; }
 
 /* ── AI Prospecting (ProspectingShowcase.tsx) ──
    Real screens in the reel beside the list; under them, a moving row of

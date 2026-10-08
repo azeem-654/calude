@@ -96,61 +96,88 @@ export class CsvParser {
   }
 }
 
-/** Comma, semicolon or tab — whichever the header line has most of. */
+/** Comma, semicolon, tab or pipe — whichever the header line has most of, counted outside quotes. */
 export function sniffDelimiter(firstLine: string): string {
-  const count = (c: string) => firstLine.split(c).length - 1;
-  return [',', ';', '\t'].sort((a, b) => count(b) - count(a))[0];
+  const bare = firstLine.replace(/"[^"]*"/g, '');
+  const count = (c: string) => bare.split(c).length - 1;
+  return [',', ';', '\t', '|'].sort((a, b) => count(b) - count(a))[0];
 }
 
 /* ── The columns ────────────────────────────────────────────────────────── */
 
 export type LeadField = 'name' | 'first' | 'last' | 'title' | 'level' | 'department' | 'company' | 'website' | 'email' | 'phone'
-  | 'linkedin' | 'industry' | 'city' | 'state' | 'country' | 'postal' | 'size' | 'revenue' | 'founded' | 'keywords';
+  | 'linkedin' | 'industry' | 'city' | 'state' | 'country' | 'postal' | 'size' | 'revenue' | 'founded' | 'keywords'
+  | 'address' | 'emailStatus' | 'companyLinkedin' | 'social' | 'codes' | 'technologies';
 
 /**
  * What each field is called in the files people have: Leads.cm's export
- * (the owner's sample) first, then the usual CRM and data-vendor names. In
+ * (the owner's sample) first, then the usual CRM and data-vendor names
+ * (Apollo, ZoomInfo, Seamless, Lusha, Hunter, UpLead and CRM exports). In
  * order of preference — a person's own phone before the company's switchboard,
- * where the person lives before where the company does.
+ * where the person lives before where the company does, a work address before
+ * a personal one. A column that matches none of these is not dropped: it is
+ * kept with the person under its own header (`extra`).
  */
 export const ALIASES: Record<LeadField, string[]> = {
-  name: ['name', 'full name', 'fullname', 'contact name', 'person name', 'contact'],
-  first: ['first name', 'firstname', 'first', 'given name'],
-  last: ['last name', 'lastname', 'last', 'surname', 'family name'],
-  title: ['title', 'job title', 'jobtitle', 'position', 'designation', 'role'],
-  level: ['managementlevel', 'management level', 'seniority', 'level'],
-  department: ['department', 'departments', 'function'],
-  company: ['company', 'company name', 'companyname', 'organization', 'organisation', 'account name', 'business name', 'employer'],
-  website: ['website', 'company website', 'domain', 'company domain', 'url', 'web', 'website url'],
-  email: ['email', 'email address', 'e mail', 'work email', 'business email', 'emails', 'email 1', 'primary email'],
-  phone: ['phone', 'direct phone', 'mobile', 'mobile phone', 'phone number', 'work phone', 'telephone', 'cphone', 'company phone', 'corporate phone'],
-  linkedin: ['linkedin', 'linkedin url', 'person linkedin url', 'linkedin profile', 'profile url'],
-  industry: ['industry', 'industries', 'sector'],
-  city: ['city', 'person city', 'location city', 'ccity', 'company city'],
-  state: ['state', 'region', 'province', 'person state', 'state province', 'cstate', 'company state'],
-  country: ['country', 'person country', 'ccountry', 'company country'],
-  postal: ['postalcode', 'postal code', 'zip', 'zip code', 'zipcode', 'postcode', 'cpostalcode'],
-  size: ['companysize', 'company size', 'employees', 'employee count', 'number of employees', 'size', 'headcount'],
-  revenue: ['revenue', 'annual revenue', 'company revenue'],
-  founded: ['foundedyear', 'founded year', 'founded', 'year founded'],
-  keywords: ['keywords', 'company keywords', 'specialties', 'specialities', 'tags'],
+  name: ['name', 'full name', 'fullname', 'contact name', 'person name', 'contact', 'contact full name', 'lead name', 'prospect name'],
+  first: ['first name', 'firstname', 'first', 'given name', 'contact first name', 'fname', 'forename', 'prenom', 'vorname', 'nombre'],
+  last: ['last name', 'lastname', 'last', 'surname', 'family name', 'contact last name', 'lname', 'nom', 'nachname', 'apellido'],
+  title: ['title', 'job title', 'jobtitle', 'position', 'designation', 'role', 'contact title', 'job role', 'occupation', 'headline'],
+  level: ['managementlevel', 'management level', 'seniority', 'level', 'seniority level', 'job level', 'management level seniority'],
+  department: ['department', 'departments', 'function', 'job function', 'sub departments', 'division'],
+  company: ['company', 'company name', 'companyname', 'organization', 'organisation', 'organization name', 'account name', 'business name', 'employer', 'company legal name', 'firm'],
+  website: ['website', 'company website', 'domain', 'company domain', 'url', 'web', 'website url', 'company website domain', 'company url', 'web address', 'homepage', 'site'],
+  email: ['email', 'email address', 'e mail', 'work email', 'business email', 'emails', 'email 1', 'primary email', 'contact email', 'corporate email',
+    'professional email', 'email address 1', 'email 2', 'secondary email', 'other email', 'additional email', 'personal email', 'private email'],
+  phone: ['phone', 'direct phone', 'direct phone number', 'direct dial', 'mobile', 'mobile phone', 'mobile number', 'cell', 'cell phone', 'phone number',
+    'contact phone', 'contact phone 1', 'work phone', 'telephone', 'tel', 'cphone', 'phone 1', 'company phone', 'corporate phone', 'company hq phone',
+    'hq phone', 'office phone', 'main phone', 'business phone', 'home phone', 'other phone'],
+  linkedin: ['linkedin', 'linkedin url', 'person linkedin url', 'linkedin profile', 'linkedin profile url', 'profile url', 'contact linkedin url',
+    'linkedin contact profile url', 'contact li profile url', 'li profile url', 'linkedin link'],
+  industry: ['industry', 'industries', 'sector', 'primary industry', 'company industry', 'industry type', 'vertical', 'business type', 'category'],
+  city: ['city', 'person city', 'location city', 'contact city', 'town', 'ccity', 'company city', 'hq city'],
+  state: ['state', 'region', 'province', 'person state', 'state province', 'contact state', 'county', 'cstate', 'company state', 'hq state'],
+  country: ['country', 'person country', 'contact country', 'country name', 'ccountry', 'company country', 'hq country'],
+  postal: ['postalcode', 'postal code', 'zip', 'zip code', 'zipcode', 'postcode', 'post code', 'contact zip', 'cpostalcode', 'company zip', 'company postal code'],
+  size: ['companysize', 'company size', 'employees', 'employee count', 'number of employees', 'num employees', 'size', 'headcount', 'employee range',
+    'employees range', 'employee size', 'company employee count', 'staff count', 'company headcount'],
+  revenue: ['revenue', 'annual revenue', 'company revenue', 'revenue range', 'revenue in 000s usd', 'revenue usd', 'estimated revenue', 'sales volume', 'turnover'],
+  founded: ['foundedyear', 'founded year', 'founded', 'year founded', 'founding year', 'year established', 'established'],
+  keywords: ['keywords', 'company keywords', 'specialties', 'specialities', 'tags', 'company description', 'description', 'services'],
+  address: ['address', 'street', 'street address', 'address 1', 'address line 1', 'mailing address', 'contact address', 'company address',
+    'company street address', 'company street', 'hq address', 'location', 'full address'],
+  emailStatus: ['email status', 'email verification', 'email verification status', 'email verified', 'email confidence', 'email validity',
+    'verification status', 'email quality', 'mx status', 'deliverability', 'email deliverability'],
+  companyLinkedin: ['company linkedin url', 'company linkedin', 'company li profile url', 'organization linkedin url', 'linkedin company url', 'company linkedin profile'],
+  social: ['facebook url', 'facebook', 'twitter url', 'twitter', 'x url', 'instagram', 'instagram url', 'youtube', 'youtube url', 'tiktok', 'company facebook url', 'company twitter url'],
+  codes: ['sic code', 'sic codes', 'sic', 'primary sic', 'naics', 'naics code', 'naics codes', 'primary naics'],
+  technologies: ['technologies', 'technology', 'tech stack', 'technographics', 'company technologies'],
 };
 
-const hkey = (h: string) => h.replace(/^\ufeff/, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+/** A header as a key: no BOM, accents or punctuation, lower case. */
+export const hkey = (h: string) => h.replace(/^\ufeff/, '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-/** For each field, the columns that may hold it, best first. A field with none is simply not imported. */
-export type Mapping = Partial<Record<LeadField, number[]>>;
+/**
+ * For each field, the columns that may hold it, best first, and the columns
+ * kept as they are (`extra`). A field with no column is simply not filled.
+ * Fields that gather several columns (social links, codes) join them.
+ */
+export type Mapping = Partial<Record<LeadField, number[]>> & { extra?: number[]; header?: string[] };
+const JOINED: LeadField[] = ['social', 'codes'];
 
 export function mapHeader(header: string[]): Mapping {
   const keys = header.map(hkey);
-  const out: Mapping = {};
+  const out: Mapping = { header };
+  const used = new Set<number>();
   for (const f of Object.keys(ALIASES) as LeadField[]) {
     const cols: number[] = [];
     for (const a of ALIASES[f]) {
-      keys.forEach((k, i) => { if ((k === a || k.replace(/ /g, '') === a.replace(/ /g, '')) && !cols.includes(i)) cols.push(i); });
+      keys.forEach((k, i) => { if (!used.has(i) && (k === a || k.replace(/ /g, '') === a.replace(/ /g, '')) && !cols.includes(i)) cols.push(i); });
     }
-    if (cols.length) out[f] = cols;
+    if (cols.length) { out[f] = cols; cols.forEach(i => used.add(i)); }
   }
+  const extra = keys.map((k, i) => (k && !used.has(i) ? i : -1)).filter(i => i >= 0);
+  if (extra.length) out.extra = extra;
   return out;
 }
 
@@ -159,17 +186,60 @@ export function mappingUsable(m: Mapping): boolean {
   return !!(m.email || m.name || (m.first && m.last));
 }
 
-export type LeadRow = Partial<Record<LeadField, string>>;
+/** Which field each column went to, for the owner to read before loading: [header, field | 'kept' | 'empty header']. */
+export function describeMapping(m: Mapping): { header: string; to: LeadField | 'kept' | 'blank' }[] {
+  const h = m.header ?? [];
+  return h.map((header, i) => {
+    const f = (Object.keys(ALIASES) as LeadField[]).find(x => m[x]?.includes(i));
+    return { header, to: f ?? (m.extra?.includes(i) ? 'kept' : 'blank') };
+  });
+}
 
-/** One CSV row → the fields the directory keeps, each the first non-empty column for it. */
+export type LeadRow = Partial<Record<LeadField, string>> & { extra?: Record<string, string> };
+
+const LOOKS_EMAIL = /^(mailto:)?[^\s@]+@[^\s@]+\.[a-z]{2,24}$/i;
+
+/**
+ * One CSV row → the fields the directory keeps, each the first non-empty
+ * column for it — for an email, the first that is an address at all, so a
+ * blank or "N/A" work email falls through to the next column. Columns no
+ * field claimed go into `extra` by their own header.
+ */
 export function rowToLead(row: string[], m: Mapping): LeadRow | null {
   const out: LeadRow = {};
-  for (const f of Object.keys(m) as LeadField[]) {
-    for (const i of m[f]!) {
-      const v = (row[i] ?? '').trim();
-      /* Company descriptions run to hundreds of kilobytes; nothing kept is longer than this. */
-      if (v) { out[f] = v.slice(0, 400); break; }
+  for (const f of Object.keys(ALIASES) as LeadField[]) {
+    const cols = m[f];
+    if (!cols) continue;
+    if (JOINED.includes(f)) {
+      const vals = cols.map(i => (row[i] ?? '').trim()).filter(Boolean);
+      if (vals.length) out[f] = vals.join(' · ').slice(0, 400);
+      continue;
     }
+    for (const i of cols) {
+      /* Company descriptions run to hundreds of kilobytes; nothing kept is longer than this. */
+      const v = (row[i] ?? '').trim();
+      if (!v) continue;
+      if (f === 'email') {
+        const e = v.split(/[;,\s]+/).find(x => LOOKS_EMAIL.test(x));
+        if (!e) continue;
+        out.email = e.replace(/^mailto:/i, '');
+        /* The verdict belongs to the address it was given for. */
+        break;
+      }
+      out[f] = v.slice(0, 400);
+      break;
+    }
+  }
+  /* A file's email status speaks for its first email column; when that was
+     blank and a later one was taken, the status is not this address's. */
+  if (out.email && m.email && m.emailStatus) {
+    const first = (row[m.email[0]] ?? '').trim();
+    if (!first.includes(out.email)) delete out.emailStatus;
+  }
+  if (m.extra && m.header) {
+    const extra: Record<string, string> = {};
+    for (const i of m.extra) { const v = (row[i] ?? '').trim(); if (v) extra[m.header[i].replace(/^\ufeff/, '').trim().slice(0, 60)] = v.slice(0, 300); }
+    if (Object.keys(extra).length) out.extra = extra;
   }
   return out.email || out.name || out.first || out.last ? out : null;
 }
@@ -254,6 +324,46 @@ export async function entryStream(file: Blob, e: ZipEntry, onBytes?: (n: number)
   throw new Error(`${e.name} is compressed in a way browsers cannot open (method ${e.method}). Re-save the ZIP with ordinary (Deflate) compression.`);
 }
 
+/* ── Text, in whatever encoding the file was saved in ─────────────────── */
+
+/**
+ * Which encoding the first bytes are in. Excel saves "Unicode text" as
+ * UTF-16 with a byte-order mark, and an older "CSV" as Windows-1252; read as
+ * UTF-8 either becomes a file of garbled names. A BOM says which; otherwise
+ * the first 64 KB that are not valid UTF-8 mean Windows-1252.
+ */
+export function encodingOf(head: Uint8Array): string {
+  if (head[0] === 0xff && head[1] === 0xfe) return 'utf-16le';
+  if (head[0] === 0xfe && head[1] === 0xff) return 'utf-16be';
+  /* A multi-byte character cut at the end of the sample is not an error. */
+  let end = head.length;
+  let lead = end - 1;
+  while (lead > 0 && end - lead < 4 && (head[lead] & 0xc0) === 0x80) lead--;
+  const need = head[lead] >= 0xf0 ? 4 : head[lead] >= 0xe0 ? 3 : head[lead] >= 0xc0 ? 2 : 1;
+  if (lead >= 0 && need > 1 && end - lead < need) end = lead;
+  try { new TextDecoder('utf-8', { fatal: true }).decode(head.subarray(0, end)); return 'utf-8'; }
+  catch { return 'windows-1252'; }
+}
+
+/** The bytes as text: the first 64 KB are looked at to choose the encoding, then put back in front. */
+export async function decoded(stream: ReadableStream<Uint8Array>): Promise<ReadableStream<string>> {
+  const r = stream.getReader();
+  const head: Uint8Array[] = [];
+  let n = 0;
+  let done = false;
+  while (n < 65_536) { const x = await r.read(); if (x.done) { done = true; break; } head.push(x.value); n += x.value.byteLength; }
+  const all = new Uint8Array(n);
+  let o = 0;
+  for (const c of head) { all.set(c, o); o += c.byteLength; }
+  const enc = encodingOf(all);
+  const joined = new ReadableStream<Uint8Array>({
+    start(ctl) { if (n) ctl.enqueue(all); if (done) ctl.close(); },
+    async pull(ctl) { const x = await r.read(); if (x.done) ctl.close(); else ctl.enqueue(x.value); },
+    cancel(why) { return r.cancel(why); },
+  });
+  return joined.pipeThrough(new TextDecoderStream(enc) as unknown as TransformStream<Uint8Array, string>);
+}
+
 /* ── A whole file, row by row ───────────────────────────────────────────── */
 
 export interface Source { name: string; size: number; open: (onBytes?: (n: number) => void) => Promise<ReadableStream<Uint8Array>> }
@@ -294,7 +404,7 @@ export async function readLeads(
     const src = sources[si];
     let partBytes = 0;
     const stream = await src.open(n => { partBytes += n; });
-    const reader = stream.pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>).getReader();
+    const reader = (await decoded(stream)).getReader();
     let parser: CsvParser | null = null;
     let mapping: Mapping | null = null;
     let header: string[] | null = null;
@@ -337,3 +447,56 @@ export async function readLeads(
   }
   return { rows: index };
 }
+
+/* ── A look at the file before loading it ──────────────────────────────── */
+
+export interface FilePreview {
+  /** The parts that will be read (one for a CSV, each CSV in a ZIP). */
+  parts: string[];
+  /** The first part's columns and where each goes. */
+  columns: { header: string; to: LeadField | 'kept' | 'blank' }[];
+  /** The first few people as they would be kept. */
+  sample: LeadRow[];
+  encoding: string;
+  delimiter: string;
+  usable: boolean;
+}
+
+/**
+ * The first part's header and first rows, mapped — so the owner sees which
+ * column became which field (and which are kept as they are) before
+ * millions of rows go in, rather than finding out afterwards.
+ */
+export async function previewFile(file: File): Promise<FilePreview> {
+  const sources = await sourcesOf(file);
+  const stream = await sources[0].open();
+  const raw = stream.getReader();
+  const head: Uint8Array[] = [];
+  let n = 0;
+  while (n < 262_144) { const x = await raw.read(); if (x.done) break; head.push(x.value); n += x.value.byteLength; }
+  await raw.cancel().catch(() => {});
+  const all = new Uint8Array(n);
+  let o = 0;
+  for (const c of head) { all.set(c, o); o += c.byteLength; }
+  const encoding = encodingOf(all);
+  let text = new TextDecoder(encoding).decode(all);
+  /* The sample ends wherever the bytes did: drop the cut-off last line. */
+  if (n >= 262_144) text = text.slice(0, Math.max(text.lastIndexOf('\n'), 0));
+  const nl = text.indexOf('\n');
+  const delimiter = sniffDelimiter(text.slice(0, nl > 0 ? nl : 4000));
+  const p = new CsvParser(delimiter);
+  const rows = [...p.push(text), ...p.end()];
+  const header = rows[0] ?? [];
+  const m = mapHeader(header);
+  const sample = rows.slice(1, 40).map(r => rowToLead(r, m)).filter((x): x is LeadRow => !!x).slice(0, 3);
+  return { parts: sources.map(s => s.name), columns: describeMapping(m), sample, encoding, delimiter: delimiter === '\t' ? 'tab' : delimiter, usable: mappingUsable(m) };
+}
+
+/** What each field is called on the preview. */
+export const FIELD_LABEL: Record<LeadField, string> = {
+  name: 'Full name', first: 'First name', last: 'Last name', title: 'Job title', level: 'Seniority', department: 'Department',
+  company: 'Company', website: 'Website', email: 'Email', phone: 'Phone', linkedin: 'LinkedIn profile', industry: 'Industry',
+  city: 'City', state: 'State / region', country: 'Country', postal: 'Postal code', size: 'Company size', revenue: 'Revenue',
+  founded: 'Founded', keywords: 'Keywords', address: 'Street address', emailStatus: "File's email status",
+  companyLinkedin: 'Company LinkedIn', social: 'Social profiles', codes: 'SIC / NAICS', technologies: 'Technologies',
+};

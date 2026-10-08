@@ -15,8 +15,7 @@ place for 6 GB of people's names, emails and phone numbers.
 **Load them inside your own app instead.** Go to **Settings → Platform services →
 Lead directory → Choose a CSV or ZIP**. Your browser reads the file from your
 disk in pieces, so there is **no size limit**. A 3.3 GB ZIP is fine, and it
-never has to be uploaded whole. Only the columns the directory keeps are sent,
-500 people at a time.
+never has to be uploaded whole. People are sent 500 at a time.
 
 That card is where every future load goes too. You can also hand me a new file
 format; if its columns have unusual names, I add them to the column list in
@@ -61,8 +60,12 @@ the percentage, people added and duplicates skipped, and estimates the time left
      which it already has for the main database.
 2. Type where the leads came from in the first box, e.g. *Leads.cm — US real
    estate, Oct 2026*. Only you see this.
-3. Press **Choose a CSV or ZIP** and pick the 3.3 GB ZIP. Every CSV inside is
-   read in turn; folders, PDFs and macOS's `__MACOSX` copies are skipped.
+3. Press **Choose a CSV or ZIP** and pick the 3.3 GB ZIP. Before anything is
+   loaded you see **what was detected**: every column of the file and the field
+   it became (or "kept as is"), the first three people as they will be kept,
+   and how the file was read (its text encoding and separator). Check it, then
+   press **Load these people**. Every CSV inside is read in turn; folders, PDFs
+   and macOS's `__MACOSX` copies are skipped.
 4. If it stops (the laptop sleeps, the Wi-Fi drops, you press **Pause**), choose
    **the same file** again. It carries on from the row after the last one sent.
    It does not start again.
@@ -74,8 +77,30 @@ Columns recognised automatically include Leads.cm's own export (name, title,
 managementlevel, industry, city, state, country, email, phone/cphone, website,
 company, companysize, linkedin, revenue, foundedyear, keywords) and the usual CRM
 names (First Name, Last Name, Email Address, Company Name, Job Title, Zip Code…).
-A person's own phone is used first, then the company's. The company
-description, which runs to 190 KB in one row of your sample, is not kept.
+Apollo, ZoomInfo, Seamless, Lusha and Hunter exports are recognised too
+(Corporate Phone, Person Linkedin Url, Company Linkedin Url, # Employees,
+Employee Range, Email Status, Street, Facebook/Twitter Url, SIC Code, NAICS,
+Technologies, Work/Personal Email…), and headers are matched without regard to
+capitals, accents, spaces or punctuation. A person's own phone is used first,
+then the company's; a work email first, then a personal one — and a blank or
+"N/A" email falls through to the next column. Files saved by Excel as "Unicode
+text" (UTF-16) or as an older Windows CSV are read correctly, and comma,
+semicolon, tab and pipe separators all work.
+
+**Nothing in the file is thrown away.** A column the directory has no field for
+is kept with each person under its own header (up to 2,000 characters a
+person), shown to customers only after they reveal that person, and copied onto
+the contact when they add them. Long company descriptions are cut to their
+first few hundred characters.
+
+**Emails are checked when they are used.** If your file says an email is
+verified, customers see **list: verified** beside it — that is the seller's
+word, not ours. When a customer adds people to Contacts, every address is
+checked again (format, domain, mail server — the same free check AI Prospecting
+uses), the result is written on the contact and tagged (*verified email*,
+*email domain ok*, *risky email*, *email bounces*), and the screen says how many
+of each. Addresses are not checked during a load: millions of lookups would
+take days and fill the main database.
 
 A load done by mistake can be taken back out with **Undo this load**. Someone who
 asks to be removed: type their email under **Remove a person who asks**. They

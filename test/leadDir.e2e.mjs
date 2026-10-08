@@ -124,6 +124,10 @@ fs.mkdirSync('test-results', { recursive: true });
   ok('Platform services lists the directory', (await page.locator('[data-service="lead_directory"]').count()) === 1);
   await card.locator('[data-field="leaddir.label"]').fill('Test file — Florida and Texas');
   await card.locator('[data-field="leaddir.file"]').setInputFiles({ name: 'florida-texas.zip', mimeType: 'application/zip', buffer: ZIP });
+  /* The owner sees what was detected before anything loads. */
+  await card.getByTestId('lead-preview-go').waitFor({ timeout: 15000 });
+  ok('the preview names the columns it matched', /matched a field/.test(await card.getByTestId('lead-preview').innerText()));
+  await card.getByTestId('lead-preview-go').click();
   await card.getByText(/^Finished\./).waitFor({ timeout: 90_000 }).catch(() => {});
   const text = await card.innerText();
   ok('the card says the load finished', /Finished\./.test(text), text.slice(0, 800));

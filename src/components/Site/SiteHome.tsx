@@ -24,7 +24,7 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
@@ -322,6 +322,33 @@ export default function SiteHome() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  /*
+   * The nav must fit on one line whatever the phone. On a narrow phone with
+   * the system text size turned up, the name and both buttons ran past the
+   * edge and "Start free trial" was cut off. So it measures itself, the way
+   * the app's top bar does — written straight onto the element, because each
+   * step has to be laid out and measured in the same frame: `full`, then
+   * `tight` (the shield without the name), then `tiny` (smaller buttons, the
+   * trial button's short label).
+   */
+  const navRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const fit = () => {
+      for (const step of ['full', 'tight', 'tiny']) {
+        el.dataset.fit = step;
+        if (el.scrollWidth <= el.clientWidth + 1) return;
+      }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    for (const c of Array.from(el.children)) ro.observe(c);
+    document.fonts?.ready.then(fit).catch(() => {});
+    return () => ro.disconnect();
+  }, []);
+
   const chain = useRevealGroup<HTMLDivElement>('.dc-chain-node');
   const wall = useRevealGroup<HTMLDivElement>('.dc-wall-card');
   const own = useRevealGroup<HTMLDivElement>('.dc-own-card');
@@ -370,7 +397,7 @@ export default function SiteHome() {
       <Starfield />
 
       {/* ── Nav ── */}
-      <header className={`dc-nav${stuck ? ' stuck' : ''}`}>
+      <header ref={navRef} className={`dc-nav${stuck ? ' stuck' : ''}`}>
         <a className="dc-brand" href="#top">
           <LogoMark size={26} />
           <span>Protected Central</span>
@@ -387,7 +414,9 @@ export default function SiteHome() {
         </nav>
         <div className="dc-nav-cta">
           <a className="dc-btn dc-btn-ghost" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
-          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free trial</a>
+          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} aria-label="Start free trial" {...cross(appHref('/signup'))}>
+            <span className="dc-cta-long">Start free trial</span><span className="dc-cta-short" aria-hidden="true">Try free</span>
+          </a>
         </div>
       </header>
 

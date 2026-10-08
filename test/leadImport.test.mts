@@ -10,9 +10,9 @@
  */
 import { deflateRawSync, gzipSync } from 'node:zlib';
 import {
-  CsvParser, mapHeader, readLeads, rowToLead, sniffDelimiter, sourcesOf, zipEntries, type LeadRow,
+  CsvParser, describeMapping, encodingOf, mapHeader, readLeads, rowToLead, sniffDelimiter, sourcesOf, zipEntries, type LeadRow,
 } from '../src/services/leadImport';
-import { facetsOf, industriesLike, maskEmail, maskPhone, normalise, placeWhere, titleTerms } from '../worker/src/lib/leadDir';
+import { emailStatusOf, facetsOf, industriesLike, maskEmail, maskPhone, normalise, placeWhere, titleTerms } from '../worker/src/lib/leadDir';
 
 let pass = 0, fail = 0;
 const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else fail++; console.log(`${c ? '  ✓' : '  ✗'} ${n}${c ? '' : ` — ${JSON.stringify(d).slice(0, 300)}`}`); };
@@ -163,6 +163,45 @@ ok('an industry is matched on its words', JSON.stringify(industriesLike('real es
 ok('a word the industries do not have finds nothing rather than everything', inds.length === 0, inds);
 ok('an address is masked to its first letter and domain', maskEmail('kkelly@trammellcrow.com') === 'k•••••@trammellcrow.com', maskEmail('kkelly@trammellcrow.com'));
 ok('a phone keeps its area code only', maskPhone('(813) 449-4323') === '(813) •••-••••', maskPhone('(813) 449-4323'));
+
+/* ── A data vendor's export: every column either becomes a field or is kept ── */
+{
+  const H = ['First Name', 'Last Name', 'Title', 'Company Name', 'Company Domain', 'Corporate Phone', 'Mobile Phone', 'Person Linkedin Url',
+    'Company Linkedin Url', 'City', 'State', 'Country', 'Zip', 'Industry', '# Employees', 'Employee Range', 'Annual Revenue', 'Seniority',
+    'Departments', 'Email Status', 'Street', 'Facebook Url', 'Twitter Url', 'SIC Code', 'NAICS', 'Technologies', 'Founded Year',
+    'Work Email', 'Personal Email', 'Lead Source', 'Prénom'];
+  const m = mapHeader(H);
+  const d = describeMapping(m);
+  const to = (h: string) => d.find(x => x.header === h)?.to;
+  ok('first and last names are found', to('First Name') === 'first' && to('Last Name') === 'last');
+  ok('a work email before a personal one', JSON.stringify(m.email?.map(i => H[i])) === '["Work Email","Personal Email"]', m.email);
+  ok('street, email status, company profile, social, codes and technologies all have a field',
+    to('Street') === 'address' && to('Email Status') === 'emailStatus' && to('Company Linkedin Url') === 'companyLinkedin'
+    && to('Facebook Url') === 'social' && to('Twitter Url') === 'social' && to('SIC Code') === 'codes' && to('NAICS') === 'codes' && to('Technologies') === 'technologies', d);
+  ok('"# Employees" and "Employee Range" are company size', to('# Employees') === 'size' && to('Employee Range') === 'size');
+  ok('an accented header is read ("Prénom" is a first name)', to('Prénom') === 'first', d);
+  ok('a column nothing claims is kept, not dropped', to('Lead Source') === 'kept', d);
+  const row = ['Ana', 'Ruiz', 'Owner', 'Ruiz Homes', 'ruizhomes.example', '(305) 555-0100', '', 'https://www.linkedin.com/in/ana', '',
+    'Miami', 'FL', 'USA', '33130', 'Real estate', '12', '11-50', '$2M', 'Owner', 'Sales', 'Verified', '1 Brickell Ave',
+    'https://facebook.com/ruiz', 'https://x.com/ruiz', '6531', '531210', 'WordPress', '2009', 'N/A', 'ana.ruiz@mail.example', 'Expo 2026', 'Ana'];
+  const r = rowToLead(row, m)!;
+  ok('a blank or "N/A" work email falls through to the next address', r.email === 'ana.ruiz@mail.example', r);
+  ok('the file\'s email status is not given to a different address', r.emailStatus === undefined, r);
+  ok('kept columns travel under their own header', r.extra?.['Lead Source'] === 'Expo 2026', r.extra);
+  ok('social links and codes are joined, not just the first', r.social === 'https://facebook.com/ruiz · https://x.com/ruiz' && r.codes === '6531 · 531210', r);
+  const row2 = [...row]; row2[27] = 'ana@ruizhomes.example';
+  const r2 = rowToLead(row2, m)!;
+  ok('the status stays with the address it was given for', r2.email === 'ana@ruizhomes.example' && r2.emailStatus === 'Verified', r2);
+  const n = normalise({ ...r2, extra: r2.extra })!;
+  ok('kept as the directory keeps it: valid status, street, codes, extras', n.email_status === 'valid' && n.address === '1 Brickell Ave' && n.codes === '6531 · 531210'
+    && JSON.parse(n.extra)['Lead Source'] === 'Expo 2026', n);
+}
+ok('vendor verdicts read into four words', [emailStatusOf('Verified'), emailStatusOf('Catch-all'), emailStatusOf('Invalid'), emailStatusOf('Unverified'), emailStatusOf('Guessed'), emailStatusOf('Deliverable'), emailStatusOf('')].join() === 'valid,risky,invalid,unknown,risky,valid,',
+  [emailStatusOf('Verified'), emailStatusOf('Catch-all'), emailStatusOf('Invalid'), emailStatusOf('Unverified'), emailStatusOf('Guessed'), emailStatusOf('Deliverable')]);
+ok('a pipe-separated file is read as one', sniffDelimiter('name|email|"a, b"|city') === '|');
+ok('Excel "Unicode text" (UTF-16) is recognised', encodingOf(new Uint8Array([0xff, 0xfe, 0x6e, 0])) === 'utf-16le');
+ok('an old Windows CSV (é as one byte) is read as Windows-1252', encodingOf(new Uint8Array([0x4a, 0x6f, 0x73, 0xe9, 0x2c, 0x61])) === 'windows-1252');
+ok('UTF-8 cut mid-character at the end of the sample is still UTF-8', encodingOf(new Uint8Array([0x4a, 0x6f, 0x73, 0xc3, 0xa9, 0x2c, 0xc3])) === 'utf-8');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

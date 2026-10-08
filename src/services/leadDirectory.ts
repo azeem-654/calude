@@ -13,6 +13,11 @@ export interface DirPerson {
   id: number; name: string; title: string; level: string; department: string; company: string; website: string; domain: string;
   email: string; phone: string; linkedin: string; industry: string; city: string; state: string; country: string;
   size: string; revenue: string; founded: string; keywords: string; revealed: boolean;
+  postal?: string; address?: string; company_linkedin?: string; social?: string; codes?: string; technologies?: string;
+  /** The file's own verdict on the email: valid | risky | invalid | unknown | '' — never our check. */
+  email_status?: string;
+  /** The file's other columns, as JSON; before a reveal their values read "hidden". */
+  extra?: string;
 }
 export interface Facet { value: string; label: string; n: number }
 export interface DirStatus {

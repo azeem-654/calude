@@ -15,7 +15,8 @@ import { BookUser, CheckCircle, ExternalLink, Eye, Loader, Search, UserPlus } fr
 import { useApp } from '../../context/AppContext';
 import type { Contact } from '../../types';
 import { dirCall, type DirPerson, type DirStatus } from '../../services/leadDirectory';
-import { planImport } from '../../services/prospectImport';
+import { emailTag, planImport } from '../../services/prospectImport';
+import { verifyEmails, type Verdict } from '../../services/prospects';
 import { addToStaticList, createList, loadLists } from '../../services/contactLists';
 import { currentActor } from '../../services/contactPermissions';
 
@@ -94,22 +95,55 @@ export default function LeadDirectory() {
   const add = async () => {
     setWorking('add'); setError(''); setOutcome('');
     const full = await reveal();
+    if (!full) { setWorking(''); return; }
+    /*
+     * Every address is checked before it reaches Contacts — the same free
+     * check AI Prospecting runs (format, domain, mail server; cached a week
+     * across workspaces). A list file's own "verified" is the seller's word,
+     * kept beside it but never put in its place: lists go stale, and an
+     * address that bounces costs the sender's reputation, not the seller's.
+     */
+    setWorking('check');
+    const emails = [...new Set(full.map(p => p.email).filter(Boolean))];
+    const checks: Record<string, Verdict> = {};
+    let checkErr = '';
+    for (let i = 0; i < emails.length; i += 20) {
+      const r = await verifyEmails(emails.slice(i, i + 20), false);
+      Object.assign(checks, r.verdicts);
+      if (r.error) { checkErr = r.error; break; }
+    }
     setWorking('');
-    if (!full) return;
     const at = new Date().toISOString();
     const rows: Omit<Contact, 'id'>[] = full.map(p => {
       const [firstName, ...rest] = p.name.split(' ');
+      const v = p.email ? checks[p.email] : undefined;
+      const tag = emailTag(v);
+      let extra: Record<string, string> = {};
+      try { extra = p.extra ? JSON.parse(p.extra) as Record<string, string> : {}; } catch { /* not ours to fix here */ }
+      const known = {
+        foundAt: at, directoryId: String(p.id), industry: p.industry, seniority: p.level, department: p.department,
+        companySize: p.size, revenue: p.revenue, founded: p.founded, keywords: p.keywords, postalCode: p.postal ?? '',
+        companyLinkedin: p.company_linkedin ?? '', social: p.social ?? '', sicNaics: p.codes ?? '', technologies: p.technologies ?? '',
+        listEmailStatus: p.email_status ?? '',
+        ...(v ? { emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt } : {}),
+      };
+      /* The file's other columns travel too, under their own names, without overwriting ours. */
+      const fromFile = Object.fromEntries(Object.entries(extra).filter(([k, val]) => val && val !== 'hidden' && !(k in known)).slice(0, 25));
       return {
         name: p.name, email: p.email, phone: p.phone, status: 'prospect', source: 'Lead directory',
-        tags: ['lead directory', 'cold'], createdAt: at, lastActivity: at, value: 0,
+        tags: ['lead directory', 'cold', ...(tag ? [tag] : [])], createdAt: at, lastActivity: at, value: 0,
         firstName, lastName: rest.join(' ') || undefined, company: p.company || undefined, jobTitle: p.title || undefined,
         website: p.website || undefined, linkedin: p.linkedin || undefined,
-        address: [p.city, p.state, p.country].filter(Boolean).join(', ') || undefined,
-        customFields: Object.fromEntries(Object.entries({
-          foundAt: at, directoryId: String(p.id), industry: p.industry, seniority: p.level, companySize: p.size,
-        }).filter(([, v]) => v)) as Record<string, string>,
+        address: [p.address, p.city, p.state, p.postal, p.country].filter(Boolean).join(', ') || undefined,
+        customFields: Object.fromEntries(Object.entries({ ...fromFile, ...known }).filter(([, val]) => val)) as Record<string, string>,
       };
     });
+    if (checkErr) setError(`Added, but the email check stopped: ${checkErr} The rest are added without a check.`);
+    const counts = { verified: 0, ok: 0, risky: 0, bounce: 0 };
+    for (const e of emails) {
+      const st = checks[e]?.status;
+      if (st === 'valid') counts.verified++; else if (st === 'domain_ok') counts.ok++; else if (st === 'risky') counts.risky++; else if (st === 'invalid') counts.bounce++;
+    }
     const plan = planImport(rows, contacts);
     const made = plan.fresh.length ? bulkImportContacts(plan.fresh) : [];
     const fills = plan.known.filter(k => Object.keys(k.fill).length).map(k => ({ id: k.contact.id, updates: k.fill }));
@@ -124,7 +158,9 @@ export default function LeadDirectory() {
       where = `“${l.name}”`;
     }
     setPicked(new Set());
-    setOutcome(`${ids.length} on ${where} — ${made.length} new, ${plan.known.length} already in Contacts.`);
+    const checked = counts.verified + counts.ok + counts.risky + counts.bounce;
+    setOutcome(`${ids.length} on ${where} — ${made.length} new, ${plan.known.length} already in Contacts.`
+      + (checked ? ` Emails checked: ${[counts.verified && `${counts.verified} verified`, counts.ok && `${counts.ok} domain takes mail`, counts.risky && `${counts.risky} risky`, counts.bounce && `${counts.bounce} would bounce (tagged “email bounces”)`].filter(Boolean).join(', ')}.` : ''));
   };
 
   const lists = useMemo(() => loadLists().filter(l => l.type === 'static'), [outcome]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -214,7 +250,7 @@ export default function LeadDirectory() {
               </select>
               {!listId && <input value={listName} onChange={e => setListName(e.target.value)} placeholder="List name" style={{ ...input, width: 200 }} />}
               <button style={{ ...btn, background: '#4f46e5', color: '#fff', borderColor: 'transparent' }} disabled={!!working} onClick={() => void add()}>
-                {working === 'add' ? <Loader size={12} className="spin" /> : <UserPlus size={12} />} Add to Contacts
+                {working === 'add' || working === 'check' ? <Loader size={12} className="spin" /> : <UserPlus size={12} />} {working === 'check' ? 'Checking the emails…' : 'Add to Contacts'}
               </button>
             </div>
           )}
@@ -239,7 +275,18 @@ export default function LeadDirectory() {
                       </div>
                     </td>
                     <td style={td}>{[p.city, p.state].filter(Boolean).join(', ') || p.country}</td>
-                    <td style={{ ...td, fontFamily: p.revealed ? undefined : 'ui-monospace, monospace' }}>{p.email || <span style={{ color: MUTED }}>—</span>}</td>
+                    <td style={{ ...td, fontFamily: p.revealed ? undefined : 'ui-monospace, monospace' }}>
+                      {p.email || <span style={{ color: MUTED }}>—</span>}
+                      {/* The list's own word on it, labelled as the list's — checked again on adding. */}
+                      {p.email && p.email_status && p.email_status !== 'unknown' && (
+                        <span title="What the file this person came from says about the address. It is checked again when you add them to Contacts."
+                          style={{ display: 'inline-block', marginLeft: 6, fontFamily: 'Inter, system-ui, sans-serif', fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 99,
+                            background: p.email_status === 'valid' ? '#e8f6ee' : p.email_status === 'invalid' ? '#fef2f2' : '#fff7ed',
+                            color: p.email_status === 'valid' ? '#0f7b3d' : p.email_status === 'invalid' ? '#b42318' : '#9a3412' }}>
+                          list: {p.email_status === 'valid' ? 'verified' : p.email_status === 'invalid' ? 'bounces' : 'risky'}
+                        </span>
+                      )}
+                    </td>
                     <td style={td}>{p.phone || <span style={{ color: MUTED }}>—</span>}</td>
                     <td style={td}>{p.revealed && p.linkedin ? <a href={p.linkedin} target="_blank" rel="noreferrer noopener" style={{ color: '#0a66c2', fontSize: 12, fontWeight: 700 }}>Profile <ExternalLink size={10} /></a> : null}</td>
                   </tr>
