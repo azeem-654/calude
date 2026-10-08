@@ -8,7 +8,6 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { Toasts } from '../Layout/Header';
-import Welcome from './Welcome';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
 import { getSession } from '../../services/auth';
@@ -24,7 +23,7 @@ import SetupChecklist from '../Onboarding/SetupChecklist';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
-import DayBoard from './DayBoard';
+import DayBoard, { DayBar } from './DayBoard';
 import AutopilotPanel from './AutopilotPanel';
 import DueTasks from './DueTasks';
 import SupportWaiting from './SupportWaiting';
@@ -862,53 +861,23 @@ export default function Dashboard() {
     },
   );
 
-  /*
-   * Number the blocks in the order they are seen — top to bottom, then left
-   * to right — not the order they are written: the two-column flow moves a
-   * half-width block up beside an earlier one, and a section that has
-   * nothing to say draws nothing and takes no number. Re-read whenever the
-   * grid's size or contents change, once a frame at most.
-   */
-  const blocksRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const grid = blocksRef.current;
-    if (!grid) return;
-    let raf = 0;
-    const renumber = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const shown = [...grid.children].filter((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains('dash-block') && el.getBoundingClientRect().height > 0);
-        const at = shown.map(el => ({ el, r: el.getBoundingClientRect() }));
-        at.sort((a, b) => (Math.abs(a.r.top - b.r.top) > 4 ? a.r.top - b.r.top : a.r.left - b.r.left));
-        at.forEach(({ el }, i) => { if (el.dataset.n !== String(i + 1)) el.dataset.n = String(i + 1); });
-        [...grid.children].forEach(el => { if (el instanceof HTMLElement && !shown.includes(el)) delete el.dataset.n; });
-      });
-    };
-    renumber();
-    const ro = new ResizeObserver(renumber);
-    ro.observe(grid);
-    [...grid.children].forEach(el => ro.observe(el));
-    const mo = new MutationObserver(renumber);
-    mo.observe(grid, { childList: true });
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); mo.disconnect(); };
-  }, []);
-
   return (
     <div ref={ground} className="dash" style={{ minHeight: '100vh', paddingBottom: 32, overflow: 'hidden' }}>
       <span className="dash-glow" aria-hidden="true" />
       <span className="dash-glow-2" aria-hidden="true" />
-      {/* The welcome, the width of the page; the blocks below it. */}
+      {/* One slim bar on top — face, greeting and the day — then the blocks. */}
       <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 26 }}>
-        <Welcome greeting={greeting} firstName={firstName} appointments={appointments} openDeals={openDeals} contacts={contacts.length} />
+        <DayBar appointments={appointments} greeting={greeting} firstName={firstName}
+          line={`${openDeals} deal${openDeals === 1 ? '' : 's'} in motion · ${contacts.length} contact${contacts.length === 1 ? '' : 's'} on the books`} />
         <Toasts />
 
         {/*
-          The sections, as numbered blocks (dashboard.css, .dash-grid): one
-          column on a smaller screen, two side by side from 1280px, the wide
-          boards across the whole row. A section with nothing to say renders
-          nothing, its block collapses, and the numbering does not skip it.
+          The sections, as blocks (dashboard.css, .dash-grid): one column on a
+          smaller screen, two side by side from 1280px, the wide boards across
+          the whole row. A section with nothing to say renders nothing and its
+          block collapses.
         */}
-        <div className="dash-grid" ref={blocksRef}>
+        <div className="dash-grid">
 
         {/* ── What is left to set up ──
             First for as long as it has anything to say, because a workspace

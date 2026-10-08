@@ -14,6 +14,8 @@ import { ModuleMark } from './moduleIcons';
 import DayClocks from './WorldClocks';
 import { useTheme } from './useTheme';
 import { useTilt } from './useTilt';
+import UserFace from '../shared/UserFace';
+import { useMyAvatar } from '../../services/userAvatar';
 
 /**
  * The day, and the goals behind it.
@@ -90,47 +92,6 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
       padding: 18, display: 'flex', flexDirection: 'column', gap: 16,
     }}>
 
-      {/* ── The hour bar ── */}
-      <div className="day-bar" style={{
-        backgroundColor: CHROME, borderRadius: 999, padding: '10px 14px',
-        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-      }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: '#ffffff' }}>Your day</span>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
-            borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)',
-            fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.86)', whiteSpace: 'nowrap',
-          }}>
-            <CalendarDays size={12} />
-            {now.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
-          </span>
-          {/* The live clock, where you are, and the places you work with. */}
-          <DayClocks />
-        </span>
-
-        <HourBar
-          slots={slots}
-          win={win}
-          nowMin={nowMin}
-          onPick={a => navigate(`/calendar?appointment=${encodeURIComponent(a.id)}`)}
-        />
-
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
-          fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.80)', whiteSpace: 'nowrap',
-        }}>
-          <Clock size={12} />
-          {progress.total === 0
-            ? 'Nothing booked'
-            : progress.current
-              ? `In: ${progress.current.appt.title}`
-              : progress.next
-                ? `Next ${clockLabel(progress.next.startMin)}`
-                : `${progress.done}/${progress.total} done`}
-        </span>
-      </div>
-
       {/* ── Today's schedule ── */}
       <Rail
         title="Today's schedule"
@@ -194,6 +155,91 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
         ))}
       </Rail>
     </div>
+  );
+}
+
+/**
+ * The top of the dashboard, in one thin bar: the person's face and the
+ * greeting, then the day — the date, the clock where they are, the hours with
+ * the meetings pinned on them, and what is happening now.
+ *
+ * It used to be two things: a tall welcome band (greeting, face in a sunburst
+ * ring, a card of today's meetings) and this bar further down. The owner asked
+ * for one slim bar at the top instead, with the face inside it and no ring —
+ * the animated orb, or their photo once they add one. Everything the band said
+ * is still here: the greeting and name, what is in motion, and the next or
+ * current meeting (the status on the right).
+ */
+export function DayBar({ appointments, greeting, firstName, line }: {
+  appointments: Appointment[];
+  greeting: string;
+  firstName: string;
+  /** What is in motion, said briefly: "7 deals in motion · 2 contacts". */
+  line: string;
+}) {
+  const navigate = useNavigate();
+  const me = useMyAvatar();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const today = ymd(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const slots = useMemo(() => slotsForDay(appointments, today), [appointments, today]);
+  const win = useMemo(() => dayWindow(slots, nowMin), [slots, nowMin]);
+  const progress = useMemo(() => dayProgress(slots, nowMin), [slots, nowMin]);
+
+  return (
+    <section className="day-bar day-top" aria-label="Your day" data-noinvert style={{
+      backgroundColor: '#15181d', borderRadius: 999, padding: '8px 16px 8px 8px',
+      display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+    }}>
+      {/* The face: the photo, or the orb until there is one — and the way to add one. */}
+      <button type="button" className="day-face" onClick={() => navigate('/settings?tab=profile')}
+        title={me.photo ? 'Your profile' : 'Add your photo'} aria-label={me.photo ? 'Open your profile' : 'Add your photo'}>
+        <UserFace size={40} testId="welcome-avatar" />
+      </button>
+      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+          {greeting}{firstName && <>, <em style={{ fontStyle: 'normal', color: '#ff5a7e' }}>{firstName}</em></>}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>{line}</span>
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
+          borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)',
+          fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.86)', whiteSpace: 'nowrap',
+        }}>
+          <CalendarDays size={12} />
+          {now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' })}
+        </span>
+        {/* The live clock, where you are, and the places you work with. */}
+        <DayClocks />
+      </span>
+
+      <HourBar
+        slots={slots}
+        win={win}
+        nowMin={nowMin}
+        onPick={a => navigate(`/calendar?appointment=${encodeURIComponent(a.id)}`)}
+      />
+
+      <button type="button" onClick={() => navigate('/calendar')} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, background: 'none', border: 0, padding: 0, cursor: 'pointer',
+        fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.80)', whiteSpace: 'nowrap',
+      }}>
+        <Clock size={12} />
+        {progress.total === 0
+          ? 'Nothing booked'
+          : progress.current
+            ? `In: ${progress.current.appt.title}`
+            : progress.next
+              ? `Next ${clockLabel(progress.next.startMin)}`
+              : `${progress.done}/${progress.total} done`}
+      </button>
+    </section>
   );
 }
 

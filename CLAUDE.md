@@ -819,18 +819,19 @@ checks four widths as the owner, and that 1440 and up is one line.
 
 ## The dashboard
 
-`Dashboard/Dashboard.tsx` opens on **the welcome** (`Welcome.tsx`, the owner's
-references): a dark band with the greeting and the name lit, the person's face
-in a sunburst ring (their photo or the animated orb, with "Add your photo"
-until there is one), and a glass card of today's real appointments — the next
-with "in 53m", the rest in time pills; a day with nothing says so. Under it
-every section is a **numbered block** in `.dash-grid`: one column below
-1280px, two side by side from there, `wide` blocks across the row, a dense
-flow so a half block moves up beside an earlier one. A section that renders
-nothing leaves an empty block, which is hidden and not numbered; the numbers
-are written by the page from where the blocks landed (top to bottom, then
-left to right), not from the source order. Blocks keep their own height —
-stretching a block to its neighbour pulled the grids inside it apart.
+`Dashboard/Dashboard.tsx` opens on **one slim dark bar** (`DayBar` in
+`DayBoard.tsx`, the owner's call — it replaced a tall welcome band): the
+person's face (their photo, or the animated orb on its own — no ring; a press
+opens Settings → Profile), the greeting with the name lit and what is in
+motion, then the day — date, the live clock where they are, the hour bar with
+the meetings pinned on it, and the current/next meeting. The DayBoard further
+down keeps only the schedule and goal rails. Under the bar every section is a
+block in `.dash-grid`: one column below 1280px, two side by side from there,
+`wide` blocks across the row, a dense flow so a half block moves up beside an
+earlier one; a section that renders nothing leaves an empty block, which is
+hidden. Blocks are not numbered (the owner removed the badges) and keep their
+own height — stretching a block to its neighbour pulled the grids inside it
+apart.
 **No sample figures.** The pipeline board, deal journey, suggested actions,
 growth chart and Business progress read only this workspace's records; with
 none they say so (they once drew invented deals, "5 executed / 42% win rate",

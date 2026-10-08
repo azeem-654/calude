@@ -459,102 +459,11 @@ button.dash-chip[aria-pressed='true'] { background: #17191c; color: #ffffff; bor
   22%, 100% { background-position: -60% 0; }
 }
 
-/* ── The welcome (Welcome.tsx) ───────────────────────────────────────────────
-   The owner's references: a dark band with the greeting and the name lit, a
-   face in a sunburst ring in the middle, and a glass card of today. */
-.dw {
-  position: relative; overflow: hidden; isolation: isolate;
-  display: grid; grid-template-columns: minmax(0, 1.15fr) auto minmax(260px, 0.95fr); align-items: center; gap: clamp(16px, 3vw, 40px);
-  padding: clamp(20px, 2.6vw, 30px) clamp(20px, 3vw, 40px);
-  border-radius: 28px; color: #f4f5f8;
-  background:
-    radial-gradient(60% 120% at 50% 0%, rgba(124, 58, 237, 0.28), transparent 60%),
-    radial-gradient(40% 90% at 100% 100%, rgba(236, 72, 153, 0.18), transparent 70%),
-    radial-gradient(40% 90% at 0% 100%, rgba(56, 189, 248, 0.14), transparent 70%),
-    linear-gradient(160deg, #1b1c23 0%, #111217 60%, #0c0d11 100%);
-  box-shadow: 0 24px 48px -26px rgba(12, 13, 20, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-.dw-copy { min-width: 0; }
-.dw-date { font-size: 12.5px; font-weight: 600; color: rgba(244, 245, 248, 0.55); letter-spacing: 0.02em; }
-.dw-hello { margin: 6px 0 0; font-size: clamp(30px, 3.4vw, 46px); line-height: 1.04; font-weight: 800; font-style: italic; letter-spacing: -0.035em; color: #fff; }
-.dw-hello em { font-style: italic; color: #ff5a7e; text-shadow: 0 0 24px rgba(255, 90, 126, 0.35); }
-.dw-line { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: rgba(244, 245, 248, 0.7); }
-.dw-line span { position: relative; }
-.dw-line span + span::before { content: ''; position: absolute; left: -9px; top: 50%; width: 3px; height: 3px; border-radius: 50%; background: rgba(244, 245, 248, 0.35); }
-
-.dw-face { position: relative; width: 168px; height: 168px; display: grid; place-items: center; flex-shrink: 0; }
-.dw-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
-.dw-face::before {
-  content: ''; position: absolute; inset: 22px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(196, 181, 253, 0.35), transparent 70%); filter: blur(10px);
-}
-.dw-avatar {
-  position: relative; width: 112px; height: 112px; border-radius: 50%; object-fit: cover;
-  box-shadow: 0 0 0 4px rgba(17, 18, 23, 0.9), 0 0 0 5px rgba(255, 255, 255, 0.18), 0 18px 36px -12px rgba(0, 0, 0, 0.8);
-  background: #2a2b33;
-}
-.dw-online { position: absolute; right: 36px; top: 36px; width: 12px; height: 12px; border-radius: 50%; background: #ff3b6b; box-shadow: 0 0 0 3px #15161c; }
-.dw-photo {
-  position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%);
-  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
-  border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: rgba(244, 245, 248, 0.85);
-  font: 600 11px/1.2 inherit; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-}
-.dw-photo:hover { background: rgba(255, 255, 255, 0.16); }
-
-.dw-today {
-  justify-self: end; width: 100%; max-width: 340px; box-sizing: border-box;
-  padding: 16px 16px 12px; border-radius: 22px; color: #17191c;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.94), rgba(238, 236, 255, 0.86));
-  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.7), inset 0 1px 0 #fff;
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-}
-.dw-today-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.dw-today-head b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
-.dw-today-head span { font-size: 22px; font-weight: 400; color: #4b5563; letter-spacing: -0.02em; }
-.dw-today-head small { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; }
-.dw-cal { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #5b46e5; box-shadow: 0 2px 8px -2px rgba(91, 70, 229, 0.35); flex-shrink: 0; }
-.dw-next { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06); }
-.dw-next-time { font-size: 15px; font-weight: 800; color: #17191c; white-space: nowrap; padding-bottom: 3px; border-bottom: 2px solid #5b46e5; }
-.dw-next-what { flex: 1; min-width: 0; }
-.dw-next-what b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dw-next-what small { display: block; font-size: 11.5px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dw-in { padding: 4px 9px; border-radius: 999px; border: 1px solid #e5e7eb; font-size: 11.5px; font-weight: 700; color: #17191c; white-space: nowrap; }
-.dw-empty { margin: 12px 0 0; font-size: 12.5px; color: #4b5563; line-height: 1.5; }
-.dw-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; font-weight: 600; color: #17191c; }
-.dw-row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dw-pill { padding: 3px 10px; border-radius: 999px; background: #3b82f6; color: #fff; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
-.dw-row + .dw-row .dw-pill { background: #111217; }
-.dw-open {
-  margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
-  border: none; background: rgba(91, 70, 229, 0.1); color: #4c3bd0; font: 700 12px/1 inherit; cursor: pointer;
-}
-.dw-open:hover { background: rgba(91, 70, 229, 0.16); }
-
-@media (prefers-reduced-motion: no-preference) {
-  .dw-ring { animation: dw-turn 60s linear infinite; }
-  .dw-online { animation: dw-dot 2.4s ease-in-out infinite; }
-}
-@keyframes dw-turn { to { transform: rotate(360deg); } }
-@keyframes dw-dot { 0%, 100% { box-shadow: 0 0 0 3px #15161c, 0 0 0 3px rgba(255, 59, 107, 0.5); } 50% { box-shadow: 0 0 0 3px #15161c, 0 0 0 8px rgba(255, 59, 107, 0); } }
-
-@media (max-width: 1100px) {
-  .dw { grid-template-columns: minmax(0, 1fr) auto; }
-  .dw-today { grid-column: 1 / -1; justify-self: stretch; max-width: none; }
-}
-@media (max-width: 600px) {
-  .dw { grid-template-columns: 1fr; text-align: left; }
-  .dw-face { width: 132px; height: 132px; justify-self: center; grid-row: 1; }
-  .dw-avatar { width: 88px; height: 88px; }
-  .dw-online { right: 28px; top: 28px; }
-}
-
 /* ── The blocks (Dashboard.tsx) ──────────────────────────────────────────────
-   Every section is a block, numbered in the order it is drawn. One column on
+   Every section is a block. One column on
    a smaller screen; two side by side once there is room for two readable
    blocks; the wide ones (the pipeline board, the progress board) take the
-   whole row. A block whose section has nothing to say draws nothing and is
-   not numbered, so the numbers never skip. */
+   whole row. A block whose section has nothing to say draws nothing. */
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-items: start; grid-auto-flow: row dense; }
 /* A block keeps its section's own height: stretching it to its neighbour's
    pulled the rows of whatever grid was inside apart. */
@@ -564,17 +473,13 @@ button.dash-chip[aria-pressed='true'] { background: #17191c; color: #ffffff; bor
   .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-block.wide { grid-column: 1 / -1; }
 }
-/* The block's number, on its corner — in the order the blocks are seen
-   (Dashboard.tsx numbers them from where they landed, because the dense
-   two-column flow moves a half-width block up beside an earlier one). */
-.dash-block { position: relative; }
-.dash-block:not([data-n])::before { display: none; }
-.dash-block::before {
-  content: attr(data-n); position: absolute; top: -10px; left: -10px; z-index: 3; pointer-events: none;
-  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
-  background: #17191c; color: #fff; font: 800 12px/1 Inter, system-ui, sans-serif;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 6px 14px -4px rgba(23, 25, 28, 0.45);
-}
 /* The week's four figures, two by two in their block. */
 .dash-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 520px) { .dash-kpis { grid-template-columns: minmax(0, 1fr); } }
+
+/* The face at the start of the day bar: the orb (or the photo) on its own —
+   no ring, nothing turning round it. */
+.day-face { flex-shrink: 0; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; display: block; line-height: 0; }
+.day-face:focus-visible { outline: 2px solid #c7f441; outline-offset: 2px; }
+/* On a phone the bar's pieces wrap into rows; it is a rounded card there, not a pill. */
+@media (max-width: 760px) { .day-top { border-radius: 22px !important; padding: 12px 18px !important; } }
