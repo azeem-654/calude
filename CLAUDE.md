@@ -819,12 +819,17 @@ checks four widths as the owner, and that 1440 and up is one line.
 
 ## The dashboard
 
-`Dashboard/Dashboard.tsx` opens on **one slim dark bar** (`DayBar` in
-`DayBoard.tsx`, the owner's call — it replaced a tall welcome band): the
+`Dashboard/Dashboard.tsx` opens on **one slim bar** (`DayBar` in
+`DayBoard.tsx`, the owner's call — it replaced a tall welcome band; styled
+after their reference as deep navy glass with a cool edge glow, `.day-top` in
+dashboard.css, one line from 1100px): the
 person's face (their photo, or the animated orb on its own — no ring; a press
 opens Settings → Profile), the greeting with the name lit and what is in
-motion, then the day — date, the live clock where they are, the hour bar with
-the meetings pinned on it, and the current/next meeting. The DayBoard further
+motion, then the day — glass chips for the date, the live clock (lit blue),
+where they are and **Add clock** (all open the clocks panel, which sits above
+the blocks: the bar is `z-index: 30`, or the blocks painted over it), the
+hour track lit lime up to a knob at now with the meetings pinned on it, and
+the current/next meeting. The DayBoard further
 down keeps only the schedule and goal rails. Under the bar every section is a
 block in `.dash-grid`: one column below 1280px, two side by side from there,
 `wide` blocks across the row, a dense flow so a half block moves up beside an

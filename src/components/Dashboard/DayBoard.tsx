@@ -191,31 +191,23 @@ export function DayBar({ appointments, greeting, firstName, line }: {
   const progress = useMemo(() => dayProgress(slots, nowMin), [slots, nowMin]);
 
   return (
-    <section className="day-bar day-top" aria-label="Your day" data-noinvert style={{
-      backgroundColor: '#15181d', borderRadius: 999, padding: '8px 16px 8px 8px',
-      display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-    }}>
+    <section className="day-top" aria-label="Your day" data-noinvert>
       {/* The face: the photo, or the orb until there is one — and the way to add one. */}
       <button type="button" className="day-face" onClick={() => navigate('/settings?tab=profile')}
         title={me.photo ? 'Your profile' : 'Add your photo'} aria-label={me.photo ? 'Open your profile' : 'Add your photo'}>
-        <UserFace size={40} testId="welcome-avatar" />
+        <UserFace size={44} testId="welcome-avatar" />
       </button>
-      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexShrink: 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
-          {greeting}{firstName && <>, <em style={{ fontStyle: 'normal', color: '#ff5a7e' }}>{firstName}</em></>}
-        </span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>{line}</span>
+      <span className="day-hello">
+        <span className="day-hello-g">{greeting}{firstName ? ',' : ''}</span>
+        {firstName && <span className="day-hello-n">{firstName}</span>}
+        <span className="day-hello-l">{line}</span>
       </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
-          borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)',
-          fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.86)', whiteSpace: 'nowrap',
-        }}>
-          <CalendarDays size={12} />
-          {now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' })}
+      <span className="day-chips">
+        <span className="day-chip">
+          <CalendarDays size={13} strokeWidth={2.2} />
+          {now.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' })}
         </span>
-        {/* The live clock, where you are, and the places you work with. */}
+        {/* The live clock, where you are, the places you work with, and "Add clock". */}
         <DayClocks />
       </span>
 
@@ -226,11 +218,8 @@ export function DayBar({ appointments, greeting, firstName, line }: {
         onPick={a => navigate(`/calendar?appointment=${encodeURIComponent(a.id)}`)}
       />
 
-      <button type="button" onClick={() => navigate('/calendar')} style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, background: 'none', border: 0, padding: 0, cursor: 'pointer',
-        fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.80)', whiteSpace: 'nowrap',
-      }}>
-        <Clock size={12} />
+      <button type="button" className="day-chip" onClick={() => navigate('/calendar')}>
+        <Clock size={13} strokeWidth={2.2} />
         {progress.total === 0
           ? 'Nothing booked'
           : progress.current
@@ -255,16 +244,10 @@ function HourBar({ slots, win, nowMin, onPick }: {
   const nowPct = positionIn(win, nowMin);
 
   return (
-    <div style={{ flex: 1, minWidth: 320, position: 'relative', padding: '14px 0 16px' }}>
-      {/* Track, with the part of the day already gone filled in. */}
-      <div style={{
-        position: 'relative', height: 26, borderRadius: 999,
-        backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'visible',
-      }}>
-        <div style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0, width: `${nowPct}%`,
-          borderRadius: 999, backgroundColor: 'rgba(199,244,65,0.20)',
-        }} />
+    <div className="day-track-wrap">
+      {/* Track, with the part of the day already gone lit. */}
+      <div className="day-track">
+        <div className="day-track-done" style={{ width: `${nowPct}%` }} />
 
         {/* Meetings, pinned where they actually fall. */}
         {slots.map(s => {
@@ -275,61 +258,31 @@ function HourBar({ slots, win, nowMin, onPick }: {
           return (
             <button
               key={s.appt.id}
-              className={live ? 'live-pin press' : 'press'}
+              className={`day-pin${live ? ' live-pin' : ''}${past ? ' past' : ''} press`}
               onClick={() => onPick(s.appt)}
               title={`${s.appt.title} · ${clockLabel(s.startMin)}`}
               aria-label={`${s.appt.title} at ${clockLabel(s.startMin)}`}
               style={{
-                position: 'absolute', top: 3, bottom: 3,
                 left: `${left}%`,
                 // Always wide enough to hit, however short the meeting.
-                width: `max(${Math.max(right - left, 0).toFixed(2)}%, 26px)`,
-                borderRadius: 999, cursor: 'pointer',
-                border: live ? `2px solid ${LIME}` : 'none',
-                backgroundColor: past ? 'rgba(255,255,255,0.22)' : LIME,
-                opacity: past ? 0.55 : 1,
-                padding: 0, overflow: 'hidden',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: `max(${Math.max(right - left, 0).toFixed(2)}%, 28px)`,
               }}
             >
-              <span style={{
-                fontSize: 9.5, fontWeight: 800, color: past ? '#ffffff' : ON_LIME,
-                padding: '0 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {clockLabel(s.startMin).replace(':00', '')}
-              </span>
+              {clockLabel(s.startMin).replace(':00', '')}
             </button>
           );
         })}
 
-        {/* Now. */}
-        <div
-          aria-hidden="true"
-          className="now-marker"
-          style={{
-            position: 'absolute', top: -7, bottom: -7, left: `${nowPct}%`,
-            width: 2, backgroundColor: '#ffffff', borderRadius: 999, transform: 'translateX(-1px)',
-          }}
-        />
-        <span style={{
-          position: 'absolute', top: -24, left: `${nowPct}%`, transform: 'translateX(-50%)',
-          padding: '2px 7px', borderRadius: 999, backgroundColor: '#ffffff',
-          fontSize: 9, fontWeight: 800, color: ON_LIME, whiteSpace: 'nowrap',
-        }}>
-          {clockLabel(nowMin)}
-        </span>
+        {/* Now: a line, a lit knob on the track and the time above it. */}
+        <span aria-hidden="true" className="day-now" style={{ left: `${nowPct}%` }} />
+        <span aria-hidden="true" className="day-knob" style={{ left: `${nowPct}%` }} />
+        <span className="day-now-tag" style={{ left: `${nowPct}%` }}>{clockLabel(nowMin)}</span>
       </div>
 
       {/* Hour ticks. */}
-      <div style={{ position: 'relative', height: 12, marginTop: 4 }}>
+      <div className="day-ticks">
         {ticks.map(t => (
-          <span
-            key={t}
-            style={{
-              position: 'absolute', left: `${positionIn(win, t)}%`, transform: 'translateX(-50%)',
-              fontSize: 8.5, fontWeight: 700, color: 'rgba(255,255,255,0.42)', whiteSpace: 'nowrap',
-            }}
-          >
+          <span key={t} style={{ left: `${positionIn(win, t)}%` }}>
             {clockLabel(t).replace(':00', '')}
           </span>
         ))}

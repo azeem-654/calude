@@ -11,7 +11,7 @@
  * own IANA zone, and when that is wrong the user can say so and it sticks.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Globe, MapPin, Plus, Search, Trash2, X } from 'lucide-react';
+import { Check, Clock, Globe, MapPin, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   MAX_CLOCKS, abbrev, addClock, browserZone, faceOf, homeZone, isValidZone,
   loadClocks, moveClock, offsetLabel, placeOf, relativeToHome, removeClock, saveClocks,
@@ -48,6 +48,8 @@ function useTick(withSeconds: boolean): Date {
 export default function DayClocks() {
   const [settings, setSettings] = useState<ClockSettings>(() => loadClocks());
   const [open, setOpen] = useState(false);
+  /* Opened from "Add clock": the panel starts on the search for a place. */
+  const [adding, setAdding] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const now = useTick(settings.seconds);
 
@@ -75,45 +77,50 @@ export default function DayClocks() {
 
   return (
     <>
-    <div ref={box} style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        aria-expanded={open}
-        aria-label={`Local time ${face.time}${face.suffix} in ${place.label}. Open world clocks.`}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 9,
-          padding: '5px 11px 5px 9px', borderRadius: 999, border: `1px solid ${LINE}`,
-          backgroundColor: open ? 'rgba(255,255,255,0.16)' : FILL,
-          cursor: 'pointer', fontFamily: 'inherit', color: INK, whiteSpace: 'nowrap',
-          transition: 'background-color 160ms ease',
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-          <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
-            {face.time}
-          </span>
-          {settings.seconds && (
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: DIM, fontVariantNumeric: 'tabular-nums' }}>
-              :{face.seconds}
+    <div ref={box} className="day-clocks" style={{ position: 'relative', flex: '0 1 auto', minWidth: 0 }}>
+      {/* The time and the place as two glass chips, and an "Add clock" chip
+          beside them so it is plain that more clocks can sit on the bar —
+          all three open the same panel. */}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className="day-chip day-chip-time"
+          onClick={() => { setAdding(false); setOpen(v => !v); }}
+          aria-expanded={open}
+          aria-label={`Local time ${face.time}${face.suffix} in ${place.label}. Open world clocks.`}
+        >
+          <Clock size={14} strokeWidth={2.2} />
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
+              {face.time}
             </span>
-          )}
-          {face.suffix && <span style={{ fontSize: 10, fontWeight: 700, color: DIM }}>{face.suffix}</span>}
-        </span>
-        <span style={{ width: 1, height: 14, backgroundColor: LINE }} />
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: DIM }}>
-          <MapPin size={11} strokeWidth={2.4} />
+            {settings.seconds && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: DIM, fontVariantNumeric: 'tabular-nums' }}>
+                :{face.seconds}
+              </span>
+            )}
+            {face.suffix && <span style={{ fontSize: 11, fontWeight: 600, color: DIM }}>{face.suffix}</span>}
+          </span>
+        </button>
+        <button type="button" className="day-chip" onClick={() => { setAdding(false); setOpen(v => !v); }} aria-label={`Your area: ${place.label}. Change it or add clocks.`}>
+          <MapPin size={13} strokeWidth={2.2} />
           {place.label}{zoneName ? ` · ${zoneName}` : ''}
-        </span>
-      </button>
+        </button>
+        <button type="button" className="day-chip day-chip-add" onClick={() => { setAdding(true); setOpen(true); }}
+          title="Add the time somewhere else — a client's city, a team abroad">
+          <Plus size={13} strokeWidth={2.6} /> Add clock
+        </button>
+      </span>
 
       {open && (
         <ClocksPanel
+          key={adding ? 'add' : 'view'}
           settings={settings}
           now={now}
           home={home}
           onChange={write}
           onClose={() => setOpen(false)}
+          startAdding={adding}
         />
       )}
     </div>
@@ -126,12 +133,8 @@ export default function DayClocks() {
         <span
           key={z.id}
           title={`${z.label} — ${relativeToHome(z.id, home, now)}`}
-          style={{
-            display: 'inline-flex', alignItems: 'baseline', gap: 5, flexShrink: 0,
-            padding: '4px 10px', borderRadius: 999, border: `1px solid ${LINE}`,
-            backgroundColor: FILL, whiteSpace: 'nowrap',
-            opacity: f.asleep ? 0.62 : 1,
-          }}
+          className="day-chip"
+          style={{ alignItems: 'baseline', opacity: f.asleep ? 0.62 : 1 }}
         >
           <span style={{ fontSize: 10.5, fontWeight: 700, color: DIM, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             {z.label}
@@ -147,15 +150,16 @@ export default function DayClocks() {
   );
 }
 
-function ClocksPanel({ settings, now, home, onChange, onClose }: {
+function ClocksPanel({ settings, now, home, onChange, onClose, startAdding = false }: {
   settings: ClockSettings;
   now: Date;
   home: string;
   onChange: (next: ClockSettings) => void;
   onClose: () => void;
+  startAdding?: boolean;
 }) {
   const [query, setQuery] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(startAdding);
   const [fixing, setFixing] = useState(false);
   const [typedHome, setTypedHome] = useState(home);
 
@@ -172,7 +176,7 @@ function ClocksPanel({ settings, now, home, onChange, onClose }: {
       role="dialog"
       aria-label="World clocks"
       style={{
-        position: 'absolute', top: 'calc(100% + 10px)', left: 0, zIndex: 260,
+        position: 'absolute', top: 'calc(100% + 12px)', left: 0, zIndex: 260,
         width: 'min(330px, calc(100vw - 40px))', maxHeight: 460, overflowY: 'auto',
         backgroundColor: '#15181d', border: `1px solid ${LINE}`, borderRadius: 20,
         padding: 14, boxShadow: '0 26px 60px -16px rgba(0,0,0,0.6)',

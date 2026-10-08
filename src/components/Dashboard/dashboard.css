@@ -477,9 +477,87 @@ button.dash-chip[aria-pressed='true'] { background: #17191c; color: #ffffff; bor
 .dash-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 520px) { .dash-kpis { grid-template-columns: minmax(0, 1fr); } }
 
-/* The face at the start of the day bar: the orb (or the photo) on its own —
-   no ring, nothing turning round it. */
-.day-face { flex-shrink: 0; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; display: block; line-height: 0; }
-.day-face:focus-visible { outline: 2px solid #c7f441; outline-offset: 2px; }
+/* ── The day bar (DayBar in DayBoard.tsx) ─────────────────────────────────────
+   The owner's reference: a slim pill of deep navy glass with a cool glow along
+   its edge and violet at its ends; the face; the greeting over a name lit pink
+   to violet; glass chips for the date, the time (lit blue), the place and
+   "Add clock"; a lime track for the day so far with a lit knob at now. It sits
+   above the blocks (z-index) so the clocks panel opens over them, not under. */
+.day-top {
+  position: relative; z-index: 30;
+  display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap;
+  padding: 7px 14px 7px 7px; border-radius: 999px; color: #fff;
+  background:
+    radial-gradient(120% 180% at 0% 50%, rgba(80, 110, 255, 0.28), transparent 45%),
+    radial-gradient(90% 200% at 100% 50%, rgba(150, 90, 255, 0.30), transparent 40%),
+    linear-gradient(90deg, #0d1534 0%, #0f1a3d 45%, #131a42 100%);
+  border: 1px solid rgba(120, 150, 255, 0.30);
+  box-shadow:
+    inset 0 1px 0 rgba(170, 200, 255, 0.22),
+    inset 0 -1px 0 rgba(120, 150, 255, 0.10),
+    0 0 0 1px rgba(10, 16, 40, 0.6),
+    0 10px 30px -12px rgba(30, 50, 140, 0.55),
+    0 0 26px -6px rgba(90, 120, 255, 0.40);
+}
+.day-face { flex-shrink: 0; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; display: block; line-height: 0;
+  box-shadow: 0 0 0 3px rgba(20, 28, 64, 0.9), 0 0 18px rgba(120, 140, 255, 0.45); }
+.day-face:focus-visible { outline: 2px solid #c7f441; outline-offset: 3px; }
+.day-hello { display: flex; flex-direction: column; min-width: 0; flex-shrink: 0; line-height: 1.15; }
+.day-hello-g { font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.86); }
+.day-hello-n { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; width: fit-content;
+  background: linear-gradient(90deg, #ff5a9e, #c77dff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.day-hello-l { font-size: 10.5px; font-weight: 500; color: rgba(200, 210, 240, 0.62); white-space: nowrap; margin-top: 1px; }
+.day-chips { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.day-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 999px;
+  border: 1px solid rgba(150, 170, 255, 0.22); background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #fff; font: 600 12px/1 Inter, system-ui, sans-serif; white-space: nowrap; cursor: pointer; flex-shrink: 0;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+span.day-chip { cursor: default; }
+button.day-chip:hover { background: rgba(255, 255, 255, 0.10); border-color: rgba(160, 185, 255, 0.40); }
+.day-chip svg { color: rgba(220, 228, 255, 0.85); flex-shrink: 0; }
+.day-chip-time { border-color: rgba(90, 140, 255, 0.60); background: rgba(60, 100, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 0 16px -2px rgba(70, 120, 255, 0.55); }
+.day-chip-add { border-style: dashed; color: rgba(225, 232, 255, 0.85); }
+.day-chip:focus-visible { outline: 2px solid #c7f441; outline-offset: 2px; }
+
+/* The hours: a lime track for the part of the day already gone. */
+.day-track-wrap { flex: 1; min-width: 300px; position: relative; padding: 13px 0 0; }
+.day-track { position: relative; height: 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px rgba(150, 170, 255, 0.14); }
+.day-track-done { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+  background: linear-gradient(90deg, rgba(199, 244, 65, 0.70), #d6f86a);
+  box-shadow: 0 0 14px rgba(199, 244, 65, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.day-pin { position: absolute; top: 2px; bottom: 2px; border-radius: 999px; border: 0; padding: 0 6px; overflow: hidden;
+  background: #c7f441; color: #0e1117; font: 800 9.5px/1 Inter, system-ui, sans-serif; white-space: nowrap; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; }
+.day-pin.past { background: rgba(255, 255, 255, 0.24); color: #fff; opacity: 0.6; }
+.day-pin.live-pin { box-shadow: 0 0 0 2px #fff, 0 0 12px rgba(199, 244, 65, 0.7); }
+.day-now { position: absolute; top: -8px; bottom: -8px; width: 2px; border-radius: 999px; background: #fff; transform: translateX(-1px); }
+.day-knob { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 40% 35%, #f4ffd0, #c7f441 60%); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 0 12px rgba(199, 244, 65, 0.9); }
+.day-now-tag { position: absolute; top: -27px; transform: translateX(-50%); padding: 3px 8px; border-radius: 999px;
+  background: #fff; color: #0e1117; font: 800 10px/1.2 Inter, system-ui, sans-serif; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+.day-ticks { position: relative; height: 14px; margin-top: 3px; }
+.day-ticks span { position: absolute; transform: translateX(-50%); font: 600 9.5px/1 Inter, system-ui, sans-serif; color: rgba(210, 220, 245, 0.62); white-space: nowrap; padding-top: 4px; }
+.day-ticks span::before { content: ''; position: absolute; left: 50%; top: 0; width: 1px; height: 3px; background: rgba(210, 220, 245, 0.45); }
+
+/* A desktop keeps it to one line — that is what makes it slim; the hours take
+   whatever width is left. */
+@media (min-width: 1100px) {
+  .day-top { flex-wrap: nowrap; }
+  .day-chips { flex-wrap: nowrap; }
+  .day-track-wrap { min-width: 140px; }
+}
+/* Between a laptop and a wide monitor the line under the name is the first thing to go. */
+@media (min-width: 1100px) and (max-width: 1365px) { .day-hello-l { display: none; } }
 /* On a phone the bar's pieces wrap into rows; it is a rounded card there, not a pill. */
-@media (max-width: 760px) { .day-top { border-radius: 22px !important; padding: 12px 18px !important; } }
+@media (max-width: 760px) {
+  .day-top { border-radius: 22px; padding: 12px 18px; }
+  .day-track-wrap { min-width: 100%; }
+  .day-chips { width: 100%; }
+  .day-clocks > span { flex-wrap: wrap; }
+}
