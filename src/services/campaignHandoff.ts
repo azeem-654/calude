@@ -67,7 +67,7 @@ export function pushToModules(campaign: Campaign, api: HandoffApi): HandoffResul
   // marketing list full of generated records can still be traced back.
   const source = makeSource('video-campaign', campaign.title || campaign.name, {
     refId: campaign.id,
-    route: '/social-automation',
+    route: '/video-studio?tab=repurpose',
     detail: campaign.sources[0]?.name,
   });
   // Every module in the app stores createdAt as a plain YYYY-MM-DD and renders

@@ -904,9 +904,15 @@ cards (`SolutionsSection.tsx`, "Build this") open it with a solution picked;
 it hands out **signed, short-lived links** to `/api/video-file.php`
 (`routes/videoFile.ts`, `lib/video/store.ts`: HMAC with `installSecret('video_url')`,
 the key must sit under `v/<workspace>/`, modes get / up (a browser upload part) /
-put (an engine output prefix) / poke). The old browser-only **AI Shorts**
-(`/ai-shorts`) is untouched — its "transcript" is written by Gemini and its export
-is a canvas recording; Video Studio is the real one.
+put (an engine output prefix) / poke / listen (a library track by id)). Signed
+links expire **on the hour** so a poll hands out the same address within it —
+a link that changed every poll reloaded the player, which is why the preview
+played three seconds and stopped; `Player.tsx` also holds its first address
+until the video errors. The old browser-only **AI Shorts** and **Repurposing**
+modules are tabs inside the studio (`?tab=quick-shorts`, `?tab=repurpose`;
+`/ai-shorts` and `/social-automation` redirect there, query kept), drawn
+outside its dark frame — AI Shorts' "transcript" is written by Gemini and its
+export is a canvas recording; Video Studio is the real one.
 
 - **Three Cloudflare pieces, all optional at deploy.** `VIDEO` (R2, created by name),
   `MEDIA` (service binding to the FFmpeg engine, a Container Worker) and `AI` (Workers
@@ -969,14 +975,35 @@ is a canvas recording; Video Studio is the real one.
   (`reported_at` claimed by CAS): "✨ 4 Shorts created" → `/video-studio/<id>?tab=shorts`.
   The project's Assets tab has `ProjectVideos` (Upload a video →
   `/video-studio?new=1&project=`); the Content Library shows `ContentShelf`.
+- **The editor** follows the owner's concept: Media / Transcript / Cleanup / Shorts
+  left, the player centre, the inspector (Video · Audio · Music · Captions · Export ·
+  Reuse) and the assistant right, a timeline of tracks underneath (filmstrip from
+  `prepare`, sentences, Shorts, waveform, music; drag to mark → cut/restore/protect/
+  make a Short). It opens on a **welcome wizard** (`WelcomeWizard.tsx`: eight goals,
+  each asking only its own choices, `want` sent to `create`).
+- **Sound and music.** `doc.audio.denoise` (off/light/medium/strong), `voice`,
+  `volume`, heard in the render only (and the Audio tab says so). `doc.music` is set
+  **only by the server** (`music.set` filtered from browser edits): an **Openverse**
+  track (`lib/video/music.ts` — CC0, PDM and CC BY only, re-read by id, stored in
+  R2 with its licence, previews proxied by the Worker) or the customer's upload with
+  rights confirmed; CC BY credit goes into every affected description
+  (`withMusicCredit`, `recreditOutputs`). `OPENVERSE_BASE` overrides the library.
+  Commands split compound sentences ("remove the noise and also add music to all
+  the videos").
+- **Reuse**: `repurpose` (the Autopilot writers on the transcript → draft posts,
+  blog, email sequence) and `quiz` (`cleanQuiz` drops a question tied to no
+  sentence) jobs; results in `crm_video_projects.extras` (migration 0070).
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact,
-  background removal (no provider), music and speaker tracking (planned), publishing
-  (none — "Ready to publish manually").
+  background removal (no provider), speaker tracking and before/after audio
+  preview (planned), publishing (none — "Ready to publish manually").
 - `npm run test:videoe2e` (self-contained: engine :8873, Whisper mock :8874, Gemini
-  mock :8875, wrangler :8953, `.wrangler-video`, needs ffmpeg + a `VITE_BASE=/` build;
-  recordings are generated and cached there) drives the owner's 20 steps on a
-  20-minute recording, isolation, a forged link, a killed engine and a failed
-  transcriber (one charge, one file), and a phone.
+  mock :8875, Openverse mock :8876, wrangler :8953, `.wrangler-video`, needs ffmpeg +
+  a `VITE_BASE=/` build; recordings are generated and cached there) drives the
+  owner's 20 steps on a 20-minute recording, the wizard, the player playing through
+  the cuts across polls (as VP9 — this Chromium has no H.264), noise and music in one
+  sentence, music really in the rendered sound, reuse and the quiz, isolation, a
+  forged link, a killed engine and a failed transcriber (one charge, one file), and a
+  phone.
 
 ## A project's workflows
 

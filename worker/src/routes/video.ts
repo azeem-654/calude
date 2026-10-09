@@ -19,20 +19,21 @@ import { body, fail, json } from '../lib/http';
 import { rateLimit } from '../lib/rateLimit';
 import { loadAiKey } from '../lib/ai';
 import {
-  applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX,
-  type Op, type VideoDoc, type VideoRequest,
+  applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX, MUSIC_DEFAULTS,
+  type MusicTrack, type Op, type VideoDoc, type VideoRequest,
 } from '../lib/video/edit';
 import { proposeCleanup } from '../lib/video/cleanup';
 import { parseVideoCommand } from '../lib/video/commands';
 import { cleanMeta, type VideoMeta } from '../lib/video/shorts';
 import { engineHealth, engineMode } from '../lib/video/engine';
 import { transcriberMode } from '../lib/video/transcribe';
-import { fileUrl, projectPrefix, sign, deletePrefix } from '../lib/video/store';
+import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix } from '../lib/video/store';
 import { allowance, refusal } from '../lib/video/usage';
+import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '../lib/video/music';
 import { brandOf, kitOf, saveKit } from '../lib/video/brand';
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
-  type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
+  recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
 } from '../lib/video/pipeline';
 
 interface Req {
@@ -44,6 +45,9 @@ interface Req {
   text?: string; selection?: { s: number; e: number } | null; clipId?: string | null;
   outputIds?: string[]; headline?: string; index?: number; status?: string; publishAt?: string | null;
   patch?: Record<string, unknown>; kit?: Record<string, unknown>; file?: string; probe?: boolean; light?: boolean; knownVersion?: number;
+  q?: string; page?: number; trackId?: string; key?: string; title?: string; rightsConfirmed?: boolean; applyTo?: string;
+  posts?: number; blog?: boolean; email?: boolean;
+  want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
 }
 
 const s = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
@@ -75,11 +79,13 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'captions', label: 'Captions: burned in, SRT, VTT', status: engine ? 'working' : 'needs_configuration', note: 'Word-timed, re-timed after every cut. Turkish and Urdu (right to left) set correctly.' },
     { key: 'reframe', label: '16:9, 9:16, 1:1, 4:5', status: engine ? 'working' : 'needs_configuration', note: 'Crop with a position you choose, or fit with a blurred fill to keep slides and screens whole.' },
     { key: 'thumbnails', label: 'PNG thumbnails', status: engine ? 'working' : 'needs_configuration', note: 'Exact headline text, brand colours and logo; every file checked to be a real PNG.' },
-    { key: 'audio', label: 'Loudness normalisation, light noise reduction', status: engine ? 'working' : 'needs_configuration', note: 'Natural settings; badly damaged sound cannot be repaired and is not claimed to be.' },
+    { key: 'audio', label: 'Background noise reduction (light, medium, strong), voice clarity, loudness', status: engine ? 'working' : 'needs_configuration', note: 'Steady noise — fans, hum, hiss — is taken out. Distorted or cut-out speech cannot be rebuilt, and is not claimed to be.' },
+    { key: 'music', label: 'Background music: royalty-free library and your own tracks', status: engine && storage ? 'working' : 'needs_configuration', note: 'Openverse tracks under CC0, public domain or CC BY only (credit added to descriptions), or your own upload with your rights confirmed. Ducked under speech, faded in and out.' },
+    { key: 'repurpose', label: 'Repurpose: posts, an article and emails from the recording', status: ai ? 'working' : 'needs_configuration', note: 'Drafts in Social Creator, Blog and Campaigns — nothing is published or sent.' },
+    { key: 'quiz', label: 'Quiz from a training recording', status: ai ? 'working' : 'needs_configuration', note: 'Multiple-choice questions about what is actually said, each linked to its moment.' },
     { key: 'speaker_tracking', label: 'Automatic speaker tracking for 9:16', status: 'planned', note: 'Today the crop stays where you put it — steady, never jittery.' },
     { key: 'speakers', label: 'Speaker labels', status: 'unavailable', note: 'Needs a transcription provider with speaker detection.' },
-    { key: 'audio_advanced', label: 'De-essing, hum removal, before/after preview', status: 'planned', note: '' },
-    { key: 'music', label: 'Background music', status: 'planned', note: 'Your own uploaded tracks first, with their licence noted.' },
+    { key: 'audio_preview', label: 'Before/after audio preview in the browser', status: 'planned', note: 'Today: render, then listen to the finished file.' },
     { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required.' },
     { key: 'bg_removal', label: 'Portrait background removal', status: 'unavailable', note: 'Provider setup required. A portrait can be used as it is.' },
     { key: 'publishing', label: 'Direct publishing to social platforms', status: 'unavailable', note: 'Ready to publish manually: download the video and PNG, copy the caption, description and hashtags.' },
@@ -143,8 +149,11 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
       proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600) : '',
       posterUrl: src.poster ? await fileUrl(env, origin, p.account_id, src.poster, 4 * 3600) : '',
       waveUrl: src.wave && sendDoc ? await fileUrl(env, origin, p.account_id, src.wave, 4 * 3600) : '',
+      filmstrip: src.filmstrip ? { url: await fileUrl(env, origin, p.account_id, src.filmstrip.key, 4 * 3600), every: src.filmstrip.every, tiles: src.filmstrip.tiles, w: src.filmstrip.w, h: src.filmstrip.h } : null,
       silences: sendDoc ? src.silences ?? [] : undefined,
     },
+    extras: parse<Extras>(p.extras, {}),
+    musicUrl: doc?.music ? await fileUrl(env, origin, p.account_id, doc.music.key, 4 * 3600) : '',
     transcriptUrl: p.transcript_key && sendDoc ? await fileUrl(env, origin, p.account_id, p.transcript_key, 4 * 3600) : '',
     docVersion: p.doc_version, maxVersion: maxV?.v ?? p.doc_version,
     ...(sendDoc ? { doc } : {}),
@@ -188,11 +197,43 @@ async function saveEdit(env: Env, p: ProjectRow, base: number | undefined, ops: 
 async function afterEdit(env: Env, origin: string, p: ProjectRow, doc: VideoDoc, rerender: string[] = []): Promise<string> {
   const outs = await syncOutputs(env, p, doc);
   const fresh = outs.filter(o => !o.edit_hash && o.status === 'processing').map(o => o.id);
-  const again = outs.filter(o => rerender.includes(o.clip_id) || rerender.includes(o.id)).map(o => o.id);
+  const again = outs.filter(o => rerender.includes('*') || rerender.includes(o.clip_id) || rerender.includes(o.id)).map(o => o.id);
   if (!fresh.length && !again.length) return '';
   const r = await queueAfterEdit(env, origin, p, { metadata: true, only: [...fresh, ...again] });
   return r.refused;
 }
+
+/* ── Music: a licensed track fetched by the server, then set on the edit ─── */
+
+async function addMusic(env: Env, p: ProjectRow, base: number | undefined, pick: { trackId?: string; query?: string }, who: string, applyTo?: string):
+  Promise<{ ok: true; doc: VideoDoc; version: number; track: MusicTrack } | { ok: false; error: string }> {
+  let t: Awaited<ReturnType<typeof trackById>> = null;
+  if (pick.trackId) t = await trackById(env, pick.trackId);
+  else {
+    /* "Add calm music": the first licensed track the search finds that also
+       downloads — the screen names it and the Music panel offers others. */
+    const found = await searchMusic(env, musicQuery(pick.query ?? ''));
+    if (!found.ok) return { ok: false, error: found.error };
+    for (const f of found.tracks.filter(x => x.duration >= 30).slice(0, 4)) { t = await trackById(env, f.id); if (t) break; }
+  }
+  if (!t) return { ok: false, error: 'No licensed track was found for that — try other words, or upload your own in the Music panel.' };
+  const stored = await storeTrack(env, p.account_id, t);
+  if (!stored.ok) return { ok: false, error: stored.error };
+  const prev = parse<VideoDoc>(p.doc, null as unknown as VideoDoc).music;
+  const track: MusicTrack = {
+    id: t.id, key: stored.key, title: t.title, artist: t.artist, license: t.license, licenseUrl: t.licenseUrl, attribution: t.attribution,
+    source: 'openverse', sourceUrl: t.pageUrl, duration: t.duration,
+    volume: prev?.volume ?? MUSIC_DEFAULTS.volume, fadeIn: prev?.fadeIn ?? MUSIC_DEFAULTS.fadeIn, fadeOut: prev?.fadeOut ?? MUSIC_DEFAULTS.fadeOut,
+    loop: prev?.loop ?? MUSIC_DEFAULTS.loop, duck: prev?.duck ?? MUSIC_DEFAULTS.duck,
+    applyTo: applyTo === 'long' || applyTo === 'shorts' ? applyTo : prev?.applyTo ?? 'all',
+  };
+  const r = await saveEdit(env, p, base, [{ op: 'music.set', track }], `Music: “${t.title}” by ${t.artist}`, who);
+  if (!r.ok) return { ok: false, error: 'This project changed in another window — try again.' };
+  await recreditOutputs(env, p, r.doc);
+  return { ok: true, doc: r.doc, version: r.version, track };
+}
+
+const musicSentence = (t: MusicTrack) => `Added “${t.title}” by ${t.artist} (${t.license}${t.attribution ? ' — the credit is added to each description' : ''}) under ${t.applyTo === 'all' ? 'every video' : t.applyTo === 'long' ? 'the long video' : 'the Shorts'}, ducked under your voice.`;
 
 /* ── The route ────────────────────────────────────────────────────────────── */
 
@@ -288,16 +329,31 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     request.understood = describeRequest(request);
     const brand = await brandOf(env, accountId, autopilot).catch(() => null);
     const doc = newDoc(request, brand?.color ?? '');
+    /* The welcome wizard's choices beyond the video itself. */
+    const w = d.want ?? {};
+    if (w.denoise && ['light', 'medium', 'strong'].includes(w.denoise)) doc.audio.denoise = w.denoise as 'medium';
+    if (w.voice) doc.audio.voice = true;
+    const extras: Extras = { want: {
+      ...(w.repurpose ? { repurpose: { posts: Math.max(0, Math.min(6, Math.round(Number(w.repurpose.posts ?? 3)))), blog: w.repurpose.blog !== false, email: w.repurpose.email !== false } } : {}),
+      ...(w.quiz ? { quiz: true } : {}),
+    } };
     const id = `vp-${crypto.randomUUID()}`;
     const now = nowIso();
     const name = s(d.name, 120) || 'Untitled video';
     await env.DB.batch([
-      env.DB.prepare(`INSERT INTO crm_video_projects (id, account_id, name, prompt, request, autopilot_project_id, workflow_id, status, doc, doc_version, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1, ?, ?, ?)`).bind(id, accountId, name, prompt, JSON.stringify(request), autopilot, workflow, JSON.stringify(doc), user.email, now, now),
+      env.DB.prepare(`INSERT INTO crm_video_projects (id, account_id, name, prompt, request, autopilot_project_id, workflow_id, status, doc, doc_version, extras, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1, ?, ?, ?, ?)`).bind(id, accountId, name, prompt, JSON.stringify(request), autopilot, workflow, JSON.stringify(doc), JSON.stringify(extras), user.email, now, now),
       env.DB.prepare('INSERT INTO crm_video_versions (project_id, version, account_id, doc, note, created_by, created_at) VALUES (?, 1, ?, ?, ?, ?, ?)')
         .bind(id, accountId, JSON.stringify(doc), 'Project created', user.email, now),
     ]);
-    return json({ success: true, id, request });
+    /* Music asked for in the wizard is found now, while the video uploads. */
+    let musicNote = '';
+    if (typeof w.music === 'string' && w.music.trim() && env.VIDEO) {
+      const fresh = await readProject(env, accountId, id);
+      const m = fresh ? await addMusic(env, fresh, 1, { query: w.music }, user.email) : null;
+      musicNote = m?.ok ? musicSentence(m.track) : m ? `No music was added: ${m.error}` : '';
+    }
+    return json({ success: true, id, request, musicNote });
   }
 
   if (act === 'brand_get') return json({ success: true, brand: await brandOf(env, accountId, s(d.autopilotProjectId, 80) || null), kit: await kitOf(env, accountId) });
@@ -419,11 +475,14 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     }
 
     case 'edit': {
-      const ops = Array.isArray(d.ops) ? d.ops.slice(0, 200) : [];
+      /* A track and its licence are set only by the server (music_choose,
+         music_attach); a browser may change how it plays, not what it is. */
+      const ops = (Array.isArray(d.ops) ? d.ops.slice(0, 200) : []).filter(o => o?.op !== 'music.set');
       if (!ops.length) return fail('Nothing to change.');
       const r = await saveEdit(env, p, d.baseVersion, ops, s(d.note, 200) || 'Edited', user.email);
       if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window — showing the latest version.', doc: r.doc, docVersion: r.version });
       const refusedRender = await afterEdit(env, origin, p, r.doc);
+      if (ops.some(o => o.op === 'music.remove' || o.op === 'music.patch')) await recreditOutputs(env, p, r.doc);
       kick(p.id);
       return json({ success: true, doc: r.doc, docVersion: r.version, refused: r.refused, note: refusedRender });
     }
@@ -465,11 +524,24 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const sel = d.selection && Number.isFinite(d.selection.s) && Number.isFinite(d.selection.e) ? { s: Number(d.selection.s), e: Number(d.selection.e) } : null;
       const res = parseVideoCommand(text, { doc, words: tr?.words ?? [], sentences: tr ? sentencesOf(tr.words) : [], duration, selection: sel, clipId: d.clipId ?? null });
       let out: { doc?: VideoDoc; docVersion?: number } = {};
+      let base = d.baseVersion;
       if (res.ops.length) {
-        const r = await saveEdit(env, p, d.baseVersion, res.ops, `You said: “${text.slice(0, 120)}”`, user.email);
+        const r = await saveEdit(env, p, base, res.ops, `You said: “${text.slice(0, 120)}”`, user.email);
         if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window — try again.', doc: r.doc, docVersion: r.version });
         out = { doc: r.doc, docVersion: r.version };
-        const note = await afterEdit(env, origin, p, r.doc, res.rerender ?? []);
+        base = r.version;
+        if (res.ops.some(o => o.op === 'music.remove' || o.op === 'music.patch')) await recreditOutputs(env, p, r.doc);
+      }
+      if (res.music) {
+        if (!env.VIDEO) res.reply = `${res.reply} Music needs video storage, which is not set up yet.`.trim();
+        else {
+          const m = await addMusic(env, p, base, { query: res.music.query }, user.email);
+          if (m.ok) { out = { doc: m.doc, docVersion: m.version }; res.reply = `${res.reply} ${musicSentence(m.track)} Every video will render again.`.trim(); }
+          else res.reply = `${res.reply} No music was added: ${m.error}`.trim();
+        }
+      }
+      if (out.doc) {
+        const note = await afterEdit(env, origin, p, out.doc, res.rerender ?? []);
         if (note) res.reply += ` ${note}`;
       }
       if (res.thumbnail) {
@@ -483,6 +555,67 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       }
       kick(p.id);
       return json({ success: true, reply: res.reply, understood: res.understood, undo: !!res.undo, redo: !!res.redo, ...out });
+    }
+
+    case 'music_search': {
+      const r = await searchMusic(env, s(d.q, 80) || 'calm instrumental', Number(d.page) || 1);
+      if (!r.ok) return fail(r.error, 200, { code: 'music_unavailable' });
+      /* Heard through this Worker, never straight from the library's hosts. */
+      const tracks = await Promise.all(r.tracks.map(async t => ({ ...t,
+        previewUrl: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: `${workspacePrefix(accountId)}music/listen`, m: 'listen', u: t.id }, 3600)}` })));
+      return json({ success: true, tracks });
+    }
+
+    case 'music_choose': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503);
+      const m = await addMusic(env, p, d.baseVersion, { trackId: s(d.trackId, 40) }, user.email, s(d.applyTo, 10));
+      if (!m.ok) return fail(m.error, 200, { field: 'video.music' });
+      await afterEdit(env, origin, p, m.doc);
+      return json({ success: true, doc: m.doc, docVersion: m.version, reply: musicSentence(m.track) });
+    }
+
+    case 'music_upload_url': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503);
+      const prefix = `${projectPrefix(accountId, p.id)}music/up-${crypto.randomUUID().slice(0, 8)}/`;
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`, prefix });
+    }
+
+    case 'music_attach': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503);
+      if (!d.rightsConfirmed) return fail('Tick the box to confirm you own this track or have a licence to use it in your videos.', 200, { field: 'video.musicRights' });
+      const key = s(d.key, 300);
+      if (!key.startsWith(`${projectPrefix(accountId, p.id)}music/up-`)) return fail('That upload is not part of this project.', 403);
+      const obj = await env.VIDEO.get(key, { range: { offset: 0, length: 64 } });
+      const head = obj ? new Uint8Array(await obj.arrayBuffer()) : new Uint8Array();
+      if (!looksLikeAudio(head)) { await env.VIDEO.delete(key).catch(() => null); return fail('That file is not audio Video Studio can use (MP3, M4A, WAV, Ogg or FLAC).', 200, { field: 'video.musicFile' }); }
+      const prev = parse<VideoDoc>(p.doc, null as unknown as VideoDoc).music;
+      const track: MusicTrack = {
+        id: `up-${crypto.randomUUID().slice(0, 8)}`, key, title: s(d.title, 120) || 'Your track', artist: user.name || user.email,
+        license: 'Your own upload', licenseUrl: '', attribution: '', source: 'upload', sourceUrl: '', duration: 0,
+        volume: prev?.volume ?? MUSIC_DEFAULTS.volume, fadeIn: prev?.fadeIn ?? MUSIC_DEFAULTS.fadeIn, fadeOut: prev?.fadeOut ?? MUSIC_DEFAULTS.fadeOut,
+        loop: prev?.loop ?? true, duck: prev?.duck ?? true, applyTo: d.applyTo === 'long' || d.applyTo === 'shorts' ? d.applyTo : prev?.applyTo ?? 'all',
+      };
+      const r = await saveEdit(env, p, d.baseVersion, [{ op: 'music.set', track }], `Music: your upload “${track.title}” (rights confirmed by ${user.email})`, user.email);
+      if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window — try again.' });
+      await recreditOutputs(env, p, r.doc);
+      await afterEdit(env, origin, p, r.doc);
+      return json({ success: true, doc: r.doc, docVersion: r.version });
+    }
+
+    case 'repurpose': {
+      if (!p.transcript_key) return fail('The recording has to be transcribed first.');
+      const want = { posts: Math.max(0, Math.min(6, Math.round(Number(d.posts ?? 3)))), blog: d.blog !== false, email: d.email !== false };
+      if (!want.posts && !want.blog && !want.email) return fail('Choose at least one thing to write.');
+      await enqueue(env, { accountId, projectId: p.id, kind: 'repurpose', idem: `repurpose:${p.id}:${Date.now()}`, input: want });
+      kick(p.id);
+      return json({ success: true });
+    }
+
+    case 'quiz': {
+      if (!p.transcript_key) return fail('The recording has to be transcribed first.');
+      await enqueue(env, { accountId, projectId: p.id, kind: 'quiz', idem: `quiz:${p.id}:${Date.now()}` });
+      kick(p.id);
+      return json({ success: true });
     }
 
     case 'render': {

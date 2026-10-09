@@ -213,7 +213,7 @@ export const MODULES: Module[] = [
   },
   {
     symbol: 'SHORTS', name: 'AI Shorts', dept: 'Video', category: 'Content',
-    route: '/ai-shorts', dest: 'AI Shorts',
+    route: '/video-studio?tab=quick-shorts', dest: 'AI Shorts',
     basis: 'Short-form clips cut from your videos, and how many go out',
     comps: [
       { kind: 'saturate', key: 'clips', half: 20, weight: 1.5, label: 'Clips', hint: 'Clips generated from your videos',

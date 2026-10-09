@@ -204,7 +204,7 @@ publishing only with real providers.
 
 | Capability | State | Where |
 |---|---|---|
-| Studio in the app (Projects, Media Library, Brand Kit, Exports, Ready to Publish, Templates) | Working | `src/components/VideoStudio/`, Content → AI Video Studio |
+| Studio in the app (welcome wizard over Projects, Quick Shorts, Repurpose, Media Library, Brand Kit, Exports, Ready to Publish, Templates) | Working | `src/components/VideoStudio/`, Content → AI Video Studio |
 | Resumable uploads to R2 (16 MB parts, bytes sniffed, same file resumes) | Working once R2 is bound | `routes/videoFile.ts`, `services/videoStudio.ts uploadVideo` |
 | Probe and refusal (codec, duration ≤ 3 h, ≤ 4096 px, ≤ 12 GB), proxy, waveform, silences | Working once the engine is deployed | `media/engine/server.mjs prepare` |
 | Transcription with word timings and language, confidence per segment | Working once Workers AI is bound | `lib/video/transcribe.ts` |
@@ -221,11 +221,95 @@ publishing only with real providers.
 | Usage ledger and monthly allowances | Working | `lib/video/usage.ts` |
 | Speaker labels | Unavailable — needs a diarising provider | — |
 | Automatic speaker tracking | Planned | — |
-| Music, de-essing, hum removal, before/after audio | Planned (Phase 2) | — |
+| Noise reduction (off / light / medium / strong), voice clarity (presence, de-essing, compression), voice level | Working — heard in the render, not the preview | `media/engine render`, Audio tab |
+| Royalty-free music (Openverse: CC0, public domain, CC BY only), your own track with rights confirmed, volume, fades, loop, ducking under speech, which videos | Working | `lib/video/music.ts`, Music tab |
+| Before/after audio in the preview | Planned | — |
 | Eye contact, background removal | Unavailable — provider setup required | — |
 | Direct publishing | Unavailable — Ready to publish manually | — |
 | Import from YouTube / Drive / Dropbox | Planned | — |
 
-Tests: `npm run test:video` (79 checks, pure, in the staging pipeline) and
+Tests: `npm run test:video` (94 checks, pure, in the staging pipeline) and
 `npm run test:videoe2e` (the 20-step journey on a 20-minute recording with the
-real engine).
+real engine, plus everything in §12).
+
+## 12. The editor redesign, sound, music, reuse (2026-10-09)
+
+The owner's concept (a dark editor: media list left, player centre, an
+inspector with Video/Animation/Tracking tabs right, a multi-track timeline
+underneath, an AI panel "How can I help you?") and three reports from using
+Phase 1: the assistant refused "remove the background noise and add music to
+all the videos"; the preview played three or four seconds and stopped; AI
+Shorts and Repurposing were separate modules.
+
+**Why the preview stopped.** Every poll (2.5 s while anything runs) handed
+out a freshly signed link to the proxy, and the player followed it into
+`src` — so the video reloaded from the start each time. Signed links now
+expire on the hour (`sign` in `lib/video/store.ts` rounds the expiry up), so
+the same file has the same address within the hour; and the player
+(`Player.tsx`) holds the first address until the video itself reports an
+error, then takes the newest one at the same moment and play state.
+
+**The editor** (`VideoEditor.tsx`): top bar (back, name, undo/redo, history,
+What works, Render N changes, delete); left — **Media** (the long video, every
+Short, the music, searchable; Shorts drawn from the engine's filmstrip until
+they have a thumbnail), Transcript, Cleanup, Shorts; centre — the player with
+its own controls (play, ±5 s, the edited video's clock, a scrub bar over the
+*edited* timeline, mute, full screen; Space and ←/→); right — the inspector:
+**Video** (shape and framing of what is selected), **Audio**, **Music**,
+Captions, Export, **Reuse**, with the assistant under it; bottom — the
+**timeline** (`Timeline.tsx`): picture (a filmstrip the engine cuts during
+`prepare`, one frame every ≥ 2 s, at most ~300), text (sentences), Shorts,
+the measured waveform and the music; cuts in red, suggestions in amber,
+protected parts in teal; press to move the playhead, drag to mark a stretch
+and Cut / Restore / Protect / Make a Short — the same operations as the
+transcript. The concept's Animation and Tracking tabs are not built: nothing
+behind them exists yet (speaker tracking is planned), so they are not drawn.
+
+**Sound.** `doc.audio`: `denoise` (`afftdn` at three strengths; strong adds a
+low-pass), `voice` (presence EQ, de-esser, gentle compression), `volume`
+(0.5–1.5), `loudnorm`. Applied by the engine at render; the Audio tab says
+the preview plays the recording's own sound.
+
+**Music.** `doc.music` is set only by the server (`music.set` is filtered out
+of browser edits): from **Openverse** — searched with `license=cc0,pdm,by`
+and checked again on our side, because NonCommercial (a business video is
+commercial), NoDerivatives (music under video is an adaptation) and
+ShareAlike (it would bind the customer's video) are not usable — fetched by
+the Worker by id (never a URL from the browser), stored in the workspace's
+R2 folder with its licence; or the customer's own file, sniffed as audio and
+recorded with the rights box they ticked. Previews of library tracks play
+through `/api/video-file.php` (mode `listen`, by track id), so the browser
+never calls the library. A CC BY credit is written into the description of
+every video the music is under (`withMusicCredit`, and `recreditOutputs` when
+the track changes). The engine loops it, fades it, ducks it under speech
+(`sidechaincompress`) and mixes it before loudness normalisation; the
+preview plays it at its volume without the ducking.
+
+**Commands.** A sentence is split at "and / also / then" before a verb, so
+"remove the background noise completely and also add upbeat music to all the
+videos" is two operations and renders every video again. Noise: remove /
+reduce (medium; "completely" → strong; "a bit" → light; "turn off noise
+reduction"). Music: add (a mood → a library search), quieter, louder, fade,
+remove — and an honest answer when there is none.
+
+**Welcome wizard** (`WelcomeWizard.tsx`): the studio opens on "What would you
+like to do with your video?" — eight goals: clean a long video and make
+Shorts; edit and clean; Shorts only; repurpose into posts, emails and a blog;
+**a quiz from a training video**; captions only; and two hand-overs —
+**Quick Shorts** (the old AI Shorts: a Short from a topic, link or script)
+and **Repurpose** (the old Repurposing campaign module), now tabs inside the
+studio (`/ai-shorts` and `/social-automation` redirect there, keeping their
+query). Each goal asks only its own choices (Shorts count/length/shape/
+framing, cleanup, captions, thumbnails, noise, voice, music mood, posts/blog/
+emails, quiz, language), writes the request out for review, and passes
+`want` to `create`: sound onto the first version, music found while the
+video uploads, and repurpose/quiz jobs queued once the analysis is done.
+
+**Reuse** (`ReusePanel.tsx`, jobs `repurpose` and `quiz`, migration 0070
+`crm_video_projects.extras`): the Repurposing writers AI Autopilot already
+uses (`writeImagePosts`, `writeBlogPost`, `writeSequenceBatch`) on the
+transcript, saved as drafts in Social posts, Blog and Email sequences and
+named on the Autopilot project's activity; and a quiz of up to 12
+multiple-choice questions, each tied to the sentence where it is answered —
+a question pointing at no sentence of the recording is dropped
+(`cleanQuiz`). Copy, .txt and .csv downloads.

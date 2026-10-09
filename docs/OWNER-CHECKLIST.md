@@ -1135,6 +1135,13 @@ background removal (no provider), speaker labels (Whisper does not tell voices
 apart), and posting to social platforms (finished videos are "Ready to publish
 manually").
 
+Since the redesign (same day): noise reduction and royalty-free background
+music need **nothing from you** — the music comes from Openverse's open
+library (no key; only licences that allow business use are offered), and
+AI Shorts and Repurposing now live inside AI Video Studio (their old links
+still work). The repurposing and quiz writers use the AI keys you already
+set on Platform services.
+
 ### 28. Your own lead directory — added 2026-10-07
 
 Load your lead files into the app and, if your licence allows it, let customers

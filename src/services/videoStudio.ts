@@ -69,7 +69,10 @@ export interface ProjectView {
     createdAt: string; updatedAt: string; autopilotProjectId: string | null; autopilotProjectName: string; workflowId: string | null;
   };
   request: (VideoRequest & { language?: string }) | null;
-  source: { name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][] };
+  source: { name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][];
+    filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null };
+  extras: Extras;
+  musicUrl: string;
   transcriptUrl: string;
   docVersion: number;
   maxVersion: number;
@@ -98,7 +101,20 @@ export interface VideoKit { color?: string; accent?: string; cta?: string; handl
 
 export const videoCapabilities = (probe = false) => call<{ capabilities: Capability[]; usage: Usage }>('capabilities', { probe });
 export const listVideoProjects = () => call<{ projects: ProjectSummary[] }>('list');
-export const createVideoProject = (p: { name: string; prompt: string; settings?: Partial<VideoRequest> & { language?: string }; autopilotProjectId?: string; workflowId?: string }) =>
+export interface Want { repurpose?: { posts: number; blog: boolean; email: boolean }; quiz?: boolean; denoise?: 'light' | 'medium' | 'strong'; voice?: boolean; music?: string }
+export interface QuizQuestion { q: string; options: string[]; answer: number; explain: string; t: number }
+export interface Extras {
+  want?: { repurpose?: { posts: number; blog: boolean; email: boolean }; quiz?: boolean };
+  repurposed?: { at: string; links: { kind: string; id: string; label: string; route: string }[]; notes: string[] };
+  quiz?: { at: string; questions: QuizQuestion[]; by: 'ai' };
+  quizNote?: string;
+}
+export interface FoundTrack {
+  id: string; title: string; artist: string; license: string; licenseCode: string; licenseUrl: string; attribution: string;
+  duration: number; previewUrl: string; pageUrl: string; provider: string; genres: string[];
+}
+
+export const createVideoProject = (p: { name: string; prompt: string; settings?: Partial<VideoRequest> & { language?: string }; autopilotProjectId?: string; workflowId?: string; want?: Want }) =>
   call<{ id: string; request: VideoRequest }>('create', p);
 export const getVideoProject = (projectId: string) => call<ProjectView>('get', { projectId });
 export const videoStatus = (projectId: string, knownVersion: number) => call<ProjectView>('status', { projectId, knownVersion });
@@ -119,6 +135,26 @@ export const regenerateMeta = (projectId: string, outputId: string) => call('reg
 export const retryVideo = (projectId: string) => call<{ retried: number }>('retry', { projectId });
 export const cancelVideo = (projectId: string) => call('cancel', { projectId });
 export const deleteVideoProject = (projectId: string) => call('delete', { projectId });
+export const searchMusic = (projectId: string, q: string) => call<{ tracks: FoundTrack[] }>('music_search', { projectId, q });
+export const chooseMusic = (projectId: string, baseVersion: number, trackId: string, applyTo?: string) =>
+  call<{ doc: VideoDoc; docVersion: number; reply: string }>('music_choose', { projectId, baseVersion, trackId, applyTo });
+export const startRepurpose = (projectId: string, want: { posts: number; blog: boolean; email: boolean }) => call('repurpose', { projectId, ...want });
+export const startQuiz = (projectId: string) => call('quiz', { projectId });
+
+/** Your own track: uploaded to this project's music folder, then attached with your rights confirmed. */
+export async function uploadMusic(projectId: string, baseVersion: number, file: File, rightsConfirmed: boolean): Promise<{ ok: true; doc: VideoDoc; docVersion: number } | { ok: false; error: string }> {
+  if (!rightsConfirmed) return { ok: false, error: 'Tick the box to confirm you own this track or have a licence to use it.' };
+  if (file.size > 16 * 1024 * 1024) return { ok: false, error: 'Tracks up to 16 MB can be uploaded.' };
+  const u = await call<{ url: string; prefix: string }>('music_upload_url', { projectId });
+  if (!u.success) return { ok: false, error: u.error ?? 'Could not start the upload.' };
+  const ext = (file.name.match(/\.(mp3|m4a|wav|ogg|flac)$/i)?.[1] ?? 'mp3').toLowerCase();
+  const type = ext === 'mp3' ? 'audio/mpeg' : ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
+  const put = await fetch(`${u.url}&name=track.${ext}&type=${encodeURIComponent(type)}`, { method: 'PUT', body: file }).then(r => r.json()).catch(() => ({ success: false })) as { success?: boolean };
+  if (!put.success) return { ok: false, error: 'The track did not upload.' };
+  const r = await call<{ doc: VideoDoc; docVersion: number }>('music_attach', { projectId, baseVersion, key: `${u.prefix}track.${ext}`, title: file.name.replace(/\.[^.]+$/, ''), rightsConfirmed });
+  return r.success ? { ok: true, doc: r.doc, docVersion: r.docVersion } : { ok: false, error: r.error ?? 'The track could not be used.' };
+}
+
 export const videoLibrary = () => call<{ items: LibraryItem[]; sources: LibrarySource[] }>('library');
 export const videoBrand = (autopilotProjectId?: string) => call<{ brand: VideoBrand; kit: VideoKit }>('brand_get', { autopilotProjectId });
 export const saveVideoKit = (kit: VideoKit) => call<{ kit: VideoKit; brand: VideoBrand }>('brand_set', { kit });
@@ -210,3 +246,4 @@ export const TEMPLATES: Template[] = [
 ];
 
 export type { Clip, Transcript, VideoDoc, VideoRequest, Op, CleanupPreset };
+export type { MusicTrack, AudioSettings, Denoise } from '../../worker/src/lib/video/edit';

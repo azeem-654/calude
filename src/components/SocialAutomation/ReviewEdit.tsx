@@ -36,7 +36,7 @@ const KIND_LABEL: Record<string, string> = {
 
 /** Where each kind is genuinely editable, once it has been handed over. */
 const EDITOR_ROUTE: Record<CampaignAssetKind, { route: string; label: string }> = {
-  clip: { route: '/ai-shorts', label: 'AI Shorts' },
+  clip: { route: '/video-studio?tab=quick-shorts', label: 'AI Shorts' },
   image: { route: '/social-creator', label: 'Social Creator' },
   carousel: { route: '/social-creator', label: 'Social Creator' },
   story: { route: '/social-creator', label: 'Social Creator' },

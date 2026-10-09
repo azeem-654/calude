@@ -98,6 +98,45 @@ export interface Clip {
 
 export type CleanupPreset = 'conservative' | 'balanced' | 'aggressive';
 
+export type Denoise = 'off' | 'light' | 'medium' | 'strong';
+export interface AudioSettings {
+  loudnorm: boolean;
+  /** Steady background noise (fans, hum, hiss) taken out — the engine's levels. */
+  denoise: Denoise;
+  /** Presence, de-essing and gentle compression for speech. */
+  voice?: boolean;
+  /** The voice's own level, 0.5–1.5. */
+  volume?: number;
+}
+
+/**
+ * A music track under the videos. The track itself and its licence are set
+ * only by the server (`music.set` is not accepted from a browser): it fetched
+ * the track from a licensed source, or the customer uploaded it and confirmed
+ * the rights. Volume, fades, ducking and where it applies are the customer's.
+ */
+export interface MusicTrack {
+  id: string;
+  key: string;
+  title: string;
+  artist: string;
+  /** e.g. "CC0", "CC BY 4.0", "Your own upload". */
+  license: string;
+  licenseUrl: string;
+  /** The credit a licence requires; '' when none is required. */
+  attribution: string;
+  source: 'openverse' | 'upload';
+  sourceUrl: string;
+  duration: number;
+  volume: number;
+  fadeIn: number;
+  fadeOut: number;
+  loop: boolean;
+  duck: boolean;
+  applyTo: 'all' | 'long' | 'shorts';
+}
+export const MUSIC_DEFAULTS = { volume: 0.18, fadeIn: 1.5, fadeOut: 2.5, loop: true, duck: true, applyTo: 'all' as const };
+
 export interface VideoDoc {
   v: 1;
   cleanup: { preset: CleanupPreset; ran: boolean };
@@ -110,7 +149,9 @@ export interface VideoDoc {
   shorts: { count: number; min: number; max: number; aspect: '9:16' | '1:1' | '4:5'; mode?: 'crop' | 'fit' };
   clips: Clip[];
   thumbnails: { on: boolean; headline: Record<string, string> };
-  audio: { loudnorm: boolean; denoise: 'off' | 'light' };
+  audio: AudioSettings;
+  /** Background music under every video it applies to, with its licence. Null: none. */
+  music?: MusicTrack | null;
 }
 
 /* ── The request, read from what somebody typed ─────────────────────────── */
@@ -364,6 +405,9 @@ export type Op =
   | { op: 'clip.remove'; id: string }
   | { op: 'long.set'; patch: { on?: boolean; aspect?: Aspect; reframe?: Partial<Reframe> } }
   | { op: 'audio.set'; patch: Partial<VideoDoc['audio']> }
+  | { op: 'music.set'; track: MusicTrack }
+  | { op: 'music.patch'; patch: Partial<Pick<MusicTrack, 'volume' | 'fadeIn' | 'fadeOut' | 'loop' | 'duck' | 'applyTo'>> }
+  | { op: 'music.remove' }
   | { op: 'thumbnail.headline'; target: string; text: string }
   | { op: 'shorts.set'; patch: Partial<VideoDoc['shorts']> }
   | { op: 'cleanup.preset'; preset: CleanupPreset; cuts: Cut[] };
@@ -484,9 +528,36 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
       case 'audio.set': {
         const p = o.patch ?? {};
         if (typeof p.loudnorm === 'boolean') d.audio.loudnorm = p.loudnorm;
-        if (p.denoise === 'off' || p.denoise === 'light') d.audio.denoise = p.denoise;
+        if (p.denoise && ['off', 'light', 'medium', 'strong'].includes(p.denoise)) d.audio.denoise = p.denoise;
+        if (typeof p.voice === 'boolean') d.audio.voice = p.voice;
+        if (p.volume !== undefined) d.audio.volume = Math.round(clamp(p.volume, 0.5, 1.5, 1) * 100) / 100;
         break;
       }
+      case 'music.set': {
+        const t = o.track;
+        if (!t || typeof t.key !== 'string' || !t.key || !t.title) { refused.push('no track to add'); break; }
+        d.music = {
+          id: text(t.id, 80), key: t.key, title: text(t.title, 120), artist: text(t.artist, 120), license: text(t.license, 60),
+          licenseUrl: text(t.licenseUrl, 300), attribution: text(t.attribution, 400), source: t.source === 'upload' ? 'upload' : 'openverse',
+          sourceUrl: text(t.sourceUrl, 400), duration: clamp(t.duration, 0, 36000, 0),
+          volume: clamp(t.volume, 0, 1, MUSIC_DEFAULTS.volume), fadeIn: clamp(t.fadeIn, 0, 10, MUSIC_DEFAULTS.fadeIn), fadeOut: clamp(t.fadeOut, 0, 15, MUSIC_DEFAULTS.fadeOut),
+          loop: typeof t.loop === 'boolean' ? t.loop : MUSIC_DEFAULTS.loop, duck: typeof t.duck === 'boolean' ? t.duck : MUSIC_DEFAULTS.duck,
+          applyTo: t.applyTo === 'long' || t.applyTo === 'shorts' ? t.applyTo : 'all',
+        };
+        break;
+      }
+      case 'music.patch': {
+        if (!d.music) { refused.push('there is no music to change — add a track first'); break; }
+        const p = o.patch ?? {};
+        if (p.volume !== undefined) d.music.volume = Math.round(clamp(p.volume, 0, 1, d.music.volume) * 100) / 100;
+        if (p.fadeIn !== undefined) d.music.fadeIn = clamp(p.fadeIn, 0, 10, d.music.fadeIn);
+        if (p.fadeOut !== undefined) d.music.fadeOut = clamp(p.fadeOut, 0, 15, d.music.fadeOut);
+        if (typeof p.loop === 'boolean') d.music.loop = p.loop;
+        if (typeof p.duck === 'boolean') d.music.duck = p.duck;
+        if (p.applyTo === 'all' || p.applyTo === 'long' || p.applyTo === 'shorts') d.music.applyTo = p.applyTo;
+        break;
+      }
+      case 'music.remove': d.music = null; break;
       case 'thumbnail.headline': d.thumbnails.headline[text(o.target, 60)] = text(o.text, 90); break;
       case 'shorts.set': {
         const p = o.patch ?? {};

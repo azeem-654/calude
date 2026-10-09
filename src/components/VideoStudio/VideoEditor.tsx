@@ -1,14 +1,13 @@
 /**
- * The Video Studio editor.
+ * The Video Studio editor, laid out after the owner's concept:
  *
- * Left: the preview — the editor's proxy played through the *same* edit the
- * render uses (`keepRanges`, `retimeWords`, `cuesOf` from the Worker's own
- * files): cut ranges are skipped, a Short is shown in its frame with its
- * crop, and captions are drawn from the re-timed words. It is a preview of
- * the canonical edit, not a separate simulation, and is labelled as such.
- *
- * Right: the panels — Transcript, Cleanup, Shorts, Captions, Exports (files,
- * thumbnails, metadata), Assistant, Versions.
+ *   top      back · name · undo/redo · render changes · history · what works
+ *   left     Media (the long video and every Short, searchable) · Transcript
+ *            · Cleanup · Shorts
+ *   centre   the player — the proxy played through the canonical edit
+ *   right    the inspector (Video · Audio · Music · Captions · Export ·
+ *            Reuse) with the AI assistant under it
+ *   bottom   the timeline: picture, text, Shorts, sound, music
  *
  * Every change is an operation on the document, saved as a new version
  * against the version it was made on; undo and redo walk the versions. The
@@ -18,30 +17,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Play, Pause, Upload, AlertCircle, Check, X,
-  FileText, Scissors, Film, Captions as CaptionsIcon, Download, MessageSquare, History, Clapperboard,
+  ArrowLeft, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2,
+  FileText, Scissors, Film, Clapperboard, Images,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
-  loadTranscript, loadWave, uploadVideo, keepRanges, keptLength, retimeWords, cuesOf, toOutput, sentencesOf, clock, isRtl, bytesLabel,
+  loadTranscript, loadWave, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, keptLength, STATUS_LABEL,
   type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability,
 } from '../../services/videoStudio';
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
+import { VideoPanel, AudioPanel, MusicPanel } from './InspectorPanels';
 import OutputsPanel from './OutputsPanel';
+import ReusePanel from './ReusePanel';
 import AssistantPanel, { type ChatMsg } from './AssistantPanel';
 import VersionsPanel from './VersionsPanel';
+import Player from './Player';
+import Timeline from './Timeline';
 import { CapabilityPanel } from './VideoStudio';
 
-export type PanelTab = 'transcript' | 'cleanup' | 'shorts' | 'captions' | 'exports' | 'assistant' | 'versions';
-const PANELS: { key: PanelTab; label: string; icon: typeof Film }[] = [
+type LeftTab = 'media' | 'transcript' | 'cleanup' | 'shorts';
+type RightTab = 'video' | 'audio' | 'music' | 'captions' | 'exports' | 'reuse';
+export type PanelTab = LeftTab | RightTab | 'assistant' | 'versions';
+const LEFT: { key: LeftTab; label: string; icon: typeof Film }[] = [
+  { key: 'media', label: 'Media', icon: Images },
   { key: 'transcript', label: 'Transcript', icon: FileText },
   { key: 'cleanup', label: 'Cleanup', icon: Scissors },
   { key: 'shorts', label: 'Shorts', icon: Film },
-  { key: 'captions', label: 'Captions', icon: CaptionsIcon },
-  { key: 'exports', label: 'Exports', icon: Download },
-  { key: 'assistant', label: 'Assistant', icon: MessageSquare },
-  { key: 'versions', label: 'Versions', icon: History },
 ];
+const RIGHT: { key: RightTab; label: string }[] = [
+  { key: 'video', label: 'Video' }, { key: 'audio', label: 'Audio' }, { key: 'music', label: 'Music' },
+  { key: 'captions', label: 'Captions' }, { key: 'exports', label: 'Export' }, { key: 'reuse', label: 'Reuse' },
+];
+const isLeft = (t: string): t is LeftTab => LEFT.some(x => x.key === t);
+const isRight = (t: string): t is RightTab => RIGHT.some(x => x.key === t);
 
 export interface EditorCtx {
   view: ProjectView;
@@ -59,156 +67,6 @@ export interface EditorCtx {
   refresh: () => Promise<void>;
   setTab: (t: PanelTab) => void;
   say: (m: ChatMsg) => void;
-}
-
-/* ── The preview ──────────────────────────────────────────────────────────── */
-
-function Preview({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Array | null }) {
-  const { view, doc, transcript, duration } = ctx;
-  const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const frameRef = useRef<HTMLDivElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [frameH, setFrameH] = useState(360);
-  const keeps = useMemo(() => keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined), [duration, doc, clip]);
-  const kind = clip ? 'short' as const : 'long' as const;
-  const cues = useMemo(() => transcript ? cuesOf(retimeWords(transcript.words, keeps, doc.captionEdits), kind) : [], [transcript, keeps, doc.captionEdits, kind]);
-  const style = doc.captions[kind];
-  const out = toOutput(ctx.time, keeps);
-  const cue = doc.captions.on && out !== null ? cues.find(c => out >= c.s && out < c.e) : undefined;
-
-  /* Skipping what is cut, checked every frame while playing. Keyed to the
-     stable seek function, not the whole context — the context changes every
-     frame (it carries the time) and would stop the loop it is driving. */
-  const report = ctx.seek;
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    let raf = 0;
-    const tick = () => {
-      const t = v.currentTime;
-      const inside = keeps.find(([a, b]) => t >= a - 0.01 && t < b);
-      if (!inside) {
-        const next = keeps.find(([a]) => a > t);
-        if (next) v.currentTime = next[0];
-        else { v.pause(); v.currentTime = keeps[0]?.[0] ?? 0; }
-      }
-      report(-1 - v.currentTime);
-      if (!v.paused) raf = requestAnimationFrame(tick);
-    };
-    const onPlay = () => { setPlaying(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); };
-    const onPause = () => { setPlaying(v => v && !videoRef.current?.paused); cancelAnimationFrame(raf); report(-1 - v.currentTime); if (!v.paused) raf = requestAnimationFrame(tick); };
-    v.addEventListener('play', onPlay);
-    v.addEventListener('pause', onPause);
-    v.addEventListener('seeked', onPause);
-    if (!v.paused) raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); v.removeEventListener('play', onPlay); v.removeEventListener('pause', onPause); v.removeEventListener('seeked', onPause); };
-  }, [keeps, report]);
-
-  /* A Short opens at its own start. */
-  useEffect(() => { const v = videoRef.current; if (v && clip) { v.currentTime = keeps[0]?.[0] ?? clip.s; } }, [clip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setFrameH(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [clip?.id]);
-
-  /* Seeks asked for by the panels arrive through ctx.time as a request. */
-  useEffect(() => {
-    const onSeek = (e: Event) => { const v = videoRef.current; if (v) v.currentTime = (e as CustomEvent<number>).detail; };
-    window.addEventListener('vs-seek', onSeek);
-    return () => window.removeEventListener('vs-seek', onSeek);
-  }, []);
-
-  const aspect = clip ? clip.aspect : doc.long.aspect;
-  const ratio = aspect === '9:16' ? 9 / 16 : aspect === '1:1' ? 1 : aspect === '4:5' ? 4 / 5 : aspect === '16:9' ? 16 / 9 : (view.source.probe ? view.source.probe.width / view.source.probe.height : 16 / 9);
-  const reframe = clip ? clip.reframe : doc.long.reframe;
-  const fit = reframe.mode === 'fit';
-  const total = keptLength(keeps);
-  const base = kind === 'short' ? (88 / 1920) * frameH : 0.05 * frameH;
-  const toggle = () => { const v = videoRef.current; if (!v) return; if (v.paused) void v.play(); else v.pause(); };
-
-  return (
-    <div className="vs-card" style={{ padding: 12, display: 'grid', gap: 10 }} data-testid="vs-preview">
-      <div className="vs-stage" style={{ padding: clip ? '10px 0' : 0 }}>
-        <div ref={frameRef} className={`vs-frame ${fit ? 'fit' : ''}`}
-          style={{ aspectRatio: String(ratio), height: clip ? 'min(56vh, 520px)' : undefined, width: clip ? 'auto' : '100%', maxWidth: '100%',
-            backgroundImage: fit && view.source.posterUrl ? `url("${view.source.posterUrl}")` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          {fit && <div style={{ position: 'absolute', inset: 0, backdropFilter: 'blur(18px) brightness(.75)', WebkitBackdropFilter: 'blur(18px) brightness(.75)' }} />}
-          <video ref={videoRef} className={fit ? 'fg' : ''} src={view.source.proxyUrl} poster={view.source.posterUrl || undefined} playsInline preload="metadata"
-            style={{ objectFit: fit ? 'contain' : aspect === 'source' ? 'contain' : 'cover', objectPosition: `${reframe.x * 100}% ${reframe.y * 100}%`, position: fit ? 'absolute' : 'relative', inset: 0, height: '100%' }}
-            onClick={toggle} data-testid="vs-video" />
-          {cue && (
-            <div className={`vs-cap ${style.box ? 'box' : ''}`} data-testid="vs-caption" dir={isRtl(cue.text) ? 'rtl' : 'ltr'}
-              style={{
-                fontSize: Math.max(10, base * style.size), color: style.color,
-                ...(style.position === 'top' ? { top: '7%' } : style.position === 'middle' ? { top: '45%' } : { bottom: kind === 'short' ? '20%' : '6%' }),
-                textTransform: style.uppercase && !isRtl(cue.text) ? 'uppercase' : 'none',
-                textShadow: style.outline || style.shadow ? undefined : 'none',
-              }}>
-              <span>{cue.text}</span>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="vs-ctrls">
-        <button type="button" className="vs-btn sm" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} disabled={!view.source.proxyUrl}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
-        <span className="vs-time">{clock(out ?? 0)} / {clock(total)}</span>
-        <span className="vs-badge">{clip ? `Short: ${clip.title.slice(0, 32)}` : 'Long video'} · preview of the edit</span>
-        <span className="vs-spacer" />
-        {clip && <button type="button" className="vs-btn ghost sm" onClick={() => ctx.setActiveClip(null)}>Back to the long video</button>}
-      </div>
-      <Wave ctx={ctx} wave={wave} range={clip ? [clip.s, clip.e] : [0, duration]} />
-    </div>
-  );
-}
-
-/** The sound, the cuts, the Shorts and the playhead on one strip; a press seeks. */
-function Wave({ ctx, wave, range }: { ctx: EditorCtx; wave: Uint8Array | null; range: [number, number] }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const { doc } = ctx;
-  useEffect(() => {
-    const c = ref.current;
-    if (!c) return;
-    const w = c.clientWidth * devicePixelRatio, h = c.clientHeight * devicePixelRatio;
-    c.width = w; c.height = h;
-    const g = c.getContext('2d')!;
-    g.clearRect(0, 0, w, h);
-    const [a, b] = range;
-    const x = (t: number) => ((t - a) / Math.max(0.001, b - a)) * w;
-    if (!ctx.activeClip) for (const cl of doc.clips) { g.fillStyle = 'rgba(91,70,229,.13)'; g.fillRect(x(cl.s), 0, x(cl.e) - x(cl.s), h); }
-    for (const cut of doc.cuts) {
-      if (cut.e < a || cut.s > b || cut.state === 'rejected') continue;
-      g.fillStyle = cut.state === 'approved' ? 'rgba(229,72,77,.35)' : 'rgba(245,165,36,.35)';
-      g.fillRect(x(cut.s), 0, Math.max(1, x(cut.e) - x(cut.s)), h);
-    }
-    for (const p of doc.protects) { g.fillStyle = 'rgba(18,165,148,.3)'; g.fillRect(x(p.s), 0, x(p.e) - x(p.s), h); }
-    if (wave) {
-      g.fillStyle = '#5b6170';
-      const rate = 20;
-      for (let px = 0; px < w; px += 2 * devicePixelRatio) {
-        const t = a + (px / w) * (b - a);
-        const i = Math.floor(t * rate);
-        const v = (wave[i] ?? 0) / 255;
-        const bar = Math.max(1, v * h * 0.9);
-        g.fillRect(px, (h - bar) / 2, 1.2 * devicePixelRatio, bar);
-      }
-    }
-    if (ctx.time >= a && ctx.time <= b) { g.fillStyle = '#17191c'; g.fillRect(x(ctx.time) - devicePixelRatio, 0, 2 * devicePixelRatio, h); }
-  }, [wave, doc, range, ctx.time, ctx.activeClip]);
-  const seekAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    ctx.seek(range[0] + ((e.clientX - r.left) / r.width) * (range[1] - range[0]));
-  };
-  return (
-    <div className="vs-col" style={{ gap: 4 }}>
-      <canvas ref={ref} className="vs-wave" onPointerDown={seekAt} aria-label="Timeline: press to move the playhead" data-testid="vs-wave" />
-      <div className="vs-legend"><span><i style={{ background: 'rgba(229,72,77,.6)' }} />Cut</span><span><i style={{ background: 'rgba(245,165,36,.7)' }} />Suggested</span><span><i style={{ background: 'rgba(18,165,148,.6)' }} />Protected</span>{!ctx.activeClip && <span><i style={{ background: 'rgba(91,70,229,.35)' }} />Shorts</span>}</div>
-    </div>
-  );
 }
 
 /* ── Stages ───────────────────────────────────────────────────────────────── */
@@ -266,6 +124,62 @@ function ResumeUpload({ view, onDone }: { view: ProjectView; onDone: () => void 
   );
 }
 
+/* ── Media: the long video and every Short ────────────────────────────────── */
+
+function MediaPanel({ ctx }: { ctx: EditorCtx }) {
+  const { view, doc, duration } = ctx;
+  const [q, setQ] = useState('');
+  const strip = view.source.filmstrip;
+  const frameAt = (t: number): React.CSSProperties => {
+    if (!strip) return view.source.posterUrl ? { backgroundImage: `url("${view.source.posterUrl}")` } : {};
+    const k = Math.min(strip.tiles - 1, Math.max(0, Math.floor(t / strip.every)));
+    return { backgroundImage: `url("${strip.url}")`, backgroundSize: `${strip.tiles * 100}% 100%`, backgroundPosition: `${strip.tiles > 1 ? (k / (strip.tiles - 1)) * 100 : 0}% 0` };
+  };
+  const longOut = view.outputs.find(o => o.kind === 'long');
+  const match = (s: string) => !q.trim() || s.toLowerCase().includes(q.trim().toLowerCase());
+  const badge = (id?: string) => {
+    const o = view.outputs.find(x => x.id === id);
+    if (!o) return null;
+    const job = view.jobs.find(j => j.target === o.id && j.kind === 'render' && (j.state === 'queued' || j.state === 'running'));
+    return <span className={`vs-badge ${o.status}`}>{job ? (job.progress !== null ? `${Math.round(job.progress)}%` : 'Rendering') : o.stale ? 'Edited' : STATUS_LABEL[o.status]}</span>;
+  };
+  return (
+    <div className="vs-col" style={{ gap: 8 }} data-testid="vs-media">
+      <div style={{ position: 'relative' }}>
+        <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#8a8d99' }} />
+        <input className="vs-input" style={{ paddingLeft: 30 }} placeholder="Search media" value={q} onChange={e => setQ(e.target.value)} aria-label="Search media" />
+      </div>
+      <div className="vs-media">
+        {match(`long video ${view.source.name}`) && (
+          <button type="button" className="vs-media-item" aria-pressed={!ctx.activeClip} onClick={() => ctx.setActiveClip(null)} data-media="long">
+            <div className="th" style={{ ...frameAt(Math.min(duration * 0.1, 30)), backgroundSize: strip ? `${strip.tiles * 100}% 100%` : 'cover' }}><span>{clock(keptLength(keepRanges(duration, doc)))}</span></div>
+            <div style={{ minWidth: 0 }}><b>Long video</b><small>{view.source.name || 'The recording'}</small><div style={{ marginTop: 3 }}>{badge(longOut?.id)}</div></div>
+          </button>
+        )}
+        {doc.clips.map((c, n) => {
+          const o = view.outputs.find(x => x.kind === 'short' && x.clipId === c.id);
+          const th = o?.thumbs[o.chosenThumb] ?? o?.thumbs[0];
+          if (!match(`short ${n + 1} ${c.title} ${c.topic}`)) return null;
+          return (
+            <button key={c.id} type="button" className="vs-media-item" aria-pressed={ctx.activeClip === c.id} onClick={() => { ctx.setActiveClip(c.id); ctx.seek(c.s); }} data-media={c.id}>
+              <div className="th" style={th ? { backgroundImage: `url("${th.url}")` } : frameAt(c.s + 1)}><span>{clock(keptLength(keepRanges(duration, doc, [c.s, c.e])))}</span></div>
+              <div style={{ minWidth: 0 }}><b title={c.title}>Short {n + 1} · {c.title}</b><small>{c.aspect} · from {clock(c.s)}</small><div style={{ marginTop: 3 }}>{badge(o?.id)}</div></div>
+            </button>
+          );
+        })}
+        {doc.music && match(`music ${doc.music.title}`) && (
+          <button type="button" className="vs-media-item" onClick={() => ctx.setTab('music')} data-media="music">
+            <div className="th" style={{ display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, rgba(45,212,191,.35), rgba(34,211,238,.2))' }}><Music2 size={20} /></div>
+            <div style={{ minWidth: 0 }}><b>{doc.music.title}</b><small>{doc.music.license}</small></div>
+          </button>
+        )}
+      </div>
+      {!doc.clips.length && <p className="vs-kbd" style={{ margin: 0 }}>{ctx.transcript ? 'No Shorts yet — mark a stretch on the timeline, or ask the assistant.' : 'Shorts appear here once they are chosen.'}</p>}
+      <Link to="/video-studio?new=1" className="vs-btn sm" style={{ justifySelf: 'start' }}><Plus size={13} /> New video project</Link>
+    </div>
+  );
+}
+
 /* ── The editor ───────────────────────────────────────────────────────────── */
 
 export default function VideoEditor({ id }: { id: string }) {
@@ -277,7 +191,9 @@ export default function VideoEditor({ id }: { id: string }) {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [wave, setWave] = useState<Uint8Array | null>(null);
   const [error, setError] = useState('');
-  const [tab, setTabState] = useState<PanelTab>((params.get('tab') as PanelTab) || 'transcript');
+  const asked = params.get('tab') ?? '';
+  const [left, setLeft] = useState<LeftTab>(isLeft(asked) ? asked : 'media');
+  const [right, setRight] = useState<RightTab>(isRight(asked) ? asked : 'video');
   const [time, setTime] = useState(0);
   const [selection, setSelection] = useState<{ i0: number; i1: number } | null>(null);
   const [activeClip, setActiveClip] = useState<string | null>(null);
@@ -285,14 +201,22 @@ export default function VideoEditor({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [caps, setCaps] = useState<Capability[] | null>(null);
   const [showCaps, setShowCaps] = useState(false);
+  const [showHistory, setShowHistory] = useState(asked === 'versions');
   const [name, setName] = useState('');
   const transcriptUrlSeen = useRef('');
   const prev = useRef<ProjectView | null>(null);
   const versionRef = useRef(0);
+  const commandRef = useRef<HTMLInputElement>(null);
   versionRef.current = version;
 
   const say = useCallback((m: ChatMsg) => setMessages(ms => [...ms, m].slice(-80)), []);
-  const setTab = useCallback((t: PanelTab) => { setTabState(t); setParams(t === 'transcript' ? {} : { tab: t }, { replace: true }); }, [setParams]);
+  const setTab = useCallback((t: PanelTab) => {
+    if (isLeft(t)) setLeft(t);
+    else if (isRight(t)) setRight(t);
+    else if (t === 'versions') setShowHistory(true);
+    else if (t === 'assistant') { commandRef.current?.focus(); return; }
+    setParams(t === 'media' || t === 'video' ? {} : { tab: t }, { replace: true });
+  }, [setParams]);
 
   /* What the jobs did since the last look, said in the assistant — only real events. */
   const narrate = useCallback((before: ProjectView | null, now: ProjectView, d: VideoDoc | null) => {
@@ -313,6 +237,8 @@ export default function VideoEditor({ id }: { id: string }) {
       }
       if (b && b.thumbs.length === 0 && o.thumbs.length > 0) say({ who: 'sys', text: `Thumbnails for “${o.title.slice(0, 40)}” are ready — ${o.thumbs.filter(t => t.verified).length} checked PNGs.` });
     });
+    if (!before.extras?.repurposed && now.extras?.repurposed) say({ who: 'sys', text: `Drafts written from this recording: ${now.extras.repurposed.links.map(l => l.label).join(', ')}.` });
+    if (!before.extras?.quiz && now.extras?.quiz) say({ who: 'sys', text: `A ${now.extras.quiz.questions.length}-question quiz is ready (Reuse tab).` });
     if (before.project.status !== 'failed' && now.project.status === 'failed') say({ who: 'sys', text: `Processing stopped: ${now.project.error}` });
   }, [say]);
 
@@ -399,6 +325,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
     view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say,
   } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say]);
+  const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;
   if (!view || !doc || !ctx) return <p className="vs-sub"><Loader size={14} className="spin" /> Opening the project…</p>;
@@ -406,63 +333,95 @@ export default function VideoEditor({ id }: { id: string }) {
   const st = view.project.status;
   const hasSource = !!view.source.probe || st === 'processing';
   const stale = view.outputs.filter(o => o.stale);
-  const sentences = transcript ? sentencesOf(transcript.words) : [];
+  const working = st !== 'ready' || view.jobs.some(j => j.state === 'queued' || j.state === 'running' || j.state === 'failed');
+  const proposed = doc.cuts.filter(c => c.state === 'proposed').length;
 
   return (
-    <div data-testid="vs-editor" data-status={st}>
-      <div className="vs-head">
+    <div className="vse" data-testid="vs-editor" data-status={st}>
+      <div className="vse-top">
         <Link to="/video-studio" className="vs-btn ghost sm" aria-label="Back to Video Studio"><ArrowLeft size={16} /></Link>
-        <div className="vs-grow">
-          <input className="vs-input" aria-label="Project name" value={name} onChange={e => setName(e.target.value)}
-            onBlur={() => { if (name.trim() && name !== view.project.name) void renameVideoProject(id, name.trim()); }}
-            style={{ border: 0, padding: '2px 0', fontSize: 21, fontWeight: 800, letterSpacing: '-.02em', background: 'transparent' }} />
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>
-            {view.source.name || 'No video yet'}{view.source.probe ? ` · ${clock(view.source.probe.duration)} · ${view.source.probe.width}×${view.source.probe.height}` : ''}{view.project.language ? ` · ${view.project.language.toUpperCase()}` : ''}
-            {view.project.autopilotProjectId && <> · <Link className="vs-aplink" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><Bot size={12} /> {view.project.autopilotProjectName || 'AI Autopilot project'}</Link></>}
-          </p>
-        </div>
+        <input className="vse-name" aria-label="Project name" value={name} onChange={e => setName(e.target.value)}
+          onBlur={() => { if (name.trim() && name !== view.project.name) void renameVideoProject(id, name.trim()); }} />
+        <span className="vs-kbd vse-src">
+          {view.source.probe ? `${clock(view.source.probe.duration)} · ${view.source.probe.width}×${view.source.probe.height}` : view.source.name || 'No video yet'}{view.project.language ? ` · ${view.project.language.toUpperCase()}` : ''}
+        </span>
+        {view.project.autopilotProjectId && <Link className="vs-aplink vs-kbd" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><Bot size={12} /> {view.project.autopilotProjectName || 'AI Autopilot project'}</Link>}
+        <span className="vs-spacer" />
+        {busy && <Loader size={14} className="spin" />}
         <button type="button" className="vs-btn sm" disabled={version <= 1} onClick={() => void go(version - 1)} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={14} /></button>
         <button type="button" className="vs-btn sm" disabled={version >= view.maxVersion} onClick={() => void go(version + 1)} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={14} /></button>
+        <button type="button" className="vs-btn sm" onClick={() => setShowHistory(true)} aria-label="Version history"><History size={14} /></button>
+        <button type="button" className="vs-btn sm" onClick={() => setShowCaps(true)}><ShieldCheck size={14} /> What works</button>
         {stale.length > 0 && (
           <button type="button" className="vs-btn ai sm" data-testid="vs-render-changes" onClick={() => void renderOutputs(id, stale.map(o => o.id)).then(r => { if (!r.success) say({ who: 'ai', text: r.error ?? 'Could not render.' }); void refresh(); })}>
             <Clapperboard size={14} /> Render {stale.length} change{stale.length === 1 ? '' : 's'}
           </button>
         )}
-        <button type="button" className="vs-btn sm" onClick={() => setShowCaps(true)}><ShieldCheck size={14} /> What works</button>
         <button type="button" className="vs-btn ghost sm danger" aria-label="Delete project" onClick={() => {
           if (window.confirm('Delete this project, its source video and everything made from it? This cannot be undone.')) void deleteVideoProject(id).then(() => navigate('/video-studio'));
         }}><Trash2 size={14} /></button>
-        {busy && <Loader size={14} className="spin" />}
       </div>
 
-      <div className="vs-ed">
-        <div className="vs-ed-left">
-          {!hasSource && (st === 'draft' || st === 'uploading') ? <ResumeUpload view={view} onDone={() => void refresh()} />
-            : view.source.proxyUrl ? <Preview ctx={ctx} wave={wave} /> : null}
-          {(st !== 'ready' || view.jobs.some(j => j.state === 'queued' || j.state === 'running' || j.state === 'failed')) && hasSource && (
-            <StagesCard view={view} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />
-          )}
-        </div>
-        <div className="vs-card vs-panel">
-          <div className="vs-ptabs" role="tablist">
-            {PANELS.map(p => (
-              <button key={p.key} type="button" role="tab" className="vs-ptab" aria-selected={tab === p.key} onClick={() => setTab(p.key)} data-panel={p.key}>
-                <p.icon size={14} /> {p.label}
-                {p.key === 'cleanup' && doc.cuts.some(c => c.state === 'proposed') ? <span className="vs-count" style={{ fontSize: 11, background: '#fff1d6', color: '#b25e09', borderRadius: 99, padding: '0 6px' }}>{doc.cuts.filter(c => c.state === 'proposed').length}</span> : null}
-                {p.key === 'shorts' && doc.clips.length ? <span className="vs-count" style={{ fontSize: 11, background: '#efedfd', color: '#5b46e5', borderRadius: 99, padding: '0 6px' }}>{doc.clips.length}</span> : null}
+      <aside className="vse-left">
+        <div className="vse-pane">
+          <div className="vs-ptabs" role="tablist" aria-label="Project">
+            {LEFT.map(p => (
+              <button key={p.key} type="button" role="tab" className="vs-ptab" aria-selected={left === p.key} onClick={() => setTab(p.key)} data-panel={p.key} title={p.label}>
+                <p.icon size={14} /> <span className="lbl">{p.label}</span>
+                {p.key === 'cleanup' && proposed ? <span className="vs-count warn">{proposed}</span> : null}
+                {p.key === 'shorts' && doc.clips.length ? <span className="vs-count">{doc.clips.length}</span> : null}
               </button>
             ))}
           </div>
-          {tab === 'transcript' && <TranscriptPanel ctx={ctx} sentences={sentences} />}
-          {tab === 'cleanup' && <CleanupPanel ctx={ctx} />}
-          {tab === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
-          {tab === 'captions' && <CaptionsPanel ctx={ctx} />}
-          {tab === 'exports' && <OutputsPanel ctx={ctx} />}
-          {tab === 'assistant' && <AssistantPanel ctx={ctx} messages={messages} />}
-          {tab === 'versions' && <VersionsPanel ctx={ctx} onGo={v => void go(v)} />}
+          <div className="vse-scroll">
+            {left === 'media' && <MediaPanel ctx={ctx} />}
+            {left === 'transcript' && <TranscriptPanel ctx={ctx} sentences={sentences} />}
+            {left === 'cleanup' && <CleanupPanel ctx={ctx} />}
+            {left === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
+          </div>
         </div>
-      </div>
+      </aside>
+
+      <main className="vse-stage">
+        {!hasSource && (st === 'draft' || st === 'uploading') ? <ResumeUpload view={view} onDone={() => void refresh()} />
+          : view.source.proxyUrl ? <Player ctx={ctx} /> : (
+            <div className="vse-player"><div className="vse-screen" style={{ minHeight: 280 }}><span className="vs-kbd"><Loader size={14} className="spin" /> The preview appears when the video is prepared.</span></div></div>
+          )}
+        {working && hasSource && <StagesCard view={view} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />}
+      </main>
+
+      <aside className="vse-right">
+        <div className="vse-pane inspector">
+          <div className="vs-ptabs" role="tablist" aria-label="Inspector">
+            {RIGHT.map(p => (
+              <button key={p.key} type="button" role="tab" className="vs-ptab" aria-selected={right === p.key} onClick={() => setTab(p.key)} data-panel={p.key}>
+                {p.label}{p.key === 'exports' && stale.length ? <span className="vs-count warn">{stale.length}</span> : null}
+              </button>
+            ))}
+          </div>
+          <div className="vse-scroll">
+            {right === 'video' && <VideoPanel ctx={ctx} />}
+            {right === 'audio' && <AudioPanel ctx={ctx} />}
+            {right === 'music' && <MusicPanel ctx={ctx} />}
+            {right === 'captions' && <CaptionsPanel ctx={ctx} />}
+            {right === 'exports' && <OutputsPanel ctx={ctx} />}
+            {right === 'reuse' && <ReusePanel ctx={ctx} />}
+          </div>
+        </div>
+        <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
+      </aside>
+
+      {hasSource && duration > 0 && <section className="vse-time"><Timeline ctx={ctx} wave={wave} /></section>}
+
       {showCaps && caps && <CapabilityPanel caps={caps} usage={null} onClose={() => setShowCaps(false)} />}
+      {showHistory && (
+        <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Version history" onClick={() => setShowHistory(false)}>
+          <div className="vs-modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
+            <div className="vs-row" style={{ marginBottom: 8 }}><h2 style={{ margin: 0, fontSize: 17 }}><History size={16} /> Version history</h2><span className="vs-spacer" /><button type="button" className="vs-btn ghost sm" onClick={() => setShowHistory(false)} aria-label="Close"><X size={15} /></button></div>
+            <VersionsPanel ctx={ctx} onGo={v => void go(v)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

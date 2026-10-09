@@ -30,7 +30,7 @@ const navGroups = [
   {
     label: 'Studio',
     items: [
-      { path: '/ai-shorts',      icon: Scissors, label: 'AI Shorts' },
+      { path: '/video-studio',   icon: Scissors, label: 'AI Video Studio' },
       { path: '/social-creator', icon: Palette,  label: 'Social Creator' },
     ],
   },

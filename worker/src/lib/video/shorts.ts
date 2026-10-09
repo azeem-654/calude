@@ -262,3 +262,46 @@ export function distinctMeta(items: { id: string; meta: VideoMeta; text: string;
   }
   return out;
 }
+
+/* ── Music credit, in the words that go out with a video ─────────────────── */
+
+/**
+ * A CC BY track must be credited where the video is published. The credit is
+ * one line at the end of the description, replaced (never stacked) when the
+ * track changes and taken out when the music is removed.
+ */
+export function withMusicCredit(description: string, credit: string): string {
+  const kept = description.split('\n').filter(l => !/^Music: /.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
+  return credit ? `${kept}\n\n${credit}` : kept;
+}
+
+/* ── A quiz from a training recording ────────────────────────────────────── */
+
+export interface QuizQuestion { q: string; options: string[]; answer: number; explain: string; t: number }
+
+/**
+ * The AI's questions, checked: each has a question, 3–5 different options,
+ * an answer that is one of them, and the moment in the recording it comes
+ * from (a real sentence number) — a question about something never said is
+ * dropped.
+ */
+export function cleanQuiz(raw: unknown, sentences: Sentence[], max = 12): QuizQuestion[] {
+  const list = Array.isArray((raw as { questions?: unknown })?.questions) ? (raw as { questions: unknown[] }).questions : [];
+  const out: QuizQuestion[] = [];
+  const seen = new Set<string>();
+  for (const x of list) {
+    const r = x as Record<string, unknown>;
+    const q = txt(r.question ?? r.q, 240);
+    const options = (Array.isArray(r.options) ? r.options : []).map(o => txt(o, 140)).filter(Boolean);
+    const answer = Math.round(Number(r.answer));
+    const at = Math.round(Number(r.sentence ?? r.start_sentence));
+    if (!q || seen.has(q.toLowerCase())) continue;
+    if (options.length < 3 || options.length > 5 || new Set(options.map(o => o.toLowerCase())).size !== options.length) continue;
+    if (!(answer >= 0 && answer < options.length)) continue;
+    if (!sentences[at]) continue;
+    seen.add(q.toLowerCase());
+    out.push({ q, options, answer, explain: txt(r.explanation ?? r.explain, 300), t: sentences[at].s });
+    if (out.length >= max) break;
+  }
+  return out;
+}

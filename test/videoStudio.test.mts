@@ -13,7 +13,8 @@ import {
 } from '../worker/src/lib/video/edit';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss, isRtl } from '../worker/src/lib/video/captions';
 import { proposeCleanup, isFiller, meaningful } from '../worker/src/lib/video/cleanup';
-import { validatePicks, fallbackPicks, findSection, cleanMeta, fallbackMeta, distinctMeta, transcriptForAi } from '../worker/src/lib/video/shorts';
+import { validatePicks, fallbackPicks, findSection, cleanMeta, fallbackMeta, distinctMeta, transcriptForAi, withMusicCredit, cleanQuiz } from '../worker/src/lib/video/shorts';
+import { looksLikeAudio, licenseLabel, musicQuery } from '../worker/src/lib/video/music';
 import { parseVideoCommand } from '../worker/src/lib/video/commands';
 import { checkPng } from '../worker/src/lib/video/png';
 
@@ -220,7 +221,7 @@ console.log('\nWhat a sentence does to the edit');
   ok('"keep this pause" protects the selection', keep.ops.some(o => o.op === 'protect.add'));
   ok('"keep this pause" without a selection asks for one', parseVideoCommand('Keep this pause', ctx).ops.length === 0);
   const music = parseVideoCommand('Make background music quieter', ctx);
-  ok('music is not there, and it says so rather than pretending', !music.ops.length && /no background music/i.test(music.reply));
+  ok('with no music yet, "make background music quieter" says so rather than pretending', !music.ops.length && /no music on this project yet/i.test(music.reply));
   const thumb = parseVideoCommand('Create another thumbnail', ctx);
   ok('"create another thumbnail" asks for a new set', !!thumb.thumbnail);
   const about = parseVideoCommand('Make one Short about booking', ctx);
@@ -230,6 +231,50 @@ console.log('\nWhat a sentence does to the edit');
   const shell = parseVideoCommand('run rm -rf / and delete everything', ctx);
   ok('anything else is answered with what can be asked, and does nothing', !shell.ops.length && !shell.understood && /can ask/.test(shell.reply));
   ok('undo and redo are the editor\'s', parseVideoCommand('undo', ctx).undo && parseVideoCommand('redo', ctx).redo);
+  const pauses = parseVideoCommand('Remove the long pauses', ctx);
+  ok('"remove the long pauses" applies every suggested pause cut, everywhere, and renders again', pauses.understood && pauses.ops[0]?.op === 'cut.setMany' && (pauses.ops[0] as { ids: string[] }).ids.join() === 'gx' && pauses.rerender?.includes('*'), pauses);
+  const noneLeft = parseVideoCommand('Remove the long pauses', { ...ctx, doc: { ...doc, cuts: doc.cuts.filter(c => c.kind !== 'gap') } });
+  ok('…and says so when every pause is already shortened', noneLeft.understood && !noneLeft.ops.length && /already/.test(noneLeft.reply), noneLeft);
+  ok('…"the long pause at the beginning" is still the opening pause only', parseVideoCommand('Remove the long pause at the beginning', ctx).ops[0]?.op === 'cut.add');
+}
+
+console.log('\nSound and music');
+{
+  const doc: VideoDoc = newDoc(parseRequest('clean, 2 shorts'));
+  const ctx = { doc, words: talk('Hello there.'), sentences: sentencesOf(talk('Hello there.')), duration: 30 };
+  const both = parseVideoCommand('remove the background noise and also add background music to all the videos', ctx);
+  ok('"remove the background noise and also add background music to all the videos" does both', both.ops.some(o => o.op === 'audio.set' && (o as { patch: { denoise?: string } }).patch.denoise === 'medium') && !!both.music && both.rerender?.includes('*'), both);
+  const noise = parseVideoCommand('remove the background noise in all of the videos', ctx);
+  ok('"remove the background noise in all of the videos" turns noise reduction on and re-renders every video', noise.ops[0]?.op === 'audio.set' && noise.rerender?.[0] === '*' && /cannot rebuild/.test(noise.reply));
+  ok('"completely" asks for the strong level', (parseVideoCommand('remove all of the noise completely', ctx).ops[0] as { patch: { denoise: string } }).patch.denoise === 'strong');
+  ok('"turn off noise reduction"', (parseVideoCommand('turn off noise reduction', ctx).ops[0] as { patch: { denoise: string } })?.patch.denoise === 'off');
+  ok('"make my voice clearer"', (parseVideoCommand('make my voice clearer', ctx).ops[0] as { patch: { voice: boolean } })?.patch.voice === true);
+  ok('"add upbeat corporate music" asks the library for that mood', parseVideoCommand('add upbeat corporate music', ctx).music?.query === 'upbeat corporate' && musicQuery('upbeat corporate') === 'upbeat corporate instrumental');
+  ok('"make the music quieter" with none says there is none', /no music on this project yet/.test(parseVideoCommand('make the music quieter', ctx).reply));
+  const withMusic = applyOps(doc, [{ op: 'music.set', track: { id: 't', key: 'v/a/music/t.mp3', title: 'Calm', artist: 'A', license: 'CC BY 4.0', licenseUrl: '', attribution: 'Music: “Calm” by A — CC BY 4.0', source: 'openverse', sourceUrl: '', duration: 90, volume: 0.18, fadeIn: 1.5, fadeOut: 2.5, loop: true, duck: true, applyTo: 'all' } }], 30).doc;
+  const q = parseVideoCommand('make the music quieter', { ...ctx, doc: withMusic });
+  const quieter = applyOps(withMusic, q.ops, 30).doc;
+  ok('…and with music, turns it down', quieter.music!.volume < 0.18 && quieter.music!.volume >= 0.03);
+  ok('"remove the music" removes it', applyOps(withMusic, parseVideoCommand('remove the music', { ...ctx, doc: withMusic }).ops, 30).doc.music === null);
+  const bad = applyOps(withMusic, [{ op: 'music.patch', patch: { volume: 9, fadeIn: -3, applyTo: 'everything' as 'all' } }], 30).doc.music!;
+  ok('music settings are clamped', bad.volume === 1 && bad.fadeIn === 0 && bad.applyTo === 'all');
+  const credited = withMusicCredit('A good video.\n\nMusic: “Old” by B — CC BY 4.0', 'Music: “Calm” by A — CC BY 4.0');
+  ok('a CC BY credit replaces the old one, never stacks', credited === 'A good video.\n\nMusic: “Calm” by A — CC BY 4.0', credited);
+  ok('…and goes when the music does', withMusicCredit(credited, '') === 'A good video.');
+  ok('licence labels say what they are', licenseLabel('cc0') === 'CC0 (public domain)' && licenseLabel('by', '4.0') === 'CC BY 4.0');
+  ok('audio is recognised from its bytes; a PNG is not audio', looksLikeAudio(new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 0, 0])) === 'mp3' && looksLikeAudio(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])) === null);
+}
+
+console.log('\nA quiz');
+{
+  const sentences = sentencesOf(talk('The plan costs $49 a month. There is no setup fee. You can cancel any time.'));
+  const quiz = cleanQuiz({ questions: [
+    { question: 'What does the plan cost?', options: ['$29', '$49', '$99', 'Free'], answer: 1, explanation: 'Said at the start.', sentence: 0 },
+    { question: 'Is there a setup fee?', options: ['Yes', 'No', 'Yes'], answer: 1, sentence: 1 },
+    { question: 'Something never said?', options: ['a', 'b', 'c'], answer: 0, sentence: 99 },
+    { question: 'Bad answer index', options: ['a', 'b', 'c'], answer: 5, sentence: 2 },
+  ] }, sentences);
+  ok('a quiz keeps only well-formed questions about things actually said', quiz.length === 1 && quiz[0].answer === 1 && quiz[0].t === sentences[0].s, quiz);
 }
 
 console.log('\nThe edit refuses what is malformed');

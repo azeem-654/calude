@@ -502,7 +502,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>AI Shorts for {contact.name}</h3>
-                <a href="/ai-shorts" style={{ fontSize: '12px', color: '#17191c', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <a href="/video-studio?tab=quick-shorts" style={{ fontSize: '12px', color: '#17191c', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <ExternalLink size={12} /> Open AI Shorts
                 </a>
               </div>

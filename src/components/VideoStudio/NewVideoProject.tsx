@@ -11,7 +11,7 @@ import { Upload, Wand2, ChevronDown, ChevronUp, Loader, Film, AlertCircle, Bot }
 import VoiceControl from '../Autopilot/voice/VoiceControl';
 import {
   createVideoProject, parseRequest, describeRequest, uploadVideo, bytesLabel, SHORTS_MAX,
-  type Template, type VideoRequest, type UploadProgress,
+  type Template, type VideoRequest, type UploadProgress, type Want,
 } from '../../services/videoStudio';
 import { fetchBoard, type Project } from '../../services/projects';
 
@@ -22,8 +22,20 @@ const PRESETS: { label: string; text: string }[] = [
   { label: 'Captions + thumbnails', text: 'Add captions and create PNG thumbnails for this video. Light cleanup only.' },
 ];
 
-export default function NewVideoProject({ template, autopilotProjectId, onCancel, onCreated }: {
+/** What the welcome wizard asked for beyond the video itself, said in words. */
+function wantWords(w: Want): string[] {
+  return [
+    w.denoise ? `${w.denoise} noise reduction` : '',
+    w.voice ? 'clearer voice' : '',
+    w.music ? `${w.music.replace(/ instrumental$/, '')} royalty-free music` : '',
+    w.repurpose ? [w.repurpose.posts ? `${w.repurpose.posts} social posts` : '', w.repurpose.blog ? 'a blog article' : '', w.repurpose.email ? '3 emails' : ''].filter(Boolean).join(', ') + ' (drafts)' : '',
+    w.quiz ? 'a quiz' : '',
+  ].filter(Boolean);
+}
+
+export default function NewVideoProject({ template, want, autopilotProjectId, onCancel, onCreated }: {
   template: Template | null;
+  want?: Want;
   autopilotProjectId: string;
   onCancel: () => void;
   onCreated: (id: string) => void;
@@ -63,7 +75,7 @@ export default function NewVideoProject({ template, autopilotProjectId, onCancel
     if (!file) { setError('Choose the video first.'); return; }
     setError('');
     setBusy('creating');
-    const c = await createVideoProject({ name: name.trim() || file.name, prompt: prompt.trim(), settings, autopilotProjectId: ap || undefined });
+    const c = await createVideoProject({ name: name.trim() || file.name, prompt: prompt.trim(), settings, autopilotProjectId: ap || undefined, want });
     if (!c.success) { setBusy(''); setError(c.error ?? 'The project could not be created.'); return; }
     setBusy('uploading');
     const up = await uploadVideo(c.id, file, setProgress);
@@ -78,10 +90,11 @@ export default function NewVideoProject({ template, autopilotProjectId, onCancel
   return (
     <div className="vs-new" data-testid="vs-new-project">
       <div className="vs-col">
+        {template && want && <div className="vs-steps"><span><i>1</i> Goal</span><span>›</span><span><i>2</i> Choices</span><span>›</span><span className="on"><i>3</i> Upload</span></div>}
         <div className="vs-prompt">
           <div className="vs-prompt-in">
             <label htmlFor="vs-prompt" style={{ fontWeight: 800, fontSize: 17, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Wand2 size={18} color="#5b46e5" /> What would you like AI to do with this video?
+              <Wand2 size={18} color="#c084fc" /> {template && want ? template.name : 'What would you like AI to do with this video?'}
             </label>
             <textarea id="vs-prompt" data-field="video.prompt" value={prompt} disabled={listening || !!busy}
               placeholder="Clean this recording, remove filler words and long gaps, create one polished main video and four Shorts, add captions and create PNG thumbnails."
@@ -103,7 +116,7 @@ export default function NewVideoProject({ template, autopilotProjectId, onCancel
           onDrop={e => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}>
           <input ref={inputRef} type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.m4v,.mkv,.webm" hidden data-testid="vs-file"
             onChange={e => pick(e.target.files?.[0])} />
-          {file ? <Film size={28} color="#5b46e5" /> : <Upload size={28} color="#5b46e5" />}
+          {file ? <Film size={28} color="#c084fc" /> : <Upload size={28} color="#c084fc" />}
           <b>{file ? file.name : 'Upload your recording'}</b>
           <span className="vs-sub" style={{ margin: 0 }}>{file ? bytesLabel(file.size) : 'MP4, MOV, MKV or WebM · up to 12 GB · 16:9, 9:16, 1:1 or 4:5. Your original is kept untouched.'}</span>
         </div>
@@ -121,7 +134,7 @@ export default function NewVideoProject({ template, autopilotProjectId, onCancel
       <div className="vs-col">
         <div className="vs-card" style={{ display: 'grid', gap: 10 }}>
           <h2>What will be made</h2>
-          <div className="vs-understood" data-testid="vs-understood">{understood.understood.map(u => <span key={u}>{u}</span>)}</div>
+          <div className="vs-understood" data-testid="vs-understood">{understood.understood.map(u => <span key={u}>{u}</span>)}{want && wantWords(want).map(u => <span key={u} className="also">{u}</span>)}</div>
           <label className="vs-label">Project name
             <input className="vs-input" data-field="video.name" value={name} onChange={e => setName(e.target.value)} placeholder="Weekly podcast — episode 12" />
           </label>

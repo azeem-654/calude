@@ -56,6 +56,7 @@ const PART = 16 * 1024 * 1024;
 
 const VIDEO_FORMATS = 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm';
 const IMAGE_FORMATS = 'png_pipe,jpeg_pipe,webp_pipe,image2';
+const AUDIO_FORMATS = 'mp3,ogg,wav,flac,aac,mov,mp4,m4a,3gp,3g2,mj2,matroska,webm';
 const PROTOCOLS = 'file,http,https,tcp,tls,crypto';
 const VIDEO_CODECS = new Set(['h264', 'hevc', 'vp8', 'vp9', 'av1', 'prores', 'mpeg4', 'mjpeg', 'dnxhd']);
 const AUDIO_CODECS = new Set(['aac', 'mp3', 'opus', 'vorbis', 'pcm_s16le', 'pcm_s24le', 'pcm_f32le', 'alac', 'flac', 'ac3', 'eac3']);
@@ -385,6 +386,16 @@ async function prepare(job, dir) {
   await exec(FFMPEG, [...base, '-ss', String(at), ...inVideo(src), '-frames:v', '1', '-vf', portrait ? 'scale=405:-2' : 'scale=-2:405', '-q:v', '4', path.join(dir, 'poster.jpg')], job);
   files.poster = await upload(job, path.join(dir, 'poster.jpg'), 'poster.jpg', 'image/jpeg');
 
+  /* A filmstrip for the editor's timeline: one small frame every few seconds,
+     side by side in one picture, read from the proxy (already small, so this
+     is quick). */
+  job.stage = 'filmstrip';
+  const every = Math.max(2, Math.ceil(info.duration / 300));
+  const tiles = Math.max(1, Math.floor(info.duration / every) + 1);
+  await exec(FFMPEG, [...base, '-i', path.join(dir, 'proxy.mp4'), '-vf', `fps=1/${every},scale=112:63:force_original_aspect_ratio=increase,crop=112:63,tile=${tiles}x1`,
+    '-frames:v', '1', '-q:v', '5', path.join(dir, 'filmstrip.jpg')], job);
+  files.filmstrip = { ...(await upload(job, path.join(dir, 'filmstrip.jpg'), 'filmstrip.jpg', 'image/jpeg')), every, tiles, w: 112, h: 62 };
+
   return { probe: info, silences, chunks, files };
 }
 
@@ -435,19 +446,46 @@ async function render(job, dir) {
   }
   const graph = [`[0:v]setpts=PTS-STARTPTS,fps=${fps},select='${sel}',setpts=N/${fps}/TB,${frame}${subs},format=yuv420p[v]`];
   const hasAudio = p.hasAudio !== false;
+  const audio = p.audio ?? {};
+  /* Natural first: each level removes more steady noise (fans, hum, hiss) and
+     the strongest also takes off the top end where hiss lives. Nothing here
+     can rebuild a voice that clipped or dropped out — the screen says so. */
+  const DENOISE = { light: 'afftdn=nr=10:nf=-42', medium: 'afftdn=nr=18:nf=-38:tn=1', strong: 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000' };
+  const voice = ['highpass=f=70'];
+  if (DENOISE[audio.denoise]) voice.push(DENOISE[audio.denoise]);
+  if (audio.voice) voice.push('equalizer=f=3200:t=q:w=1.2:g=2.5', 'deesser=i=0.35', 'acompressor=threshold=0.08:ratio=3:attack=8:release=120:makeup=1.5');
+  const gain = num(audio.volume, 1, 0.3, 2);
+  if (gain !== 1) voice.push(`volume=${gain}`);
+  const stereo = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
+  const level = audio.loudnorm !== false ? ',loudnorm=I=-16:LRA=11:TP=-1.5,aresample=48000' : '';
+  const music = p.music && job.inputs.music ? p.music : null;
   if (hasAudio) {
-    const audio = p.audio ?? {};
-    const chain = ['highpass=f=60'];
-    if (audio.denoise === 'light') chain.push('afftdn=nr=10:nf=-42');
-    if (audio.loudnorm !== false) chain.push('loudnorm=I=-16:LRA=11:TP=-1.5');
-    graph.push(`[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${chain.join(',')},aresample=48000[a]`);
+    graph.push(`[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${voice.join(',')},${stereo}[sp]`);
   }
+  if (music) {
+    /* The track under the voice: its own volume, faded in and out, cut to the
+       video's length; ducked under speech so words stay clear. */
+    const mv = num(music.volume, 0.18, 0, 1), fi = num(music.fadeIn, 1.5, 0, 10), fo = num(music.fadeOut, 2.5, 0, 15);
+    graph.push(`[1:a]aresample=48000,${stereo},volume=${mv},atrim=0:${total.toFixed(3)},asetpts=PTS-STARTPTS` +
+      `${fi > 0 ? `,afade=t=in:st=0:d=${fi}` : ''}${fo > 0 ? `,afade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}` : ''}[m]`);
+    if (hasAudio && music.duck !== false) {
+      graph.push('[sp]asplit=2[sp1][sp2]', '[m][sp2]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350[md]', `[sp1][md]amix=inputs=2:duration=first:normalize=0${level}[a]`);
+    } else if (hasAudio) {
+      graph.push(`[sp][m]amix=inputs=2:duration=first:normalize=0${level}[a]`);
+    } else {
+      graph.push(`[m]anull${level}[a]`);
+    }
+  } else if (hasAudio) {
+    graph.push(`[sp]anull${level}[a]`);
+  }
+  const withAudio = hasAudio || !!music;
   await fsp.writeFile(path.join(dir, 'graph.txt'), graph.join(';'));
   const out = path.join(dir, 'out.mp4');
-  await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src),
-    '-filter_complex_script', path.join(dir, 'graph.txt'), '-map', '[v]', ...(hasAudio ? ['-map', '[a]'] : []),
+  const musicIn = music ? [...(music.loop !== false ? ['-stream_loop', '-1'] : []), '-protocol_whitelist', PROTOCOLS, '-format_whitelist', AUDIO_FORMATS, '-i', job.inputs.music] : [];
+  await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn,
+    '-filter_complex_script', path.join(dir, 'graph.txt'), '-map', '[v]', ...(withAudio ? ['-map', '[a]'] : []),
     '-c:v', 'libx264', '-preset', String(p.preset ?? 'veryfast').replace(/[^a-z]/g, '') || 'veryfast', '-crf', String(num(p.crf, 21, 14, 32)),
-    '-profile:v', 'high', '-r', String(fps), ...(hasAudio ? ['-c:a', 'aac', '-b:a', '160k', '-ac', '2'] : []),
+    '-profile:v', 'high', '-r', String(fps), ...(withAudio ? ['-c:a', 'aac', '-b:a', '160k', '-ac', '2'] : []), '-t', total.toFixed(3),
     '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', out], job, { onLine: progressTo(job, 'render', total) });
   job.stage = 'check'; job.pct = null;
   const made = summarise(await probe(out, job));

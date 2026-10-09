@@ -13,7 +13,12 @@
  *     window, on the piece's own clock — exactly what Whisper does.
  *   startGeminiMock(port) — topics and Shorts by keyword from the numbered
  *     transcript in the prompt, and per-video metadata from each <video>'s own
- *     words. It can be told to fail, to prove the rule-based fallback.
+ *     words; a quiz from the numbered transcript; and the Repurposing
+ *     writers' posts, article and emails. It can be told to fail, to prove
+ *     the rule-based fallback.
+ *   startOpenverseMock(port, dir) — the open music library: a search that
+ *     answers CC0, CC BY and one NonCommercial track (which must never be
+ *     offered), each track's details, and the tracks themselves (real MP3s).
  */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -167,7 +172,25 @@ export function startGeminiMock(port) {
     state.calls.push(prompt.slice(0, 120));
     if (state.fail) return send(res, 500, { error: { code: 500, message: 'model unavailable (test)' } });
     let answer;
-    if (/<transcript>/.test(prompt)) {
+    const lineList = () => [...prompt.matchAll(/^\[(\d+)\] \((\d+):(\d+)\) (.*)$/gm)].map(m => ({ i: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));
+    if (/multiple-choice quiz/.test(prompt)) {
+      const lines = lineList();
+      const questions = KEYWORDS.map(k => ({ k, at: lines.find(l => k.re.test(l.text)) })).filter(x => x.at).map(({ k, at }) => ({
+        question: `What does the show say about ${k.topic.toLowerCase()}?`,
+        options: [at.text.slice(0, 120), `${k.topic} is only for large companies`, `${k.topic} needs a developer`, `${k.topic} is not covered`],
+        answer: 0, explanation: `Said at the time shown: “${at.text.slice(0, 80)}”`, sentence: at.i,
+      }));
+      /* One about something never said, pointing at no sentence — must be dropped. */
+      questions.push({ question: 'Which planet is the show recorded on?', options: ['Mars', 'Venus', 'Earth', 'Jupiter'], answer: 2, explanation: '', sentence: 99999 });
+      answer = { questions };
+    } else if (/Write a blog post for this business/.test(prompt)) {
+      answer = { title: 'Four ways a small business wins new customers', slug: 'four-ways-to-win-customers', excerpt: 'Prospecting, a pipeline, follow-up and a booking page.', body: '## Prospecting\n\nFind businesses every day.\n\n## Follow-up\n\nMost deals are lost because nobody follows up.', keywords: ['prospecting', 'follow-up', 'pipeline'] };
+    } else if (/social posts? for this business/.test(prompt)) {
+      const n = Number(prompt.match(/Write (\d+) social post/)?.[1] ?? 1);
+      answer = { posts: Array.from({ length: n }, (_, i) => ({ platform: 'instagram', headline: ['Thirty new businesses a day', 'Follow-up wins the deal', 'Let people book themselves', 'Know who to call', '$49 a month, no setup', 'Fewer missed calls'][i % 6], body: 'From this week\'s show. Every lead lands in the pipeline.', hashtags: ['#smallbusiness', '#growth'] })) };
+    } else if (/"steps": \[/.test(prompt)) {
+      answer = { name: 'From the weekly growth show', steps: [0, 3, 6].map((day, i) => ({ day, subject: ['Thirty new businesses a day', 'Why follow-up wins', 'Your booking page'][i], body: `Hi {{firstName}},\n\nFrom this week's show, part ${i + 1}.` })) };
+    } else if (/<transcript>/.test(prompt)) {
       const lines = [...prompt.matchAll(/^\[(\d+)\] \((\d+):(\d+)\) (.*)$/gm)].map(m => ({ i: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));
       const shorts = [];
       for (const k of KEYWORDS) {
@@ -199,4 +222,46 @@ export function startGeminiMock(port) {
     send(res, 200, { candidates: [{ content: { parts: [{ text: JSON.stringify(answer) }] } }] });
   });
   return new Promise(r => server.listen(port, '127.0.0.1', () => r({ server, state })));
+}
+
+/* ── Openverse ────────────────────────────────────────────────────────────── */
+
+const TRACKS = [
+  { id: '0b1c2d3e-0000-4000-8000-000000000001', title: 'Calm Morning', creator: 'Ana Tone', license: 'cc0', license_version: '1.0', freq: 330 },
+  { id: '0b1c2d3e-0000-4000-8000-000000000002', title: 'Gentle Steps', creator: 'Ben Keys', license: 'by', license_version: '4.0', freq: 392 },
+  { id: '0b1c2d3e-0000-4000-8000-000000000003', title: 'Not For Business', creator: 'Cy Nc', license: 'by-nc', license_version: '4.0', freq: 440 },
+];
+
+export function startOpenverseMock(port, dir) {
+  const state = { searches: [], fetches: 0 };
+  fs.mkdirSync(dir, { recursive: true });
+  const fileOf = t => {
+    const f = path.join(dir, `${t.id}.mp3`);
+    if (!fs.existsSync(f)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `sine=frequency=${t.freq}:duration=40`, '-ac', '2', '-b:a', '96k', f]);
+    return f;
+  };
+  const base = `http://127.0.0.1:${port}`;
+  const asJson = t => ({
+    id: t.id, title: t.title, creator: t.creator, url: `${base}/file/${t.id}.mp3`, license: t.license, license_version: t.license_version,
+    license_url: `https://creativecommons.org/licenses/${t.license === 'cc0' ? 'publicdomain/zero' : t.license}/${t.license_version}/`,
+    duration: 40000, filetype: 'mp3', filesize: 480000, foreign_landing_url: `https://example.org/track/${t.id}`, source: 'jamendo', genres: ['ambient'], mature: false,
+  });
+  const server = http.createServer(async (req, res) => {
+    await readBody(req);
+    const u = new URL(req.url, base);
+    if (u.pathname === '/v1/audio/') { state.searches.push(u.searchParams.get('q')); return send(res, 200, { result_count: TRACKS.length, results: TRACKS.map(asJson) }); }
+    const one = u.pathname.match(/^\/v1\/audio\/([0-9a-f-]{36})\/$/);
+    if (one) { const t = TRACKS.find(x => x.id === one[1]); return t ? send(res, 200, asJson(t)) : send(res, 404, { detail: 'Not found.' }); }
+    const file = u.pathname.match(/^\/file\/([0-9a-f-]{36})\.mp3$/);
+    if (file) {
+      const t = TRACKS.find(x => x.id === file[1]);
+      if (!t) return send(res, 404, {});
+      state.fetches++;
+      const b = fs.readFileSync(fileOf(t));
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': b.length, 'Accept-Ranges': 'bytes' });
+      return res.end(b);
+    }
+    send(res, 404, {});
+  });
+  return new Promise(r => server.listen(port, '127.0.0.1', () => r({ server, state, tracks: TRACKS })));
 }

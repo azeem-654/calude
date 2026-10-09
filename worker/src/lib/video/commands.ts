@@ -34,14 +34,20 @@ export interface CommandResult {
   redo?: boolean;
   /** A new thumbnail is asked for — the caller queues it. */
   thumbnail?: { target: string };
-  /** Shorts to render again after this change. */
+  /** Shorts to render again after this change; '*' is every video. */
   rerender?: string[];
+  /** Music to find and add — the caller searches the licensed library. */
+  music?: { query: string };
   understood: boolean;
 }
 
 const ORDINAL: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, last: -1 };
 
 export const COMMAND_HELP = [
+  'Remove the background noise in all the videos',
+  'Add calm background music',
+  'Make the music quieter',
+  'Make my voice clearer',
   'Remove the long pause at the beginning',
   'Restore my second example',
   'Make Short 3 faster',
@@ -62,7 +68,31 @@ function clipByRef(t: string, clips: Clip[], current?: string | null): Clip | nu
   return null;
 }
 
+const VERB = '(?:add|remove|make|turn|create|put|use|find|restore|keep|fade|lower|raise|reduce|clean|cut|delete|take|move|give|change|swap|enhance|improve)';
+
+/**
+ * Several requests in one sentence ("remove the background noise and also add
+ * music to all the videos") are split where a new instruction starts, read one
+ * by one, and answered together. A sentence that does not split into requests
+ * that are each understood is read whole.
+ */
 export function parseVideoCommand(input: string, ctx: CommandCtx): CommandResult {
+  const parts = input.split(new RegExp(`\\s*(?:[.;!]\\s+|,?\\s+(?:and also|and then|and|also|then|plus)\\s+)(?=${VERB}\\b)`, 'i')).map(x => x.trim()).filter(Boolean);
+  if (parts.length < 2) return parseOne(input, ctx);
+  const results = parts.map(x => parseOne(x, ctx));
+  if (results.some(r => !r.understood)) return parseOne(input, ctx);
+  return {
+    ops: results.flatMap(r => r.ops),
+    reply: results.map(r => r.reply).filter(Boolean).join(' '),
+    undo: results.some(r => r.undo), redo: results.some(r => r.redo),
+    thumbnail: results.find(r => r.thumbnail)?.thumbnail,
+    rerender: [...new Set(results.flatMap(r => r.rerender ?? []))],
+    music: results.find(r => r.music)?.music,
+    understood: true,
+  };
+}
+
+function parseOne(input: string, ctx: CommandCtx): CommandResult {
   const t = ` ${input.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim()} `;
   const no = (reply: string): CommandResult => ({ ops: [], reply, understood: true });
   const opts: ShortOpts = { count: 1, min: ctx.doc.shorts.min, max: ctx.doc.shorts.max, aspect: ctx.doc.shorts.aspect };
@@ -70,8 +100,51 @@ export function parseVideoCommand(input: string, ctx: CommandCtx): CommandResult
   if (/^\s*(undo|go back|revert)\b/.test(t)) return { ops: [], reply: 'Undone.', undo: true, understood: true };
   if (/^\s*redo\b/.test(t)) return { ops: [], reply: 'Redone.', redo: true, understood: true };
 
-  /* Music is not in this version. Saying so is the feature. */
-  if (/\bmusic\b/.test(t)) return no('There is no background music in this project yet — music arrives in a later version, with uploaded tracks and their licences.');
+  const all = ['*'];
+
+  /* ── Sound ── */
+  if (/\b(noise|hiss|hum|buzz|static|background sound|fan sound)\b/.test(t)) {
+    if (/\b(turn off|switch off|no|stop|without|disable)\b.*\b(noise reduction|denois)/.test(t) || /\bkeep the (background )?noise\b/.test(t)) {
+      return { ops: [{ op: 'audio.set', patch: { denoise: 'off' } }], reply: 'Noise reduction is off. Every video will render again.', rerender: all, understood: true };
+    }
+    if (/\b(remove|reduce|clean|cut|get rid|lower|less|eliminate|fix|take out|kill)\b/.test(t)) {
+      const level = /\b(completely|all of the noise|strong|heavy|more|aggressive|a lot|lots)\b/.test(t) || ctx.doc.audio.denoise === 'medium' ? 'strong' : /\b(bit|little|slight|light|gentle)\b/.test(t) ? 'light' : 'medium';
+      return { ops: [{ op: 'audio.set', patch: { denoise: level } }], reply: `Background noise reduction is on (${level}) for every video — steady noise like fans, hum and hiss is taken out, and every video will render again. Noise reduction cannot rebuild a voice that was distorted or cut out when it was recorded.`, rerender: all, understood: true };
+    }
+  }
+  if (/\b(voice|speech|vocals?|dialogue|audio)\b/.test(t) && /\b(clear|clearer|crisp|crisper|enhance|improve|better|cleaner|punch|richer)\b/.test(t)) {
+    return { ops: [{ op: 'audio.set', patch: { voice: true } }], reply: 'Voice clarity is on — a little presence, softer “s” sounds and gentle levelling. Every video will render again.', rerender: all, understood: true };
+  }
+  if (/\b(voice|speech|my voice)\b/.test(t) && /\b(louder|quieter|softer|lower|higher|up|down)\b/.test(t) && !/\bmusic\b/.test(t)) {
+    const up = /\b(louder|higher|up)\b/.test(t);
+    const v = Math.round(Math.max(0.5, Math.min(1.5, (ctx.doc.audio.volume ?? 1) + (up ? 0.15 : -0.15))) * 100) / 100;
+    return { ops: [{ op: 'audio.set', patch: { volume: v } }], reply: `Voice level ${up ? 'raised' : 'lowered'} to ${Math.round(v * 100)}%. Every video will render again.`, rerender: all, understood: true };
+  }
+
+  /* ── Music ── */
+  if (/\b(music|soundtrack|song|track)\b/.test(t)) {
+    const m = ctx.doc.music;
+    if (/\b(remove|delete|no|without|turn off|take off|get rid)\b/.test(t)) {
+      if (!m) return no('There is no music on this project to remove.');
+      return { ops: [{ op: 'music.remove' }], reply: `Removed “${m.title}”. Every video it was under will render again.`, rerender: all, understood: true };
+    }
+    if (m && /\b(quieter|softer|lower|down|less loud|reduce)\b/.test(t)) {
+      const v = Math.max(0.03, Math.round(m.volume * 0.6 * 100) / 100);
+      return { ops: [{ op: 'music.patch', patch: { volume: v } }], reply: `Music turned down to ${Math.round(v * 100)}%. Every video with music will render again.`, rerender: all, understood: true };
+    }
+    if (m && /\b(louder|up|higher|more)\b/.test(t) && !/\b(add|another|different|change)\b/.test(t)) {
+      const v = Math.min(0.6, Math.round(m.volume * 1.5 * 100) / 100);
+      return { ops: [{ op: 'music.patch', patch: { volume: v } }], reply: `Music turned up to ${Math.round(v * 100)}%. Every video with music will render again.`, rerender: all, understood: true };
+    }
+    if (m && /\bfade\b/.test(t)) {
+      return { ops: [{ op: 'music.patch', patch: { fadeIn: 3, fadeOut: 5 } }], reply: 'The music now fades in over 3 s and out over 5 s.', rerender: all, understood: true };
+    }
+    if (!m && /\b(quieter|softer|lower|louder|fade)\b/.test(t)) return no('There is no music on this project yet. Say “add calm background music”, or pick a track in the Music panel.');
+    if (/\b(add|put|use|want|need|play|include|different|another|change|swap|background)\b/.test(t)) {
+      const words = t.replace(/\b(add|put|use|some|a|an|the|background|music|track|song|soundtrack|to|all|of|videos?|shorts?|please|in|on|under|different|another|change|swap|want|need|i|me|with)\b/g, ' ').replace(/\s+/g, ' ').trim();
+      return { ops: [], reply: '', music: { query: words }, rerender: all, understood: true };
+    }
+  }
   if (/\beye[- ]?contact\b/.test(t)) return no('Eye-contact correction needs a provider that is not set up, so it is not available. Nothing was changed.');
 
   /* The opening pause. */

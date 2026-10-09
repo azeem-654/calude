@@ -20,15 +20,20 @@
  *                                          charge and no second file
  * and: a non-video refused, an upload resumed, an Autopilot workflow's own
  * settings, Shorts and words chosen honestly without AI, the assistant, undo,
- * and a phone.
+ * and a phone. Since the editor's redesign, also: the welcome wizard (goal →
+ * choices → upload), the player holding its video across polls and playing
+ * through the cuts, noise reduction and royalty-free music (an Openverse
+ * mock on :8876 — a NonCommercial track must never be offered — and the
+ * music really in the rendered sound), the timeline, Repurposing and a quiz
+ * from the recording, and AI Shorts / Repurposing inside the studio.
  */
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
-import { execSync, execFileSync, spawn } from 'node:child_process';
+import { execSync, execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { makeRecording, startWhisperMock, startGeminiMock } from './videoStudioMock.mjs';
+import { makeRecording, startWhisperMock, startGeminiMock, startOpenverseMock } from './videoStudioMock.mjs';
 
-const PORT = 8953, INSPECT = 9353, ENG = 8873, WH = 8874, GM = 8875;
+const PORT = 8953, INSPECT = 9353, ENG = 8873, WH = 8874, GM = 8875, OV = 8876;
 const B = `http://localhost:${PORT}`;
 const SECRET = 'engine-test-secret-7f3a';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -53,6 +58,7 @@ const SHORT = fixture(6);
    next recording start its clock again. */
 let whisper = await startWhisperMock(WH, LONG.script);
 const gemini = await startGeminiMock(GM);
+const openverse = await startOpenverseMock(OV, path.join(state, 'fixtures', 'music'));
 
 let engine;
 const startEngine = () => {
@@ -69,13 +75,13 @@ fs.rmSync(persist, { recursive: true, force: true });
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist,
   '--var', `APP_ORIGIN:${B}`, '--var', `GEMINI_BASE:http://127.0.0.1:${GM}`, '--var', `AI_API_KEY:AIzaVIDEO${'x'.repeat(30)}`,
-  '--var', `MEDIA_ENGINE_URL:http://127.0.0.1:${ENG}`, '--var', `MEDIA_ENGINE_SECRET:${SECRET}`, '--var', `WORKERS_AI_BASE:http://127.0.0.1:${WH}`],
+  '--var', `MEDIA_ENGINE_URL:http://127.0.0.1:${ENG}`, '--var', `MEDIA_ENGINE_SECRET:${SECRET}`, '--var', `WORKERS_AI_BASE:http://127.0.0.1:${WH}`, '--var', `OPENVERSE_BASE:http://127.0.0.1:${OV}`],
 { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
 const wfile = fs.createWriteStream(path.join(state, 'wrangler.log'));
 wr.stdout.on('data', c => { wlog += c; wfile.write(c); }); wr.stderr.on('data', c => { wlog += c; wfile.write(c); });
 let br = null;
-const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { engine.kill(); } catch { /* gone */ } whisper.server.close(); gemini.server.close(); };
+const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { engine.kill(); } catch { /* gone */ } whisper.server.close(); gemini.server.close(); openverse.server.close(); };
 process.on('exit', stop);
 process.on('uncaughtException', async e => { console.log(e); console.log(wlog.replace(/.*workerd@.*\n/g, '').slice(-3000)); try { await br?.close(); } catch { /* */ } stop(); process.exit(1); });
 for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
@@ -161,7 +167,8 @@ await signIn(page, OWNER);
 /* ── 1 · Open AI Video Studio ── */
 await page.goto(`${B}/video-studio`, { waitUntil: 'networkidle' });
 await page.getByTestId('video-studio').waitFor({ timeout: 15_000 });
-ok('1 · AI Video Studio opens, with its tabs', /AI Video Studio/.test(await page.innerText('h1')) && (await page.locator('.vs-tab').count()) === 6);
+ok('1 · AI Video Studio opens, with its tabs — Quick Shorts and Repurpose among them', /AI Video Studio/.test(await page.innerText('h1')) && (await page.locator('.vs-tab').count()) === 8 && (await page.locator('[data-tab="quick-shorts"]').count()) === 1 && (await page.locator('[data-tab="repurpose"]').count()) === 1);
+ok('…and opens on a welcome: what would you like to do?', (await page.getByTestId('vs-welcome').count()) === 1 && (await page.locator('.vs-goal').count()) === 8 && /Quiz from a training video/.test(await page.getByTestId('vs-welcome').innerText()));
 await page.getByRole('button', { name: /What works/ }).click();
 const caps = await page.getByTestId('vs-capabilities').innerText();
 ok('…and says honestly what works: transcription working, eye contact and publishing unavailable', /Transcription with word timings\s*Whisper[\s\S]*?Working/.test(caps) && /Eye-contact correction\s*Provider setup required\.?\s*Unavailable/.test(caps) && /Direct publishing[\s\S]*?Unavailable/.test(caps), caps.slice(0, 800));
@@ -169,10 +176,20 @@ await page.keyboard.press('Escape'); await page.locator('.vs-modal-back').click(
 
 /* ── 2–4 · A 20-minute recording, the request, the upload ── */
 await page.getByTestId('vs-new').click();
+await page.locator('[data-goal="both"]').click();
+await page.getByTestId('vs-wizard-options').waitFor({ timeout: 5000 });
+const opts = await page.getByTestId('vs-wizard-options').innerText();
+ok('the wizard asks only what this goal needs: Shorts, cleanup, sound, music, a quiz', /How many/.test(opts) && /Background noise/.test(opts) && /Background music/.test(opts) && /A quiz/.test(opts), opts.slice(0, 300));
+await page.getByTestId('vs-wiz-music').selectOption('calm');
+await page.getByTestId('vs-wiz-quiz').check();
+await page.getByTestId('vs-wiz-next').click();
+const preset = await page.locator('#vs-prompt').inputValue();
+ok('…and writes the request out for you to check', /4 Shorts/.test(preset) && /background noise/i.test(preset) && /calm royalty-free/i.test(preset), preset);
 const PROMPT = 'Clean this recording, remove filler words and long gaps, create one polished main video and four Shorts, add captions and create PNG thumbnails.';
 await page.locator('#vs-prompt').fill(PROMPT);
 const understood = await page.getByTestId('vs-understood').innerText();
 ok('3 · the request is read back: long video, 4 Shorts, captions, PNG thumbnails, balanced', /one cleaned long video/.test(understood) && /4 Shorts/.test(understood) && /PNG thumbnails/.test(understood) && /balanced cleanup/.test(understood), understood);
+ok('…with the wizard\'s choices beside it: noise reduction, a clearer voice, calm music, a quiz', /medium noise reduction/.test(understood) && /clearer voice/.test(understood) && /calm royalty-free music/.test(understood) && /a quiz/.test(understood), understood);
 await page.locator('[data-field="video.autopilot"]').selectOption(AP);
 await page.getByTestId('vs-file').setInputFiles(LONG.file);
 await page.locator('[data-field="video.name"]').fill('Weekly growth show — episode 12');
@@ -207,9 +224,52 @@ const t0 = Date.now();
 let S = await waitReady(PID, { T, A }, 'long');
 console.log(`  (processed in ${Math.round((Date.now() - t0) / 1000)} s)`);
 ok('the project finishes', S.project?.status === 'ready', JSON.stringify(S.project ?? S).slice(0, 400));
+ok('the wizard\'s sound choices are on the edit: medium noise reduction, a clearer voice', S.doc.audio.denoise === 'medium' && S.doc.audio.voice === true, S.doc.audio);
+ok('…calm music from the open library, with its licence — never the NonCommercial track', S.doc.music?.title === 'Calm Morning' && S.doc.music.license.startsWith('CC0') && S.doc.music.source === 'openverse' && /\/music\/ov-/.test(S.doc.music.key), S.doc.music);
+const quiz = S.extras?.quiz?.questions ?? [];
+ok('…and a quiz written from what the recording says, each question with the moment it is answered', quiz.length === 5 && quiz.every(q => q.options.length === 4 && q.t > 0) && !quiz.some(q => /planet/i.test(q.q)), quiz.map(q => q.q));
 
 /* ── 5 · The transcript ── */
 await page.reload({ waitUntil: 'networkidle' });
+ok('the editor is laid out as designed: media, player, inspector, assistant, timeline', (await page.getByTestId('vs-media').count()) === 1 && (await page.getByTestId('vs-preview').count()) === 1 && (await page.getByTestId('vs-assistant').count()) === 1 && (await page.getByTestId('vs-timeline').count()) === 1);
+ok('…the media list holds the long video and every Short', (await page.locator('[data-media]').count()) >= 5, await page.getByTestId('vs-media').innerText());
+ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and the music', (await page.locator('.vse-frame').count()) > 5 && (await page.locator('.vse-block.cap').count()) > 20 && (await page.locator('.vse-block.short').count()) === 4 && (await page.locator('.vse-block.music').count()) >= 1);
+
+/* ── The player: holds its video across polls and plays through the cuts ── */
+{
+  S = await v('get', { projectId: PID });
+  const again = await v('status', { projectId: PID, knownVersion: -1 });
+  ok('the proxy\'s link is the same from one poll to the next (it used to change every few seconds and restart the player)', S.source.proxyUrl === again.source.proxyUrl);
+  /* This Chromium cannot decode H.264, so the player is handed the first two
+     minutes of the same proxy as VP9 — same clock, same cuts. */
+  const proxyFile = (await download(S.source.proxyUrl, 'proxy.mp4')).file;
+  const webm = path.join(state, 'proxy-head.webm');
+  if (!fs.existsSync(webm)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', proxyFile, '-t', '120', '-vf', 'scale=320:-2', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '200k', '-c:a', 'libopus', '-b:a', '48k', webm]);
+  const body = fs.readFileSync(webm);
+  const src0 = await page.getByTestId('vs-video').getAttribute('data-src');
+  await page.route(u => u.href === src0, async route => {
+    const range = route.request().headers().range;
+    const m = range && /bytes=(\d+)-(\d*)/.exec(range);
+    if (!m) return route.fulfill({ status: 200, body, headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-length': String(body.length) } });
+    const a = Number(m[1]), b = m[2] ? Math.min(Number(m[2]), body.length - 1) : body.length - 1;
+    return route.fulfill({ status: 206, body: body.subarray(a, b + 1), headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-range': `bytes ${a}-${b}/${body.length}`, 'content-length': String(b - a + 1) } });
+  });
+  await page.evaluate(() => { const vEl = document.querySelector('[data-testid="vs-video"]'); vEl.load(); });
+  await page.waitForTimeout(800);
+  await page.getByTestId('vs-play').click();
+  const cuts = (await v('get', { projectId: PID })).doc.cuts.filter(c => c.state === 'approved');
+  const samples = [];
+  for (let i = 0; i < 70; i++) { samples.push(await page.evaluate(() => { const e = document.querySelector('[data-testid="vs-video"]'); return { t: e.currentTime, paused: e.paused, src: e.dataset.src }; })); await sleep(250); }
+  const last = samples[samples.length - 1];
+  const inCut = samples.filter(x => !x.paused && cuts.some(c => x.t > c.s + 0.2 && x.t < c.e - 0.2));
+  ok('the preview plays on for seventeen seconds — through more than one poll — without stopping', !last.paused && last.t > 12 && samples.every(x => x.src === src0), { t: last.t, paused: last.paused, srcs: new Set(samples.map(x => x.src)).size });
+  ok('…and never shows what was cut (the opening silence, the fillers)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
+  const label = await page.getByTestId('vs-time').innerText();
+  ok('…with the edited video\'s clock on the controls', /^\d+:\d\d \/ \d+:\d\d$/.test(label.trim()), label);
+  await page.getByTestId('vs-play').click();
+  await page.unroute(u => u.href === src0);
+}
+await page.locator('[data-panel="transcript"]').click();
 await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
 const words = await page.locator('.vs-w').count();
 ok('5 · the transcript appears, word by word', words > 1500, String(words));
@@ -324,6 +384,11 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   const vs = lp.streams.find(s => s.codec_type === 'video'), as = lp.streams.find(s => s.codec_type === 'audio');
   ok('13 · the long video downloads as a real MP4: H.264 and AAC, as an attachment', lf.status === 200 && vs?.codec_name === 'h264' && as?.codec_name === 'aac' && /attachment; filename=".+\.mp4"/.test(lf.disposition), { v: vs?.codec_name, a: as?.codec_name, disp: lf.disposition });
   ok('…cleaned: shorter than the recording by what was cut', ld < LONG.script.duration - 20 && ld > LONG.script.duration * 0.6, { ld, src: LONG.script.duration });
+  /* The music is a 330 Hz tone, the voice 220 Hz: what passes a narrow filter
+     at 330 Hz is the music, and the recording itself has none. */
+  const at330 = f => Number(String(spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', f, '-t', '120', '-af', 'bandpass=f=330:width_type=h:w=30,volumedetect', '-f', 'null', '-']).stderr).match(/mean_volume: (-?[\d.]+)/)?.[1] ?? NaN);
+  const withMusic = at330(lf.file), without = at330(LONG.file);
+  ok('…with the music really under it (heard at its own pitch, absent from the recording)', withMusic > without + 15, { withMusic, without });
   let shorts = 0;
   for (const o of S.outputs.filter(x => x.kind === 'short')) {
     const f = await download(o.downloadUrl, `${o.id}.mp4`);
@@ -375,16 +440,91 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ok('the assistant does what it is asked ("make captions smaller")', /smaller/i.test(chat) && after.doc.captions.short.size < 1, chat.slice(-200));
   await page.getByTestId('vs-command').fill('Make the background music quieter');
   await page.getByTestId('vs-command').press('Enter');
-  await page.waitForTimeout(1500);
-  ok('…and says plainly what is not there (no music yet)', /no background music/i.test(await page.getByTestId('vs-assistant').innerText()));
-  const before = after.docVersion;
+  await page.waitForTimeout(1800);
+  const quieter = await v('get', { projectId: PID });
+  ok('…"make the background music quieter" turns the music down', quieter.doc.music && quieter.doc.music.volume < after.doc.music.volume, [after.doc.music?.volume, quieter.doc.music?.volume]);
+  const before = quieter.docVersion;
   await page.getByRole('button', { name: 'Undo' }).click();
   await page.waitForTimeout(1200);
   const undone = await v('get', { projectId: PID });
-  ok('undo goes back a version', undone.docVersion === before - 1 && undone.doc.captions.short.size === 1, undone.docVersion);
+  ok('undo goes back a version', undone.docVersion === before - 1 && undone.doc.music.volume === after.doc.music.volume, undone.docVersion);
   await page.getByRole('button', { name: 'Redo' }).click();
   await page.waitForTimeout(1200);
   ok('…and redo comes forward again', (await v('get', { projectId: PID })).docVersion === before);
+}
+
+/* ── Noise and music, asked for in one sentence (the request that was refused) ── */
+{
+  await page.getByTestId('vs-command').fill('remove the background noise completely and also add upbeat background music to all the videos');
+  await page.getByTestId('vs-command').press('Enter');
+  await page.waitForTimeout(4000);
+  const d = await v('get', { projectId: PID });
+  const said = await page.getByTestId('vs-assistant').innerText();
+  ok('"remove the background noise … and also add music to all the videos" does both', d.doc.audio.denoise === 'strong' && d.doc.music?.applyTo === 'all' && !/can't|cannot|not able/i.test(said.split('\n').slice(-4).join(' ')), { audio: d.doc.audio, music: d.doc.music?.title, said: said.slice(-300) });
+  ok('…and every video says it needs rendering again', d.outputs.every(o => o.stale), d.outputs.map(o => o.stale));
+  ok('…by searching the library for that mood', openverse.state.searches.some(q => /upbeat/.test(q)), openverse.state.searches);
+}
+
+/* ── The Audio and Music panels ── */
+{
+  await page.locator('[data-panel="audio"]').click();
+  const audio = await page.getByTestId('vs-audio-panel').innerText();
+  ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio));
+  await page.locator('[data-denoise="light"]').click();
+  await page.waitForTimeout(1200);
+  ok('…a level can be picked there', (await v('get', { projectId: PID })).doc.audio.denoise === 'light');
+  await page.locator('[data-panel="music"]').click();
+  await page.getByTestId('vs-music-q').fill('calm');
+  await page.getByTestId('vs-music-search').click();
+  await page.getByTestId('vs-music-results').waitFor({ timeout: 10_000 });
+  const res = await page.getByTestId('vs-music-results').innerText();
+  ok('the royalty-free search lists CC0 and CC BY tracks with their licence — not the NonCommercial one', /Calm Morning/.test(res) && /CC0/.test(res) && /Gentle Steps/.test(res) && /CC BY 4\.0/.test(res) && !/Not For Business/.test(res), res);
+  const found = await v('music_search', { projectId: PID, q: 'calm' });
+  const listen = await fetch(found.tracks[0].previewUrl, { headers: { Connection: 'close' } });
+  ok('…a track is heard through this Worker, never straight from the library', found.tracks[0].previewUrl.startsWith(`${B}/api/video-file.php`) && listen.status === 200 && /audio\//.test(listen.headers.get('content-type') ?? '') && (await listen.arrayBuffer()).byteLength > 10_000, { url: found.tracks[0].previewUrl.slice(0, 60), status: listen.status });
+  await page.locator('[data-track="0b1c2d3e-0000-4000-8000-000000000002"] [data-act="use-track"]').click();
+  await page.getByTestId('vs-music-current').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(1500);
+  const by = await v('get', { projectId: PID });
+  ok('…choosing a CC BY track puts it under the videos and writes its credit into every description', by.doc.music?.title === 'Gentle Steps' && /CC BY/.test(by.doc.music.license) && by.outputs.every(o => /Music: “Gentle Steps” by Ben Keys/.test(o.meta.description ?? '')), by.outputs.map(o => (o.meta.description ?? '').slice(-120)));
+  const forged = await v('edit', { projectId: PID, baseVersion: by.docVersion, ops: [{ op: 'music.set', track: { id: 'x', key: 'v/elsewhere/song.mp3', title: 'Pirated hit', license: 'CC0' } }] });
+  ok('…a track cannot be set from the browser — only the server chooses one it fetched', (await v('get', { projectId: PID })).doc.music.title === 'Gentle Steps', forged);
+  const up = await v('music_upload_url', { projectId: PID });
+  const mp3 = fs.readFileSync(path.join(state, 'fixtures', 'music', '0b1c2d3e-0000-4000-8000-000000000001.mp3'));
+  await fetch(`${up.url}&name=track.mp3&type=audio%2Fmpeg`, { method: 'PUT', body: mp3, headers: { Connection: 'close' } });
+  const noRights = await v('music_attach', { projectId: PID, baseVersion: by.docVersion, key: `${up.prefix}track.mp3`, title: 'My jingle' });
+  ok('your own track needs the rights box ticked — refused on that box', !noRights.success && noRights.field === 'video.musicRights', noRights);
+  const yes = await v('music_attach', { projectId: PID, baseVersion: by.docVersion, key: `${up.prefix}track.mp3`, title: 'My jingle', rightsConfirmed: true });
+  ok('…and with it, the upload is used and recorded as yours', yes.success && yes.doc.music.source === 'upload' && yes.doc.music.license === 'Your own upload', yes);
+  const up2 = await v('music_upload_url', { projectId: PID });
+  await fetch(`${up2.url}&name=track.mp3&type=audio%2Fmpeg`, { method: 'PUT', body: Buffer.from('<html>not audio</html>'.repeat(10)), headers: { Connection: 'close' } });
+  const notAudio = await v('music_attach', { projectId: PID, baseVersion: yes.docVersion, key: `${up2.prefix}track.mp3`, title: 'x', rightsConfirmed: true });
+  ok('…a file that is not audio is refused from its bytes', !notAudio.success && notAudio.field === 'video.musicFile', notAudio);
+}
+
+/* ── Reuse: posts, an article and emails; the quiz on screen ── */
+{
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('[data-panel="reuse"]').click();
+  await page.getByTestId('vs-reuse').waitFor({ timeout: 10_000 });
+  ok('the quiz is on the Reuse tab, downloadable', (await page.getByTestId('vs-quiz').locator(':scope > li').count()) === 5 && (await page.locator('[data-act="quiz-csv"]').count()) === 1);
+  await page.locator('[data-act="repurpose"]').click();
+  let R;
+  for (let i = 0; i < 60; i++) { R = await v('status', { projectId: PID, knownVersion: -1 }); if (R.extras?.repurposed) break; await sleep(1500); }
+  const links = R.extras?.repurposed?.links ?? [];
+  ok('Repurpose writes 3 posts, a blog article and an email series from the recording — as drafts', links.map(l => l.kind).sort().join(',') === 'blog-post,sequence,social-post' && /3 posts/.test(links.find(l => l.kind === 'social-post')?.label ?? ''), R.extras?.repurposed);
+  await page.getByTestId('vs-repurposed').waitFor({ timeout: 20_000 });
+  ok('…linked from the Reuse tab to where each draft lives', (await page.getByTestId('vs-repurposed').locator('a').count()) === 3);
+  const runs = await api('autopilot.php', { token: T, accountId: A, action: 'agent_runs', projectId: AP });
+  ok('…and recorded on the Autopilot project\'s activity', (runs.runs ?? []).some(r => /From “Weekly growth show/.test(r.detail ?? '')), (runs.runs ?? []).map(r => r.detail).slice(0, 6));
+}
+
+/* ── AI Shorts and Repurposing, inside the studio ── */
+{
+  await page.goto(`${B}/ai-shorts`, { waitUntil: 'networkidle' });
+  ok('the old AI Shorts address opens Quick Shorts inside AI Video Studio', /\/video-studio\?tab=quick-shorts/.test(page.url()) && (await page.getByTestId('vs-embed-quick-shorts').count()) === 1, page.url());
+  await page.goto(`${B}/social-automation`, { waitUntil: 'networkidle' });
+  ok('…and Repurposing opens in its Repurpose tab', /\/video-studio\?tab=repurpose/.test(page.url()) && (await page.getByTestId('vs-embed-repurpose').count()) === 1, page.url());
 }
 
 /* ── 18 · Reopen ── */
@@ -393,7 +533,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await p2.goto(`${B}/video-studio/${PID}?tab=shorts`, { waitUntil: 'networkidle' });
   await p2.getByTestId('vs-shorts').waitFor({ timeout: 15_000 });
   const re = await v('get', { projectId: PID });
-  ok('18 · reopening keeps every edit: the moved Short, the approved cut, the caption size', Math.abs(re.doc.clips.find(c => c.id === target.id).s - edited.s) < 0.01 && re.doc.cuts.find(c => c.id === propId)?.state === 'approved' && re.doc.captions.short.size < 1);
+  ok('18 · reopening keeps every edit: the moved Short, the approved cut, the caption size, the sound and the music', Math.abs(re.doc.clips.find(c => c.id === target.id).s - edited.s) < 0.01 && re.doc.cuts.find(c => c.id === propId)?.state === 'approved' && re.doc.captions.short.size < 1 && re.doc.audio.denoise === 'light' && re.doc.music?.source === 'upload');
   const versions = await v('versions', { projectId: PID });
   ok('…with the history of what changed', versions.versions.length >= 5 && versions.versions.some(x => /Short starts later/.test(x.note)), versions.versions.map(x => x.note).slice(0, 6));
   await p2.close();
@@ -464,7 +604,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const mp = await m.newPage();
   mp.on('pageerror', e => errs.push(`phone: ${e}`));
   await signIn(mp, OWNER);
-  for (const url of [`/video-studio`, `/video-studio/${PID}`, `/video-studio/${PID}?tab=shorts`, `/video-studio/${PID}?tab=exports`, `/video-studio?new=1`]) {
+  for (const url of [`/video-studio`, `/video-studio/${PID}`, `/video-studio/${PID}?tab=shorts`, `/video-studio/${PID}?tab=exports`, `/video-studio/${PID}?tab=music`, `/video-studio?new=1`, `/video-studio?tab=quick-shorts`, `/video-studio?tab=repurpose`]) {
     await mp.goto(`${B}${url}`, { waitUntil: 'networkidle' });
     await mp.waitForTimeout(1200);
     const over = await mp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

@@ -816,3 +816,76 @@ export async function runAgentOnce(
   });
   return { ok: out.outcome === 'ok', ...out };
 }
+
+/* ── A recording, written up for the other channels ──────────────────────── */
+
+export interface RepurposeWant { posts: number; blog: boolean; email: boolean; platform?: string }
+export interface RepurposeResult { links: RunLink[]; notes: string[] }
+
+/**
+ * AI Video Studio's "Repurpose": the recording's own words become drafts in
+ * the modules that publish them — image posts in Social Creator, an article
+ * in the Blog, a short email campaign in Campaigns — through the same writers
+ * the scheduled agents use, so they read and behave like everything else
+ * there. Everything is a draft; nothing is scheduled or sent.
+ */
+export async function repurposeRecording(
+  env: Env, accountId: string,
+  rec: { title: string; text: string; videoProjectId: string; autopilotProjectId?: string | null },
+  want: RepurposeWant,
+): Promise<RepurposeResult> {
+  const apiKey = await loadAiKey(env, accountId);
+  if (!apiKey) return { links: [], notes: ['Writing is unavailable on this installation at the moment, so nothing was written.'] };
+  let project: ProjectRow = { id: '', name: '', portfolio_id: '', objective: '' };
+  if (rec.autopilotProjectId) {
+    const row = await env.DB.prepare('SELECT id, name, portfolio_id, objective FROM crm_projects WHERE id = ? AND account_id = ?')
+      .bind(rec.autopilotProjectId, accountId).first<ProjectRow>();
+    if (row) project = row;
+  }
+  if (!project.portfolio_id) {
+    const pf = await env.DB.prepare('SELECT id FROM crm_portfolios WHERE account_id = ? ORDER BY created_at LIMIT 1').bind(accountId).first<{ id: string }>();
+    if (pf) project = { ...project, portfolio_id: pf.id };
+  }
+  const brand = await brandFor(env, accountId, project);
+  const now = nowIso();
+  const source = { origin: 'video-studio', title: 'AI Video Studio', route: `/video-studio/${rec.videoProjectId}`, projectId: project.id, projectName: project.name, at: now };
+  const items: SourceItem[] = [{ title: rec.title, link: '', summary: rec.text.slice(0, 6000), published: now }];
+  const links: RunLink[] = [];
+  const notes: string[] = [];
+
+  if (want.posts > 0) {
+    const r = await writeImagePosts(apiKey, brand, { count: Math.min(6, want.posts), platform: want.platform || 'instagram', items });
+    const posts = (r.value?.posts ?? []).filter(p => (p.headline ?? '').trim());
+    if (posts.length) {
+      let first = '';
+      for (const p of posts.slice(0, want.posts)) {
+        const id = `sp-${crypto.randomUUID()}`;
+        if (!first) first = id;
+        await push(env, accountId, SOCIAL_KEY, designFromPost(p, { id, brandColor: '#5b46e5', company: brand.companyName, source, now, ready: false, design: {}, logoSrc: '' }));
+      }
+      links.push({ kind: 'social-post', id: first, label: `${posts.length} post${posts.length === 1 ? '' : 's'} from “${rec.title.slice(0, 40)}”`, route: '/social-creator' });
+    } else notes.push(`Posts: ${r.error || 'nothing usable came back from the writer'}.`);
+  }
+  if (want.blog) {
+    const r = await writeBlogPost(apiKey, brand, `${rec.title}. ${rec.text.slice(0, 2500)}`, '');
+    if (r.ok && r.value?.title) {
+      const v = r.value;
+      const id = `bp-${crypto.randomUUID()}`;
+      await push(env, accountId, BLOG_KEY, { id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body, keywords: v.keywords ?? [], status: 'draft', source, createdAt: now });
+      links.push({ kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' });
+    } else notes.push(`Blog: ${r.error || 'nothing usable came back from the writer'}.`);
+  }
+  if (want.email) {
+    const r = await writeSequenceBatch(apiKey, brand, { from: 0, count: 3, total: 3, everyDays: 3, theme: rec.title, items });
+    const steps = (r.value?.steps ?? []).filter(st => String(st.subject ?? '').trim() && String(st.body ?? '').trim());
+    if (steps.length) {
+      const id = `seq-${crypto.randomUUID()}`;
+      await push(env, accountId, SEQ_KEY, {
+        id, name: (r.value?.name || `Emails from “${rec.title}”`).slice(0, 90), status: 'draft', source, createdAt: now,
+        steps: steps.map((st, i) => ({ id: `st-${crypto.randomUUID()}`, day: i * 3, waitUnit: 'days', subject: String(st.subject).slice(0, 200), body: String(st.body).slice(0, 8000), channel: 'email' })),
+      });
+      links.push({ kind: 'sequence', id, label: (r.value?.name || 'Emails').slice(0, 60), route: '/marketing?tab=sequences' });
+    } else notes.push(`Emails: ${r.error || 'nothing usable came back from the writer'}.`);
+  }
+  return { links, notes };
+}

@@ -936,7 +936,7 @@ export const REQUIREMENT_INFO: Record<RequirementId, RequirementInfo> = {
   socialCreator: { label: 'Content Studio — Social Creator', why: 'Where finished posts are saved, ready for you to publish.', kind: 'included', route: '/social-creator' },
   videoStudio: { label: 'AI Video Studio', why: 'Where each recording is processed and the finished videos, captions and thumbnails are kept.', kind: 'included', route: '/video-studio' },
   blog: { label: 'Blog', why: 'Where drafted articles are kept.', kind: 'included', route: '/blog-automation' },
-  shorts: { label: 'AI Shorts', why: 'Where video scripts are kept.', kind: 'included', route: '/ai-shorts' },
+  shorts: { label: 'AI Video Studio', why: 'Where video scripts are kept (Quick Shorts).', kind: 'included', route: '/video-studio?tab=quick-shorts' },
   websites: { label: 'Websites and funnels', why: 'Where launch and offer pages are built.', kind: 'included', route: '/websites' },
   contacts: { label: 'Contacts', why: 'The people this project works with.', kind: 'included', route: '/contacts' },
   pipeline: { label: 'Deals pipeline', why: 'Tracks where each person is.', kind: 'included', route: '/pipelines' },
@@ -1681,7 +1681,7 @@ export const SOLUTIONS: Solution[] = [
       }
       return merge(empty(), {
         outputs: ['A short-video script to film'],
-        destinations: [{ label: 'AI Shorts', route: '/ai-shorts' }],
+        destinations: [{ label: 'AI Video Studio · Quick Shorts', route: '/video-studio?tab=quick-shorts' }],
         approvals: ['Scripts are drafts'],
         manual: ['Film and post the videos'],
         planner: ['video'],

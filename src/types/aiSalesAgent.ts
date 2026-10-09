@@ -192,7 +192,7 @@ export const LINK_ROUTE: Record<LinkKind, ((id: string) => string) | null> = {
   funnel: () => '/funnels',
   'blog-project': () => '/blog-automation',
   'blog-post': () => '/blog-automation',
-  short: () => '/ai-shorts',
+  short: () => '/video-studio?tab=quick-shorts',
   'social-post': () => '/social-creator',
   'review-request': () => '/reputation',
   'booking-page': () => '/scheduling',

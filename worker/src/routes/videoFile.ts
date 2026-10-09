@@ -8,6 +8,7 @@
  *   PUT  ?t=<put>&name=&op=mpu-part&uploadId=&part=N   each part,
  *   POST ?t=<put>&name=&op=mpu-complete&uploadId=      and finish
  *   POST ?t=<poke>                      the engine saying "look now"
+ *   GET  ?t=<listen>                    a library track heard before it is chosen
  *
  * No session here: the token is the permission, issued by /api/video.php
  * after the workspace check (lib/video/store.ts). Every key is checked to be
@@ -26,8 +27,9 @@ import { nowIso } from '../lib/db';
 import { json } from '../lib/http';
 import { verify } from '../lib/video/store';
 import { advanceProject, originOf } from '../lib/video/pipeline';
+import { listenTo } from '../lib/video/music';
 
-const OUT_TYPES = new Set(['video/mp4', 'audio/mpeg', 'image/png', 'image/jpeg', 'application/json', 'text/plain', 'text/vtt']);
+const OUT_TYPES = new Set(['video/mp4', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/flac', 'image/png', 'image/jpeg', 'application/json', 'text/plain', 'text/vtt']);
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const MAX_PART = 16 * 1024 * 1024;
 
@@ -76,6 +78,12 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
     }
     headers.set('content-length', String(obj.size));
     return new Response(req.method === 'HEAD' ? null : obj.body, { status: 200, headers });
+  }
+
+  /* ── A library track, heard before it is chosen ── */
+  if (g.m === 'listen') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json({ success: false, error: 'GET only' }, 405);
+    return listenTo(env, g.u ?? '', req.headers.get('range'));
   }
 
   /* ── The engine saying "look now" ── */

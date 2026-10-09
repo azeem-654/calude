@@ -36,10 +36,8 @@ import BookingPage from './components/Scheduling/BookingPage';
 import Analytics from './components/Analytics/Analytics';
 import Reputation from './components/Reputation/Reputation';
 import Settings from './components/Settings/Settings';
-import VideoShorts from './components/VideoShorts/VideoShorts';
 /* Lazy: the studio is large and most sessions never open it. */
 const VideoStudio = lazy(() => import('./components/VideoStudio/VideoStudio'));
-import SocialAutomation from './components/SocialAutomation/SocialAutomation';
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
 import AgencyDashboard from './components/Agency/AgencyDashboard';
@@ -75,6 +73,17 @@ import Affiliate from './components/Affiliate/Affiliate';
  * bounce somebody away from where they went next. Also counts the sign-up for
  * the site's funnel (the server decides whether the account is new).
  */
+
+/** AI Shorts and Repurposing live inside AI Video Studio now; their old
+ *  addresses (links in emails, bookmarks, other modules) still arrive there,
+ *  with whatever they carried. */
+function MovedIntoStudio({ tab }: { tab: 'quick-shorts' | 'repurpose' }) {
+  const loc = useLocation();
+  const q = new URLSearchParams(loc.search);
+  q.set('tab', tab);
+  return <Navigate to={`/video-studio?${q.toString()}${loc.hash}`} replace />;
+}
+
 function SitePlanHandoff({ isClient }: { isClient: boolean }) {
   const navigate = useNavigate();
   useEffect(() => {
@@ -219,10 +228,10 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/blog-automation" element={<BlogAutomation />} />
           <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
-          <Route path="/ai-shorts" element={<VideoShorts />} />
+          <Route path="/ai-shorts" element={<MovedIntoStudio tab="quick-shorts" />} />
           <Route path="/video-studio" element={<Suspense fallback={<div style={{ padding: 40, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening Video Studio…</div>}><VideoStudio /></Suspense>} />
           <Route path="/video-studio/:id" element={<Suspense fallback={<div style={{ padding: 40, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening Video Studio…</div>}><VideoStudio /></Suspense>} />
-          <Route path="/social-automation" element={<SocialAutomation />} />
+          <Route path="/social-automation" element={<MovedIntoStudio tab="repurpose" />} />
           <Route path="/social-creator" element={<SocialCreator />} />
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />

@@ -17,7 +17,8 @@
 import type { Env } from '../db';
 import { installSecret } from '../db';
 
-export type Mode = 'get' | 'put' | 'up' | 'poke';
+/** `listen`: a royalty-free track heard before it is chosen, by its library id (`u`). */
+export type Mode = 'get' | 'put' | 'up' | 'poke' | 'listen';
 
 export interface Grant {
   /** Workspace. */
@@ -27,7 +28,7 @@ export interface Grant {
   m: Mode;
   /** Expiry, Unix seconds. */
   x: number;
-  /** Upload row (up) or job (poke). */
+  /** Upload row (up), job (poke) or library track (listen). */
   u?: string;
   /** Download file name (get). */
   d?: string;
@@ -60,7 +61,12 @@ async function hmacKey(env: Env): Promise<CryptoKey> {
 
 export async function sign(env: Env, g: Omit<Grant, 'x'>, seconds: number): Promise<string> {
   /* The workspace as keys spell it (`safe`), so a link always matches its own path. */
-  const body = b64url(enc.encode(JSON.stringify({ ...g, a: safe(g.a), x: Math.floor(Date.now() / 1000) + seconds })));
+  /* The expiry is rounded up to the hour, so the same file asked for again in
+     the same hour gets the same link. A link that changed on every poll made
+     the editor's <video> reload its source every few seconds — the preview
+     played three seconds and stopped. */
+  const x = Math.ceil((Math.floor(Date.now() / 1000) + seconds) / 3600) * 3600;
+  const body = b64url(enc.encode(JSON.stringify({ ...g, a: safe(g.a), x })));
   const sig = b64url(await crypto.subtle.sign('HMAC', await hmacKey(env), enc.encode(body))).slice(0, 43);
   return `${body}.${sig}`;
 }
