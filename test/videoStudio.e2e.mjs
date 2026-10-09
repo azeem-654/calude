@@ -28,7 +28,7 @@
  * from the recording, and AI Shorts / Repurposing inside the studio.
  */
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
-import { execSync, execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execSync, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeRecording, startWhisperMock, startGeminiMock, startOpenverseMock } from './videoStudioMock.mjs';
@@ -384,11 +384,19 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   const vs = lp.streams.find(s => s.codec_type === 'video'), as = lp.streams.find(s => s.codec_type === 'audio');
   ok('13 · the long video downloads as a real MP4: H.264 and AAC, as an attachment', lf.status === 200 && vs?.codec_name === 'h264' && as?.codec_name === 'aac' && /attachment; filename=".+\.mp4"/.test(lf.disposition), { v: vs?.codec_name, a: as?.codec_name, disp: lf.disposition });
   ok('…cleaned: shorter than the recording by what was cut', ld < LONG.script.duration - 20 && ld > LONG.script.duration * 0.6, { ld, src: LONG.script.duration });
-  /* The music is a 330 Hz tone, the voice 220 Hz: what passes a narrow filter
-     at 330 Hz is the music, and the recording itself has none. */
-  const at330 = f => Number(String(spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', f, '-t', '120', '-af', 'bandpass=f=330:width_type=h:w=30,volumedetect', '-f', 'null', '-']).stderr).match(/mean_volume: (-?[\d.]+)/)?.[1] ?? NaN);
+  /* The music is a 330 Hz tone, the voice 220 Hz: the strength of the sound
+     at exactly 330 Hz (Goertzel, first two minutes) is the music, and the
+     recording itself has none. A band-pass filter is too wide for this — the
+     voice leaks through it. */
+  const at330 = f => {
+    const raw = execFileSync('ffmpeg', ['-v', 'error', '-i', f, '-t', '120', '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], { maxBuffer: 1 << 28 });
+    const n = raw.length / 2, k = 2 * Math.cos(2 * Math.PI * 330 / 8000);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < n; i++) { const x = raw.readInt16LE(i * 2) / 32768 + k * s1 - s2; s2 = s1; s1 = x; }
+    return Math.sqrt(s1 * s1 + s2 * s2 - k * s1 * s2) / n;
+  };
   const withMusic = at330(lf.file), without = at330(LONG.file);
-  ok('…with the music really under it (heard at its own pitch, absent from the recording)', withMusic > without + 15, { withMusic, without });
+  ok('…with the music really under it (heard at its own pitch, absent from the recording)', withMusic > without * 30, { withMusic, without });
   let shorts = 0;
   for (const o of S.outputs.filter(x => x.kind === 'short')) {
     const f = await download(o.downloadUrl, `${o.id}.mp4`);
