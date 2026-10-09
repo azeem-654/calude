@@ -2498,9 +2498,13 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
    over the neighbours would sit on the screen being read, so they go. */
 @media (min-width: 761px) {
   .dc-reel.strip { --side: 1; --strip-gap: 40px; }
+  /* When the window's height caps the stage, its width shrinks with it; a
+     block that narrower sat at the left of its section (the owner saw every
+     section from the third on hang left). Centred, like the hero. */
   .dc-reel.strip .dc-reel-stage {
     aspect-ratio: 16 / 9;
     max-height: max(360px, calc(100vh - 190px));
+    margin-inline: auto;
     -webkit-mask-image: none; mask-image: none;
   }
   @supports (height: 100svh) {
@@ -2555,4 +2559,67 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
    phone it fogged the edges of the one being read. */
 @media (max-width: 760px) {
   .dc-hero-strip .dc-reel.strip .dc-reel-stage { -webkit-mask-image: none; mask-image: none; }
+}
+
+/* ── The conversion pass (docs/SITE-CONVERSION.md) ────────────────────────────
+   One primary button everywhere ("Start free"), what starting costs said
+   beside it, the use cases by outcome with "Build this", and the questions a
+   visitor has before pressing it. */
+.dc-trial-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 14px 0 0; font-size: 13.5px; color: var(--muted); font-weight: 600;
+}
+.dc-trial-note span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dc-trial-note svg { color: var(--lime); }
+.dc-hero-copy .dc-trial-note { justify-content: center; }
+.dc-cta-pair { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.dc .dc-btn-sm { padding: 9px 15px; font-size: 13.5px; }
+.dc-plan-note { display: block; margin-top: 8px; text-align: center; font-size: 12px; color: var(--muted); }
+
+.dc-usecases { max-width: 1240px; margin: 0 auto; padding: clamp(60px, 8vw, 110px) clamp(16px, 4vw, 44px) clamp(30px, 4vw, 50px); }
+.dc-uc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; }
+.dc-uc {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 20px; border-radius: 20px;
+  border: 1px solid var(--edge); background: var(--glass); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: transform 0.3s ease, border-color 0.3s ease, opacity 0.78s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dc-uc:hover { border-color: rgba(200, 242, 77, 0.35); transform: translateY(-2px); }
+.dc-uc h3 { margin: 4px 0 0; font-size: 18px; letter-spacing: -0.015em; }
+.dc-uc p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.dc-uc-flow { list-style: none; margin: 4px 0 0; padding: 12px; border-radius: 14px; background: rgba(0, 0, 0, 0.28); border: 1px dashed var(--edge); display: grid; gap: 6px; font-size: 12.5px; }
+.dc-uc-step, .dc-uc-ask {
+  position: relative; justify-self: start; padding: 5px 10px; border-radius: 9px; background: var(--glass-2); border: 1px solid var(--edge); color: var(--text); font-weight: 600;
+}
+.dc-uc-step + .dc-uc-step::before, .dc-uc-step + .dc-uc-fork::before {
+  content: ''; position: absolute; left: 16px; top: -7px; width: 1px; height: 6px; background: rgba(200, 242, 77, 0.6);
+}
+.dc-uc-fork { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+.dc-uc-ask { grid-column: 1 / -1; border-color: rgba(200, 242, 77, 0.45); color: var(--lime); }
+.dc-uc-yes, .dc-uc-no { grid-column: 1 / -1; padding-left: 14px; color: var(--text); font-weight: 600; }
+.dc-uc-yes b, .dc-uc-no b { display: inline-block; min-width: 30px; margin-right: 6px; padding: 1px 6px; border-radius: 6px; font-size: 11px; text-align: center; }
+.dc-uc-yes b { background: rgba(200, 242, 77, 0.16); color: var(--lime); }
+.dc-uc-no b { background: rgba(255, 120, 170, 0.14); color: #ff9cc4; }
+.dc-uc-go { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: auto; padding-top: 6px; }
+.dc-uc-see { font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.dc-uc-see:hover { color: var(--lime); }
+
+.dc-faq { max-width: 880px; margin: 0 auto; padding: clamp(56px, 8vw, 100px) clamp(16px, 4vw, 44px); }
+.dc-faq-list { display: grid; gap: 10px; }
+.dc-faq-item { border-radius: 16px; border: 1px solid var(--edge); background: var(--glass); }
+.dc-faq-item summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 20px; cursor: pointer; list-style: none;
+  font-weight: 700; font-size: 16px; min-height: 28px;
+}
+.dc-faq-item summary::-webkit-details-marker { display: none; }
+.dc-faq-item summary svg { flex-shrink: 0; color: var(--lime); transition: transform 0.25s ease; }
+.dc-faq-item[open] summary svg { transform: rotate(45deg); }
+.dc-faq-item summary:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; border-radius: 16px; }
+.dc-faq-item p { margin: 0; padding: 0 20px 18px; color: var(--muted); font-size: 14.5px; line-height: 1.65; }
+@media (max-width: 760px) {
+  .dc-cta-pair .dc-btn { flex: 1 1 auto; justify-content: center; }
+  .dc-faq-item summary { font-size: 15px; padding: 15px 16px; }
+  .dc-faq-item p { padding: 0 16px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-uc, .dc-faq-item summary svg { transition: none; }
+  .dc-uc:hover { transform: none; }
 }

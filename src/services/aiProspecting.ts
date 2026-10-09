@@ -250,7 +250,9 @@ export function placeIn(text: string): string | null {
     const r = REGION_RE.exec(text);
     return r ? r[1].replace(/\b\p{Ll}/gu, c => c.toUpperCase()) : null;
   }
-  const p = m[1].replace(/\s+(?:And|With|To|For)$/, '').trim();
+  /* The sentence's own full stop is not part of the place ("in Dallas."),
+     an abbreviation's is ("Washington D.C."). */
+  const p = m[1].replace(/\s+(?:And|With|To|For)$/, '').trim().replace(/(?<=\p{Ll})\.+$/u, '');
   return p.length >= 2 ? p : null;
 }
 

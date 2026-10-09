@@ -172,7 +172,14 @@ export function appHref(path = '/login'): string {
      host, which keeps its own storage (services/referral.ts). */
   const ref = pendingRefCode();
   if (ref && /^\/(signup|login)(\?|$)/.test(clean)) clean += `${clean.includes('?') ? '&' : '?'}ref=${encodeURIComponent(ref)}`;
-  if (isMarketingHost()) return `${APP_ORIGIN}${clean}`;
+  if (isMarketingHost()) {
+    /* The site's anonymous visitor id goes with them to the app's origin, so
+       the funnel can join "started the wizard here" to "signed up there"
+       (services/funnel.ts). A random number, nothing about the person. */
+    const vid = visitorCode();
+    if (vid && /^\/(signup|login)(\?|$)/.test(clean)) clean += `${clean.includes('?') ? '&' : '?'}vid=${vid}`;
+    return `${APP_ORIGIN}${clean}`;
+  }
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
   return `${base}${clean}`;
 }
@@ -186,6 +193,11 @@ function pendingRefCode(): string {
     const v = JSON.parse(localStorage.getItem('pc_ref') ?? 'null') as { code?: string; at?: number } | null;
     return v?.code && /^[a-z0-9][a-z0-9-]{2,40}$/.test(v.code) && Date.now() - (v.at ?? 0) < 60 * 86_400_000 ? v.code : '';
   } catch { return ''; }
+}
+
+/** Read here for the same reason as the referral code (services/funnel.ts owns it). */
+function visitorCode(): string {
+  try { const v = localStorage.getItem('pc_vid') ?? ''; return /^[a-f0-9]{24}$/.test(v) ? v : ''; } catch { return ''; }
 }
 
 /** The public site's address for this deployment: where an affiliate's link points. */

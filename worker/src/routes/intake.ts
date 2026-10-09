@@ -46,7 +46,7 @@ interface Catalogue {
   templates?: { key: string; name: string; blurb: string }[];
 }
 
-interface Req {
+export interface IntakeReq {
   token?: string;
   accountId?: string;
   action?: string;
@@ -92,7 +92,7 @@ function parseJson<T>(text: string): T | null {
 }
 
 export async function handleIntake(req: Request, env: Env): Promise<Response> {
-  const d = await body<Req>(req);
+  const d = await body<IntakeReq>(req);
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again — this needs a current session.', 401, { code: 'unauthorised' });
   const accountId = String(d.accountId ?? '').trim();
@@ -152,7 +152,7 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
  */
 const MERGE = new Set(['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName']);
 
-async function writeEmails(env: Env, key: string, accountId: string, d: Req): Promise<Response> {
+async function writeEmails(env: Env, key: string, accountId: string, d: IntakeReq): Promise<Response> {
   const emails = (d.emails ?? []).slice(0, 12).map(e => ({
     id: clip(e.id, 60), intent: clip(e.intent, 160), subject: clip(e.subject, 200), body: clip(e.body, 3000),
   })).filter(e => e.id);
@@ -243,7 +243,7 @@ async function writeEmails(env: Env, key: string, accountId: string, d: Req): Pr
  * to read it back and edit it, and a tidied paraphrase would put words in
  * their mouth that they then have to notice and remove.
  */
-async function transcribe(key: string, d: Req): Promise<Response> {
+export async function transcribe(key: string, d: IntakeReq): Promise<Response> {
   const mime = clip(d.mime, 80).toLowerCase();
   const audio = String(d.audio ?? '');
   if (!AUDIO_TYPES.test(mime)) return fail('That recording is in a format this cannot read.');
@@ -287,7 +287,7 @@ async function transcribe(key: string, d: Req): Promise<Response> {
 
 /* ── understand ─────────────────────────────────────────────────────────── */
 
-async function understand(env: Env, key: string, accountId: string, d: Req): Promise<Response> {
+export async function understand(env: Env, key: string, accountId: string, d: IntakeReq): Promise<Response> {
   const prompt = clip(d.prompt, 4000);
   if (prompt.length < 4 && !(d.files ?? []).length && !(d.urls ?? []).length) {
     return fail('Say what you would like Autopilot to do.');
@@ -460,7 +460,7 @@ async function understand(env: Env, key: string, accountId: string, d: Req): Pro
  * the result is rebuilt by the same code that built the original, and cannot be
  * a workflow that code would not have made.
  */
-async function refine(key: string, d: Req): Promise<Response> {
+async function refine(key: string, d: IntakeReq): Promise<Response> {
   const instruction = clip(d.instruction, 1000);
   if (instruction.length < 3) return fail('Say what you would like changed.');
   const state = d.state ?? {};

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
 import LoginScreen from './components/Auth/LoginScreen';
 import { checkSession, getSession } from './services/auth';
 import { attributeIfPending } from './services/referral';
+import { pendingPlan } from './services/sitePlan';
+import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
@@ -60,6 +62,37 @@ import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
 import Signups from './components/Agency/Signups';
 import Affiliate from './components/Affiliate/Affiliate';
+
+/**
+ * After sign-up, straight to the plan made on the public site.
+ *
+ * A visitor who pressed "Build this in my free account" must not land on an
+ * empty dashboard and be asked again what they want: the plan they brought
+ * (services/sitePlan.ts) opens AI Autopilot's wizard, which builds it. Once
+ * per tab — cancelling it clears the plan, and a reload mid-question does not
+ * bounce somebody away from where they went next. Also counts the sign-up for
+ * the site's funnel (the server decides whether the account is new).
+ */
+function SitePlanHandoff({ isClient }: { isClient: boolean }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('pc_signup_counted')) {
+        trackKnown('signup_completed');
+        localStorage.setItem('pc_signup_counted', '1');
+      }
+    } catch { /* storage off */ }
+    if (isClient || !pendingPlan()) return;
+    try {
+      if (sessionStorage.getItem('pc_site_plan_opened')) return;
+      sessionStorage.setItem('pc_site_plan_opened', '1');
+    } catch { /* storage off: open it anyway */ }
+    if (window.location.pathname.endsWith('/autopilot') && window.location.search.includes('plan=site')) return;
+    navigate('/autopilot?new=1&plan=site', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+  return null;
+}
 
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
@@ -148,6 +181,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <StandingBanner />
       <TrialBar />
       <IconRail />
+      <SitePlanHandoff isClient={isClient} />
       <DueWorkRunner />
       <ProspectSync />
       <NativeBridge />

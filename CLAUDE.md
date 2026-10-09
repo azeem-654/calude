@@ -843,6 +843,58 @@ none they say so (they once drew invented deals, "5 executed / 42% win rate",
 a +34% curve and sample department scores, and a new customer took them for
 their own). The growth rate is the real one and may be negative.
 
+## The public site's funnel — Find my solution, carried through sign-up
+
+`docs/SITE-CONVERSION.md` is the audit and the funnel. The site's hero is
+"Describe the outcome | AI builds the system", with one primary button
+everywhere — **Start free** (`StartFree` in SiteHome.tsx), "7 days free · No
+card required · Nothing sends until you approve it" beside it — and **Find my
+solution**, which opens `Site/SolutionWizard.tsx` (lazy, portalled to `<body>`
+because the site's transformed sections make `position: fixed` relative to
+themselves). `#find` or `#find=<solution>` opens it from a link; the use-case
+cards (`SolutionsSection.tsx`, "Build this") open it with a solution picked;
+`FaqSection.tsx` answers only what is true of the product.
+
+- **One judgement.** The wizard runs the app wizard's pure modules
+  (`initialState`, `allQuestions`, `screensOf`, `buildBlueprint`), so the plan
+  a visitor approves is what the app builds. `services/sitePlan.ts` decides
+  only *which* questions come before sign-up (`siteAskable`/`siteScreens`: at
+  most five screens of two, required first; never the business, website,
+  mailbox, sender, contact list, daily volume or design — and no "already in
+  Protected Central"/"a list I have" options), and asks "who to reach" once
+  (`answerOnSite` copies it to the finder's trades). Understanding is the AI's
+  through `/api/site-plan.php` (`routes/sitePlan.ts`: no session, the
+  operator's key, 8 an hour per connection and 600 a day site-wide, one page
+  and two files; transcribe 12/300) — past those it is `no_ai` and the words
+  are matched, said on screen. `setSiteIntake(true)` points `services/intake.ts`
+  there.
+- **The plan crosses origins in the fragment** (`/signup#plan=<base64url>`,
+  never sent to a server). `capturePlan()` in main.tsx checks it field by
+  field (`cleanPlan` — catalogue keys only, `validValue` answers, no foreign
+  portfolio, no AI question redefining a real one) and keeps it as
+  `pc_site_plan` (7 days). Nothing is stored server-side before sign-up; the
+  site's progress is `pc_site_wizard` in that browser only (14 days, "Continue
+  where you left off").
+- **After sign-up** `SitePlanHandoff` (App.tsx, once per tab, not for client
+  logins) opens `/autopilot?new=1&plan=site`; NewProject's `seed` takes the
+  plan as approved, answers the mailbox "not sure yet" (`arrivalDefaults` —
+  nothing sends until one is connected), asks only `stillNeeded` (required,
+  no safe default) plus the business if the site skipped it, then runs the
+  ordinary build by itself — the same steps, drafts and guardrails. Cancel or
+  build clears the plan.
+- **The funnel** (`services/funnel.ts`, `crm_funnel_events` migration 0068):
+  fixed event names, a random `pc_vid` (carried to the app as `?vid=` by
+  `appHref`), a catalogue solution key and phone/desktop — never anything
+  typed; GPC/DNT browsers send nothing. One row per visitor, event and day.
+  In-app steps (`trackKnown`) only for a browser the funnel knows, and the
+  server counts `signup_completed` only for an account under two hours old
+  and project steps for one under a fortnight. The owner reads it on
+  Sign-ups & trials → **Website funnel** (`Agency/SiteFunnel.tsx`).
+- `npm run test:siteplan` (pure) and `npm run test:sitefunnel` (self-contained:
+  Gemini mock :8863, wrangler :8943, fresh D1 in `.wrangler-sitefunnel`, needs
+  a `VITE_BASE=/` build) drive the owner's eight journeys at 1280 and 390,
+  the funnel report, the allowance and the centred slideshows.
+
 ## A project's workflows
 
 `Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an
@@ -1220,7 +1272,8 @@ Each picture is the **whole page** from where its recipe left it scrolled (up
 to 3,000 CSS px on a desktop, 2,160 on a phone; panes that scroll on their own
 are let out first; a screen with a dialog open is the window alone). **Wider
 than a phone, there is no zoom** (the owner's call): the slide showing takes
-the section's whole width (the strip as tall as the window allows), and each
+the section's whole width (the strip as tall as the window allows, centred
+when the height caps its width), and each
 slide opens on the **whole page fitted in**, widens to the full width at the
 top, holds a beat, travels down to the bottom at a reading pace, and moves
 **straight on to the next slide** — nothing scrolls back up (the slide just

@@ -133,6 +133,12 @@ jobs:
       - name: Test the project intake
         run: npm run test:intake
 
+      # The public site's Find my solution: nobody is asked about mailboxes
+      # before they have an account, and a plan read back from an address is
+      # untrusted input.
+      - name: Test the site's plan
+        run: npm run test:siteplan
+
       # What the planner may do for a project whose brief narrowed it. A
       # social-only project planned as 'general' would be sent email plays.
       - name: Test the planner

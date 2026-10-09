@@ -53,6 +53,7 @@ test-results/
 .wrangler-leaddir/
 .wrangler-sources/
 .wrangler-isolation/
+.wrangler-sitefunnel/
 
 # Agents' temporary working copies (git worktrees); never part of the project.
 .claude/worktrees/

@@ -19,6 +19,7 @@ import {
   ShieldAlert, Sparkles, UserPlus, Users,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import SiteFunnel from './SiteFunnel';
 import { isInstallOwner } from '../../services/moderation';
 import {
   loadSignups, messageCustomers, saveCustomerSettings, sendDigestNow, type CustomerSettings, type Signup,
@@ -228,6 +229,9 @@ export default function Signups() {
         {stat(Rocket, 'Not started', counts.stalled ?? 0, '#9a3412')}
         {stat(CheckCircle2, 'Paying', counts.paid ?? 0, '#065f46')}
       </div>
+
+      {/* Where these people came from: the public site's funnel, step by step. */}
+      <SiteFunnel />
 
       {/* ── Compose ── */}
       {composeOpen && (

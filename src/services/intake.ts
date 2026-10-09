@@ -20,7 +20,26 @@ interface Reply {
   [k: string]: unknown;
 }
 
+/**
+ * The public site's wizard has no account: it asks `/api/site-plan.php`,
+ * which answers `understand` and `transcribe` the same way, rate-limited, on
+ * the operator's key (worker/src/routes/sitePlan.ts). Set by SolutionWizard.
+ */
+let siteMode = false;
+export function setSiteIntake(on: boolean): void { siteMode = on; }
+
 async function call(action: string, extra: Record<string, unknown>): Promise<Reply> {
+  if (siteMode) {
+    if (action !== 'understand' && action !== 'transcribe') return { success: false, code: 'no_ai', error: 'Not before sign-up.' };
+    try {
+      const r = await fetch(`${API_BASE}/api/site-plan.php`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }),
+      });
+      return await r.json() as Reply;
+    } catch (e) {
+      return { success: false, error: `Could not reach the server: ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
   const accountId = getActiveAccountId();
   if (!accountId) return { success: false, error: 'No workspace is active yet.' };
   try {

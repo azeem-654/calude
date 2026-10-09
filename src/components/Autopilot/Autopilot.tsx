@@ -37,6 +37,7 @@ import { useApp } from '../../context/AppContext';
 import ReplyQueue from './ReplyQueue';
 import ProjectBoard from './ProjectBoard';
 import NewProject from './NewProject';
+import { pendingPlan } from '../../services/sitePlan';
 import { fetchBoard, type Portfolio } from '../../services/projects';
 import { fetchReplies, sendDraft, discardDraft, type ReplyDraft } from '../../services/replies';
 import SetupProgress from '../Setup/SetupProgress';
@@ -75,9 +76,12 @@ export default function Autopilot() {
      Prospecting's "Use this list in a new Autopilot project". Read once, then
      taken out of the address so closing the wizard does not reopen it. */
   const [presetList] = useState(() => (params.get('new') === '1' ? params.get('list') ?? '' : ''));
+  /* `?new=1&plan=site`: the plan a visitor made on the public site before
+     signing up (services/sitePlan.ts) — the wizard builds it on arrival. */
+  const [sitePlan] = useState(() => (params.get('new') === '1' && params.get('plan') === 'site' ? pendingPlan() : null));
   useEffect(() => {
     if (params.get('new') !== '1') return;
-    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); return n; }, { replace: true });
+    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); return n; }, { replace: true });
   }, [params, setParams]);
 
   const load = useCallback(async () => {
@@ -228,6 +232,7 @@ export default function Autopilot() {
           <NewProject
             portfolios={portfolios}
             presetListId={presetList || undefined}
+            seed={sitePlan}
             onClose={() => setCreating(false)}
             onCreated={id => {
               setCreating(false);

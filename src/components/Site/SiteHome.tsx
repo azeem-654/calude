@@ -24,7 +24,7 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
@@ -49,6 +49,12 @@ import ProspectingShowcase from './ProspectingShowcase';
 import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
+import SolutionsSection from './SolutionsSection';
+import FaqSection from './FaqSection';
+import { track } from '../../services/funnel';
+
+/* The wizard is a screen of its own, loaded when somebody opens it. */
+const SolutionWizard = lazy(() => import('./SolutionWizard'));
 import './site.css';
 
 type Reel = keyof typeof REELS;
@@ -280,10 +286,32 @@ const TRUST: { icon: typeof Send; title: string; body: string }[] = [
  */
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
 
+/**
+ * The one primary call to action, worded the same everywhere: "Start free".
+ * The audit found seven different labels for this one act; a visitor reading
+ * "Create your account" after "Try it free" wonders whether they differ.
+ */
+function StartFree({ size = '', where = '' }: { size?: '' | 'lg' | 'sm'; where?: 'hero' | '' }) {
+  const href = appHref('/signup');
+  return (
+    <a className={`dc-btn dc-btn-primary${size ? ` dc-btn-${size}` : ''}`} href={href} {...cross(href)}
+      onClick={() => { if (where === 'hero') track('hero_cta_clicked'); track('trial_cta_clicked'); }}>
+      Start free <ArrowRight size={size === 'lg' ? 16 : 15} />
+    </a>
+  );
+}
+
+/** What starting costs, said beside every button that starts it. */
+const TrialNote = ({ light = false }: { light?: boolean }) => (
+  <p className={`dc-trial-note${light ? ' light' : ''}`}>
+    {['7 days free', 'No card required', 'Nothing sends until you approve it'].map(t => <span key={t}><Check size={13} /> {t}</span>)}
+  </p>
+);
+
 /* A chapter is a feature stage: its modules' screens in one wide slideshow,
    and each module as a block under it — the screens get the page's width
    instead of a tile's. */
-function ChapterBlock({ c }: { c: Chapter }) {
+function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
   const seen = new Set<string>();
   const shots = c.tiles.flatMap(t => REELS[t.reel]).filter(x => (seen.has(x.file) ? false : (seen.add(x.file), true)));
   return (
@@ -297,9 +325,10 @@ function ChapterBlock({ c }: { c: Chapter }) {
       shots={shots}
       features={c.tiles.map(t => ({ icon: t.icon, title: t.title, body: t.body }))}
     >
-      <a className="dc-btn dc-btn-primary" href={appHref('/signup')} {...cross(appHref('/signup'))}>
-        Start free <ArrowRight size={15} />
-      </a>
+      <div className="dc-cta-pair">
+        <StartFree />
+        <button type="button" className="dc-btn dc-btn-outline" onClick={onFind}>Find my solution</button>
+      </div>
       <div className="dc-pills">
         {c.pills.map(p => <span key={p} className="dc-pill"><Check size={11} /> {p}</span>)}
       </div>
@@ -312,6 +341,19 @@ function ChapterBlock({ c }: { c: Chapter }) {
 export default function SiteHome() {
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
+
+  /* Find my solution. `#find` (or `#find=<solution>`) opens it from a link. */
+  const [wizard, setWizard] = useState<{ pick: string } | null>(() => {
+    try {
+      const m = /^#find(?:=([a-z-]+))?$/.exec(location.hash);
+      return m ? { pick: m[1] ?? '' } : null;
+    } catch { return null; }
+  });
+  const openWizard = useCallback((pick = '', from = '') => {
+    if (from === 'hero') track('hero_cta_clicked');
+    setWizard({ pick });
+  }, []);
+  useEffect(() => { track('homepage_view'); }, []);
 
   /* The nav is transparent over the hero and solid once you leave it, which is
      the only way a dark translucent bar stays legible over a light page. */
@@ -403,19 +445,18 @@ export default function SiteHome() {
           <span>Protected Central</span>
         </a>
         <nav className="dc-links" aria-label="Sections">
-          <a href="#autopilot">Autopilot</a>
+          <a href="#solutions">Solutions</a>
+          <a href="#autopilot">How it works</a>
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
-          <a href="#leads">Leads</a>
-          <a href="#deals">Deals</a>
-          <a href="#scale">Agency</a>
-          <a href="#platform">Platform</a>
+          <a href="#scale">Agencies</a>
           <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
           <a href="/security">Security</a>
         </nav>
         <div className="dc-nav-cta">
           <a className="dc-btn dc-btn-ghost" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
-          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} aria-label="Start free trial" {...cross(appHref('/signup'))}>
-            <span className="dc-cta-long">Start free trial</span><span className="dc-cta-short" aria-hidden="true">Try free</span>
+          <a className="dc-btn dc-btn-primary" href={appHref('/signup')} aria-label="Start free" {...cross(appHref('/signup'))} onClick={() => track('trial_cta_clicked')}>
+            <span className="dc-cta-long">Start free</span><span className="dc-cta-short" aria-hidden="true">Try free</span>
           </a>
         </div>
       </header>
@@ -434,24 +475,28 @@ export default function SiteHome() {
               picture starts on the first screen (site.css, "Three stops"). */}
           <div className="dc-hero-copy" ref={copy}>
             <a className="dc-eyebrow dc-ai-pill dc-lead-0" href="#autopilot">
-              <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — describe it, and it builds and runs it</span> <ArrowRight size={14} />
+              <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — for businesses, and the agencies that serve them</span> <ArrowRight size={14} />
             </a>
+            {/* The outcome first. The page used to open on "Run your agency |
+                Resell it as your own", which spoke to resellers; most visitors
+                want more customers or less busywork (docs/SITE-CONVERSION.md). */}
             <h1 className="dc-split">
-              <span className="dc-lead-l">Run your agency</span>
+              <span className="dc-lead-l">Describe the outcome</span>
               <i aria-hidden="true" />
-              <span className="dc-lead-r">Resell it as your own</span>
+              <span className="dc-lead-r">AI builds the system</span>
             </h1>
             <p className="dc-hero-sub dc-lead-1">
-              Tell it what you want in a sentence and AI Autopilot builds the workflows, writes the posts
-              and follows up every lead — one login, on your own mailbox, with every step visible and
-              editable before it happens.
+              Tell Protected Central what you want your business to accomplish — more leads, daily content,
+              follow-up that never slips — and it builds the workflows, shows you every step, and runs them
+              for you.
             </p>
             <div className="dc-hero-cta dc-lead-2">
-              <a className="dc-btn dc-btn-primary dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
-                Start your 7-day free trial <ArrowRight size={16} />
-              </a>
-              <a className="dc-btn dc-btn-outline dc-btn-lg" href="#film">Watch the 5½-minute tour</a>
+              <StartFree size="lg" where="hero" />
+              <button type="button" className="dc-btn dc-btn-outline dc-btn-lg" onClick={() => openWizard('', 'hero')} data-testid="find-solution">
+                <Sparkles size={16} /> Find my solution
+              </button>
             </div>
+            <TrialNote />
           </div>
           <div className="dc-hero-stage dc-lead-3" ref={stage} data-chips="off">
             <div className="dc-hero-sparks" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
@@ -492,6 +537,12 @@ export default function SiteHome() {
         <b>Your mailbox, your domain, your name on it.</b>
       </div>
 
+      {/* ── What do you want to grow? ──
+             The use cases, by outcome, each with "Build this" — straight
+             after the proof that the product is real, before the tour of how
+             it works. ── */}
+      <SolutionsSection onBuild={k => openWizard(k)} />
+
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because
              it is the part a visitor has not seen on another platform. ── */}
@@ -515,7 +566,7 @@ export default function SiteHome() {
       {featureReady('prospects') && <ProspectingShowcase />}
 
       {/* ── The three chapters ── */}
-      {CHAPTERS.map(c => <ChapterBlock key={c.id} c={c} />)}
+      {CHAPTERS.map(c => <ChapterBlock key={c.id} c={c} onFind={() => openWizard()} />)}
 
       {/* ── The chain ── */}
       <section className="dc-process" aria-label="One outcome, every channel">
@@ -659,24 +710,28 @@ export default function SiteHome() {
                   : `${p.limits.resell} sub-account${p.limits.resell === 1 ? '' : 's'}`}
               </p>
               <ul>{p.features.map(f => <li key={f}><Check size={12} /> {f}</li>)}</ul>
-              <a className={`dc-btn ${i === 1 ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={appHref('/signup')} {...cross(appHref('/signup'))}>
-                Try it free for 7 days <ArrowRight size={14} />
+              <a className={`dc-btn ${i === 1 ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={appHref('/signup')} {...cross(appHref('/signup'))} onClick={() => track('trial_cta_clicked')}>
+                Start free <ArrowRight size={14} />
               </a>
+              <small className="dc-plan-note">7 days free · No card required</small>
             </div>
           ))}
         </div>
       </section>
 
+      {/* ── Questions ── */}
+      <FaqSection />
+
       {/* ── Closing call ── */}
       <section className="dc-cta">
         <div className="dc-cta-glow" aria-hidden="true" />
-        <h2>Get started with<br />Protected Central today</h2>
+        <h2>Tell it what you want.<br />Watch it get built.</h2>
         <p>Free for 7 days, no card needed. Your workspace is yours alone from the moment it exists.</p>
         <div className="dc-hero-cta">
-          <a className="dc-btn dc-btn-light dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))}>
-            Create your account <ArrowUpRight size={16} />
+          <a className="dc-btn dc-btn-light dc-btn-lg" href={appHref('/signup')} {...cross(appHref('/signup'))} onClick={() => track('trial_cta_clicked')}>
+            Start free <ArrowUpRight size={16} />
           </a>
-          <a className="dc-btn dc-btn-outline-light dc-btn-lg" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
+          <button type="button" className="dc-btn dc-btn-outline-light dc-btn-lg" onClick={() => openWizard()}>Find my solution</button>
         </div>
         <div className="dc-cta-shot reveal" ref={ctaShot}>
           <ShotReel shots={REELS.dashboard} label="The product" chrome={false} />
@@ -708,7 +763,8 @@ export default function SiteHome() {
           <div>
             <h5>Account</h5>
             <a href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
-            <a href={appHref('/signup')} {...cross(appHref('/signup'))}>Create an account</a>
+            <a href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free</a>
+            <a href="#find" onClick={e => { e.preventDefault(); openWizard(); }}>Find my solution</a>
             <a href="/security">Security &amp; privacy</a>
             <a href="/privacy">Privacy policy</a>
             <a href="/terms-of-service">Terms of service</a>
@@ -720,6 +776,11 @@ export default function SiteHome() {
           <span>Sends on your own mailbox. Your data stays in your workspace.</span>
         </div>
       </footer>
+      {wizard && (
+        <Suspense fallback={null}>
+          <SolutionWizard initialPick={wizard.pick} onClose={() => { setWizard(null); if (/^#find/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }} />
+        </Suspense>
+      )}
     </div>
   );
 }

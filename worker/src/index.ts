@@ -37,6 +37,7 @@ import { handleSupplier } from './routes/supplier';
 import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
 import { handleIntake } from './routes/intake';
+import { handleSitePlan } from './routes/sitePlan';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
 import { handleModeration } from './routes/moderation';
@@ -157,6 +158,7 @@ const ROUTES: Record<string, Handler> = {
      understood before anybody is asked a question, blueprint edits, and the
      microphone's transcript. See routes/intake.ts. */
   '/api/intake.php': handleIntake,
+  '/api/site-plan.php': handleSitePlan,
   '/api/setup.php': handleSetup,
   '/api/whitelabel.php': handleWhitelabel,
   /* The client report. `view` answers to nobody signed in — see routes/portal.ts

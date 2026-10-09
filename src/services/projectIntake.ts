@@ -317,7 +317,7 @@ export function extractKnown(
   if (platforms.length) put('platforms', platforms, 'prompt', fromYou);
   const versions = /\b(two|2|three|3)\s+(image\s+)?(versions|variations|options)\b/.exec(t);
   if (versions) put('postsPerRun', String(numberIn(versions[1])), 'prompt', fromYou);
-  if (/\bimage posts?\b|\bgraphics?\b|\bvisual/.test(t)) {
+  if (/\bimage posts?\b|\bimages\b|\bgraphics?\b|\bvisual/.test(t)) {
     put('socialOutputs', ['image', 'caption', 'hashtags', ...(platforms.length > 1 ? ['variants'] : [])], 'prompt', 'image posts, as you asked');
   }
   const images = files.filter(f => f.kind === 'image');
@@ -366,6 +366,18 @@ export function extractKnown(
     put('contactCount', bucket(n, [[499, '<500'], [2000, '500-2000'], [10000, '2000-10000']], '10000+'), 'prompt', `${n.toLocaleString()}, from your request`);
   }
   if (/\b(find|search for|discover|source)\b/.test(t) && asked.has('contactSource')) put('contactSource', 'find', 'prompt', 'find new ones, from your request');
+  /* "30 roofing leads every day", "more leads in Dallas": somebody asking a
+     lead-generation project for leads wants them found, and says how many. */
+  /* Only when they are asking to be given leads — "book interested prospects"
+     is about people they already have. */
+  if (/\b(?:more|new|\d+|get|find|generate|need|want)\b[^.]{0,40}?\b(leads|prospects)\b/.test(t) && !/\binterested (leads|prospects)\b/.test(t)
+    && solutionKeys.includes('lead-generation')) put('contactSource', 'find', 'prompt', 'new leads found for you, from your request');
+  const daily = /\b(\d{1,3})\s+(?:new\s+)?(?:[a-z-]+\s+){0,3}?(?:leads|prospects)\s+(?:every ?day|a day|per day|daily|each day)\b/.exec(t);
+  if (daily) {
+    const n = Number(daily[1]);
+    const near = [10, 20, 30, 40, 60].reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a));
+    put('prospectPerDay', String(near), 'prompt', near === n ? fromYou : `${near} a day, the nearest to the ${n} you asked for`);
+  }
   /* "Sell my products to real estate agents in Virginia": the people after "to" are who it is for. */
   const who = sellingTo(prompt) ?? audienceIn(prompt);
   if (who) put('audience', who, 'prompt', fromYou);

@@ -67,7 +67,9 @@
     "test:autoprospects": "node test/autopilotProspecting.e2e.mjs",
     "test:aikeys": "node test/aikeys.e2e.mjs",
     "test:push": "npx --yes tsx worker/test/push.test.mts",
-    "test:nativeapp": "node test/nativeApp.e2e.mjs"
+    "test:nativeapp": "node test/nativeApp.e2e.mjs",
+    "test:siteplan": "npx --yes tsx test/sitePlan.test.mts",
+    "test:sitefunnel": "node test/siteFunnel.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

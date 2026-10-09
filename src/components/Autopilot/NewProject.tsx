@@ -71,6 +71,8 @@ import BookingSetup from './newProject/BookingSetup';
 import Build from './newProject/Build';
 import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProject/buildRunner';
 import { listChoices } from './newProject/contactFacts';
+import { arrivalDefaults, clearPendingPlan, seedState, stillNeeded, type SitePlan } from '../../services/sitePlan';
+import { trackKnown } from '../../services/funnel';
 import './newProject/newProject.css';
 
 type Phase = 'describe' | 'understand' | 'questions' | 'blueprint' | 'requirements' | 'review' | 'build' | 'domains';
@@ -93,7 +95,7 @@ const EXAMPLES = [
 
 const pause = (ms: number) => new Promise(r => window.setTimeout(r, ms));
 
-export default function NewProject({ portfolios, onClose, onCreated, presetListId }: {
+export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed }: {
   portfolios: Portfolio[];
   onClose: () => void;
   /** Called with the new project's id when the customer goes into it. */
@@ -105,6 +107,13 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
    * and the list question is still shown, chosen, so it can be changed.
    */
   presetListId?: string;
+  /**
+   * A plan the customer made on the public site before signing up
+   * (services/sitePlan.ts). Its answers are taken as given — they approved
+   * that blueprint — so only what the site could not ask is asked here, and
+   * with nothing left the build starts on arrival.
+   */
+  seed?: SitePlan | null;
 }) {
   const { addNotification, addWebsite, addFunnel } = useApp();
   const [phase, setPhase] = useState<Phase>('describe');
@@ -474,6 +483,33 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
      short, and from Review if something about the business is still missing. */
   const businessIds = (st: IntakeState) => allQuestions(st).filter(q => q.group === 'business').map(q => q.id);
 
+  /* ── Arriving with a plan from the site ──
+   *
+   * The visitor answered the site's questions and pressed "Build this in my
+   * free account". The plan becomes the state; a mailbox is "not sure yet"
+   * (the project is built and nothing sends until one is connected); and only
+   * the required questions with no safe default — the business, mostly, when
+   * they skipped it — are asked before the build runs by itself. */
+  const seeded = useRef(false);
+  const [autoBuild, setAutoBuild] = useState(false);
+  useEffect(() => {
+    if (!seed || seeded.current) return;
+    seeded.current = true;
+    setDescribe(d => ({ ...d, prompt: seed.prompt, picked: seed.picked }));
+    const st = arrivalDefaults(withPreset(seedState(seed, ws)));
+    setState(st);
+    setUnderstood(true);
+    /* No business given on the site (it is optional there) is a gap too: the
+       project cannot be written about a business nobody named. */
+    const gapNow = !st.known.business || profileGap(st, [], { draft: null, readFor: '', reading: false, error: '' });
+    const ids = [...(gapNow ? allQuestions(st).filter(q => q.group === 'business').map(q => q.id) : []), ...stillNeeded(st)];
+    if (ids.length) {
+      setAsked(new Set(ids));
+      setScreenIdx(0);
+      setPhase('questions');
+    } else setAutoBuild(true);
+  }, [seed, ws, withPreset]);
+
   const startQuestions = () => {
     if (!state) return;
     const open = allQuestions(state).filter(q => !state.known[q.id]).map(q => q.id);
@@ -586,12 +622,30 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     };
     setPhase('build');
     setSteps(planSteps(input));
-    setSay('I’m getting started.');
+    setSay(seed ? 'Building your Protected Central project…' : 'I’m getting started.');
+    if (seed) clearPendingPlan();
+    const solution = bp.solutionKeys[0];
+    trackKnown('autopilot_project_build_started', { solution });
     const r = await runBuild(input, (st, line) => { setSteps(st); if (line) setSay(line); });
     setResult(r);
+    if (r.projectId) {
+      trackKnown('autopilot_project_created', { solution });
+      if (r.created.workflows > 0) trackKnown('first_workflow_created', { solution });
+      /* Something real to look at: the first post or article, products in the
+         shop — or, for a project whose work is its workflows, the workflows.
+         A finder's first value is its first prospects (FinderLive). */
+      if (r.first || r.created.products > 0 || (!r.finder && r.created.workflows > 0)) trackKnown('first_value_reached', { solution });
+    }
     if (r.fatal) addNotification(r.fatal, 'error');
     else addNotification(`"${bp.name}" is built.`, 'success');
   };
+
+  useEffect(() => {
+    if (!autoBuild || !state || !bp) return;
+    setAutoBuild(false);
+    void build();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the seeded state is in
+  }, [autoBuild, state, bp]);
 
   const buyDomains = !!result?.projectId && String(state?.known.mailbox?.value ?? '') === 'buy';
 
@@ -613,6 +667,9 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (phase === 'understand') { startQuestions(); return; }
     if (phase === 'questions') {
       if (screenIdx + 1 < screens.length) setScreenIdx(i => i + 1);
+      /* The site's visitor approved the blueprint there; these were only
+         the last answers it needed. */
+      else if (seed) void build();
       else setPhase('blueprint');
       return;
     }
@@ -644,6 +701,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   const close = () => {
     if (building) return;
+    /* Cancelled on purpose: the plan is not offered again on every load. */
+    if (seed) clearPendingPlan();
     if (result?.projectId) { onCreated(result.projectId); return; }
     onClose();
   };
@@ -652,7 +711,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (blocker) return blocker;
     if (phase === 'describe') return 'Continue';
     if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
-    if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : 'See the blueprint';
+    if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : seed ? 'Build my project' : 'See the blueprint';
     if (phase === 'blueprint') return 'Looks good — continue';
     if (phase === 'requirements') return 'Review';
     if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My Autopilot';
@@ -766,6 +825,11 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                     });
                   })}
                 />
+              )}
+              {phase === 'questions' && seed && screenIdx === 0 && (
+                <p className="np-seed-note" style={{ margin: '0 0 16px', padding: '12px 14px', borderRadius: 14, background: '#f1effe', color: '#3b2fa8', fontSize: 13.5, lineHeight: 1.5 }}>
+                  <b>Your plan from the website is here.</b> {screens.length === 1 ? 'One thing' : `${screens.length} things`} it could not ask before you had an account — then it builds.
+                </p>
               )}
               {phase === 'questions' && state && screen && (
                 <Questions

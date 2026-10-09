@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, Globe, Loader, Search, UserPlus, AlertTriangle, ArrowRight } from 'lucide-react';
 import { runFinderStep, syncFinderContacts } from '../../../services/finders';
+import { trackKnown } from '../../../services/funnel';
 
 type Line = { job: string; detail: string; added: number; found: number; failed?: boolean };
 
@@ -79,6 +80,8 @@ export default function FinderLive({ projectId, finderId, perDay, trades, places
         if (added >= Math.min(perDay, 10)) break;
       }
       await syncFinderContacts().catch(() => 0);
+      /* The first prospects are this project's first value (services/funnel.ts). */
+      if (added > 0) trackKnown('first_value_reached', { solution: 'lead-generation' });
       if (alive.current) setBusy(false);
     })();
     return () => { alive.current = false; };

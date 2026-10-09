@@ -1,3 +1,6 @@
+import { pendingPlan } from '../../services/sitePlan';
+import { track } from '../../services/funnel';
+import { solutionByKey } from '../../services/projectSolutions';
 import { inNativeApp } from '../../services/nativeApp';
 import { useEffect, useRef, useState } from 'react';
 import { Mail, ArrowRight, ArrowLeft, Loader, AlertTriangle, Eye, EyeOff } from 'lucide-react';
@@ -303,16 +306,23 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const leaveCode = () => { setView('form'); setCodeStep('off'); setCode(''); setError(''); setNotice(''); };
 
   const creating = mode !== 'login';
+  const [sitePlan] = useState(() => pendingPlan());
+  /* The funnel's "signup started": the sign-up form shown (services/funnel.ts). */
+  useEffect(() => { if (mode === 'register') track('signup_started', { solution: sitePlan?.solutionKeys[0] }); }, [mode, sitePlan]);
   const title = view === 'code'
     ? (mode === 'register' ? 'Start your free trial' : 'Sign in with an instant code')
     : mode === 'setup' ? 'Create your owner account'
       : mode === 'register' ? 'Start your 7-day free trial'
         : `Welcome back to ${brand.appName}`;
+  /* A plan brought from the site's "Find my solution": said here, so the
+     visitor knows the answers they gave are not lost behind the form. */
+  const plan = sitePlan;
+  const planName = plan ? (plan.name || solutionByKey(plan.solutionKeys[0])?.label || 'your project') : '';
   const sub = view === 'code'
     ? 'We email you a six-digit code — no password needed. A new address gets its own workspace and a 7-day free trial.'
     : mode === 'setup' ? 'Set up the agency owner login to get started.'
-      : mode === 'register' ? `Your own ${brand.appName} workspace in under a minute. No card needed.`
-        : brand.loginHeadline;
+      : mode === 'register' ? (plan ? `Create your account and “${planName}” is built for you straight away. 7 days free, no card needed.` : `Your own ${brand.appName} workspace in under a minute. No card needed.`)
+        : plan ? `Sign in and “${planName}” is built in your workspace.` : brand.loginHeadline;
 
   const noticeBox = notice && (
     <div className="au-notice"><AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} /><span>{notice}</span></div>

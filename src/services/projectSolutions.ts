@@ -506,7 +506,7 @@ const Q: Record<string, Question> = {
     prompt: 'How many new prospects a day?',
     help: 'Each one has an address that was checked. They are proposed to your outreach 20 at a time, each batch waiting for you.',
     options: [
-      { value: '10', label: '10 a day' }, { value: '20', label: '20 a day' }, { value: '40', label: '40 a day' }, { value: '60', label: '60 a day' },
+      { value: '10', label: '10 a day' }, { value: '20', label: '20 a day' }, { value: '30', label: '30 a day' }, { value: '40', label: '40 a day' }, { value: '60', label: '60 a day' },
     ],
     aiDecides: '20',
     showIf: { id: 'contactSource', in: ['find'] },
