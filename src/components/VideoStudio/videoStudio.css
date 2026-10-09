@@ -382,3 +382,16 @@ button.vse-block { border-width: 1px; border-style: solid; }
   .vse-hud .vs-btn.skip { display: none; }
   .vse-hud { gap: 5px; padding: 7px 8px; }
 }
+
+/* Grid items do not shrink below their content unless told to: without this
+   the inspector's tab row pushed the right column out of the frame. */
+.vse > * { min-width: 0; }
+/* The voice control carries a language picker; it wraps under the box rather
+   than squeezing the box to nothing. */
+.vse-ai-input { flex-wrap: wrap; }
+.vse-ai-input input { flex: 1 1 180px; min-width: 140px; }
+/* …and a grid's implicit column is as wide as its widest child: these hold
+   the panes to the width of their track. */
+.vse-right, .vse-stage, .vse-ai, .vse-pane > .vse-scroll > .vs-col { grid-template-columns: minmax(0, 1fr); }
+.vse-pane { min-width: 0; }
+.vse-pane > .vs-ptabs { max-width: 100%; }

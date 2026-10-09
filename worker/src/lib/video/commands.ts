@@ -49,6 +49,7 @@ export const COMMAND_HELP = [
   'Make the music quieter',
   'Make my voice clearer',
   'Remove the long pause at the beginning',
+  'Remove the long pauses',
   'Restore my second example',
   'Make Short 3 faster',
   'Turn this section into another Short (select the words first)',
@@ -146,6 +147,16 @@ function parseOne(input: string, ctx: CommandCtx): CommandResult {
     }
   }
   if (/\beye[- ]?contact\b/.test(t)) return no('Eye-contact correction needs a provider that is not set up, so it is not available. Nothing was changed.');
+
+  /* Every long pause: the suggested pause cuts, all applied. Asked about the
+     beginning, it is the opening pause below instead. Pauses are shortened,
+     never removed — the cuts were made that way by cleanup. */
+  if (/\b(pauses|silences|gaps|dead air)\b/.test(t) && !/\b(beginning|start|opening|intro)\b/.test(t) && /\b(remove|cut|delete|trim|shorten|get rid|take out|tighten)\b/.test(t)) {
+    const gaps = ctx.doc.cuts.filter(c => c.kind === 'gap');
+    const open = gaps.filter(c => c.state === 'proposed');
+    if (!open.length) return { ops: [], reply: gaps.length ? `The long pauses are already shortened — ${gaps.filter(c => c.state === 'approved').length} of them. Reject one in Cleanup to keep it.` : 'There are no long pauses to shorten in this recording.', understood: true };
+    return { ops: [{ op: 'cut.setMany', ids: open.map(c => c.id), state: 'approved' }], reply: `Shortened ${open.length} more long pause${open.length === 1 ? '' : 's'}. Every video will render again.`, rerender: ['*'], understood: true };
+  }
 
   /* The opening pause. */
   if (/\b(pause|silence|gap|wait|dead air)\b/.test(t) && /\b(beginning|start|opening|intro)\b/.test(t) && /\b(remove|cut|delete|trim|shorten|get rid)\b/.test(t)) {

@@ -233,7 +233,7 @@ console.log('\nWhat a sentence does to the edit');
   ok('undo and redo are the editor\'s', parseVideoCommand('undo', ctx).undo && parseVideoCommand('redo', ctx).redo);
   const pauses = parseVideoCommand('Remove the long pauses', ctx);
   ok('"remove the long pauses" applies every suggested pause cut, everywhere, and renders again', pauses.understood && pauses.ops[0]?.op === 'cut.setMany' && (pauses.ops[0] as { ids: string[] }).ids.join() === 'gx' && pauses.rerender?.includes('*'), pauses);
-  const noneLeft = parseVideoCommand('Remove the long pauses', { ...ctx, doc: { ...doc, cuts: doc.cuts.filter(c => c.kind !== 'gap') } });
+  const noneLeft = parseVideoCommand('Remove the long pauses', { ...ctx, doc: { ...doc, cuts: doc.cuts.map(c => c.kind === 'gap' ? { ...c, state: 'approved' as const } : c) } });
   ok('…and says so when every pause is already shortened', noneLeft.understood && !noneLeft.ops.length && /already/.test(noneLeft.reply), noneLeft);
   ok('…"the long pause at the beginning" is still the opening pause only', parseVideoCommand('Remove the long pause at the beginning', ctx).ops[0]?.op === 'cut.add');
 }
