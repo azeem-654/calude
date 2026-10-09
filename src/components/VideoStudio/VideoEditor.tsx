@@ -67,6 +67,9 @@ export interface EditorCtx {
   refresh: () => Promise<void>;
   setTab: (t: PanelTab) => void;
   say: (m: ChatMsg) => void;
+  /** A version the server just saved (an assistant command), taken at once —
+   *  waiting for the next refresh left a window where Undo went back two. */
+  adopt: (doc: VideoDoc, version: number) => void;
 }
 
 /* ── Stages ───────────────────────────────────────────────────────────────── */
@@ -302,6 +305,8 @@ export default function VideoEditor({ id }: { id: string }) {
     if (r.success) { setDoc(r.doc); setVersion(r.docVersion); void refresh(); }
   }, [id, view, refresh]);
 
+  const adopt = useCallback((d: VideoDoc, v: number) => { setDoc(d); setVersion(v); }, []);
+
   const seek = useCallback((t: number) => {
     /* Negative numbers are the player telling us where it is (−1 − time);
        positive ones are a request to move it. */
@@ -323,8 +328,8 @@ export default function VideoEditor({ id }: { id: string }) {
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
-    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say,
-  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say]);
+    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt,
+  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt]);
   const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;

@@ -46,10 +46,12 @@ export default function AssistantPanel({ ctx, messages, inputRef }: { ctx: Edito
     if (r.undo || r.redo) {
       const v = r.undo ? ctx.version - 1 : ctx.version + 1;
       const g = v >= 1 && v <= ctx.view.maxVersion ? await gotoVersion(ctx.view.project.id, v) : null;
+      if (g?.success) ctx.adopt(g.doc, g.docVersion);
       ctx.say({ who: 'ai', text: g?.success ? r.reply : 'There is nothing to ' + (r.undo ? 'undo.' : 'redo.') });
       await ctx.refresh();
       return;
     }
+    if (r.doc && r.docVersion) ctx.adopt(r.doc, r.docVersion);
     ctx.say({ who: 'ai', text: r.reply ?? r.error ?? 'That did not work.' });
     await ctx.refresh();
   };

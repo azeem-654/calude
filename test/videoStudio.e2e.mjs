@@ -455,7 +455,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await page.getByRole('button', { name: 'Undo' }).click();
   await page.waitForTimeout(1200);
   const undone = await v('get', { projectId: PID });
-  ok('undo goes back a version', undone.docVersion === before - 1 && undone.doc.music.volume === after.doc.music.volume, undone.docVersion);
+  ok('undo goes back a version — straight after an assistant command, too', undone.docVersion === before - 1 && undone.doc.music.volume === after.doc.music.volume, { before, undone: undone.docVersion, vol: [after.doc.music?.volume, undone.doc.music?.volume] });
   await page.getByRole('button', { name: 'Redo' }).click();
   await page.waitForTimeout(1200);
   ok('…and redo comes forward again', (await v('get', { projectId: PID })).docVersion === before);
@@ -578,6 +578,9 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   whisper = await startWhisperMock(WH, SHORT.script);
   whisper.state.failNext = 1;
   gemini.state.fail = true;
+  /* Charged before this project, so its own charges can be read apart from
+     the renders the editing above asked for. */
+  const before = (await v('usage')).usage.used;
   const c = await v('create', { name: 'Retry test', prompt: 'Clean it and make two 20–40 second shorts, captions and thumbnails' });
   const buf = fs.readFileSync(SHORT.file);
   const st = await v('upload_start', { projectId: c.id, name: 'retry.mp4', size: buf.length, type: 'video/mp4', fileKey: `retry|${buf.length}` });
@@ -597,10 +600,10 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
      finished); an engine step counts its dispatches (a render sent twice). */
   const tj = R.jobs.find(j => j.kind === 'transcribe');
   ok('…by retrying the failed steps', tj?.attempts >= 1 && tj.state === 'done' && R.jobs.some(j => j.kind === 'render' && j.attempts > 1 && j.state === 'done'), R.jobs.map(j => `${j.kind}:${j.attempts}:${j.state}`));
-  const usage = (await v('usage')).usage;
-  const outMin = R.outputs.reduce((n, o) => n + o.duration / 60, 0) + S.outputs.reduce((n, o) => n + o.duration / 60, 0);
-  const reRendered = reOut.duration / 60;
-  ok('…with no second charge: audio and render minutes are each counted once', Math.abs(usage.used.audioMin - (LONG.script.duration + SHORT.script.duration) / 60) < 0.5 && Math.abs(usage.used.renderMin - (outMin + (outBefore.duration / 60))) < 0.6, { audio: usage.used.audioMin, render: usage.used.renderMin, outMin, reRendered });
+  const used = (await v('usage')).usage.used;
+  const outMin = R.outputs.reduce((n, o) => n + o.duration / 60, 0);
+  const audio = used.audioMin - before.audioMin, render = used.renderMin - before.renderMin;
+  ok('…with no second charge: its audio and render minutes are each counted once', Math.abs(audio - SHORT.script.duration / 60) < 0.5 && Math.abs(render - outMin) < 0.4, { audio, render, outMin, short: SHORT.script.duration / 60 });
   ok('…and no second file: one video per output', R.outputs.every(o => o.mp4Url && o.version === 1), R.outputs.map(o => o.version));
   ok('without AI, the Shorts and words are chosen by rule — and the screen says so', R.doc.clips.every(c => c.by === 'rules' && c.scores === null) && R.outputs.every(o => o.meta.by === 'rules') && /without AI|by rule/i.test(R.project.stageNote), { by: R.doc.clips.map(c => c.by), note: R.project.stageNote });
   gemini.state.fail = false;
