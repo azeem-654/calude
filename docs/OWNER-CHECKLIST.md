@@ -30,6 +30,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 12 | **Have a lawyer review the Privacy Policy and Terms of Service** — now published at /privacy and /terms-of-service, written from what the software does (`src/components/Site/legalText.ts`); create `privacy@protectedcentral.com` | a lawyer; your mail host | Launching to the public, and Google's reviewers writing to privacy@ during OAuth verification. The pages are live and linked from the home page footer; they have not been reviewed by a lawyer |
 | 13 | **Set `CREDENTIAL_WRAP_KEY`** on both Workers — a long random string, different for each, **never changed afterwards** | Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets → Add → type *Secret* | Encrypting the key that encrypts every stored password and API key. Until it is set, a database export contains both. See 23 |
 | 14 | **Add the repository secret `BACKUP_PASSPHRASE`** — a long random phrase, also kept somewhere outside GitHub | GitHub → the repository → Settings → Secrets and variables → Actions → New repository secret | The nightly encrypted database backup (`backup.yml`). Without it the job warns and takes nothing |
+| 15 | **Switch on R2, and give the deploy token R2, Containers and Workers AI** — then re-run the deploy | dash.cloudflare.com → R2 → *Enable*; My Profile → API Tokens → edit the token used by GitHub | AI Video Studio. Until all three are there, Video Studio creates projects and says which part needs setting up; nothing is processed. See 29 |
 | 16 | **Switch on the help button** — the small round button in the bottom-right corner of the app. Signed in as azeem@protectedcentral.com: Customer Engagement → Widgets → New; tick *Chat*, *Share your screen*, *Raise and check a ticket*; tick **Use as the help button inside Protected Central**; pick an AI agent if you have one; **Save and make it live**. Do it on both sites | app.protectedcentral.com and testing.protectedcentral.com | Your customers seeing any help button at all, and live screen sharing. Until it exists they see nothing; you see a dashed round placeholder that links here. See 25 |
 | 17 | *Optional* — **Give screen sharing a relay** so it works through strict office firewalls: create a TURN key and add `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` as secrets on both Workers | Cloudflare → Realtime → TURN Server → Create; then Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings → Variables and Secrets | Screen sharing for the few customers whose network refuses a direct connection. Without it those calls can still switch to Google Meet once item 5 is done. See 25 |
 | 18 | **Do not put a free trial on the subscription price** in Stripe or Creem. The 7-day trial is now the app's own (added 2026-09-30): every sign-up gets 7 days with no card, and pays at the end through Plan & billing. A trial on the processor's price as well would give a second free week to everybody who pays. If your price already carries one, remove it. Also replace the launch ad's placeholder AI voiceover with a human read before paid media | Stripe → Products → the plan's price (or the Creem product) | Nobody getting 14 free days instead of 7 |
@@ -1096,6 +1097,43 @@ hours, plus whenever somebody presses Refresh.
    "Mark as replied"). Nothing pretends to have posted.
 6. Once approved: Reviews → Settings → Review Sources → **Connect Google
    Business Profile** → choose the location. Tick this item off here.
+
+### 29. AI Video Studio — added 2026-10-09
+
+Long recordings in; a cleaned long video, Shorts, captions, PNG thumbnails and
+titles out (docs/VIDEO-STUDIO.md). It runs on three Cloudflare pieces the
+deploy sets up by itself (`scripts/video-bindings.mjs`) **once the account and
+the token allow it**. Each one that cannot be set up is left out of that
+deploy — the rest of the app always ships — and Video Studio's **What works**
+panel says which.
+
+- [ ] **R2** — dash.cloudflare.com → **R2 Object Storage** → *Enable* (once;
+      Workers Paid includes 10 GB). The deploy then creates the buckets
+      `crmpro-video` and `crmpro-staging-video`.
+- [ ] **The deploy token** (the `CLOUDFLARE_API_TOKEN` GitHub secret) needs, on
+      top of what it has: **Workers R2 Storage: Edit**, **Workers AI: Read**
+      and the **Containers** permission (listed as *Containers* or
+      *Cloudchamber*: Edit). Edit the existing token rather than making a new
+      one, so the secret stays the same.
+- [ ] Re-run **Actions → Deploy to staging** (or push to `staging`) and read the
+      *Bind Video Studio* step: three lines starting "Video storage", "Media
+      engine" and "Workers AI". A warning there names what is still missing.
+      The first engine deploy builds the FFmpeg image (5–10 minutes).
+- [ ] On testing.protectedcentral.com → **Content → AI Video Studio → What
+      works**: storage, engine and transcription should read *Working*. Upload
+      a short recording to prove it.
+- [ ] Promote to live as usual; the live deploy sets up `crmpro-video` and the
+      live engine the same way.
+
+What it costs is per use — roughly 10–20 US cents per hour-long recording
+(storage, transcription, rendering), before the monthly allowances Workers
+Paid includes. Each workspace has its own monthly allowance (trial: 90 source
+minutes; paid: 600); your own workspace is unlimited.
+
+Not available, and said so on screen: eye-contact correction and portrait
+background removal (no provider), speaker labels (Whisper does not tell voices
+apart), and posting to social platforms (finished videos are "Ready to publish
+manually").
 
 ### 28. Your own lead directory — added 2026-10-07
 

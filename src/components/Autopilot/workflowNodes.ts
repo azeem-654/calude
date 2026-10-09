@@ -117,6 +117,14 @@ export const AGENT_SOURCES: Record<string, AgentSource> = {
     needsUrl: false,
     finderOnly: true,
   },
+  /* AI Video Studio's step: the recording that was uploaded into this
+     project. Only the catalogue's "Recordings I upload" builds it. */
+  video: {
+    label: 'Recordings you upload',
+    hint: 'Each video uploaded into this project in AI Video Studio, as it arrives.',
+    needsUrl: false,
+    finderOnly: true,
+  },
 };
 
 export interface AgentOutput {
@@ -133,6 +141,8 @@ export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
   email_campaign: { label: 'An email campaign', where: 'Campaigns', route: '/marketing?tab=sequences' },
   /* Made by the project's daily prospect finder (worker/src/prospectFinderTick.ts), never chosen in the editor. */
   prospects: { label: 'New prospects', where: "this project's audience", route: '/autopilot', finderOnly: true },
+  /* Made by AI Video Studio (worker/src/lib/video/pipeline.ts) when a recording is uploaded into the project. */
+  video_package: { label: 'A cleaned video, Shorts, captions and PNG thumbnails', where: 'AI Video Studio', route: '/video-studio', finderOnly: true },
 };
 
 /** The sources and outputs somebody may pick in the step editor — not the finder's own. */
@@ -183,6 +193,7 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
     /* A schedule reads as a schedule. "schedule — daily" is the code's words;
        "Every day" is what somebody set. */
     if (c('event') === 'schedule') return scheduleLabel(config);
+    if (c('event') === 'video_uploaded') return 'A recording is uploaded to this project';
     const ev = c('event').replace(/_/g, ' ');
     const named = c('formName') || c('tag');
     return named ? `${ev} — ${named}` : ev;
@@ -190,6 +201,10 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
   if (type === 'ai') {
     if (c('produces') === 'prospects') {
       return `Searches business directories → up to ${Number(c('perDay')) || 20} new prospects a day → this project's audience`;
+    }
+    if (c('produces') === 'video_package') {
+      const n = Number(c('shorts')) || 0;
+      return `Transcribes and cleans each recording → ${c('long') === 'false' ? '' : 'a cleaned long video, '}${n} Short${n === 1 ? '' : 's'}, captions, PNG thumbnails and titles → AI Video Studio`;
     }
     const src = AGENT_SOURCES[c('source') || 'portfolio'];
     const out = AGENT_OUTPUTS[c('produces') || 'social'];
@@ -291,6 +306,9 @@ export function problemsWith(name: string, nodes: WorkflowNode[]): string[] {
      It runs with nobody in it, so a send step in one has no address to send to.
      Caught here rather than at run time, where it would be a line in a log
      somebody never reads. */
+  if (nodes.some(n => n.type === 'trigger' && n.config?.event === 'video_uploaded') && !nodes.some(n => n.type === 'ai' && n.config?.produces === 'video_package')) {
+    out.push('An upload starts only a Video Studio step, and this workflow has none — nothing would happen.');
+  }
   const scheduled = nodes.some(n => n.type === 'trigger' && n.config?.event === 'schedule');
   if (scheduled) {
     if (!nodes.some(n => n.type === 'ai')) {

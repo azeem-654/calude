@@ -19,7 +19,7 @@ import { body, fail, json } from '../lib/http';
 import { rateLimit } from '../lib/rateLimit';
 import { loadAiKey } from '../lib/ai';
 import {
-  applyOps, newDoc, parseRequest, sentencesOf, SHORTS_MAX,
+  applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX,
   type Op, type VideoDoc, type VideoRequest,
 } from '../lib/video/edit';
 import { proposeCleanup } from '../lib/video/cleanup';
@@ -200,7 +200,10 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
   const d = await body<Req>(req);
   const user = await userFromToken(env.DB, d.token);
   if (!user) return fail('Sign in again to use Video Studio.', 401, { code: 'unauthorised' });
-  const accountId = s(d.accountId, 80);
+  const accountId = String(d.accountId ?? '').trim();
+  /* An empty or odd id is refused before any lookup — an agency naming '' must
+     not be treated as naming a workspace nobody has claimed yet. */
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(accountId)) return fail('A valid workspace is required.', 400, { code: 'no_workspace' });
   const access = await workspaceAccess(env.DB, user, accountId);
   if (!access.ok) return fail(access.message ?? 'That workspace is not yours.', 403, { code: access.code });
   const act = s(d.action, 40);
@@ -250,17 +253,23 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
            upload into the project needs no prompt. */
         const node = parse<{ type?: string; config?: Record<string, unknown> }[]>(wf.nodes, []).find(n => n.config?.produces === 'video_package');
         const c = node?.config ?? {};
+        /* Node configs are written as strings by the catalogue. */
+        const n = (v: unknown) => Number.isFinite(Number(v)) && String(v ?? '').trim() !== '' ? Number(v) : null;
+        const b = (v: unknown) => v === true || v === 'true' ? true : v === false || v === 'false' ? false : null;
         defaults = {
-          ...(typeof c.shorts === 'number' ? { shorts: Math.min(SHORTS_MAX, Math.max(0, c.shorts)) } : {}),
-          ...(typeof c.min === 'number' ? { min: c.min } : {}), ...(typeof c.max === 'number' ? { max: c.max } : {}),
-          ...(typeof c.long === 'boolean' ? { long: c.long } : {}), ...(typeof c.captions === 'boolean' ? { captions: c.captions } : {}),
-          ...(typeof c.thumbnails === 'boolean' ? { thumbnails: c.thumbnails } : {}),
+          ...(n(c.shorts) !== null ? { shorts: Math.min(SHORTS_MAX, Math.max(0, Math.round(n(c.shorts)!))) } : {}),
+          ...(n(c.min) !== null ? { min: n(c.min)! } : {}), ...(n(c.max) !== null ? { max: n(c.max)! } : {}),
+          ...(b(c.long) !== null ? { long: b(c.long)! } : {}), ...(b(c.captions) !== null ? { captions: b(c.captions)! } : {}),
+          ...(b(c.thumbnails) !== null ? { thumbnails: b(c.thumbnails)! } : {}),
           ...(c.cleanup === 'conservative' || c.cleanup === 'balanced' || c.cleanup === 'aggressive' ? { cleanup: c.cleanup } : {}),
         };
       }
     }
     const prompt = s(d.prompt, 2000);
-    const reqd = parseRequest(prompt || (defaults.shorts ? 'clean this recording' : 'clean this recording and create three shorts'), defaults);
+    /* A typed request wins; with none, the workflow's own settings do (the
+       stand-in sentence only fills what the workflow does not say). */
+    const reqd = prompt ? parseRequest(prompt, defaults)
+      : { ...parseRequest(defaults.shorts !== undefined ? 'clean this recording' : 'clean this recording and create three shorts', defaults), ...defaults };
     const st = d.settings ?? {};
     const request: VideoRequest & { language?: string } = {
       ...reqd,
@@ -272,9 +281,11 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       ...(typeof st.thumbnails === 'boolean' ? { thumbnails: st.thumbnails } : {}),
       ...(st.cleanup && ['conservative', 'balanced', 'aggressive'].includes(st.cleanup) ? { cleanup: st.cleanup } : {}),
       ...(st.aspect && ['9:16', '1:1', '4:5'].includes(st.aspect) ? { aspect: st.aspect } : {}),
+      ...(st.layout === 'fit' || st.layout === 'crop' ? { layout: st.layout } : {}),
       ...(st.language && /^(en|tr|ur)$/.test(st.language) ? { language: st.language } : {}),
     };
     if (request.max < request.min + 5) request.max = request.min + 5;
+    request.understood = describeRequest(request);
     const brand = await brandOf(env, accountId, autopilot).catch(() => null);
     const doc = newDoc(request, brand?.color ?? '');
     const id = `vp-${crypto.randomUUID()}`;
@@ -334,8 +345,12 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
 
   switch (act) {
     case 'get': case 'status': {
-      if (p.status === 'processing' || p.status === 'uploading') kick(p.id);
-      return json({ success: true, ...(await projectView(env, origin, p, { light: act === 'status', knownVersion: d.knownVersion })), capabilities: act === 'get' ? await capabilities(env, accountId, false) : undefined });
+      const view = await projectView(env, origin, p, { light: act === 'status', knownVersion: d.knownVersion });
+      /* Any open job, not only a project still "processing": a new thumbnail
+         set or a re-render on a finished project must move while somebody
+         watches, not wait for the next cron tick. */
+      if ((view.jobs as { state: string }[]).some(j => j.state === 'queued' || j.state === 'running')) kick(p.id);
+      return json({ success: true, ...view, capabilities: act === 'get' ? await capabilities(env, accountId, false) : undefined });
     }
 
     case 'rename': {

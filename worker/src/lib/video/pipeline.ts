@@ -142,8 +142,21 @@ export function originOf(env: Env, req?: Request): string {
   return (env.APP_ORIGIN ?? '').replace(/\/$/, '');
 }
 
+/* One advance per project at a time in this isolate. The lease already stops
+   two runners doing the same job; this stops every poll of an open editor
+   (and the engine's pokes) from each starting another 25-second loop that
+   would only find the jobs leased. */
+const advancing = new Map<string, number>();
+
 /** One project's due jobs, for up to `budgetMs`. */
 export async function advanceProject(env: Env, origin: string, projectId: string, budgetMs = 20_000): Promise<number> {
+  const busyUntil = advancing.get(projectId) ?? 0;
+  if (busyUntil > Date.now()) return 0;
+  advancing.set(projectId, Date.now() + budgetMs + 5_000);
+  try { return await advanceLoop(env, origin, projectId, budgetMs); } finally { advancing.delete(projectId); }
+}
+
+async function advanceLoop(env: Env, origin: string, projectId: string, budgetMs: number): Promise<number> {
   const until = Date.now() + budgetMs;
   let n = 0;
   for (let round = 0; round < 12 && Date.now() < until; round++) {
@@ -406,7 +419,7 @@ async function analyzeStep(env: Env, origin: string, job: JobRow, p: ProjectRow)
   doc = applyOps(doc, [{ op: 'cleanup.preset', preset: doc.cleanup.preset, cuts }], duration).doc;
 
   /* Shorts and chapters, by the AI; checked; topped up by rule if short. */
-  const opts = { count: doc.shorts.count, min: doc.shorts.min, max: doc.shorts.max, aspect: doc.shorts.aspect };
+  const opts = { count: doc.shorts.count, min: doc.shorts.min, max: doc.shorts.max, aspect: doc.shorts.aspect, mode: doc.shorts.mode ?? 'crop' };
   let picks: Clip[] = [];
   let chapters: { s: number; title: string }[] = [];
   if ((opts.count > 0 || doc.long.on) && sentences.length) {

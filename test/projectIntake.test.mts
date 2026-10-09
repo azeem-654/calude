@@ -217,6 +217,21 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('"sell my dental supplies to dentists" is lead generation too', dn.solutionKeys[0] === 'lead-generation', JSON.stringify(dn.solutionKeys));
 }
 
+/* ── Video: recordings into AI Video Studio ── */
+{
+  const pod = initialState('Every time I upload a podcast, create 5 Shorts.', undefined, EMPTY, [], []);
+  ok('"every podcast I upload → 5 Shorts" is Video Content from uploads, 5 Shorts', pod.solutionKeys[0] === 'video-content' && pod.known.videoSource?.value === 'uploads' && pod.known.videoShorts?.value === '5', JSON.stringify({ k: pod.solutionKeys, s: pod.known.videoSource, n: pod.known.videoShorts }));
+  const bp = buildBlueprint(pod, CTX);
+  const wf = bp.workflows.find(w => w.key === 'video-upload');
+  const node = wf?.nodes?.find(n => n.type === 'ai');
+  ok('…its workflow starts on an upload and makes the package Video Studio reads', wf?.nodes?.[0]?.config?.event === 'video_uploaded' && node?.config?.produces === 'video_package' && node?.config?.shorts === '5', JSON.stringify(wf?.nodes));
+  ok('…sends nothing and names AI Video Studio as where things land', wf?.sends === false && bp.requirements.includes('videoStudio'), JSON.stringify(bp.requirements));
+  const web = initialState('Turn every webinar into one cleaned long video and 4 Shorts', undefined, EMPTY, [], []);
+  ok('"every webinar → one cleaned long video and 4 Shorts"', web.known.videoSource?.value === 'uploads' && web.known.videoShorts?.value === '4' && web.known.videoLong?.value === 'yes', JSON.stringify(web.known));
+  const yt = initialState('Turn every new YouTube video into a blog post and social posts.', undefined, EMPTY, [], []);
+  ok('a YouTube channel is still the YouTube source', yt.known.videoSource?.value === 'youtube', JSON.stringify(yt.known.videoSource));
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed} passed, ${failed} failed`);

@@ -26,6 +26,7 @@
  * implementations of wait, condition and send, and they would drift the first
  * time either was fixed.
  */
+import ProjectVideos from './ProjectVideos';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -175,10 +176,10 @@ export default function ProjectCard({
   /* Overview for a project built from a blueprint, or one somebody was just
      sent to; Workflows, as it always was, for projects older than blueprints —
      their Overview has little to say and their owners know where they work. */
-  /* `?tab=prospects` — the finder's step links here — opens that tab on the project it names. */
+  /* `?tab=prospects` — the finder's step links here — opens that tab on the project it names; Video Studio links to `assets` and `activity`. */
   const asked = (): Tab | null => {
     const t = focused ? new URLSearchParams(window.location.search).get('tab') : null;
-    return t === 'prospects' || t === 'workflows' ? t : null;
+    return t === 'prospects' || t === 'workflows' || t === 'assets' || t === 'activity' ? t : null;
   };
   /* `&source=<id>` — a connection named by AI Prospecting or the wizard — is scrolled to on the Prospects tab. */
   const [sourceFocus, setSourceFocus] = useState(() => (focused ? new URLSearchParams(window.location.search).get('source') ?? '' : ''));
@@ -338,7 +339,7 @@ export default function ProjectCard({
    */
   const assets = [
     ...made
-      .filter(a => ['social-post', 'blog-post', 'website', 'funnel', 'short'].includes(a.link?.kind ?? ''))
+      .filter(a => ['social-post', 'blog-post', 'website', 'funnel', 'short', 'video'].includes(a.link?.kind ?? ''))
       .map(a => ({
         id: a.id,
         name: a.link?.label || a.summary,
@@ -1148,6 +1149,7 @@ export default function ProjectCard({
               Its own tab because "where is the thing it made" is a different
               question from "what did it do", and answering it with a log entry
               means opening five cards to find one image. */}
+          {tab === 'assets' && <ProjectVideos projectId={project.id} />}
           {tab === 'assets' && (
             !assets.length ? (
               <div style={{ padding: '26px 10px', textAlign: 'center' }}>

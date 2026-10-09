@@ -165,6 +165,11 @@ jobs:
       - name: Test the design step
         run: npm run test:design
 
+      # Video Studio's rules: what an edit keeps, captions through cuts,
+      # cleanup that never cuts a number or a "not", distinct Shorts, real PNGs.
+      - name: Test Video Studio's rules
+        run: npm run test:video
+
       - name: Build
         run: npm run build
         env:

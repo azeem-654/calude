@@ -43,7 +43,8 @@ const KINDS: Record<string, { icon: typeof FileText; where: string }> = {
   campaign: { icon: Mail, where: 'Campaigns' },
   website: { icon: Globe, where: 'Websites' },
   funnel: { icon: Globe, where: 'Funnels' },
-  short: { icon: Film, where: 'Shorts' },
+  short: { icon: Film, where: 'AI Video Studio' },
+  video: { icon: Film, where: 'AI Video Studio' },
   prospects: { icon: Target, where: 'Contacts' },
 };
 

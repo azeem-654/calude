@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { FileText, Film, Image, Layers, Mail, MessageSquare, Search, Type } from 'lucide-react';
 import { libraryAssets } from '../../services/campaignHandoff';
+import ContentShelf from '../VideoStudio/ContentShelf';
 import { loadCampaigns, placementRules } from '../../services/socialAutomation';
 import type { CampaignAssetKind } from '../../types/socialAutomation';
 
@@ -54,6 +55,8 @@ export default function ContentLibrary() {
 
   if (all.length === 0) {
     return (
+      <>
+      <ContentShelf />
       <div style={{
         backgroundColor: '#fff', borderRadius: 18, padding: '40px 30px', textAlign: 'center',
         maxWidth: 560, margin: '20px auto', boxShadow: '0 1px 2px rgba(23,25,28,0.05)',
@@ -65,11 +68,13 @@ export default function ContentLibrary() {
           and reusable in later campaigns.
         </p>
       </div>
+      </>
     );
   }
 
   return (
     <div>
+      <ContentShelf />
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ position: 'relative', minWidth: 240, flex: '0 1 320px' }}>

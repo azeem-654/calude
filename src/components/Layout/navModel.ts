@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Scissors, Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -120,6 +120,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'content',
     label: 'Content',
     items: [
+      { path: '/video-studio', label: 'AI Video Studio', desc: 'A long recording in: cleaned video, Shorts, captions, PNG thumbnails and titles out', icon: Clapperboard, aka: ['video', 'video editor', 'shorts', 'reels', 'podcast', 'webinar', 'captions', 'subtitles', 'thumbnails', 'transcript'] },
       { path: '/social-automation', label: 'Repurposing', desc: 'One video out to clips, posts, email and a blog', icon: Rocket, aka: ['social automation', 'repurpose', 'one video'] },
       { path: '/ai-shorts', label: 'AI Shorts', desc: 'Cut a long video into short vertical clips', icon: Scissors, aka: ['video', 'reels', 'tiktok', 'clips'] },
       { path: '/social-creator', label: 'Post designer', desc: 'Design social posts with AI and publish them', icon: Palette, aka: ['social creator', 'graphics', 'canva'] },

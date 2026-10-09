@@ -333,7 +333,20 @@ export function extractKnown(
   if (/\byoutube\b/.test(t) && asked.has('blogSource')) put('blogSource', 'youtube', 'prompt', fromYou);
   const channelId = /\bUC[\w-]{22}\b/.exec(prompt)?.[0];
   if (channelId) { put('channelId', channelId, 'prompt', fromYou); put('sourceUrl', channelId, 'prompt', fromYou); }
-  if (/\byoutube\b|\bmy videos\b/.test(t)) put('videoSource', 'youtube', 'prompt', fromYou);
+  if (/\byoutube\b/.test(t) && !/\bupload/.test(t)) put('videoSource', 'youtube', 'prompt', fromYou);
+  /* "Every time I upload a podcast, create 5 Shorts" — recordings into Video Studio. */
+  if (/\b(upload|podcasts?|webinars?|recordings?|trainings?|interviews?)\b/.test(t) && /\b(shorts?|reels?|clips?|captions?|clean)/.test(t)) {
+    put('videoSource', 'uploads', 'prompt', fromYou);
+    const n = t.match(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:[a-z0-9–-]+\s+){0,3}?(?:shorts?|reels?|clips?)\b/);
+    const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+    if (n) {
+      const k = Number(n[1]) || words[n[1]] || 0;
+      const opts = [1, 3, 4, 5, 10];
+      if (k) put('videoShorts', String(opts.reduce((b, o) => Math.abs(o - k) < Math.abs(b - k) ? o : b, opts[0])), 'prompt', fromYou);
+    }
+    if (/\b(long|full|cleaned|main|polished)\s+(video|version|episode|recording)\b/.test(t)) put('videoLong', 'yes', 'prompt', fromYou);
+    else if (/\b(only|just)\s+(the\s+)?(shorts?|reels?|clips?)\b/.test(t)) put('videoLong', 'no', 'prompt', fromYou);
+  }
   if (/\bscripts?\b/.test(t)) put('videoSource', 'scripts', 'prompt', fromYou);
 
   /* ── Catalogue ── */

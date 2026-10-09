@@ -59,7 +59,8 @@ async function hmacKey(env: Env): Promise<CryptoKey> {
 }
 
 export async function sign(env: Env, g: Omit<Grant, 'x'>, seconds: number): Promise<string> {
-  const body = b64url(enc.encode(JSON.stringify({ ...g, x: Math.floor(Date.now() / 1000) + seconds })));
+  /* The workspace as keys spell it (`safe`), so a link always matches its own path. */
+  const body = b64url(enc.encode(JSON.stringify({ ...g, a: safe(g.a), x: Math.floor(Date.now() / 1000) + seconds })));
   const sig = b64url(await crypto.subtle.sign('HMAC', await hmacKey(env), enc.encode(body))).slice(0, 43);
   return `${body}.${sig}`;
 }

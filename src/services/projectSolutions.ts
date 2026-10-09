@@ -351,10 +351,31 @@ const Q: Record<string, Question> = {
     id: 'videoSource', group: 'deliverable', type: 'single', need: 'required',
     prompt: 'Where do the videos come from?',
     options: [
+      { value: 'uploads', label: 'Recordings I upload', hint: 'Podcasts, webinars, trainings — cleaned and cut into Shorts in AI Video Studio' },
       { value: 'youtube', label: 'My YouTube channel', hint: 'New uploads become posts and articles' },
       { value: 'scripts', label: 'I need scripts to film', hint: 'Short-video scripts, written for you' },
     ],
-    aiDecides: 'scripts',
+    aiDecides: 'uploads',
+  },
+  videoShorts: {
+    id: 'videoShorts', group: 'deliverable', type: 'single', need: 'optional',
+    prompt: 'How many Shorts from each recording?',
+    options: [
+      { value: '1', label: 'One' }, { value: '3', label: 'Three' }, { value: '4', label: 'Four' },
+      { value: '5', label: 'Five' }, { value: '10', label: 'Ten' },
+    ],
+    aiDecides: '4',
+    showIf: { id: 'videoSource', in: ['uploads'] },
+  },
+  videoLong: {
+    id: 'videoLong', group: 'deliverable', type: 'single', need: 'optional',
+    prompt: 'Also make one cleaned full-length video from each recording?',
+    options: [
+      { value: 'yes', label: 'Yes — cleaned long video and Shorts' },
+      { value: 'no', label: 'No — Shorts only' },
+    ],
+    aiDecides: 'yes',
+    showIf: { id: 'videoSource', in: ['uploads'] },
   },
   channelId: {
     id: 'channelId', group: 'deliverable', type: 'text', need: 'required',
@@ -895,7 +916,7 @@ export interface BuildContext {
 export type RequirementId =
   | 'ai' | 'profile' | 'socialCreator' | 'blog' | 'contacts' | 'mailbox' | 'sms'
   | 'calendar' | 'bookingPage' | 'products' | 'store' | 'payments' | 'shipping'
-  | 'engagement' | 'pipeline' | 'wordpress' | 'shorts' | 'websites';
+  | 'engagement' | 'pipeline' | 'wordpress' | 'shorts' | 'websites' | 'videoStudio';
 
 export interface RequirementInfo {
   label: string;
@@ -913,6 +934,7 @@ export const REQUIREMENT_INFO: Record<RequirementId, RequirementInfo> = {
   ai: { label: 'Protected Central AI', why: 'Writes, researches and designs. Included — no key of your own needed.', kind: 'included', route: '' },
   profile: { label: 'Business profile', why: 'What every piece of writing starts from.', kind: 'included', route: '/autopilot' },
   socialCreator: { label: 'Content Studio — Social Creator', why: 'Where finished posts are saved, ready for you to publish.', kind: 'included', route: '/social-creator' },
+  videoStudio: { label: 'AI Video Studio', why: 'Where each recording is processed and the finished videos, captions and thumbnails are kept.', kind: 'included', route: '/video-studio' },
   blog: { label: 'Blog', why: 'Where drafted articles are kept.', kind: 'included', route: '/blog-automation' },
   shorts: { label: 'AI Shorts', why: 'Where video scripts are kept.', kind: 'included', route: '/ai-shorts' },
   websites: { label: 'Websites and funnels', why: 'Where launch and offer pages are built.', kind: 'included', route: '/websites' },
@@ -1603,11 +1625,38 @@ export const SOLUTIONS: Solution[] = [
     label: 'Video Content',
     blurb: 'Short-video scripts to film, or your videos turned into posts and articles.',
     example: 'Turn every new YouTube video into a blog post and social posts.',
-    keywords: [['video', 3.5], ['videos', 3.5], ['youtube', 4], ['shorts', 3.5], ['reels', 3.5], ['tiktok', 2.5], ['script', 2.5], ['scripts', 2.5]],
+    keywords: [['video', 3.5], ['videos', 3.5], ['youtube', 4], ['shorts', 3.5], ['reels', 3.5], ['tiktok', 2.5], ['script', 2.5], ['scripts', 2.5],
+      ['podcast', 3.5], ['webinar', 3.5], ['recording', 3], ['recordings', 3], ['captions', 2], ['subtitles', 2], ['thumbnails', 1.5]],
     channels: ['video', 'blog', 'social'],
-    questions: ['business', 'videoSource', 'channelId', 'frequency', 'platforms'],
+    questions: ['business', 'videoSource', 'videoShorts', 'videoLong', 'channelId', 'frequency', 'platforms'],
     build: a => {
-      const src = one(a.videoSource, 'scripts');
+      const src = one(a.videoSource, 'uploads');
+      if (src === 'uploads') {
+        /* Each recording uploaded into the project goes through AI Video
+           Studio with these settings (routes/video.ts reads them off the
+           node). The trigger is the upload itself, not a clock. */
+        const shorts = Math.max(1, Math.min(15, Number(one(a.videoShorts, '4')) || 4));
+        const long = one(a.videoLong, 'yes') !== 'no';
+        const nodes: WorkflowNode[] = [
+          { id: 'n0', type: 'trigger', label: 'A recording is uploaded', config: { event: 'video_uploaded' }, nextId: 'n1' },
+          { id: 'n1', type: 'ai', label: 'Clean it and make the Shorts', config: { source: 'video', produces: 'video_package', shorts: String(shorts), long: String(long), captions: 'true', thumbnails: 'true', cleanup: 'balanced' }, nextId: null },
+        ];
+        return merge(empty(), {
+          workflows: [{
+            key: 'video-upload', name: 'Recording to Shorts',
+            purpose: `Each recording becomes ${long ? 'one cleaned long video and ' : ''}${shorts} distinct Short${shorts === 1 ? '' : 's'}, with captions, PNG thumbnails and its own titles.`,
+            origin: 'generated', nodes, schedule: 'Runs when you upload a recording',
+            agents: [{ name: 'Video Editor Agent', role: 'Transcribes each recording, removes fillers and long pauses, picks distinct Shorts, captions them, makes PNG thumbnails and writes titles and descriptions.' }],
+            output: { label: 'Videos and Shorts', route: '/video-studio' },
+            sends: false, channel: 'video',
+          }],
+          outputs: [...(long ? ['A cleaned long video per recording'] : []), `${shorts} Short${shorts === 1 ? '' : 's'} per recording`, 'Captions (burned in, SRT and VTT)', 'PNG thumbnails', 'Titles, descriptions and hashtags'],
+          destinations: [{ label: 'AI Video Studio', route: '/video-studio' }],
+          approvals: ['Nothing is published — each video waits for you as Needs review'],
+          manual: ['Upload each recording (AI Video Studio, or the project’s Assets tab)', 'Post the finished videos — direct posting is not connected'],
+          requirements: ['videoStudio'],
+        });
+      }
       if (src === 'youtube') {
         const id = one(a.channelId).trim();
         const nodes = agentGraph('daily', [

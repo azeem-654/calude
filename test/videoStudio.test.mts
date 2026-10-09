@@ -6,10 +6,7 @@
  *
  *   npm run test:video
  */
-import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import zlib from 'node:zlib';
 import {
   applyOps, keepRanges, keptLength, newDoc, parseRequest, retimeWords, sentencesOf, toOutput, toSource, dimsFor, hashOf,
   type Word, type VideoDoc,
@@ -250,18 +247,26 @@ console.log('\nThe edit refuses what is malformed');
 
 console.log('\nA PNG is a PNG');
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'png-'));
-  const run = (args: string[]) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180', '-frames:v', '1', ...args]);
-  run([path.join(dir, 'a.png')]);
-  run(['-c:v', 'libwebp', '-f', 'webp', path.join(dir, 'fake.png')]);
-  const png = new Uint8Array(fs.readFileSync(path.join(dir, 'a.png')));
+  /* A real PNG made here, byte by byte (no image tools needed in CI): the
+     signature, IHDR, one IDAT of zlib-compressed rows, IEND, each with its CRC. */
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (b: Buffer) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type: string, data: Buffer) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const W = 320, H = 180;
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const rows = Buffer.alloc((W * 3 + 1) * H, 90);
+  for (let y = 0; y < H; y++) rows[y * (W * 3 + 1)] = 0;
+  const pngBuf = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
+  const png = new Uint8Array(pngBuf);
   ok('a real PNG passes, with its size', checkPng(png, { width: 320, height: 180 }).ok, checkPng(png));
   ok('the wrong size is caught', !checkPng(png, { width: 1280, height: 720 }).ok);
-  ok('a WebP called .png is refused', !checkPng(new Uint8Array(fs.readFileSync(path.join(dir, 'fake.png')))).ok);
+  const webp = new Uint8Array(Buffer.concat([Buffer.from('RIFF'), Buffer.from([0x24, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(80, 1)]));
+  ok('a WebP called .png is refused', !checkPng(webp).ok);
+  const jpeg = new Uint8Array(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(80, 2)]));
+  ok('a JPEG called .png is refused', !checkPng(jpeg).ok);
   ok('a cut-short PNG is refused', !checkPng(png.subarray(0, png.length - 20)).ok);
   const bad = png.slice(); bad[20] ^= 0xff;
   ok('a corrupt header is refused', !checkPng(bad).ok);
-  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

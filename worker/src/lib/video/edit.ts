@@ -107,7 +107,7 @@ export interface VideoDoc {
   captionEdits: Record<string, string>;
   captions: { on: boolean; burn: boolean; long: CaptionStyle; short: CaptionStyle };
   long: { on: boolean; aspect: Aspect; reframe: Reframe; chapters: { s: number; title: string }[] };
-  shorts: { count: number; min: number; max: number; aspect: '9:16' | '1:1' | '4:5' };
+  shorts: { count: number; min: number; max: number; aspect: '9:16' | '1:1' | '4:5'; mode?: 'crop' | 'fit' };
   clips: Clip[];
   thumbnails: { on: boolean; headline: Record<string, string> };
   audio: { loudnorm: boolean; denoise: 'off' | 'light' };
@@ -124,6 +124,8 @@ export interface VideoRequest {
   thumbnails: boolean;
   cleanup: CleanupPreset;
   aspect: '9:16' | '1:1' | '4:5';
+  /** Crop to the speaker, or fit the whole frame (screens, slides, demos). */
+  layout: 'crop' | 'fit';
   /** What was understood, in words, for the screen to say back. */
   understood: string[];
 }
@@ -140,6 +142,18 @@ const countOf = (s: string): number | null => {
 
 export const SHORTS_MAX = 15;
 
+/** The request in words, for the screen to say back before anything runs. */
+export function describeRequest(r: Omit<VideoRequest, 'understood'>): string[] {
+  return [
+    r.long ? 'one cleaned long video' : 'no long video',
+    r.shorts ? `${r.shorts} Short${r.shorts === 1 ? '' : 's'} of ${r.min}–${r.max} s (${r.aspect})` : 'no Shorts',
+    r.captions ? 'captions' : 'no captions',
+    r.thumbnails ? 'PNG thumbnails' : 'no thumbnails',
+    `${r.cleanup} cleanup`,
+    ...(r.layout === 'fit' && r.shorts ? ['screens kept whole (no crop)'] : []),
+  ];
+}
+
 /**
  * "Clean this recording, remove filler words and long gaps, create one
  * polished main video and four Shorts, add captions and create PNG
@@ -151,7 +165,7 @@ export const SHORTS_MAX = 15;
 export function parseRequest(prompt: string, defaults: Partial<VideoRequest> = {}): VideoRequest {
   const t = ` ${prompt.toLowerCase().replace(/[–—]/g, '-')} `;
   const r: VideoRequest = {
-    long: true, shorts: 0, min: 30, max: 60, captions: true, thumbnails: true, cleanup: 'balanced', aspect: '9:16', understood: [],
+    long: true, shorts: 0, min: 30, max: 60, captions: true, thumbnails: true, cleanup: 'balanced', aspect: '9:16', layout: 'crop', understood: [],
     ...defaults,
   };
   const shortWord = '(?:shorts?|reels?|clips?|tiktoks?|vertical videos?)';
@@ -178,14 +192,10 @@ export function parseRequest(prompt: string, defaults: Partial<VideoRequest> = {
   else if (/\b(light(ly)?|gentle|conservative|minimal|natural)\b/.test(t)) r.cleanup = 'conservative';
   if (/\b(square|1:1)\b/.test(t)) r.aspect = '1:1';
   else if (/\b4:5\b|\bportrait feed\b/.test(t)) r.aspect = '4:5';
+  /* A screen recording must not be cropped to a face: the slide is the point. */
+  if (/\b(screen|slides?|demo|tutorial|screencast|presentation|whole frame|don'?t crop|do not crop|keep (the )?(screen|ui|interface))\b/.test(t)) r.layout = 'fit';
 
-  r.understood = [
-    r.long ? 'one cleaned long video' : 'no long video',
-    r.shorts ? `${r.shorts} Short${r.shorts === 1 ? '' : 's'} of ${r.min}–${r.max} s (${r.aspect})` : 'no Shorts',
-    r.captions ? 'captions' : 'no captions',
-    r.thumbnails ? 'PNG thumbnails' : 'no thumbnails',
-    `${r.cleanup} cleanup`,
-  ];
+  r.understood = describeRequest(r);
   return r;
 }
 
@@ -211,7 +221,7 @@ export function newDoc(req: VideoRequest, brandColor = ''): VideoDoc {
     captionEdits: {},
     captions: { on: req.captions, burn: req.captions, long: style('clean'), short: style('bold', hl ? { highlight: hl } : {}) },
     long: { on: req.long, aspect: 'source', reframe: { mode: 'source', x: 0.5, y: 0.5 }, chapters: [] },
-    shorts: { count: req.shorts, min: req.min, max: req.max, aspect: req.aspect },
+    shorts: { count: req.shorts, min: req.min, max: req.max, aspect: req.aspect, mode: req.layout ?? 'crop' },
     clips: [],
     thumbnails: { on: req.thumbnails, headline: {} },
     audio: { loudnorm: true, denoise: 'off' },
@@ -441,7 +451,7 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         if (!r || r[1] - r[0] < 3) { refused.push('a Short needs at least three seconds'); break; }
         if (r[1] - r[0] > 180) { refused.push('a Short is at most three minutes'); break; }
         d.clips.push({ id: newId('cl'), title: text(o.title, 100) || 'New Short', topic: text(o.topic, 80), reason: text(o.reason, 240) || 'Added by you',
-          s: r[0], e: r[1], scores: null, by: 'you', aspect: d.shorts.aspect, reframe: { mode: 'crop', x: 0.5, y: 0.5 } });
+          s: r[0], e: r[1], scores: null, by: 'you', aspect: d.shorts.aspect, reframe: { mode: d.shorts.mode ?? 'crop', x: 0.5, y: 0.5 } });
         break;
       }
       case 'clip.update': {

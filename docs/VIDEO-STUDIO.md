@@ -197,3 +197,35 @@ Phases 2–4 follow the brief: audio cleanup presets, retake/repetition
 detection with AI, music, better reframing; conversational editing beyond the
 Phase 1 commands, brand templates, review comments; eye contact and
 publishing only with real providers.
+
+---
+
+## 11. Phase 1 as built (2026-10-09)
+
+| Capability | State | Where |
+|---|---|---|
+| Studio in the app (Projects, Media Library, Brand Kit, Exports, Ready to Publish, Templates) | Working | `src/components/VideoStudio/`, Content → AI Video Studio |
+| Resumable uploads to R2 (16 MB parts, bytes sniffed, same file resumes) | Working once R2 is bound | `routes/videoFile.ts`, `services/videoStudio.ts uploadVideo` |
+| Probe and refusal (codec, duration ≤ 3 h, ≤ 4096 px, ≤ 12 GB), proxy, waveform, silences | Working once the engine is deployed | `media/engine/server.mjs prepare` |
+| Transcription with word timings and language, confidence per segment | Working once Workers AI is bound | `lib/video/transcribe.ts` |
+| Transcript editing: remove from video / fix caption text / protect / make a Short | Working | `EditorPanels.tsx` |
+| Cleanup: fillers, pauses, repeats, false starts — Conservative / Balanced / Aggressive, approve / reject / restore / protect | Working | `lib/video/cleanup.ts` |
+| Shorts: AI choice validated (distinct, whole sentences, no shared footage), rule fallback, "find the section about…" | Working | `lib/video/shorts.ts` |
+| Long video + Shorts as real MP4 (H.264/AAC, loudness-normalised), 16:9 / 9:16 / 1:1 / 4:5, crop with a position or fit with blurred fill | Working | `media/engine render` |
+| Captions: burned (ASS, Turkish and Urdu), SRT, VTT, re-timed after cuts, four styles | Working | `lib/video/captions.ts` |
+| PNG thumbnails: three layouts, exact headline, brand colour, logo; checked as PNG | Working | `media/engine thumbnail`, `lib/video/png.ts` |
+| Metadata per video (titles, description, keywords, tags, hashtags, chapters, pinned comment, CTA) | Working | `pipeline.ts metadataStep` |
+| Conversational edits, undo / redo, version history | Working (pattern-read commands) | `lib/video/commands.ts`, `VersionsPanel.tsx` |
+| Autopilot: "Recordings I upload" workflow, activity line, Assets tab, upload into a project | Working | `projectSolutions.ts`, `pipeline.ts refreshProject`, `ProjectVideos.tsx` |
+| Content Library: Videos and Shorts with statuses | Working | `ContentShelf.tsx` |
+| Usage ledger and monthly allowances | Working | `lib/video/usage.ts` |
+| Speaker labels | Unavailable — needs a diarising provider | — |
+| Automatic speaker tracking | Planned | — |
+| Music, de-essing, hum removal, before/after audio | Planned (Phase 2) | — |
+| Eye contact, background removal | Unavailable — provider setup required | — |
+| Direct publishing | Unavailable — Ready to publish manually | — |
+| Import from YouTube / Drive / Dropbox | Planned | — |
+
+Tests: `npm run test:video` (79 checks, pure, in the staging pipeline) and
+`npm run test:videoe2e` (the 20-step journey on a 20-minute recording with the
+real engine).

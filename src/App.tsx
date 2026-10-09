@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
@@ -37,6 +37,8 @@ import Analytics from './components/Analytics/Analytics';
 import Reputation from './components/Reputation/Reputation';
 import Settings from './components/Settings/Settings';
 import VideoShorts from './components/VideoShorts/VideoShorts';
+/* Lazy: the studio is large and most sessions never open it. */
+const VideoStudio = lazy(() => import('./components/VideoStudio/VideoStudio'));
 import SocialAutomation from './components/SocialAutomation/SocialAutomation';
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
@@ -218,6 +220,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/websites" element={<Websites />} />
           <Route path="/scheduling" element={<Scheduling />} />
           <Route path="/ai-shorts" element={<VideoShorts />} />
+          <Route path="/video-studio" element={<Suspense fallback={<div style={{ padding: 40, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening Video Studio…</div>}><VideoStudio /></Suspense>} />
+          <Route path="/video-studio/:id" element={<Suspense fallback={<div style={{ padding: 40, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening Video Studio…</div>}><VideoStudio /></Suspense>} />
           <Route path="/social-automation" element={<SocialAutomation />} />
           <Route path="/social-creator" element={<SocialCreator />} />
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />

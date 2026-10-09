@@ -73,6 +73,9 @@ export const STEP_FIELDS: Record<string, FieldDef[]> = {
            run by `worker/src/lib/projectAgents.ts` instead of the contact
            engine — see the note in 0044_agent_runs.sql. */
         { value: 'schedule', label: 'A schedule — nobody has to do anything' },
+        /* Started by AI Video Studio when a recording is uploaded into the
+           project — only with the Video Studio step after it. */
+        { value: 'video_uploaded', label: 'A recording is uploaded (AI Video Studio)' },
       ],
     },
     {

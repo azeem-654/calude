@@ -446,6 +446,13 @@ async function runAgentNode(
      only reports how today is going. It needs no AI key. */
   if (c('produces') === 'prospects') return finderStepFor(env, accountId, project.id, workflowId, force);
 
+  /* AI Video Studio's step runs when a recording is uploaded into the
+     project (lib/video/pipeline.ts), never on a clock — "Run now" has nothing
+     to run, and must not fall through to writing posts from the portfolio. */
+  if (c('produces') === 'video_package' || c('source') === 'video') {
+    return { outcome: 'skipped', detail: 'This step runs when a recording is uploaded to the project in AI Video Studio — upload one there or from the Assets tab.' };
+  }
+
   const apiKey = await loadAiKey(env, accountId);
   /* The workspace's key, the operator's, then the deployment's. None of the
      three is an operator problem, not something the customer can fix, so it is

@@ -895,6 +895,89 @@ cards (`SolutionsSection.tsx`, "Build this") open it with a solution picked;
   a `VITE_BASE=/` build) drive the owner's eight journeys at 1280 and 390,
   the funnel report, the allowance and the centred slideshows.
 
+## AI Video Studio — long recording in, cleaned video, Shorts, captions, PNGs out
+
+`docs/VIDEO-STUDIO.md` is the audit, architecture, costs and phases. `/video-studio`
+(Content → **AI Video Studio**, lazy `components/VideoStudio/`) talks only to
+`/api/video.php` (`routes/video.ts`, session + `workspaceAccess`, every row read
+`WHERE account_id = ?`, a foreign id is `not_found`). Bytes never pass through it:
+it hands out **signed, short-lived links** to `/api/video-file.php`
+(`routes/videoFile.ts`, `lib/video/store.ts`: HMAC with `installSecret('video_url')`,
+the key must sit under `v/<workspace>/`, modes get / up (a browser upload part) /
+put (an engine output prefix) / poke). The old browser-only **AI Shorts**
+(`/ai-shorts`) is untouched — its "transcript" is written by Gemini and its export
+is a canvas recording; Video Studio is the real one.
+
+- **Three Cloudflare pieces, all optional at deploy.** `VIDEO` (R2, created by name),
+  `MEDIA` (service binding to the FFmpeg engine, a Container Worker) and `AI` (Workers
+  AI, for Whisper) are in `wrangler.jsonc`; `scripts/video-bindings.mjs`, run by both
+  deploy workflows (`continue-on-error`), writes a config with **none** of them first,
+  then adds back each one it proved — so a half-run step leaves a deployable file and
+  a missing piece never blocks a release. Local `wrangler dev` runs R2 locally; tests
+  set `MEDIA_ENGINE_URL` + `MEDIA_ENGINE_SECRET` (an engine elsewhere, HMAC-signed;
+  takes precedence over the binding) and `WORKERS_AI_BASE` (a Whisper stand-in).
+  `staging:check` fails if staging is bound to `crmpro-video` or `crmpro-media`.
+- **The engine** (`media/engine/server.mjs`, Dockerfile, `media/worker.ts` with
+  `@cloudflare/containers`, one instance per job, `onActivityExpired` asks `/busy`
+  before stopping) is stateless and keyless: signed input URLs in, signed upload
+  URLs out (≤16 MB single PUT, else R2 multipart through the Worker), ops `prepare`
+  (probe + refusal by codec/duration/size, 8 kHz waveform and measured silences,
+  ~3-minute MP3 pieces cut in pauses, 540p proxy, poster), `render`, `thumbnail`.
+  FFmpeg runs with a protocol and **demuxer whitelist** (no HLS/concat). Cuts are
+  rendered by `select`/`aselect` on a **1/30 s grid with sound regrouped into
+  1/30 s frames**, so hundreds of cuts never drift lips; captions are ASS through
+  libass with the Noto fonts — **Urdu in Noto Naskh Arabic** (Nastaliq rendered as
+  boxes in libass). Thumbnails: layouts are named in the engine (never filter text
+  from a request), headline text exact via ASS.
+- **Jobs are rows** (`crm_video_jobs`, migration 0069): idempotency key (a render's
+  includes the edit's hash), lease, attempts with back-off, `engine_ref` per attempt
+  (`<job>-a<n>`), refusals (`refused:`) terminal. Advanced by the open editor's poll
+  (`status` → `waitUntil(advanceProject)`), the engine's poke (no authority — the
+  state is read back from the engine) and the cron (`runVideoJobs`, after the
+  agents). Stages and percentages come from job rows only: pieces transcribed, or
+  FFmpeg's own clock; otherwise none (`stagesOf`).
+- **One canonical edit** (`lib/video/edit.ts`, pure, shared with the browser via
+  `services/videoStudio.ts`): cuts with reason/confidence/state, protects,
+  `captionEdits` (caption text only — never the picture), clips, styles. Every change
+  is an `Op` through `applyOps`, saved as a version against the version it was made
+  on (`saveEdit`, conflict → current doc); undo/redo walk `crm_video_versions`, an
+  edit after an undo drops the redo branch. The preview plays the proxy through
+  `keepRanges`/`retimeWords`/`cuesOf` — the same functions the render reads.
+  `renderSpec` hashes what a file depends on; a different hash is "Edited — render
+  again" (changed outputs wait for a press; new clips render at once).
+- **Judgement, pure and tested** (`npm run test:video`): `cleanup.ts` (fillers as
+  whole tokens; pauses shortened only where the *sound* is quiet; repeats and false
+  starts proposed, never applied; numbers, prices, dates, negation never cut; ids
+  stable across levels), `shorts.ts` (AI picks checked on whole sentences, trimmed so
+  two Shorts never share footage, one per topic, rule fallback labelled and
+  unscored; metadata cleaned, distinct per video, chapters to YouTube's rule),
+  `captions.ts` (SRT/VTT/ASS re-timed through cuts), `commands.ts` (sentences → the
+  same Ops, or an honest "can't"), `png.ts` (signature, IHDR CRC, size, IEND — a
+  thumbnail is called PNG only after this).
+- **AI**: Whisper large-v3-turbo on Workers AI (`lib/video/transcribe.ts`, adapter);
+  Gemini pool for Shorts/chapters/metadata (`aiBudget` first, transcript fenced as
+  content-not-instructions, everything validated). No AI → rules, and the stage note
+  says so. Scores are editorial; nothing claims reach or virality.
+- **Money**: `crm_video_usage` keyed `(job_id, kind)` — a retry cannot charge twice;
+  monthly allowances by standing (`lib/video/usage.ts`), an ended trial processes
+  nothing new. Only the latest render of an output is kept.
+- **Autopilot**: catalogue `video-content` → **Recordings I upload** builds a workflow
+  (trigger `video_uploaded`, `ai` node `source: 'video'`, `produces: 'video_package'`,
+  string config: shorts/long/captions/thumbnails/cleanup) that `create` reads when a
+  video is uploaded into that project; "Run now" on it is `skipped` with a sentence.
+  When the package is done `refreshProject` writes `crm_agent_runs` once
+  (`reported_at` claimed by CAS): "✨ 4 Shorts created" → `/video-studio/<id>?tab=shorts`.
+  The project's Assets tab has `ProjectVideos` (Upload a video →
+  `/video-studio?new=1&project=`); the Content Library shows `ContentShelf`.
+- **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact,
+  background removal (no provider), music and speaker tracking (planned), publishing
+  (none — "Ready to publish manually").
+- `npm run test:videoe2e` (self-contained: engine :8873, Whisper mock :8874, Gemini
+  mock :8875, wrangler :8953, `.wrangler-video`, needs ffmpeg + a `VITE_BASE=/` build;
+  recordings are generated and cached there) drives the owner's 20 steps on a
+  20-minute recording, isolation, a forged link, a killed engine and a failed
+  transcriber (one charge, one file), and a phone.
+
 ## A project's workflows
 
 `Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an

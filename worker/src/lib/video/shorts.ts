@@ -17,7 +17,7 @@
  */
 import type { Clip, Scores, Sentence } from './edit';
 
-export interface ShortOpts { count: number; min: number; max: number; aspect: Clip['aspect'] }
+export interface ShortOpts { count: number; min: number; max: number; aspect: Clip['aspect']; mode?: 'crop' | 'fit' }
 
 /** The transcript as the AI sees it: numbered sentences with times. Capped so a three-hour recording still fits. */
 export function transcriptForAi(sentences: Sentence[], maxChars = 90_000): string {
@@ -90,7 +90,7 @@ export function validatePicks(raw: RawPick[], sentences: Sentence[], opts: Short
     if (all().some(c => similar(c.topic || c.title, topic || title) >= 0.75)) continue;
     const scores: Scores = { hook: score(p.hook), clarity: score(p.clarity), relevance: score(p.relevance), completeness: score(p.completeness) };
     out.push({ id: `cl-${f[0]}-${f[1]}`, title, topic, reason: txt(p.reason, 240) || 'A complete point on its own', s: span[0], e: span[1],
-      scores, by: 'ai', aspect: opts.aspect, reframe: { mode: 'crop', x: 0.5, y: 0.5 } });
+      scores, by: 'ai', aspect: opts.aspect, reframe: { mode: opts.mode ?? 'crop', x: 0.5, y: 0.5 } });
   }
   return out;
 }
@@ -143,7 +143,7 @@ export function fallbackPicks(sentences: Sentence[], opts: ShortOpts, taken: Cli
     const kw = keywordsOf(text, 3);
     const first = sentences[pick.a].text.split(/\s+/).slice(0, 8).join(' ').replace(/[,.;:!?]+$/, '');
     out.push({ id: `cl-${pick.a}-${pick.b}`, title: titleCase(first), topic: kw.join(', '), reason: 'Chosen without AI: a complete passage between two pauses',
-      s: pick.s, e: pick.e, scores: null, by: 'rules', aspect: opts.aspect, reframe: { mode: 'crop', x: 0.5, y: 0.5 } });
+      s: pick.s, e: pick.e, scores: null, by: 'rules', aspect: opts.aspect, reframe: { mode: opts.mode ?? 'crop', x: 0.5, y: 0.5 } });
   }
   return out;
 }
