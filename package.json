@@ -69,7 +69,9 @@
     "test:push": "npx --yes tsx worker/test/push.test.mts",
     "test:nativeapp": "node test/nativeApp.e2e.mjs",
     "test:siteplan": "npx --yes tsx test/sitePlan.test.mts",
-    "test:sitefunnel": "node test/siteFunnel.e2e.mjs"
+    "test:sitefunnel": "node test/siteFunnel.e2e.mjs",
+    "test:video": "npx --yes tsx test/videoStudio.test.mts",
+    "test:videoe2e": "node test/videoStudio.e2e.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
@@ -83,6 +85,7 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@cloudflare/containers": "^0.3.7",
     "@cloudflare/workers-types": "^5.20260829.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",

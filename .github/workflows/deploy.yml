@@ -167,6 +167,18 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # AI Video Studio: the R2 bucket (made the first time), the FFmpeg
+      # engine (a Cloudflare Container, rebuilt only when media/ changed) and
+      # Workers AI. Never fails the deploy — anything it cannot set up is
+      # unbound for this run and Video Studio says it needs configuration.
+      - name: Bind Video Studio (bucket, media engine, Workers AI)
+        run: node scripts/video-bindings.mjs
+        timeout-minutes: 25
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy the Worker
         run: npx wrangler deploy
         env:

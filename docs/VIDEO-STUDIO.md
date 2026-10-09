@@ -1,0 +1,199 @@
+# AI Video Studio — audit, architecture and phases
+
+*Written 2026-10-09, before Phase 1 was built. The "what exists" sections
+describe the repository as it was found; the rest is the plan Phase 1 follows.*
+
+Video Studio turns one long recording the customer owns into a cleaned long
+video, several distinct Shorts, captions, PNG thumbnails and per-video
+metadata, saved into Protected Central and visible in the Autopilot project
+and the Content area. It is **repurposing and editing**, never text-to-video:
+the customer's own footage is always the source.
+
+---
+
+## 1. Existing video capabilities
+
+| What | Where | Honest state |
+|---|---|---|
+| **AI Shorts** | `src/components/VideoShorts/VideoShorts.tsx` (~3,300 lines), `ShortsFeed.tsx`, `/ai-shorts` | Runs entirely in the browser. The source is kept in the browser's IndexedDB (`src/lib/videoStore.ts`), the upload goes straight to Google with a key, the "transcript" is **written by Gemini, not transcribed**, and export is a canvas recorded with `MediaRecorder` (`src/lib/videoExport.ts`). Nothing reaches the server; a project lives in `crm_video_projects` (localStorage). |
+| Repurposing | `src/components/SocialAutomation/`, `/social-automation` | Campaign → assets (`clip`, `image`, …) in localStorage (`crm_sa_*`); publishing is a hand-off (`publishHandoff.ts`: share intent, `navigator.share`, or download-and-copy). |
+| Voice in | `components/Autopilot/voice/`, `routes/intake.ts` `transcribe` | Gemini, ≤ ~4 minutes, text only — no word timestamps. Fine for a prompt; not a transcript. |
+| Marketing film | `Site/LaunchFilm.tsx`, `marketing/launch-film` | Static HLS on the public site; not a product feature. |
+
+**Conclusion:** there is no server-side video pipeline, no real transcript, no
+real render. AI Shorts is left exactly as it is (customers use it); Video
+Studio is built beside it on the server, and its nav entry says what it is.
+
+## 2. Content Studio
+
+There is no `ContentStudio` component. "Content" is a nav group
+(`Layout/navModel.ts`, id `content`) holding **Repurposing**, **AI Shorts** and
+**Post designer** (Social Creator). Social Creator posts are `crm_social_posts`
+(localStorage, synced to `crm_data`); a draft tagged `ready-to-publish` reads
+"Ready to publish". Repurposing's **Content Library** (`ContentLibrary.tsx`)
+lists every generated asset by kind (Clips, Images, …).
+
+Video Studio joins the **Content** group, and its outputs appear in the
+Content Library as **Videos** and **Shorts**, read from the server (they are
+not copied into localStorage — a second copy would drift).
+
+## 3. Project Assets
+
+A project's **Assets** tab (`Autopilot/ProjectCard.tsx`) holds no copies: it
+merges links from `crm_autopilot_actions` (`link_kind/id/label/route`) and
+`crm_agent_runs` (`link` JSON), filtered to known kinds; `ProducedRail.tsx`
+shows the latest as bubbles. A Video Studio output becomes an agent run with a
+`video`/`short` link whose route opens the real asset in Video Studio — the
+same pattern the finder uses for "N prospects added".
+
+## 4. AI Autopilot integration points
+
+- **Catalogue:** `services/projectSolutions.ts` already has `video-content`
+  (`videoSource`: YouTube feed or scripts). It gains **"Videos I upload"**,
+  which builds a workflow *When a video is uploaded → Video Studio* with the
+  shorts count, captions and thumbnails the customer asked for.
+- **Engine:** `lib/projectAgents.ts` runs scheduled `ai` nodes; event-driven
+  work starts from the route that saw the event (the finder is the precedent).
+  A `video_uploaded` trigger is started by Video Studio's upload route; the
+  node (`source: 'video'`, `produces: 'video_package'`) is created only by the
+  wizard, like the finder's (`finderOnly`).
+- **Activity:** each finished package writes `crm_agent_runs`
+  ("4 Shorts created", link → `/video-studio/<id>?tab=shorts`).
+
+## 5. Cloudflare infrastructure found
+
+| Product | Used? |
+|---|---|
+| Workers (one Worker serving assets + `/api/*`) | yes |
+| D1 (`DB`, `LEADS`) | yes |
+| Cron Triggers (every 5 min) | yes |
+| R2 | **no** — chat pictures and avatars are base64 in D1 |
+| KV, Queues, Durable Objects, Workers AI, Containers | **no** |
+
+Deploys: `staging.yml` / `deploy.yml` (typecheck, build, migrations, deploy);
+`scripts/leads-db.mjs` is the precedent for a resource the pipeline creates
+by name and drops from the binding list if it cannot.
+
+## 6. What is reused
+
+- Auth, sessions, `workspaceAccess` / tenant checks, `installSecret`.
+- The operator's Gemini pool (`loadAiKey`, `askGeminiParts`, `withFailover`,
+  `aiBudget`, trial end) for analysis and metadata.
+- Brand: `crm_portfolios.profile` (company, description, website, `logoUrl`,
+  brand colour) — the same `brandFor` reading the agents use.
+- Voice prompt: `Autopilot/voice` (`MicButton`) — already reliable.
+- Autopilot: catalogue, workflow graph, `crm_agent_runs`, Assets tab.
+- Nav model, design language, the "capability status" honesty pattern
+  (Platform services: ok / unchecked / error / off).
+
+## 7. What needs external processing — and what does not
+
+A Worker cannot run FFmpeg (no subprocess, 128 MB memory, CPU-time limits).
+So the work is split by what each part needs:
+
+| Step | Runs on | Why |
+|---|---|---|
+| Upload (multipart, resumable), signed reads, signed writes | **Worker → R2** | R2 multipart through the binding: no S3 keys anywhere, no egress fee. |
+| Probe, validate, proxy, audio chunks, waveform, silences | **Media engine (FFmpeg)** | Needs a real process and disk. |
+| Transcription | **Workers AI** `@cf/openai/whisper-large-v3-turbo` | Word timestamps, language detection (EN/TR/UR), pay per audio minute, no key to hold. |
+| Cleanup proposals, Shorts selection, metadata | **Worker** (pure rules + Gemini pool) | Text in, JSON out, validated against the transcript. |
+| Captions (SRT/VTT/ASS), re-timed after cuts | **Worker** (pure) | One function from the edit decisions — preview and render read the same one. |
+| Render MP4 (cuts, reframe, burned captions, loudness) | **Media engine** | libx264/AAC, libass for Turkish and Urdu shaping. |
+| PNG thumbnails | **Media engine**, checked by the **Worker** | Frame + brand + exact text via libass; the Worker checks the PNG signature, IHDR size and IEND before calling it a PNG. |
+
+### The media engine
+
+`media/engine/` — a small Node HTTP service around `ffmpeg`/`ffprobe` with
+four operations (`prepare`, `render`, `thumbnail`, `probe`). It is
+**stateless**: it downloads inputs from signed URLs, works on local disk,
+uploads outputs to signed URLs and reports a result. It never holds a
+credential and never talks to the database.
+
+It is deployed as a **Cloudflare Container** (`media/` — a Worker
+`crmpro-media` with a `Container` class; one instance per job, scale to zero,
+billed per 10 ms of use) and reached from the main Worker by a **service
+binding** (`MEDIA`), so it has no public address. Any other host can run the
+same image: set `MEDIA_ENGINE_URL` and `MEDIA_ENGINE_SECRET` and requests are
+HMAC-signed. That is the replaceable part.
+
+Hardening: inputs are downloaded first and FFmpeg runs with
+`-protocol_whitelist file` and a demuxer whitelist (mov/mp4/matroska/webm), so
+a crafted file cannot make it fetch anything; sizes, duration and resolution
+are checked before any work.
+
+## 8. Provider strategy
+
+| Need | Phase 1 provider | Replaceable by |
+|---|---|---|
+| Storage | Cloudflare R2 (`VIDEO` binding) | — |
+| Media | FFmpeg in a Cloudflare Container | any host running `media/engine` (URL + secret) |
+| Transcription | Workers AI Whisper large-v3-turbo | adapter interface in `lib/video/transcribe.ts` (OpenAI-compatible, AssemblyAI for speakers) |
+| Analysis / metadata | the operator's Gemini pool | — |
+| Speaker labels | **not available** with Whisper — shown as "needs a provider" | AssemblyAI / Deepgram (diarisation) |
+| Eye contact | **not available** — "Provider setup required" | NVIDIA Maxine (needs GPU host + licence), Sieve |
+| Background removal for portraits | **not available** in Phase 1 | a segmentation model on Workers AI or a provider |
+| Music | customer's own upload (Phase 2) | licensed library integrations |
+| Publishing | **none** — "Ready to publish manually" | official APIs (YouTube Data, TikTok Content Posting, Meta Graph) |
+
+Every one of these is listed with its status on the studio's **Capabilities**
+panel: *Working*, *Needs configuration*, *Unavailable*, *Planned*.
+
+## 9. Cost considerations (pay as used; nothing fixed)
+
+| Item | Unit price (Cloudflare list, Workers Paid) | A 45-minute recording → long + 4 Shorts |
+|---|---|---|
+| R2 storage | $0.015 / GB-month (10 GB free) | ~1.5 GB source + ~0.6 GB outputs ≈ $0.03/month |
+| R2 operations | $4.50 / M writes, $0.36 / M reads | ~200 multipart writes ≈ $0.001 |
+| R2 egress | free | $0 |
+| Workers AI Whisper turbo | ~$0.0005 / audio minute | ≈ $0.02 |
+| Container (standard: ½ vCPU, 4 GB) | ~$0.000020 / vCPU-s + $0.0000025 / GB-s, 375 vCPU-min + 25 GB-h free each month | prepare ~4 min + long render ~25 min + Shorts ~6 min ≈ 35 vCPU-min ≈ $0.04–0.08 |
+| Gemini analysis + metadata | operator's key, ~6 calls | a few cents at Flash prices |
+| **Total** | | **≈ $0.10–0.20 per recording**, before the monthly free allowances |
+
+Controls built in Phase 1:
+- **Nothing is recomputed that did not change.** Transcripts are keyed to the
+  immutable source; a caption colour change re-renders, it never re-transcribes.
+- **A ledger per job** (`crm_video_usage`, unique per job and kind), so a
+  retried job is never counted twice.
+- **A monthly allowance per workspace** (source minutes, render minutes,
+  storage), and an ended trial stops new processing, like the AI key.
+
+## 10. Phase 1 — the vertical slice
+
+1. **Storage and upload** — R2 multipart through the Worker (resumable, magic
+   bytes checked on the first part), signed short-lived read/write URLs,
+   immutable source under `v/<workspace>/<project>/source`.
+2. **Engine** — `media/engine` (`prepare`, `render`, `thumbnail`), Container
+   wrapper, deploy script that binds it only if it deployed.
+3. **Jobs** — `crm_video_jobs`: queued → running → done/failed, attempts with
+   back-off, lease, idempotency key, cancel; advanced by the engine's poke,
+   by the open screen's poll and by the cron (recovery). Real stages, real
+   percentages only where they are counted (transcription chunks, render
+   progress from FFmpeg), indeterminate otherwise.
+4. **Transcript** — Workers AI per chunk, word timings, language, segment
+   confidence; search; correction of caption text (kept apart from cuts).
+5. **Edit decisions** — one document per project (`crm_video_projects.doc`):
+   cuts (source ranges with reason, confidence, origin, state
+   proposed/approved/rejected/protected), clips, caption style, thumbnails,
+   outputs, with version history (undo/redo).
+6. **Cleanup** — pure rules (fillers in context, long gaps, immediate
+   repetitions, false starts), never touching numbers, prices, dates or
+   negation; Conservative / Balanced / Aggressive.
+7. **Shorts** — Gemini picks distinct topics on sentence boundaries; validated
+   (length, overlap, completeness); fallback without AI says so. Editorial
+   scores only (hook, clarity, relevance, completeness).
+8. **Captions** — re-timed through the cuts; SRT, VTT, burned ASS (Noto fonts,
+   libass shaping for Urdu/RTL).
+9. **Render** — long 16:9 and Shorts 9:16 (crop with a manual position, or
+   fit with a blurred fill for screen recordings), loudness-normalised MP4.
+10. **Thumbnails** — three genuinely different layouts per video, exact text
+    by libass, PNG verified.
+11. **Metadata** — per video, from its own words.
+12. **Where it shows** — Video Studio (Projects, editor, Media Library, Brand
+    Kit, Exports, Ready to Publish, Templates), Content Library, the
+    project's Assets and Activity, and an Autopilot workflow.
+
+Phases 2–4 follow the brief: audio cleanup presets, retake/repetition
+detection with AI, music, better reframing; conversational editing beyond the
+Phase 1 commands, brand templates, review comments; eye contact and
+publishing only with real providers.

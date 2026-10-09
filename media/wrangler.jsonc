@@ -1,0 +1,35 @@
+{
+  // The media engine (media/worker.ts + media/Dockerfile): FFmpeg in a
+  // Cloudflare Container, one instance per Video Studio job, scaled to zero.
+  // Deployed by scripts/media-engine.mjs from both deploy workflows; the main
+  // Worker reaches it only through its service binding `MEDIA`.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "crmpro-media",
+  "main": "worker.ts",
+  "compatibility_date": "2025-08-01",
+  // No public address: only the main Worker's service binding reaches it.
+  "workers_dev": false,
+  "preview_urls": false,
+  "containers": [
+    {
+      "class_name": "MediaEngine",
+      "image": "./Dockerfile",
+      // Each job is its own instance; this caps how many encode at once.
+      "max_instances": 6,
+      // 4 GiB and half a vCPU: enough for a 1080p encode of a long recording.
+      "instance_type": "standard-1"
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "ENGINE", "class_name": "MediaEngine" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MediaEngine"] }],
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "crmpro-staging-media",
+      "workers_dev": false,
+      "preview_urls": false,
+      "containers": [{ "class_name": "MediaEngine", "image": "./Dockerfile", "max_instances": 3, "instance_type": "standard-1" }],
+      "durable_objects": { "bindings": [{ "name": "ENGINE", "class_name": "MediaEngine" }] }
+    }
+  }
+}

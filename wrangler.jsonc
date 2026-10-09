@@ -82,6 +82,17 @@
     "APP_ORIGIN": "https://app.protectedcentral.com"
   },
 
+  // ── AI Video Studio (docs/VIDEO-STUDIO.md) ──
+  // VIDEO: the bucket holding source videos and everything made from them.
+  // MEDIA: the FFmpeg engine (media/), a Cloudflare Container with no public
+  // address. AI: Workers AI, for transcription (Whisper). All three are
+  // checked by scripts/video-bindings.mjs before each deploy, which takes out
+  // any it cannot satisfy — Video Studio then says which part needs setting
+  // up, and nothing else is held back.
+  "r2_buckets": [{ "binding": "VIDEO", "bucket_name": "crmpro-video" }],
+  "services": [{ "binding": "MEDIA", "service": "crmpro-media" }],
+  "ai": { "binding": "AI" },
+
   "observability": { "enabled": true },
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -156,6 +167,11 @@
       "triggers": {
         "crons": ["*/5 * * * *"]
       },
+
+      // Its own bucket and engine, never the live ones (scripts/video-bindings.mjs).
+      "r2_buckets": [{ "binding": "VIDEO", "bucket_name": "crmpro-staging-video" }],
+      "services": [{ "binding": "MEDIA", "service": "crmpro-staging-media" }],
+      "ai": { "binding": "AI" },
 
       "observability": { "enabled": true }
     }

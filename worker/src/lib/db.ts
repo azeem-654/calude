@@ -17,6 +17,24 @@ export interface Env {
   LEADS?: D1Database;
   ASSETS: Fetcher;
   /**
+   * AI Video Studio (docs/VIDEO-STUDIO.md). VIDEO is the bucket for source
+   * videos and everything made from them; MEDIA the FFmpeg engine (media/),
+   * a Container Worker with no public address; AI Workers AI, for
+   * transcription. Each is absent when the deploy could not set it up
+   * (scripts/video-bindings.mjs) and Video Studio says which.
+   */
+  VIDEO?: R2Bucket;
+  MEDIA?: Fetcher;
+  AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
+  /**
+   * An engine on another host, instead of the binding: its address and the
+   * secret its requests are signed with. Tests point these at a local engine.
+   */
+  MEDIA_ENGINE_URL?: string;
+  MEDIA_ENGINE_SECRET?: string;
+  /** A Workers AI stand-in for tests (POST <base>/run/<model>). Unset in production. */
+  WORKERS_AI_BASE?: string;
+  /**
    * Wraps the install secrets in crm_meta (see installSecret). A Cloudflare
    * secret; once set, never change it.
    */

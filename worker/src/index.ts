@@ -38,6 +38,9 @@ import { handleBilling, handleBillingWebhook } from './routes/billing';
 import { handleProjects } from './routes/projects';
 import { handleIntake } from './routes/intake';
 import { handleSitePlan } from './routes/sitePlan';
+import { handleVideo } from './routes/video';
+import { handleVideoFile } from './routes/videoFile';
+import { runVideoJobs } from './lib/video/pipeline';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
 import { handleModeration } from './routes/moderation';
@@ -159,6 +162,8 @@ const ROUTES: Record<string, Handler> = {
      microphone's transcript. See routes/intake.ts. */
   '/api/intake.php': handleIntake,
   '/api/site-plan.php': handleSitePlan,
+  '/api/video.php': handleVideo,
+  '/api/video-file.php': handleVideoFile,
   '/api/setup.php': handleSetup,
   '/api/whitelabel.php': handleWhitelabel,
   /* The client report. `view` answers to nobody signed in — see routes/portal.ts
@@ -405,6 +410,15 @@ export default {
        * several ticks rather than starving everybody else on one.
        */
       const agents = await runProjectAgents(env);
+      /*
+       * Video Studio's jobs that nobody is watching — an upload into an
+       * Autopilot project, a render left running when the tab closed. The
+       * open screen and the engine's poke advance them faster; this is what
+       * makes sure they finish. Bounded: it mostly asks the engine how far
+       * a render has got, and transcribes a few pieces at most.
+       */
+      const video = await runVideoJobs(env).catch(e => { console.log(`[cron] video: ${String(e)}`); return { ran: 0 }; });
+      if (video.ran) console.log(`[cron] video: ${video.ran} job step(s)`);
       const report = await runScheduledSends(env);
       /*
        * The digest goes last, and only in the customer's own morning.

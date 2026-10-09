@@ -60,6 +60,9 @@ say(/env\.DB \(crmpro-staging\)/.test(staging), 'staging is bound to crmpro-stag
 say(!/env\.DB \(crmpro\)\s/.test(staging), 'staging is NOT bound to the live database');
 /* The lead directory too: a staging import must never land in the live one. */
 say(!/env\.LEADS \(crmpro-leads\)/.test(staging), 'staging is NOT bound to the live lead directory');
+/* Video Studio: a staging render must never write into, or read from, the live bucket or engine. */
+say(!/env\.VIDEO \(crmpro-video\)/.test(staging), 'staging is NOT bound to the live video bucket');
+say(!/env\.MEDIA \(crmpro-media\)/.test(staging), 'staging is NOT bound to the live media engine');
 say(/testing\.protectedcentral\.com/.test(staging), 'staging knows its own origin');
 say(!/app\.protectedcentral\.com/.test(staging), 'staging does not carry the live origin');
 
