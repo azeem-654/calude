@@ -453,12 +453,15 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ok('…"make the background music quieter" turns the music down', quieter.doc.music && quieter.doc.music.volume < after.doc.music.volume, [after.doc.music?.volume, quieter.doc.music?.volume]);
   const before = quieter.docVersion;
   await page.getByRole('button', { name: 'Undo' }).click();
-  await page.waitForTimeout(1200);
-  const undone = await v('get', { projectId: PID });
+  /* Going to a version also re-credits and re-queues the videos, which takes
+     a moment while the engine is busy: wait for it rather than a fixed time. */
+  let undone;
+  for (let i = 0; i < 40; i++) { undone = await v('get', { projectId: PID }); if (undone.docVersion !== before) break; await sleep(500); }
   ok('undo goes back a version — straight after an assistant command, too', undone.docVersion === before - 1 && undone.doc.music.volume === after.doc.music.volume, { before, undone: undone.docVersion, vol: [after.doc.music?.volume, undone.doc.music?.volume] });
   await page.getByRole('button', { name: 'Redo' }).click();
-  await page.waitForTimeout(1200);
-  ok('…and redo comes forward again', (await v('get', { projectId: PID })).docVersion === before);
+  let redone;
+  for (let i = 0; i < 40; i++) { redone = await v('get', { projectId: PID }); if (redone.docVersion === before) break; await sleep(500); }
+  ok('…and redo comes forward again', redone.docVersion === before, redone.docVersion);
 }
 
 /* ── Noise and music, asked for in one sentence (the request that was refused) ── */
@@ -580,6 +583,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   gemini.state.fail = true;
   /* Charged before this project, so its own charges can be read apart from
      the renders the editing above asked for. */
+  await waitReady(PID, { T, A }, 'long', 1500);
   const before = (await v('usage')).usage.used;
   const c = await v('create', { name: 'Retry test', prompt: 'Clean it and make two 20–40 second shorts, captions and thumbnails' });
   const buf = fs.readFileSync(SHORT.file);

@@ -301,7 +301,9 @@ export default function VideoEditor({ id }: { id: string }) {
 
   const go = useCallback(async (v: number) => {
     if (!view || v < 1 || v > view.maxVersion) return;
+    setBusy(true);
     const r = await gotoVersion(id, v);
+    setBusy(false);
     if (r.success) { setDoc(r.doc); setVersion(r.docVersion); void refresh(); }
   }, [id, view, refresh]);
 
