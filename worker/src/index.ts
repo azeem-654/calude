@@ -73,6 +73,7 @@ import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
+import { handleBookingMedia } from './routes/bookingMedia';
 import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
@@ -201,6 +202,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/track.php': handleTrack,
   '/api/unsubscribe.php': handleUnsubscribe,
   '/api/booking.php': handleBooking,
+  /* The booking page's photo, logo and short clip — public by random key. */
+  '/api/booking-media.php': handleBookingMedia,
   '/api/deliverability.php': handleDeliverability,
   '/api/placement.php': handlePlacement,
   '/api/blog-publish.php': handleBlogPublish,

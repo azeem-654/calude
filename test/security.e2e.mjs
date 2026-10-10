@@ -224,8 +224,30 @@ if (productId) {
 const hijackPortfolio = await api('projects.php', { action: 'save_portfolio', token: B.token, accountId: B.acct, id: pf.data.id, name: 'pwned', profile: {} });
 check("B cannot overwrite A's portfolio by id", !hijackPortfolio.ok, JSON.stringify(hijackPortfolio.data));
 
+/* The booking page's photo, logo and clip (routes/bookingMedia.ts). */
+{
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const put = (tok, acct, kind, bytes) => fetch(`${BASE}/api/booking-media.php?action=upload&kind=${kind}&accountId=${acct}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/octet-stream', Connection: 'close' }, body: bytes,
+  }).then(r => r.json().then(j => ({ status: r.status, data: j })));
+  const intoA = await put(B.token, A.acct, 'photo', PNG);
+  check("B cannot upload a picture into A's booking page", !intoA.data.success && intoA.status === 403, JSON.stringify(intoA.data));
+  const clearA = await api('booking-media.php', { action: 'clear', token: B.token, accountId: A.acct, kind: 'photo' });
+  check("B cannot remove A's booking picture", !clearA.ok && clearA.status === 403, JSON.stringify(clearA.data));
+  const slugA = await api('booking.php', { action: 'slug_check', token: B.token, accountId: A.acct, slug: 'anything-here' });
+  check("B cannot ask about addresses as A's workspace", !slugA.ok && slugA.status === 403, JSON.stringify(slugA.data));
+  const svg = await put(B.token, B.acct, 'logo', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
+  check('An SVG cannot be uploaded as a booking logo', !svg.data.success, JSON.stringify(svg.data));
+  /* A's own upload, which B then names in B's own page: the address is dropped. */
+  const mine = await put(A.token, A.acct, 'photo', PNG);
+  const borrow = await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', photoUrl: mine.data.url } });
+  const bCfg = await api('booking.php', { action: 'config', slug: `b-${run}` });
+  check("B's page cannot show A's uploaded photo", mine.data.success && borrow.ok && !bCfg.data.config?.photoUrl, JSON.stringify([mine.data, bCfg.data.config?.photoUrl]));
+  if (mine.data.url) await api('booking-media.php', { action: 'clear', token: A.token, accountId: A.acct, kind: 'photo' });
+}
+
 console.log('\nPublic surfaces');
-const book = await api('booking.php', { action: 'create', accountId: A.acct, slotDate: '2031-01-02', slotTime: '10:00', guestEmail: 'v@example.test', guestName: 'Spam' });
+const book =await api('booking.php', { action: 'create', accountId: A.acct, slotDate: '2031-01-02', slotTime: '10:00', guestEmail: 'v@example.test', guestName: 'Spam' });
 check('Anyone cannot book into a workspace with no booking page', !book.ok, JSON.stringify(book.data));
 const co = await api('stripe-checkout.php', { token: B.token, accountId: B.acct, amount: 0.01 });
 check('Legacy checkout no longer takes a price from the request', !co.ok, JSON.stringify(co.data));
