@@ -624,10 +624,14 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const before = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
   const handle = page.locator(`[data-clip-block="${target.id}"] [data-edge="e"]`);
   const hb = await handle.boundingBox();
+  const bb = await page.locator(`[data-clip-block="${target.id}"]`).boundingBox();
+  /* Five seconds' worth of pixels at whatever zoom the timeline is on — too
+     little snaps back to the sentence it started on, too much (zoomed out, a
+     pixel is a second or two) leaves a Short too short to keep. */
+  const px = Math.max(2, Math.round(5 * bb.width / (before.e - before.s)));
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
   await page.mouse.down();
-  /* Zoomed out, a pixel is a second or two of a 20-minute recording: a few pixels trims a few seconds. */
-  await page.mouse.move(hb.x + hb.width / 2 - 4, hb.y + hb.height / 2, { steps: 4 });
+  await page.mouse.move(hb.x + hb.width / 2 - px, hb.y + hb.height / 2, { steps: 6 });
   await page.mouse.up();
   await page.waitForTimeout(1500);
   const trimmed = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
