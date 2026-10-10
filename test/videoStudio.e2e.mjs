@@ -77,15 +77,31 @@ startEngine();
 const persist = path.join(state, 'wrangler');
 fs.rmSync(persist, { recursive: true, force: true });
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist,
+/* wrangler dev exits when its dev proxy loses a connection to the Worker
+   ("Network connection lost") — which a video element cancelling a range
+   request on a seek can cause. Production has no such proxy. So it is
+   started again on the same port and the same stored data, and the restart
+   is reported, never hidden. */
+const WR_ARGS = ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist,
   '--var', `APP_ORIGIN:${B}`, '--var', `GEMINI_BASE:http://127.0.0.1:${GM}`, '--var', `AI_API_KEY:AIzaVIDEO${'x'.repeat(30)}`,
-  '--var', `MEDIA_ENGINE_URL:http://127.0.0.1:${ENG}`, '--var', `MEDIA_ENGINE_SECRET:${SECRET}`, '--var', `WORKERS_AI_BASE:http://127.0.0.1:${WH}`, '--var', `OPENVERSE_BASE:http://127.0.0.1:${OV}`],
-{ detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-let wlog = '';
+  '--var', `MEDIA_ENGINE_URL:http://127.0.0.1:${ENG}`, '--var', `MEDIA_ENGINE_SECRET:${SECRET}`, '--var', `WORKERS_AI_BASE:http://127.0.0.1:${WH}`, '--var', `OPENVERSE_BASE:http://127.0.0.1:${OV}`];
+let wlog = '', stopping = false, restarts = 0;
 const wfile = fs.createWriteStream(path.join(state, 'wrangler.log'));
-wr.stdout.on('data', c => { wlog += c; wfile.write(c); }); wr.stderr.on('data', c => { wlog += c; wfile.write(c); });
+let wr;
+const startWrangler = () => {
+  wr = spawn('npx', WR_ARGS, { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  wr.stdout.on('data', c => { wlog += c; wfile.write(c); }); wr.stderr.on('data', c => { wlog += c; wfile.write(c); });
+  wr.on('exit', () => {
+    if (stopping) return;
+    try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ }
+    restarts++;
+    console.log(`  (local wrangler exited — restart ${restarts}, same data)`);
+    setTimeout(startWrangler, 1500);
+  });
+};
+startWrangler();
 let br = null;
-const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { engine.kill(); } catch { /* gone */ } whisper.server.close(); gemini.server.close(); openverse.server.close(); };
+const stop = () => { stopping = true; try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { engine.kill(); } catch { /* gone */ } whisper.server.close(); gemini.server.close(); openverse.server.close(); };
 process.on('exit', stop);
 process.on('uncaughtException', async e => { console.log(e); console.log(wlog.replace(/.*workerd@.*\n/g, '').slice(-3000)); try { await br?.close(); } catch { /* */ } stop(); process.exit(1); });
 for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
@@ -115,7 +131,7 @@ const READS = new Set(['status', 'get', 'list', 'capabilities']);
 const v = async (action, extra = {}, who = { T, A }) => {
   for (let i = 0; ; i++) {
     try { return await api('video.php', { token: who.T, accountId: who.A, action, ...extra }); }
-    catch (e) { if (!READS.has(action) || i >= 3) throw e; await sleep(1500); }
+    catch (e) { if (!READS.has(action) || i >= 30) throw e; await sleep(2000); } // a restart takes ~15 s
   }
 };
 
@@ -780,6 +796,6 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 
 ok('no page errors', !errs.length, errs.join(' | '));
 await br.close();
-console.log(`\n${out.filter(l => l.startsWith('PASS')).length} passed, ${failures} failed`);
+console.log(`\n${out.filter(l => l.startsWith('PASS')).length} passed, ${failures} failed${restarts ? ` (local wrangler restarted ${restarts}×)` : ''}`);
 stop();
 process.exit(failures ? 1 : 0);
