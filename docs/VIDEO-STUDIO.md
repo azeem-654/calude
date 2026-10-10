@@ -220,7 +220,7 @@ publishing only with real providers.
 | Content Library: Videos and Shorts with statuses | Working | `ContentShelf.tsx` |
 | Usage ledger and monthly allowances | Working | `lib/video/usage.ts` |
 | Speaker labels | Unavailable — needs a diarising provider | — |
-| Automatic speaker tracking | Planned | — |
+| Face and speaker tracking (9:16 and any crop) | Working once the engine image with OpenCV is deployed | `media/engine/track.py`, `lib/video/motion.ts`, Tracking tab |
 | Noise reduction (off / light / medium / strong), voice clarity (presence, de-essing, compression), voice level | Working — heard in the render, not the preview | `media/engine render`, Audio tab |
 | Royalty-free music (Openverse: CC0, public domain, CC BY only), your own track with rights confirmed, volume, fades, loop, ducking under speech, which videos | Working | `lib/video/music.ts`, Music tab |
 | Before/after audio in the preview | Planned | — |
@@ -313,3 +313,127 @@ named on the Autopilot project's activity; and a quiz of up to 12
 multiple-choice questions, each tied to the sentence where it is answered —
 a question pointing at no sentence of the recording is dropped
 (`cleanQuiz`). Copy, .txt and .csv downloads.
+
+
+## 13. Tracking, animation, colour, words on screen, thumbnails and the board — and an audit (2026-10-10)
+
+The owner asked for the Animation and Tracking tabs from the concept and
+speaker tracking, advanced editing (their second reference: Adjust colours,
+filters, effects, speed, fade), outputs shown like their third reference (a
+list of videos, each with a score, a preview, words and downloads), trending
+YouTube thumbnails that are shown and editable, a fluid editor and player,
+and an audit of everything in the studio.
+
+### What was built
+
+**Faces and the speaker** (`media/engine/track.py`, engine op `track`, job
+`track`, queued after `prepare`). The proxy is piped into Python at 5 frames
+a second (3 for recordings over 30 minutes); OpenCV's **YuNet** detector finds
+faces (the model is downloaded into the engine image and pinned by its hash;
+without it, OpenCV's own Haar cascade). Faces are joined into tracks by
+overlap. Two camera paths come out: the most prominent **face**, and the
+**speaker** — the face whose mouth region moves while the sound says someone
+is talking, less the movement of the eye region so a nod is not speech, held
+for two seconds before the frame cuts to a new speaker. The camera eases
+inside a dead zone and *cuts* on a change of speaker. It reads lips, not
+voices: two people talking at once, or a speaker turned away, are not told
+apart, and the Tracking tab says so. The render follows the path with a crop
+moved by `sendcmd` (the crop's size never changes mid-stream — that stalls
+FFmpeg, found by test). Proved on a 40-second test of two portraits taking
+turns: switches at 15 s and 29 s for turns at 14 s and 28 s, with YuNet and
+with Haar; and in the end-to-end test, the rendered 9:16 Short keeps the
+speaking face centred and changes to the other person.
+
+**Animation** (`doc.motion`, per long video / all Shorts): punch-in zooms on
+every other sentence (`punchSpans`) or a slow push (both `zoompan`), a flash
+or dip to black at each jump cut (`cutTimes`, ≥ 0.6 s apart), fades in and
+out (picture and sound), speed 0.5–2× (`setpts` + `atempo`, pitch kept;
+captions, SRT/VTT, words on screen and chapters re-timed), and a progress bar.
+
+**Colour** (`doc.look`): ten filters (vivid, warm, cool, cinematic, black &
+white, vintage, punchy, soft, food) and temperature, tint, exposure,
+brightness, contrast, saturation, hue, sharpness, blur, vignette, grain. The
+engine owns the filters; warmth, tint and the cinematic split are one
+per-channel table (`lutrgb`) — measured seven times faster than
+`colorbalance` at 1080×1920. The preview uses CSS filters (`cssLook`) and says
+it is close, not exact.
+
+**Words on screen** (`doc.overlays`): title, lower third, call to action,
+label, quote; pop, slide, fade, reveal; colours. They are placed on the
+*recording*, so they stay with their moment in every video that keeps it,
+through any cut (`overlaySpan`), and are burned in through ASS
+(`overlayAss`, typed braces never become tags).
+
+**Thumbnails, trending.** Creators' own advice for 2025–26 (vidIQ, and the
+others found — see the sources in the session) agrees on: one dominant
+subject, a face, big; three to five words; two or three colours; a thick
+outline because it must read at phone size; one word in an accent colour; a
+coloured edge so it stands out on light and dark YouTube; an arrow or ring
+used sparingly; either saturated (entertainment) or desaturated and cinematic
+(finance, documentary). Five layouts follow it (`trendLayout` in the engine):
+**bold** (the face close up — found by the detector in that frame — the
+words huge beside it), **callout** (a ring round the face and an arrow from
+the words; nothing is ringed when there is no face), **cinematic**
+(letterboxed, graded), **split** (two moments), **number** (the figure in the
+headline on an accent tile). Default sets are bold / callout / cinematic,
+then split / number / bold, and so on. Each PNG keeps the spec it was made
+from, so the **designer** (`ThumbnailDesigner.tsx`) opens it again: layout,
+words, the highlighted word, the moment (from a frame of the proxy), how close
+to the face, colours, edge — with a live preview — and "Make the PNG and use
+it" has the engine draw it exactly, checks it, and makes it the chosen one.
+
+**The board** (`OutputsBoard.tsx`, under the editor): a row per video with the
+editorial score out of 100 and Hook / Flow / Value / Whole grades (the AI's
+reading of the passage — never a forecast of views; rule- and hand-chosen
+Shorts are not scored), the playable preview with its thumbnail (the proxy
+over the same stretch, labelled "before cuts", until it is rendered), the
+title, description or transcript, the time range, keywords, hashtags,
+chapters, thumbnails (choose, design, three more), and its files: MP4 at the
+size made (no 4K button on a 1080p file), PNG, SRT, VTT, **Export XML** (the
+cut list as Final Cut 7 XML for Premiere Pro and DaVinci Resolve, relinked to
+the customer's own recording), copy caption, edit the words, **duplicate** a
+Short, edit it in the editor, and its status.
+
+**The editor, easier and smoother.** The inspector is an icon rail (Video,
+Adjust, Animation, Tracking, Text, Audio, Music, Captions, Reuse, Export →
+the board). Everything that moves every frame — the scrub bar, the clock,
+zoom, the tracked crop, fades and flashes, the timeline's playhead — is
+written to the elements from one animation-frame loop instead of through
+React state. The timeline has a Text lane (drag to move, edges to stretch),
+Shorts trimmed by dragging their edges (snapping to sentence boundaries; Alt
+to drag freely), I / O to mark, X cut, P protect, M make a Short, J / K / L and
+the arrows, Ctrl/⌘ + scroll to zoom where the pointer is. The assistant
+understands the new edits: "follow the speaker in the Shorts", "speed the
+Shorts up to 1.25x", "add punch-in zooms", "make everything black and white",
+"add a title "…"" (at the playhead), "add a progress bar", "fade in and out".
+
+### The audit
+
+Every feature of the studio, how it was checked, and what was found.
+
+| Feature | Checked by | Found / fixed |
+|---|---|---|
+| Welcome wizard, eight goals, upload, resumable | e2e (goal → choices → upload; a resumed upload) | — |
+| Prepare: probe and refusals, proxy, waveform, silences, filmstrip, poster | e2e on a 20-minute recording; a PNG renamed .mp4 refused | — |
+| Faces and the speaker | engine test (two portraits), e2e (the rendered Short follows the speaker) | The deploy script's rebuild hash left out `track.py` — added, so a tracker change ships |
+| Transcription, cleanup, Shorts, metadata | e2e with Whisper and Gemini stand-ins, and without AI | — |
+| Player | e2e plays 17 s through cuts and polls (as VP9) | The playhead and clock now move per frame without redrawing the editor |
+| Timeline | e2e drags a Short's edge | Short blocks were buttons that could not hold drag handles — now draggable |
+| Look, motion, words on screen, speed | engine render test; e2e renders a Short in black and white at 1.25× with captions re-timed | Changing a crop's size mid-stream hangs FFmpeg → crop moves, zoom by `zoompan`; `colorbalance`/`colortemperature` too slow at 1080×1920 → `lutrgb` |
+| Sound and music | e2e (noise and music by sentence; music measured in the file) | — |
+| Thumbnails | e2e: every one a real PNG of the right size; designed one made and chosen | The number layout read "4 million" as "4 m" — fixed; the portrait callout ring ran off the frame — fixed |
+| Outputs board, XML, duplicate | e2e | The Export tab moved here |
+| Reuse (posts, article, emails, quiz) | e2e | — |
+| AI Shorts / Repurposing tabs | e2e (old addresses redirect) | AI Shorts is still the older browser module (its transcript is Gemini-written, its export a canvas recording) — said in the tab |
+| Autopilot, Content Library, isolation, a forged link, a killed engine, a failed transcriber, one charge per job | e2e | — |
+| Phone | e2e at 390 on every studio page | — |
+
+Known limits, said on screen: speaker tracking reads lips, not voices; colour
+in the preview is close, not exact (vignette and grain only in the render);
+a render with a heavy look runs at about 1.6× the length of a 1080×1920
+video on four cores; speaker labels, eye contact, background removal and
+direct publishing are not available.
+
+Tests: `npm run test:video` (127, pure) and `npm run test:videoe2e` (the
+journey above, plus two people taking turns — a public-domain 1863 portrait
+of Abraham Lincoln in `test/fixtures/faces`, used twice).

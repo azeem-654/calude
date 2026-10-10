@@ -31,7 +31,7 @@ import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 import { execSync, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { makeRecording, startWhisperMock, startGeminiMock, startOpenverseMock } from './videoStudioMock.mjs';
+import { makeRecording, makeTwoFaces, startWhisperMock, startGeminiMock, startOpenverseMock } from './videoStudioMock.mjs';
 
 const PORT = 8953, INSPECT = 9353, ENG = 8873, WH = 8874, GM = 8875, OV = 8876;
 const B = `http://localhost:${PORT}`;
@@ -61,9 +61,13 @@ const gemini = await startGeminiMock(GM);
 const openverse = await startOpenverseMock(OV, path.join(state, 'fixtures', 'music'));
 
 let engine;
+/* The face detector the engine image carries (YuNet), fetched once for the
+   local engine; without it track.py falls back to OpenCV's Haar cascade. */
+const MODEL = path.join(state, 'fixtures', 'face_detection_yunet.onnx');
+if (!fs.existsSync(MODEL)) { try { execFileSync('curl', ['-fsSL', '-o', MODEL, 'https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx'], { stdio: 'ignore' }); } catch { /* Haar then */ } }
 const startEngine = () => {
   engine = spawn('node', [path.resolve('media/engine/server.mjs')], {
-    env: { ...process.env, PORT: String(ENG), MEDIA_ENGINE_SECRET: SECRET, ALLOW_HTTP_INPUTS: '1', WORK_DIR: path.join(state, 'engine-work'), MAX_RUNNING: '2' },
+    env: { ...process.env, PORT: String(ENG), MEDIA_ENGINE_SECRET: SECRET, ALLOW_HTTP_INPUTS: '1', WORK_DIR: path.join(state, 'engine-work'), MAX_RUNNING: '2', FACE_MODEL: MODEL },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   engine.stderr.on('data', d => { if (process.env.DEBUG) process.stderr.write(d); });
@@ -349,13 +353,14 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', t0x.file, decode]);
   ok('…and decodes', fs.statSync(decode).size > 1000);
   await page.locator('[data-panel="exports"]').click();
-  const long = page.locator('[data-kind="long"][data-testid="vs-output"]');
-  await long.locator('[data-act="more-thumbs"]').click();
+  const long = page.locator('[data-kind="long"][data-testid="vs-board-row"]');
+  await long.locator('[data-act="board-more-thumbs"]').click();
   for (let i = 0; i < 60; i++) { S = await v('status', { projectId: PID, knownVersion: -1 }); if (S.outputs.find(o => o.kind === 'long').thumbs.some(t => t.set === 2)) break; await sleep(2000); }
   const set2 = S.outputs.find(o => o.kind === 'long').thumbs.filter(t => t.set === 2);
   ok('…"Create another set" makes three more, also checked PNGs', set2.length === 3 && set2.every(t => t.verified), set2.length);
   const first = S.outputs.find(o => o.kind === 'long').thumbs;
-  ok('…genuinely different layouts', new Set(first.filter(t => t.set === 1).map(t => t.layout)).size === 3);
+  ok('…genuinely different layouts — the trending ones: face + big words, callout, cinematic', new Set(first.filter(t => t.set === 1).map(t => t.layout)).size === 3 && first.some(t => t.layout === 'bold') && first.some(t => t.layout === 'callout'), first.map(t => t.layout));
+  ok('…each made from three to five words, kept with the PNG so it can be edited', first.every(t => t.spec && t.spec.text.split(/\s+/).length <= 5 && t.spec.text.length > 0), first.map(t => t.spec?.text));
 }
 
 /* ── 12 · Metadata for each video, from its own words ── */
@@ -372,7 +377,8 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   ok('…and each Short\'s title is about what that Short says', right, S.outputs.map(o => o.meta.titles?.[0]));
   const longMeta = S.outputs.find(o => o.kind === 'long').meta;
   ok('…the long video has chapters (0:00 first) in its description', longMeta.chapters?.length >= 3 && longMeta.chapters[0].s === 0 && /0:00 /.test(longMeta.description), longMeta.chapters);
-  ok('…shown beside the video', /Titles and description/.test(await page.getByTestId('vs-outputs').innerText()));
+  const board = await page.getByTestId('vs-outputs-board').innerText();
+  ok('…shown on the board under the editor, each video with its words, keywords, hashtags and timeline', board.includes(S.outputs.find(o => o.kind === 'long').meta.titles[0]) && /Keywords/i.test(board) && /Hashtags/i.test(board) && (await page.getByTestId('vs-board-chapters').count()) === 1, board.slice(0, 400));
 }
 
 /* ── 13–14 · Real MP4 exports ── */
@@ -404,6 +410,48 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
     if (vv?.width === 1080 && vv?.height === 1920 && Math.abs(Number(p.format.duration) - o.duration) < 1) shorts++;
   }
   ok('14 · every Short downloads as a 1080×1920 MP4 of the length shown', shorts === 4, shorts);
+}
+
+/* ── The board: one row per video, with its preview, thumbnail and files ── */
+{
+  await page.goto(`${B}/video-studio/${PID}`, { waitUntil: 'networkidle' });
+  await page.getByTestId('vs-outputs-board').scrollIntoViewIfNeeded();
+  const rows = page.getByTestId('vs-board-row');
+  ok('the board under the editor has a row for every video, each with a playable preview and its chosen thumbnail', (await rows.count()) === S.outputs.length && (await page.getByTestId('vs-board-video').count()) === S.outputs.length);
+  const dl = page.waitForEvent('download');
+  await rows.first().locator('[data-act="export-xml"]').click();
+  const xmlFile = path.join(state, 'cuts.xml');
+  await (await dl).saveAs(xmlFile);
+  const xml = fs.readFileSync(xmlFile, 'utf8');
+  ok('Export XML is a Premiere / Resolve timeline of the cuts, pointing at the recording', /<xmeml version="4">/.test(xml) && (xml.match(/<clipitem id="v-/g) ?? []).length >= 2 && xml.includes('talk-20.mp4'), xml.slice(0, 300));
+  const short = rows.filter({ has: page.locator('[data-act="duplicate"]') }).first();
+  const before = (await v('get', { projectId: PID })).doc.clips.length;
+  await short.locator('[data-act="duplicate"]').click();
+  await page.waitForTimeout(1500);
+  const after = await v('get', { projectId: PID });
+  ok('Duplicate makes a copy of a Short beside it, to try another version', after.doc.clips.length === before + 1 && after.doc.clips.some(c => /\(copy\)/.test(c.title)));
+  await v('edit', { projectId: PID, baseVersion: after.docVersion, ops: [{ op: 'clip.remove', id: after.doc.clips.find(c => /\(copy\)/.test(c.title)).id }] });
+}
+
+/* ── Design a thumbnail, on screen ── */
+{
+  await page.reload({ waitUntil: 'networkidle' });
+  const row = page.getByTestId('vs-board-row').filter({ has: page.locator('[data-act="duplicate"]') }).first();
+  const oid = await row.getAttribute('data-output');
+  await row.locator('[data-act="design-thumb"]').click();
+  await page.getByTestId('vs-thumb-designer').waitFor({ timeout: 10_000 });
+  await page.locator('[data-layout="callout"]').click();
+  await page.getByTestId('vs-thumb-text').fill('Big news for owners');
+  await page.getByTestId('vs-thumb-designer').getByRole('button', { name: 'news', exact: true }).click();
+  const preview = await page.getByTestId('vs-thumb-preview').innerText();
+  ok('the designer shows the thumbnail as it is being made — layout, words, the highlighted word', /BIG NEWS FOR OWNERS/.test(preview.replace(/\s+/g, ' ')), preview);
+  await page.locator('[data-act="make-thumb"]').click();
+  await page.getByTestId('vs-thumb-designer').waitFor({ state: 'detached', timeout: 120_000 });
+  const o = (await v('get', { projectId: PID })).outputs.find(x => x.id === oid);
+  const made = o.thumbs[o.chosenThumb];
+  ok('…"Make the PNG" draws it in the engine, checks it, and makes it the chosen thumbnail', made && made.set > 100 && made.verified && made.spec?.layout === 'callout' && made.spec?.text === 'Big news for owners' && made.spec?.highlight.toLowerCase() === 'news', made);
+  const png = Buffer.from(await (await fetch(made.downloadUrl, { headers: { Connection: 'close' } })).arrayBuffer());
+  ok('…and it is a real 1080×1920 PNG', isPng(png) && pngSize(png).join() === '1080,1920');
 }
 
 /* ── Statuses, the calendar ── */
@@ -538,6 +586,53 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ok('…and Repurposing opens in its Repurpose tab', /\/video-studio\?tab=repurpose/.test(page.url()) && (await page.getByTestId('vs-embed-repurpose').count()) === 1, page.url());
 }
 
+/* ── A Short with every new effect, rendered ── */
+{
+  let D = await v('get', { projectId: PID });
+  const target2 = D.outputs.find(o => o.kind === 'short' && o.clipId === target.id);
+  const c2 = D.doc.clips.find(c => c.id === target.id);
+  const r = await v('edit', { projectId: PID, baseVersion: D.docVersion, ops: [
+    { op: 'look.set', target: 'short', patch: { filter: 'bw', vignette: 20 } },
+    { op: 'motion.set', target: 'short', patch: { speed: 1.25, zoom: 'punch', transition: 'flash', fadeIn: 0.5, fadeOut: 0.5, progressBar: true } },
+    { op: 'overlay.add', s: c2.s + 1, e: c2.s + 4, text: 'Watch this', style: 'title', anim: 'pop' },
+  ], note: 'effects' });
+  ok('look, motion and words on screen are saved as one version, and the Short says it needs rendering', r.success && r.doc.look.short.filter === 'bw' && r.doc.motion.short.speed === 1.25 && r.doc.overlays.length === 1);
+  const kept = D.outputs.find(o => o.id === target2.id).duration;
+  await v('render', { projectId: PID, outputIds: [target2.id] });
+  let R2;
+  for (let i = 0; i < 160; i++) { R2 = await v('status', { projectId: PID, knownVersion: -1 }); const o = R2.outputs.find(x => x.id === target2.id); if (!o.stale && o.status === 'needs_review' && !R2.jobs.some(j => j.target === o.id && (j.state === 'queued' || j.state === 'running'))) break; await sleep(2500); }
+  const o2 = R2.outputs.find(x => x.id === target2.id);
+  const f = await download(o2.downloadUrl, 'short-effects.mp4');
+  const d = Number(probe(f.file).format.duration);
+  ok('…rendered at 1.25×: the Short is that much shorter', Math.abs(d - kept / 1.25) < 0.8, { d, kept });
+  const sat = (() => { const out = String(execFileSync('sh', ['-c', `ffmpeg -hide_banner -ss ${Math.min(5, d / 2)} -i "${f.file}" -frames:v 1 -vf signalstats,metadata=print -f null - 2>&1 | grep SATAVG | head -1`])); return Number(out.split('=').pop()); })();
+  ok('…in black and white (no colour left in the picture)', sat < 4, sat);
+  const srt = await (await fetch(o2.srtUrl, { headers: { Connection: 'close' } })).text();
+  const lastEnd = (([h, m, s2]) => h * 3600 + m * 60 + s2)(srt.trim().split('\n\n').pop().split('\n')[1].split(' --> ')[1].replace(',', '.').split(':').map(Number));
+  ok('…and its captions re-timed to the new speed (they end with the video)', lastEnd <= d + 0.5 && lastEnd > d - 3, { lastEnd, d });
+  await page.goto(`${B}/video-studio/${PID}`, { waitUntil: 'networkidle' });
+  ok('the inspector is an icon rail: Video, Adjust, Animation, Tracking, Text, Audio, Music, Captions, Reuse, Export', (await page.locator('.vse-rail-btn').count()) === 10);
+  await page.locator('[data-panel="adjust"]').click();
+  ok('Adjust offers ten filters and the colour sliders', (await page.locator('.vs-filter').count()) === 10 && /Temperature[\s\S]*Exposure[\s\S]*Vignette/.test(await page.getByTestId('vs-adjust-panel').innerText()));
+  await page.locator('[data-panel="tracking"]').click();
+  ok('Tracking says what it found in this recording — no faces in a test picture, so nothing to follow', /No faces found/.test(await page.getByTestId('vs-tracking-panel').innerText()), await page.getByTestId('vs-tracking-panel').innerText());
+  await page.locator('[data-panel="text"]').click();
+  ok('Text lists the words on screen with their times', /Watch this/.test(await page.getByTestId('vs-text-panel').innerHTML()));
+  await page.locator('[data-media="' + target.id + '"]').click();
+  await page.waitForTimeout(500);
+  ok('the preview shows the look (black and white) and the speed on the Short', (await page.getByTestId('vs-video').getAttribute('data-look')) === 'bw' && /1\.25×/.test(await page.getByTestId('vs-preview').innerText()));
+  const before = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
+  const handle = page.locator(`[data-clip-block="${target.id}"] [data-edge="e"]`);
+  const hb = await handle.boundingBox();
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x - 40, hb.y + hb.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  const trimmed = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
+  ok('a Short is trimmed by dragging its edge on the timeline', trimmed.e < before.e - 0.3 && Math.abs(trimmed.s - before.s) < 0.01, { before: [before.s, before.e], after: [trimmed.s, trimmed.e] });
+}
+
 /* ── 18 · Reopen ── */
 {
   const p2 = await ctx.newPage();
@@ -611,6 +706,46 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ok('…and no second file: one video per output', R.outputs.every(o => o.mp4Url && o.version === 1), R.outputs.map(o => o.version));
   ok('without AI, the Shorts and words are chosen by rule — and the screen says so', R.doc.clips.every(c => c.by === 'rules' && c.scores === null) && R.outputs.every(o => o.meta.by === 'rules') && /without AI|by rule/i.test(R.project.stageNote), { by: R.doc.clips.map(c => c.by), note: R.project.stageNote });
   gemini.state.fail = false;
+}
+
+/* ── Faces and the speaker: two people taking turns ── */
+{
+  const TWO = path.join(state, 'fixtures', 'two-faces.mp4');
+  const two = fs.existsSync(TWO) ? { turns: [[0, 14, 'L'], [14, 28, 'R'], [28, 40, 'L']] } : makeTwoFaces(TWO, 40);
+  void two;
+  const c = await v('create', { name: 'Two speakers', prompt: 'Clean this recording and make one 30-40 second Short' });
+  const buf = fs.readFileSync(TWO);
+  const st = await v('upload_start', { projectId: c.id, name: 'two.mp4', size: buf.length, type: 'video/mp4', fileKey: `two|${buf.length}` });
+  for (let n = 1; n <= st.parts; n++) await fetch(`${st.partUrl}&part=${n}`, { method: 'PUT', body: buf.subarray((n - 1) * st.partSize, n * st.partSize), headers: { Connection: 'close' } });
+  await v('upload_complete', { projectId: c.id, uploadId: st.uploadId });
+  let T2;
+  for (let i = 0; i < 200; i++) { T2 = await v('status', { projectId: c.id, knownVersion: -1 }); if (T2.source.track?.ready || T2.source.track?.error) break; await sleep(2000); }
+  const sum = T2.source.track?.summary;
+  ok('faces are found in the recording: two people, the speaker changing twice', sum?.faces === 2 && sum?.switches?.speaker === 2, T2.source.track);
+  T2 = await waitReady(c.id, { T, A }, 'two', 600);
+  const thumbs = T2.outputs.flatMap(o => o.thumbs);
+  ok('…and the thumbnails close in on a face (found in the frame)', thumbs.some(t => t.layout === 'bold' && t.face), thumbs.map(t => [t.layout, t.face]));
+  const e1 = await v('edit', { projectId: c.id, baseVersion: T2.docVersion, ops: [{ op: 'clip.add', s: 0.5, e: 39.5, title: 'Who is talking' }, { op: 'tracking.set', target: 'short', mode: 'speaker' }] });
+  const clipId = e1.doc.clips[e1.doc.clips.length - 1].id;
+  let T3, out3;
+  for (let i = 0; i < 200; i++) {
+    T3 = await v('status', { projectId: c.id, knownVersion: -1 });
+    out3 = T3.outputs.find(o => o.clipId === clipId);
+    if (out3?.stale) await v('render', { projectId: c.id, outputIds: [out3.id] });
+    if (out3?.rendered && !out3.stale && !T3.jobs.some(j => j.target === out3.id && (j.state === 'queued' || j.state === 'running'))) break;
+    await sleep(2500);
+  }
+  const f = await download(out3.downloadUrl, 'speaker.mp4');
+  const faceAt = t => {
+    const png = path.join(state, `spk-${t}.png`);
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(t), '-i', f.file, '-frames:v', '1', png]);
+    return JSON.parse(String(execFileSync('python3', ['media/engine/track.py', '--image', png, ...(fs.existsSync(MODEL) ? ['--model', MODEL] : [])]))).faces[0];
+  };
+  /* Output time = source − 0.5 (the Short starts at 0.5 s). Left speaks 0–14 and 28–40, right 14–28;
+     the right portrait is the larger one (360 px against 320). */
+  const a = faceAt(6), b = faceAt(21), d2 = faceAt(34);
+  ok('the 9:16 Short follows the speaker: the face is kept in the middle of the frame', [a, b, d2].every(x => x && Math.abs(x.x + x.w / 2 - 0.5) < 0.15), [a, b, d2]);
+  ok('…and it is the person talking each time: left, then right (the larger face), then left again', b.h > a.h * 1.06 && b.h > d2.h * 1.06, { a: a?.h, b: b?.h, c: d2?.h });
 }
 
 /* ── A phone ── */

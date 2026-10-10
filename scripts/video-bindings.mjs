@@ -74,7 +74,7 @@ try {
 
 /* ── MEDIA: the engine ── */
 const hash = createHash('sha256');
-for (const f of ['media/Dockerfile', 'media/engine/server.mjs', 'media/worker.ts', 'media/wrangler.jsonc']) hash.update(readFileSync(f));
+for (const f of ['media/Dockerfile', 'media/engine/server.mjs', 'media/engine/track.py', 'media/worker.ts', 'media/wrangler.jsonc']) hash.update(readFileSync(f));
 const tag = `media-${hash.digest('hex').slice(0, 16)}`;
 let engineUp = false;
 let deployedBefore = false;

@@ -8,7 +8,7 @@
  * editor's poll, never from a timer.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Send, Loader, Sparkles, AudioLines, Music2, Scissors, Film, Captions, Wand2 } from 'lucide-react';
+import { Send, Loader, Sparkles, AudioLines, Music2, Scissors, Film, Captions, Wand2, ScanFace } from 'lucide-react';
 import VoiceControl from '../Autopilot/voice/VoiceControl';
 import { videoCommand, gotoVersion } from '../../services/videoStudio';
 import { getSession } from '../../services/auth';
@@ -23,6 +23,7 @@ const QUICK: { icon: typeof Film; label: string; hint: string; say: string; fill
   { icon: Music2, label: 'Add background music', hint: 'Royalty-free, calm', say: 'Add calm background music to all the videos' },
   { icon: Scissors, label: 'Remove the long pauses', hint: 'Silence shortened', say: 'Remove the long pauses' },
   { icon: Film, label: 'Make a Short about…', hint: 'Name the subject', say: 'Find the section about ', fill: true },
+  { icon: ScanFace, label: 'Follow the speaker', hint: 'In the Shorts', say: 'Follow the speaker in the Shorts' },
   { icon: Captions, label: 'Bigger captions', hint: 'Easier to read', say: 'Make captions bigger' },
 ];
 

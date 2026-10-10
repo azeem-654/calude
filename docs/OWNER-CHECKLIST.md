@@ -1142,6 +1142,12 @@ AI Shorts and Repurposing now live inside AI Video Studio (their old links
 still work). The repurposing and quiz writers use the AI keys you already
 set on Platform services.
 
+Since 2026-10-10: speaker tracking, animation, colour, words on screen and the
+thumbnail designer also need **nothing from you**. The media engine's image now
+carries Python with OpenCV and a face detector; the next deploy rebuilds it by
+itself (10–15 minutes the first time — the *Bind Video Studio* step says so).
+Until it has, the What works panel lists tracking as needing the new engine.
+
 ### 28. Your own lead directory — added 2026-10-07
 
 Load your lead files into the app and, if your licence allows it, let customers

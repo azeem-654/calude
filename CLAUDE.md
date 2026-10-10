@@ -993,17 +993,42 @@ export is a canvas recording; Video Studio is the real one.
 - **Reuse**: `repurpose` (the Autopilot writers on the transcript → draft posts,
   blog, email sequence) and `quiz` (`cleanQuiz` drops a question tied to no
   sentence) jobs; results in `crm_video_projects.extras` (migration 0070).
+- **Faces and the speaker** (`media/engine/track.py`, engine op/job `track` after
+  `prepare`, result `source.track` → `prep/faces.json`): OpenCV YuNet (pinned in
+  the image; Haar without it), the speaker = the face whose mouth moves during
+  speech, held two seconds before a cut. `doc.tracking` (per long / Shorts, crop
+  framing only) → `cameraPath` → a crop moved by `sendcmd` (never resized
+  mid-stream: that hangs FFmpeg). Reads lips, not voices — said on screen.
+- **Look, motion, words on screen** (`doc.look`, `doc.motion`, `doc.overlays`,
+  pure helpers in `lib/video/motion.ts`): ten filters + sliders (engine
+  `lookFilters`, `lutrgb` for warmth/tint — `colorbalance` is too slow), punch-in /
+  slow zoom (`zoompan`), flash/dip at cuts, fades, 0.5–2× speed (captions, SRT/VTT,
+  overlays, chapters re-timed), progress bar, animated overlays placed on the
+  recording (ASS). The preview shows them (`cssLook`, speed, zoom, tracked
+  object-position, overlays) and says it is close.
+- **Thumbnails** follow the trending advice (§13 of the doc): engine
+  `trendLayout` — bold (face close-up + huge outlined words), callout (ring +
+  arrow, only round a found face), cinematic, split, number; each PNG keeps its
+  `spec`; `thumb_custom` + `ThumbnailDesigner.tsx` (live preview from a proxy
+  frame) make and choose a designed one.
+- **The board** (`OutputsBoard.tsx`, under the editor): per video an editorial
+  score (`editorialScore` — never a forecast), preview, thumbnails, words,
+  chapters, downloads at the size made, Export XML (`toXmeml`, Premiere/Resolve),
+  duplicate. The inspector is an icon rail; the playhead moves per frame from
+  the player's loop (`vs-frame` event), not React state.
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact,
-  background removal (no provider), speaker tracking and before/after audio
-  preview (planned), publishing (none — "Ready to publish manually").
+  background removal (no provider), before/after audio preview (planned),
+  publishing (none — "Ready to publish manually").
 - `npm run test:videoe2e` (self-contained: engine :8873, Whisper mock :8874, Gemini
   mock :8875, Openverse mock :8876, wrangler :8953, `.wrangler-video`, needs ffmpeg +
   a `VITE_BASE=/` build; recordings are generated and cached there) drives the
   owner's 20 steps on a 20-minute recording, the wizard, the player playing through
   the cuts across polls (as VP9 — this Chromium has no H.264), noise and music in one
-  sentence, music really in the rendered sound, reuse and the quiz, isolation, a
-  forged link, a killed engine and a failed transcriber (one charge, one file), and a
-  phone.
+  sentence, music really in the rendered sound, reuse and the quiz, the board and
+  XML, a designed thumbnail, a Short with every effect (black and white, 1.25×),
+  two people taking turns followed in 9:16 (`makeTwoFaces`, needs Python + OpenCV),
+  isolation, a forged link, a killed engine and a failed transcriber (one charge,
+  one file), and a phone.
 
 ## A project's workflows
 
