@@ -111,7 +111,12 @@ credential and never talks to the database. `prepare` copies the source to
 its own disk once (stage `download`) after the refusal checks and before its
 five FFmpeg passes, in 16 MB ranges each retried on its own, when the disk holds it twice over — reading a 190 MB
 recording five times through the Worker, with FFmpeg seeking and dropping
-connections, was what made local runs fail intermittently.
+connections, was one of the things making local runs fail intermittently.
+The other was the Worker: `/api/video-file.php` read each 16 MB part whole,
+and with the browser sending several at once and the engine its outputs, one
+isolate neared its 128 MB and was reset mid-request. Parts now stream to R2
+through a `FixedLengthStream` of the declared length (part 1 alone is read, to
+sniff that it is a video).
 
 It is deployed as a **Cloudflare Container** (`media/` — a Worker
 `crmpro-media` with a `Container` class; one instance per job, scale to zero,

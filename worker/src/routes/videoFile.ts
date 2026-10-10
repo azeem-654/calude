@@ -41,6 +41,17 @@ export function looksLikeVideo(b: Uint8Array): boolean {
   return ftyp || ebml;
 }
 
+/* A part goes to R2 as a stream of exactly the length it declared — never
+   held whole. Reading 16 MB parts into memory, with the browser sending
+   several at once and the engine its outputs, put one isolate near its
+   128 MB and reset it mid-request ("Network connection lost"). A body that
+   is shorter or longer than it said fails the write instead of storing it. */
+function sized(req: Request, max: number, want?: number): { body: ReadableStream; len: number } | null {
+  const len = Number(req.headers.get('content-length') ?? '');
+  if (!req.body || !Number.isInteger(len) || len <= 0 || len > max || (want !== undefined && len !== want)) return null;
+  return { body: req.body.pipeThrough(new FixedLengthStream(len)), len };
+}
+
 async function bodyBytes(req: Request, max: number): Promise<Uint8Array | null> {
   const len = Number(req.headers.get('content-length') ?? '0');
   if (len > max) return null;
@@ -102,15 +113,26 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
     const parts = Math.ceil(row.bytes / row.part_size);
     if (!Number.isInteger(part) || part < 1 || part > parts) return json({ success: false, error: 'No such part.' }, 400);
     const want = part < parts ? row.part_size : row.bytes - row.part_size * (parts - 1);
-    const bytes = await bodyBytes(req, MAX_PART);
-    if (!bytes || bytes.length !== want) return json({ success: false, error: `Part ${part} should be ${want} bytes.` }, 400);
-    if (part === 1 && !looksLikeVideo(bytes)) {
-      await env.VIDEO.resumeMultipartUpload(row.r2_key, row.upload_id).abort().catch(() => null);
-      await env.DB.prepare(`UPDATE crm_video_uploads SET state = 'aborted', updated_at = ? WHERE id = ?`).bind(nowIso(), row.id).run();
-      return json({ success: false, error: 'That file is not a video Video Studio can read (MP4, MOV, MKV or WebM).', code: 'not_video' }, 415);
+    /* The first part is read whole, once, to look at its first bytes;
+       every other part streams. */
+    let body: Uint8Array | ReadableStream;
+    if (part === 1) {
+      const bytes = await bodyBytes(req, MAX_PART);
+      if (!bytes || bytes.length !== want) return json({ success: false, error: `Part ${part} should be ${want} bytes.` }, 400);
+      if (!looksLikeVideo(bytes)) {
+        await env.VIDEO.resumeMultipartUpload(row.r2_key, row.upload_id).abort().catch(() => null);
+        await env.DB.prepare(`UPDATE crm_video_uploads SET state = 'aborted', updated_at = ? WHERE id = ?`).bind(nowIso(), row.id).run();
+        return json({ success: false, error: 'That file is not a video Video Studio can read (MP4, MOV, MKV or WebM).', code: 'not_video' }, 415);
+      }
+      body = bytes;
+    } else {
+      const st = sized(req, MAX_PART, want);
+      if (!st) return json({ success: false, error: `Part ${part} should be ${want} bytes.` }, 400);
+      body = st.body;
     }
     const up = env.VIDEO.resumeMultipartUpload(row.r2_key, row.upload_id);
-    const done = await up.uploadPart(part, bytes);
+    const done = await up.uploadPart(part, body).catch(() => null);
+    if (!done) return json({ success: false, error: `Part ${part} did not arrive whole — send it again.` }, 400);
     await env.DB.prepare(`UPDATE crm_video_uploads SET parts = json_set(parts, ?, ?), updated_at = ? WHERE id = ?`)
       .bind(`$."${part}"`, done.etag, nowIso(), row.id).run();
     return json({ success: true, part, etag: done.etag });
@@ -130,9 +152,10 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
     if (op === 'mpu-part' && req.method === 'PUT') {
       const part = Number(url.searchParams.get('part'));
       if (!Number.isInteger(part) || part < 1 || part > 10_000) return json({ success: false, error: 'bad part' }, 400);
-      const bytes = await bodyBytes(req, MAX_PART);
-      if (!bytes) return json({ success: false, error: 'part too large' }, 413);
-      const done = await env.VIDEO.resumeMultipartUpload(key, url.searchParams.get('uploadId') ?? '').uploadPart(part, bytes);
+      const st = sized(req, MAX_PART);
+      if (!st) return json({ success: false, error: 'a part needs its length, at most 16 MB' }, 413);
+      const done = await env.VIDEO.resumeMultipartUpload(key, url.searchParams.get('uploadId') ?? '').uploadPart(part, st.body).catch(() => null);
+      if (!done) return json({ success: false, error: 'the part did not arrive whole' }, 400);
       return json({ success: true, etag: done.etag });
     }
     if (op === 'mpu-complete' && req.method === 'POST') {
@@ -141,10 +164,15 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
       return json({ success: true });
     }
     if (!op && req.method === 'PUT') {
-      const bytes = await bodyBytes(req, MAX_PART);
-      if (!bytes) return json({ success: false, error: 'too large for one piece — use parts' }, 413);
-      await env.VIDEO.put(key, bytes, { httpMetadata: { contentType: type } });
-      return json({ success: true, bytes: bytes.length });
+      if (req.headers.get('content-length') === '0') {
+        await env.VIDEO.put(key, new Uint8Array(0), { httpMetadata: { contentType: type } }); // captions of a silent video
+        return json({ success: true, bytes: 0 });
+      }
+      const st = sized(req, MAX_PART);
+      if (!st) return json({ success: false, error: 'a file needs its length and, over 16 MB, parts' }, 413);
+      const put = await env.VIDEO.put(key, st.body, { httpMetadata: { contentType: type } }).catch(() => null);
+      if (!put) return json({ success: false, error: 'the file did not arrive whole' }, 400);
+      return json({ success: true, bytes: st.len });
     }
     return json({ success: false, error: 'unknown operation' }, 400);
   }

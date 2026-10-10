@@ -904,7 +904,10 @@ cards (`SolutionsSection.tsx`, "Build this") open it with a solution picked;
 it hands out **signed, short-lived links** to `/api/video-file.php`
 (`routes/videoFile.ts`, `lib/video/store.ts`: HMAC with `installSecret('video_url')`,
 the key must sit under `v/<workspace>/`, modes get / up (a browser upload part) /
-put (an engine output prefix) / poke / listen (a library track by id)). Signed
+put (an engine output prefix) / poke / listen (a library track by id)). **Parts
+stream to R2** through a `FixedLengthStream` of their declared length — only part
+1 is read whole, to sniff it; buffering 16 MB parts several at a time took an
+isolate to its 128 MB and reset it ("Network connection lost"). Signed
 links expire **on the hour** so a poll hands out the same address within it —
 a link that changed every poll reloaded the player, which is why the preview
 played three seconds and stopped; `Player.tsx` also holds its first address
