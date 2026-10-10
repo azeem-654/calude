@@ -130,7 +130,12 @@ ok('a request naming no workspace is refused before anything is looked up', empt
 const READS = new Set(['status', 'get', 'list', 'capabilities']);
 const v = async (action, extra = {}, who = { T, A }) => {
   for (let i = 0; ; i++) {
-    try { return await api('video.php', { token: who.T, accountId: who.A, action, ...extra }); }
+    try {
+      const r = await api('video.php', { token: who.T, accountId: who.A, action, ...extra });
+      /* No JSON at all (an error page from the dev proxy) is the same dropped request. */
+      if (r.success !== undefined || !READS.has(action) || i >= 30) return r;
+      await sleep(2000);
+    }
     catch (e) { if (!READS.has(action) || i >= 30) throw e; await sleep(2000); } // a restart takes ~15 s
   }
 };
