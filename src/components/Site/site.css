@@ -790,9 +790,10 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 /* ── Platform ───────────────────────────────────────────────────────────── */
 
 .dc-platform {
+  --sec-pad: clamp(16px, 4vw, 44px);
   position: relative;
   overflow: hidden;
-  padding: clamp(66px, 9vw, 122px) clamp(16px, 4vw, 44px);
+  padding: clamp(66px, 9vw, 122px) var(--sec-pad);
   /* A faint lift out of the ink, so the section reads as a band without
      hiding the stars behind it. */
   background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.028) 22%, transparent);
@@ -1003,10 +1004,11 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 /* ── Closing call ───────────────────────────────────────────────────────── */
 
 .dc-cta {
+  --sec-pad: clamp(16px, 4vw, 44px);
   position: relative;
   overflow: hidden;
   text-align: center;
-  padding: clamp(66px, 9vw, 112px) clamp(16px, 4vw, 44px) 0;
+  padding: clamp(66px, 9vw, 112px) var(--sec-pad) 0;
   background: linear-gradient(160deg, var(--lime-lt), var(--lime) 46%, var(--mint));
   background-size: 200% 200%;
   color: var(--ink);
@@ -2336,7 +2338,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
    The show is as wide as the page allows (up to 1560px) so a screen is drawn
    as large as it can be; the chips float over the dimmed neighbours either
    side, never over the screen being read. */
-.dc-stage { position: relative; padding: clamp(60px, 8vw, 110px) clamp(16px, 3vw, 40px) clamp(30px, 4vw, 50px); }
+.dc-stage { --sec-pad: clamp(16px, 3vw, 40px); position: relative; padding: clamp(60px, 8vw, 110px) var(--sec-pad) clamp(30px, 4vw, 50px); }
 .dc-stage-head { max-width: 860px; margin: 0 auto clamp(26px, 3.6vw, 44px); text-align: center; }
 .dc-stage-head h2 { font-size: clamp(30px, 4.2vw, 56px); line-height: 1.05; letter-spacing: -0.035em; color: var(--text); margin: 14px 0 0; }
 .dc-stage-head h2 em { font-style: normal; background: linear-gradient(92deg, var(--lime), var(--mint)); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -2528,6 +2530,56 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 }
 @media (min-width: 1000px) and (orientation: landscape) and (min-height: 420px) {
   .dc-hero-shot .dc-reel.strip .dc-reel-stage { max-height: none; }
+}
+
+/* ── Every slideshow as wide as the hero's ───────────────────────────────────
+   The owner: "only the first section is full width; the rest leave free space
+   left and right". Two things held them in: the wrappers' max-widths
+   (1560px, 1080px, 1000px) and a 16:9 stage capped by the window's height,
+   whose width then shrank with it — on a 1920×960 window the AI Autopilot
+   strip was 1370 of 1920. Now every strip runs out to the hero's gutter,
+   up to the hero's own cap (1760px), and the height cap no longer narrows
+   it: the slide is as wide as the strip and as tall as 16:9 or the window
+   allows, whichever is less — the hero's shape. ShotReel fits the page whole
+   into whatever that is, then widens it to the full width, as it does there.
+
+   How it reaches the edges without `100vw` (which counts a desktop scroll
+   bar and pushes the page sideways): each section names its own side padding
+   (`--sec-pad`), and the strip's margins hand that back, less the gutter, or
+   less whatever keeps it at 1760 — `%` in a margin is the parent's width. The
+   strip is a size container so the stage's height can be computed from its
+   width (`cqw`); the older 16:9 rule above stays as the fallback. Titles,
+   blocks and cards keep their readable widths. Phones are not touched: their
+   tour is the owner's and stays as it is. */
+.dc-process { --sec-pad: clamp(16px, 4vw, 44px); padding-inline: var(--sec-pad); max-width: none; }
+@media (min-width: 761px) {
+  .dc-stage-show,
+  .dc-flow-shot,
+  .dc-own-shot,
+  .dc-cta-shot {
+    --bleed-gut: clamp(16px, 2.4vw, 40px);
+    width: auto;
+    max-width: none;
+    margin-left: max(calc(var(--bleed-gut) - var(--sec-pad)), calc((100% - 1760px) / 2));
+    margin-right: max(calc(var(--bleed-gut) - var(--sec-pad)), calc((100% - 1760px) / 2));
+    container-type: inline-size;
+  }
+  .dc-own { max-width: none; }
+  .dc-own-shot { justify-self: stretch; }
+  .dc-stage-show .dc-reel-caption,
+  .dc-flow-shot .dc-reel-caption,
+  .dc-own-shot .dc-reel-caption { max-width: 1240px; }
+  @supports (width: 1cqw) {
+    .dc-stage-show .dc-reel.strip .dc-reel-stage,
+    .dc-flow-shot .dc-reel.strip .dc-reel-stage,
+    .dc-own-shot .dc-reel.strip .dc-reel-stage,
+    .dc-cta-shot .dc-reel.strip .dc-reel-stage {
+      aspect-ratio: auto;
+      width: 100%;
+      max-height: none;
+      height: min(calc(100cqw * 9 / 16), max(360px, calc(var(--dc-vh) - 190px)));
+    }
+  }
 }
 
 /* Full size is a page to scroll now, not a picture to fit. */
