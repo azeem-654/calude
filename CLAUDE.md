@@ -849,11 +849,20 @@ their own). The growth rate is the real one and may be negative.
 "Describe the outcome | AI builds the system", with one primary button
 everywhere — **Start free** (`StartFree` in SiteHome.tsx), "7 days free · No
 card required · Nothing sends until you approve it" beside it — and **Find my
-solution**, which opens `Site/SolutionWizard.tsx` (lazy, portalled to `<body>`
-because the site's transformed sections make `position: fixed` relative to
-themselves). `#find` or `#find=<solution>` opens it from a link; the use-case
-cards (`SolutionsSection.tsx`, "Build this") open it with a solution picked;
-`FaqSection.tsx` answers only what is true of the product.
+solution**. The wizard (`Site/SolutionWizard.tsx`) is **open on the page**:
+the "What do you want to grow?" section (`SolutionsSection.tsx`, `#solutions`,
+the wizard at `#find`) draws it `inline` at its first question, with the
+ready-made recipe cards under it. Every Find my solution button, and `#find` /
+`#find=<solution>`, scrolls there; a card's "Build this" restarts it with that
+solution picked (`FindRequest`: `n` remounts with the pick, `call` = somebody
+was sent here). Inline it has no scrim, scroll lock, Escape or autofocus, grows
+with its step, keeps its footer stuck to the window, and counts
+`wizard_started` on first touch or when sent to — never on page load. Its code
+loads lazily as the section nears the screen, behind a still copy of its first
+screen. The same component still renders as the modal (no `inline`, portalled
+to `<body>` because the site's transformed sections make `position: fixed`
+relative to themselves). `FaqSection.tsx` answers only what is true of the
+product.
 
 - **One judgement.** The wizard runs the app wizard's pure modules
   (`initialState`, `allQuestions`, `screensOf`, `buildBlueprint`), so the plan
@@ -1410,8 +1419,10 @@ Each picture is the **whole page** from where its recipe left it scrolled (up
 to 3,000 CSS px on a desktop, 2,160 on a phone; panes that scroll on their own
 are let out first; a screen with a dialog open is the window alone). **Wider
 than a phone, there is no zoom** (the owner's call): the slide showing takes
-the section's whole width (the strip as tall as the window allows, centred
-when the height caps its width), and each
+the strip's whole width — and every strip, not only the hero's, runs out to
+the hero's gutter, up to its 1760px cap (`--sec-pad` margins in site.css,
+never `100vw`); the height is 16:9 of that width or what the window allows,
+whichever is less, so a short window no longer narrows it — and each
 slide opens on the **whole page fitted in**, widens to the full width at the
 top, holds a beat, travels down to the bottom at a reading pace, and moves
 **straight on to the next slide** — nothing scrolls back up (the slide just
