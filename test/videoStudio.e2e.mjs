@@ -108,7 +108,16 @@ const T = login.token, A = reg.user?.accountId ?? login.user?.accountId;
 ok('(a customer account with its own workspace)', !!T && !!A, { reg, login: Object.keys(login) });
 const empty = await api('video.php', { token: T, accountId: '', action: 'list' });
 ok('a request naming no workspace is refused before anything is looked up', empty.code === 'no_workspace', empty);
-const v = (action, extra = {}, who = { T, A }) => api('video.php', { token: who.T, accountId: who.A, action, ...extra });
+/* Local workerd now and then drops a request outright ("Network connection
+   lost", no response at all) and keeps serving. A read is asked again; a
+   write is not, because it may have landed. */
+const READS = new Set(['status', 'get', 'list', 'capabilities']);
+const v = async (action, extra = {}, who = { T, A }) => {
+  for (let i = 0; ; i++) {
+    try { return await api('video.php', { token: who.T, accountId: who.A, action, ...extra }); }
+    catch (e) { if (!READS.has(action) || i >= 3) throw e; await sleep(1500); }
+  }
+};
 
 /* An Autopilot project with a portfolio and a "Recording to Shorts" workflow. */
 const pf = await api('projects.php', { token: T, accountId: A, action: 'save_portfolio', name: 'Growth Show Ltd', profile: { companyName: 'Growth Show Ltd', description: 'A weekly show about winning customers', website: 'growthshow.example', brandColor: '#e5484d' } });
