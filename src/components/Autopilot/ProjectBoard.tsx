@@ -16,16 +16,16 @@
  * opens the sequence. Nothing here is a copy: the card is the ledger entry and
  * the link is where the thing actually lives.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Check, Clock, AlertTriangle, ExternalLink, Pause, Play, MoreHorizontal, Trash2, Globe,
-  Sparkles, Loader,
+  Sparkles, Loader, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
   fetchBoard, setProjectStatus, deleteProject, poolTargetOf, KIND_LABEL,
-  saveProject, savePortfolio,
+  saveProject, savePortfolio, reorderProjects,
   type Project, type Card, type Portfolio,
 } from '../../services/projects';
 import { approveAction, rejectAction } from '../../services/autopilot';
@@ -36,6 +36,8 @@ import AutopilotBot from './AutopilotBot';
 import { DEMO_CLIENT, DEMO_PROJECT, DEMO_WORKFLOWS, TEMPLATES } from './workflowTemplates';
 import { saveWorkflow } from '../../services/autopilot';
 import { getSession } from '../../services/auth';
+import { refreshPulse } from '../../services/autopilotPulse';
+import { motionReduced } from '../../services/motion';
 
 const INK = T.ink;
 const MUTED = T.muted;
@@ -181,6 +183,15 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
      first thing on screen rather than one card somewhere down a stack. */
   const [params] = useSearchParams();
   const focusId = params.get('project') ?? '';
+  /* One move at a time: each is the whole order, and two in flight could land
+     in either order on the server. */
+  const [moving, setMoving] = useState(false);
+  /* What the screen reader is told after a move — the card it was on has just
+     changed places under it, which nothing visual says to somebody not seeing it. */
+  const [moved, setMoved] = useState('');
+  /* The button pressed, to give focus back to once its card is in its new place.
+     React moves the card's DOM node, and a moved node loses focus. */
+  const refocus = useRef<{ id: string; dir: 'up' | 'down' } | null>(null);
 
   /**
    * Build the worked example.
@@ -267,6 +278,52 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     const el = document.getElementById(`project-${focusId}`);
     if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }, [focusId, loading, projects.length]);
+
+  /**
+   * Move a project one place up or down.
+   *
+   * Shown at once and sent as the whole order; put back as it was, with the
+   * reason, if the server refuses. The nav diagram and the dashboard read the
+   * same order from the pulse, so it is refreshed too.
+   */
+  const move = async (index: number, dir: 'up' | 'down') => {
+    const to = dir === 'up' ? index - 1 : index + 1;
+    if (moving || to < 0 || to >= projects.length) return;
+    const before = projects;
+    const next = before.slice();
+    const [p] = next.splice(index, 1);
+    next.splice(to, 0, p);
+    refocus.current = { id: p.id, dir };
+    setProjects(next);
+    setMoving(true);
+    const r = await reorderProjects(next.map(x => x.id));
+    setMoving(false);
+    if (!r.success) {
+      setProjects(before);
+      setMoved(`Could not move ${p.name}.`);
+      addNotification(r.error ?? 'The new order could not be saved.', 'error');
+      return;
+    }
+    if (r.projects) setProjects(r.projects);
+    setMoved(`${p.name} moved to ${to + 1} of ${next.length}.`);
+    void refreshPulse();
+  };
+
+  useEffect(() => {
+    const want = refocus.current;
+    if (!want) return;
+    refocus.current = null;
+    const wrap = document.getElementById(`project-${want.id}`);
+    if (!wrap) return;
+    /* The same button if it can still be pressed, else its pair — a project
+       moved to the top has nowhere further up to go. */
+    const btn = wrap.querySelector<HTMLButtonElement>(`[data-move="${want.dir}"]:not(:disabled)`)
+      ?? wrap.querySelector<HTMLButtonElement>('[data-move]:not(:disabled)');
+    btn?.focus({ preventScroll: true });
+    /* A project card is most of a screen tall, so the one just moved is
+       followed rather than left where somebody can no longer see it. */
+    wrap.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' });
+  }, [projects]);
 
   const decide = async (id: string, approve: boolean) => {
     setDeciding(true);
@@ -388,6 +445,9 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
    */
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <span role="status" aria-live="polite" style={{
+        position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap',
+      }}>{moved}</span>
       {/* ── The bar above the projects ──
           The button was only at the bottom, after a page of projects, which is
           the one place somebody with six of them will not look. It is here as
@@ -424,14 +484,39 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                 Six full-width cards in a column run together, and the thing
                 somebody loses is where one client ends and the next begins —
                 which is the only question the stack exists to answer. */}
-            {i > 0 && (
-              <div aria-hidden style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '2px 0' }}>
-                <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, transparent, ${LINE})` }} />
+            {/* With more than one project, every project has the line — the
+                first too, because it carries the arrows that set the order. */}
+            {projects.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '2px 0' }}>
+                <span aria-hidden style={{ flex: 1, height: 1, background: `linear-gradient(90deg, transparent, ${LINE})` }} />
                 <span style={{
                   fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.09em',
                   textTransform: 'uppercase', whiteSpace: 'nowrap',
                 }}>Project {i + 1} of {projects.length}</span>
-                <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${LINE}, transparent)` }} />
+                <span style={{ display: 'inline-flex', gap: 4 }}>
+                  {(['up', 'down'] as const).map(dir => {
+                    const end = dir === 'up' ? i === 0 : i === projects.length - 1;
+                    const Icon = dir === 'up' ? ArrowUp : ArrowDown;
+                    return (
+                      <button key={dir} type="button" data-move={dir}
+                        disabled={end || moving}
+                        onClick={() => void move(i, dir)}
+                        aria-label={`Move ${p.name} ${dir}`}
+                        title={end ? (dir === 'up' ? 'Already first' : 'Already last') : `Move ${dir}`}
+                        className="press"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 28, height: 28, borderRadius: 999, padding: 0,
+                          border: `1px solid ${LINE}`, background: T.raised,
+                          color: end ? LINE : INK, cursor: end || moving ? 'default' : 'pointer',
+                          opacity: end ? 0.55 : 1, fontFamily: 'inherit',
+                        }}>
+                        <Icon size={13} />
+                      </button>
+                    );
+                  })}
+                </span>
+                <span aria-hidden style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${LINE}, transparent)` }} />
               </div>
             )}
           <ProjectCard
