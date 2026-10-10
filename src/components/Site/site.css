@@ -2627,7 +2627,24 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc .dc-btn-sm { padding: 9px 15px; font-size: 13.5px; }
 .dc-plan-note { display: block; margin-top: 8px; text-align: center; font-size: 12px; color: var(--muted); }
 
-.dc-usecases { max-width: 1240px; margin: 0 auto; padding: clamp(60px, 8vw, 110px) clamp(16px, 4vw, 44px) clamp(30px, 4vw, 50px); }
+.dc-usecases { --uc-pad: clamp(16px, 4vw, 44px); max-width: 1240px; margin: 0 auto; padding: clamp(60px, 8vw, 110px) var(--uc-pad) clamp(30px, 4vw, 50px); }
+/* Find my solution, open in the section (SolutionsSection.tsx): the wizard's
+   light card on the dark page, then the recipes under it. */
+.dc-find-sec .dc-chapter-head .dc-eyebrow { display: inline-flex; align-items: center; gap: 6px; }
+.dc-find { position: relative; isolation: isolate; scroll-margin-top: 12px; }
+.dc-find::before {
+  content: ''; position: absolute; inset: -40px 8% auto; height: 70%; z-index: -1; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(200, 242, 77, 0.12), transparent); filter: blur(20px);
+}
+.dc-uc-head { max-width: 720px; margin: clamp(48px, 6vw, 76px) auto clamp(22px, 3vw, 32px); text-align: center; }
+.dc-uc-head h3 { font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -0.025em; }
+.dc-uc-head p { margin-top: 10px; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.dc-uc-head b { color: var(--text); }
+/* A phone: the wizard edge to edge, as the modal was — the section gives up
+   its gutter for it. */
+@media (max-width: 640px) {
+  .dc-find { margin-inline: calc(-1 * var(--uc-pad)); }
+}
 .dc-uc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; }
 .dc-uc {
   display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 20px; border-radius: 20px;

@@ -24,7 +24,7 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
@@ -49,12 +49,10 @@ import ProspectingShowcase from './ProspectingShowcase';
 import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
-import SolutionsSection from './SolutionsSection';
+import SolutionsSection, { type FindRequest } from './SolutionsSection';
 import FaqSection from './FaqSection';
 import { track } from '../../services/funnel';
-
-/* The wizard is a screen of its own, loaded when somebody opens it. */
-const SolutionWizard = lazy(() => import('./SolutionWizard'));
+import { motionReduced } from '../../services/motion';
 import './site.css';
 
 type Reel = keyof typeof REELS;
@@ -342,18 +340,35 @@ export default function SiteHome() {
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
 
-  /* Find my solution. `#find` (or `#find=<solution>`) opens it from a link. */
-  const [wizard, setWizard] = useState<{ pick: string } | null>(() => {
+  /* Find my solution lives open in the "What do you want to grow?" section
+     (SolutionsSection.tsx). Every button for it scrolls there; a pick
+     ("Build this", `#find=<solution>`) starts it again with that outcome
+     chosen. `#find` (or `#find=<solution>`) does the same from a link. */
+  const fromHash = (h: string): string | null => { const m = /^#find(?:=([a-z-]+))?$/.exec(h); return m ? m[1] ?? '' : null; };
+  const [find, setFind] = useState<FindRequest>(() => {
     try {
-      const m = /^#find(?:=([a-z-]+))?$/.exec(location.hash);
-      return m ? { pick: m[1] ?? '' } : null;
-    } catch { return null; }
+      const pick = fromHash(location.hash);
+      return pick === null ? { pick: '', n: 0, call: 0 } : { pick, n: pick ? 1 : 0, call: 1 };
+    } catch { return { pick: '', n: 0, call: 0 }; }
   });
+  const toWizard = useCallback((smooth: boolean) => {
+    document.getElementById('find')?.scrollIntoView({ block: 'start', behavior: smooth && !motionReduced() ? 'smooth' : 'auto' });
+  }, []);
   const openWizard = useCallback((pick = '', from = '') => {
     if (from === 'hero') track('hero_cta_clicked');
-    setWizard({ pick });
+    setFind(f => (pick ? { pick, n: f.n + 1, call: f.call + 1 } : { ...f, call: f.call + 1 }));
+    toWizard(true);
+  }, [toWizard]);
+  useEffect(() => {
+    track('homepage_view');
+    /* Arrived on a #find link: the browser looked for the anchor before the
+       page had drawn it. */
+    if (find.call) requestAnimationFrame(() => toWizard(false));
+    const onHash = () => { const pick = fromHash(location.hash); if (pick !== null) openWizard(pick); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on arrival only
   }, []);
-  useEffect(() => { track('homepage_view'); }, []);
 
   /* The nav is transparent over the hero and solid once you leave it, which is
      the only way a dark translucent bar stays legible over a light page. */
@@ -538,10 +553,10 @@ export default function SiteHome() {
       </div>
 
       {/* ── What do you want to grow? ──
-             The use cases, by outcome, each with "Build this" — straight
-             after the proof that the product is real, before the tour of how
-             it works. ── */}
-      <SolutionsSection onBuild={k => openWizard(k)} />
+             Find my solution, open on the page, and the ready-made recipes
+             under it, each with "Build this" — straight after the proof that
+             the product is real, before the tour of how it works. ── */}
+      <SolutionsSection find={find} onBuild={k => openWizard(k)} />
 
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because
@@ -776,11 +791,6 @@ export default function SiteHome() {
           <span>Sends on your own mailbox. Your data stays in your workspace.</span>
         </div>
       </footer>
-      {wizard && (
-        <Suspense fallback={null}>
-          <SolutionWizard initialPick={wizard.pick} onClose={() => { setWizard(null); if (/^#find/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }} />
-        </Suspense>
-      )}
     </div>
   );
 }
