@@ -104,6 +104,14 @@ why it can be tested without a database — keep it that way.
   project must not hold a permission its owner never saw. `kind` is derived the
   same way rather than asked, because it is the server's contract, not a
   question a customer can answer.
+- **Projects keep the order the customer set.** `crm_projects.position`
+  (migration 0071; 1 is the top): `save_project` gives a new one the
+  workspace's highest + 1, so it lands in the last row, and an edit never moves
+  it; `reorder_projects` takes the whole order and refuses any id not this
+  workspace's. Every list of projects (`listProjects`, revenue, the client
+  portal) reads `ORDER BY position, created_at, id`. The board's divider line
+  over each project carries Move up / Move down (optimistic, put back with the
+  reason on refusal, then `refreshPulse`).
 - **`autopilotPulse.ts` is the one reader of the board on the client.** The
   dashboard panel and the nav diagram both want it at once; without the shared
   cache each mounts its own fetch and the same question is asked four times a
@@ -1200,10 +1208,16 @@ their weighted share. Content-agent workflows (scheduled, only `ai` steps,
 nothing that sends) are switched on because the customer approved a blueprint
 saying they run; anything that emails or texts stays a draft.
 
-**Voice** is `components/Autopilot/voice/`: the browser recogniser for a live
-preview only (told the customer's real locale, restarted across pauses), and a
-16 kHz WAV of the whole take sent to `transcribe` for the text that goes in the
-box. The text is always put in the box for review — never submitted.
+**Voice** is `components/Autopilot/voice/`: a 16 kHz WAV of the whole take
+sent to `transcribe` for the text that goes in the box, and the browser
+recogniser (told the customer's real locale, restarted across pauses) kept
+only as the fallback text. **Its words are not shown while somebody speaks** —
+they trailed the voice by a second or more and read as a broken recording.
+Listening is shown by `VoiceBars.tsx` instead: bars drawn from the real level
+of the same stream (`meter`, a ref written by the hook's frame loop, never
+React state), a recording light and a clock; under reduced motion, one level
+meter with no transition. AI Prospecting's `MicButton` holds five of the bars.
+The text is always put in the box for review — never submitted.
 
 The launch plan is **sent** with `saveProject` rather than recomputed on the
 server, and becomes the checklist on the project's first card — so the board

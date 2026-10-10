@@ -60,6 +60,8 @@ interface Req {
   source?: string;
   url?: string;
   text?: string;
+  /** `reorder_projects`: every project of the workspace, top first. */
+  ids?: unknown;
 }
 
 const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -126,7 +128,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
               j.guardrails, j.purchase_mode AS purchaseMode, j.pool_target AS poolTarget,
               j.revenue_target AS revenueTarget, j.volume_target AS volumeTarget, j.goals,
               j.last_planned_at AS lastPlannedAt, j.last_acted_at AS lastActedAt,
-              j.last_error AS lastError, j.created_at AS createdAt,
+              j.last_error AS lastError, j.created_at AS createdAt, j.position,
               /* The build order the customer agreed to in the wizard. Sent so a
                  project that has not produced anything yet can show what it is
                  working through rather than an empty frame — real steps with a
@@ -142,7 +144,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
                 WHERE a.project_id = j.id AND a.status = 'failed') AS failed
        FROM crm_projects j
        LEFT JOIN crm_portfolios p ON p.id = j.portfolio_id
-       WHERE j.account_id = ? ORDER BY j.created_at LIMIT 100`,
+       WHERE j.account_id = ? ORDER BY j.position, j.created_at, j.id LIMIT 100`,
     ).bind(accountId).all();
     return (results ?? []).map(r => {
       const row = r as Record<string, unknown>;
@@ -506,8 +508,12 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       `INSERT INTO crm_projects
        (id, account_id, portfolio_id, name, objective, kind, status, guardrails,
         purchase_mode, pool_target, revenue_target, volume_target, goals,
-        launch_steps, brief, last_error, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, ?, ?, '', ?,?)
+        launch_steps, brief, last_error, created_at, updated_at, position)
+       VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, ?, ?, '', ?,?,
+               /* A new project goes in the last row. Not touched on an edit
+                  (the UPDATE below leaves it out), so rewording a project does
+                  not move it. */
+               (SELECT COALESCE(MAX(position), 0) + 1 FROM crm_projects WHERE account_id = ?))
        ON CONFLICT(id) DO UPDATE SET
          portfolio_id=excluded.portfolio_id, name=excluded.name,
          objective=excluded.objective, kind=excluded.kind, status=excluded.status,
@@ -522,7 +528,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       revenueTarget, volumeTarget, goals,
       launchSteps ?? existing?.launchSteps ?? '[]',
       brief ?? existing?.brief ?? '{}',
-      existing?.created_at ?? now, now,
+      existing?.created_at ?? now, now, accountId,
     ).run();
 
     /*
@@ -658,6 +664,35 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       .bind(JSON.stringify(current), nowIso(), id, accountId).run();
 
     return json({ success: true, guardrails: current, projects: await listProjects() });
+  }
+
+  /**
+   * The order the board shows this workspace's projects in.
+   *
+   * The whole list, top first, rather than "move this one up": the board
+   * knows what it showed, and a list makes a drag and a button the same
+   * request. Every id must be this workspace's — one that is not is refused
+   * outright rather than skipped, because a list naming somebody else's
+   * project is not a list this screen drew. A project the list leaves out
+   * (made in another tab since) keeps its relative place after the named
+   * ones, so a stale screen cannot lose it.
+   */
+  if (act === 'reorder_projects') {
+    if (!Array.isArray(d.ids) || d.ids.length > 200) return fail('Send the projects in the order to show them.');
+    const ids = d.ids.map(x => String(x ?? '').trim());
+    if (ids.some(x => !x) || new Set(ids).size !== ids.length) return fail('Each project can appear once in the order.');
+    const { results } = await env.DB.prepare(
+      'SELECT id FROM crm_projects WHERE account_id = ? ORDER BY position, created_at, id',
+    ).bind(accountId).all<{ id: string }>();
+    const mine = (results ?? []).map(r => r.id);
+    const known = new Set(mine);
+    if (ids.some(x => !known.has(x))) return fail('That project is not in this workspace.', 403);
+    const order = [...ids, ...mine.filter(x => !ids.includes(x))];
+    if (order.length) {
+      await env.DB.batch(order.map((id, i) =>
+        env.DB.prepare('UPDATE crm_projects SET position = ? WHERE id = ? AND account_id = ?').bind(i + 1, id, accountId)));
+    }
+    return json({ success: true, projects: await listProjects() });
   }
 
   if (act === 'delete_project') {

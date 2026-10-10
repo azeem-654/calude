@@ -216,6 +216,16 @@ const hijackProject = await api('projects.php', {
 });
 const stillA = d1rows(`SELECT name, account_id AS a FROM crm_projects WHERE id = '${pj.data.id}'`)[0];
 check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name === 'A project' && stillA?.a === A.acct, JSON.stringify([hijackProject.data, stillA]));
+{
+  /* The board's order is a list of ids: one of A's in B's list is refused
+     whole, and A's project keeps its place. */
+  const posBefore = d1rows(`SELECT position FROM crm_projects WHERE id = '${pj.data.id}'`)[0]?.position;
+  const reorder = await api('projects.php', { action: 'reorder_projects', token: B.token, accountId: B.acct, ids: [pj.data.id] });
+  const posAfter = d1rows(`SELECT position, account_id AS a FROM crm_projects WHERE id = '${pj.data.id}'`)[0];
+  check("B cannot reorder A's project into its own list", !reorder.ok && reorder.status === 403 && posAfter?.position === posBefore && posAfter?.a === A.acct, JSON.stringify([reorder.data, posBefore, posAfter]));
+  const reorderA = await api('projects.php', { action: 'reorder_projects', token: B.token, accountId: A.acct, ids: [pj.data.id] });
+  check("B cannot reorder A's workspace", !reorderA.ok, JSON.stringify(reorderA.data));
+}
 if (productId) {
   const hijackProduct = await api('commerce.php', { action: 'save_product', token: B.token, accountId: B.acct, id: productId, name: 'defaced', priceCents: 1, status: 'active' });
   const p = d1rows(`SELECT name, price_cents AS price FROM crm_products WHERE id = '${productId}'`)[0];

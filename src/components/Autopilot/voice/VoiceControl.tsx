@@ -1,11 +1,14 @@
 /**
  * The microphone, as the customer sees it.
  *
- * Idle is a microphone. Listening says "Listening…" in words, draws a ring that
- * follows their voice, and shows what it is hearing as they speak — settled
- * words dark, words still in flux grey. Stop, and it says it is transcribing;
- * then it hands the text up to whoever owns the box, which puts it there and
- * asks them to check it.
+ * Idle is a microphone. Listening says "Listening…" with a recording light
+ * and a running clock, draws a ring that follows their voice, and a row of
+ * bars that move with the microphone's real level (VoiceBars). The words are
+ * not shown as they are spoken: the browser's live guess trailed the speaker
+ * by a second or more and read as a recording that was not working (see
+ * useVoiceInput.ts). Stop, and it says it is transcribing; then it hands the
+ * text up to whoever owns the box, which puts it there and asks them to
+ * check it.
  *
  * The ring and the pulse are CSS, inside `prefers-reduced-motion:
  * no-preference` (see voice.css), so somebody who asked their machine to stop
@@ -14,6 +17,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Mic, Square, Loader, AlertCircle, RotateCcw, Globe2 } from 'lucide-react';
 import { useVoiceInput, LOCALES, defaultLocale, rememberLocale, type VoiceResult } from './useVoiceInput';
+import VoiceBars from './VoiceBars';
 import './voice.css';
 
 const INK = '#17191c';
@@ -88,12 +92,20 @@ export default function VoiceControl({ onResult, onListening, disabled, compact,
         </button>
 
         <span style={{ minWidth: 0, flex: '1 1 140px' }}>
-          <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: v.phase === 'listening' ? BAD : v.phase === 'error' ? BAD : INK }} aria-live="polite">
-            {v.phase === 'listening' ? `Listening… ${mmss(v.seconds)}`
-              : v.phase === 'starting' ? 'Starting the microphone…'
-                : v.phase === 'transcribing' ? 'Transcribing what you said…'
-                  : v.phase === 'error' ? 'Voice input stopped'
-                    : 'Speak instead'}
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: v.phase === 'listening' ? BAD : v.phase === 'error' ? BAD : INK }}>
+            {v.phase === 'listening' && <span className="vc-rec" aria-hidden />}
+            {/* The words are announced; the clock beside them is not, or a
+                screen reader would read out every second. */}
+            <span aria-live="polite">
+              {v.phase === 'listening' ? 'Listening…'
+                : v.phase === 'starting' ? 'Starting the microphone…'
+                  : v.phase === 'transcribing' ? 'Transcribing what you said…'
+                    : v.phase === 'error' ? 'Voice input stopped'
+                      : 'Speak instead'}
+            </span>
+            {v.phase === 'listening' && (
+              <span aria-hidden style={{ marginLeft: 6, fontVariantNumeric: 'tabular-nums' }}>{mmss(v.seconds)}</span>
+            )}
           </span>
           <span style={{ display: 'block', fontSize: 11.5, color: MUTED, lineHeight: 1.45 }}>
             {v.phase === 'listening' ? 'Speak naturally — pauses are fine. Press stop when you have finished.'
@@ -122,22 +134,16 @@ export default function VoiceControl({ onResult, onListening, disabled, compact,
       </div>
 
       {v.phase === 'listening' && (
-        <div className="vc-live" role="status" style={{
+        <div className="vc-live" style={{
           border: '1px solid #f3d3d0', background: '#fffafa', borderRadius: 12, padding: '10px 12px',
-          fontSize: 14, lineHeight: 1.55, minHeight: 44,
+          display: 'grid', gap: 6, minWidth: 0,
         }}>
-          {v.finalText || v.interim ? (
-            <>
-              <span style={{ color: INK }}>{v.finalText}</span>{' '}
-              <span style={{ color: '#9aa3b2' }}>{v.interim}</span>
-            </>
-          ) : (
-            <span style={{ color: MUTED }}>
-              {v.livePreview
-                ? 'Go ahead — the words appear here as you speak.'
-                : 'Recording. This browser cannot show words live; they appear when you press stop.'}
-            </span>
-          )}
+          <span style={{ color: BAD, display: 'block', minWidth: 0 }}>
+            <VoiceBars meter={v.meter} count={compact ? 28 : 40} height={compact ? 28 : 36} />
+          </span>
+          <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.45 }}>
+            Recording — the bars move with your voice. Your words appear for you to check when you press stop.
+          </span>
         </div>
       )}
 
