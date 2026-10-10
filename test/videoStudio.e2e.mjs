@@ -626,11 +626,12 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const hb = await handle.boundingBox();
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
   await page.mouse.down();
-  await page.mouse.move(hb.x - 40, hb.y + hb.height / 2, { steps: 6 });
+  /* Zoomed out, a pixel is a second or two of a 20-minute recording: a few pixels trims a few seconds. */
+  await page.mouse.move(hb.x + hb.width / 2 - 4, hb.y + hb.height / 2, { steps: 4 });
   await page.mouse.up();
   await page.waitForTimeout(1500);
   const trimmed = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
-  ok('a Short is trimmed by dragging its edge on the timeline', trimmed.e < before.e - 0.3 && Math.abs(trimmed.s - before.s) < 0.01, { before: [before.s, before.e], after: [trimmed.s, trimmed.e] });
+  ok('a Short is trimmed by dragging its edge on the timeline', trimmed.e < before.e - 0.3 && trimmed.e - trimmed.s >= 3 && Math.abs(trimmed.s - before.s) < 0.01, { before: [before.s, before.e], after: [trimmed.s, trimmed.e] });
 }
 
 /* ── 18 · Reopen ── */
@@ -659,7 +660,8 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const asA = await api('video.php', { token: who.T, accountId: A, action: 'list' });
   ok('19 · another workspace sees none of the projects, videos or words', list.projects?.length === 0 && lib.items?.length === 0 && peek.code === 'not_found' && poke.code === 'not_found' && del.code === 'not_found', { list: list.projects?.length, lib: lib.items?.length, peek: peek.code, poke: poke.code, del: del.code });
   ok('…and cannot name the other workspace to get in', !asA.success && asA.code === 'not_yours', asA);
-  const url = new URL(S.outputs[0].mp4Url);
+  /* A link from now: every video has been rendered again since S was read, and only the latest file is kept. */
+  const url = new URL((await v('get', { projectId: PID })).outputs.find(o => o.mp4Url).mp4Url);
   const t = url.searchParams.get('t');
   const [body, sig] = t.split('.');
   const g = JSON.parse(Buffer.from(body.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());

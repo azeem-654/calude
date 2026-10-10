@@ -162,7 +162,8 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     if (alt || !sentences.length) return t;
     const marks = sentences.flatMap(s => [s.s, s.e]);
     const best = marks.reduce((b, m) => (Math.abs(m - t) < Math.abs(b - t) ? m : b), marks[0]);
-    return Math.abs(best - t) * pps < 14 ? best : t;
+    /* Close on screen and close in time: zoomed out, 14 px can be twenty seconds. */
+    return Math.abs(best - t) * pps < 14 && Math.abs(best - t) < 1.5 ? best : t;
   };
   const grab = (e: React.PointerEvent, kind: 'clip' | 'ov', id: string, edge: 's' | 'e' | 'both', s: number, en: number) => {
     e.stopPropagation(); e.preventDefault();
