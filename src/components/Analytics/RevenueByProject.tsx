@@ -177,7 +177,7 @@ export default function RevenueByProject() {
               note={totals!.wonDeals ? `plus ${totals!.wonDeals} won deal${totals!.wonDeals === 1 ? '' : 's'}` : 'Shop and recorded orders'} />
             <Tile icon={Receipt} label="Average order" value={totals!.paidOrders ? money(totals!.averageCents, cur) : '—'}
               note={totals!.paidOrders ? 'Revenue ÷ paid orders' : 'No paid orders yet'} />
-            <Tile icon={LifeBuoy} label="Recovered by Autopilot" value={money(totals!.recoveredCents, cur)}
+            <Tile icon={LifeBuoy} label="Recovered by AI Autopilot" value={money(totals!.recoveredCents, cur)}
               note={`${totals!.recoveredOrders} unpaid order${totals!.recoveredOrders === 1 ? '' : 's'} paid after a chase`} />
           </div>
 
@@ -389,7 +389,7 @@ function EmptyState({ hasProjects }: { hasProjects: boolean }) {
           paid under Online shop → Orders. Won deals in a project&rsquo;s pipeline are shown beside it.
           {hasProjects
             ? ' To credit a sale to a project, connect a shop to that project, or share the project’s own shop link from its Overview.'
-            : ' Revenue is credited to Autopilot projects — create one, then connect a shop to it.'}
+            : ' Revenue is credited to AI Autopilot projects — create one, then connect a shop to it.'}
         </p>
       </div>
     </div>
@@ -410,7 +410,7 @@ function HowCredited() {
           <li>every item in it is a product of that project.</li>
         </ol>
         <p style={{ margin: '0 0 6px' }}>Anything else is <b>Unattributed</b> — it is shown, never shared out by guesswork. Refunds are listed beside revenue and are not in it.</p>
-        <p style={{ margin: 0 }}><b>Recovered by Autopilot</b> is an unpaid order that a project&rsquo;s Autopilot sent a fresh payment link for, paid after that email went out. Figures in other currencies are never converted or added together.</p>
+        <p style={{ margin: 0 }}><b>Recovered by AI Autopilot</b> is an unpaid order that a project&rsquo;s AI Autopilot sent a fresh payment link for, paid after that email went out. Figures in other currencies are never converted or added together.</p>
       </div>
     </details>
   );

@@ -131,7 +131,7 @@ export function setupProgress(input: SetupInput): SetupProgress {
       label: 'First pass — reading the business',
       state: planned ? 'done' : waitedTooLong ? 'stuck' : 'now',
       detail: planned
-        ? 'Autopilot has read the profile and decided what to do.'
+        ? 'AI Autopilot has read the profile and decided what to do.'
         : waitedTooLong
           ? `Still nothing after ${minutes(age)} minutes. That is longer than it should take — the schedule may not be running.`
           : 'Runs on the next pass, which is within five minutes.',

@@ -124,7 +124,7 @@ export async function handleReplies(req: Request, env: Env): Promise<Response> {
         .bind(r.ok ? nowIso() : null, r.ok ? '' : r.error, nowIso(), accountId).run();
     }
     return r.ok
-      ? json({ success: true, message: 'Google accepted the key. Autopilot can write replies with it.' })
+      ? json({ success: true, message: 'Google accepted the key. AI Autopilot can write replies with it.' })
       : fail(r.error);
   }
 

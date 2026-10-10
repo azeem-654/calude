@@ -69,7 +69,7 @@ export default function AutopilotDrafts({ onChanged }: { onChanged?: () => void 
         }}>{posts.length}</span>
       </div>
       <p style={{ margin: '0 0 12px', fontSize: 12, color: MUTED, lineHeight: 1.6, maxWidth: 760 }}>
-        Autopilot writes one of these each time its content play runs. They are finished drafts and
+        AI Autopilot writes one of these each time its content play runs. They are finished drafts and
         nothing has been published — copy one into whatever runs your site, or start a project above
         if you want a whole month planned around keywords instead of a post at a time.
       </p>

@@ -301,14 +301,14 @@ export async function runBuild(
   const finderSpec = bp.workflows.find(w => w.key === 'finder');
   let finderList = '';
   if (finderSpec && !bp.audienceListId) {
-    const made = createList({ name: `${bp.name.trim() || 'Autopilot project'} — prospects`, type: 'static', memberIds: [], createdBy: currentActor().name, kind: 'cold', origin: 'prospecting' });
+    const made = createList({ name: `${bp.name.trim() || 'AI Autopilot project'} — prospects`, type: 'static', memberIds: [], createdBy: currentActor().name, kind: 'cold', origin: 'prospecting' });
     finderList = made.id;
     bp = { ...bp, audienceListId: made.id };
   }
   if (bp.audienceListId) await flushNow();
   const p = await saveProject({
-    name: bp.name.trim().slice(0, 150) || 'Autopilot project',
-    objective: bp.objective.trim().length >= 8 ? bp.objective.trim() : `${bp.objective.trim()} — set up with Autopilot`.slice(0, 400),
+    name: bp.name.trim().slice(0, 150) || 'AI Autopilot project',
+    objective: bp.objective.trim().length >= 8 ? bp.objective.trim() : `${bp.objective.trim()} — set up with AI Autopilot`.slice(0, 400),
     portfolioId,
     kind: kindOf(bp),
     guardrails: guardrailsFor(capsOf(bp)),
@@ -528,6 +528,6 @@ export async function runBuild(
     });
   }
   result.ok = true;
-  update(steps, 'Your Autopilot is ready.');
+  update(steps, 'Your AI Autopilot is ready.');
   return result;
 }

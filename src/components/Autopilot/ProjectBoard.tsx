@@ -339,7 +339,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     if (!r.success) { addNotification(r.error ?? 'Could not record that.', 'error'); return; }
     /* Approving queues it for the next tick rather than doing it here — two
        places that can send is how something gets sent twice. */
-    addNotification(approve ? 'Approved — Autopilot carries it out on the next run.' : 'Left undone.', 'success');
+    addNotification(approve ? 'Approved — AI Autopilot carries it out on the next run.' : 'Left undone.', 'success');
     void load();
   };
 
@@ -352,7 +352,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   };
 
   const remove = async (p: Project) => {
-    if (!window.confirm(`Delete "${p.name}" and everything Autopilot recorded for it? The campaigns and posts it already made stay where they are.`)) return;
+    if (!window.confirm(`Delete "${p.name}" and everything AI Autopilot recorded for it? The campaigns and posts it already made stay where they are.`)) return;
     const r = await deleteProject(p.id);
     if (!r.success) { addNotification(r.error ?? 'Could not delete that.', 'error'); return; }
     setMenu(null);
@@ -588,7 +588,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                 <button onClick={() => setInfra(infra === p.id ? null : p.id)}
                   title={pool.domains > 0
                     ? `${pool.domains} sending ${pool.domains === 1 ? 'domain' : 'domains'}, ${pool.mailboxesPerDomain} mailboxes on each`
-                    : 'Autopilot buys and builds no domains for this project'}
+                    : 'AI Autopilot buys and builds no domains for this project'}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px',
                     borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700,
@@ -647,8 +647,8 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
             {cards.length === 0 ? (
               <p style={{ margin: 0, padding: '18px 10px', textAlign: 'center', fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
                 {live
-                  ? 'Nothing yet — Autopilot plans each project once a day, and the first plan lands within a day of starting it.'
-                  : 'Paused. Resume it and Autopilot will pick it up on the next plan.'}
+                  ? 'Nothing yet — AI Autopilot plans each project once a day, and the first plan lands within a day of starting it.'
+                  : 'Paused. Resume it and AI Autopilot will pick it up on the next plan.'}
               </p>
             ) : (
               cards.map(c => (

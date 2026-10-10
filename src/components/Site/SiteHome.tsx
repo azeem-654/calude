@@ -124,7 +124,7 @@ const CHAPTERS: Chapter[] = [
       {
         id: 'blog', title: 'Blog automation', tone: 'forest', span: 3, icon: FileText,
         body: 'A topic plan from your own portfolio, written to the search terms your buyers use — '
-          + 'or a post a week, written by an Autopilot agent and waiting for you to publish.',
+          + 'or a post a week, written by an AI Autopilot agent and waiting for you to publish.',
         reel: 'blog',
       },
     ],
@@ -248,7 +248,7 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
      "what it does" cannot list what it does not do yet. */
   ...(featureReady('prospects') ? [{
     group: 'Prospect', icon: Search,
-    items: ['AI Prospecting from one sentence', 'Business directories & Google Maps', 'The emails businesses publish', 'Email verification', 'Daily prospecting on Autopilot'],
+    items: ['AI Prospecting from one sentence', 'Business directories & Google Maps', 'The emails businesses publish', 'Email verification', 'Daily prospecting on AI Autopilot'],
   }] : []),
   { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
@@ -567,7 +567,7 @@ export default function SiteHome() {
         eyebrow="AI Autopilot"
         title={<>Describe it once. <em>It builds and runs it.</em></>}
         body={<>Say what the business needs — more reviews, quotes that do not go quiet, a post every
-          morning — and Autopilot turns it into workflows you can read, then runs them on the
+          morning — and AI Autopilot turns it into workflows you can read, then runs them on the
           server every five minutes, whether or not anybody is logged in.</>}
         label="AI Autopilot"
         shots={REELS.autopilot}
@@ -589,7 +589,7 @@ export default function SiteHome() {
           <span className="dc-eyebrow">Agents that work while you do not</span>
           <h2>Your sources in. <em>Every channel out.</em></h2>
           <p>
-            An Autopilot agent reads what you point it at — your own portfolio, a page, a search of the
+            An AI Autopilot agent reads what you point it at — your own portfolio, a page, a search of the
             web, a news feed or a YouTube channel — and turns it into posts, articles and campaigns on
             the schedule you choose. Each one lands in the module it belongs to, ready to read.
           </p>

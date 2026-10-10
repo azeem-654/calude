@@ -776,7 +776,7 @@ function SmsSenderCard() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>SMS sender</div>
           <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>
-            The reminder above is not texted. When Autopilot is running for this workspace, it reminds a guest
+            The reminder above is not texted. When AI Autopilot is running for this workspace, it reminds a guest
             who left a phone number the day before, by text from this sender — the same one as Settings → Email &amp; SMS.
           </div>
           <div data-testid="sms-sender-status" style={{ fontSize: 12.5, fontWeight: 600, color: tone, marginTop: 8 }}>{status}</div>

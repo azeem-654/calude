@@ -230,7 +230,7 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
             <Done c={done} onClose={onClose} go={to => { onClose(); navigate(to); }} />
           ) : ask ? (
             <div style={{ display: 'grid', gap: 12 }} data-testid="search-changed">
-              <h3 style={h3}>Update the connected Autopilot workflow{ask.connections.length === 1 ? '' : 's'} with these search changes?</h3>
+              <h3 style={h3}>Update the connected AI Autopilot workflow{ask.connections.length === 1 ? '' : 's'} with these search changes?</h3>
               <p style={muted}>This search already feeds {ask.connections.map(c => `“${c.workflowName}” in ${c.projectName}`).join(', ')}. Updating means {ask.connections.length === 1 ? 'it finds' : 'they find'} with the new criteria from the next step on; keeping means {ask.connections.length === 1 ? 'it carries' : 'they carry'} on exactly as now.</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" style={primary} disabled={busy} onClick={async () => { setBusy(true); await applySearch(def!.id, 'update'); setBusy(false); setAsk(null); setStep(step + 1); }}>Update workflow{ask.connections.length === 1 ? '' : 's'}</button>
@@ -415,7 +415,7 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
 function Done({ c, onClose, go }: { c: Connection; onClose: () => void; go: (to: string) => void }) {
   return (
     <div style={{ display: 'grid', gap: 12 }} data-testid="connect-done">
-      <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 16, fontWeight: 800, color: GOOD }}><CheckCircle2 size={20} /> Connected — Autopilot is on it</span>
+      <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 16, fontWeight: 800, color: GOOD }}><CheckCircle2 size={20} /> Connected — AI Autopilot is on it</span>
       <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: 14, display: 'grid', gap: 6 }}>
         <Row k="Project" v={c.projectName} />
         <Row k="Workflow" v={c.workflowName} />

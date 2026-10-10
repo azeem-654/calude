@@ -324,8 +324,8 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await shot(page, 'review');
   const review = await np.innerText();
   ok('review: says which prospects it finds and when it starts', /Prospects it finds/i.test(review) && /dentists/.test(review), review.slice(0, 700));
-  await np.getByRole('button', { name: /Build My Autopilot/ }).click();
-  await np.getByRole('heading', { name: /Your Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
+  await np.getByRole('button', { name: /Build My AI Autopilot/ }).click();
+  await np.getByRole('heading', { name: /Your AI Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
   /* The first prospects, found in front of the customer — not "nobody to email yet". */
   const live = np.getByRole('region', { name: 'Finding your first prospects' });
   await live.waitFor({ timeout: 10_000 }).catch(() => {});

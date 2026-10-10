@@ -124,8 +124,8 @@ async function buildIt(p, d) {
   const connections = await d.innerText();
   await cta(d).click(); // → review
   await p.waitForTimeout(300);
-  await d.getByRole('button', { name: /Build My Autopilot/ }).click();
-  await d.getByRole('heading', { name: /Your Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60000 });
+  await d.getByRole('button', { name: /Build My AI Autopilot/ }).click();
+  await d.getByRole('heading', { name: /Your AI Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60000 });
   const built = await d.innerText();
   return { connections, built };
 }
@@ -322,7 +322,7 @@ for (const width of [1280, 390]) {
   let reached = false;
   for (let i = 0; i < 8 && !reached; i++) {
     await p.waitForTimeout(250);
-    const biz = d.locator('.np-q').filter({ hasText: 'How should Autopilot learn about the business?' });
+    const biz = d.locator('.np-q').filter({ hasText: 'How should AI Autopilot learn about the business?' });
     if (await biz.count()) { reached = true; break; }
     await answerScreen(d);
     await cta(d).click();
@@ -351,7 +351,7 @@ for (const width of [1280, 390]) {
     await cta(d).click();
   }
   const { built } = await buildIt(p, d);
-  ok('T8 the build does not stop for a missing name', !/needs the client/.test(built) && /Your Autopilot is ready/.test(built), built.slice(0, 300));
+  ok('T8 the build does not stop for a missing name', !/needs the client/.test(built) && /Your AI Autopilot is ready/.test(built), built.slice(0, 300));
   const name = execSync(`npx wrangler d1 execute crmpro --local --json --command "SELECT name FROM crm_portfolios WHERE account_id = '${lastSession.acct}'"`, { encoding: 'utf8' });
   ok('T8 the profile is saved under the name they typed', /Pike Plumbing & Heating/.test(name), name.slice(-200));
   ok('T8 no page errors', !errs.length, errs.join(' | '));

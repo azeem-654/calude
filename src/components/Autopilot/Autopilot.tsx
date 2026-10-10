@@ -148,7 +148,7 @@ export default function Autopilot() {
             <Sparkles size={15} color={T.violet} />
             <span style={{ lineHeight: 1.45 }}>
               Ideas<br />Workflows<br />Revenue<br />
-              <strong style={{ color: T.ink }}>On Autopilot</strong>
+              <strong style={{ color: T.ink }}>On AI Autopilot</strong>
             </span>
           </div>
         </div>

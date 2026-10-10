@@ -196,7 +196,7 @@ export function HowItWorks({ onClose }: { onClose: () => void }) {
         </ol>
         <p className="aip-fine" style={{ padding: '0 18px 16px' }}>
           Never LinkedIn, Apollo or bought data — their terms forbid this use. Found businesses never asked to hear from you,
-          so campaigns and Autopilot treat them as strangers: small batches, your approval first.
+          so campaigns and AI Autopilot treat them as strangers: small batches, your approval first.
         </p>
       </div>
     </div>

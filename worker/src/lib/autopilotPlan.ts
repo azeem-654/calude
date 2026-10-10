@@ -357,7 +357,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
       /* Only claims what is true. It used to say "cannot do anything yet",
          which stopped being true the moment it also queued the writing. */
       summary: 'Nothing can be sent yet — no mailbox is connected',
-      because: 'nothing in this workspace has been validated for sending, so anything Autopilot writes will wait here rather than go out',
+      because: 'nothing in this workspace has been validated for sending, so anything AI Autopilot writes will wait here rather than go out',
       effect: { type: 'none' },
     });
   }
@@ -375,7 +375,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
         channels: ['email'],
         scope: 'workspace',
         kind: 'error',
-        summary: 'Autopilot cannot build your sending pool yet',
+        summary: 'AI Autopilot cannot build your sending pool yet',
         because: ws.pool.mode === 'managed'
           ? 'managed buying is not switched on for this installation, so nothing can be purchased on your behalf'
           : 'no registrar is connected, so there is nowhere to buy a domain from — connect one under Settings → Infrastructure',
@@ -582,7 +582,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
         channels: ['email'],
         scope: 'project',
         kind: 'error',
-        summary: `"${aud.name}" is a smart list, which Autopilot cannot follow`,
+        summary: `"${aud.name}" is a smart list, which AI Autopilot cannot follow`,
         because: 'a smart list is worked out in the browser from rules the server cannot evaluate, so nobody on it can be started from here',
         effect: { type: 'none' },
       });

@@ -124,7 +124,7 @@ export default function MailboxManager() {
                 {b.address}
               </span>
               {b.isPrimary === 1 && (
-                <span title="Campaigns and Autopilot send from this one"
+                <span title="Campaigns and AI Autopilot send from this one"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 7px', borderRadius: 999 }}>
                   <Star size={9} /> Sends from here
                 </span>

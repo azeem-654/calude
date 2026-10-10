@@ -104,7 +104,7 @@ export function sinceText(iso: string | null, now = Date.now()): string {
 export function runningText(p: CloudPulse): string {
   const r = p.running;
   const bits = [
-    r.projects ? `${r.projects} Autopilot project${r.projects === 1 ? '' : 's'}` : '',
+    r.projects ? `${r.projects} AI Autopilot project${r.projects === 1 ? '' : 's'}` : '',
     r.workflows ? `${r.workflows} workflow${r.workflows === 1 ? '' : 's'}` : '',
     r.finders ? `${r.finders} daily prospect finder${r.finders === 1 ? '' : 's'}` : '',
     r.followUps ? `${r.followUps} follow-up${r.followUps === 1 ? '' : 's'} in progress` : '',

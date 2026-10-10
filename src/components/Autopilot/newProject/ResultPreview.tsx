@@ -112,7 +112,7 @@ export default function ResultPreview({ bp, brand, palette, logo, templateId, pa
           ) : (
             <div style={{ maxWidth: 260 }}>
               <LayoutPic kind="page" layout={pageLayout} palette={palette} logo={logo} />
-              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#6b7280' }}>Autopilot writes the page in this layout, from your profile.</span>
+              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#6b7280' }}>AI Autopilot writes the page in this layout, from your profile.</span>
             </div>
           )}
         </Section>

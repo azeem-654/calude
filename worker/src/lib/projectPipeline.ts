@@ -116,7 +116,7 @@ function stagesFor(kind: string): Array<{ name: string; color: string }> {
 function fallbackTasks(stages: Array<{ name: string }>): string[][] {
   const generic = [
     ['Confirm what this client actually sells, in their words', 'Agree who the ideal customer is', 'Check the mailbox sends and receives'],
-    ['Review the first campaign Autopilot writes before it goes out', 'Set the daily sending cap'],
+    ['Review the first campaign AI Autopilot writes before it goes out', 'Set the daily sending cap'],
     ['Chase anything waiting on the client for more than three days'],
     ['Read the week’s replies and correct anything the AI got wrong'],
     ['Write down what worked, so the next month starts from it'],

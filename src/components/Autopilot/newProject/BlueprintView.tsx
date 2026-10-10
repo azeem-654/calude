@@ -45,7 +45,7 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
   return (
     <div style={{ display: 'grid', gap: 18 }}>
       <div>
-        <h2 className="wz-title">Here&rsquo;s what Autopilot <span className="wz-accent">will build</span></h2>
+        <h2 className="wz-title">Here&rsquo;s what AI Autopilot <span className="wz-accent">will build</span></h2>
         <p style={{ margin: '9px 0 0', fontSize: 14.5, color: '#6b7280', lineHeight: 1.55 }}>
           Read it through. Change anything by telling the assistant{' '}
           <span className="np-hide-wide">below</span> — no need to go back.
@@ -137,7 +137,7 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
           <div className="np-bp-box">
             <h4><Sparkles size={13} /> Set-up</h4>
             <ul>{bp.setup.map(s => (
-              <li key={s.key}><span className="np-badge" data-tone={s.by === 'autopilot' ? 'accent' : undefined}>{s.by === 'autopilot' ? 'Autopilot' : 'You'}</span><span>{s.label}</span></li>
+              <li key={s.key}><span className="np-badge" data-tone={s.by === 'autopilot' ? 'accent' : undefined}>{s.by === 'autopilot' ? 'AI Autopilot' : 'You'}</span><span>{s.label}</span></li>
             ))}</ul>
           </div>
         )}

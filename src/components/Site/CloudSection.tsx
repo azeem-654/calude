@@ -15,7 +15,7 @@ import { Bell, Bot, Cloud, Inbox, Laptop, Mail, Search, Star, Workflow } from 'l
 import { useReveal } from './useReveal';
 
 const RUNS = [
-  { icon: Bot, label: 'Autopilot projects', where: 'plan and act on their own' },
+  { icon: Bot, label: 'AI Autopilot projects', where: 'plan and act on their own' },
   { icon: Workflow, label: 'Workflows', where: 'every step, on time' },
   { icon: Mail, label: 'Follow-ups', where: 'emails and texts go out' },
   { icon: Inbox, label: 'Inbox replies', where: 'leads answered' },

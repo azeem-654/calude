@@ -693,7 +693,7 @@ const NAME_SUFFIX: Record<string, string> = {
   'ecommerce-store': 'Online Store',
   'customer-support': 'Customer Support',
   'sales-followup': 'Sales Follow-up',
-  'appointment-booking': 'Appointment Autopilot',
+  'appointment-booking': 'Appointment AI Autopilot',
   'client-onboarding': 'Client Onboarding',
   'customer-reactivation': 'Customer Reactivation',
   reputation: 'Reputation Builder',
@@ -703,12 +703,12 @@ const NAME_SUFFIX: Record<string, string> = {
   'product-marketing': 'Product Launch',
   'video-content': 'Video Content',
   'local-business': 'Local Growth',
-  custom: 'Autopilot Project',
+  custom: 'AI Autopilot Project',
 };
 
 export function defaultName(keys: string[], company: string, known: KnownMap): string {
   const first = keys[0] ?? CUSTOM;
-  let suffix = NAME_SUFFIX[first] ?? 'Autopilot Project';
+  let suffix = NAME_SUFFIX[first] ?? 'AI Autopilot Project';
   if (first === 'social-growth') {
     const f = String(known.frequency?.value ?? '');
     suffix = f === 'daily' ? 'Daily Content Engine' : f === 'weekdays' ? 'Weekday Content Engine' : 'Content Engine';
@@ -818,7 +818,7 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
   const plannerChannels = uniq(c.planner).filter(ch => PLANNER.includes(ch) && !(noPage && ch === 'site'));
   if (plannerChannels.length) {
     agents.push({
-      name: 'Autopilot Planner',
+      name: 'AI Autopilot Planner',
       role: `Looks at the project every day and decides what to do next — ${plannerChannels.map(ch => (PLANNER_WORDS[ch] ?? ch)).join(', ')}.`,
       workflow: 'The whole project',
     });
@@ -853,7 +853,7 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     schedules: uniq(workflows.filter(w => w.schedule).map(w => `${w.name}: ${w.schedule}`)),
     setup: uniq(c.setup, s => s.label),
     approvals: uniq(c.approvals),
-    manual: uniq([...c.manual, ...full.unsupported.map(u => `${tidy(u)} — not something Autopilot can do yet, so it stays with you`)]),
+    manual: uniq([...c.manual, ...full.unsupported.map(u => `${tidy(u)} — not something AI Autopilot can do yet, so it stays with you`)]),
     destinations: uniq(c.destinations, d => d.label),
     /* A workflow that emails or texts people needs people: Contacts is
        listed whenever one does, so the Connections step can say how many. */
@@ -958,7 +958,7 @@ export function kindOf(bp: Blueprint): ProjectKind {
 export function launchStepsOf(bp: Blueprint): LaunchStep[] {
   return bp.setup.slice(0, 12).map(s => ({
     label: s.label.slice(0, 120),
-    why: s.by === 'autopilot' ? 'Done by Autopilot while it builds the project.' : 'Yours to do — the link goes straight there.',
+    why: s.by === 'autopilot' ? 'Done by AI Autopilot while it builds the project.' : 'Yours to do — the link goes straight there.',
     route: s.route ?? '',
   }));
 }

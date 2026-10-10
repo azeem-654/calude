@@ -378,8 +378,8 @@ let listId = '';
   await page.waitForTimeout(400);
   await cta.click(); // → review
   await page.waitForTimeout(300);
-  await np.getByRole('button', { name: /Build My Autopilot/ }).click();
-  await np.getByRole('heading', { name: /Your Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
+  await np.getByRole('button', { name: /Build My AI Autopilot/ }).click();
+  await np.getByRole('heading', { name: /Your AI Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
   const rows = sql("SELECT brief FROM crm_projects");
   const brief = rows.map(r => { try { return JSON.parse(r.brief); } catch { return {}; } }).find(b => b.audience);
   ok('the project built from it stores the list as its audience', brief?.audience?.listId === listId && brief.audience.listName === LIST, JSON.stringify(rows).slice(0, 400));

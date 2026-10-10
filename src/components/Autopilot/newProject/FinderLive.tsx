@@ -121,7 +121,7 @@ export default function FinderLive({ projectId, finderId, perDay, trades, places
       {!busy && (
         <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
           {note && <>{note} </>}
-          It carries on by itself every few minutes — up to {perDay} new prospects a day — and Autopilot writes to them
+          It carries on by itself every few minutes — up to {perDay} new prospects a day — and AI Autopilot writes to them
           in batches of 20, each batch waiting for your approval on the project's board.
         </span>
       )}

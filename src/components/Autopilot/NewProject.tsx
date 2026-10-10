@@ -831,7 +831,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : seed ? 'Build my project' : 'See the blueprint';
     if (phase === 'blueprint') return 'Looks good — continue';
     if (phase === 'requirements') return 'Review';
-    if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My Autopilot';
+    if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My AI Autopilot';
     return 'Continue';
   })();
 
@@ -839,11 +839,11 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   /* ── The companion pane ── */
   const side = (
-    <aside className="np-side" aria-label="Autopilot">
+    <aside className="np-side" aria-label="AI Autopilot">
       <div style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
         <AutopilotBot size={46} awake busy={phase === 'understand' && !understood} />
         <span style={{ minWidth: 0 }}>
-          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>Autopilot</b>
+          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>AI Autopilot</b>
           <span style={{ display: 'block', fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
             {phase === 'describe' ? 'Tell me the result. I’ll work out how.'
               : phase === 'understand' ? (understood ? 'Here’s what I took from that.' : 'Reading everything you gave me…')

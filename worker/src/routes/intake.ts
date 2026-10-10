@@ -296,7 +296,7 @@ export async function transcribe(key: string, d: IntakeReq): Promise<Response> {
 export async function understand(env: Env, key: string, accountId: string, d: IntakeReq): Promise<Response> {
   const prompt = clip(d.prompt, 4000);
   if (prompt.length < 4 && !(d.files ?? []).length && !(d.urls ?? []).length) {
-    return fail('Say what you would like Autopilot to do.');
+    return fail('Say what you would like AI Autopilot to do.');
   }
   const cat = d.catalogue ?? {};
   if (JSON.stringify(cat).length > 60_000) return fail('The catalogue sent was too large.');
@@ -344,7 +344,7 @@ export async function understand(env: Env, key: string, accountId: string, d: In
 
   const instruction = [
     'You are the intake step of Protected Central AI Autopilot, a marketing and automation product for small businesses and agencies.',
-    'A customer has described, in their own words, what they want Autopilot to do. Understand the request BEFORE any question is asked.',
+    'A customer has described, in their own words, what they want AI Autopilot to do. Understand the request BEFORE any question is asked.',
     '',
     'WHAT THE PRODUCT CAN ACTUALLY DO (never promise more):',
     '- Scheduled AI agents that read a business profile, a web page, a Google search, an RSS feed or a YouTube channel, and write: social post designs (branded image + caption + hashtags, as drafts in Social Creator), blog article drafts, or email campaigns (drafts).',

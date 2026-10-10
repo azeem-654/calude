@@ -82,7 +82,7 @@ export default function ProjectRevenueStrip({ projectId }: { projectId: string }
           <span style={{ fontSize: 20, fontWeight: 700, color: T.ink, letterSpacing: '-0.02em' }}>{money(me.revenueCents, cur)}</span>
           <span style={{ fontSize: 12, color: T.muted }}>
             {me.paidOrders} paid order{me.paidOrders === 1 ? '' : 's'}
-            {me.recoveredOrders ? ` · ${money(me.recoveredCents, cur)} recovered by Autopilot` : ''}
+            {me.recoveredOrders ? ` · ${money(me.recoveredCents, cur)} recovered by AI Autopilot` : ''}
             {me.wonDeals ? ` · ${me.wonDeals} deal${me.wonDeals === 1 ? '' : 's'} won` : ''}
           </span>
           <Sparkline values={me.series} />

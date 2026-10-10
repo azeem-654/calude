@@ -154,7 +154,7 @@ export interface Question {
 const Q: Record<string, Question> = {
   business: {
     id: 'business', group: 'business', type: 'business', need: 'required',
-    prompt: 'How should Autopilot learn about the business?',
+    prompt: 'How should AI Autopilot learn about the business?',
     help: 'Everything it writes starts from this. A profile that says what you sell and who buys it writes very differently from one that says "services".',
   },
   website: {
@@ -191,7 +191,7 @@ const Q: Record<string, Question> = {
   platforms: {
     id: 'platforms', group: 'deliverable', type: 'multi', need: 'required',
     prompt: 'Which platforms should it prepare posts for?',
-    help: 'Autopilot makes the posts. Publishing them is done by you — it does not post to social networks itself.',
+    help: 'AI Autopilot makes the posts. Publishing them is done by you — it does not post to social networks itself.',
     options: [
       { value: 'instagram', label: 'Instagram' },
       { value: 'facebook', label: 'Facebook' },
@@ -213,7 +213,7 @@ const Q: Record<string, Question> = {
   inspiration: {
     id: 'inspiration', group: 'style', type: 'inspiration', need: 'optional',
     prompt: 'Do you have examples of the style you like?',
-    help: 'An image, a post you admire, a brand guide or a link. Skip it and Autopilot works from your brand colours, industry and audience.',
+    help: 'An image, a post you admire, a brand guide or a link. Skip it and AI Autopilot works from your brand colours, industry and audience.',
   },
   brandColor: {
     id: 'brandColor', group: 'look', type: 'text', need: 'optional',
@@ -268,7 +268,7 @@ const Q: Record<string, Question> = {
   pageTemplate: {
     id: 'pageTemplate', group: 'pages', type: 'template', need: 'required',
     prompt: 'Do you want a website or a funnel?',
-    help: 'Shown in your name and colours. It is built as a draft you can change block by block — the words are placeholders until you or Autopilot write them.',
+    help: 'Shown in your name and colours. It is built as a draft you can change block by block — the words are placeholders until you or AI Autopilot write them.',
     options: [{ value: 'ai', label: 'Let AI design it' }, { value: 'none', label: 'No website or funnel' }, ...TEMPLATE_CATALOG.map(t => ({ value: t.id, label: t.name }))],
     aiDecides: 'ai',
   },
@@ -324,7 +324,7 @@ const Q: Record<string, Question> = {
     id: 'topics', group: 'deliverable', type: 'text', need: 'optional',
     prompt: 'Topics or keywords to write about',
     placeholder: 'boiler servicing, landlord gas safety, heat pumps',
-    help: 'Leave it and Autopilot picks from what the business sells and what its customers search for.',
+    help: 'Leave it and AI Autopilot picks from what the business sells and what its customers search for.',
   },
   blogSource: {
     id: 'blogSource', group: 'deliverable', type: 'single', need: 'required',
@@ -442,7 +442,7 @@ const Q: Record<string, Question> = {
   productFields: {
     id: 'productFields', group: 'catalogue', type: 'multi', need: 'optional',
     prompt: 'What do you already have for each product?',
-    help: 'Anything missing — descriptions especially — Autopilot can write.',
+    help: 'Anything missing — descriptions especially — AI Autopilot can write.',
     options: [
       { value: 'title', label: 'Names' },
       { value: 'sku', label: 'SKUs' },
@@ -517,7 +517,7 @@ const Q: Record<string, Question> = {
   contactList: {
     id: 'contactList', group: 'contacts', type: 'text', need: 'required',
     prompt: 'Which contact list?',
-    help: 'Only the people on it are written to by this project. Smart lists are not offered — they are worked out in your browser, and Autopilot runs on the server.',
+    help: 'Only the people on it are written to by this project. Smart lists are not offered — they are worked out in your browser, and AI Autopilot runs on the server.',
     showIf: { id: 'contactSource', in: ['list'] },
   },
   /*
@@ -669,7 +669,7 @@ const Q: Record<string, Question> = {
     options: [
       { value: 'pc', label: 'Protected Central calendar and booking pages' },
       { value: 'google', label: 'Google Calendar', hint: 'Connected in Settings' },
-      { value: 'other', label: 'Somewhere else', hint: 'Autopilot works from what reaches the CRM' },
+      { value: 'other', label: 'Somewhere else', hint: 'AI Autopilot works from what reaches the CRM' },
     ],
     aiDecides: 'pc',
   },
@@ -1123,7 +1123,7 @@ function socialPart(a: Answers): Partial<Contribution> {
     ].filter(Boolean),
     destinations: [{ label: 'Content Studio → Social Creator', route: '/social-creator' }],
     approvals: [ready ? 'None needed — each post is marked ready to publish' : 'You review each post in the Social Creator'],
-    manual: ['Publish each finished post to your social accounts — Autopilot prepares them but does not post to social networks'],
+    manual: ['Publish each finished post to your social accounts — AI Autopilot prepares them but does not post to social networks'],
     requirements: ['socialCreator'],
     limits: ['The image is a branded design with the headline on it, not a photograph.'],
   };
@@ -1257,7 +1257,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     planner: ['email', ...(source === 'find' ? ['contacts' as Channel] : []), ...(opts.page ? ['site' as Channel] : []), ...(booking !== 'none' ? ['book' as Channel] : [])],
     requirements: ['contacts', 'mailbox', 'pipeline', ...(booking === 'page' ? ['bookingPage' as RequirementId] : []), ...(wantsSms ? ['sms' as RequirementId] : [])],
     limits: [
-      source === 'upload' ? 'The list is imported in Contacts — Autopilot works from what is there.' : '',
+      source === 'upload' ? 'The list is imported in Contacts — AI Autopilot works from what is there.' : '',
       /* Said because it is the difference from every other outreach project,
          which picks up anybody new in the workspace. */
       fromList ? 'Only the people on that list are written to by this project — anybody new in Contacts is left alone unless you add them to it.' : '',
@@ -1342,7 +1342,7 @@ export const SOLUTIONS: Solution[] = [
       const setup: SetupStep[] = [];
       if (source === 'upload') setup.push({ key: 'import', label: 'Import the products from your spreadsheet as drafts', by: 'autopilot', route: '/sell' });
       else if (source === 'existing') setup.push({ key: 'products', label: 'Use the products already in Protected Central', by: 'autopilot', route: '/sell' });
-      else setup.push({ key: 'products', label: source === 'catalogue' || source === 'website' ? 'Add the products from your catalogue — or export it as a CSV and Autopilot imports it' : 'Add your products', by: 'you', route: '/sell' });
+      else setup.push({ key: 'products', label: source === 'catalogue' || source === 'website' ? 'Add the products from your catalogue — or export it as a CSV and AI Autopilot imports it' : 'Add your products', by: 'you', route: '/sell' });
       if (!fields.includes('description')) setup.push({ key: 'copy', label: 'Write descriptions for products that have none', by: 'you', route: '/sell' });
       setup.push({ key: 'shop', label: `Open the shop page${one(a.storeDesign) ? ` in a ${one(a.storeDesign)} style` : ''}`, by: 'you', route: '/sell' });
       setup.push({ key: 'payments', label: 'Connect a way to take payment', by: 'you', route: '/settings?tab=billing' });
@@ -1704,7 +1704,7 @@ export const SOLUTIONS: Solution[] = [
         manual: ['Film and post the videos'],
         planner: ['video'],
         requirements: ['shorts'],
-        limits: ['Autopilot writes scripts; it does not film or edit video.'],
+        limits: ['AI Autopilot writes scripts; it does not film or edit video.'],
       });
     },
   },
@@ -1736,7 +1736,7 @@ export const SOLUTIONS: Solution[] = [
   {
     key: 'custom',
     label: 'Create Something Different',
-    blurb: 'Describe it in your own words. Autopilot asks what it needs and builds the rest.',
+    blurb: 'Describe it in your own words. AI Autopilot asks what it needs and builds the rest.',
     example: '',
     keywords: [],
     channels: [],

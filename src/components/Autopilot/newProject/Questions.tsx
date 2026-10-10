@@ -256,7 +256,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
   ) : null;
   const skipped = known?.note === 'skipped';
   const skip = q.need !== 'optional' ? null : skipped ? (
-    <span style={{ fontSize: 12.5, color: '#6b7280' }}>Skipped{aiValue !== undefined ? ' — Autopilot will choose' : ''}.</span>
+    <span style={{ fontSize: 12.5, color: '#6b7280' }}>Skipped{aiValue !== undefined ? ' — AI Autopilot will choose' : ''}.</span>
   ) : !vals.length ? (
     <button type="button" className="np-skip" onClick={() => answer(q.id, q.type === 'multi' ? [] : '', 'you')}>Skip for now</button>
   ) : null;
@@ -266,7 +266,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
     const opts: { value: string; label: string; hint: string; icon: typeof Globe }[] = [
       ...ws.portfolios.map(p => ({ value: `existing:${p.id}`, label: p.name, hint: 'Already in Protected Central', icon: Building2 })),
       ...(ws.workspace?.companyName ? [{ value: 'workspace', label: `My ${ws.workspace.companyName} profile`, hint: 'From your account setup', icon: UserCircle2 }] : []),
-      { value: 'website', label: 'Read my website', hint: 'Autopilot reads it now', icon: Globe },
+      { value: 'website', label: 'Read my website', hint: 'AI Autopilot reads it now', icon: Globe },
       { value: 'upload', label: 'Upload a company profile', hint: 'A PDF, brochure or document', icon: Upload },
       { value: 'manual', label: 'Type it in', hint: 'Three short lines', icon: PenLine },
     ];
@@ -542,7 +542,7 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
       </div>
       {picked?.cold && (
         <span style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.55 }}>
-          Nobody on “{picked.name}” asked to hear from you, so Autopilot treats them as cold: it starts them a
+          Nobody on “{picked.name}” asked to hear from you, so AI Autopilot treats them as cold: it starts them a
           few at a time, and every batch waits for you to approve it — whatever the project&rsquo;s other settings say.
         </span>
       )}
@@ -554,7 +554,7 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
       )}
       {smart > 0 && (
         <span style={{ fontSize: 12, color: '#6b7280' }}>
-          {smart} smart list{smart === 1 ? ' is' : 's are'} not shown — {smart === 1 ? 'it is' : 'they are'} worked out in your browser, and Autopilot runs on the server.
+          {smart} smart list{smart === 1 ? ' is' : 's are'} not shown — {smart === 1 ? 'it is' : 'they are'} worked out in your browser, and AI Autopilot runs on the server.
         </span>
       )}
     </div>
