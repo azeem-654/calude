@@ -305,7 +305,7 @@ zone (`booking.timezone`, refused if Intl does not know it).
   `duration`; the Google event uses `ownerTimezone`. Emails add the guest's
   own time. `npm run test:bookingtz` (pure).
 - **Media** (`routes/bookingMedia.ts`, `/api/booking-media.php`, migration
-  0071 `crm_booking_media`): raw-body upload with `Bearer cookie`, one per
+  0073 `crm_booking_media`): raw-body upload with `Bearer cookie`, one per
   kind per workspace, served by random key with `nosniff` and a CSP that runs
   nothing. Pictures are PNG/JPEG by their bytes (≤ 800 px, ≤ 400 KB, shrunk in
   the browser first) in D1; a clip (MP4/MOV/WebM by its magic, ≤ 25 MB) needs
