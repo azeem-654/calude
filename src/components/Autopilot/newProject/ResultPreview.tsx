@@ -21,7 +21,7 @@ import { TEMPLATE_CATALOG, buildTemplatePages } from '../../shared/pageTemplates
 import { PagesStrip, ScaledPage } from '../../shared/BlockRender';
 import { LayoutPic } from './DesignFields';
 
-interface Brand { name: string; tagline: string; heroTitle: string }
+interface Brand { name: string; tagline: string; heroTitle: string; heroImage?: string }
 
 function Post({ palette, logo, name, head, sub, variant }: { palette: Palette; logo: string; name: string; head: string; sub: string; variant: number }) {
   const font = FONT_FAMILY[palette.font] ?? 'system-ui, sans-serif';
@@ -69,8 +69,8 @@ export default function ResultPreview({ bp, brand, palette, logo, templateId, pa
   const template = TEMPLATE_CATALOG.find(t => t.id === templateId);
   const page = !!template || templateId === 'ai';
   const pages = useMemo(
-    () => (template ? buildTemplatePages(template, { name, color: palette.accent, tagline: brand.tagline, heroTitle: brand.heroTitle }, { brand: true }) : []),
-    [template, name, palette.accent, brand.tagline, brand.heroTitle],
+    () => (template ? buildTemplatePages(template, { name, color: palette.accent, tagline: brand.tagline, heroTitle: brand.heroTitle, heroImage: brand.heroImage }, { brand: true }) : []),
+    [template, name, palette.accent, brand.tagline, brand.heroTitle, brand.heroImage],
   );
   if (!social && !blog && !firstEmail && !page) return null;
 

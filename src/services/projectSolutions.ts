@@ -266,9 +266,9 @@ const Q: Record<string, Question> = {
      leaves the page to Autopilot, which then asks the layout below. */
   pageTemplate: {
     id: 'pageTemplate', group: 'pages', type: 'template', need: 'required',
-    prompt: 'Pick the website or funnel to start from',
+    prompt: 'Do you want a website or a funnel?',
     help: 'Shown in your name and colours. It is built as a draft you can change block by block — the words are placeholders until you or Autopilot write them.',
-    options: [{ value: 'ai', label: 'Let Autopilot design it' }, ...TEMPLATE_CATALOG.map(t => ({ value: t.id, label: t.name }))],
+    options: [{ value: 'ai', label: 'Let AI design it' }, { value: 'none', label: 'No website or funnel' }, ...TEMPLATE_CATALOG.map(t => ({ value: t.id, label: t.name }))],
     aiDecides: 'ai',
   },
   pageLayout: {

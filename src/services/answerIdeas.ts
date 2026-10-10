@@ -41,12 +41,14 @@ interface Trade {
   trades: string[];
   topics: string[];
   feel: string[];
+  /** An Unsplash photograph for the first section of a page — checked by eye to show this trade. */
+  photo: string;
 }
 
 const TRADES: Trade[] = [
   {
     re: /\b(med ?spa|medspa|medical spa|aesthetic|botox|filler|injectable|skin clinic|laser hair|cosmetic clinic)/i,
-    name: 'med spa',
+    name: 'med spa', photo: 'photo-1570172619644-dfd03ed5d881',
     audience: ['New enquiries from Instagram, Facebook and Google', 'Women 30–55 nearby interested in Botox and fillers', 'Past clients due for a top-up treatment',
       'People who asked about a treatment but never booked', 'Brides-to-be and event guests', 'Men interested in skin and hair treatments'],
     offer: ['A free skin consultation', 'A complimentary treatment plan and price quote', 'An introductory price on a first Botox treatment',
@@ -57,7 +59,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(dentist|dental|orthodont|invisalign|teeth)/i,
-    name: 'dental practice',
+    name: 'dental practice', photo: 'photo-1629909613654-28e377c37b09',
     audience: ['Families within 5 miles of the practice', 'Patients overdue for a check-up', 'Adults interested in Invisalign or whitening',
       'New movers in the area looking for a dentist', 'People who enquired but never booked', 'Nervous patients who avoid the dentist'],
     offer: ['A free new-patient consultation', 'A whitening consultation at no charge', 'Same-week emergency appointments',
@@ -68,7 +70,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(real estate|realtor|estate agent|property|properties|homes? for sale|mortgage|letting)/i,
-    name: 'real estate',
+    name: 'real estate', photo: 'photo-1560518883-ce09059eeffa',
     audience: ['Homeowners thinking of selling in the next 6 months', 'First-time buyers', 'Landlords with 2+ rental properties',
       'People who asked for a valuation but never listed', 'Relocating families', 'Investors looking for rental yield'],
     offer: ['A free home valuation', 'A free market report for their street', 'A first-time buyer guide and call',
@@ -79,7 +81,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(plumb|hvac|heating|boiler|roof|electric|contractor|builder|landscap|cleaning|pest|handyman|remodel|renovat)/i,
-    name: 'home services',
+    name: 'home services', photo: 'photo-1621905251189-08b45d6a269e',
     audience: ['Homeowners within 20 miles', 'Landlords and property managers', 'Past customers due for a service',
       'People who asked for a quote but never booked', 'Small commercial premises nearby', 'New homeowners in the area'],
     offer: ['A free quote within 24 hours', 'A discounted annual service', 'Same-day call-outs',
@@ -90,7 +92,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(restaurants?|cafes?|café|coffee|bakery|bars?|pubs?|takeaway|catering|food truck)\b/i,
-    name: 'restaurant',
+    name: 'restaurant', photo: 'photo-1517248135467-4c7edcad34c4',
     audience: ['Locals within 3 miles', 'Past diners who have not been back in 60 days', 'Office teams nearby for lunch and events',
       'Families looking for weekend meals', 'People planning birthdays and parties', 'Tourists visiting the area'],
     offer: ['A free dessert on the next visit', 'A set lunch menu for offices', 'Private dining for events',
@@ -101,7 +103,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(gym|fitness|personal train|yoga|pilates|crossfit|martial art|boxing)/i,
-    name: 'fitness',
+    name: 'fitness', photo: 'photo-1534438327276-14e5300c3a48',
     audience: ['Adults nearby starting their fitness journey', 'Lapsed members who stopped coming', 'People who took a trial but did not join',
       'Busy professionals wanting short sessions', 'Over-50s looking to stay active', 'Local teams and clubs'],
     offer: ['A free 7-day pass', 'A free fitness assessment', 'A first month at a reduced rate', 'A free intro class', 'Corporate memberships for teams', 'A 6-week transformation programme'],
@@ -111,7 +113,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(law|lawyer|attorney|solicitor|legal|accountant|accounting|bookkeep|tax|cpa|financial advis|insurance)/i,
-    name: 'professional services',
+    name: 'professional services', photo: 'photo-1600880292203-757bb62b4baf',
     audience: ['Small business owners nearby', 'Founders in their first two years', 'People who enquired but did not book',
       'Past clients due a review', 'Contractors and freelancers', 'Families planning for the future'],
     offer: ['A free 20-minute consultation', 'A fixed-fee review of their situation', 'A year-end checklist', 'A free document health check', 'A second opinion at no charge', 'A plain-English guide and call'],
@@ -121,7 +123,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(e-?commerce|online store|online shop|shopify|amazon|products?|store|shop|brand)\b/i,
-    name: 'online shop',
+    name: 'online shop', photo: 'photo-1441986300917-64674bd600d8',
     audience: ['Past buyers who have not ordered in 90 days', 'Visitors who abandoned their basket', 'Newsletter subscribers who never bought',
       'Repeat customers and VIPs', 'Gift buyers ahead of holidays', 'Followers on Instagram and TikTok'],
     offer: ['10% off the next order', 'Free shipping this week', 'A bundle at a better price', 'Early access to the new collection', 'A free gift with orders over a threshold', 'A loyalty reward for repeat buyers'],
@@ -131,7 +133,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(agency|marketing|seo|web design|software|saas|app|consult|coach|course|training)/i,
-    name: 'B2B services',
+    name: 'B2B services', photo: 'photo-1522071820081-009f0129c71c',
     audience: ['Owners of small businesses with 5–50 staff', 'Marketing managers at growing companies', 'Leads who downloaded something but never talked to us',
       'Past clients who might need more', 'Founders who just raised money', 'Local businesses with weak websites'],
     offer: ['A free 20-minute audit', 'A personalised action plan', 'A free trial', 'A live demo', 'A case study and a short call', 'A fixed-price starter package'],
@@ -141,7 +143,7 @@ const TRADES: Trade[] = [
   },
   {
     re: /\b(salon|barber|hair|nails|beauty|lash|brow|spa)\b/i,
-    name: 'salon',
+    name: 'salon', photo: 'photo-1560066984-138dadb4c035',
     audience: ['Clients due for their next appointment', 'Locals within 5 miles', 'People who booked once and never came back',
       'Brides and wedding parties', 'Students and young professionals', 'Clients who left a review'],
     offer: ['A free fringe trim or brow tidy', 'A first-visit discount', 'Refer a friend: both get a treat', 'A loyalty card', 'A pamper package', 'Late-night appointments'],
@@ -152,7 +154,7 @@ const TRADES: Trade[] = [
 ];
 
 const GENERIC: Trade = {
-  re: /$^/, name: '',
+  re: /$^/, name: '', photo: 'photo-1497366811353-6870744d04b2',
   audience: ['New enquiries from your website and social media', 'Past customers who have not bought in a while', 'People who asked for a price but never decided',
     'Local businesses that could use what you offer', 'Customers who left a good review', 'Newsletter subscribers'],
   offer: ['A free consultation', 'A free quote', 'An introductory discount', 'A short demo or call', 'A useful guide', 'A limited-time offer'],
@@ -160,6 +162,18 @@ const GENERIC: Trade = {
   topics: ['Answers to questions customers ask', 'Behind the scenes', 'Customer stories', 'Tips from the team', 'News and updates'],
   feel: ['clean, modern, friendly', 'bold and confident', 'premium and minimal'],
 };
+
+/**
+ * A stock photograph for the first section of a client's page, by trade.
+ *
+ * Unsplash's licence allows commercial use without asking; the images are
+ * served from Unsplash's own CDN (hotlinked, as their guidelines ask) at a
+ * width a hero needs. Each id was looked at, so a dentist does not get a
+ * gym. The client can upload their own instead, or have none.
+ */
+export function stockPhotoFor(text: string, width = 1600): string {
+  return `https://images.unsplash.com/${tradeOf(text).photo}?w=${width}&q=70&auto=format&fit=crop`;
+}
 
 /** The trade a request and a business description are about, or the generic set. */
 export function tradeOf(text: string): Trade {

@@ -802,7 +802,12 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
   const workflows = uniq(c.workflows, w => w.name).filter(w => !full.removed.includes(w.key))
     .map(w => (w.nodes ? { ...w, nodes: w.nodes.map(n => stampDesign(n, a)) } : w));
   const agents = workflows.flatMap(w => w.agents.map(ag => ({ ...ag, workflow: w.name })));
-  const plannerChannels = uniq(c.planner).filter(ch => PLANNER.includes(ch));
+  /* "No website or funnel" takes the planner's page play away too, or it
+     would build the page the customer just said they did not want. The
+     question itself stays (designKindsOf ignores the answer), so it can be
+     changed back. */
+  const noPage = String(a.pageTemplate ?? '') === 'none';
+  const plannerChannels = uniq(c.planner).filter(ch => PLANNER.includes(ch) && !(noPage && ch === 'site'));
   if (plannerChannels.length) {
     agents.push({
       name: 'Autopilot Planner',

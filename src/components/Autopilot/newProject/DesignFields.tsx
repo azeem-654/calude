@@ -9,7 +9,7 @@
  * mock-up of something it cannot make.
  */
 import { useRef, type CSSProperties, type ReactNode } from 'react';
-import { Check, Globe, Loader, Sparkles, Upload, Type, AlertTriangle } from 'lucide-react';
+import { Check, Globe, Loader, Sparkles, Upload, Type, AlertTriangle, ImageOff, Image as ImageIcon } from 'lucide-react';
 import {
   FONT_FAMILY, LAYOUTS, THEMES, resolveTheme, type DesignKind, type LogoChoice, type Palette,
 } from '../../../services/designOptions';
@@ -242,6 +242,65 @@ export function ThemeField({ value, byAi, onPick, onAi, brandColor, words }: {
   );
 }
 
+export interface BackgroundState {
+  mode: 'stock' | 'upload' | 'none';
+  /** The uploaded photo, shrunk. */
+  dataUrl: string;
+  /** The stock photograph for this trade. */
+  stock: string;
+  error: string;
+}
+
+/**
+ * The picture behind the first section of the website or funnel — a stock
+ * photograph for the trade, the customer's own, or none — previewed under the
+ * theme's tint with their name and headline, as the page will draw it.
+ */
+export function BackgroundField({ st, palette, name, headline, onMode, onFile }: {
+  st: BackgroundState; palette: Palette; name: string; headline: string;
+  onMode: (m: 'stock' | 'upload' | 'none') => void; onFile: (f: File) => void;
+}) {
+  const picker = useRef<HTMLInputElement>(null);
+  const img = st.mode === 'upload' ? st.dataUrl : st.mode === 'stock' ? st.stock : '';
+  const hex = (h: string, a: number) => { const n = parseInt(h.slice(1), 16) || 0; return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
+  const bg = img
+    ? `linear-gradient(135deg, ${hex(palette.bg, 0.78)}, rgba(15,17,22,0.55)), url("${img}") center / cover`
+    : `linear-gradient(135deg, ${palette.bg}, ${palette.bg2})`;
+  const ink = img ? '#ffffff' : palette.ink;
+  return (
+    <div className="np-bg">
+      <div className="np-q-head" style={{ marginTop: 6 }}>
+        <span style={{ fontSize: 15, fontWeight: 750, color: '#17191c' }}>Background picture for your page</span>
+        <span className="np-need" data-need="optional">OPTIONAL</span>
+      </div>
+      <div className="np-bg-preview" style={{ background: bg, color: ink, fontFamily: `${FONT_FAMILY[palette.font]}, ${FALLBACK[palette.font]}` }} aria-label="Preview of the first section">
+        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', opacity: 0.85 }}>{(name || 'Your business').toUpperCase()}</span>
+        <span style={{ fontSize: 'clamp(18px, 3.4vw, 26px)', fontWeight: 800, lineHeight: 1.15, maxWidth: 460 }}>{headline || `Welcome to ${name || 'your business'}`}</span>
+        <span style={{ display: 'inline-block', marginTop: 6, padding: '7px 14px', borderRadius: 999, background: palette.accent, color: '#fff', fontSize: 12, fontWeight: 700, width: 'fit-content' }}>Book now</span>
+      </div>
+      <div className="np-opts">
+        <button type="button" className="np-opt" aria-pressed={st.mode === 'stock'} onClick={() => onMode('stock')}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> A photo for your trade</span>
+          <small>Suggested · a free stock photo (Unsplash)</small>
+        </button>
+        <button type="button" className="np-opt" aria-pressed={st.mode === 'upload'} onClick={() => picker.current?.click()}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={13} /> {st.mode === 'upload' ? 'Upload a different photo' : 'Upload my own'}</span>
+          <small>JPG, PNG or WebP</small>
+        </button>
+        <input ref={picker} type="file" hidden accept="image/jpeg,image/png,image/webp"
+          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
+        <button type="button" className="np-opt" aria-pressed={st.mode === 'none'} onClick={() => onMode('none')}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ImageOff size={13} /> Colours only</span>
+        </button>
+      </div>
+      {st.error && <span style={{ display: 'flex', gap: 6, fontSize: 12.5, color: '#9a3412' }}><AlertTriangle size={14} /> {st.error}</span>}
+      <span style={{ fontSize: 12, color: '#6b7280', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+        <ImageIcon size={12} /> Used behind the first section of the website or funnel this project builds. You can change it in the page editor any time.
+      </span>
+    </div>
+  );
+}
+
 export function ColourField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const ok = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
   return (
@@ -262,17 +321,21 @@ export interface LogoFieldState {
   error: string;
 }
 
-export function LogoField({ value, byAi, st, onFind, onFile, onNone, onAi }: {
+export function LogoField({ value, byAi, st, onFind, onFile, onNone, onAi, onUse, chosen }: {
   value: string; byAi: boolean; st: LogoFieldState;
   onFind: (url: string) => void; onFile: (f: File) => void; onNone: () => void; onAi: () => void;
+  /** Take the logo shown — the one found on the website or already on file. */
+  onUse: () => void;
+  /** Whether the customer has said yes to the logo shown. */
+  chosen: boolean;
 }) {
   const picker = useRef<HTMLInputElement>(null);
   const urlBox = useRef<HTMLInputElement>(null);
   const have = !!st.logo.dataUrl && value !== 'none';
   return (
     <>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className="np-logo-well" data-empty={have ? undefined : '1'}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="np-logo-well" data-big="1" data-empty={have ? undefined : '1'}>
           {st.finding ? <Loader size={18} className="spin" color={ACCENT} />
             : have ? <img src={st.logo.dataUrl} alt="Your logo" />
               : <Type size={20} color="#9aa3b2" />}
@@ -285,9 +348,14 @@ export function LogoField({ value, byAi, st, onFind, onFile, onNone, onAi }: {
                   : 'No logo yet'}
           </b>
           <span style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.45 }}>
-            {have ? 'Shrunk to a crisp 320px and kept on the client’s profile, so every project for them uses it.'
+            {have ? (chosen ? 'Chosen — it goes on the posts, pages and emails this project makes, and onto the client’s profile.' : 'Is this the right one? Use it, or upload another.')
               : 'A PNG or SVG with a transparent background works best.'}
           </span>
+          {have && (
+            <button type="button" className="np-use-logo" aria-pressed={chosen} onClick={onUse} data-field="project.logo">
+              <Check size={15} /> {chosen ? 'Using this logo' : 'Use this logo'}
+            </button>
+          )}
         </span>
       </div>
       {st.error && !st.finding && (
@@ -303,8 +371,8 @@ export function LogoField({ value, byAi, st, onFind, onFile, onNone, onAi }: {
         <input ref={picker} type="file" hidden accept="image/png,image/svg+xml,image/jpeg,image/webp,image/gif"
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
         {st.website && (
-          <button type="button" className="np-opt" aria-pressed={value === 'site'} disabled={st.finding} onClick={() => onFind(st.website)}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Globe size={13} /> {value === 'site' && have ? 'Look again on my website' : 'Take it from my website'}</span>
+          <button type="button" className="np-opt" aria-pressed={false} disabled={st.finding} onClick={() => onFind(st.website)}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Globe size={13} /> {have && st.logo.from ? 'Look again on my website' : 'Take it from my website'}</span>
             <small>{st.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</small>
           </button>
         )}

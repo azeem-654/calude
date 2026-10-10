@@ -50,7 +50,8 @@ import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import AutopilotBot from './AutopilotBot';
 import { readPortfolioFromUrl, readLogoFromUrl, type Portfolio } from '../../services/projects';
 import type { LogoChoice } from '../../services/designOptions';
-import { shrinkLogo, logoFromFile } from './newProject/logoImage';
+import { shrinkLogo, logoFromFile, photoFromFile } from './newProject/logoImage';
+import { stockPhotoFor } from '../../services/answerIdeas';
 import { checkReadiness, type Readiness } from '../../services/projectReadiness';
 import { understand, refine } from '../../services/intake';
 import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from '../../services/projectSolutions';
@@ -166,6 +167,20 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const [logoError, setLogoError] = useState('');
   const logoLookedAt = useRef('');
 
+  /* ── The picture behind the first section of a page ──
+   *
+   * 'stock' (a photograph for the trade, the default), 'upload' (their own)
+   * or 'none'. Kept beside the answers like the logo: the picture is data,
+   * the answers are words the AI reads. */
+  const [background, setBackground] = useState<{ mode: 'stock' | 'upload' | 'none'; dataUrl: string; error: string }>({ mode: 'stock', dataUrl: '', error: '' });
+  const stockPhoto = useMemo(() => stockPhotoFor(`${describe.prompt} ${String(profile.draft?.description ?? '')}`), [describe.prompt, profile.draft?.description]);
+  const heroImage = background.mode === 'upload' ? background.dataUrl : background.mode === 'stock' ? stockPhoto : '';
+  const backgroundFile = useCallback(async (f: File) => {
+    const r = await photoFromFile(f);
+    if (!r.ok) { setBackground(b => ({ ...b, error: r.error })); return; }
+    setBackground({ mode: 'upload', dataUrl: r.dataUrl, error: '' });
+  }, []);
+
   /* ── Questions ── */
   const [asked, setAsked] = useState<Set<string>>(new Set());
   const [screenIdx, setScreenIdx] = useState(0);
@@ -233,9 +248,13 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     const known = (id: string) => String(state?.known[id]?.value ?? '');
     const what = profileDraft?.description || known('bizWhat') || ws.workspace?.description || '';
     const offer = profileDraft?.offer || known('offer');
-    return { name: company, tagline: first(what), heroTitle: first(offer) };
-  }, [company, profileDraft, state, ws]);
-  const prefersFunnel = !!state?.solutionKeys.some(k => /ecommerce|product|launch/.test(k));
+    return { name: company, tagline: first(what), heroTitle: first(offer), heroImage };
+  }, [company, profileDraft, state, ws, heroImage]);
+  /* A funnel is the usual recommendation — one focused page a campaign sends
+     people to. A website only leads when there is no site at all and the
+     project is about being found rather than about a campaign. */
+  const hasSite = !!(String(state?.known.website?.value ?? '') || String(profileDraft?.website ?? '') || ws.workspace?.website);
+  const prefersFunnel = hasSite || !state?.solutionKeys.some(k => /local-seo|blog|content/.test(k));
 
   const bp: Blueprint | null = useMemo(() => (state ? buildBlueprint(state, {
     companyName: company, website: String(state.known.website?.value ?? ''), files, links,
@@ -708,7 +727,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       logo: { ...shownLogo, answer: String(full.known.logo?.value ?? '') }, logoSite,
       page: template ? {
         template,
-        brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle },
+        brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle, heroImage: brandWords.heroImage },
         addWebsite, addFunnel,
       } : undefined,
     };
@@ -940,7 +959,11 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               )}
               {phase === 'questions' && state && screen && !leadsOpen && (
                 <Questions
-                  design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f), brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website' }}
+                  design={{
+                    logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f),
+                    brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website', hasSite,
+                    background: { ...background, stock: stockPhoto }, onBackground: mode => setBackground(b => ({ ...b, mode, error: '' })), onBackgroundFile: f => void backgroundFile(f),
+                  }}
                   screen={screen} state={state} ws={ws} files={files} answer={answer} company={company}
                   profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}

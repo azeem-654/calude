@@ -19,7 +19,7 @@ import { readAttachment } from './attachments';
 import { MANUAL_FIELDS, PROFILE_FIELDS, profileSource, type ProfileCheck } from './questionRules';
 import { listChoices } from './contactFacts';
 import { PlacesField, TradesField, tradesOf } from './ProspectFields';
-import { LayoutField, ThemeField, ColourField, LogoField, type LogoFieldState } from './DesignFields';
+import { LayoutField, ThemeField, ColourField, LogoField, BackgroundField, type LogoFieldState, type BackgroundState } from './DesignFields';
 import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
 import { SuggestChips, useIdeas, type IdeaInputs } from './Suggest';
@@ -34,9 +34,15 @@ export interface DesignHooks {
   onFind: (url: string) => void;
   onFile: (f: File) => void;
   /** The client's name and words, for the template previews (colour comes from the theme). */
-  brand: { name: string; tagline: string; heroTitle: string };
+  brand: { name: string; tagline: string; heroTitle: string; heroImage?: string };
   /** Which templates to show first. */
   prefer: 'website' | 'funnel';
+  /** Whether the business already has a website — then a second one is not recommended. */
+  hasSite: boolean;
+  /** The picture behind the first section of a page. */
+  background: BackgroundState;
+  onBackground: (mode: 'stock' | 'upload' | 'none') => void;
+  onBackgroundFile: (f: File) => void;
 }
 
 export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design, company }: {
@@ -100,6 +106,29 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
+      )}
+      {/* The logo the website gave, the moment it is found — approved here
+          rather than only on the logo screen several screens later. */}
+      {screen.questions.some(q => q.id === 'business') && design.logo.logo.dataUrl && design.logo.logo.from && (
+        <div className="np-q">
+          <div className="np-q-head">
+            <span style={{ fontSize: 17, fontWeight: 750, color: '#17191c' }}>Your logo</span>
+            <span className="np-need" data-need="optional">FOUND ON {design.logo.logo.from.toUpperCase()}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="np-logo-well" data-big="1"><img src={design.logo.logo.dataUrl} alt="Logo found on the website" /></span>
+            <span style={{ display: 'grid', gap: 8, flex: '1 1 200px' }}>
+              <span style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Is this your logo? It goes on the posts, pages and emails this project makes.</span>
+              <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="np-use-logo" aria-pressed={state.known.logo?.source === 'you' && state.known.logo.value === 'site'}
+                  onClick={() => answer('logo', 'site', 'you')}>
+                  <Check size={15} /> {state.known.logo?.source === 'you' && state.known.logo.value === 'site' ? 'Using this logo' : 'Yes, use this logo'}
+                </button>
+                <button type="button" className="np-skip" onClick={() => answer('logo', null)}>Not this one — I’ll choose later</button>
+              </span>
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -309,8 +338,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
     return (
       <div className="np-q">
         {head}{help}
-        <TemplatePicker value={vals[0] ?? ''} prefer={design.prefer}
-          brand={{ name: design.brand.name || 'Your business', color: palette.accent, tagline: design.brand.tagline, heroTitle: design.brand.heroTitle }}
+        <TemplatePicker value={vals[0] ?? ''} prefer={design.prefer} hasSite={design.hasSite} website={said('website')}
+          brand={{ name: design.brand.name || 'Your business', color: palette.accent, tagline: design.brand.tagline, heroTitle: design.brand.heroTitle, heroImage: design.brand.heroImage }}
           onPick={v => answer(q.id, v, v === 'ai' ? 'default' : 'you')} />
       </div>
     );
@@ -321,6 +350,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
         {head}{help}
         <ThemeField value={vals[0] ?? ''} byAi={byAi} brandColor={said('brandColor')} words={said('designStyle')}
           onPick={v => answer(q.id, v, 'you')} onAi={() => answer(q.id, byAi ? null : aiValue ?? null, 'default')} />
+        <BackgroundField st={design.background} palette={palette} name={design.brand.name} headline={design.brand.heroTitle}
+          onMode={design.onBackground} onFile={design.onBackgroundFile} />
       </div>
     );
   }
@@ -329,6 +360,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
       <div className="np-q">
         {head}{help}
         <LogoField value={vals[0] ?? ''} byAi={byAi} st={design.logo}
+          chosen={known?.source === 'you' && (vals[0] === 'site' || vals[0] === 'upload' || vals[0] === 'on')}
+          onUse={() => answer(q.id, design.logo.logo.from ? 'site' : 'upload', 'you')}
           onFind={url => { answer(q.id, 'site', 'you'); design.onFind(url); }}
           onFile={f => { answer(q.id, 'upload', 'you'); design.onFile(f); }}
           onNone={() => answer(q.id, 'none', 'you')}
