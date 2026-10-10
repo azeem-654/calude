@@ -189,7 +189,30 @@ const signIn = async (page, who) => {
 };
 
 const ctx = await br.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
-const page = await ctx.newPage();
+/* A page load is where a restart of local wrangler hurts: the page comes up
+   with its requests refused. So every load waits for the server and loads
+   again if wrangler restarted while it was loading. */
+const serverUp = async () => { for (let i = 0; i < 60; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) return; } catch { /* restarting */ } await sleep(1000); } };
+const steady = p => {
+  if (p.__steady) return p;
+  p.__steady = true;
+  for (const name of ['goto', 'reload']) {
+    const real = p[name].bind(p);
+    p[name] = async (...a) => {
+      for (let i = 0; ; i++) {
+        await serverUp();
+        const r0 = restarts;
+        let res, err;
+        try { res = await real(...a); } catch (e) { err = e; }
+        await sleep(800);
+        if (restarts === r0 || i >= 3) { if (err) throw err; return res; }
+      }
+    };
+  }
+  return p;
+};
+ctx.on('page', steady);
+const page = steady(await ctx.newPage());
 page.on('pageerror', e => errs.push(`desktop: ${e}`));
 await signIn(page, OWNER);
 
@@ -782,7 +805,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 /* ── A phone ── */
 {
   const m = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  const mp = await m.newPage();
+  const mp = steady(await m.newPage());
   mp.on('pageerror', e => errs.push(`phone: ${e}`));
   await signIn(mp, OWNER);
   for (const url of [`/video-studio`, `/video-studio/${PID}`, `/video-studio/${PID}?tab=shorts`, `/video-studio/${PID}?tab=exports`, `/video-studio/${PID}?tab=music`, `/video-studio?new=1`, `/video-studio?tab=quick-shorts`, `/video-studio?tab=repurpose`]) {
