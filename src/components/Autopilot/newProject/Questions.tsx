@@ -483,8 +483,9 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
           {aiButton}
         </div>
         {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
+        {q.id === 'emailStyle' && <EmailStyleExample style={String(vals[0] ?? aiValue ?? 'researched')} company={company} offer={said('offer')} />}
         {/* Our booking page, shown and set up the moment it is picked — not on another screen later. */}
-        {q.id === 'booking' && vals[0] === 'page' && <BookingSetup business={company} />}
+        {((q.id === 'booking' && vals[0] === 'page') || (q.id === 'calendar' && vals[0] === 'pc')) && <BookingSetup business={company} />}
         {skip}
       </div>
     );
@@ -554,6 +555,43 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
       {smart > 0 && (
         <span style={{ fontSize: 12, color: '#6b7280' }}>
           {smart} smart list{smart === 1 ? ' is' : 's are'} not shown — {smart === 1 ? 'it is' : 'they are'} worked out in your browser, and Autopilot runs on the server.
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What an email in the chosen style looks like. The researched one is an
+ * illustration (a made-up dental practice) and is labelled so: the real
+ * opening is written for each business from its own website when the email
+ * is sent, and left out when the site says nothing specific.
+ */
+function EmailStyleExample({ style, company, offer }: { style: string; company?: string; offer: string }) {
+  const me = company || 'Your business';
+  const what = offer || 'a free 20-minute review';
+  const parts = style === 'researched'
+    ? [
+      { tag: 'Their business', text: 'I saw on your site that Brightsmile opened a second practice in Hove this spring and now offers Invisalign — congratulations on the growth.' },
+      { tag: 'Their challenge', text: 'Practices that add a location often find the new chairs fill slower than the first ones did, especially for higher-value treatments.' },
+      { tag: 'Your offer', text: `That is exactly what ${me} helps with. Would ${what} be useful? You can pick a time here: {{bookingLink}}` },
+    ]
+    : style === 'value'
+      ? [
+        { tag: 'A useful tip', text: 'One thing that works for practices like yours: a short reminder two days before, with a one-tap reschedule link, cuts no-shows noticeably.' },
+        { tag: 'Your offer', text: `${me} sets this up for you. Would ${what} be useful? {{bookingLink}}` },
+      ]
+      : [{ tag: 'Same for everyone', text: `I’m writing from ${me}. We help businesses like {{company}} get more bookings. Would ${what} be useful? {{bookingLink}}` }];
+  return (
+    <div className="np-email-ex" aria-label="Example email">
+      <span className="np-email-ex-head">EXAMPLE{style === 'researched' ? ' — each one is written from that business’s own website when it is sent' : ''}</span>
+      <p style={{ margin: 0 }}>Hi Sarah,</p>
+      {parts.map(p => (
+        <p key={p.tag} style={{ margin: 0 }}><mark>{p.tag}</mark> {p.text}</p>
+      ))}
+      {style === 'researched' && (
+        <span style={{ fontSize: 11.5, color: '#6b7280', lineHeight: 1.5 }}>
+          Read from their website only — never social media, never guessed. When a site says nothing specific, those two lines are left out and the email reads as written.
         </span>
       )}
     </div>

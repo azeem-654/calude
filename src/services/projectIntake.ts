@@ -33,6 +33,8 @@ import {
 } from './designOptions';
 import type { LaunchStep } from './launchPlan';
 import { placeIn, sellingTo, splitTradePlace } from './aiProspecting';
+import { stockPhotoFor } from './answerIdeas';
+import { withResearch } from '../../worker/src/lib/emailStyle';
 
 /* ── Inputs ───────────────────────────────────────────────────────────────── */
 
@@ -481,7 +483,7 @@ export function allQuestions(state: QuestionSource): Question[] {
 /* ── Design: asked for what is actually built ─────────────────────────────── */
 
 /** Every id `designQuestions` can ever return — see `startQuestions`. */
-export const DESIGN_QUESTION_IDS = ['logo', 'designStyle', 'theme', 'brandColor', 'postLayout', 'pageLayout', 'emailLayout', 'blogLayout'];
+export const DESIGN_QUESTION_IDS = ['logo', 'designStyle', 'theme', 'brandColor', 'postLayout', 'pageLayout', 'emailLayout', 'blogLayout', 'emailStyle'];
 
 /**
  * Which kinds of designed thing these answers would build.
@@ -545,7 +547,7 @@ export function designQuestions(state: QuestionSource): Question[] {
   const out: Question[] = [];
   const visual = kinds.includes('social') || kinds.includes('page');
   const emailOnly = !visual && kinds.includes('email');
-  const branded = { id: 'emailLayout', in: ['branded', 'newsletter', 'promo'] };
+  const branded = { id: 'emailLayout', in: ['branded', 'newsletter', 'promo', 'photo', 'video', 'card'] };
   if (visual || emailOnly) {
     out.push(emailOnly ? { ...QUESTIONS.logo, showIf: branded } : QUESTIONS.logo);
     if (visual) out.push(QUESTIONS.designStyle);
@@ -556,6 +558,7 @@ export function designQuestions(state: QuestionSource): Question[] {
      layout question is only asked if they leave the design to Autopilot. */
   if (kinds.includes('page')) out.push(QUESTIONS.pageTemplate);
   for (const k of kinds) out.push(QUESTIONS[LAYOUT_QUESTION[k]]);
+  if (kinds.includes('email')) out.push(QUESTIONS.emailStyle);
   return out.filter(Boolean);
 }
 
@@ -656,6 +659,8 @@ export interface Blueprint {
    * the brief is the one record of the project the planner reads.
    */
   pageDesign: Record<string, string> | null;
+  /** How the emails open — 'researched', 'value' or 'template' — when the project sends email. */
+  emailStyle: string;
   /**
    * The contact list this project works from, by id — or null when it works
    * from the workspace as a whole. Only when somebody chose "a contact list I
@@ -768,6 +773,9 @@ function labelOf(q: Question, v: string | string[]): string {
 export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Blueprint {
   const full = withDefaults(state);
   const a = answersOf(full.known);
+  /* The photo a photo- or video-framed email shows when there is no video:
+     the same stock photograph the pages use for this trade, at email width. */
+  if (!a.emailImage) a.emailImage = stockPhotoFor(state.prompt, 1200);
   let c: Contribution = {
     workflows: [], setup: [], outputs: [], destinations: [], approvals: [], manual: [],
     planner: [], requirements: [], limits: [],
@@ -800,7 +808,7 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
 
   const kinds = designKindsOf(full);
   const workflows = uniq(c.workflows, w => w.name).filter(w => !full.removed.includes(w.key))
-    .map(w => (w.nodes ? { ...w, nodes: w.nodes.map(n => stampDesign(n, a)) } : w));
+    .map(w => (w.nodes ? { ...w, nodes: w.nodes.map(n => stampDesign(n, a, w.key)) } : w));
   const agents = workflows.flatMap(w => w.agents.map(ag => ({ ...ag, workflow: w.name })));
   /* "No website or funnel" takes the planner's page play away too, or it
      would build the page the customer just said they did not want. The
@@ -854,7 +862,8 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     decided,
     plannerChannels,
     design: designSummary(kinds, a),
-    pageDesign: kinds.includes('page') ? designConfig('page', a) : null,
+    pageDesign: kinds.includes('page') && !noPage ? designConfig('page', a) : null,
+    emailStyle: kinds.includes('email') ? String(a.emailStyle ?? '') : '',
     audienceListId: audienceOf(full),
   };
 }
@@ -879,8 +888,14 @@ const LIST_ID = /^list-[A-Za-z0-9_-]{1,80}$/;
  * wizard. The client's logo is the exception: `logo: 'on'` says to use it, and
  * the step reads the portfolio for it when it runs.
  */
-function stampDesign<N extends { type: string; config?: Record<string, string> }>(n: N, a: Answers): N {
+function stampDesign<N extends { type: string; config?: Record<string, string> }>(n: N, a: Answers, workflowKey = ''): N {
   const produces = String(n.config?.produces ?? '');
+  /* Researched emails: the follow-up to people who went quiet opens with what
+     their own site says. Replies to somebody who just enquired do not — they
+     wrote first, and "I saw on your website" would read oddly to them. */
+  if (n.type === 'send_email' && workflowKey === 'followup' && String(a.emailStyle ?? '') === 'researched' && n.config?.body) {
+    n = { ...n, config: { ...n.config, body: withResearch(String(n.config.body)) } };
+  }
   if (n.type === 'ai' && produces === 'social') return { ...n, config: { ...n.config, ...designConfig('social', a) } };
   if (n.type === 'ai' && produces === 'blog') return { ...n, config: { ...n.config, ...designConfig('blog', a) } };
   if (n.type === 'send_email') return { ...n, config: { ...n.config, ...designConfig('email', a) } };
@@ -893,7 +908,7 @@ function designSummary(kinds: DesignKind[], a: Answers): { label: string; value:
   const out: { label: string; value: string }[] = [];
   const LABEL: Record<DesignKind, string> = { social: 'Social posts', page: 'Pages and funnels', email: 'Emails', blog: 'Articles' };
   for (const k of kinds) out.push({ label: LABEL[k], value: layoutLabel(k, one(LAYOUT_QUESTION[k]) || DEFAULT_LAYOUT[k]) });
-  const visual = kinds.includes('social') || kinds.includes('page') || ['branded', 'newsletter', 'promo'].includes(one('emailLayout'));
+  const visual = kinds.includes('social') || kinds.includes('page') || ['branded', 'newsletter', 'promo', 'photo', 'video', 'card'].includes(one('emailLayout'));
   if (visual) {
     out.push({ label: 'Colours', value: `${themeLabel(one('theme') || 'brand')}${one('brandColor') ? ` · ${one('brandColor')}` : ''}` });
     const logo = one('logo');
@@ -981,6 +996,8 @@ export function briefOf(bp: Blueprint, prompt: string, audienceName = ''): Recor
     /* Read by the planner: its own sequences carry the opt-in P.S. too, so a
        prospect is offered texts whichever of the two wrote to them. */
     ...(bp.workflows.some(w => w.key === 'sms-optin') ? { smsOptIn: true } : {}),
+    /* Read by the planner: its sequences open each email with the prospect's own research (lib/emailStyle.ts). */
+    ...(bp.emailStyle ? { emailStyle: bp.emailStyle } : {}),
     createdWith: 'wizard-v2',
   };
 }

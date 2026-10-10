@@ -77,7 +77,7 @@ export type QuestionType = 'single' | 'multi' | 'text' | 'number' | 'business' |
 export type QuestionGroup =
   | 'business' | 'deliverable' | 'schedule' | 'style' | 'audience' | 'contacts'
   | 'offer' | 'sending' | 'catalogue' | 'store' | 'booking' | 'handoff' | 'custom'
-  | 'brand' | 'look' | 'pages' | 'layout';
+  | 'brand' | 'look' | 'pages' | 'layout' | 'writing';
 
 export const GROUP_TITLE: Record<QuestionGroup, string> = {
   business: 'Your business',
@@ -97,12 +97,13 @@ export const GROUP_TITLE: Record<QuestionGroup, string> = {
   look: 'Colours and theme',
   pages: 'Your website or funnel',
   layout: 'Layouts',
+  writing: 'How each email is written',
 };
 
 /** The order screens appear in, whichever solutions contributed them. */
 export const GROUP_ORDER: QuestionGroup[] = [
   'business', 'deliverable', 'catalogue', 'audience', 'contacts', 'offer',
-  'schedule', 'booking', 'brand', 'look', 'pages', 'layout', 'style', 'store', 'sending', 'handoff', 'custom',
+  'schedule', 'booking', 'brand', 'look', 'pages', 'layout', 'writing', 'style', 'store', 'sending', 'handoff', 'custom',
 ];
 
 export interface QuestionOption {
@@ -290,6 +291,23 @@ const Q: Record<string, Question> = {
     prompt: 'What shape should the articles take?',
     options: LAYOUTS.blog,
     aiDecides: DEFAULT_LAYOUT.blog,
+  },
+  /*
+   * How the emails are written (worker/src/lib/emailStyle.ts). "Researched"
+   * opens each prospect's email with something true from their own website
+   * and a problem common in their trade, written at the moment of sending —
+   * so every email is different. Asked whenever a project sends email.
+   */
+  emailStyle: {
+    id: 'emailStyle', group: 'writing', type: 'single', need: 'optional',
+    prompt: 'How should each email open?',
+    help: 'Researched emails read each business’s own website before writing to them, so every email starts differently — and reads like a person looked them up.',
+    options: [
+      { value: 'researched', label: 'Researched for each business', hint: 'Opens with something specific from their website, then a problem businesses like theirs face — unique to every prospect' },
+      { value: 'value', label: 'Useful first', hint: 'A tip or insight for their trade, then your offer' },
+      { value: 'template', label: 'The same email for everyone', hint: 'Their name and business filled in, otherwise identical' },
+    ],
+    aiDecides: 'researched',
   },
   approval: {
     id: 'approval', group: 'handoff', type: 'single', need: 'required',

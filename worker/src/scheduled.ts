@@ -17,7 +17,9 @@
  * that misses a tick — the recipient sees the mistake either way, but only
  * one of them is embarrassing twice.
  */
-import { businessFor, personalise, textToHtml, type Business } from './lib/mergeFields';
+import { businessFor, personalise, textToHtml, type Business, type Person } from './lib/mergeFields';
+import { hasResearch } from './lib/emailStyle';
+import { researchFor } from './lib/prospectResearch';
 import { signTrackedLinks } from './lib/trackSign';
 import type { Env } from './lib/db';
 import { dataGet, dataPut, dataUpdate } from './lib/db';
@@ -211,7 +213,12 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
 
     if (!biz) biz = await businessFor(env, accountId, null, mailbox?.from.name ?? '');
     /* Their own opt-in link, only when the step asks for it. */
-    const person = (step.body ?? '').includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+    let person: Person = (step.body ?? '').includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+    /* The researched opening, only for an email step that has a place for it. */
+    if (!isSms && hasResearch(step.body ?? '')) {
+      const r = await researchFor(env, accountId, { ...(contact as unknown as Record<string, unknown>), email: target }, { myCompany: biz.myCompany, offer: biz.offer ?? '' });
+      person = { ...person, personalOpener: r.opener, theirChallenge: r.challenge };
+    }
     const html = textToHtml(personalise(step.body ?? '', person, biz));
     const subject = personalise(step.subject ?? '', contact, biz);
 

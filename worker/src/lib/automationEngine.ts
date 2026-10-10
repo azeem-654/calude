@@ -32,7 +32,9 @@
  * Waits are honoured exactly: `due_at` moves forward and the run is simply not
  * selected again until then. Nothing sleeps.
  */
-import { businessFor, personalise, textToHtml, type Business } from './mergeFields';
+import { businessFor, personalise, textToHtml, type Business, type Person } from './mergeFields';
+import { hasResearch } from './emailStyle';
+import { researchFor } from './prospectResearch';
 import { signTrackedLinks } from './trackSign';
 import type { Env } from './db';
 import { dataGet, dataUpdate } from './db';
@@ -519,7 +521,12 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           const cfg = (k: string) => String(node.config?.[k] ?? '').trim();
           const bodyText = String(node.config?.body ?? node.config?.preview ?? '');
           /* Their own opt-in link, made only when the email asks for it. */
-          const person = bodyText.includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+          let person: Person = bodyText.includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+          /* The researched opening, only when the email has a place for it. */
+          if (hasResearch(bodyText)) {
+            const r = await researchFor(env, accountId, { ...(contact as unknown as Record<string, unknown>), email: to }, { myCompany: biz.myCompany, offer: biz.offer ?? '' });
+            person = { ...person, personalOpener: r.opener, theirChallenge: r.challenge };
+          }
           let html = textToHtml(personalise(bodyText, person, biz));
           /* The frame the wizard's email layout chose. `plain` — the default,
              and every step written before layouts — is left exactly as it was. */

@@ -34,6 +34,7 @@
     "test:triggers": "npx --yes tsx worker/test/triggers.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs",
     "test:intake": "npx --yes tsx test/projectIntake.test.mts",
+    "test:emailstyle": "npx --yes tsx test/emailStyle.test.mts",
     "test:wizard": "node test/newProject.e2e.mjs",
     "test:security": "node test/security.e2e.mjs",
     "test:models": "npx --yes tsx worker/test/models.test.mts",

@@ -151,7 +151,16 @@ function PagePic({ layout, p, logo }: { layout: string; p: Palette; logo: string
 function EmailPic({ layout, p, logo }: { layout: string; p: Palette; logo: string }) {
   const body = <span style={{ display: 'block', padding: '8px 10px' }}><Lines n={4} color="#d7dbe3" h={3} gap={4} widths={[92, 86, 90, 50]} /></span>;
   const btn = <span style={{ display: 'block', margin: '2px 10px 8px', width: 34, height: 8, borderRadius: 3, background: p.accent }} />;
-  const head = layout === 'branded'
+  const pic = (play: boolean) => (
+    <span style={{ display: 'grid', placeItems: 'center', height: 46, background: 'url("https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=300&q=50&auto=format&fit=crop") center / cover' }}>
+      {play && <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(255,255,255,0.92)', display: 'grid', placeItems: 'center', font: '900 9px Inter', color: '#dc2626' }}>▶</span>}
+    </span>
+  );
+  const head = layout === 'photo' || layout === 'video'
+    ? <span style={{ display: 'block' }}>{pic(layout === 'video')}{layout === 'video' && <span style={{ display: 'block', height: 7, background: p.accent }} />}<span style={{ display: 'block', padding: '5px 10px 0' }}><Mark logo={logo} color="#17191c" size={11} /></span></span>
+    : layout === 'card'
+      ? <span style={{ display: 'block', padding: '7px 10px', borderLeft: `3px solid ${p.accent}` }}><Mark logo={logo} color="#17191c" size={13} /></span>
+      : layout === 'branded'
     ? <span style={{ display: 'block', padding: '7px 10px', borderBottom: `2px solid ${p.accent}` }}><Mark logo={logo} color="#17191c" size={14} /></span>
     : layout === 'newsletter'
       ? <span style={{ display: 'block', padding: '8px 10px', background: p.bg }}><Mark logo={logo} color={p.ink} size={14} /></span>
