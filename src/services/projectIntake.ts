@@ -996,6 +996,8 @@ export interface EditOps {
   removeWorkflows?: string[];
   name?: string;
   objective?: string;
+  /** The project restated, when a correction changed what it is for. */
+  summary?: string;
 }
 
 /** Only values a question actually offers survive. */
@@ -1052,6 +1054,7 @@ export function applyOps(state: IntakeState, ops: EditOps): IntakeState {
     removed: [...new Set([...state.removed, ...(ops.removeWorkflows ?? [])])],
     name: ops.name?.trim() ? ops.name.trim().slice(0, 120) : state.name,
     objective: ops.objective?.trim() ? ops.objective.trim().slice(0, 600) : state.objective,
+    summary: ops.summary?.trim() ? ops.summary.trim().slice(0, 400) : state.summary,
   };
 }
 

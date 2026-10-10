@@ -235,8 +235,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   }, [preset]);
 
   /* ── Understand ── */
-  const runUnderstanding = useCallback(async () => {
-    const prompt = describe.prompt.trim();
+  const runUnderstanding = useCallback(async (override?: string) => {
+    const prompt = (override ?? describe.prompt).trim();
     const urls = [...new Set([...links.map(l => l.url), ...urlsIn(prompt)])];
     const base = initialState(prompt, describe.picked || undefined, ws, files, links);
     const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -366,6 +366,44 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     setState(st);
     setUnderstood(true);
   }, [describe, files, links, ws, withPreset]);
+
+  /* ── Correcting what was understood ──
+   *
+   * The screen used to offer a dropdown of solution names, which only helps
+   * somebody who already knows the catalogue. Now the customer says what is
+   * wrong. With the AI, the correction is an edit to the answers (the same
+   * `refine` the blueprint uses, which may also restate the summary); when it
+   * changes nothing, or there is no AI, the request is read again with the
+   * correction added to it — the keyword path then sees the corrected words. */
+  const [correcting, setCorrecting] = useState(false);
+  const [correction, setCorrection] = useState<{ ok: boolean; text: string } | null>(null);
+  const correct = useCallback(async (text: string) => {
+    if (!state) return;
+    setCorrecting(true); setCorrection(null);
+    if (!aiDown.current) {
+      const r = await refine({
+        instruction: text,
+        state: {
+          solutionKeys: state.solutionKeys, answers: answersOf(state.known), summary: state.summary,
+          name: state.name, objective: state.objective, request: state.prompt,
+        },
+      });
+      if (r.noAi) aiDown.current = true;
+      const ops = r.ops;
+      const changes = !!ops && (Object.keys(ops.set ?? {}).length || ops.addSolutions?.length || ops.removeSolutions?.length || ops.summary || ops.name || ops.objective);
+      if (r.ok && ops && changes) {
+        setState(s => (s ? withPreset(applyOps(s, ops)) : s));
+        setCorrection({ ok: true, text: r.reply || 'Done — updated.' });
+        setCorrecting(false);
+        return;
+      }
+    }
+    const combined = `${describe.prompt.trim()}\n\nCorrection: ${text}`;
+    setDescribe(d => ({ ...d, prompt: combined }));
+    await runUnderstanding(combined);
+    setCorrection({ ok: true, text: 'Read again with your correction.' });
+    setCorrecting(false);
+  }, [state, describe.prompt, runUnderstanding, withPreset]);
 
   /* ── Answering ── */
   const answer = useCallback((id: string, value: string | string[] | null, source: KnownSource = 'you') => {
@@ -656,14 +694,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       if (describe.prompt.trim().length < 8 && !files.length) return describe.picked ? 'Say a little about what you want' : 'Describe what you want, or pick a solution';
       return '';
     }
-    if (phase === 'understand') return understood ? '' : 'Understanding…';
+    if (phase === 'understand') return correcting ? 'Fixing…' : understood ? '' : 'Understanding…';
     if (phase === 'questions' && screen && state) return screenBlocker(screen, state, files, profile);
     return '';
   })();
 
   const next = () => {
     if (blocker) return;
-    if (phase === 'describe') { setPhase('understand'); void runUnderstanding(); return; }
+    if (phase === 'describe') { setPhase('understand'); setCorrection(null); void runUnderstanding(); return; }
     if (phase === 'understand') { startQuestions(); return; }
     if (phase === 'questions') {
       if (screenIdx + 1 < screens.length) setScreenIdx(i => i + 1);
@@ -814,6 +852,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               {phase === 'understand' && (
                 <Understanding
                   stages={stages} state={state} finished={understood} portfolios={ws.portfolios} lists={lists}
+                  onCorrect={t => void correct(t)} correcting={correcting} correction={correction}
+                  openGroups={state ? [...new Set(allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).map(q => q.group))] : []}
                   questionCount={state ? allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).length : 0}
                   onChangeSolution={keys => setState(s => {
                     if (!s) return s;

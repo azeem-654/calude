@@ -22,6 +22,11 @@ import { PlacesField, TradesField, tradesOf } from './ProspectFields';
 import { LayoutField, ThemeField, ColourField, LogoField, type LogoFieldState } from './DesignFields';
 import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
+import { SuggestChips, useIdeas, type IdeaInputs } from './Suggest';
+import type { Ideas } from '../../../services/answerIdeas';
+
+/** The ideas for one screen, as Field reads them. */
+interface ScreenIdeas { ideas: Record<string, Ideas>; busy: boolean; byAi: boolean }
 
 /** What the design questions need beyond the answers: the logo and how to get one. */
 export interface DesignHooks {
@@ -61,6 +66,20 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
    * made on this screen.
    */
   const open = screen.questions.filter(q => !state.known[q.id] && aiChoice(q) !== null && aiChoice(q) !== 'detect');
+  /* What the suggestions are for: the request, the business as read, and the
+     answers so far — so "who it is for" is offered patients of a med spa, not
+     Amazon sellers. */
+  const said = (id: string) => { const v = state.known[id]?.value; return Array.isArray(v) ? v.join('; ') : String(v ?? ''); };
+  const inputs: IdeaInputs = {
+    prompt: state.prompt,
+    business: {
+      companyName: company || String(profile.draft?.companyName ?? ''),
+      description: String(profile.draft?.description ?? '') || said('bizWhat') || ws.workspace?.description || '',
+      website: said('website') || String(profile.draft?.website ?? ''),
+    },
+    answers: Object.fromEntries(Object.keys(state.known).map(id => [id, said(id)])),
+  };
+  const ideas = useIdeas(screen.questions, inputs);
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap' }}>
@@ -77,7 +96,7 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
         )}
       </div>
       {screen.questions.map(q => (
-        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} />
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} ideas={ideas} />
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
@@ -167,9 +186,9 @@ function ProfileFound({ state, files, profile, onProfile, onRead }: {
   );
 }
 
-function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }: {
+function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, ideas }: {
   q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
-  design: DesignHooks; company?: string;
+  design: DesignHooks; company?: string; ideas: ScreenIdeas;
   answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
   onFiles: (atts: Attachment[]) => void;
   onLink: (url: string) => void;
@@ -198,6 +217,13 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
       onClick={() => answer(q.id, vals[0] === 'detect' ? null : 'detect', 'default')}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI work it out</span>
     </button>
+  ) : null;
+  const idea = ideas.ideas[q.id];
+  /* Suggested answers for a typed question; picking one is the customer's
+     answer, "Let AI decide" is the AI's — said as "chosen for you". */
+  const chips = idea || (ideas.busy && q.type === 'text') ? (
+    <SuggestChips id={q.id} value={Array.isArray(val) ? val.join('; ') : String(val ?? '')} ideas={idea} busy={ideas.busy} fromAi={ideas.byAi}
+      onChange={(v, decided) => answer(q.id, v.trim() ? v : null, decided ? 'default' : 'you')} />
   ) : null;
   const skipped = known?.note === 'skipped';
   const skip = q.need !== 'optional' ? null : skipped ? (
@@ -367,8 +393,9 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
     return (
       <div className="np-q">
         {head}{help}
-        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')}
+        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')} placeholder={idea?.placeholder.replace(/^e\.g\.\s*/, 'Add a kind of business — e.g. ')}
           onPlace={p => { if (!String(state.known.prospectPlaces?.value ?? '').trim()) answer('prospectPlaces', p, 'you'); }} />
+        {chips}
       </div>
     );
   }
@@ -378,6 +405,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
       <div className="np-q">
         {head}{help}
         <PlacesField value={vals[0] ?? ''} trades={trades} onChange={v => answer(q.id, v || null, 'you')} />
+        {chips}
       </div>
     );
   }
@@ -406,10 +434,16 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
         <div className="np-opts">
           {(q.options ?? []).map(o => {
             const on = vals.includes(o.value);
+            /* The daily finder is the one answer that makes the project find
+               its own customers; it is drawn as the lead option. */
+            const hero = q.id === 'contactSource' && o.value === 'find';
+            const suggested = !hero && !on && (Array.isArray(aiValue) ? aiValue.includes(o.value) : aiValue === o.value);
             return (
-              <button key={o.value} type="button" className="np-opt" aria-pressed={on} onClick={() => toggle(o.value)}>
+              <button key={o.value} type="button" className={hero ? 'np-opt np-opt-hero' : 'np-opt'} aria-pressed={on} onClick={() => toggle(o.value)}>
+                {hero && <span className="np-hero-badge"><Sparkles size={11} /> Total automation · Recommended</span>}
                 <span>{o.label}{byAi && on ? ' ✦' : ''}</span>
                 {o.hint && <small>{o.hint}</small>}
+                {suggested && <small className="np-suggested">✦ Suggested</small>}
               </button>
             );
           })}
@@ -427,11 +461,12 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
   return (
     <div className="np-q">
       {head}{help}
-      <input className="np-input" inputMode={q.type === 'number' ? 'numeric' : undefined}
-        value={byAi ? '' : String(val ?? '')} placeholder={q.placeholder}
+      <input className="np-input" inputMode={q.type === 'number' ? 'numeric' : undefined} data-field={`project.${q.id}`}
+        value={byAi && !chips ? '' : String(val ?? '')} placeholder={idea?.placeholder || q.placeholder}
         onChange={e => answer(q.id, e.target.value, 'you')} aria-label={q.prompt} />
+      {chips}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        {aiButton && <div className="np-opts">{aiButton}</div>}
+        {aiButton && !chips && <div className="np-opts">{aiButton}</div>}
         {skip}
       </div>
     </div>

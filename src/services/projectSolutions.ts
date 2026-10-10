@@ -467,7 +467,7 @@ const Q: Record<string, Question> = {
   audience: {
     id: 'audience', group: 'audience', type: 'text', need: 'required',
     prompt: 'Who exactly should it reach?',
-    placeholder: 'Amazon sellers doing over £20k a month in the UK',
+    placeholder: 'e.g. people who asked about a treatment but never booked',
     help: 'The more specific, the better the list and the writing.',
   },
   location: {
@@ -481,7 +481,7 @@ const Q: Record<string, Question> = {
     options: [
       { value: 'crm', label: 'Already in Protected Central' },
       { value: 'upload', label: 'A spreadsheet I will import', hint: 'Contacts → Import takes a CSV' },
-      { value: 'find', label: 'Find new ones for me, every day', hint: 'Searched live, addresses checked, added to this project — you approve each batch before it is emailed' },
+      { value: 'find', label: 'Find new ones for me every day', hint: 'AI searches the internet for new businesses every day, reads their websites, checks each address and adds them to this project — total automation. You approve each batch before it is emailed.' },
       { value: 'list', label: 'A contact list I have', hint: 'Including the lists you fill in Prospecting' },
     ],
   },
