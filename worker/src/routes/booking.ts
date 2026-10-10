@@ -24,6 +24,8 @@ import { recordEvent, upsertPerson } from '../lib/engagement';
 import { canSend, deliver, fromAddressOf } from '../lib/deliver';
 import { loadMailbox } from './mailbox';
 import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
+import { clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
+import { ownMediaUrl } from './bookingMedia';
 
 interface BookingBody {
   action?: string;
@@ -44,6 +46,8 @@ interface BookingBody {
   notes?: string;
   timezone?: string;
   eventTypeId?: string;
+  from?: string;
+  to?: string;
 }
 
 const SLUG_OK = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -56,6 +60,66 @@ function slotWords(date: string, time: string): string {
   const [h, mi] = time.split(':').map(Number);
   const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   return `${day} at ${h % 12 || 12}:${String(mi).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
+}
+
+/**
+ * The same slot on the guest's own clock — "8:00 pm Tuesday 13 October in
+ * Asia/Bangkok" — when they booked from another zone. The page showed them
+ * their own time; an email naming only the owner's would read as a different
+ * appointment. Empty when the zones agree or either is unknown.
+ */
+function guestWords(date: string, time: string, ownerTz: string, guestTz: string): string {
+  if (!isZone(ownerTz) || !isZone(guestTz) || ownerTz === guestTz) return '';
+  const at = wallToUtc(date, time, ownerTz);
+  if (at === null) return '';
+  const w = utcToWall(at, guestTz);
+  if (w.date === date && w.time === time) return '';
+  const day = new Date(at).toLocaleDateString('en-GB', { timeZone: guestTz, weekday: 'long', day: 'numeric', month: 'long' });
+  return `${clockLabel(w.time)} ${day} in ${guestTz.replace(/_/g, ' ')}`;
+}
+
+/** The published page's availability rules, for the meeting type booked. */
+function rulesOf(pub: Record<string, unknown>, eventTypeId?: string): SlotRules {
+  const types = Array.isArray(pub.eventTypes) ? pub.eventTypes as { id?: string; duration?: number }[] : [];
+  const et = eventTypeId ? types.find(t => t && t.id === eventTypeId) : types.length === 1 ? types[0] : undefined;
+  const num = (v: unknown, d: number) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  return {
+    timezone: isZone(pub.timezone) ? pub.timezone : 'UTC',
+    weekly: (pub.weekly && typeof pub.weekly === 'object' ? pub.weekly : {}) as SlotRules['weekly'],
+    duration: num(et?.duration, num(pub.duration, 30)),
+    bufferBefore: num(pub.bufferBefore, 0),
+    bufferAfter: num(pub.bufferAfter, 0),
+    dailyLimit: num(pub.dailyLimit, 0),
+    minNoticeMin: num(pub.minNoticeMin, 0),
+    windowDays: num(pub.windowDays, 365),
+  };
+}
+
+/** Everything already booked on an owner date, as intervals. */
+async function busyOn(env: Env, accountId: string, date: string, defaultDuration: number, exceptId = ''): Promise<Busy[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, slot_time AS time, data FROM crm_bookings
+      WHERE account_id = ? AND slot_date = ? AND status != 'cancelled' AND id != ?`,
+  ).bind(accountId, date, exceptId).all<{ id: string; time: string; data: string }>();
+  return (results ?? []).map(r => {
+    let duration = defaultDuration;
+    try { duration = Number((JSON.parse(r.data) as { duration?: number }).duration) || defaultDuration; } catch { /* default */ }
+    return { date, time: r.time, duration };
+  });
+}
+
+const clip = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, n);
+
+/**
+ * A picture address the page may show: one of this workspace's own uploads
+ * (checked by the caller), an https/http link, or an inline PNG/JPEG/GIF/WebP.
+ * Anything else — `javascript:`, an SVG data URL — is dropped.
+ */
+function pictureUrl(v: unknown): string {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  if (/^data:image\/(png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(s)) return s.length <= 700_000 ? s : '';
+  try { const u = new URL(s); return (u.protocol === 'https:' || u.protocol === 'http:') && s.length <= 2000 ? s : ''; } catch { return ''; }
 }
 
 /**
@@ -72,7 +136,7 @@ function slotWords(date: string, time: string): string {
 async function bookingMail(
   env: Env, accountId: string, origin: string,
   what: 'booked' | 'rescheduled' | 'cancelled',
-  b: { id: string; key: string; slotDate: string; slotTime: string; guestName: string; guestEmail: string; notes?: string; meetingUrl?: string },
+  b: { id: string; key: string; slotDate: string; slotTime: string; guestName: string; guestEmail: string; notes?: string; meetingUrl?: string; guestTz?: string },
 ): Promise<{ guest: boolean }> {
   try {
     const cfg = await env.DB.prepare('SELECT public, private FROM crm_booking_config WHERE account_id = ?')
@@ -91,6 +155,7 @@ async function bookingMail(
     const title = String(pub.title || 'Meeting');
     const when = slotWords(b.slotDate, b.slotTime);
     const tz = String(pub.timezone || '');
+    const theirs = guestWords(b.slotDate, b.slotTime, tz, b.guestTz ?? '');
     const location = String(pub.location || '');
     const manageUrl = `${origin}/book?manage=${encodeURIComponent(b.id)}.${encodeURIComponent(b.key)}`;
     const first = b.guestName.trim().split(/\s+/)[0] || 'there';
@@ -104,6 +169,7 @@ async function bookingMail(
         : what === 'rescheduled' ? `Your ${esc(title)} has moved to <strong>${esc(when)}</strong>${tz ? ` (${esc(tz)})` : ''}.`
           : `You're booked: <strong>${esc(title)}</strong> on <strong>${esc(when)}</strong>${tz ? ` (${esc(tz)})` : ''}.`;
       const html = `<p>Hi ${esc(first)},</p><p>${lead}</p>`
+        + (what !== 'cancelled' && theirs ? `<p>That is <strong>${esc(theirs)}</strong>, your time.</p>` : '')
         + (what !== 'cancelled' && location ? `<p>Where: ${esc(location)}</p>` : '')
         + (what !== 'cancelled' && b.meetingUrl ? `<p>Join: <a href="${esc(b.meetingUrl)}">${esc(b.meetingUrl)}</a></p>` : '')
         + (what === 'cancelled' ? '' : button(manageUrl, 'Reschedule or cancel'));
@@ -140,10 +206,19 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     if (!accountId) return fail('A workspace is required to publish a booking page.');
     if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to publish.', 403);
 
-    const pub = (d.public ?? {}) as Record<string, unknown>;
+    const pub = { ...((d.public ?? {}) as Record<string, unknown>) };
     const slug = String(pub.slug ?? '').trim().toLowerCase();
     if (slug && !SLUG_OK.test(slug)) {
-      return fail('A booking link can use lowercase letters, numbers and hyphens only.');
+      return fail('A booking link can use lowercase letters, numbers and hyphens only.', 200, { field: 'booking.slug' });
+    }
+    /* The stricter rule (three characters, no hyphen at either end) is for a
+       new address only: a page already live under an older, looser one keeps
+       working rather than being refused on its next save. */
+    const current = await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?')
+      .bind(accountId).first<{ slug: string | null }>();
+    if (slug && slug !== (current?.slug ?? '')) {
+      const why = slugProblem(slug);
+      if (why) return fail(why, 200, { field: 'booking.slug' });
     }
 
     /* A slug is how a visitor finds one workspace rather than another, so two
@@ -151,8 +226,30 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     if (slug) {
       const clash = await env.DB.prepare('SELECT account_id FROM crm_booking_config WHERE slug = ? AND account_id != ?')
         .bind(slug, accountId).first<{ account_id: string }>();
-      if (clash) return fail(`The link "${slug}" is already taken by another workspace. Choose a different one.`);
+      if (clash) return fail(`The link "${slug}" is already taken by another workspace. Choose a different one.`, 200, { field: 'booking.slug' });
     }
+
+    /* The owner's zone is what every stored booking time means. A name Intl
+       does not know would quietly become UTC and move every slot. */
+    if (pub.timezone !== undefined && pub.timezone !== '' && !isZone(pub.timezone)) {
+      return fail(`"${clip(pub.timezone, 64)}" is not a time zone this page can use. Pick one from the list.`, 200, { field: 'booking.timezone' });
+    }
+
+    /* What a stranger's browser will render, cleaned here rather than trusted
+       to the page: text capped, pictures only from places a picture may come
+       from, a video only as a player address this code builds, and an
+       uploaded file only if it is this workspace's own. */
+    pub.slug = slug;
+    pub.title = clip(pub.title, 120);
+    pub.description = clip(pub.description, 1500);
+    pub.hostName = clip(pub.hostName, 80);
+    pub.businessName = clip(pub.businessName, 120);
+    pub.bullets = (Array.isArray(pub.bullets) ? pub.bullets : []).map(b => clip(b, 160)).filter(Boolean).slice(0, 8);
+    pub.imageUrl = pictureUrl(pub.imageUrl);
+    pub.photoUrl = await ownMediaUrl(env, accountId, 'photo', pub.photoUrl);
+    pub.logoUrl = await ownMediaUrl(env, accountId, 'logo', pub.logoUrl);
+    pub.videoFileUrl = await ownMediaUrl(env, accountId, 'video', pub.videoFileUrl);
+    pub.videoUrl = videoEmbedOf(pub.videoUrl) ? clip(pub.videoUrl, 400) : '';
 
     /*
      * No credential is stored with the page.
@@ -175,6 +272,32 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
                                              private = excluded.private, updated_at = excluded.updated_at`,
     ).bind(accountId, slug || null, JSON.stringify(pub), JSON.stringify(priv ?? {}), nowIso()).run();
     return ok({ slug });
+  }
+
+  /* ── Owner: is this address free? ──
+     Asked as the owner types, so the box can say "taken" before a save is
+     refused. The answer is not a secret — /book/<slug> already says whether a
+     page is there — but it still needs a session, so it is not a free oracle
+     for walking every address on the install. */
+  if (action === 'slug_check') {
+    const user = await userFromToken(env.DB, d.token);
+    if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
+    const accountId = String(d.accountId ?? '').trim();
+    if (!accountId) return fail('A workspace is required.');
+    if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
+    const limit = await rateLimit(env, { what: 'booking-slug', who: accountId, max: 300, windowSeconds: 3600 });
+    if (!limit.allowed) return fail('Too many checks — wait a minute and try again.', 429, { field: 'booking.slug' });
+    const slug = String(d.slug ?? '').trim().toLowerCase();
+    const mine = await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?')
+      .bind(accountId).first<{ slug: string | null }>();
+    if (slug && slug === mine?.slug) return json({ success: true, available: true, yours: true });
+    const why = slugProblem(slug);
+    if (why) return json({ success: true, available: false, reason: why });
+    const clash = await env.DB.prepare('SELECT 1 AS n FROM crm_booking_config WHERE slug = ? AND account_id != ?')
+      .bind(slug, accountId).first();
+    return json(clash
+      ? { success: true, available: false, reason: 'Another workspace already uses this address. Try another.' }
+      : { success: true, available: true });
   }
 
   /* ── Visitor: read the published page ──
@@ -222,16 +345,20 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
   /* ── Visitor: which slots are already taken ── */
   if (action === 'slots') {
     const accountId = String(d.accountId ?? '').trim();
-    const date = String(d.date ?? '');
-    if (!accountId || !DATE_OK.test(date)) return fail('A workspace and a date are required.');
+    /* A range, because a visitor's day spans two of the owner's dates once
+       the zones differ, and a month view asks about thirty at once. */
+    const from = String(d.from ?? d.date ?? '');
+    const to = String(d.to ?? d.date ?? '');
+    if (!accountId || !DATE_OK.test(from) || !DATE_OK.test(to) || to < from) return fail('A workspace and a date are required.');
+    if ((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 > 62) return fail('Ask for at most two months at a time.');
     const { results } = await env.DB.prepare(
-      `SELECT slot_time AS time, data FROM crm_bookings
-        WHERE account_id = ? AND slot_date = ? AND status != 'cancelled'`,
-    ).bind(accountId, date).all<{ time: string; data: string }>();
+      `SELECT slot_date AS date, slot_time AS time, data FROM crm_bookings
+        WHERE account_id = ? AND slot_date >= ? AND slot_date <= ? AND status != 'cancelled'`,
+    ).bind(accountId, from, to).all<{ date: string; time: string; data: string }>();
     const booked = (results ?? []).map(r => {
       let duration = 30;
-      try { duration = Number((JSON.parse(r.data) as { duration?: number }).duration ?? 30); } catch { /* default */ }
-      return { time: r.time, duration };
+      try { duration = Number((JSON.parse(r.data) as { duration?: number }).duration ?? 30) || 30; } catch { /* default */ }
+      return { date: r.date, time: r.time, duration };
     });
     return json({ success: true, booked });
   }
@@ -249,8 +376,10 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
        contacts into a stranger's workspace, start their automations, and, with
        a calendar connected, have Google send invitations from their account to
        any address. */
-    const page = await env.DB.prepare('SELECT 1 AS n FROM crm_booking_config WHERE account_id = ?').bind(accountId).first();
+    const page = await env.DB.prepare('SELECT public FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ public: string }>();
     if (!page) return json({ success: false, notFound: true, error: 'There is no booking page at that address.' });
+    let pub: Record<string, unknown> = {};
+    try { pub = JSON.parse(page.public || '{}') as Record<string, unknown>; } catch { /* an empty page offers nothing */ }
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
     const limit = await rateLimit(env, { what: 'booking', who: ip, max: 8, windowSeconds: 3600 });
     if (!limit.allowed) return fail('Too many bookings from here in the last hour. Try again later.', 429);
@@ -260,14 +389,22 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     const guestName = headerSafe(d.guestName, 120);
     if (!guestName) return fail('Enter your name.');
 
-    /* Rejected rather than double-booked. Two visitors can reach this at the
-       same moment, so it is checked here and the unique slot is enforced by
-       the read immediately before the write — the window is small and the
-       failure is a clear message rather than two people at one appointment. */
-    const taken = await env.DB.prepare(
-      `SELECT 1 AS n FROM crm_bookings WHERE account_id = ? AND slot_date = ? AND slot_time = ? AND status != 'cancelled'`,
-    ).bind(accountId, slotDate, slotTime).first();
-    if (taken) return fail('That time was just booked — please pick another slot.');
+    /*
+     * Only a time the page could have offered, and not one already gone.
+     *
+     * This checked one thing — an exact start time already booked — so a
+     * 60-minute meeting at 09:00 left 09:30 open to a second visitor, and any
+     * time at all could be filed by calling this directly: 03:00 on a Sunday,
+     * last week. The same rules that drew the page (lib/bookingTime.ts) are
+     * asked here, on the owner's own clock. Two visitors can still reach this
+     * at the same moment; the read immediately before the write keeps that
+     * window small, and losing it is a clear message rather than two people
+     * at one appointment.
+     */
+    const eventTypeId = headerSafe(d.eventTypeId, 64);
+    const rules = rulesOf(pub, eventTypeId);
+    const problem = slotProblem(slotDate, slotTime, rules, await busyOn(env, accountId, slotDate, rules.duration), Date.now());
+    if (problem) return fail(problem);
 
     const id = `bk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const manageKey = newToken();
@@ -275,8 +412,15 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       guestName, guestEmail,
       guestPhone: headerSafe(d.guestPhone, 40),
       notes: String(d.notes ?? '').slice(0, 2000),
-      timezone: headerSafe(d.timezone, 64),
-      eventTypeId: headerSafe(d.eventTypeId, 64),
+      /* The guest's zone, as their browser named it — what the page showed
+         them. The slot itself is the owner's wall clock (`ownerTimezone`);
+         `startsAt` is the instant both name, kept so nobody has to redo the
+         conversion with whatever the rules are by then. */
+      timezone: isZone(d.timezone) ? d.timezone : '',
+      ownerTimezone: rules.timezone,
+      startsAt: new Date(wallToUtc(slotDate, slotTime, rules.timezone) ?? 0).toISOString(),
+      duration: rules.duration,
+      eventTypeId,
     };
 
     await env.DB.prepare(
@@ -313,13 +457,13 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     } catch { /* the booking is the thing that had to be saved */ }
 
     const mail = await bookingMail(env, accountId, new URL(req.url).origin, 'booked', {
-      id, key: manageKey, slotDate, slotTime, guestName, guestEmail, notes: data.notes, meetingUrl,
+      id, key: manageKey, slotDate, slotTime, guestName, guestEmail, notes: data.notes, meetingUrl, guestTz: data.timezone,
     });
 
     /* Returned so the confirmation screen can show it rather than promising a
        link that may not exist. Empty means no calendar is connected, which the
        booking page says plainly instead of leaving a blank. */
-    return json({ success: true, id, key: manageKey, meetingUrl, emailed: mail.guest });
+    return json({ success: true, id, key: manageKey, meetingUrl, emailed: mail.guest, startsAt: data.startsAt, ownerTimezone: rules.timezone });
   }
 
   /* ── Guest: manage their own booking, proven by the key in their link ── */
@@ -346,11 +490,12 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       });
     }
 
-    let guestData: { guestName?: string; guestEmail?: string; notes?: string } = {};
+    let guestData: { guestName?: string; guestEmail?: string; notes?: string; timezone?: string; duration?: number; eventTypeId?: string } = {};
     try { guestData = JSON.parse(row.data || '{}'); } catch { /* nothing to address */ }
     const mailFor = (slotDate: string, slotTime: string) => ({
       id, key, slotDate, slotTime,
       guestName: String(guestData.guestName ?? ''), guestEmail: String(guestData.guestEmail ?? ''), notes: guestData.notes,
+      guestTz: guestData.timezone ?? '',
     });
 
     if (action === 'cancel') {
@@ -364,10 +509,18 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     const newDate = String(d.slotDate ?? '');
     const newTime = String(d.slotTime ?? '');
     if (!DATE_OK.test(newDate) || !TIME_OK.test(newTime)) return fail('Pick a new date and time.');
-    const clash = await env.DB.prepare(
-      `SELECT 1 AS n FROM crm_bookings WHERE account_id = ? AND slot_date = ? AND slot_time = ? AND status != 'cancelled' AND id != ?`,
-    ).bind(row.account_id, newDate, newTime, id).first();
-    if (clash) return fail('That time was just booked — please pick another slot.');
+    /* The same rules as a new booking, with this booking's own time not
+       counted against it — moving a meeting by half an hour must not be
+       refused because it overlaps itself. */
+    const cfgRow = await env.DB.prepare('SELECT public FROM crm_booking_config WHERE account_id = ?').bind(row.account_id).first<{ public: string }>();
+    let pubCfg: Record<string, unknown> = {};
+    try { pubCfg = JSON.parse(cfgRow?.public || '{}') as Record<string, unknown>; } catch { /* defaults */ }
+    const rules = rulesOf(pubCfg, guestData.eventTypeId);
+    if (Number(guestData.duration) > 0) rules.duration = Number(guestData.duration);
+    const problem = slotProblem(newDate, newTime, rules, await busyOn(env, row.account_id, newDate, rules.duration, id), Date.now());
+    if (problem) return fail(problem);
+    const moved = { ...guestData, ownerTimezone: rules.timezone, startsAt: new Date(wallToUtc(newDate, newTime, rules.timezone) ?? 0).toISOString() };
+    await env.DB.prepare('UPDATE crm_bookings SET data = ? WHERE id = ?').bind(JSON.stringify(moved), id).run();
     await env.DB.prepare("UPDATE crm_bookings SET slot_date = ?, slot_time = ?, status = 'confirmed' WHERE id = ?")
       .bind(newDate, newTime, id).run();
     const mail = guestData.guestEmail

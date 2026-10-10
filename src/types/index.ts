@@ -195,7 +195,7 @@ export interface ScheduleAvailability {
   minNoticeMin?: number;
   /** Rolling booking window (days into the future). */
   windowDays?: number;
-  /** Optional short YouTube intro video shown on the booking page. */
+  /** A short intro video on the booking page: a YouTube, Vimeo or Loom link (videoEmbedOf). */
   videoUrl?: string;
   /**
    * A picture across the top of the booking page — a photo of the person, the
@@ -206,6 +206,16 @@ export interface ScheduleAvailability {
    * an embed takes to appear.
    */
   imageUrl?: string;
+  /** The host's own photo, round, beside their name — an upload (/api/booking-media.php). */
+  photoUrl?: string;
+  /** The business's logo at the top of the page — an upload. */
+  logoUrl?: string;
+  /** A short clip uploaded to the page (needs the VIDEO bucket); shown in place of `videoUrl` when both are set. */
+  videoFileUrl?: string;
+  /** Whose diary this is, as the page says it ("Dr Amira Lee"); the business name when empty. */
+  hostName?: string;
+  /** What the visitor gets from the meeting, one line each (at most eight). */
+  bullets?: string[];
   /** Bookable meeting types; when present visitors pick one first. */
   eventTypes?: EventType[];
   automations?: SchedulingAutomations;

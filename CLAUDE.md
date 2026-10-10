@@ -278,6 +278,45 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
   contained: mock + SMTP sink on :8833, wrangler on :8822, fresh D1, needs a
   `VITE_BASE=/` build) proves the requests themselves.
 
+## The booking page — the owner's hours, in the visitor's time
+
+`/book/<slug>` (`Scheduling/BookingPage.tsx`) draws `Scheduling/BookingCard.tsx`
+(Calendly-style: who/what/points/video left, month + times + zone picker
+right, laid out by container queries, its own light/dark like AI Prospecting);
+the editor `Autopilot/newProject/BookingSetup.tsx` shows the **same card** as
+its preview, in the AI Autopilot wizard and on Scheduling → **Booking page**
+(`autoPublish={false}` there — that screen already publishes). Editable: the
+address (`slug_check` as typed; slugs are install-wide, a taken one is refused
+on `booking.slug`), title, host name, description, bullets (≤ 8), photo, logo,
+a clip or a YouTube/Vimeo/Loom link (`videoEmbedOf` builds the player address;
+nothing pasted is framed as typed), length, place, days, hours, the owner's
+zone (`booking.timezone`, refused if Intl does not know it).
+
+- **Times.** A booking is stored as the owner's wall clock (`slot_date`,
+  `slot_time` in the schedule's `timezone`) — the reminder pass and the diary
+  read it so. `worker/src/lib/bookingTime.ts` (pure, no imports, imported by
+  the browser through `services/bookingTime.ts`) turns the owner's hours into
+  instants per date with Intl — never a fixed offset, so DST is right on both
+  sides — and back into the visitor's own day (`slotsForVisitorDay`). The
+  skipped spring hour is never offered; the repeated autumn hour is the
+  earlier. `create`/`reschedule` ask `slotProblem` with the same rules (open
+  day, on the grid, overlaps with buffers, notice, window, daily limit) and
+  store `startsAt` (UTC), `ownerTimezone`, the guest's `timezone` and
+  `duration`; the Google event uses `ownerTimezone`. Emails add the guest's
+  own time. `npm run test:bookingtz` (pure).
+- **Media** (`routes/bookingMedia.ts`, `/api/booking-media.php`, migration
+  0071 `crm_booking_media`): raw-body upload with `Bearer cookie`, one per
+  kind per workspace, served by random key with `nosniff` and a CSP that runs
+  nothing. Pictures are PNG/JPEG by their bytes (≤ 800 px, ≤ 400 KB, shrunk in
+  the browser first) in D1; a clip (MP4/MOV/WebM by its magic, ≤ 25 MB) needs
+  the `VIDEO` R2 bucket and is refused by name (`no_storage`) without it.
+  Publishing keeps a media address only if it is this workspace's own.
+- `npm run test:bookingpage` (needs a `VITE_BASE=/` build and a running
+  `wrangler dev`; `BASE`, `PERSIST`): an owner in New York and a visitor in
+  Bangkok — 11 hours apart in the slots, the booking at the right UTC instant,
+  off-grid times refused, uploads, the address across workspaces, the editor,
+  390/1280. `test:security` covers the media route across tenants.
+
 ## Platform services — the owner's keys for everybody, in one place
 
 Settings → **Platform services** (`components/Settings/PlatformServices.tsx`,
@@ -580,10 +619,9 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   is not shown as the project failing.
 - **Booking page in the wizard.** Picking our booking page (question
   `booking` = `page`, and on the blueprint when `bookingPage` is required)
-  shows `BookingSetup.tsx`: title, length, where, days, hours, a line — beside
-  a preview drawn from the same `crm_schedule`, published as edited with
-  `publishBookingConfig` (and again by the build), because `{{bookingLink}}`
-  is only filled once a page is published.
+  shows `BookingSetup.tsx` (see **The booking page** below) beside the real
+  page, published as edited with `publishBookingConfig` (and again by the
+  build), because `{{bookingLink}}` is only filled once a page is published.
 - **Texts only after a yes.** A prospect is never texted on the strength of an
   email. `{{smsOptInLink}}` (a P.S. the wizard adds when texts were asked
   for, kept through email tailoring) is a per-contact HMAC link
