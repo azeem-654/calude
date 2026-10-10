@@ -309,11 +309,41 @@ async function upload(job, file, name, type) {
 
 const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 
+/**
+ * The source, once, onto this engine's own disk — when it fits. Preparing a
+ * video reads it five times over (probe, sound, proxy, poster, filmstrip) and
+ * FFmpeg seeks, dropping connections half-way through each; one sequential
+ * download is a fifth of the traffic through the Worker and no dropped
+ * connections. A file the disk cannot hold twice over is streamed as before.
+ */
+async function localCopy(src, bytes, dir, job) {
+  if (!(bytes > 0)) return src;
+  try {
+    const st = await fsp.statfs(dir);
+    if (st.bavail * st.bsize < bytes * 2 + 512 * 1024 * 1024) return src;
+  } catch { return src; }
+  const file = path.join(dir, 'source.bin');
+  job.stage = 'download'; job.pct = 0;
+  const r = await fetch(src);
+  if (!r.ok || !r.body) throw new Error(`could not read the source (${r.status})`);
+  const out = fs.createWriteStream(file);
+  let got = 0;
+  for await (const chunk of r.body) {
+    if (job.cancelled) { out.destroy(); throw new Error('cancelled'); }
+    got += chunk.length;
+    if (!out.write(chunk)) await new Promise(res => out.once('drain', res));
+    job.pct = Math.min(99, Math.round((got / bytes) * 100));
+  }
+  await new Promise((res, rej) => out.end(err => (err ? rej(err) : res())));
+  if (got !== bytes) throw new Error(`the source arrived as ${got} of ${bytes} bytes`);
+  return file;
+}
+
 async function prepare(job, dir) {
-  const src = job.inputs.source;
   const p = job.params;
   job.stage = 'probe';
-  const info = summarise(await probe(src, job));
+  const remote = job.inputs.source;
+  const info = summarise(await probe(remote, job));
   const limits = { maxDuration: num(p.maxDuration, 3 * 3600, 2, 6 * 3600), maxSide: num(p.maxSide, 4096, 320, 8192), maxBytes: num(p.maxBytes, 10e9, 1e6, 50e9) };
   if (!info.hasVideo) throw new Error('refused: the file has no video stream');
   if (!VIDEO_CODECS.has(info.vcodec)) throw new Error(`refused: video codec ${info.vcodec || 'unknown'} is not supported`);
@@ -322,6 +352,8 @@ async function prepare(job, dir) {
   if (info.duration > limits.maxDuration) throw new Error(`refused: the video is ${Math.round(info.duration / 60)} minutes, over the ${Math.round(limits.maxDuration / 60)}-minute limit`);
   if (!(info.width > 0 && info.height > 0) || Math.max(info.width, info.height) > limits.maxSide) throw new Error(`refused: ${info.width}×${info.height} is outside the supported size`);
   if (info.bytes > limits.maxBytes) throw new Error('refused: the file is larger than allowed');
+  /* Refused files are refused before a byte of them is copied. */
+  const src = await localCopy(remote, info.bytes, dir, job);
 
   const files = {};
   let silences = [], chunks = [];

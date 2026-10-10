@@ -104,10 +104,14 @@ So the work is split by what each part needs:
 ### The media engine
 
 `media/engine/` — a small Node HTTP service around `ffmpeg`/`ffprobe` with
-four operations (`prepare`, `render`, `thumbnail`, `probe`). It is
+five operations (`prepare`, `render`, `thumbnail`, `track`, `probe`). It is
 **stateless**: it downloads inputs from signed URLs, works on local disk,
 uploads outputs to signed URLs and reports a result. It never holds a
-credential and never talks to the database.
+credential and never talks to the database. `prepare` copies the source to
+its own disk once (stage `download`) after the refusal checks and before its
+five FFmpeg passes, when the disk holds it twice over — reading a 190 MB
+recording five times through the Worker, with FFmpeg seeking and dropping
+connections, was what made local runs fail intermittently.
 
 It is deployed as a **Cloudflare Container** (`media/` — a Worker
 `crmpro-media` with a `Container` class; one instance per job, scale to zero,
