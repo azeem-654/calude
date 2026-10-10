@@ -674,6 +674,8 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const before = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
   await page.locator(`[data-clip-block="${target.id}"].on`).waitFor({ timeout: 5000 });
   const handle = page.locator(`[data-clip-block="${target.id}"] [data-edge="e"]`);
+  /* The board under the editor makes the page taller than the window: bring the Short's edge into view first. */
+  await handle.scrollIntoViewIfNeeded();
   const hb = await handle.boundingBox();
   const bb = await page.locator(`[data-clip-block="${target.id}"]`).boundingBox();
   /* Five seconds' worth of pixels at whatever zoom the timeline is on — too
