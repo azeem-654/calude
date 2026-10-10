@@ -312,10 +312,12 @@ const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ?
 /**
  * The source, once, onto this engine's own disk — when it fits. Preparing a
  * video reads it five times over (probe, sound, proxy, poster, filmstrip) and
- * FFmpeg seeks, dropping connections half-way through each; one sequential
- * download is a fifth of the traffic through the Worker and no dropped
- * connections. A file the disk cannot hold twice over is streamed as before.
+ * FFmpeg seeks, dropping connections half-way through each. It is fetched in
+ * 16 MB ranges, each retried on its own, so a connection lost at 180 MB costs
+ * one piece rather than the whole file — and no single response through the
+ * Worker is large. A file the disk cannot hold twice over is streamed as before.
  */
+const PIECE = 16 * 1024 * 1024;
 async function localCopy(src, bytes, dir, job) {
   if (!(bytes > 0)) return src;
   try {
@@ -324,18 +326,34 @@ async function localCopy(src, bytes, dir, job) {
   } catch { return src; }
   const file = path.join(dir, 'source.bin');
   job.stage = 'download'; job.pct = 0;
-  const r = await fetch(src);
-  if (!r.ok || !r.body) throw new Error(`could not read the source (${r.status})`);
-  const out = fs.createWriteStream(file);
-  let got = 0;
-  for await (const chunk of r.body) {
-    if (job.cancelled) { out.destroy(); throw new Error('cancelled'); }
-    got += chunk.length;
-    if (!out.write(chunk)) await new Promise(res => out.once('drain', res));
-    job.pct = Math.min(99, Math.round((got / bytes) * 100));
-  }
-  await new Promise((res, rej) => out.end(err => (err ? rej(err) : res())));
-  if (got !== bytes) throw new Error(`the source arrived as ${got} of ${bytes} bytes`);
+  const fh = await fsp.open(file, 'w');
+  try {
+    for (let at = 0; at < bytes; at += PIECE) {
+      if (job.cancelled) throw new Error('cancelled');
+      const end = Math.min(bytes, at + PIECE) - 1;
+      const buf = await retry(async () => {
+        const r = await fetch(src, { headers: { Range: `bytes=${at}-${end}` } });
+        if (r.status === 200 && at === 0) return r; // a server without ranges sends the whole file
+        if (r.status !== 206) throw new Error(`could not read the source (${r.status})`);
+        const b = Buffer.from(await r.arrayBuffer());
+        if (b.length !== end - at + 1) throw new Error(`a piece of the source arrived as ${b.length} of ${end - at + 1} bytes`);
+        return b;
+      });
+      if (!Buffer.isBuffer(buf)) {
+        let got = 0;
+        for await (const chunk of buf.body) {
+          if (job.cancelled) throw new Error('cancelled');
+          await fh.write(chunk, 0, chunk.length, got);
+          got += chunk.length;
+          job.pct = Math.min(99, Math.round((got / bytes) * 100));
+        }
+        if (got !== bytes) throw new Error(`the source arrived as ${got} of ${bytes} bytes`);
+        break;
+      }
+      await fh.write(buf, 0, buf.length, at);
+      job.pct = Math.min(99, Math.round(((end + 1) / bytes) * 100));
+    }
+  } finally { await fh.close(); }
   return file;
 }
 

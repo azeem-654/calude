@@ -109,7 +109,7 @@ five operations (`prepare`, `render`, `thumbnail`, `track`, `probe`). It is
 uploads outputs to signed URLs and reports a result. It never holds a
 credential and never talks to the database. `prepare` copies the source to
 its own disk once (stage `download`) after the refusal checks and before its
-five FFmpeg passes, when the disk holds it twice over — reading a 190 MB
+five FFmpeg passes, in 16 MB ranges each retried on its own, when the disk holds it twice over — reading a 190 MB
 recording five times through the Worker, with FFmpeg seeking and dropping
 connections, was what made local runs fail intermittently.
 
