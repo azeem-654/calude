@@ -25,6 +25,8 @@ export interface CommandCtx {
   selection?: { s: number; e: number } | null;
   /** The Short open in the editor, if any. */
   clipId?: string | null;
+  /** Where the playhead is (source seconds), for words added "here". */
+  playhead?: number | null;
 }
 
 export interface CommandResult {
@@ -57,6 +59,12 @@ export const COMMAND_HELP = [
   'Make captions smaller · bigger · move captions to the top',
   'Create another thumbnail',
   'Keep this pause (select it first)',
+  'Follow the speaker in the Shorts · keep the face in frame',
+  'Speed the Shorts up to 1.25x',
+  'Add punch-in zooms · a slow zoom · no zoom',
+  'Make it black and white · cinematic · warmer',
+  'Add a title "3 ways to get leads" (at the playhead or your selection)',
+  'Add a progress bar · fade in and out',
   'Undo · Redo',
 ];
 
@@ -69,7 +77,7 @@ function clipByRef(t: string, clips: Clip[], current?: string | null): Clip | nu
   return null;
 }
 
-const VERB = '(?:add|remove|make|turn|create|put|use|find|restore|keep|fade|lower|raise|reduce|clean|cut|delete|take|move|give|change|swap|enhance|improve)';
+const VERB = '(?:add|remove|make|turn|create|put|use|find|restore|keep|fade|lower|raise|reduce|clean|cut|delete|take|move|give|change|swap|enhance|improve|follow|track|zoom|speed|apply)';
 
 /**
  * Several requests in one sentence ("remove the background noise and also add
@@ -146,6 +154,65 @@ function parseOne(input: string, ctx: CommandCtx): CommandResult {
       return { ops: [], reply: '', music: { query: words }, rerender: all, understood: true };
     }
   }
+  /* ── Picture, motion and tracking ── */
+  const kinds = (): ('long' | 'short')[] => /\b(all|every|both)\b.*\b(videos?|everything)\b|\beverything\b/.test(t) ? ['long', 'short']
+    : /\b(shorts?|reels?|clips?)\b/.test(t) ? ['short'] : /\blong( video)?\b/.test(t) ? ['long'] : ctx.clipId ? ['short'] : ['long', 'short'];
+  const which = (k: ('long' | 'short')[]) => k.length === 2 ? 'every video' : k[0] === 'short' ? 'the Shorts' : 'the long video';
+  if (/\b(follow|track|keep)\b/.test(t) && /\b(speaker|speaking|talking|talks)\b/.test(t) || /\b(stop following|no tracking|turn off tracking|stop tracking)\b/.test(t) || /\b(follow|track)\b.*\bfaces?\b|\bkeep (the |my )?face in (the )?frame\b/.test(t)) {
+    const mode = /\b(stop following|no tracking|turn off tracking|stop tracking)\b/.test(t) ? 'off' as const : /\b(speaker|speaking|talking|talks)\b/.test(t) ? 'speaker' as const : 'face' as const;
+    const k = /\blong\b/.test(t) ? ['long' as const] : /\b(all|every|both)\b/.test(t) ? ['long' as const, 'short' as const] : ['short' as const];
+    return { ops: k.map(target => ({ op: 'tracking.set' as const, target, mode })), rerender: all, understood: true,
+      reply: mode === 'off' ? `The crop in ${which(k)} stays where you put it again.` : `${which(k)[0].toUpperCase()}${which(k).slice(1)} will follow ${mode === 'speaker' ? 'whoever is talking' : 'the face'} wherever the picture is cropped — they render again. (Tracking reads lips, not voices.)` };
+  }
+  const mult = t.match(/\b(\d(?:\.\d{1,2})?)\s*(?:x|×|times)(?:\s+speed)?\b/);
+  if (mult && /\b(speed|faster|slower|play|x|×)\b/.test(t) || /\b(speed (it )?up|slow (it )?down|normal speed|real speed)\b/.test(t)) {
+    const speed = mult ? Math.min(2, Math.max(0.5, Number(mult[1]))) : /\bnormal|real\b/.test(t) ? 1 : /\bslow\b/.test(t) ? 0.85 : 1.25;
+    const k = kinds();
+    return { ops: k.map(target => ({ op: 'motion.set' as const, target, patch: { speed } })), rerender: all, understood: true,
+      reply: `${which(k)[0].toUpperCase()}${which(k).slice(1)} now play${k.length === 1 && k[0] === 'long' ? 's' : ''} at ${speed}× — the voice keeps its pitch, and captions and chapters move with it.` };
+  }
+  if (/\b(zoom|zooms|punch[- ]?ins?)\b/.test(t)) {
+    const zoom = /\b(no|remove|without|stop|off|turn off)\b/.test(t) ? 'off' as const : /\b(slow|gradual|ken burns|push)\b/.test(t) ? 'slow' as const : 'punch' as const;
+    const k = kinds();
+    return { ops: k.map(target => ({ op: 'motion.set' as const, target, patch: { zoom } })), rerender: all, understood: true,
+      reply: zoom === 'off' ? `No more zooms in ${which(k)}.` : zoom === 'slow' ? `A slow push-in across ${which(k)}.` : `A punch-in on every other sentence in ${which(k)} — it keeps a talking head moving.` };
+  }
+  const FILTER: [RegExp, string, string][] = [
+    [/\b(black and white|black & white|b&w|monochrome|grey ?scale|gray ?scale)\b/, 'bw', 'black and white'], [/\bcinematic\b/, 'cinematic', 'cinematic'], [/\bvivid|vibrant|colou?rful\b/, 'vivid', 'vivid'],
+    [/\bwarm(er)?\b/, 'warm', 'warmer'], [/\bcool(er)?\b|\bcolder\b/, 'cool', 'cooler'], [/\bvintage|retro\b/, 'vintage', 'vintage'], [/\bpunchy|contrasty\b/, 'punchy', 'punchy'], [/\bsoft(er)? look\b/, 'soft', 'soft'],
+  ];
+  if (/\b(filter|look|colou?rs?|grade|tone|black and white|b&w|monochrome|cinematic|vivid|vintage|warmer|cooler)\b/.test(t) && !/\bcaption/.test(t)) {
+    if (/\b(remove|no|original|reset|natural) (the )?(filter|look|colou?rs?|grade)\b|\boriginal colou?rs\b/.test(t)) {
+      const k = kinds();
+      return { ops: k.map(target => ({ op: 'look.set' as const, target, patch: {}, reset: true })), reply: `${which(k)[0].toUpperCase()}${which(k).slice(1)} are back to the recording's own colours.`, rerender: all, understood: true };
+    }
+    const f = FILTER.find(([re]) => re.test(t));
+    if (f) {
+      const k = kinds();
+      return { ops: k.map(target => ({ op: 'look.set' as const, target, patch: { filter: f[1] as 'bw' } })), reply: `${which(k)[0].toUpperCase()}${which(k).slice(1)}: the ${f[2]} look. Fine-tune it in Adjust.`, rerender: all, understood: true };
+    }
+  }
+  if (/\bprogress bar\b/.test(t)) {
+    const on = !/\b(no|remove|without|off|hide)\b/.test(t);
+    const k = kinds();
+    return { ops: k.map(target => ({ op: 'motion.set' as const, target, patch: { progressBar: on } })), reply: on ? `A progress bar along the bottom of ${which(k)}.` : `No progress bar on ${which(k)}.`, rerender: all, understood: true };
+  }
+  if (/\bfade\b/.test(t) && !/\bmusic\b/.test(t)) {
+    const inn = /\bfade[- ]?in|fade (it )?in\b|\bin and out\b/.test(t) || !/\bout\b/.test(t), out = /\bout\b/.test(t);
+    const k = kinds();
+    return { ops: k.map(target => ({ op: 'motion.set' as const, target, patch: { ...(inn ? { fadeIn: 1 } : {}), ...(out ? { fadeOut: 1.5 } : {}) } })),
+      reply: `${which(k)[0].toUpperCase()}${which(k).slice(1)} now fade${inn ? ' in from' : ''}${inn && out ? ' and' : ''}${out ? ' out to' : ''} black.`, rerender: all, understood: true };
+  }
+  const say = input.match(/["“”']([^"“”']{2,120})["“”']/) ?? input.match(/:\s*(.{2,120})$/);
+  if (/\badd\b/.test(t) && /\b(title|text|words|lower third|call to action|cta|label|heading|quote)\b/.test(t) && !/\bcaptions?\b/.test(t)) {
+    if (!say) return no('Say the words in quotes — add a title "3 ways to get more leads" — and it goes in at the playhead, or over your selection.');
+    const style = /\blower third\b/.test(t) ? 'lower' as const : /\b(call to action|cta)\b/.test(t) ? 'cta' as const : /\blabel\b/.test(t) ? 'label' as const : /\bquote\b/.test(t) ? 'quote' as const : 'title' as const;
+    const clip = ctx.clipId ? ctx.doc.clips.find(c => c.id === ctx.clipId) : null;
+    const s = ctx.selection?.s ?? ctx.playhead ?? clip?.s ?? 0;
+    const e = ctx.selection ? Math.max(ctx.selection.e, s + 1) : s + 3;
+    return { ops: [{ op: 'overlay.add', s, e, text: say[1].trim(), style }], reply: `Added “${say[1].trim()}” as a ${style === 'lower' ? 'lower third' : style === 'cta' ? 'call to action' : style} from ${s.toFixed(1)} s. Move or stretch it on the timeline.`, rerender: all, understood: true };
+  }
+
   if (/\beye[- ]?contact\b/.test(t)) return no('Eye-contact correction needs a provider that is not set up, so it is not available. Nothing was changed.');
 
   /* Every long pause: the suggested pause cuts, all applied. Asked about the

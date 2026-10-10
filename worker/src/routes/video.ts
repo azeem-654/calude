@@ -34,12 +34,13 @@ import { brandOf, kitOf, saveKit } from '../lib/video/brand';
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
+  cleanThumbSpec, thumbWords,
 } from '../lib/video/pipeline';
 
 interface Req {
   token?: string; accountId?: string; action?: string;
   projectId?: string; outputId?: string; name?: string; prompt?: string; settings?: Partial<VideoRequest> & { language?: string };
-  autopilotProjectId?: string; workflowId?: string;
+  autopilotProjectId?: string; workflowId?: string; spec?: unknown; playhead?: number;
   size?: number; type?: string; fileKey?: string; uploadId?: string;
   baseVersion?: number; ops?: Op[]; note?: string; version?: number; preset?: string;
   text?: string; selection?: { s: number; e: number } | null; clipId?: string | null;
@@ -83,7 +84,12 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'music', label: 'Background music: royalty-free library and your own tracks', status: engine && storage ? 'working' : 'needs_configuration', note: 'Openverse tracks under CC0, public domain or CC BY only (credit added to descriptions), or your own upload with your rights confirmed. Ducked under speech, faded in and out.' },
     { key: 'repurpose', label: 'Repurpose: posts, an article and emails from the recording', status: ai ? 'working' : 'needs_configuration', note: 'Drafts in Social Creator, Blog and Campaigns — nothing is published or sent.' },
     { key: 'quiz', label: 'Quiz from a training recording', status: ai ? 'working' : 'needs_configuration', note: 'Multiple-choice questions about what is actually said, each linked to its moment.' },
-    { key: 'speaker_tracking', label: 'Automatic speaker tracking for 9:16', status: 'planned', note: 'Today the crop stays where you put it — steady, never jittery.' },
+    { key: 'speaker_tracking', label: 'Face and speaker tracking for 9:16 and other crops', status: !engine ? 'needs_configuration' : health && health.track === false ? 'needs_configuration' : 'working',
+      note: health && health.track === false ? 'This engine was built without OpenCV — the next engine deploy adds it.' : 'Follows the most prominent face, or whoever\'s mouth moves while there is speech. It reads lips, not voices: two people talking at once, or a speaker turned away, are not told apart.' },
+    { key: 'look', label: 'Colour, filters and finish', status: engine ? 'working' : 'needs_configuration', note: 'Temperature, tint, exposure, contrast, saturation, hue, sharpness, blur, vignette, grain and ten filters. The preview approximates; the render is exact.' },
+    { key: 'motion', label: 'Animation: zooms, transitions, fades, speed, progress bar', status: engine ? 'working' : 'needs_configuration', note: 'Punch-ins on every other sentence or a slow push, a flash or dip at jump cuts, fades, 0.5–2× speed with captions re-timed.' },
+    { key: 'overlays', label: 'Words on screen (titles, lower thirds, calls to action)', status: engine ? 'working' : 'needs_configuration', note: 'Animated — pop, slide, fade, reveal — and placed on the recording, so they stay with their moment through every cut.' },
+    { key: 'thumb_edit', label: 'Thumbnail designer (trending layouts)', status: engine ? 'working' : 'needs_configuration', note: 'Face close-up with big outlined words, ring-and-arrow callout, cinematic, two moments, big number — words, colours, frame and zoom yours to change.' },
     { key: 'speakers', label: 'Speaker labels', status: 'unavailable', note: 'Needs a transcription provider with speaker detection.' },
     { key: 'audio_preview', label: 'Before/after audio preview in the browser', status: 'planned', note: 'Today: render, then listen to the finished file.' },
     { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required.' },
@@ -114,6 +120,7 @@ async function signedOutputs(env: Env, origin: string, p: ProjectRow, outs: Outp
       chosenThumb: o.chosen_thumb,
       thumbs: await Promise.all(thumbs.map(async (t, i) => ({
         index: i, layout: t.layout, width: t.width, height: t.height, bytes: t.bytes, verified: t.verified, check: t.check, headline: t.headline, set: t.set,
+        spec: t.spec ?? null, face: !!t.face,
         url: await fileUrl(env, origin, p.account_id, t.key),
         downloadUrl: t.verified ? await fileUrl(env, origin, p.account_id, t.key, 7200, `${base}-thumbnail-${i + 1}.png`) : '',
       }))),
@@ -147,6 +154,8 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
     source: {
       name: src.name ?? '', bytes: src.bytes ?? 0, probe: src.probe ?? null,
       proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600) : '',
+      track: src.track ? { ready: !!src.track.key, summary: src.track.summary ?? null, error: src.track.error ?? '', at: src.track.at } : null,
+      trackUrl: src.track?.key && sendDoc ? await fileUrl(env, origin, p.account_id, src.track.key, 4 * 3600) : '',
       posterUrl: src.poster ? await fileUrl(env, origin, p.account_id, src.poster, 4 * 3600) : '',
       waveUrl: src.wave && sendDoc ? await fileUrl(env, origin, p.account_id, src.wave, 4 * 3600) : '',
       filmstrip: src.filmstrip ? { url: await fileUrl(env, origin, p.account_id, src.filmstrip.key, 4 * 3600), every: src.filmstrip.every, tiles: src.filmstrip.tiles, w: src.filmstrip.w, h: src.filmstrip.h } : null,
@@ -522,7 +531,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
       const duration = parse<Source>(p.source, {}).probe?.duration ?? tr?.duration ?? 0;
       const sel = d.selection && Number.isFinite(d.selection.s) && Number.isFinite(d.selection.e) ? { s: Number(d.selection.s), e: Number(d.selection.e) } : null;
-      const res = parseVideoCommand(text, { doc, words: tr?.words ?? [], sentences: tr ? sentencesOf(tr.words) : [], duration, selection: sel, clipId: d.clipId ?? null });
+      const res = parseVideoCommand(text, { doc, words: tr?.words ?? [], sentences: tr ? sentencesOf(tr.words) : [], duration, selection: sel, clipId: d.clipId ?? null, playhead: Number.isFinite(Number(d.playhead)) ? Number(d.playhead) : null });
       let out: { doc?: VideoDoc; docVersion?: number } = {};
       let base = d.baseVersion;
       if (res.ops.length) {
@@ -639,6 +648,26 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set } });
       kick(p.id);
       return json({ success: true, set });
+    }
+
+    case 'thumb_custom': {
+      const o = await outputRow();
+      if (!o) return fail('Choose a video first.', 200, { code: 'no_output' });
+      const all = parse<Thumb[]>(o.thumbs, []);
+      const set = Math.max(100, ...all.map(t => t.set)) + 1;
+      const spec = cleanThumbSpec(d.spec, { layout: 'bold', text: thumbWords(o.title || p.name), highlight: '', at: 1, accent: '#facc15', color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 });
+      if (!spec.text) return fail('Write the words for the thumbnail.', 200, { field: 'video.thumbText' });
+      await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}`, input: { set, custom: spec } });
+      kick(p.id);
+      return json({ success: true, set });
+    }
+
+    case 'track_now': {
+      const src = parse<Source>(p.source, {});
+      if (!src.proxy) return fail('The video has to be prepared first.');
+      await enqueue(env, { accountId, projectId: p.id, kind: 'track', idem: `track:${p.id}:${Date.now()}`, maxAttempts: 3 });
+      kick(p.id);
+      return json({ success: true });
     }
 
     case 'choose_thumb': {

@@ -108,6 +108,36 @@ export function makeRecording(file, minutes, { width = 640, height = 360 } = {})
   return script;
 }
 
+/**
+ * Two people side by side taking turns to talk — the speaker-tracking test.
+ * Both are the same public-domain portrait (Abraham Lincoln, 1863, in
+ * test/fixtures/faces), the right one mirrored and a little larger. "Talking"
+ * is the mouth region of that face moving (a strip of it nudged up and down
+ * many times a second) while a tone plays: left speaks 0–14 s and 28–40 s,
+ * right 14–28 s. A face-follower should stay on the larger (right) face; a
+ * speaker-follower should go left, right, left.
+ */
+export function makeTwoFaces(file, seconds = 40) {
+  const face = path.resolve('test/fixtures/faces/lincoln-1863.jpg');
+  const talk = (who) => who === 'L' ? 'between(t,0,14)+between(t,28,40)' : 'between(t,14,28)';
+  const graph = [
+    `color=c=0x2a2f3a:s=1280x720:r=30:d=${seconds}[bg]`,
+    `[0:v]scale=320:320,split=2[l0][lsrc]`,
+    `[1:v]scale=360:360,hflip,split=2[r0][rsrc]`,
+    `[lsrc]crop=84:44:108:160[lm]`,
+    `[rsrc]crop=94:50:${360 - 120 - 94}:180[rm]`,
+    `[bg][l0]overlay=150:180[a]`,
+    `[a][r0]overlay=760:150[b]`,
+    `[b][lm]overlay=x=150+108:y='180+160+5*sin(t*17)':enable='${talk('L')}'[c]`,
+    `[c][rm]overlay=x=760+${360 - 120 - 94}:y='150+180+5*sin(t*13)':enable='${talk('R')}'[v]`,
+  ].join(';');
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-loop', '1', '-i', face, '-loop', '1', '-i', face,
+    '-f', 'lavfi', '-i', `sine=frequency=200:sample_rate=48000:duration=${seconds}`,
+    '-filter_complex', graph, '-map', '[v]', '-map', '2:a', '-t', String(seconds),
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart', file]);
+  return { duration: seconds, left: (150 + 160) / 1280, right: (760 + 180) / 1280, turns: [[0, 14, 'L'], [14, 28, 'R'], [28, 40, 'L']] };
+}
+
 /* ── Whisper ──────────────────────────────────────────────────────────────── */
 
 const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };

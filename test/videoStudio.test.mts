@@ -17,6 +17,9 @@ import { validatePicks, fallbackPicks, findSection, cleanMeta, fallbackMeta, dis
 import { looksLikeAudio, licenseLabel, musicQuery } from '../worker/src/lib/video/music';
 import { parseVideoCommand } from '../worker/src/lib/video/commands';
 import { checkPng } from '../worker/src/lib/video/png';
+import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, trackAt, cssLook, type TrackRow } from '../worker/src/lib/video/motion';
+import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
+import { pickHighlight, thumbWords, cleanThumbSpec } from '../worker/src/lib/video/pipeline';
 
 let pass = 0, failN = 0;
 const ok = (name: string, cond: unknown, detail: unknown = '') => {
@@ -312,6 +315,91 @@ console.log('\nA PNG is a PNG');
   ok('a cut-short PNG is refused', !checkPng(png.subarray(0, png.length - 20)).ok);
   const bad = png.slice(); bad[20] ^= 0xff;
   ok('a corrupt header is refused', !checkPng(bad).ok);
+}
+
+
+console.log('\nLook, animation, tracking and words on screen');
+{
+  const doc: VideoDoc = newDoc(parseRequest('clean, 2 shorts'));
+  let r = applyOps(doc, [{ op: 'look.set', target: 'short', patch: { filter: 'cinematic', temperature: 250, blur: -5, hue: 400 } }], 60);
+  const l = r.doc.look!.short;
+  ok('a look is clamped and kept per kind: −100…100, hue ±180, blur 0…100', l.filter === 'cinematic' && l.temperature === 100 && l.blur === 0 && l.hue === 180 && r.doc.look!.long.filter === 'none', l);
+  r = applyOps(r.doc, [{ op: 'look.set', target: 'short', patch: { filter: 'bogus' as never } }], 60);
+  ok('…an unknown filter is ignored, not stored', r.doc.look!.short.filter === 'cinematic');
+  r = applyOps(r.doc, [{ op: 'look.set', target: 'short', patch: {}, reset: true }], 60);
+  ok('…and Reset puts every value back', JSON.stringify(r.doc.look!.short) === JSON.stringify({ filter: 'none', temperature: 0, tint: 0, brightness: 0, contrast: 0, saturation: 0, exposure: 0, hue: 0, sharpness: 0, blur: 0, vignette: 0, grain: 0 }));
+  r = applyOps(doc, [{ op: 'motion.set', target: 'long', patch: { speed: 9, zoom: 'punch', zoomAmount: 3, transition: 'flash', fadeIn: 1, progressBar: true } }], 60);
+  const m = r.doc.motion!.long;
+  ok('motion: speed at most 2×, zoom at most 35 %, the rest as asked', m.speed === 2 && m.zoom === 'punch' && m.zoomAmount === 1.35 && m.transition === 'flash' && m.fadeIn === 1 && m.progressBar, m);
+  r = applyOps(doc, [{ op: 'tracking.set', target: 'short', mode: 'speaker' }, { op: 'tracking.set', target: 'long', mode: 'nonsense' as never }], 60);
+  ok('tracking: speaker for the Shorts; an unknown mode refused', r.doc.tracking!.short === 'speaker' && r.doc.tracking!.long === 'off' && r.refused.length === 1, r.refused);
+  r = applyOps(doc, [{ op: 'overlay.add', s: 10, e: 14, text: 'Three {\\b1}tips', style: 'cta', anim: 'slide' }, { op: 'overlay.add', s: 3, e: 3.1, text: 'too short' }], 60);
+  ok('words on screen are added; a third of a second at least', r.doc.overlays!.length === 1 && r.refused.length === 1 && r.doc.overlays![0].style === 'cta', r);
+  const ov = r.doc.overlays![0];
+  r = applyOps(r.doc, [{ op: 'overlay.update', id: ov.id, patch: { s: 11, e: 16, text: 'Four tips' } }], 60);
+  ok('…moved, stretched and re-worded', r.doc.overlays![0].s === 11 && r.doc.overlays![0].e === 16 && r.doc.overlays![0].text === 'Four tips');
+  const keeps: [number, number][] = [[0, 12], [13, 60]];
+  const ass = overlayAss([{ ...ov, text: 'Three {\\b1}tips' }], keeps, 1080, 1920, 1.25);
+  ok('overlay ASS: re-timed through the cut and the speed, typed braces never become tags', /Dialogue: 1,0:00:08\.00,0:00:10\.40/.test(ass) && !ass.includes('{\\b1}') && ass.includes('(/b1)'), ass.split('\n').filter(x => x.startsWith('Dialogue')));
+  ok('…an overlay inside a cut is not shown at all', overlaySpan({ s: 12.1, e: 12.9 }, keeps) === null);
+  r = applyOps(doc, [{ op: 'clip.add', s: 5, e: 20 }], 60);
+  const c0 = r.doc.clips[0];
+  r = applyOps(r.doc, [{ op: 'clip.duplicate', id: c0.id }], 60);
+  ok('a Short can be duplicated, next to the original, to try another version', r.doc.clips.length === 2 && r.doc.clips[1].s === 5 && r.doc.clips[1].id !== c0.id && /\(copy\)/.test(r.doc.clips[1].title));
+}
+
+console.log('\nThe camera, cuts and zooms on the output clock');
+{
+  const rows: TrackRow[] = [[0, 0.25, 0.44, 0.3, 1], [15, 0.75, 0.43, 0.3, 1], [29, 0.25, 0.44, 0.3, 1]];
+  ok('trackAt holds a speaker until the next cut (no drift across a cut)', trackAt(rows, 14.9)[0] === 0.25 && trackAt(rows, 15)[0] === 0.75 && trackAt(rows, 40)[0] === 0.25);
+  const keeps: [number, number][] = [[0, 10], [12, 40]];
+  const cam = cameraPath(rows, keeps);
+  ok('cameraPath carries the switches into output time, marking each jump cut', JSON.stringify(cam.map(r => [r[0], r[1], r[3]])) === JSON.stringify([[0, 0.25, 1], [10, 0.25, 1], [13, 0.75, 1], [27, 0.25, 1]]), cam);
+  ok('cutTimes: where kept stretches meet, and never a strobe', JSON.stringify(cutTimes([[0, 5], [6, 10], [10.2, 10.4], [11, 20]])) === JSON.stringify([5, 9]), cutTimes([[0, 5], [6, 10], [10.2, 10.4], [11, 20]]));
+  const sents = [{ s: 0, e: 4 }, { s: 4.5, e: 8 }, { s: 8.5, e: 11 }, { s: 13, e: 18 }, { s: 18.5, e: 25 }];
+  const sp = punchSpans(sents, [[0, 12], [12.5, 30]]);
+  ok('punch-ins on every other sentence, in output time', JSON.stringify(sp) === JSON.stringify([[4.5, 8.5], [12.5, 18]]), sp);
+  ok('the preview of a look is CSS filters, never "none" when something is set', cssLook({ filter: 'bw', temperature: 0, tint: 0, brightness: 20, contrast: 0, saturation: 0, exposure: 0, hue: 0, blur: 0, sharpness: 0 }).includes('grayscale(1)'));
+}
+
+console.log('\nExports and scores');
+{
+  const x = toXmeml({ name: 'Ep <12> & more', sourceName: 'talk 1.mp4', keeps: [[1, 3], [5, 6.5]], fps: 30, width: 1920, height: 1080, duration: 10, hasAudio: true });
+  ok('XML for Premiere/Resolve: one clip per kept stretch, back to back, in frames', /<clipitem id="v-1">[\s\S]*?<start>0<\/start><end>60<\/end><in>30<\/in><out>90<\/out>/.test(x) && /<clipitem id="v-2">[\s\S]*?<start>60<\/start><end>105<\/end><in>150<\/in><out>195<\/out>/.test(x), x.slice(0, 600));
+  ok('…names escaped, the file relinked by name, and it says what is not in it', x.includes('Ep &lt;12&gt; &amp; more') && x.includes('talk%201.mp4') && /cuts only/.test(x));
+  const sc = editorialScore({ hook: 5, clarity: 4, relevance: 4, completeness: 4 });
+  ok('an editorial score out of 100 with four grades', sc!.total === 84 && sc!.grades.map(g => g.grade).join() === 'A,B+,B+,B+', sc);
+  ok('…and none for a Short nobody scored', editorialScore(null) === null);
+}
+
+console.log('\nThumbnail words');
+{
+  ok('the highlighted word is a figure when there is one', pickHighlight('It costs $49 a month') === '$49');
+  ok('…else the longest of the last three words', pickHighlight('Why follow-up wins the deal') === 'deal' || pickHighlight('Why follow-up wins the deal') === 'wins');
+  ok('three to five words, cut at a word', thumbWords('How AI Prospecting finds 30 businesses a day') === 'How AI Prospecting finds 30');
+  const f = { layout: 'bold', text: 'x', highlight: '', at: 5, accent: '#facc15', color: '#000000', textColor: '#ffffff', border: true, zoom: 0.5 };
+  const sp = cleanThumbSpec({ layout: 'evil;drawtext', text: 'Hi\u0000there', accent: 'red', zoom: 9, at: -3 }, f);
+  ok('a designed thumbnail is held to known layouts, colours and ranges', sp.layout === 'bold' && sp.text === 'Hi there' && sp.accent === '#facc15' && sp.zoom === 1 && sp.at === 0, sp);
+}
+
+
+console.log('\nThe assistant, for the new edits');
+{
+  const doc: VideoDoc = newDoc(parseRequest('clean, 2 shorts'));
+  const ctx = { doc, words: [], sentences: [], duration: 120, playhead: 42 };
+  const fs = parseVideoCommand('Follow the speaker in the Shorts', ctx);
+  ok('"follow the speaker" sets speaker tracking on the Shorts', fs.ops[0]?.op === 'tracking.set' && (fs.ops[0] as { mode: string }).mode === 'speaker' && (fs.ops[0] as { target: string }).target === 'short', fs);
+  const sp = parseVideoCommand('Speed the shorts up to 1.25x', ctx);
+  ok('"speed the shorts up to 1.25x"', sp.ops.length === 1 && (sp.ops[0] as { patch: { speed: number } }).patch.speed === 1.25 && (sp.ops[0] as { target: string }).target === 'short', sp);
+  const fast = parseVideoCommand('Make Short 1 faster', { ...ctx, doc: { ...doc, clips: [{ id: 'c1', title: 'One', topic: '', reason: '', s: 5, e: 30, scores: null, by: 'ai', aspect: '9:16', reframe: { mode: 'crop', x: 0.5, y: 0.5 } }] } });
+  ok('…while "make Short 1 faster" still means tightening its pauses', !fast.ops.some(o => o.op === 'motion.set'), fast);
+  const bw = parseVideoCommand('Make everything black and white', ctx);
+  ok('"make everything black and white" sets the filter on every video', bw.ops.length === 2 && bw.ops.every(o => o.op === 'look.set' && (o as { patch: { filter: string } }).patch.filter === 'bw'), bw);
+  const z = parseVideoCommand('add punch-in zooms and also follow the speaker', ctx);
+  ok('two new edits in one sentence', z.ops.some(o => o.op === 'motion.set') && z.ops.some(o => o.op === 'tracking.set'), z);
+  const title = parseVideoCommand('Add a title "Three ways to win"', ctx);
+  ok('"add a title …" puts the words at the playhead', title.ops[0]?.op === 'overlay.add' && (title.ops[0] as { s: number; text: string }).s === 42 && (title.ops[0] as { text: string }).text === 'Three ways to win', title);
+  ok('…and without quotes, asks for them rather than guessing', !parseVideoCommand('Add a title', ctx).ops.length);
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

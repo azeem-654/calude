@@ -16,6 +16,8 @@ import type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export * from '../../worker/src/lib/video/edit';
 export { cuesOf, isRtl, type Cue } from '../../worker/src/lib/video/captions';
 export { cleanupSummary, isFiller } from '../../worker/src/lib/video/cleanup';
+export { cameraPath, cutTimes, punchSpans, overlaySpan, trackAt, cssLook, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
+export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
 
 type Answer<T> = T & { success?: boolean; error?: string; field?: string; code?: string; conflict?: boolean };
@@ -51,7 +53,9 @@ export interface ProjectSummary {
 
 export interface Stage { key: string; label: string; state: 'done' | 'active' | 'waiting' | 'failed' | 'skipped'; pct: number | null; note: string }
 
-export interface ThumbView { index: number; layout: string; width: number; height: number; bytes: number; verified: boolean; check: string; headline: string; set: number; url: string; downloadUrl: string }
+export interface ThumbSpec { layout: string; text: string; highlight: string; at: number; at2?: number; accent: string; color: string; textColor: string; border: boolean; zoom: number }
+export interface ThumbView { index: number; layout: string; width: number; height: number; bytes: number; verified: boolean; check: string; headline: string; set: number; url: string; downloadUrl: string; spec: ThumbSpec | null; face: boolean }
+export interface TrackStatus { ready: boolean; summary: { detector: string; seen: number; faces: number; tracks: number; switches: { speaker: number; face: number }; frames: number } | null; error: string; at: string }
 
 export type OutputStatus = 'processing' | 'needs_review' | 'approved' | 'ready_to_publish' | 'failed';
 export interface OutputView {
@@ -70,7 +74,8 @@ export interface ProjectView {
   };
   request: (VideoRequest & { language?: string }) | null;
   source: { name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][];
-    filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null };
+    filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null;
+    track?: TrackStatus | null; trackUrl?: string };
   extras: Extras;
   musicUrl: string;
   transcriptUrl: string;
@@ -124,8 +129,8 @@ export const editVideo = (projectId: string, baseVersion: number, ops: Op[], not
 export const gotoVersion = (projectId: string, version: number) => call<{ doc: VideoDoc; docVersion: number }>('goto_version', { projectId, version });
 export const listVersions = (projectId: string) => call<{ versions: { version: number; note: string; created_by: string; created_at: string }[]; current: number }>('versions', { projectId });
 export const runCleanup = (projectId: string, baseVersion: number, preset: CleanupPreset) => call<{ doc: VideoDoc; docVersion: number }>('cleanup', { projectId, baseVersion, preset });
-export const videoCommand = (projectId: string, baseVersion: number, text: string, selection: { s: number; e: number } | null, clipId: string | null) =>
-  call<{ reply: string; understood: boolean; undo: boolean; redo: boolean; doc?: VideoDoc; docVersion?: number }>('command', { projectId, baseVersion, text, selection, clipId });
+export const videoCommand = (projectId: string, baseVersion: number, text: string, selection: { s: number; e: number } | null, clipId: string | null, playhead?: number) =>
+  call<{ reply: string; understood: boolean; undo: boolean; redo: boolean; doc?: VideoDoc; docVersion?: number }>('command', { projectId, baseVersion, text, selection, clipId, playhead });
 export const renderOutputs = (projectId: string, outputIds?: string[]) => call<{ queued: number }>('render', { projectId, outputIds });
 export const moreThumbnails = (projectId: string, outputId: string, headline?: string) => call<{ set: number }>('thumbnails', { projectId, outputId, headline });
 export const chooseThumb = (projectId: string, outputId: string, index: number) => call('choose_thumb', { projectId, outputId, index });
@@ -140,6 +145,12 @@ export const chooseMusic = (projectId: string, baseVersion: number, trackId: str
   call<{ doc: VideoDoc; docVersion: number; reply: string }>('music_choose', { projectId, baseVersion, trackId, applyTo });
 export const startRepurpose = (projectId: string, want: { posts: number; blog: boolean; email: boolean }) => call('repurpose', { projectId, ...want });
 export const startQuiz = (projectId: string) => call('quiz', { projectId });
+export const designThumb = (projectId: string, outputId: string, spec: ThumbSpec) => call<{ set: number }>('thumb_custom', { projectId, outputId, spec });
+export const trackNow = (projectId: string) => call('track_now', { projectId });
+export async function loadTrack(url: string): Promise<import('../../worker/src/lib/video/motion').TrackFile | null> {
+  if (!url) return null;
+  try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }
+}
 
 /** Your own track: uploaded to this project's music folder, then attached with your rights confirmed. */
 export async function uploadMusic(projectId: string, baseVersion: number, file: File, rightsConfirmed: boolean): Promise<{ ok: true; doc: VideoDoc; docVersion: number } | { ok: false; error: string }> {

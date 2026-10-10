@@ -20,7 +20,7 @@ import {
 import { CopyButton } from './VideoLibrary';
 import type { EditorCtx } from './VideoEditor';
 
-function MetaEditor({ ctx, o }: { ctx: EditorCtx; o: OutputView }) {
+export function MetaEditor({ ctx, o }: { ctx: EditorCtx; o: OutputView }) {
   const m = o.meta as Partial<VideoMeta>;
   const [draft, setDraft] = useState({
     title: m.titles?.[0] ?? o.title, description: m.description ?? '', hashtags: (m.hashtags ?? []).join(' '), tags: (m.tags ?? []).join(', '),
@@ -67,7 +67,7 @@ function MetaEditor({ ctx, o }: { ctx: EditorCtx; o: OutputView }) {
   );
 }
 
-function Thumbs({ ctx, o }: { ctx: EditorCtx; o: OutputView }) {
+export function Thumbs({ ctx, o }: { ctx: EditorCtx; o: OutputView }) {
   const [headline, setHeadline] = useState('');
   const [asked, setAsked] = useState(false);
   const pending = ctx.view.jobs.some(j => j.kind === 'thumbnails' && j.target === o.id && (j.state === 'queued' || j.state === 'running'));

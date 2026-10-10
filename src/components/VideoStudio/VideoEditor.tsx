@@ -18,16 +18,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2,
-  FileText, Scissors, Film, Clapperboard, Images,
+  FileText, Scissors, Film, Clapperboard, Images, SlidersHorizontal, Sparkles, ScanFace, Type, AudioLines, Captions as CaptionsIcon, Share2, Download,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
-  loadTranscript, loadWave, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, keptLength, STATUS_LABEL,
-  type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability,
+  loadTranscript, loadWave, loadTrack, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, keptLength, STATUS_LABEL,
+  type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability, type TrackFile,
 } from '../../services/videoStudio';
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
 import { VideoPanel, AudioPanel, MusicPanel } from './InspectorPanels';
-import OutputsPanel from './OutputsPanel';
+import OutputsBoard from './OutputsBoard';
+import { AdjustPanel, AnimationPanel, TrackingPanel, TextPanel } from './EffectsPanels';
 import ReusePanel from './ReusePanel';
 import AssistantPanel, { type ChatMsg } from './AssistantPanel';
 import VersionsPanel from './VersionsPanel';
@@ -36,17 +37,20 @@ import Timeline from './Timeline';
 import { CapabilityPanel } from './VideoStudio';
 
 type LeftTab = 'media' | 'transcript' | 'cleanup' | 'shorts';
-type RightTab = 'video' | 'audio' | 'music' | 'captions' | 'exports' | 'reuse';
-export type PanelTab = LeftTab | RightTab | 'assistant' | 'versions';
+type RightTab = 'video' | 'adjust' | 'animation' | 'tracking' | 'text' | 'audio' | 'music' | 'captions' | 'reuse';
+export type PanelTab = LeftTab | RightTab | 'assistant' | 'versions' | 'exports';
 const LEFT: { key: LeftTab; label: string; icon: typeof Film }[] = [
   { key: 'media', label: 'Media', icon: Images },
   { key: 'transcript', label: 'Transcript', icon: FileText },
   { key: 'cleanup', label: 'Cleanup', icon: Scissors },
   { key: 'shorts', label: 'Shorts', icon: Film },
 ];
-const RIGHT: { key: RightTab; label: string }[] = [
-  { key: 'video', label: 'Video' }, { key: 'audio', label: 'Audio' }, { key: 'music', label: 'Music' },
-  { key: 'captions', label: 'Captions' }, { key: 'exports', label: 'Export' }, { key: 'reuse', label: 'Reuse' },
+/* An icon rail, as in the owner's reference: every inspector tab one press away. */
+const RIGHT: { key: RightTab; label: string; icon: typeof Film }[] = [
+  { key: 'video', label: 'Video', icon: Film }, { key: 'adjust', label: 'Adjust', icon: SlidersHorizontal },
+  { key: 'animation', label: 'Animation', icon: Sparkles }, { key: 'tracking', label: 'Tracking', icon: ScanFace },
+  { key: 'text', label: 'Text', icon: Type }, { key: 'audio', label: 'Audio', icon: AudioLines }, { key: 'music', label: 'Music', icon: Music2 },
+  { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'reuse', label: 'Reuse', icon: Share2 },
 ];
 const isLeft = (t: string): t is LeftTab => LEFT.some(x => x.key === t);
 const isRight = (t: string): t is RightTab => RIGHT.some(x => x.key === t);
@@ -67,6 +71,8 @@ export interface EditorCtx {
   refresh: () => Promise<void>;
   setTab: (t: PanelTab) => void;
   say: (m: ChatMsg) => void;
+  /** Faces and the speaker through the recording (the engine's track), once loaded. */
+  track: TrackFile | null;
   /** A version the server just saved (an assistant command), taken at once —
    *  waiting for the next refresh left a window where Undo went back two. */
   adopt: (doc: VideoDoc, version: number) => void;
@@ -193,6 +199,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const [version, setVersion] = useState(0);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [wave, setWave] = useState<Uint8Array | null>(null);
+  const [track, setTrack] = useState<TrackFile | null>(null);
+  const trackUrlSeen = useRef(false);
   const [error, setError] = useState('');
   const asked = params.get('tab') ?? '';
   const [left, setLeft] = useState<LeftTab>(isLeft(asked) ? asked : 'media');
@@ -217,6 +225,7 @@ export default function VideoEditor({ id }: { id: string }) {
     if (isLeft(t)) setLeft(t);
     else if (isRight(t)) setRight(t);
     else if (t === 'versions') setShowHistory(true);
+    else if (t === 'exports') { document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     else if (t === 'assistant') { commandRef.current?.focus(); return; }
     setParams(t === 'media' || t === 'video' ? {} : { tab: t }, { replace: true });
   }, [setParams]);
@@ -258,6 +267,7 @@ export default function VideoEditor({ id }: { id: string }) {
       if (t) setTranscript(t);
     }
     if (v.source.waveUrl && !wave) void loadWave(v.source.waveUrl).then(w => { if (w) setWave(w); });
+    if (v.source.trackUrl && !trackUrlSeen.current) { trackUrlSeen.current = true; void loadTrack(v.source.trackUrl).then(t => { if (t) setTrack(t); else trackUrlSeen.current = false; }); }
   }, [doc, narrate, transcript, wave]);
 
   const load = useCallback(async () => {
@@ -330,8 +340,8 @@ export default function VideoEditor({ id }: { id: string }) {
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
-    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt,
-  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt]);
+    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track,
+  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track]);
   const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;
@@ -344,6 +354,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const proposed = doc.cuts.filter(c => c.state === 'proposed').length;
 
   return (
+    <>
     <div className="vse" data-testid="vs-editor" data-status={st}>
       <div className="vse-top">
         <Link to="/video-studio" className="vs-btn ghost sm" aria-label="Back to Video Studio"><ArrowLeft size={16} /></Link>
@@ -399,20 +410,31 @@ export default function VideoEditor({ id }: { id: string }) {
 
       <aside className="vse-right">
         <div className="vse-pane inspector">
-          <div className="vs-ptabs" role="tablist" aria-label="Inspector">
-            {RIGHT.map(p => (
-              <button key={p.key} type="button" role="tab" className="vs-ptab" aria-selected={right === p.key} onClick={() => setTab(p.key)} data-panel={p.key}>
-                {p.label}{p.key === 'exports' && stale.length ? <span className="vs-count warn">{stale.length}</span> : null}
+          <div className="vse-insp">
+            <div className="vse-panel-body">
+              <div className="vse-panel-head"><b>{RIGHT.find(r => r.key === right)?.label}</b></div>
+              <div className="vse-scroll">
+                {right === 'video' && <VideoPanel ctx={ctx} />}
+                {right === 'adjust' && <AdjustPanel ctx={ctx} />}
+                {right === 'animation' && <AnimationPanel ctx={ctx} />}
+                {right === 'tracking' && <TrackingPanel ctx={ctx} />}
+                {right === 'text' && <TextPanel ctx={ctx} />}
+                {right === 'audio' && <AudioPanel ctx={ctx} />}
+                {right === 'music' && <MusicPanel ctx={ctx} />}
+                {right === 'captions' && <CaptionsPanel ctx={ctx} />}
+                {right === 'reuse' && <ReusePanel ctx={ctx} />}
+              </div>
+            </div>
+            <nav className="vse-rail" role="tablist" aria-label="Inspector">
+              {RIGHT.map(p => (
+                <button key={p.key} type="button" role="tab" className="vse-rail-btn" aria-selected={right === p.key} onClick={() => setTab(p.key)} data-panel={p.key} title={p.label}>
+                  <p.icon size={17} /><span>{p.label}</span>
+                </button>
+              ))}
+              <button type="button" className="vse-rail-btn" onClick={() => setTab('exports')} data-panel="exports" title="Your videos, below">
+                <Download size={17} /><span>Export</span>{stale.length ? <i className="dot" /> : null}
               </button>
-            ))}
-          </div>
-          <div className="vse-scroll">
-            {right === 'video' && <VideoPanel ctx={ctx} />}
-            {right === 'audio' && <AudioPanel ctx={ctx} />}
-            {right === 'music' && <MusicPanel ctx={ctx} />}
-            {right === 'captions' && <CaptionsPanel ctx={ctx} />}
-            {right === 'exports' && <OutputsPanel ctx={ctx} />}
-            {right === 'reuse' && <ReusePanel ctx={ctx} />}
+            </nav>
           </div>
         </div>
         <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
@@ -430,6 +452,8 @@ export default function VideoEditor({ id }: { id: string }) {
         </div>
       )}
     </div>
+    {hasSource && <OutputsBoard ctx={ctx} />}
+    </>
   );
 }
 

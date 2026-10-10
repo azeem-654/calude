@@ -10,12 +10,12 @@
  * Short — each one the same operation the transcript's buttons send.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ZoomIn, ZoomOut, Scissors, RotateCcw, Shield, Film, X, Play, Music2, Plus, Maximize } from 'lucide-react';
-import { clock, effectiveCuts, sentencesOf } from '../../services/videoStudio';
+import { ZoomIn, ZoomOut, Scissors, RotateCcw, Shield, Film, X, Play, Music2, Plus, Maximize, Type } from 'lucide-react';
+import { clock, effectiveCuts, sentencesOf, type Overlay } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 
 const NAME_W = 96;
-const ROW = { ruler: 22, video: 56, text: 30, shorts: 30, wave: 44, music: 30 };
+const ROW = { ruler: 22, video: 56, words: 28, text: 26, shorts: 32, wave: 44, music: 30 };
 
 function tickStep(pps: number): number {
   for (const s of [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800]) if (s * pps >= 70) return s;
@@ -30,6 +30,9 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   const [zoom, setZoom] = useState(1);
   const [sel, setSel] = useState<{ s: number; e: number } | null>(null);
   const drag = useRef<{ x0: number; t0: number; moved: boolean } | null>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  /* A Short's edge or an overlay being dragged: where it was, and where it is now. */
+  const [held, setHeld] = useState<{ kind: 'clip' | 'ov'; id: string; edge: 's' | 'e' | 'both'; x0: number; s: number; e: number; ns: number; ne: number } | null>(null);
 
   useEffect(() => {
     const el = scroller.current;
@@ -44,13 +47,40 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   const W = Math.max(width, Math.round(dur * pps));
   const x = (t: number) => t * pps;
 
-  /* The playhead stays in view while it plays. */
+
+  /* The playhead moves every frame from the player's own loop, not through React. */
+  useEffect(() => {
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<number>).detail;
+      if (headRef.current) headRef.current.style.left = `${NAME_W + t * pps}px`;
+      const el = scroller.current;
+      if (el && zoom > 1) {
+        const px = t * pps + NAME_W;
+        if (px < el.scrollLeft + NAME_W + 20 || px > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, px - NAME_W - el.clientWidth * 0.25);
+      }
+    };
+    window.addEventListener('vs-frame', on);
+    return () => window.removeEventListener('vs-frame', on);
+  }, [pps, zoom]);
+
+  /* Ctrl/⌘ + wheel zooms, held at the point under the pointer. */
   useEffect(() => {
     const el = scroller.current;
-    if (!el || zoom === 1) return;
-    const px = x(ctx.time) + NAME_W;
-    if (px < el.scrollLeft + NAME_W + 20 || px > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, px - NAME_W - el.clientWidth * 0.25);
-  }, [ctx.time, zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const at = (el.scrollLeft + e.clientX - r.left - NAME_W) / pps;
+      setZoom(z => {
+        const nz = Math.min(80, Math.max(1, z * (e.deltaY < 0 ? 1.25 : 0.8)));
+        requestAnimationFrame(() => { el.scrollLeft = Math.max(0, at * (width / dur) * nz - (e.clientX - r.left - NAME_W)); });
+        return nz;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [pps, width, dur]);
 
   /* The waveform, drawn at most 16k pixels wide and stretched beyond. */
   useEffect(() => {
@@ -125,11 +155,63 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
 
   const act = async (ops: Parameters<EditorCtx['apply']>[0], note: string) => { if (await ctx.apply(ops, note)) setSel(null); };
 
+  /* Trimming a Short by its edges, moving or stretching words on screen. A
+     Short's edges snap to sentence boundaries (Alt to drag freely), so a
+     Short never starts mid-word. */
+  const snap = (t: number, alt: boolean) => {
+    if (alt || !sentences.length) return t;
+    const marks = sentences.flatMap(s => [s.s, s.e]);
+    const best = marks.reduce((b, m) => (Math.abs(m - t) < Math.abs(b - t) ? m : b), marks[0]);
+    return Math.abs(best - t) * pps < 14 ? best : t;
+  };
+  const grab = (e: React.PointerEvent, kind: 'clip' | 'ov', id: string, edge: 's' | 'e' | 'both', s: number, en: number) => {
+    e.stopPropagation(); e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setHeld({ kind, id, edge, x0: e.clientX, s, e: en, ns: s, ne: en });
+  };
+  const drag2 = (e: React.PointerEvent) => {
+    if (!held) return;
+    const dt = (e.clientX - held.x0) / pps;
+    let ns = held.s, ne = held.e;
+    if (held.edge === 's' || held.edge === 'both') ns = held.s + dt;
+    if (held.edge === 'e' || held.edge === 'both') ne = held.e + dt;
+    if (held.kind === 'clip') { if (held.edge === 's') ns = snap(ns, e.altKey); if (held.edge === 'e') ne = snap(ne, e.altKey); }
+    ns = Math.max(0, Math.min(ns, ne - 0.3)); ne = Math.min(dur, Math.max(ne, ns + 0.3));
+    setHeld({ ...held, ns, ne });
+  };
+  const drop = () => {
+    const m = held;
+    setHeld(null);
+    if (!m || (Math.abs(m.ns - m.s) < 0.02 && Math.abs(m.ne - m.e) < 0.02)) return;
+    if (m.kind === 'clip') void ctx.apply([{ op: 'clip.update', id: m.id, patch: { s: m.ns, e: m.ne } }], `Short trimmed to ${clock(m.ns)}–${clock(m.ne)}`);
+    else void ctx.apply([{ op: 'overlay.update', id: m.id, patch: { s: m.ns, e: m.ne } }], 'Words moved');
+  };
+  const live = (kind: 'clip' | 'ov', id: string, s: number, e: number): [number, number] => (held && held.kind === kind && held.id === id ? [held.ns, held.ne] : [s, e]);
+
+  /* Keys while the timeline has the pointer: I and O mark the stretch, X cuts it, P protects it, M makes a Short of it. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName) || el?.isContentEditable || e.metaKey || e.ctrlKey) return;
+      const t = ctx.time;
+      if (e.key === 'i') setSel(s => ({ s: t, e: Math.max(t + 0.5, s?.e ?? t + 2) }));
+      else if (e.key === 'o') setSel(s => ({ s: Math.min(s?.s ?? Math.max(0, t - 2), t - 0.5), e: t }));
+      else if (e.key === 'x' && sel) void act([{ op: 'cut.add', s: sel.s, e: sel.e, reason: 'Cut on the timeline' }], `Cut ${clock(sel.s)}–${clock(sel.e)}`);
+      else if (e.key === 'p' && sel) void act([{ op: 'protect.add', s: sel.s, e: sel.e, note: 'Protected on the timeline' }, { op: 'cut.restoreRange', s: sel.s, e: sel.e }], 'Protected a stretch');
+      else if (e.key === 'm' && sel && sel.e - sel.s >= 5) void act([{ op: 'clip.add', s: sel.s, e: sel.e, title: `Short from ${clock(sel.s)}`, reason: 'Marked by you on the timeline' }], 'New Short from the timeline');
+      else if (e.key === 'Escape') setSel(null);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="vse-tl" data-testid="vs-timeline">
       <div className="vse-tl-head">
         <b>Timeline</b>
-        <span className="vs-kbd">{clock(dur)} · press to move the playhead, drag to mark a stretch</span>
+        <span className="vs-kbd">{clock(dur)} · press to move the playhead, drag to mark (or I / O), then X cut · P protect · M make a Short · drag a Short's edges to trim · Ctrl+scroll to zoom</span>
         <span className="vs-spacer" />
         <div className="vse-legend">
           <span><i style={{ background: '#f05d6c' }} />Cut</span><span><i style={{ background: '#fbbf24' }} />Suggested</span><span><i style={{ background: '#2dd4bf' }} />Protected</span>
@@ -157,8 +239,25 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
               {overlays}
             </div>
           </div>
-          <div className="vse-tl-row" style={{ height: ROW.text }}>
+          <div className="vse-tl-row" style={{ height: ROW.words }}>
             <div className="vse-tl-name">Text</div>
+            <div className="vse-lane" style={{ width: W, height: ROW.words }} onPointerMove={drag2} onPointerUp={drop}>
+              {(doc.overlays ?? []).map((ov: Overlay) => {
+                const [s0, e0] = live('ov', ov.id, ov.s, ov.e);
+                return (
+                  <div key={ov.id} className="vse-block ov" style={{ left: x(s0), width: Math.max(16, x(e0) - x(s0)), ['--ovbg' as string]: ov.bg }} title={`${ov.text} — drag to move, edges to resize`}
+                    onPointerDown={e => grab(e, 'ov', ov.id, 'both', ov.s, ov.e)} onDoubleClick={() => ctx.setTab('text')} data-overlay-block={ov.id}>
+                    <i className="h l" onPointerDown={e => grab(e, 'ov', ov.id, 's', ov.s, ov.e)} />
+                    <Type size={10} style={{ flex: 'none', marginRight: 4 }} />{x(e0) - x(s0) > 50 ? ov.text : ''}
+                    <i className="h r" onPointerDown={e => grab(e, 'ov', ov.id, 'e', ov.s, ov.e)} />
+                  </div>
+                );
+              })}
+              {!(doc.overlays ?? []).length && <button type="button" className="vse-add-music words" onClick={() => ctx.setTab('text')}><Plus size={12} /> Add words on screen</button>}
+            </div>
+          </div>
+          <div className="vse-tl-row" style={{ height: ROW.text }}>
+            <div className="vse-tl-name">Speech</div>
             <div className="vse-lane" style={{ width: W, height: ROW.text }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
               {sentences.map((s, i) => x(s.e) - x(s.s) >= 3 && (
                 <div key={i} className="vse-block cap" style={{ left: x(s.s), width: x(s.e) - x(s.s) - 1 }} title={s.text}>{x(s.e) - x(s.s) > 40 ? s.text : ''}</div>
@@ -168,14 +267,18 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
           </div>
           <div className="vse-tl-row" style={{ height: ROW.shorts }}>
             <div className="vse-tl-name">Shorts</div>
-            <div className="vse-lane" style={{ width: W, height: ROW.shorts }}>
+            <div className="vse-lane" style={{ width: W, height: ROW.shorts }} onPointerMove={drag2} onPointerUp={drop}>
               {doc.clips.map((c, n) => {
                 const o = clipOut(c.id);
+                const [s0, e0] = live('clip', c.id, c.s, c.e);
                 return (
-                  <button key={c.id} type="button" className={`vse-block short ${ctx.activeClip === c.id ? 'on' : ''}`} style={{ left: x(c.s), width: Math.max(14, x(c.e) - x(c.s)) }}
-                    onClick={() => { ctx.setActiveClip(c.id); ctx.seek(c.s); }} title={`${c.title}${o?.stale ? ' — edited, render again' : ''}`} data-clip-block={c.id}>
-                    {n + 1}{x(c.e) - x(c.s) > 60 ? ` · ${c.title}` : ''}
-                  </button>
+                  <div key={c.id} role="button" tabIndex={0} className={`vse-block short ${ctx.activeClip === c.id ? 'on' : ''}`} style={{ left: x(s0), width: Math.max(14, x(e0) - x(s0)) }}
+                    onClick={() => { ctx.setActiveClip(c.id); ctx.seek(c.s); }} onKeyDown={e => { if (e.key === 'Enter') { ctx.setActiveClip(c.id); ctx.seek(c.s); } }}
+                    title={`${c.title}${o?.stale ? ' — edited, render again' : ''} — drag an edge to trim`} data-clip-block={c.id}>
+                    <i className="h l" onPointerDown={e => grab(e, 'clip', c.id, 's', c.s, c.e)} data-edge="s" />
+                    {n + 1}{x(e0) - x(s0) > 60 ? ` · ${c.title}` : ''}{held?.id === c.id ? ` · ${clock(e0 - s0)}` : ''}
+                    <i className="h r" onPointerDown={e => grab(e, 'clip', c.id, 'e', c.s, c.e)} data-edge="e" />
+                  </div>
                 );
               })}
             </div>
@@ -201,7 +304,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
               )}
             </div>
           </div>
-          <div className="vse-playhead" style={{ left: NAME_W + x(ctx.time) }} />
+          <div className="vse-playhead" ref={headRef} style={{ left: NAME_W + x(ctx.time) }} />
         </div>
       </div>
       {range && (

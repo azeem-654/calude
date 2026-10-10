@@ -41,7 +41,7 @@ export default function AssistantPanel({ ctx, messages, inputRef }: { ctx: Edito
     ctx.say({ who: 'me', text: q });
     setText('');
     setBusy(true);
-    const r = await videoCommand(ctx.view.project.id, ctx.version, q, sel, ctx.activeClip);
+    const r = await videoCommand(ctx.view.project.id, ctx.version, q, sel, ctx.activeClip, ctx.time);
     setBusy(false);
     if (r.undo || r.redo) {
       const v = r.undo ? ctx.version - 1 : ctx.version + 1;

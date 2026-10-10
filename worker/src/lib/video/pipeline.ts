@@ -30,9 +30,10 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock,
-  type Clip, type MusicTrack, type Sentence, type Transcript, type VideoDoc, type Word,
+  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf,
+  type Clip, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
+import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, type TrackFile } from './motion';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss } from './captions';
 import { proposeCleanup } from './cleanup';
 import { cleanMeta, cleanQuiz, distinctMeta, fallbackMeta, fallbackPicks, keywordsOf, transcriptForAi, validatePicks, withMusicCredit, type QuizQuestion, type RawPick, type VideoMeta } from './shorts';
@@ -80,8 +81,15 @@ export interface Source {
   filmstrip?: { key: string; every: number; tiles: number; w: number; h: number };
   chunks?: { key: string; s: number; e: number }[];
   silences?: [number, number][];
+  /** Faces and the speaker (engine `track`): the file, what it found, or why it could not run. */
+  track?: { key?: string; summary?: Pick<TrackFile, 'detector' | 'seen' | 'faces' | 'tracks' | 'switches' | 'frames'>; error?: string; at: string };
 }
-export interface Thumb { key: string; width: number; height: number; layout: string; bytes: number; verified: boolean; check: string; headline: string; set: number }
+/** What a thumbnail was made from, so it can be opened again in the editor and changed. */
+export interface ThumbSpec {
+  layout: string; text: string; highlight: string; at: number; at2?: number;
+  accent: string; color: string; textColor: string; border: boolean; zoom: number;
+}
+export interface Thumb { key: string; width: number; height: number; layout: string; bytes: number; verified: boolean; check: string; headline: string; set: number; spec?: ThumbSpec; face?: boolean }
 
 export const parse = <T>(s: string | null | undefined, d: T): T => { try { return s ? JSON.parse(s) as T : d; } catch { return d; } };
 const later = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
@@ -202,7 +210,7 @@ export async function runVideoJobs(env: Env, budgetMs = 25_000): Promise<{ ran: 
 }
 
 async function runJob(env: Env, origin: string, job: JobRow, until: number): Promise<void> {
-  const engineKind = job.kind === 'prepare' || job.kind === 'render' || job.kind === 'thumbnails';
+  const engineKind = job.kind === 'prepare' || job.kind === 'render' || job.kind === 'thumbnails' || job.kind === 'track';
   if (!(await lease(env, job, engineKind ? 40 : 120))) return;
   const p = await project(env, job.project_id);
   if (!p || p.account_id !== job.account_id) { await save(env, job, { state: 'cancelled', error: 'project gone' }); return; }
@@ -214,6 +222,7 @@ async function runJob(env: Env, origin: string, job: JobRow, until: number): Pro
       case 'analyze': return await analyzeStep(env, origin, job, p);
       case 'metadata': return await metadataStep(env, job, p);
       case 'render': return await renderJob(env, origin, job, p);
+      case 'track': return await trackJob(env, origin, job, p);
       case 'thumbnails': return await thumbnailJob(env, origin, job, p);
       case 'repurpose': return await repurposeStep(env, job, p);
       case 'quiz': return await quizStep(env, job, p);
@@ -310,6 +319,9 @@ async function onPrepared(env: Env, job: JobRow, p: ProjectRow, r: Record<string
   }
   await meter(env, { jobId: job.id, kind: 'source', accountId: p.account_id, units: minutes, unit: 'source_min', costMicros: 0 });
   await setProject(env, p.id, { source: JSON.stringify(next), stage: 'transcribing', stage_note: '' });
+  /* Faces and the speaker, from the proxy, beside transcription: framing that
+     follows somebody needs it, nothing else waits for it. */
+  if (next.proxy) await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'track', idem: `track:${p.id}:${src.key}`, maxAttempts: 3 });
   if (probe.hasAudio && next.chunks?.length) {
     await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'transcribe', idem: `transcribe:${p.id}:${src.key}`, steps: next.chunks.length, maxAttempts: 6 });
   } else {
@@ -508,7 +520,10 @@ export async function syncOutputs(env: Env, p: ProjectRow, doc: VideoDoc): Promi
   return outputsOf(env, p.id);
 }
 
-export interface RenderSpec { hash: string; keeps: [number, number][]; width: number; height: number; mode: 'crop' | 'fit' | 'source'; x: number; y: number; kind: 'long' | 'short'; clip?: Clip; music: MusicTrack | null }
+export interface RenderSpec {
+  hash: string; keeps: [number, number][]; width: number; height: number; mode: 'crop' | 'fit' | 'source'; x: number; y: number; kind: 'long' | 'short'; clip?: Clip; music: MusicTrack | null;
+  look: Look; motion: Motion; tracking: TrackMode; overlays: Overlay[];
+}
 
 /** The music that goes under this kind of video, if any. */
 export const musicFor = (doc: VideoDoc, kind: 'long' | 'short'): MusicTrack | null =>
@@ -534,8 +549,18 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
     ? { st: doc.captions[kind], ed: edits, w: tr.words.length } : null;
   const music = musicFor(doc, kind);
   const musicKey = music ? { k: music.key, v: music.volume, i: music.fadeIn, o: music.fadeOut, l: music.loop, d: music.duck } : null;
-  const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), v: 1 });
-  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music };
+  const look = lookOf(doc, kind), motion = motionOf(doc, kind);
+  /* Following a face only means something where the picture is cropped, and only once the faces are known. */
+  const tracking: TrackMode = mode === 'crop' && src.track?.key ? trackingOf(doc, kind) : 'off';
+  const overlays = (doc.overlays ?? []).filter(ov => overlaySpan(ov, keeps));
+  const extra = {
+    ...(JSON.stringify(look) !== JSON.stringify(lookOf({}, kind)) ? { look } : {}),
+    ...(JSON.stringify(motion) !== JSON.stringify(motionOf({}, kind)) ? { motion } : {}),
+    ...(tracking !== 'off' ? { tracking, tk: src.track?.key } : {}),
+    ...(overlays.length ? { overlays } : {}),
+  };
+  const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, v: 1 });
+  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays };
 }
 
 /**
@@ -556,7 +581,7 @@ export async function queueAfterEdit(env: Env, _origin: string, p: ProjectRow, o
     if (!spec || spec.hash === o.edit_hash) continue;
     pending.push({ o, spec });
   }
-  const minutes = pending.reduce((n, x) => n + keptLength(x.spec.keeps) / 60, 0);
+  const minutes = pending.reduce((n, x) => n + keptLength(x.spec.keeps) / x.spec.motion.speed / 60, 0);
   const no = minutes ? await refusal(env, p.account_id, { renderMin: minutes }) : null;
   if (no) {
     await setProject(env, p.id, { stage_note: no });
@@ -590,11 +615,13 @@ export function outputText(doc: VideoDoc, tr: Transcript | null, o: Pick<OutputR
 /** Chapters in the long video's own time (they were chosen in the source's), as YouTube reads them. */
 export function chaptersOut(doc: VideoDoc, duration: number): { s: number; title: string }[] {
   const keeps = keepRanges(duration, doc);
+  const speed = motionOf(doc, 'long').speed;
   const out: { s: number; title: string }[] = [];
   for (const c of doc.long.chapters) {
     let t = toOutput(c.s, keeps);
     if (t === null) { const k = keeps.find(([a]) => a >= c.s); t = k ? toOutput(k[0], keeps) : null; }
     if (t === null) continue;
+    t /= speed;
     if (!out.length || t - out[out.length - 1].s >= 10) out.push({ s: out.length ? t : 0, title: c.title });
   }
   return out.length >= 3 ? out : [];
@@ -668,9 +695,11 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
   const dir = `${projectPrefix(p.account_id, p.id)}out/${out.id}/${want ?? spec.hash}/`;
   return engineStep(env, origin, job, p, async () => {
     let ass: string | null = null;
+    const speed = spec.motion.speed;
     if (tr && tr.words.length) {
       const words = retimeWords(tr.words, spec.keeps, doc.captionEdits);
-      const cues = cuesOf(words, spec.kind);
+      /* At another speed every caption moves with the picture. */
+      const cues = cuesOf(words, spec.kind).map(c => speed === 1 ? c : { ...c, s: c.s / speed, e: c.e / speed, words: c.words.map(w => ({ ...w, s: w.s / speed, e: w.e / speed })) });
       /* The caption files exist whether or not they are burned in. */
       await env.VIDEO!.put(`${dir}captions.srt`, toSrt(cues, spec.kind, doc.captions[spec.kind].speakerLabels), { httpMetadata: { contentType: 'application/x-subrip; charset=utf-8' } });
       await env.VIDEO!.put(`${dir}captions.vtt`, toVtt(cues, spec.kind, doc.captions[spec.kind].speakerLabels), { httpMetadata: { contentType: 'text/vtt; charset=utf-8' } });
@@ -679,6 +708,16 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
         ass = toAss(cues, doc.captions[spec.kind], spec.width, spec.height, spec.kind, (meta.keywords ?? keywordsOf(words.map(w => w.w).join(' '), 4)).slice(0, 8));
       }
     }
+    /* The face or the speaker, followed through the edit. */
+    let camera: [number, number, number, number][] = [];
+    if (spec.tracking !== 'off' && src.track?.key) {
+      const obj = await env.VIDEO!.get(src.track.key);
+      const tf = obj ? parse<TrackFile | null>(await obj.text(), null) : null;
+      if (tf?.[spec.tracking]?.length) camera = cameraPath(tf[spec.tracking], spec.keeps);
+    }
+    const m = spec.motion;
+    const zoom = m.zoom === 'slow' ? { kind: 'slow', amount: m.zoomAmount }
+      : m.zoom === 'punch' && tr ? { kind: 'punch', amount: m.zoomAmount, spans: punchSpans(sentencesOf(tr.words), spec.keeps) } : null;
     return {
       op: 'render' as const,
       params: {
@@ -686,6 +725,10 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
         mode: spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
         music: spec.music ? { volume: spec.music.volume, fadeIn: spec.music.fadeIn, fadeOut: spec.music.fadeOut, loop: spec.music.loop, duck: spec.music.duck } : null,
         preset: spec.kind === 'long' && keptLength(spec.keeps) > 1800 ? 'faster' : 'veryfast',
+        camera, look: spec.look, zoom, speed,
+        transition: m.transition, cuts: m.transition !== 'none' ? cutTimes(spec.keeps) : [],
+        fadeIn: m.fadeIn, fadeOut: m.fadeOut, progressBar: m.progressBar, accent: doc.captions[spec.kind].highlight,
+        overlayAss: spec.overlays.length ? overlayAss(spec.overlays, spec.keeps, spec.width, spec.height, speed) : '',
       },
       inputs: {
         source: await fileUrl(env, origin, p.account_id, src.key!, 8 * 3600),
@@ -699,7 +742,7 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
     if (!head || head.size < 1000) throw new Error('the rendered file did not arrive');
     const prev = parse<{ mp4?: { key: string } }>(out.files, {});
     const files = { mp4: { key, bytes: head.size }, srt: `${dir}captions.srt`, vtt: `${dir}captions.vtt` };
-    const duration = Number(r.duration) || keptLength(spec.keeps);
+    const duration = Number(r.duration) || keptLength(spec.keeps) / spec.motion.speed;
     await env.DB.prepare(
       `UPDATE crm_video_outputs SET files = ?, edit_hash = ?, version = version + 1, duration = ?, width = ?, height = ?, status = 'needs_review', error = '', updated_at = ? WHERE id = ?`,
     ).bind(JSON.stringify(files), want ?? spec.hash, duration, Number(r.width) || spec.width, Number(r.height) || spec.height, nowIso(), out.id).run();
@@ -711,18 +754,53 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
 
 /* ── Thumbnails ───────────────────────────────────────────────────────────── */
 
+/** The classic layouts (kept for older sets) and the trending ones (media/engine trendLayout). */
 export const THUMB_LAYOUTS = ['left', 'band', 'frame'] as const;
+export const TREND_LAYOUTS = ['bold', 'callout', 'cinematic', 'split', 'number'] as const;
+export const ALL_LAYOUTS: readonly string[] = [...TREND_LAYOUTS, ...THUMB_LAYOUTS];
+/** Which three layouts each set offers — a different look each time "another set" is asked for. */
+const THUMB_SETS = [['bold', 'callout', 'cinematic'], ['split', 'number', 'bold'], ['callout', 'band', 'frame'], ['bold', 'cinematic', 'left']];
+
+/** The word worth the accent colour: a figure if there is one, else the longest of the last three words. */
+export function pickHighlight(headline: string): string {
+  const num = headline.match(/[$€£₺₨]?\d[\d.,]*%?/);
+  if (num) return num[0];
+  const words = headline.split(/\s+/).map(w => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean);
+  return [...words.slice(-3)].sort((a, b) => b.length - a.length)[0] ?? '';
+}
+
+/** Trending advice: three to five words. A long title is cut at a word, never mid-word. */
+export function thumbWords(title: string, max = 5): string {
+  const w = title.replace(/[“”"]/g, '').split(/\s+/).filter(Boolean);
+  return w.length <= max ? w.join(' ') : w.slice(0, max).join(' ').replace(/[,:;—-]+$/, '');
+}
+
+/** A thumbnail request from the editor, kept to what the engine draws. */
+export function cleanThumbSpec(raw: unknown, fallback: ThumbSpec): ThumbSpec {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const hex = (v: unknown, d: string) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : d);
+  const n = (v: unknown, lo: number, hi: number, d: number) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
+  const text = String(r.text ?? fallback.text).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80) || fallback.text;
+  return {
+    layout: ALL_LAYOUTS.includes(String(r.layout)) ? String(r.layout) : fallback.layout,
+    text, highlight: String(r.highlight ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 30),
+    at: n(r.at, 0, 6 * 3600, fallback.at), ...(r.at2 !== undefined ? { at2: n(r.at2, 0, 6 * 3600, fallback.at) } : {}),
+    accent: hex(r.accent, fallback.accent), color: hex(r.color, fallback.color), textColor: hex(r.textColor, fallback.textColor),
+    border: typeof r.border === 'boolean' ? r.border : fallback.border, zoom: n(r.zoom, 0, 1, fallback.zoom),
+  };
+}
 
 async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow): Promise<void> {
   const out = await env.DB.prepare('SELECT * FROM crm_video_outputs WHERE id = ? AND project_id = ?').bind(job.target, p.id).first<OutputRow>();
   if (!out) { await save(env, job, { state: 'cancelled', error: 'output removed' }); return; }
-  const set = parse<{ set?: number }>(job.input, {}).set ?? 1;
+  const input = parse<{ set?: number; custom?: ThumbSpec }>(job.input, {});
+  const set = input.set ?? 1;
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const src = parse<Source>(p.source, {});
   const brand: VideoBrand = await brandOf(env, p.account_id, p.autopilot_project_id);
   const meta = parse<Partial<VideoMeta>>(out.meta, {});
   const clip = out.kind === 'short' ? doc.clips.find(c => c.id === out.clip_id) : undefined;
-  const headline = (doc.thumbnails.headline[out.id] || meta.titles?.[set - 1] || meta.titles?.[0] || clip?.title || out.title || p.name).slice(0, 90);
+  const headline = (doc.thumbnails.headline[out.id] || meta.titles?.[(set - 1) % 3] || meta.titles?.[0] || clip?.title || out.title || p.name).slice(0, 90);
   const W = out.kind === 'short' ? 1080 : 1280, H = out.kind === 'short' ? 1920 : 720;
   const dir = `${projectPrefix(p.account_id, p.id)}out/${out.id}/thumbs/${set}/`;
   const duration = src.probe?.duration ?? 0;
@@ -730,14 +808,26 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
      greeting, never on a cut. Each set picks a different moment. */
   const keeps = keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined);
   const span = keptLength(keeps);
-  const want = span * Math.min(0.85, (clip ? 0.2 : 0.18) + (set - 1) * 0.17);
-  let at = keeps[0]?.[0] ?? 1, acc = 0;
-  for (const [a, b] of keeps) { if (acc + (b - a) >= want) { at = a + (want - acc); break; } acc += b - a; }
+  const momentAt = (share: number) => {
+    const want = span * Math.min(0.9, share);
+    let at = keeps[0]?.[0] ?? 1, acc = 0;
+    for (const [a, b] of keeps) { if (acc + (b - a) >= want) { at = a + (want - acc); break; } acc += b - a; }
+    return Math.round(at * 100) / 100;
+  };
+  const at = momentAt((clip ? 0.2 : 0.18) + ((set - 1) % 4) * 0.17);
+  const accent = /^#[0-9a-f]{6}$/i.test(brand.accent) && brand.accent.toLowerCase() !== '#ffffff' ? brand.accent : '#facc15';
+  const words = thumbWords(headline);
+  const base: ThumbSpec = { layout: 'bold', text: words, highlight: pickHighlight(words), at, accent, color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 };
+  const specs: ThumbSpec[] = input.custom
+    ? [cleanThumbSpec(input.custom, base)]
+    : THUMB_SETS[(set - 1) % THUMB_SETS.length].map(layout => ({ ...base, layout, ...(layout === 'split' ? { at2: momentAt(0.75) } : {}) }));
   return engineStep(env, origin, job, p, async () => ({
     op: 'thumbnail' as const,
     params: {
       at, width: W, height: H,
-      items: THUMB_LAYOUTS.map((layout, k) => ({ name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}`, layout, color: brand.color, accent: brand.accent, ass: thumbAss(headline, layout, W, H, brand.accent) })),
+      items: specs.map((sp, k) => (TREND_LAYOUTS as readonly string[]).includes(sp.layout)
+        ? { name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}`, layout: sp.layout, text: sp.text, highlight: sp.highlight, at: sp.at, ...(sp.at2 !== undefined ? { at2: sp.at2 } : {}), accent: sp.accent, color: sp.color, textColor: sp.textColor, border: sp.border, zoom: sp.zoom }
+        : { name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}`, layout: sp.layout, at: sp.at, color: brand.color, accent: sp.accent, ass: thumbAss(sp.text, sp.layout as 'left' | 'band' | 'frame', W, H, sp.accent) }),
     },
     inputs: {
       source: await fileUrl(env, origin, p.account_id, src.key!, 4 * 3600),
@@ -745,20 +835,45 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
     },
     upload: await uploadPrefixUrl(env, origin, p.account_id, dir, 4 * 3600),
   }), async r => {
-    const made = ((r.thumbs ?? []) as { name: string; width: number; height: number; layout: string }[]);
+    const made = ((r.thumbs ?? []) as { name: string; width: number; height: number; layout: string; face?: boolean }[]);
     const thumbs: Thumb[] = [];
-    for (const t of made) {
+    for (const [k, t] of made.entries()) {
       const key = dir + t.name;
       const obj = await env.VIDEO!.get(key);
       const bytes = obj ? new Uint8Array(await obj.arrayBuffer()) : new Uint8Array();
       const chk = checkPng(bytes, { width: W, height: H });
-      thumbs.push({ key, width: chk.width, height: chk.height, layout: t.layout, bytes: bytes.length, verified: chk.ok, check: chk.ok ? `PNG ${chk.width}×${chk.height}, signature and header checked` : chk.reason, headline, set });
+      thumbs.push({ key, width: chk.width, height: chk.height, layout: t.layout, bytes: bytes.length, verified: chk.ok, check: chk.ok ? `PNG ${chk.width}×${chk.height}, signature and header checked` : chk.reason, headline: specs[k]?.text ?? headline, set, spec: specs[k], face: !!t.face });
     }
     const cur = await env.DB.prepare('SELECT thumbs FROM crm_video_outputs WHERE id = ?').bind(out.id).first<{ thumbs: string }>();
     const all = [...parse<Thumb[]>(cur?.thumbs, []).filter(x => x.set !== set), ...thumbs];
-    await env.DB.prepare('UPDATE crm_video_outputs SET thumbs = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(all), nowIso(), out.id).run();
+    /* A thumbnail somebody designed is the one they want: it becomes the chosen one. */
+    const chosen = input.custom && thumbs[0]?.verified ? all.length - 1 : null;
+    await env.DB.prepare(`UPDATE crm_video_outputs SET thumbs = ?, ${chosen !== null ? 'chosen_thumb = ?, ' : ''}updated_at = ? WHERE id = ?`)
+      .bind(...[JSON.stringify(all), ...(chosen !== null ? [chosen] : []), nowIso(), out.id]).run();
     await meter(env, { jobId: job.id, kind: 'thumbs', accountId: p.account_id, units: 0.2, unit: 'engine_min', costMicros: 0.2 * PRICE.renderMin });
   }, 20);
+}
+
+/* ── Faces and the speaker ────────────────────────────────────────────────── */
+
+async function trackJob(env: Env, origin: string, job: JobRow, p: ProjectRow): Promise<void> {
+  const src = parse<Source>(p.source, {});
+  if (!src.proxy) { await save(env, job, { state: 'cancelled', error: 'no proxy to track' }); return; }
+  const dir = `${projectPrefix(p.account_id, p.id)}prep/`;
+  return engineStep(env, origin, job, p, async () => ({
+    op: 'track' as const,
+    /* Five looks a second; a very long recording three, which is still several per sentence. */
+    params: { fps: (src.probe?.duration ?? 0) > 1800 ? 3 : 5 },
+    inputs: { source: await fileUrl(env, origin, p.account_id, src.proxy!, 4 * 3600) },
+    upload: await uploadPrefixUrl(env, origin, p.account_id, dir, 4 * 3600),
+  }), async r => {
+    const head = await env.VIDEO!.head(`${dir}faces.json`);
+    if (!head) throw new Error('the tracking result did not arrive');
+    const now = await project(env, p.id);
+    const cur = parse<Source>(now?.source, {});
+    await setProject(env, p.id, { source: JSON.stringify({ ...cur, track: { key: `${dir}faces.json`, summary: r.summary as NonNullable<Source['track']>['summary'], at: nowIso() } }) });
+    await meter(env, { jobId: job.id, kind: 'track', accountId: p.account_id, units: (src.probe?.duration ?? 0) / 60 * 0.1, unit: 'engine_min', costMicros: (src.probe?.duration ?? 0) / 60 * 0.1 * PRICE.renderMin });
+  }, 60);
 }
 
 /* ── The project as a whole ───────────────────────────────────────────────── */
@@ -767,6 +882,13 @@ async function onJobFailed(env: Env, job: JobRow, error: string): Promise<void> 
   const core = job.kind === 'prepare' || job.kind === 'transcribe' || job.kind === 'analyze';
   if (core) {
     await setProject(env, job.project_id, { status: 'failed', error: error.slice(0, 400), stage: job.kind });
+  } else if (job.kind === 'track') {
+    /* Tracking not available is said where it is offered; the project goes on without it. */
+    const p = await project(env, job.project_id);
+    if (p) {
+      const src = parse<Source>(p.source, {});
+      await setProject(env, p.id, { source: JSON.stringify({ ...src, track: { error: error.replace(/^refused:\s*/, '').slice(0, 300), at: nowIso() } }) });
+    }
   } else if (job.target && (job.kind === 'render')) {
     await env.DB.prepare(`UPDATE crm_video_outputs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`).bind(error.slice(0, 400), nowIso(), job.target).run();
   }

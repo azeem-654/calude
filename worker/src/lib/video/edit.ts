@@ -137,6 +137,66 @@ export interface MusicTrack {
 }
 export const MUSIC_DEFAULTS = { volume: 0.18, fadeIn: 1.5, fadeOut: 2.5, loop: true, duck: true, applyTo: 'all' as const };
 
+/**
+ * The picture's colour and finish, for the long video or for every Short.
+ * Numbers are -100…100 (sharpness, blur, vignette and grain 0…100), turned
+ * into FFmpeg filters by the engine — which owns what each one means; the
+ * browser previews them with CSS filters, which is close, not exact.
+ */
+export const FILTER_PRESETS = ['none', 'vivid', 'warm', 'cool', 'cinematic', 'bw', 'vintage', 'punchy', 'soft', 'food'] as const;
+export type FilterPreset = typeof FILTER_PRESETS[number];
+export interface Look {
+  filter: FilterPreset;
+  temperature: number; tint: number; brightness: number; contrast: number; saturation: number; exposure: number; hue: number;
+  sharpness: number; blur: number; vignette: number; grain: number;
+}
+export const LOOK_DEFAULT: Look = { filter: 'none', temperature: 0, tint: 0, brightness: 0, contrast: 0, saturation: 0, exposure: 0, hue: 0, sharpness: 0, blur: 0, vignette: 0, grain: 0 };
+
+/**
+ * Movement and timing: zooms (a punch-in every other sentence, or a slow push
+ * across the whole video), a flash or dip at every jump cut, fades from and
+ * to black, the playback speed and a progress bar. Speed changes the length
+ * of the file; captions, overlays and chapters are re-timed to match.
+ */
+export interface Motion {
+  zoom: 'off' | 'punch' | 'slow';
+  zoomAmount: number;
+  transition: 'none' | 'flash' | 'dip';
+  fadeIn: number;
+  fadeOut: number;
+  speed: number;
+  progressBar: boolean;
+}
+export const MOTION_DEFAULT: Motion = { zoom: 'off', zoomAmount: 1.12, transition: 'none', fadeIn: 0, fadeOut: 0, speed: 1, progressBar: false };
+
+/**
+ * Following a face when a video is cropped to a new shape. "face" follows the
+ * most prominent face; "speaker" follows whoever's mouth moves while there is
+ * speech (media/engine/track.py says how, and what it cannot tell apart).
+ * Only used where the framing is a crop.
+ */
+export type TrackMode = 'off' | 'face' | 'speaker';
+
+/** Words on screen for a stretch of the recording — burned in, animated. */
+export interface Overlay {
+  id: string;
+  /** Source time: it appears in every video that keeps this stretch. */
+  s: number;
+  e: number;
+  text: string;
+  style: 'title' | 'lower' | 'cta' | 'label' | 'quote';
+  position: 'top' | 'middle' | 'bottom';
+  anim: 'none' | 'fade' | 'pop' | 'slide' | 'reveal';
+  color: string;
+  bg: string;
+}
+export const OVERLAY_STYLES: Overlay['style'][] = ['title', 'lower', 'cta', 'label', 'quote'];
+export const OVERLAY_ANIMS: Overlay['anim'][] = ['none', 'fade', 'pop', 'slide', 'reveal'];
+
+export const lookOf = (doc: Pick<VideoDoc, 'look'>, kind: 'long' | 'short'): Look => ({ ...LOOK_DEFAULT, ...(doc.look?.[kind] ?? {}) });
+export const motionOf = (doc: Pick<VideoDoc, 'motion'>, kind: 'long' | 'short'): Motion => ({ ...MOTION_DEFAULT, ...(doc.motion?.[kind] ?? {}) });
+export const trackingOf = (doc: Pick<VideoDoc, 'tracking'>, kind: 'long' | 'short'): TrackMode => doc.tracking?.[kind] ?? 'off';
+
 export interface VideoDoc {
   v: 1;
   cleanup: { preset: CleanupPreset; ran: boolean };
@@ -152,6 +212,10 @@ export interface VideoDoc {
   audio: AudioSettings;
   /** Background music under every video it applies to, with its licence. Null: none. */
   music?: MusicTrack | null;
+  look?: { long: Look; short: Look };
+  motion?: { long: Motion; short: Motion };
+  tracking?: { long: TrackMode; short: TrackMode };
+  overlays?: Overlay[];
 }
 
 /* ── The request, read from what somebody typed ─────────────────────────── */
@@ -408,6 +472,13 @@ export type Op =
   | { op: 'music.set'; track: MusicTrack }
   | { op: 'music.patch'; patch: Partial<Pick<MusicTrack, 'volume' | 'fadeIn' | 'fadeOut' | 'loop' | 'duck' | 'applyTo'>> }
   | { op: 'music.remove' }
+  | { op: 'look.set'; target: 'long' | 'short'; patch: Partial<Look>; reset?: boolean }
+  | { op: 'motion.set'; target: 'long' | 'short'; patch: Partial<Motion> }
+  | { op: 'tracking.set'; target: 'long' | 'short'; mode: TrackMode }
+  | { op: 'overlay.add'; s: number; e: number; text: string; style?: Overlay['style']; position?: Overlay['position']; anim?: Overlay['anim']; color?: string; bg?: string }
+  | { op: 'overlay.update'; id: string; patch: Partial<Omit<Overlay, 'id'>> }
+  | { op: 'overlay.remove'; id: string }
+  | { op: 'clip.duplicate'; id: string }
   | { op: 'thumbnail.headline'; target: string; text: string }
   | { op: 'shorts.set'; patch: Partial<VideoDoc['shorts']> }
   | { op: 'cleanup.preset'; preset: CleanupPreset; cuts: Cut[] };
@@ -558,6 +629,78 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         break;
       }
       case 'music.remove': d.music = null; break;
+      case 'look.set': {
+        if (o.target !== 'long' && o.target !== 'short') { refused.push('a look is for the long video or the Shorts'); break; }
+        const cur = o.reset ? { ...LOOK_DEFAULT } : lookOf(d, o.target);
+        const p = o.patch ?? {};
+        const n = (k: keyof Look, lo: number, hi: number) => { if (p[k] !== undefined) (cur as unknown as Record<string, number>)[k] = Math.round(clamp(p[k], lo, hi, cur[k] as number)); };
+        if (p.filter && (FILTER_PRESETS as readonly string[]).includes(p.filter)) cur.filter = p.filter;
+        for (const k of ['temperature', 'tint', 'brightness', 'contrast', 'saturation', 'exposure'] as const) n(k, -100, 100);
+        n('hue', -180, 180);
+        for (const k of ['sharpness', 'blur', 'vignette', 'grain'] as const) n(k, 0, 100);
+        d.look = { long: lookOf(d, 'long'), short: lookOf(d, 'short'), [o.target]: cur };
+        break;
+      }
+      case 'motion.set': {
+        if (o.target !== 'long' && o.target !== 'short') { refused.push('motion is for the long video or the Shorts'); break; }
+        const cur = motionOf(d, o.target);
+        const p = o.patch ?? {};
+        if (p.zoom && ['off', 'punch', 'slow'].includes(p.zoom)) cur.zoom = p.zoom;
+        if (p.zoomAmount !== undefined) cur.zoomAmount = Math.round(clamp(p.zoomAmount, 1.03, 1.35, cur.zoomAmount) * 100) / 100;
+        if (p.transition && ['none', 'flash', 'dip'].includes(p.transition)) cur.transition = p.transition;
+        if (p.fadeIn !== undefined) cur.fadeIn = Math.round(clamp(p.fadeIn, 0, 5, cur.fadeIn) * 10) / 10;
+        if (p.fadeOut !== undefined) cur.fadeOut = Math.round(clamp(p.fadeOut, 0, 5, cur.fadeOut) * 10) / 10;
+        if (p.speed !== undefined) cur.speed = Math.round(clamp(p.speed, 0.5, 2, cur.speed) * 100) / 100;
+        if (typeof p.progressBar === 'boolean') cur.progressBar = p.progressBar;
+        d.motion = { long: motionOf(d, 'long'), short: motionOf(d, 'short'), [o.target]: cur };
+        break;
+      }
+      case 'tracking.set': {
+        if (o.target !== 'long' && o.target !== 'short') { refused.push('tracking is for the long video or the Shorts'); break; }
+        if (!['off', 'face', 'speaker'].includes(o.mode)) { refused.push('unknown tracking'); break; }
+        d.tracking = { long: trackingOf(d, 'long'), short: trackingOf(d, 'short'), [o.target]: o.mode };
+        break;
+      }
+      case 'overlay.add': {
+        const r = range(o.s, o.e);
+        const t = text(o.text, 120);
+        if (!r || r[1] - r[0] < 0.3) { refused.push('words on screen need at least a third of a second'); break; }
+        if (!t) { refused.push('words on screen need some words'); break; }
+        if ((d.overlays ?? []).length >= 200) { refused.push('at most 200 overlays'); break; }
+        d.overlays = [...(d.overlays ?? []), {
+          id: newId('ov'), s: r[0], e: r[1], text: t,
+          style: OVERLAY_STYLES.includes(o.style as Overlay['style']) ? o.style! : 'title',
+          position: o.position && ['top', 'middle', 'bottom'].includes(o.position) ? o.position : 'top',
+          anim: OVERLAY_ANIMS.includes(o.anim as Overlay['anim']) ? o.anim! : 'pop',
+          color: o.color && HEX.test(o.color) ? o.color : '#ffffff',
+          bg: o.bg && HEX.test(o.bg) ? o.bg : '#7c3aed',
+        }];
+        break;
+      }
+      case 'overlay.update': {
+        const ov = (d.overlays ?? []).find(x => x.id === o.id);
+        if (!ov) { refused.push('no such overlay'); break; }
+        const p = o.patch ?? {};
+        const r = range(p.s ?? ov.s, p.e ?? ov.e);
+        if (!r || r[1] - r[0] < 0.3) { refused.push('words on screen need at least a third of a second'); break; }
+        [ov.s, ov.e] = r;
+        if (p.text !== undefined) ov.text = text(p.text, 120) || ov.text;
+        if (p.style && OVERLAY_STYLES.includes(p.style)) ov.style = p.style;
+        if (p.position && ['top', 'middle', 'bottom'].includes(p.position)) ov.position = p.position;
+        if (p.anim && OVERLAY_ANIMS.includes(p.anim)) ov.anim = p.anim;
+        if (p.color && HEX.test(p.color)) ov.color = p.color;
+        if (p.bg && HEX.test(p.bg)) ov.bg = p.bg;
+        break;
+      }
+      case 'overlay.remove': d.overlays = (d.overlays ?? []).filter(x => x.id !== o.id); break;
+      case 'clip.duplicate': {
+        const c = d.clips.find(x => x.id === o.id);
+        if (!c) { refused.push('no such Short'); break; }
+        if (d.clips.length >= 40) { refused.push('at most 40 Shorts in a project'); break; }
+        const copy = { ...JSON.parse(JSON.stringify(c)), id: newId('cl'), title: `${c.title} (copy)`.slice(0, 100), by: 'you' as const, scores: c.scores, reason: 'A copy, to try a different version' };
+        d.clips.splice(d.clips.indexOf(c) + 1, 0, copy);
+        break;
+      }
       case 'thumbnail.headline': d.thumbnails.headline[text(o.target, 60)] = text(o.text, 90); break;
       case 'shorts.set': {
         const p = o.patch ?? {};

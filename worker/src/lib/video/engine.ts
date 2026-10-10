@@ -49,7 +49,7 @@ async function call(env: Env, method: string, path: string, body?: unknown, time
 
 export interface EngineJob {
   id: string;
-  op: 'prepare' | 'render' | 'thumbnail' | 'probe';
+  op: 'prepare' | 'render' | 'thumbnail' | 'probe' | 'track';
   params: Record<string, unknown>;
   inputs: Record<string, string>;
   upload: string;
@@ -74,12 +74,12 @@ export async function engineCancel(env: Env, id: string): Promise<void> {
 }
 
 /** Is the engine answering right now, and what is it? — for the capabilities panel. */
-export async function engineHealth(env: Env): Promise<{ ok: boolean; detail: string }> {
+export async function engineHealth(env: Env): Promise<{ ok: boolean; detail: string; track?: boolean }> {
   if (engineMode(env) === 'none') return { ok: false, detail: 'not configured' };
   try {
     const r = await call(env, 'GET', '/health', undefined, 25_000);
-    const d = await r.json<{ ok?: boolean; ffmpeg?: string }>();
-    return { ok: !!d.ok, detail: d.ffmpeg ?? '' };
+    const d = await r.json<{ ok?: boolean; ffmpeg?: string; features?: { track?: boolean } }>();
+    return { ok: !!d.ok, detail: d.ffmpeg ?? '', track: d.features?.track === true };
   } catch (e) {
     return { ok: false, detail: String((e as Error).message ?? e).slice(0, 160) };
   }
