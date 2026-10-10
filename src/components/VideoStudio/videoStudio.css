@@ -248,7 +248,9 @@ html[data-theme="dark"] .vs img, html[data-theme="dark"] .vs video, html[data-th
 button.vse-block { border-width: 1px; border-style: solid; }
 .vse-block.cap { background: rgba(155, 140, 255, .22); border: 1px solid rgba(192, 132, 252, .35); }
 .vse-block.short { background: rgba(236, 72, 153, .2); border: 1px solid rgba(236, 72, 153, .55); font-weight: 700; }
-.vse-block.short.on { background: rgba(236, 72, 153, .45); }
+/* The chosen Short sits above its neighbours: zoomed out, a Short starting half a
+   second after another covers that one's end handle, and the drag went to the wrong Short. */
+.vse-block.short.on { background: rgba(236, 72, 153, .45); z-index: 3; }
 .vse-block.music { background: linear-gradient(90deg, rgba(45, 212, 191, .25), rgba(34, 211, 238, .25)); border: 1px solid rgba(45, 212, 191, .45); }
 .vse-cutzone { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(-45deg, rgba(240, 93, 108, .55) 0 5px, rgba(240, 93, 108, .2) 5px 10px); border-left: 1px solid #f05d6c; border-right: 1px solid #f05d6c; }
 .vse-cutzone.prop { background: repeating-linear-gradient(-45deg, rgba(251, 191, 36, .45) 0 5px, rgba(251, 191, 36, .12) 5px 10px); border-color: #fbbf24; }

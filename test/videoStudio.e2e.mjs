@@ -646,13 +646,15 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ], note: 'effects' });
   ok('look, motion and words on screen are saved as one version, and the Short says it needs rendering', r.success && r.doc.look.short.filter === 'bw' && r.doc.motion.short.speed === 1.25 && r.doc.overlays.length === 1);
   const kept = D.outputs.find(o => o.id === target2.id).duration;
-  await v('render', { projectId: PID, outputIds: [target2.id] });
+  const rq = await v('render', { projectId: PID, outputIds: [target2.id] });
+  ok('…and Render queues it', rq.success && rq.queued === 1, rq);
+  /* It may wait behind the renders the music change queued for every video, the 15-minute one included. */
   let R2;
-  for (let i = 0; i < 160; i++) { R2 = await v('status', { projectId: PID, knownVersion: -1 }); const o = R2.outputs.find(x => x.id === target2.id); if (!o.stale && o.status === 'needs_review' && !R2.jobs.some(j => j.target === o.id && (j.state === 'queued' || j.state === 'running'))) break; await sleep(2500); }
+  for (let i = 0; i < 480; i++) { R2 = await v('status', { projectId: PID, knownVersion: -1 }); const o = R2.outputs.find(x => x.id === target2.id); if (!o.stale && o.status === 'needs_review' && !R2.jobs.some(j => j.target === o.id && (j.state === 'queued' || j.state === 'running'))) break; await sleep(2500); }
   const o2 = R2.outputs.find(x => x.id === target2.id);
   const f = await download(o2.downloadUrl, 'short-effects.mp4');
   const d = Number(probe(f.file).format.duration);
-  ok('…rendered at 1.25×: the Short is that much shorter', Math.abs(d - kept / 1.25) < 0.8, { d, kept });
+  ok('…rendered at 1.25×: the Short is that much shorter', Math.abs(d - kept / 1.25) < 0.8, { d, kept, status: o2.status, stale: o2.stale });
   const sat = (() => { const out = String(execFileSync('sh', ['-c', `ffmpeg -hide_banner -ss ${Math.min(5, d / 2)} -i "${f.file}" -frames:v 1 -vf signalstats,metadata=print -f null - 2>&1 | grep SATAVG | head -1`])); return Number(out.split('=').pop()); })();
   ok('…in black and white (no colour left in the picture)', sat < 4, sat);
   const srt = await (await fetch(o2.srtUrl, { headers: { Connection: 'close' } })).text();
@@ -670,6 +672,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await page.waitForTimeout(500);
   ok('the preview shows the look (black and white) and the speed on the Short', (await page.getByTestId('vs-video').getAttribute('data-look')) === 'bw' && /1\.25×/.test(await page.getByTestId('vs-preview').innerText()));
   const before = (await v('get', { projectId: PID })).doc.clips.find(c => c.id === target.id);
+  await page.locator(`[data-clip-block="${target.id}"].on`).waitFor({ timeout: 5000 });
   const handle = page.locator(`[data-clip-block="${target.id}"] [data-edge="e"]`);
   const hb = await handle.boundingBox();
   const bb = await page.locator(`[data-clip-block="${target.id}"]`).boundingBox();
