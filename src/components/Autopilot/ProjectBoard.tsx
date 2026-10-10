@@ -189,6 +189,10 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   /* What the screen reader is told after a move — the card it was on has just
      changed places under it, which nothing visual says to somebody not seeing it. */
   const [moved, setMoved] = useState('');
+  /* Said on the board as well as in the bell: this screen draws no toasts, and
+     a card that jumps back with no word of why looks like a button that does
+     nothing. Cleared by the next move. */
+  const [moveError, setMoveError] = useState('');
   /* The button pressed, to give focus back to once its card is in its new place.
      React moves the card's DOM node, and a moved node loses focus. */
   const refocus = useRef<{ id: string; dir: 'up' | 'down' } | null>(null);
@@ -294,14 +298,17 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     const [p] = next.splice(index, 1);
     next.splice(to, 0, p);
     refocus.current = { id: p.id, dir };
+    setMoveError('');
     setProjects(next);
     setMoving(true);
     const r = await reorderProjects(next.map(x => x.id));
     setMoving(false);
     if (!r.success) {
       setProjects(before);
-      setMoved(`Could not move ${p.name}.`);
-      addNotification(r.error ?? 'The new order could not be saved.', 'error');
+      const why = r.error ?? 'The new order could not be saved.';
+      setMoved('');
+      setMoveError(`${p.name} was not moved: ${why}`);
+      addNotification(why, 'error');
       return;
     }
     if (r.projects) setProjects(r.projects);
@@ -473,6 +480,13 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         </button>
       </div>
 
+      {moveError && (
+        <p role="alert" style={{
+          margin: 0, padding: '8px 11px', borderRadius: 10, background: '#fdf3f3', color: '#b42318',
+          fontSize: 12, lineHeight: 1.5, overflowWrap: 'anywhere',
+        }}>{moveError}</p>
+      )}
+
       {projects.map((p, i) => {
         const cards = board[p.id] ?? [];
         const pool = poolTargetOf(p);
@@ -499,7 +513,10 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                     const Icon = dir === 'up' ? ArrowUp : ArrowDown;
                     return (
                       <button key={dir} type="button" data-move={dir}
-                        disabled={end || moving}
+                        /* Not disabled while a move is saving — a disabled
+                           button drops focus, and the next press is only
+                           ignored (`move` returns) until the first lands. */
+                        disabled={end}
                         onClick={() => void move(i, dir)}
                         aria-label={`Move ${p.name} ${dir}`}
                         title={end ? (dir === 'up' ? 'Already first' : 'Already last') : `Move ${dir}`}
@@ -508,7 +525,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           width: 28, height: 28, borderRadius: 999, padding: 0,
                           border: `1px solid ${LINE}`, background: T.raised,
-                          color: end ? LINE : INK, cursor: end || moving ? 'default' : 'pointer',
+                          color: end ? LINE : INK, cursor: end ? 'default' : 'pointer',
                           opacity: end ? 0.55 : 1, fontFamily: 'inherit',
                         }}>
                         <Icon size={13} />

@@ -232,7 +232,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       id, accountId, name.slice(0, 160),
       JSON.stringify(d.profile ?? {}).slice(0, 200_000),
       ['manual', 'url'].includes(String(d.source)) ? String(d.source) : 'manual',
-      existing?.created_at ?? now, now, accountId,
+      existing?.created_at ?? now, now,
     ).run();
     return json({
       success: true, id, portfolios: await listPortfolios(),
@@ -528,7 +528,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
       revenueTarget, volumeTarget, goals,
       launchSteps ?? existing?.launchSteps ?? '[]',
       brief ?? existing?.brief ?? '{}',
-      existing?.created_at ?? now, now,
+      existing?.created_at ?? now, now, accountId,
     ).run();
 
     /*
