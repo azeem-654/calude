@@ -404,7 +404,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
     return (
       <div className="np-q">
         {head}{help}
-        <PlacesField value={vals[0] ?? ''} trades={trades} onChange={v => answer(q.id, v || null, 'you')} />
+        <PlacesField value={vals[0] ?? ''} trades={trades} sample={false} onChange={v => answer(q.id, v || null, 'you')} />
         {chips}
       </div>
     );

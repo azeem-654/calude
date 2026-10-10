@@ -62,6 +62,9 @@ import {
 import Describe, { type DescribeValue } from './newProject/Describe';
 import Understanding, { type Stage } from './newProject/Understanding';
 import Questions from './newProject/Questions';
+import FirstLeads from './newProject/FirstLeads';
+import { parseAsk } from '../../services/aiProspecting';
+import { tradesOf, placesOf } from './newProject/ProspectFields';
 import { screenBlocker, profileGap, profileSource, type ProfileCheck } from './newProject/questionRules';
 import BlueprintView, { EditPanel, type EditMessage } from './newProject/BlueprintView';
 import Requirements from './newProject/Requirements';
@@ -188,6 +191,24 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     return screensOf(allQuestions(state).filter(q => asked.has(q.id) && applies(q, state.known)));
   }, [state, asked]);
   const screen = screens[Math.min(screenIdx, Math.max(0, screens.length - 1))];
+
+  /* ── The first leads, found on the spot ──
+   *
+   * Leaving the last screen of the finder's questions (who, where, how many)
+   * stops on FirstLeads, which runs the search in front of the customer,
+   * before any more questions. Once per who-and-where: going back and forward
+   * again without changing them does not search twice. */
+  const FINDER_IDS = ['prospectTrades', 'prospectPlaces', 'prospectPerDay'];
+  const [leadsOpen, setLeadsOpen] = useState(false);
+  const leadsSeen = useRef('');
+  const finderKey = state ? `${String(state.known.prospectTrades?.value ?? '')}|${String(state.known.prospectPlaces?.value ?? '')}` : '';
+  const leadsDue = (): boolean => {
+    if (!state || !screen || String(state.known.contactSource?.value ?? '') !== 'find') return false;
+    if (!tradesOf(String(state.known.prospectTrades?.value ?? '')).length || !placesOf(String(state.known.prospectPlaces?.value ?? '')).length) return false;
+    const here = screen.questions.some(q => FINDER_IDS.includes(q.id));
+    const later = screens.slice(screenIdx + 1).some(sc => sc.questions.some(q => FINDER_IDS.includes(q.id)));
+    return here && !later && leadsSeen.current !== finderKey;
+  };
 
   /* ── The business, as the blueprint needs to name it ── */
   const company = useMemo(() => {
@@ -404,6 +425,39 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     setCorrection({ ok: true, text: 'Read again with your correction.' });
     setCorrecting(false);
   }, [state, describe.prompt, runUnderstanding, withPreset]);
+
+  /* A correction to who the finder looks for, from the first-leads screen.
+     The AI edits only the two finder answers; without it, a sentence shaped
+     like a search ("orthodontists in Fort Lauderdale") is read as one. */
+  const correctLeads = useCallback(async (text: string): Promise<{ ok: boolean; said: string }> => {
+    if (!state) return { ok: false, said: '' };
+
+    if (!aiDown.current) {
+      const r = await refine({
+        instruction: `${text}\n(Only change prospectTrades — kinds of business, comma-separated — and prospectPlaces — towns, "; "-separated.)`,
+        state: { request: state.prompt, answers: { prospectTrades: state.known.prospectTrades?.value, prospectPlaces: state.known.prospectPlaces?.value } },
+      });
+      if (r.noAi) aiDown.current = true;
+      const set = Object.fromEntries(Object.entries(r.ops?.set ?? {}).filter(([id]) => id === 'prospectTrades' || id === 'prospectPlaces'));
+      if (r.ok && Object.keys(set).length) {
+        setState(s => (s ? applyOps(s, { set }) : s));
+        return { ok: true, said: r.reply || 'Changed — searching again.' };
+      }
+      if (r.ok && r.reply) return { ok: false, said: r.reply };
+    }
+    const ask = parseAsk(text);
+    if (ask && (ask.trade || ask.place)) {
+      setState(s => {
+        if (!s) return s;
+        const known = { ...s.known };
+        if (ask.trade) known.prospectTrades = { value: ask.trade, source: 'you', note: 'you changed this' };
+        if (ask.place) known.prospectPlaces = { value: ask.place, source: 'you', note: 'you changed this' };
+        return { ...s, known };
+      });
+      return { ok: true, said: `Now searching for ${ask.trade || 'the same businesses'}${ask.place ? ` in ${ask.place}` : ''}.` };
+    }
+    return { ok: false, said: 'I could not tell what to change. Try “dentists in Leeds” or “orthodontists instead”.' };
+  }, [state]);
 
   /* ── Answering ── */
   const answer = useCallback((id: string, value: string | string[] | null, source: KnownSource = 'you') => {
@@ -695,6 +749,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       return '';
     }
     if (phase === 'understand') return correcting ? 'Fixing…' : understood ? '' : 'Understanding…';
+    if (phase === 'questions' && leadsOpen) return '';
     if (phase === 'questions' && screen && state) return screenBlocker(screen, state, files, profile);
     return '';
   })();
@@ -704,6 +759,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (phase === 'describe') { setPhase('understand'); setCorrection(null); void runUnderstanding(); return; }
     if (phase === 'understand') { startQuestions(); return; }
     if (phase === 'questions') {
+      if (!leadsOpen && leadsDue()) { leadsSeen.current = finderKey; setLeadsOpen(true); return; }
+      setLeadsOpen(false);
       if (screenIdx + 1 < screens.length) setScreenIdx(i => i + 1);
       /* The site's visitor approved the blueprint there; these were only
          the last answers it needed. */
@@ -731,6 +788,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   const back = () => {
     if (phase === 'understand') setPhase('describe');
+    else if (phase === 'questions' && leadsOpen) { setLeadsOpen(false); leadsSeen.current = ''; }
     else if (phase === 'questions') { if (screenIdx > 0) setScreenIdx(i => i - 1); else setPhase('understand'); }
     else if (phase === 'blueprint') { if (screens.length) { setScreenIdx(screens.length - 1); setPhase('questions'); } else setPhase('understand'); }
     else if (phase === 'requirements') setPhase('blueprint');
@@ -749,6 +807,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (blocker) return blocker;
     if (phase === 'describe') return 'Continue';
     if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
+    if (phase === 'questions' && leadsOpen) return screenIdx + 1 < screens.length ? 'These look right — continue' : 'These look right — see the plan';
+    if (phase === 'questions' && leadsDue()) return 'Find my first leads';
     if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : seed ? 'Build my project' : 'See the blueprint';
     if (phase === 'blueprint') return 'Looks good — continue';
     if (phase === 'requirements') return 'Review';
@@ -845,7 +905,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
         <div className="np-body">
           <main className="np-main">
-            <div key={`${phase}-${screenIdx}`} className="np-rise">
+            <div key={`${phase}-${screenIdx}-${leadsOpen ? 'leads' : ''}`} className="np-rise">
               {phase === 'describe' && (
                 <Describe value={describe} onChange={setDescribe} onError={m => addNotification(m, 'error')} />
               )}
@@ -871,7 +931,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   <b>Your plan from the website is here.</b> {screens.length === 1 ? 'One thing' : `${screens.length} things`} it could not ask before you had an account — then it builds.
                 </p>
               )}
-              {phase === 'questions' && state && screen && (
+              {phase === 'questions' && state && leadsOpen && (
+                <FirstLeads
+                  trades={tradesOf(String(state.known.prospectTrades?.value ?? ''))}
+                  places={placesOf(String(state.known.prospectPlaces?.value ?? ''))}
+                  perDay={String(withDefaults(state).known.prospectPerDay?.value ?? '20')}
+                  onCorrect={correctLeads} />
+              )}
+              {phase === 'questions' && state && screen && !leadsOpen && (
                 <Questions
                   design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f), brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website' }}
                   screen={screen} state={state} ws={ws} files={files} answer={answer} company={company}

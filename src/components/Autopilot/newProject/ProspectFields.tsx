@@ -84,7 +84,11 @@ export function TradesField({ value, onChange, onPlace, placeholder }: {
   );
 }
 
-export function PlacesField({ value, onChange, trades }: { value: string; onChange: (v: string) => void; trades: string[] }) {
+export function PlacesField({ value, onChange, trades, sample = true }: {
+  value: string; onChange: (v: string) => void; trades: string[];
+  /** The live sample under the boxes. Off in the questions, which stop on FirstLeads instead. */
+  sample?: boolean;
+}) {
   const places = placesOf(value);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
@@ -116,7 +120,7 @@ export function PlacesField({ value, onChange, trades }: { value: string; onChan
         )}
         {note && <span style={{ fontSize: 12, color: '#6b7280' }}>{note}</span>}
       </div>
-      {trades.length > 0 && places.length > 0 && <LiveSample trade={trades[0]} place={places[0]} />}
+      {sample && trades.length > 0 && places.length > 0 && <LiveSample trade={trades[0]} place={places[0]} />}
     </div>
   );
 }
