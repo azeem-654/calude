@@ -23,7 +23,8 @@ import { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle2, AlertTriangle, Loader, ExternalLink, ShieldCheck, Clock, Lock } from 'lucide-react';
 import { getSession } from '../../services/auth';
 import { activeAccount } from '../../services/tenancy';
-import { DEFAULT_TABLE, annualSaving, dollars, featureLines, fetchPlans, type PlanTable } from '../../services/allowances';
+import { DEFAULT_TABLE, SOLD_PLANS, annualSaving, dollars, featureLines, fetchPlans, type PlanTable } from '../../services/allowances';
+import { siteOrigin } from '../../services/hosts';
 import UsageCard from './UsageCard';
 import { billingFor, openBillingPortal, createClientCheckout } from '../../services/billing';
 import { fetchOperatorBilling } from '../../services/operatorBilling';
@@ -173,7 +174,7 @@ export default function ClientBilling() {
             </div>
           )}
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(195px, 100%), 1fr))' }}>
-            {table.plans.map(p => (
+            {SOLD_PLANS(table.plans).map(p => (
               <div key={p.id} data-plan={p.id} style={{ background: '#fff', border: p.featured ? `2px solid ${INK}` : '1px solid #e3e6ea', borderRadius: 16, padding: 18, display: 'grid', gap: 10, alignContent: 'start' }}>
                 <div style={{ fontWeight: 800, color: INK }}>{p.name}</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: INK }}>
@@ -197,6 +198,11 @@ export default function ClientBilling() {
           </div>
           <p style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6, margin: '12px 0 0' }}>
             <strong style={{ color: INK }}>Every plan includes:</strong> {table.included.join(' · ')}.
+          </p>
+          <p style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6, margin: '8px 0 0' }}>
+            Need more than Pro, done-for-you setup or invoiced billing?{' '}
+            <a href={`${siteOrigin()}/pricing#custom`} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>Ask about a Custom plan</a>
+            {' '}· <a href={`${siteOrigin()}/pricing#compare`} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>Compare every feature</a>
           </p>
         </>
       )}

@@ -127,6 +127,12 @@ async function projectsCount(env: Env, st: Standing, accountId: string): Promise
   return Number(r?.n ?? 0);
 }
 
+async function loginAddresses(env: Env, st: Standing, accountId: string): Promise<number> {
+  const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM crm_custom_domains WHERE ${IN_WORKSPACES}`)
+    .bind(st.email ?? '', accountId).first<{ n: number }>().catch(() => null);
+  return Number(r?.n ?? 0);
+}
+
 async function workflowsIn(env: Env, accountId: string, projectId: string): Promise<number> {
   const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_project_workflows WHERE account_id = ? AND project_id = ?')
     .bind(accountId, projectId).first<{ n: number }>().catch(() => null);
@@ -160,6 +166,7 @@ export async function usedOf(env: Env, st: Standing, accountId: string, meter: M
     case 'autopilot_projects': return projectsCount(env, st, accountId);
     case 'workflows_per_project': return projectId ? workflowsIn(env, accountId, projectId) : 0;
     case 'sub_accounts': return (await subAccounts(env, st)).used;
+    case 'login_addresses': return loginAddresses(env, st, accountId);
     case 'video_minutes': return videoMinutes(env, st, accountId, 'source_min');
     case 'render_minutes': return videoMinutes(env, st, accountId, 'render_min');
     case 'video_storage_gb': return storageGb(env, st, accountId);
