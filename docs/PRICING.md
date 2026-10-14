@@ -17,40 +17,82 @@ in a release, because they are what customers are charged.
 
 ## The packages
 
-Every plan starts with 7 days free, no card. Yearly is ten months' price: two
-months free.
+**Three priced plans and Custom** (the owner's call, 2026-10-14). Every priced
+plan starts with 7 days free, no card; yearly is ten months' price, two months
+free. Custom has no price: it is asked for with the form on `/pricing`, agreed
+with the customer, and given by the owner by hand.
 
-| | **Free trial** (7 days) | **Starter** | **Growth** (most popular) | **Pro** | **Agency** |
+| | **Free trial** (7 days) | **Starter** | **Growth** (most popular) | **Pro** | **Custom** |
 |---|---|---|---|---|---|
-| Monthly | free | **$49** | **$97** | **$197** | **$297** |
-| Yearly | — | $490 | $970 | $1,970 | $2,970 |
-| Who it is for | trying it | one business | a growing business, or a freelancer with a few clients | an agency running AI marketing for clients | a network of clients |
-| AI Autopilot projects (at once) | 2 | 3 | 10 | 30 | unlimited |
-| Workflows per project | 6 | 6 | 12 | 25 | 40 |
-| Client sub-accounts | 2 | 2 | 5 | 15 | unlimited |
-| AI requests / month | 300 | 1,500 | 5,000 | 15,000 | 40,000 |
-| Social posts by AI Autopilot / month | 20 | 60 | 200 | 600 | 2,000 |
-| Blog articles by AI Autopilot / month | 3 | 8 | 30 | 100 | 300 |
-| Emails written by AI Autopilot / month | 50 | 300 | 1,500 | 5,000 | 15,000 |
-| Prospects found daily / month | 100 | 500 | 2,000 | 6,000 | 20,000 |
-| Recordings processed (AI Video Studio) / month | 2 | 5 | 15 | 40 | 100 |
-| AI Shorts / month | 10 | 30 | 100 | 300 | 1,000 |
-| Video minutes uploaded / month | 90 | 300 | 900 | 2,400 | 6,000 |
-| Render minutes / month | 120 | 400 | 1,200 | 3,000 | 8,000 |
-| Video storage | 5 GB | 25 GB | 100 GB | 250 GB | 750 GB |
+| Monthly | free | **$49** | **$97** | **$197** | Let's talk |
+| Yearly | — | $490 | $970 | $1,970 | agreed |
+| Who it is for | trying it | one business | a growing business, or a freelancer with a few clients | an agency running AI marketing for clients, under its own brand | more than Pro, or something Pro does not do |
+| AI Autopilot projects (at once) | 2 | 3 | 10 | 40 | unlimited* |
+| Workflows per project | 6 | 6 | 12 | 25 | 40* |
+| Client sub-accounts | 2 | 2 | 5 | 25 | unlimited* |
+| Branded login addresses (white-label) | 1 | 1 | 5 | 25 | 100* |
+| AI requests / month | 300 | 1,500 | 5,000 | 20,000 | 40,000* |
+| Social posts by AI Autopilot / month | 20 | 60 | 200 | 800 | 2,000* |
+| Blog articles by AI Autopilot / month | 3 | 8 | 30 | 120 | 300* |
+| Emails written by AI Autopilot / month | 50 | 300 | 1,500 | 6,000 | 15,000* |
+| Prospects found daily / month | 100 | 500 | 2,000 | 8,000 | 20,000* |
+| Recordings processed (AI Video Studio) / month | 2 | 5 | 15 | 50 | 100* |
+| AI Shorts / month | 10 | 30 | 100 | 400 | 1,000* |
+| Video minutes uploaded / month | 90 | 300 | 900 | 3,000 | 6,000* |
+| Render minutes / month | 120 | 400 | 1,200 | 4,000 | 8,000* |
+| Video storage | 5 GB | 25 GB | 100 GB | 300 GB | 750 GB* |
+| Support | in-app help | in-app help: chat, tickets, screen sharing | the same | in-app help, answered first | onboarding call, done-for-you setup, named contact |
+
+\* Custom's numbers are where a Custom plan starts; the owner changes them on
+Plans & allowances (the Custom column), and the site shows "Set to fit" rather
+than a number. Custom also offers (`CUSTOM_OFFER`): any allowance raised,
+done-for-you setup, an onboarding call and a named contact, integrations scoped
+and quoted, invoiced billing on request. **These are the owner's service
+commitments**, as is Pro's "answered first" — see docs/OWNER-CHECKLIST.md.
 
 **Every plan includes** (nothing here is gated by plan, so no card lists it as
 something a higher plan adds): CRM, pipelines and one inbox · funnels,
-websites, forms and a shop · the booking page · white-label name and logo ·
-business-directory search and free email checks · sending from the customer's
-own mailbox, nothing until they approve.
+websites, forms and a shop · the booking page · white-label name, logo and
+colours on every workspace · business-directory search and free email checks ·
+sending from the customer's own mailbox, nothing until they approve.
+
+The full feature-by-plan table is `comparison()` in `lib/allowances.ts`; the
+site draws it on `/pricing` and in each card's **Show full details**.
+
+### White-label — what it means here, and what each plan gets
+
+Only what the code does (`routes/whitelabel.ts`, `routes/resell.ts`,
+`routes/portal.ts`):
+
+- **Your name, logo and colours** on your workspace and each client's — every plan.
+- **Branded login addresses** (`login_addresses` meter, counted from
+  `crm_custom_domains`, refused by name at `whitelabel.php add`): a free
+  `yourname.protectedcentral.com`, live at once, or the customer's own domain
+  with one DNS record — **only once the owner has set up Cloudflare for SaaS**
+  (Platform services); until then the screen offers the subdomain alone and
+  the site says the own-domain option is "offered once switched on".
+- **Client sub-accounts** (`sub_accounts`) — each client's own workspace.
+- **Reseller billing** — the customer's own Stripe or Creem, their own price
+  per client; the money never passes through the operator. Every plan.
+- **Client report links** — progress without prices or contacts. Every plan.
+
+### Custom enquiries, and giving a plan by hand
+
+The Custom card's button goes to the form on `/pricing#custom`, which posts
+`enquire` to `/api/allowances.php` (no session; 3 an hour per address, 100 a
+day in all; a hidden honeypot field). It is stored in `crm_enquiries`
+(migration 0075) and emailed to the install owner when the install mailbox can
+send. The owner reads it on Sign-ups & trials → Plans & allowances →
+**Custom plan enquiries**, replies by email, and gives the plan under
+**Give a customer a plan** (`grant_plan`: a `crm_plans` row with
+`source = 'manual'`, which payments and cancellations never change).
 
 ### How the allowances work
 
 - **Whose.** The subscriber's — the person who pays, i.e. the owner of the
   workspace. Every workspace they own (their own and each client sub-account)
   draws on one allowance. Per workspace would multiply it by the sub-account
-  count, and on Agency that is an unlimited bill.
+  count, and on Custom (unlimited sub-accounts) that is an unlimited bill.
 - **Count meters** (projects, workflows per project, sub-accounts) are what
   exists now; deleting one frees its place.
 - **Monthly meters** reset on the 1st, 00:00 UTC, and are counted once per thing
@@ -126,8 +168,9 @@ from what was known in mid-2026, not re-checked today.
 - **Against the all-in-one CRMs** (GoHighLevel, Systeme, Kajabi) the floor is
   $17–$97 and the agency tier $297–$499. GoHighLevel's $297 Unlimited is the
   reference an agency buyer carries in their head, and it charges for AI on top.
-  Agency at **$297 with the AI included** (within stated allowances) is a
-  straight comparison that we win on.
+  Three priced plans topping out at **Pro, $197 with the AI included**, and
+  Custom above it, keep the self-serve ceiling under GoHighLevel's $297 while
+  agencies that need more are talked to rather than priced by a table.
 - **Against the point tools** a customer would otherwise stack — OpusClip Pro
   ($29) + Instantly Growth ($47) + Jasper Pro ($69) + Calendly ($10) ≈ $155 a
   month, before a CRM — Growth at **$97** replaces the stack.
@@ -135,8 +178,8 @@ from what was known in mid-2026, not re-checked today.
   300 source minutes sit in that band; Growth's 900 is above every single-tool
   plan at its price.
 - **Outreach tools sell sends**; we do not, because sends are the customer's
-  own mailbox. We sell *finding and checking* prospects instead (500 to 20,000
-  a month).
+  own mailbox. We sell *finding and checking* prospects instead (500 to 8,000
+  a month on the priced plans).
 
 ---
 
@@ -158,7 +201,8 @@ length, model chosen by `modelsFor`, and video length.
 | GB of video storage | $0.015 / month | R2 |
 
 **At full use** (every allowance spent): trial ≈ $2, Starter ≈ $5, Growth ≈
-$17, Pro ≈ $50, Agency ≈ $140 a month — against $0 / $49 / $97 / $197 / $297,
+$17, Pro ≈ $75 a month — against $0 / $49 / $97 / $197 — and Custom's starting
+numbers ≈ $140, which is the floor a Custom price should clear,
 before the processor's fee (~3% + 30¢). Nobody uses every allowance, so typical
 margin is far higher; the numbers are set so that the *worst* customer is still
 profitable. The Cloudflare base (Workers Paid, $5/mo) and D1 are shared by all.
@@ -167,25 +211,24 @@ profitable. The Cloudflare base (Workers Paid, $5/mo) and D1 are shared by all.
 
 ## Plan ids, and customers who bought before these packages
 
-`crm_plans.plan_id` keeps the ids it always had: `starter`, `pro`, `agency`, plus
-the new `growth`.
+`crm_plans.plan_id` keeps the ids it always had. What each is now:
 
-| id | Before 2026-10-14 | Now |
-|---|---|---|
-| `starter` | "Studio", $49, 2 sub-accounts | **Starter**, $49 |
-| `growth` | — | **Growth**, $97 |
-| `pro` | "Agency", $97, 12 sub-accounts | **Pro**, $197 |
-| `agency` | "Network", $149, unlimited sub-accounts | **Agency**, $297 |
+| id | Sold before | Now | What its subscribers get |
+|---|---|---|---|
+| `starter` | "Studio", $49 | **Starter**, $49 | Starter's allowances |
+| `growth` | — (new 2026-10-14) | **Growth**, $97 | Growth's allowances |
+| `pro` | "Agency", $97 (12 sub-accounts) | **Pro**, $197 | Pro's allowances; a $97 renewal stays `pro` |
+| `custom` | — | **Custom**, given by hand | the Custom column |
+| `agency` | "Network", $149; briefly "Agency", $297 | **legacy — not sold** | what they bought: unlimited projects and sub-accounts, Custom's starting numbers for the rest, unlimited login addresses. Renewals at $149, $297 or $2,970 stay `agency` |
 
 - Existing subscriptions keep the price they are on — the processor charges
-  what was agreed at checkout. A renewal at an old price is matched to the plan
-  the subscriber is already on (`soldAt`, `LEGACY_CENTS` in allowances.ts, and
-  `planFromEvent` in routes/billing.ts), so a $97 "Agency" renewal stays `pro`
-  even though $97 is now Growth's price.
-- Their stored sub-account allowance (`crm_plans.resell_limit`) is unchanged.
-- Everybody — old customers included — is now held to their plan's monthly
-  allowances, which did not exist before. An old `pro` customer at $97 gets
-  Pro's numbers: generous to them, deliberately.
+  what was agreed at checkout. A renewal is matched to the plan the subscriber
+  is already on first (`soldAt`, `LEGACY_CENTS`, `planFromEvent`), so neither a
+  $97 `pro` renewal nor a $149 `agency` one is mistaken for something else.
+- Checkout sells only Starter, Growth and Pro (`SOLD_PLANS`); a checkout asking
+  for `custom` or `agency` is refused.
+- The stored sub-account allowance (`crm_plans.resell_limit`) is unchanged.
+- Everybody — old customers included — is held to their plan's allowances.
 
 ## Changing a price
 
