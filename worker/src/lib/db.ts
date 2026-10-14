@@ -6,6 +6,7 @@
  * api/data/ when they had not, because shared hosting offers nowhere safe to
  * put a database. Neither problem exists here, so there is one store.
  */
+import { PLAN_DEFS } from './allowances';
 
 export interface Env {
   DB: D1Database;
@@ -521,12 +522,8 @@ export async function workspacesOwned(db: D1Database, user: SessionUser): Promis
   return row?.n ?? 0;
 }
 
-/** Plan ids the client knows, and what each one allows. -1 is unlimited. */
-export const PLAN_RESELL: Record<string, number> = {
-  starter: 2,
-  pro: 12,
-  agency: -1,
-};
+/** Sub-accounts each plan allows, from the one plan table (lib/allowances.ts). -1 is unlimited. */
+export const PLAN_RESELL: Record<string, number> = Object.fromEntries(PLAN_DEFS.map(p => [p.id, p.limits.sub_accounts]));
 
 /**
  * The allowance, and what it means when there is no row.

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import SiteFunnel from './SiteFunnel';
+import PlanLimits from './PlanLimits';
 import { isInstallOwner } from '../../services/moderation';
 import {
   loadSignups, messageCustomers, saveCustomerSettings, sendDigestNow, type CustomerSettings, type Signup,
@@ -232,6 +233,9 @@ export default function Signups() {
 
       {/* Where these people came from: the public site's funnel, step by step. */}
       <SiteFunnel />
+
+      {/* What each package allows — the numbers the site's price cards and every refusal read. */}
+      <PlanLimits />
 
       {/* ── Compose ── */}
       {composeOpen && (

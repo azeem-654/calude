@@ -2627,6 +2627,37 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc .dc-btn-sm { padding: 9px 15px; font-size: 13.5px; }
 .dc-plan-note { display: block; margin-top: 8px; text-align: center; font-size: 12px; color: var(--muted); }
 
+/* Pricing (PricingSection.tsx): four packages, a monthly/yearly switch, and
+   what every plan includes said once under them. Four across from 1180px,
+   two across on a tablet, one on a phone — never three and a straggler. */
+.dc-plans-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1180px) { .dc-plans-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .dc-plans-4 { grid-template-columns: minmax(0, 1fr); } }
+.dc-plans-4 .dc-plan { padding: 26px 20px; }
+.dc-plans-4 .dc-plan-price { font-size: 42px; }
+.dc-plan-tag { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); min-height: 3em; }
+.dc-billing-toggle {
+  display: flex; width: fit-content; max-width: 100%; margin: 0 auto 30px; padding: 4px; gap: 4px;
+  border-radius: 999px; border: 1px solid var(--edge); background: var(--glass);
+}
+.dc-billing-toggle button {
+  border: 0; border-radius: 999px; padding: 9px 16px; background: transparent; color: var(--muted);
+  font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.dc-billing-toggle button.on { background: var(--lime); color: var(--ink); }
+.dc-billing-save { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(200, 242, 77, 0.16); color: var(--lime); }
+.dc-billing-toggle button.on .dc-billing-save { background: rgba(4, 6, 10, 0.14); color: var(--ink); }
+.dc-plan-included {
+  margin: 28px auto 0; max-width: 980px; padding: 22px clamp(16px, 3vw, 28px);
+  border-radius: 20px; border: 1px solid var(--edge); background: var(--glass); text-align: center;
+}
+.dc-plan-included strong { font-size: 14px; }
+.dc-plan-included ul { margin: 12px 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; }
+.dc-plan-included li { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 13px; color: var(--muted); text-align: left; }
+.dc-plan-included li svg { color: var(--lime); margin-top: 3px; flex-shrink: 0; }
+.dc-plan-included p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+
 .dc-usecases { --uc-pad: clamp(16px, 4vw, 44px); max-width: 1240px; margin: 0 auto; padding: clamp(60px, 8vw, 110px) var(--uc-pad) clamp(30px, 4vw, 50px); }
 /* Find my solution, open in the section (SolutionsSection.tsx): the wizard's
    light card on the dark page, then the recipes under it. */

@@ -44,6 +44,8 @@ import SetupProgress from '../Setup/SetupProgress';
 import ClientLinks from './ClientLinks';
 import TemplateGallery from './TemplateGallery';
 import { T } from './theme';
+import { MeterStrip } from '../Billing/UsageCard';
+import { refreshAllowances } from '../../services/allowances';
 
 
 export default function Autopilot() {
@@ -140,6 +142,9 @@ export default function Autopilot() {
             <p style={{ margin: '4px 0 0', fontSize: 13.5, color: T.muted, lineHeight: 1.55 }}>
               Create, manage and automate your marketing, content and sales with AI.
             </p>
+            {/* What the plan allows against what is used, so the limit is seen
+                before it is met (Plan & billing has every meter). */}
+            <MeterStrip />
           </div>
 
           {/* What the machine turns into what, in four words. It is the product
@@ -236,6 +241,7 @@ export default function Autopilot() {
             onClose={() => setCreating(false)}
             onCreated={id => {
               setCreating(false);
+              refreshAllowances();
               setBoardKey(k => k + 1);
               void load();
               /* Straight into the project that was just built, rather than

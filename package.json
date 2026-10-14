@@ -74,6 +74,7 @@
     "test:siteplan": "npx --yes tsx test/sitePlan.test.mts",
     "test:sitefunnel": "node test/siteFunnel.e2e.mjs",
     "test:video": "npx --yes tsx test/videoStudio.test.mts",
+    "test:allowances": "npx --yes tsx test/allowances.test.mts",
     "test:videoe2e": "node test/videoStudio.e2e.mjs"
   },
   "dependencies": {
