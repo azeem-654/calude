@@ -254,6 +254,19 @@ check("B cannot overwrite A's portfolio by id", !hijackPortfolio.ok, JSON.string
   const bCfg = await api('booking.php', { action: 'config', slug: `b-${run}` });
   check("B's page cannot show A's uploaded photo", mine.data.success && borrow.ok && !bCfg.data.config?.photoUrl, JSON.stringify([mine.data, bCfg.data.config?.photoUrl]));
   if (mine.data.url) await api('booking-media.php', { action: 'clear', token: A.token, accountId: A.acct, kind: 'photo' });
+  /* Filling a page in from a website: a server-side read, so it is the workspace's and fenced. */
+  const fillA = await api('booking.php', { action: 'autofill', token: B.token, accountId: A.acct, url: 'https://example.com/' });
+  check("B cannot read a website into A's booking page", !fillA.ok && fillA.status === 403, JSON.stringify(fillA.data));
+  const anon = await api('booking.php', { action: 'autofill', accountId: B.acct, url: 'https://example.com/' });
+  check('Reading a website for a booking page needs a session', !anon.ok && anon.status === 401, JSON.stringify(anon.data));
+  for (const inside of ['http://127.0.0.1:8787/', 'http://169.254.169.254/latest/meta-data/', 'http://localhost/', 'file:///etc/passwd']) {
+    const r = await api('booking.php', { action: 'autofill', token: B.token, accountId: B.acct, url: inside });
+    check(`The booking page's website read refuses ${inside}`, !r.ok && r.data.field === 'booking.website', JSON.stringify(r.data));
+  }
+  /* What a page says is cleaned on publish: points' icons from the list, the colour a hex. */
+  await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', accent: 'red;background:url(//x)', points: [{ icon: '"><script>', title: '<b>x</b>' }] } });
+  const bClean = (await api('booking.php', { action: 'config', slug: `b-${run}` })).data.config ?? {};
+  check('A booking page keeps only a hex colour and a listed icon', bClean.accent === '' && bClean.points?.[0]?.icon === 'check', JSON.stringify([bClean.accent, bClean.points]));
 }
 
 console.log('\nPublic surfaces');

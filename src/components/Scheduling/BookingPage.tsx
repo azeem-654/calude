@@ -23,7 +23,7 @@ import {
   buildIcs, googleCalendarUrl,
 } from '../../services/booking';
 import { browserZone, clockLabel, dayWords, utcToWall, wallToUtc, zoneCity, type Busy, type Slot } from '../../services/bookingTime';
-import BookingCard, { type PageConfig } from './BookingCard';
+import BookingCard, { accentStyle, type PageConfig } from './BookingCard';
 import './bookingPage.css';
 
 type Step = 'event' | 'calendar' | 'confirmed' | 'manage' | 'cancelled';
@@ -126,7 +126,7 @@ export default function BookingPage() {
 
   if (unknownLink) {
     return (
-      <div className="bkp" {...rootAttrs}>
+      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             <div className="bkp-tick" data-bad=""><X size={28} /></div>
@@ -139,7 +139,7 @@ export default function BookingPage() {
   }
 
   if (remoteCfg === 'loading') {
-    return <div className="bkp" {...rootAttrs} aria-busy="true"><p className="bkp-foot">Loading…</p></div>;
+    return <div className="bkp" {...rootAttrs} style={accentStyle(cfg)} aria-busy="true"><p className="bkp-foot">Loading…</p></div>;
   }
 
   const finalizeLocalRecords = (s: Slot, guest: { name: string; email: string; phone: string; notes: string }, zone: string) => {
@@ -228,7 +228,7 @@ export default function BookingPage() {
     const at = b ? instantOf(b) : null;
     const zone = browserZone();
     return (
-      <div className="bkp" {...rootAttrs}>
+      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             {!b ? (
@@ -267,7 +267,7 @@ export default function BookingPage() {
 
   if (step === 'cancelled') {
     return (
-      <div className="bkp" {...rootAttrs}>
+      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             <div className="bkp-tick" data-bad=""><X size={28} /></div>
@@ -290,7 +290,7 @@ export default function BookingPage() {
       setTimeout(() => URL.revokeObjectURL(url), 800);
     };
     return (
-      <div className="bkp" {...rootAttrs}>
+      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             <div className="bkp-tick"><Check size={30} /></div>
@@ -320,7 +320,7 @@ export default function BookingPage() {
   /* ── Meeting types ── */
   if (step === 'event') {
     return (
-      <div className="bkp" {...rootAttrs}>
+      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done" style={{ justifyItems: 'stretch', textAlign: 'left' }}>
             {cfg.logoUrl && <img className="bkp-logo" src={cfg.logoUrl} alt="" />}
@@ -342,7 +342,7 @@ export default function BookingPage() {
   }
 
   return (
-    <div className="bkp" {...rootAttrs}>
+    <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
       <BookingCard
         cfg={cfg} businessName={businessName} eventType={eventType} busy={busy}
         onRange={onRange}

@@ -281,17 +281,60 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
 ## The booking page — the owner's hours, in the visitor's time
 
 `/book/<slug>` (`Scheduling/BookingPage.tsx`) draws `Scheduling/BookingCard.tsx`
-(Calendly-style: who/what/points/video left, month + times + zone picker
-right, laid out by container queries, its own light/dark like AI Prospecting);
-the editor `Autopilot/newProject/BookingSetup.tsx` shows the **same card** as
-its preview, in the AI Autopilot wizard and on Scheduling → **Booking page**
+— the owner's reference, as **two cards** side by side from 1060px of box
+(stacked below), laid out by container queries, its own light/dark like AI
+Prospecting. Left: a band in the page's colour (logo tile, business name,
+`tagline`), the host's round photo with name and `hostRole`, topic pills
+(`tags`, ≤ 4), title, description, four chips (length, place, the visitor's
+own zone, "One-to-one with …"), the video as a still with a play button
+beside **What we can discuss** (`discuss`, ticked), and the points as icon
+cards under `pointsTitle` ("This call is for you if you want to:"). Right:
+**Select a Date & Time** with the zone picker in its header, the month
+(open days tinted with a dot, the chosen one filled), the day's times as
+pills, the first highlighted. **No platform name, no trial offer, no
+testimonial, no "verified" tick** — the page is the owner's alone and claims
+nothing that was not checked; a clip's length is shown only from the file.
+The colour is `accent` (`#rrggbb`, deep green by default; the editor offers
+the workspace's brand colour, swatches and a free pick), applied as
+`--bk-accent` by `accentStyle`, with the ink on it computed (`inkOn`).
+Points are `{ icon, title, detail }` with the icon from a **fixed list**
+(`BOOKING_ICONS` in `worker/src/lib/bookingContent.ts`, drawn by
+`Scheduling/bookingIcons.tsx`); a page from before icons kept plain `bullets`,
+which `pointsOf` reads as ticks — publish writes both. The editor
+`Autopilot/newProject/BookingSetup.tsx` shows the **same card** as its
+preview (Desktop: laid out at 1180px and scaled to the pane; Phone: 390px),
+in the AI Autopilot wizard and on Scheduling → **Booking page**
 (`autoPublish={false}` there — that screen already publishes). Editable: the
 address (`slug_check` as typed; slugs are install-wide, a taken one is refused
-on `booking.slug`), title, host name, description, bullets (≤ 8), photo, logo,
+on `booking.slug`), title, host name and role, tagline, description, topics,
+points with icons (≤ 8), what to discuss, colour, photo, logo,
 a clip or a YouTube/Vimeo/Loom link (`videoEmbedOf` builds the player address;
 nothing pasted is framed as typed), length, place, days, hours, the owner's
 zone (`booking.timezone`, refused if Intl does not know it).
 
+- **Filled in from the website.** **Fill it in from my website**
+  (`booking.website`; `website` prop, else the workspace profile's) asks
+  `booking.php` `autofill` (session + `canAccess`, 20/h): the site is read
+  through `fetchPage`'s fence; `pageFacts` (pure) takes what the site
+  *states* — title/description tags, YouTube/Vimeo/Loom links really on the
+  page, a photo the site itself labels as a person (alt "Jane Bright,
+  founder", or a schema.org Person) — and the logo comes from `logoFromPage`.
+  With the operator's AI (`aiBudget` first, `loadAiKey`, one
+  `askGeminiParts` call, site text fenced as content) it proposes title,
+  host and role, tagline, description, 3–6 points with icons, what to
+  discuss and tags; `cleanAutofill` clips them, strips links, addresses,
+  markup and merge fields, keeps only listed icons, and **drops a host name
+  not written on the site**. The link-preview picture (`og:image`) becomes
+  the photo only if the AI, shown it, says it is a person. No AI (no key,
+  budget, too few words, a failed call) → only the stated parts, and the
+  panel says "AI not used: <why>". Nothing is saved by asking; pictures come
+  back as data, are shrunk in the browser and uploaded through
+  `/api/booking-media.php` like a hand-picked one, so the page never
+  hotlinks another site (YouTube's own still excepted). It runs once by
+  itself on an empty page with a known website (`crm_booking_autofilled`),
+  filling only what is empty; pressed, it replaces what it found.
+  `SITE_TEST_ORIGIN` (tests only) fetches any `*.test` host from a local
+  mock (`wireUrl` in readSite.ts). `npm run test:bookingfill` (pure).
 - **Times.** A booking is stored as the owner's wall clock (`slot_date`,
   `slot_time` in the schedule's `timezone`) — the reminder pass and the diary
   read it so. `worker/src/lib/bookingTime.ts` (pure, no imports, imported by
@@ -312,10 +355,13 @@ zone (`booking.timezone`, refused if Intl does not know it).
   the `VIDEO` R2 bucket and is refused by name (`no_storage`) without it.
   Publishing keeps a media address only if it is this workspace's own.
 - `npm run test:bookingpage` (needs a `VITE_BASE=/` build and a running
-  `wrangler dev`; `BASE`, `PERSIST`): an owner in New York and a visitor in
+  `wrangler dev --var SITE_TEST_ORIGIN:http://127.0.0.1:8982` with no AI key;
+  `BASE`, `PERSIST`, `SITE_PORT`, `SHOTS`): the website fill with no AI,
+  the editor filling itself in, icons/topics/colour published, the page with
+  no platform name at 390/1280 and dark; an owner in New York and a visitor in
   Bangkok — 11 hours apart in the slots, the booking at the right UTC instant,
   off-grid times refused, uploads, the address across workspaces, the editor,
-  390/1280. `test:security` covers the media route across tenants.
+  390/1280. `test:security` covers the media route and the website read across tenants (and its fence).
 
 ## Platform services — the owner's keys for everybody, in one place
 
