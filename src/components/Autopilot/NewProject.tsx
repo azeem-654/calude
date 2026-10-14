@@ -990,7 +990,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   )}
                   {/* The booking page the emails will link to, when this project uses ours — editable here as on the question. */}
                   {bp.requirements.includes('bookingPage') && (
-                    <div style={{ marginTop: 18 }}><BookingSetup business={company} /></div>
+                    <div style={{ marginTop: 18 }}><BookingSetup business={company} website={logoSite} /></div>
                   )}
                   {(() => {
                     const said = (id: string) => String(withDefaults(state!).known[id]?.value ?? '');

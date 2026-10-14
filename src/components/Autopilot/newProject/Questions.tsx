@@ -505,7 +505,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
         {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
         {q.id === 'emailStyle' && <EmailStyleExample style={String(vals[0] ?? aiValue ?? 'researched')} company={company} offer={said('offer')} />}
         {/* Our booking page, shown and set up the moment it is picked — not on another screen later. */}
-        {((q.id === 'booking' && vals[0] === 'page') || (q.id === 'calendar' && vals[0] === 'pc')) && <BookingSetup business={company} />}
+        {((q.id === 'booking' && vals[0] === 'page') || (q.id === 'calendar' && vals[0] === 'pc')) && <BookingSetup business={company} website={design.logo.website} />}
         {skip}
       </div>
     );
