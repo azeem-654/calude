@@ -232,6 +232,11 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('a YouTube channel is still the YouTube source', yt.known.videoSource?.value === 'youtube', JSON.stringify(yt.known.videoSource));
 }
 
+{
+  const { audienceIn } = await import('../src/services/projectIntake.ts');
+  const who = audienceIn('The clinic welcomes new leads by email, follows up until they book, and also find new local partner businesses every day to email.');
+  ok('a channel is never the audience', who === 'local partner businesses', String(who));
+}
 /* ── Suggested answers without the AI (services/answerIdeas.ts) ── */
 {
   const { ideasFor } = await import('../src/services/answerIdeas.ts');

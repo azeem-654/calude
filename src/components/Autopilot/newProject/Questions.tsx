@@ -576,7 +576,7 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
  */
 function EmailStyleExample({ style, company, offer }: { style: string; company?: string; offer: string }) {
   const me = company || 'Your business';
-  const what = offer || 'a free 20-minute review';
+  const what = offer ? offer.charAt(0).toLowerCase() + offer.slice(1) : 'a free 20-minute review';
   const parts = style === 'researched'
     ? [
       { tag: 'Their business', text: 'I saw on your site that Brightsmile opened a second practice in Hove this spring and now offers Invisalign — congratulations on the growth.' },

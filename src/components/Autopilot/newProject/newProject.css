@@ -244,7 +244,7 @@
 .np-chip button { border: 0; background: none; color: inherit; cursor: pointer; display: inline-flex; padding: 1px; }
 .np-chip-input { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 180px; color: #9aa3b2; min-width: 0; }
 .np-chip-input input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 13.5px; color: #17191c; background: transparent; }
-.np-opt.np-opt-sm { padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.np-opt.np-opt-sm { padding: 5px 10px; font-size: 12px; display: inline-flex; flex-direction: row; align-items: center; gap: 5px; }
 .np-finder { display: grid; gap: 10px; margin-top: 18px; padding: 16px; border-radius: 18px; background: #fff; border: 1px solid #e6e8ef; min-width: 0; }
 .np-sample { display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; background: #f8f7ff; border: 1px solid #e0dcff; }
 .np-sample-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 6px; }

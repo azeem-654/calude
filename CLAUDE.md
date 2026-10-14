@@ -1241,6 +1241,46 @@ planner's page. The blueprint shows `ResultPreview` — posts, the page, the
 first email's opening — drawn from what the wizard knows, no AI call, and
 labelled as a preview. T9 in `test:wizard` covers it.
 
+**Every question helps.** *Here's what I understood* (`Understanding.tsx`)
+has no solution dropdown: a correction box (`data-field="intake.correction"`)
+sends the customer's words to `refine` (which may now return a `summary`),
+and with no AI — or no change — the request is read again with the
+correction appended; the ready-made solutions are one fold away. Typed
+questions (audience, offer, kinds of business, places, topics, feel) show
+**suggestions** (`newProject/Suggest.tsx`): the trade's offline ideas at once
+(`services/answerIdeas.ts`, pure — a med spa is never offered "Amazon
+sellers"), replaced by the AI's for this business when `/api/intake.php`
+`suggest` answers (own allowance, 120/h); multi-select chips, free text, and
+**Let AI decide**, which says why. "Find new ones for me every day" is the
+lit, recommended contact source. Leaving the finder's last question stops on
+**`FirstLeads.tsx`**: a live directory search, websites read, addresses
+checked — the finder's own steps — with a box to correct who it looks for
+(`refine` limited to `prospectTrades`/`prospectPlaces`, else `parseAsk`).
+Nothing is saved there; the built finder starts with the same search.
+The logo found on a site is approved with **Use this logo** (on the business
+screen and the logo screen, preview 220×140). The colours screen adds a
+**background picture** for the page (projects with a page only): a stock
+photo for the trade (`stockPhotoFor`, Unsplash ids checked by eye), the
+customer's own (`photoFromFile`, ≤1600px JPEG), or none — laid under a tint
+in the first hero (`BrandContext.heroImage`, `withHeroImage`). The pages
+question is **"Do you want a website or a funnel?"**: a funnel is
+recommended (always when they already have a site), a website second, or
+`none`, which also drops the planner's `site` play. Ten newer themes; email
+layouts `photo` (the stock photo, `emailImage`), `video` (a YouTube link's
+thumbnail and play button) and `card`, drawn by `wrapEmail`.
+
+**Researched emails** (`emailStyle`, group "How each email is written",
+asked whenever a project sends email; default `researched`). The brief
+carries `emailStyle`; the planner's sequences (`withResearch`) and the
+wizard's follow-up workflow then open with `{{personalOpener}}` and
+`{{theirChallenge}}`, written at send time from the prospect's own website
+(`lib/prospectResearch.ts`: `readSite`, the operator's AI after `aiBudget`,
+`cleanResearch` strips links, merge fields and pretend relationships;
+`crm_email_research`, migration 0072, 30 days per address). Nothing specific
+found, no site, a webmail address or no AI → both empty, and `personalise`
+drops their lines, so the email reads as written. Social media is never read.
+Replies to an enquiry never carry it. `npm run test:emailstyle` (pure).
+
 The build (`newProject/buildRunner.ts`) performs real operations and the bar is
 their weighted share. Content-agent workflows (scheduled, only `ai` steps,
 nothing that sends) are switched on because the customer approved a blueprint

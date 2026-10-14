@@ -165,6 +165,14 @@ jobs:
       - name: Test the design step
         run: npm run test:design
 
+      # Researched emails: the two lines go after the greeting, vanish when
+      # nothing true was found, and never carry a link or a pretend meeting.
+      - name: Test researched emails
+        run: npm run test:emailstyle
+
+      - name: Test booking times across time zones
+        run: npm run test:bookingtz
+
       # Video Studio's rules: what an edit keeps, captions through cuts,
       # cleanup that never cuts a number or a "not", distinct Shorts, real PNGs.
       - name: Test Video Studio's rules

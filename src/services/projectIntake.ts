@@ -244,7 +244,8 @@ export function audienceIn(text: string): string | null {
     if (!m) continue;
     const phrase = m[1].replace(STOP, '').trim().replace(/^(the|some|more|them)\s+/i, '');
     const words = phrase.split(/\s+/);
-    if (!phrase || words.length > 6 || /^(them|it|us|me|people|customers|clients|out)$/i.test(phrase)) continue;
+    /* A channel is never an audience: "…every day to email" is how, not who. */
+    if (!phrase || words.length > 6 || /^(them|it|us|me|you|people|customers|clients|out|e-?mails?|texts?|sms|calls?|phone|whatsapp|messages?)$/i.test(phrase)) continue;
     if (/^(a|an|one|five|three|seven|\d)\b/i.test(phrase)) continue;
     /* "email them to book appointments" — "to" there starts what the email is
        for, not who it goes to. */

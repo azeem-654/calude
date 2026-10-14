@@ -136,7 +136,7 @@ export default function Understanding({ stages, state, finished, questionCount, 
               {correction && (
                 <span style={{ fontSize: 12.5, color: correction.ok ? '#0f7b3d' : '#9a3412', lineHeight: 1.5 }}>{correction.text}</span>
               )}
-              <button type="button" className="np-skip" style={{ justifySelf: 'start' }} onClick={() => setBrowse(b => !b)} aria-expanded={browse}>
+              <button type="button" className="np-skip" style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setBrowse(b => !b)} aria-expanded={browse}>
                 {browse ? 'Hide the ready-made solutions' : 'Or start from a different ready-made solution'} <ChevronDown size={12} style={{ transform: browse ? 'rotate(180deg)' : undefined }} />
               </button>
               {browse && (
@@ -179,7 +179,7 @@ export default function Understanding({ stages, state, finished, questionCount, 
             </span>
           </section>
 
-          <button type="button" className="np-skip" style={{ justifySelf: 'start' }} onClick={() => setHow(h => !h)} aria-expanded={how}>
+          <button type="button" className="np-skip" style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setHow(h => !h)} aria-expanded={how}>
             {how ? 'Hide' : 'Show'} how I worked this out{warned.length ? ` (${warned.length} note${warned.length === 1 ? '' : 's'})` : ''} <ChevronDown size={12} style={{ transform: how ? 'rotate(180deg)' : undefined }} />
           </button>
           {how && steps}
