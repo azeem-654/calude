@@ -23,7 +23,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Circle, Globe, Loader, Mail, MapPin, RefreshCcw, Send, Sparkles, Wand2, AlertTriangle } from 'lucide-react';
 import { lookupContacts, searchProspects, verifyEmails, type Contactable, type Prospect, type Verdict } from '../../../services/prospects';
-import { bestAddress, checkLabel } from '../../../services/aiProspecting';
+import { bestAddress, checkLabel, relatedTrades } from '../../../services/aiProspecting';
+import { expandPlace } from '../../../services/finders';
 
 type StepState = 'todo' | 'now' | 'done' | 'warn';
 interface Step { key: 'search' | 'read' | 'check'; label: string; state: StepState; detail?: string }
@@ -33,7 +34,12 @@ const SHOW = 10;
 /** Websites read here — the same eight the server reads in one request. */
 const READ = 8;
 
-export default function FirstLeads({ trades, places, perDay, onCorrect }: {
+/** Where the leads shown came from, when the search had to look wider than asked. */
+interface Widened { trade: string; place: string; why: string }
+
+export default function FirstLeads({ trades, places, perDay, onCorrect, onAdd }: {
+  /** Add a place or a kind of business the wider search found leads in, so the daily finder looks there too. */
+  onAdd?: (what: 'place' | 'trade', value: string) => void;
   trades: string[];
   places: string[];
   perDay: string;
@@ -49,6 +55,8 @@ export default function FirstLeads({ trades, places, perDay, onCorrect }: {
   const [found, setFound] = useState<Record<string, Contactable>>({});
   const [checks, setChecks] = useState<Record<string, Verdict>>({});
   const [note, setNote] = useState('');
+  const [widened, setWidened] = useState<Widened | null>(null);
+  const [added, setAdded] = useState(false);
   const [fix, setFix] = useState('');
   const [fixing, setFixing] = useState(false);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
@@ -63,7 +71,7 @@ export default function FirstLeads({ trades, places, perDay, onCorrect }: {
       { key: 'check', label: 'Checking every email address', state: 'todo' },
     ];
     const mark = (k: Step['key'], patch: Partial<Step>) => { cur = cur.map(s => (s.key === k ? { ...s, ...patch } : s)); if (live()) setSteps(cur); };
-    setSteps(cur); setRows([]); setFound({}); setChecks({}); setNote(''); setTotal(0);
+    setSteps(cur); setRows([]); setFound({}); setChecks({}); setNote(''); setTotal(0); setWidened(null); setAdded(false);
 
     let r = await searchProspects({ source: 'free', trade, place, fresh: true });
     /* The free directory is volunteer-run and sometimes busy; one quiet retry. */
@@ -73,6 +81,31 @@ export default function FirstLeads({ trades, places, perDay, onCorrect }: {
       mark('search', { state: 'warn', detail: `The business directory did not answer just now (${r.error}). This does not hold the project up — once built, it searches by itself and retries.` });
       mark('read', { state: 'todo' }); mark('check', { state: 'todo' });
       return;
+    }
+    /*
+     * Nothing listed in a small town is common — the directories hold what
+     * people mapped, and a village may have no estate agents on it at all.
+     * Rather than stop on "nothing", look wider in the same state first (its
+     * larger towns), then at related kinds of business here, and say plainly
+     * which one the leads below came from, with a press to add it.
+     */
+    if (!r.prospects.length) {
+      mark('search', { detail: `Nothing listed in ${place} — looking a little wider…` });
+      const tries: Widened[] = [];
+      const region = place.includes(',') ? place.split(',').slice(1).join(',').trim() : '';
+      if (region) {
+        const e = await expandPlace(region);
+        for (const town of (e.success !== false ? e.places ?? [] : []).filter(t => t.toLowerCase() !== place.toLowerCase()).slice(0, 2)) {
+          tries.push({ trade, place: town, why: `a larger town in ${region}` });
+        }
+      }
+      for (const t of relatedTrades(trade).slice(0, 2)) tries.push({ trade: t, place, why: 'a related kind of business' });
+      for (const t of tries) {
+        if (!live()) return;
+        const w = await searchProspects({ source: 'free', trade: t.trade, place: t.place, fresh: true });
+        if (!w.error && w.prospects.length) { r = w; setWidened(t); break; }
+      }
+      if (!live()) return;
     }
     /* Businesses with a website first: those are the ones an address can be read from. */
     const sorted = [...r.prospects].sort((a, b) => Number(!!b.website || !!b.email) - Number(!!a.website || !!a.email));
@@ -153,6 +186,19 @@ export default function FirstLeads({ trades, places, perDay, onCorrect }: {
       </ol>
 
       {note && <span style={{ fontSize: 12.5, color: '#4c39d1' }}>{note}</span>}
+      {widened && (
+        <div className="np-widened" role="status">
+          <span>
+            Nothing is listed for <b>{trade}</b> in <b>{place}</b> yet, so these are <b>{widened.trade}</b> in <b>{widened.place}</b> — {widened.why}.
+          </span>
+          {onAdd && (
+            <button type="button" className="np-opt np-opt-sm" disabled={added}
+              onClick={() => { onAdd(widened.place !== place ? 'place' : 'trade', widened.place !== place ? widened.place : widened.trade); setAdded(true); }}>
+              {added ? '✓ Added — it will look there too' : widened.place !== place ? `Also search ${widened.place} every day` : `Also find ${widened.trade} every day`}
+            </button>
+          )}
+        </div>
+      )}
 
       {leads.length > 0 && (
         <ul className="np-leads" aria-label="First leads">

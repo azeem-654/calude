@@ -452,11 +452,23 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const correctLeads = useCallback(async (text: string): Promise<{ ok: boolean; said: string }> => {
     if (!state) return { ok: false, said: '' };
 
+    /* A bare place ("virginia", "Fort Lauderdale") is where to look — no AI needed for that. */
+    const bare = text.trim().replace(/[.!]+$/, '');
+    if (/^[\p{L}][\p{L} .'-]{1,40}(,\s*[\p{L}][\p{L} .'-]{1,40})?$/u.test(bare) && bare.split(/\s+/).length <= 4
+      && !/\b(instead|only|also|more|less|bigger|smaller|find|look|search|not|no|with|without|and)\b/i.test(bare)) {
+      const place = bare.replace(/\b\p{Ll}/gu, c => c.toUpperCase());
+      setState(s => (s ? { ...s, known: { ...s.known, prospectPlaces: { value: place, source: 'you', note: 'you changed this' } } } : s));
+      return { ok: true, said: `Now searching in ${place}.` };
+    }
     if (!aiDown.current) {
-      const r = await refine({
-        instruction: `${text}\n(Only change prospectTrades — kinds of business, comma-separated — and prospectPlaces — towns, "; "-separated.)`,
-        state: { request: state.prompt, answers: { prospectTrades: state.known.prospectTrades?.value, prospectPlaces: state.known.prospectPlaces?.value } },
-      });
+      /* Never left spinning: an AI that has not answered in 20 seconds is treated as unavailable for this one. */
+      const r = await Promise.race([
+        refine({
+          instruction: `${text}\n(Only change prospectTrades — kinds of business, comma-separated — and prospectPlaces — towns, "; "-separated.)`,
+          state: { request: state.prompt, answers: { prospectTrades: state.known.prospectTrades?.value, prospectPlaces: state.known.prospectPlaces?.value } },
+        }),
+        new Promise<Awaited<ReturnType<typeof refine>>>(res => window.setTimeout(() => res({ ok: false, noAi: false, reply: '', error: 'timeout' }), 20_000)),
+      ]);
       if (r.noAi) aiDown.current = true;
       const set = Object.fromEntries(Object.entries(r.ops?.set ?? {}).filter(([id]) => id === 'prospectTrades' || id === 'prospectPlaces'));
       if (r.ok && Object.keys(set).length) {
@@ -990,7 +1002,17 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   trades={tradesOf(String(state.known.prospectTrades?.value ?? ''))}
                   places={placesOf(String(state.known.prospectPlaces?.value ?? ''))}
                   perDay={String(withDefaults(state).known.prospectPerDay?.value ?? '20')}
-                  onCorrect={correctLeads} />
+                  onCorrect={correctLeads}
+                  onAdd={(what, value) => setState(s => {
+                    if (!s) return s;
+                    const id = what === 'place' ? 'prospectPlaces' : 'prospectTrades';
+                    const sep = what === 'place' ? '; ' : ', ';
+                    const cur = String(s.known[id]?.value ?? '').split(sep.trim()).map(x => x.trim()).filter(Boolean);
+                    /* Appended, not swapped: the first search stays the one the finder starts with. */
+                    if (cur.some(x => x.toLowerCase() === value.toLowerCase())) return s;
+                    const known = { ...s.known, [id]: { value: [...cur, value].join(sep), source: 'you' as const, note: 'you added this' } };
+                    return { ...s, known };
+                  })} />
               )}
               {phase === 'questions' && state && screen && !leadsOpen && (
                 <Questions
