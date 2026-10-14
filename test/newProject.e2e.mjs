@@ -100,7 +100,7 @@ async function answerScreen(d, overrides = []) {
 
 /** From the describe screen to the blueprint, recording every question asked. */
 async function toBlueprint(p, d, prompt, overrides = []) {
-  await d.getByLabel('What would you like Autopilot to do?').fill(prompt);
+  await d.getByLabel('What would you like AI Autopilot to do?').fill(prompt);
   await cta(d).click();
   await d.getByText(/Here.s what I understood/).waitFor({ timeout: 20000 });
   const understood = await d.innerText();
@@ -108,7 +108,7 @@ async function toBlueprint(p, d, prompt, overrides = []) {
   const asked = [];
   for (let i = 0; i < 12; i++) {
     await p.waitForTimeout(250);
-    if (await d.getByText(/Here.s what Autopilot/).count()) break;
+    if (await d.getByText(/Here.s what (AI )?Autopilot/).count()) break;
     for (const t of await d.locator('.np-q-head > span:first-child').allInnerTexts()) asked.push(t);
     await answerScreen(d, overrides);
     await p.waitForTimeout(150);
@@ -264,7 +264,7 @@ for (const width of [1280, 390]) {
   const { asked, understood } = await toBlueprint(p, d, 'Every month, turn our volunteer rota changes into a friendly note for the team.');
   ok('T6 falls through to a custom project', /built from scratch/i.test(understood), understood.slice(0, 300));
   ok('T6 asked what it should produce', asked.some(q => /produce/.test(q)), asked.join(' | '));
-  ok('T6 reached a blueprint rather than failing', /Here.s what Autopilot/.test(await d.innerText()));
+  ok('T6 reached a blueprint rather than failing', /Here.s what (AI )?Autopilot/.test(await d.innerText()));
   ok('T6 no page errors', !errs.length, errs.join(' | '));
   await ctx.close();
 }
@@ -277,7 +277,7 @@ for (const width of [1280, 390]) {
   await mic.click();
   await d.getByText(/Listening…/).first().waitFor({ timeout: 6000 });
   ok('T7 says Listening…', true);
-  ok('T7 the box is locked while listening', await d.getByLabel('What would you like Autopilot to do?').evaluate(el => el.readOnly));
+  ok('T7 the box is locked while listening', await d.getByLabel('What would you like AI Autopilot to do?').evaluate(el => el.readOnly));
   await p.waitForTimeout(2200);
   await d.getByRole('button', { name: 'Stop listening' }).click();
   await d.getByText(/Transcribing|Voice input stopped|I heard this|check it/).first().waitFor({ timeout: 15000 });
@@ -315,7 +315,7 @@ for (const width of [1280, 390]) {
    name and what the business does are there. */
 {
   const { ctx, p, d, errs } = await open(1280, 't8');
-  await d.getByLabel('What would you like Autopilot to do?').fill('Post one social image every weekday.');
+  await d.getByLabel('What would you like AI Autopilot to do?').fill('Post one social image every weekday.');
   await cta(d).click();
   await d.getByText(/Here.s what I understood/).waitFor({ timeout: 20000 });
   await cta(d).click();
@@ -344,7 +344,7 @@ for (const width of [1280, 390]) {
   ok('T8 then it can continue', !(await cta(d).isDisabled()), await cta(d).innerText());
   for (let i = 0; i < 10; i++) {
     await p.waitForTimeout(250);
-    if (await d.getByText(/Here.s what Autopilot/).count()) break;
+    if (await d.getByText(/Here.s what (AI )?Autopilot/).count()) break;
     await answerScreen(d);
     await p.waitForTimeout(150);
     if (await cta(d).isDisabled()) break;
@@ -365,14 +365,14 @@ for (const width of [1280, 390]) {
    workspace with none, does not add a second. */
 {
   const { ctx, p, d, errs } = await open(1280, 't9');
-  await d.getByLabel('What would you like Autopilot to do?').fill('Launch our new boiler service plan with a landing page, a social post every weekday and an email to past customers.');
+  await d.getByLabel('What would you like AI Autopilot to do?').fill('Launch our new boiler service plan with a landing page, a social post every weekday and an email to past customers.');
   await cta(d).click();
   await d.getByText(/Here.s what I understood/).waitFor({ timeout: 20000 });
   await cta(d).click();
   let picked = '';
   for (let i = 0; i < 16; i++) {
     await p.waitForTimeout(300);
-    if (await d.getByText(/Here.s what Autopilot/).count()) break;
+    if (await d.getByText(/Here.s what (AI )?Autopilot/).count()) break;
     if (!picked && await d.locator('.np-tpl').count()) {
       const card = d.locator('.np-tpl').nth(1);
       picked = (await card.locator('b').first().innerText()).trim();

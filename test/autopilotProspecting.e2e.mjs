@@ -249,7 +249,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await page.goto(`${B}/autopilot?new=1`, { waitUntil: 'networkidle' });
   const np = page.getByRole('dialog', { name: 'New project' });
   await np.waitFor({ timeout: 10_000 });
-  await np.getByLabel('What would you like Autopilot to do?').fill('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.');
+  await np.getByLabel('What would you like AI Autopilot to do?').fill('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.');
   const cta = np.locator('footer .wz-cta');
   await cta.click();
   await np.getByText(/Here.s what I understood/).waitFor({ timeout: 20_000 });
@@ -259,7 +259,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   let sawSample = false, sawTrades = false;
   for (let i = 0; i < 16; i++) {
     await page.waitForTimeout(400);
-    if (await np.getByText(/Here.s what Autopilot/).count()) break;
+    if (await np.getByText(/Here.s what (AI )?Autopilot/).count()) break;
     if (await np.locator('[data-field="project.prospectTrades"]').count()) {
       sawTrades = sawTrades || /dentists/.test(await np.locator('.np-chips').first().innerText());
       await np.getByText('Leeds Dental 1', { exact: true }).waitFor({ timeout: 15_000 }).catch(() => {});

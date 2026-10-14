@@ -43,6 +43,8 @@ export interface DesignHooks {
   background: BackgroundState;
   onBackground: (mode: 'stock' | 'upload' | 'none') => void;
   onBackgroundFile: (f: File) => void;
+  /** Whether the project builds a website or funnel — the background is only for one. */
+  hasPage: boolean;
 }
 
 export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design, company }: {
@@ -346,13 +348,18 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
   }
   if (q.type === 'theme') {
     return (
+      <>
       <div className="np-q">
         {head}{help}
         <ThemeField value={vals[0] ?? ''} byAi={byAi} brandColor={said('brandColor')} words={said('designStyle')}
           onPick={v => answer(q.id, v, 'you')} onAi={() => answer(q.id, byAi ? null : aiValue ?? null, 'default')} />
+      </div>
+      {/* Its own block: the picture is a separate choice from the colours, already made (a photo for the trade) until changed. */}
+      {design.hasPage && <div className="np-q">
         <BackgroundField st={design.background} palette={palette} name={design.brand.name} headline={design.brand.heroTitle}
           onMode={design.onBackground} onFile={design.onBackgroundFile} />
-      </div>
+      </div>}
+      </>
     );
   }
   if (q.type === 'logo') {

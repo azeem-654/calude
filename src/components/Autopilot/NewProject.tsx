@@ -57,7 +57,7 @@ import { understand, refine } from '../../services/intake';
 import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from '../../services/projectSolutions';
 import {
   allQuestions, answersOf, applies, applyOps, buildBlueprint, extractKnown, initialState,
-  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer, DESIGN_QUESTION_IDS, designQuestions,
+  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer, DESIGN_QUESTION_IDS, designQuestions, designKindsOf,
   type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
@@ -961,7 +961,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                 <Questions
                   design={{
                     logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f),
-                    brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website', hasSite,
+                    brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website', hasSite, hasPage: designKindsOf(state).includes('page'),
                     background: { ...background, stock: stockPhoto }, onBackground: mode => setBackground(b => ({ ...b, mode, error: '' })), onBackgroundFile: f => void backgroundFile(f),
                   }}
                   screen={screen} state={state} ws={ws} files={files} answer={answer} company={company}

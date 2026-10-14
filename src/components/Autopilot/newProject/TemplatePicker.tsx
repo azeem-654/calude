@@ -66,7 +66,7 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
         {order.map(({ k, label, hint, icon: Icon }) => {
           const on = !none && value !== 'ai' ? tab === k : false;
           return (
-            <button key={k} type="button" role="radio" aria-checked={on} className={`np-kind${prefer === k ? ' np-kind-rec' : ''}`} aria-pressed={on}
+            <button key={k} type="button" role="radio" aria-checked={on} className={`np-kind${prefer === k ? ' np-kind-rec' : ''}`} data-on={on ? '1' : undefined}
               onClick={() => { setTab(k); setAll(false); if (none || value === 'ai' || (chosen && chosen.kind !== k)) onPick(''); }}>
               {prefer === k && <span className="np-hero-badge"><Sparkles size={11} /> Recommended</span>}
               <span style={{ display: 'inline-flex', gap: 7, alignItems: 'center', fontSize: 14.5, fontWeight: 750, color: '#17191c' }}><Icon size={16} /> {label}</span>
@@ -74,7 +74,7 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
             </button>
           );
         })}
-        <button type="button" role="radio" aria-checked={none} aria-pressed={none} className="np-kind" onClick={() => onPick('none')}>
+        <button type="button" role="radio" aria-checked={none} data-on={none ? '1' : undefined} className="np-kind" onClick={() => onPick('none')}>
           <span style={{ display: 'inline-flex', gap: 7, alignItems: 'center', fontSize: 14.5, fontWeight: 750, color: '#17191c' }}><Ban size={16} /> No page</span>
           <small>I don’t need a website or funnel</small>
         </button>
