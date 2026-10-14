@@ -122,6 +122,10 @@ const reg = await api('auth.php', { action: 'register', email: OWNER.email, pass
 const login = await api('auth.php', { action: 'login', email: OWNER.email, password: OWNER.pw });
 const T = login.token, A = reg.user?.accountId ?? login.user?.accountId;
 ok('(a customer account with its own workspace)', !!T && !!A, { reg, login: Object.keys(login) });
+/* This journey makes more recordings and Shorts than the trial's allowance
+   (lib/allowances.ts); the owner raises the trial's counts, as Sign-ups &
+   trials → Plans & allowances would. Minutes stay the trial's own. */
+execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --command ${JSON.stringify("INSERT OR REPLACE INTO crm_plan_limits (plan_id, meter, value, updated_at) VALUES ('trial','long_videos',50,'t'),('trial','ai_shorts',200,'t'),('trial','ai_requests',5000,'t'),('trial','social_posts',200,'t'),('trial','blog_articles',50,'t'),('trial','ai_emails',500,'t')")}`, { stdio: 'ignore' });
 const empty = await api('video.php', { token: T, accountId: '', action: 'list' });
 ok('a request naming no workspace is refused before anything is looked up', empty.code === 'no_workspace', empty);
 /* Local workerd now and then drops a request outright ("Network connection

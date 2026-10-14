@@ -172,7 +172,7 @@ export default function ClientBilling() {
               <span>Subscriptions cannot be started yet — payments have not been switched on for this app. Nothing is lost while you wait: everything you make stays in your workspace.</span>
             </div>
           )}
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(195px, 100%), 1fr))' }}>
             {table.plans.map(p => (
               <div key={p.id} data-plan={p.id} style={{ background: '#fff', border: p.featured ? `2px solid ${INK}` : '1px solid #e3e6ea', borderRadius: 16, padding: 18, display: 'grid', gap: 10, alignContent: 'start' }}>
                 <div style={{ fontWeight: 800, color: INK }}>{p.name}</div>

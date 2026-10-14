@@ -326,8 +326,10 @@ export function featureLines(p: Pick<PlanDef, 'limits'>): string[] {
   ];
 }
 
-/** Dollars, for display: 4900 → "49", 49000 → "490". */
-export const dollars = (cents: number) => (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100));
+/** Dollars, for display: 4900 → "49", 197000 → "1,970". */
+export const dollars = (cents: number) => (cents % 100
+  ? (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  : (cents / 100).toLocaleString('en-US'));
 
 /** What paying yearly saves, in cents. */
 export const annualSaving = (p: Pick<PlanDef, 'monthlyCents' | 'annualCents'>) => p.monthlyCents * 12 - p.annualCents;
