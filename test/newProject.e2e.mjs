@@ -51,8 +51,17 @@ async function open(width, tag, reducedMotion = 'no-preference') {
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', e => errs.push(String(e).slice(0, 200)));
-  await p.goto(`${B}/autopilot`, { waitUntil: 'networkidle' });
-  await p.getByRole('button', { name: /New project|Start your first project/i }).first().click();
+  /* Local wrangler's dev proxy sometimes exits when the previous browser is
+     closed mid-request; it is restarted outside the test, so a page load
+     waits for the server and tries once more rather than failing the run. */
+  for (let attempt = 0; ; attempt++) {
+    try {
+      for (let i = 0; i < 60; i++) { try { if ((await fetch(B)).ok) break; } catch { /* restarting */ } await new Promise(r => setTimeout(r, 1000)); }
+      await p.goto(`${B}/autopilot`, { waitUntil: 'networkidle' });
+      await p.getByRole('button', { name: /New project|Start your first project/i }).first().click({ timeout: 20000 });
+      break;
+    } catch (e) { if (attempt >= 2) throw e; }
+  }
   const d = p.getByRole('dialog', { name: 'New project' });
   await d.waitFor({ timeout: 8000 });
   return { ctx, p, d, errs };

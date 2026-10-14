@@ -19,6 +19,7 @@
  * still opened, because a partial project the customer can see and fix beats a
  * wizard that threw away everything they answered.
  */
+import { checkAllowance, isAllowanceRefusal, refreshAllowances } from '../../../services/allowances';
 import { buildTemplatePages, type BrandContext, type TemplateMeta } from '../../shared/pageTemplates';
 import type { Funnel, Website } from '../../../types';
 import {
@@ -209,6 +210,21 @@ export async function runBuild(
   let { bp } = inp;
   const business = val(state, 'business');
 
+  /* ── 0 · The plan's allowance ──
+   *
+   * Asked before anything is written: a project refused at the third
+   * workflow would leave a half-built project behind. The server refuses on
+   * its own as well (save_project / save_workflow); this only says it first. */
+  for (const [meter, need] of [['autopilot_projects', 1], ['workflows_per_project', bp.workflows.length]] as const) {
+    if (!need) continue;
+    const a = await checkAllowance(meter, need);
+    if (!a.ok) {
+      set('profile', { state: 'failed', detail: a.message });
+      result.fatal = `${a.message}${a.upgrade ? ` ${a.upgrade.name} allows ${a.upgrade.limit < 0 ? 'unlimited' : a.upgrade.limit}.` : ''} Nothing was built — upgrade in Plan & billing, or remove some workflows on the blueprint.`;
+      return result;
+    }
+  }
+
   /* ── 1 · The business ── */
   set('profile', { state: 'now' }, business === 'website' ? 'I’m studying your website.' : business === 'upload' ? 'I’m reading the document you gave me.' : 'I’m getting your business details ready.');
   let portfolioId = business.startsWith('existing:') ? business.slice(9) : '';
@@ -317,6 +333,8 @@ export async function runBuild(
     brief: briefOf(bp, state.prompt, bp.audienceListId ? loadLists().find(l => l.id === bp.audienceListId)?.name ?? '' : ''),
   });
   if (!p.success || !p.id) {
+    /* A plan-allowance refusal says so, by name — not "could not be saved". */
+    if (isAllowanceRefusal(p as { success?: boolean; code?: string })) refreshAllowances();
     set('project', { state: 'failed', detail: p.error ?? 'The project could not be saved.' });
     result.fatal = p.error ?? 'The project could not be saved.';
     return result;

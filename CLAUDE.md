@@ -1353,6 +1353,20 @@ recommended (always when they already have a site), a website second, or
 layouts `photo` (the stock photo, `emailImage`), `video` (a YouTube link's
 thumbnail and play button) and `card`, drawn by `wrapEmail`.
 
+**Round two.** Choice questions with no fixed default get **Let AI decide**
+too (`isOpenChoice` in Suggest.tsx: the AI picks one of the question's own
+options through `suggest`, which now refuses anything else; offline, the option
+the request's words point to — filler words ignored — and never a contact list
+the workspace does not have). First leads carry what each business says it
+does (`about`, its page description or first real sentence, from
+`findContacts` — never model-written). The understood screen offers add-ons —
+daily social posts, AI Shorts, SEO blog — each adding its solution. The
+blueprint shows the page at full width (`BlueprintPreviews.tsx`: step tabs,
+scrollable, full screen) and every email whole with sample merge values. The
+plan's allowance is asked on the blueprint (a warning while a workflow can
+still be removed) and again before the build writes anything
+(`checkAllowance` for `autopilot_projects` and `workflows_per_project`).
+
 **Researched emails** (`emailStyle`, group "How each email is written",
 asked whenever a project sends email; default `researched`). The brief
 carries `emailStyle`; the planner's sequences (`withResearch`) and the

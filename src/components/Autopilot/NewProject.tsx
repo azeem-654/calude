@@ -77,6 +77,7 @@ import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProj
 import { listChoices } from './newProject/contactFacts';
 import { arrivalDefaults, clearPendingPlan, seedState, stillNeeded, type SitePlan } from '../../services/sitePlan';
 import { trackKnown } from '../../services/funnel';
+import { checkAllowance } from '../../services/allowances';
 import './newProject/newProject.css';
 
 type Phase = 'describe' | 'understand' | 'questions' | 'blueprint' | 'requirements' | 'review' | 'build' | 'domains';
@@ -703,6 +704,30 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     return [...new Set(out)].slice(0, 5);
   }, [bp]);
 
+  /* ── The plan's allowance, said on the blueprint ──
+   *
+   * A project bigger than the plan allows is said here, while the customer
+   * can still take a workflow out, rather than at the build. Asked again when
+   * the number of workflows changes. */
+  const [planWarn, setPlanWarn] = useState('');
+  const wfCount = bp?.workflows.length ?? 0;
+  useEffect(() => {
+    if (phase !== 'blueprint' || !wfCount) return;
+    let alive = true;
+    void (async () => {
+      for (const [meter, need] of [['autopilot_projects', 1], ['workflows_per_project', wfCount]] as const) {
+        const a = await checkAllowance(meter, need);
+        if (!alive) return;
+        if (!a.ok) {
+          setPlanWarn(`${a.message}${a.upgrade ? ` ${a.upgrade.name} allows ${a.upgrade.limit < 0 ? 'unlimited' : a.upgrade.limit}.` : ''}`);
+          return;
+        }
+      }
+      setPlanWarn('');
+    })();
+    return () => { alive = false; };
+  }, [phase, wfCount]);
+
   /* ── Connections: asked when the step is reached, not before ── */
   useEffect(() => {
     if (phase !== 'requirements' || ready || !bp) return;
@@ -983,6 +1008,12 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               )}
               {phase === 'blueprint' && bp && (
                 <>
+                  {planWarn && (
+                    <div className="np-plan-warn" role="alert">
+                      <b>Your plan’s allowance:</b> {planWarn} <a href="/billing" target="_blank" rel="noopener noreferrer">See plans</a>
+                      <span style={{ display: 'block', marginTop: 4, color: '#92400e' }}>Take a workflow out by telling AI Autopilot on the right (“remove the blog”), or upgrade — nothing is built until it fits.</span>
+                    </div>
+                  )}
                   <BlueprintView bp={bp} onRename={name => setState(s => (s ? { ...s, name } : s))} />
                   {bp.workflows.some(w => w.key === 'finder') && (
                     <FinderReview trades={String(state?.known.prospectTrades?.value ?? '')} places={String(state?.known.prospectPlaces?.value ?? '')}
