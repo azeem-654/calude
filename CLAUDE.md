@@ -167,6 +167,44 @@ supplier orders are bring-your-own only: a number carries a licensing and
 porting obligation, and a supplier order makes the buyer of record liable for
 the chargeback and the customs declaration.
 
+## Plans and allowances — one table, counted on the server
+
+`worker/src/lib/allowances.ts` (pure, no imports; the browser re-exports it as
+`services/allowances.ts`) is **the** package table: Starter $49 / Growth $97 /
+Pro $197 / Agency $297 a month, yearly at ten months, plus the trial's
+numbers, for thirteen meters (projects, workflows per project, sub-accounts,
+AI requests, posts, articles, AI emails, prospects found, recordings, AI
+Shorts, video/render minutes, storage). Checkout (`PLAN_CENTS` in
+routes/billing.ts, `interval: 'year'` on both processors), `PLAN_RESELL`, the
+site's price cards (`Site/PricingSection.tsx`, numbers from `featureLines`),
+Plan & billing and the trial bar all read it — never write a plan's number or
+price anywhere else. docs/PRICING.md has the market research and costs.
+
+- **The allowance is the subscriber's** (workspace owner's email), pooled over
+  every workspace they own. Install owner: unlimited, still counted. Trial (and
+  ended trial): `TRIAL_LIMITS`. Otherwise `crm_plans.plan_id`, Starter if none.
+- **`lib/allowanceStore.ts`**: `check` (refusal by name — `fail(r.message, 402,
+  refusalBody(r))`, `code: 'allowance'`, meter, used, limit, plan, upgrade),
+  `record` (idempotent on `(meter, '<workspace>:<ref>')` in `crm_usage`,
+  migration 0074 — key by the thing made, never by the request), `roomFor` for
+  steps that make several, `readAll` for the Usage card. Count meters are
+  counted from their tables; video minutes and storage from the Video Studio's
+  own (`lib/video/usage.ts` takes its limits from here).
+- **Any new thing that costs the operator per unit gets a meter**, checked
+  before the work and recorded after it succeeds. A cron path skips and says
+  why where the customer reads it; it never throws. Don't meter what the server
+  cannot see being made (contacts, sends — see docs/PRICING.md).
+- `/api/allowances.php`: `plans` (public), `status`/`check` (workspaceAccess),
+  `set_limits` (install owner; `crm_plan_limits`, edited on Sign-ups & trials →
+  Plans & allowances). Prices are not editable on a screen.
+- A renewal is matched to the plan the subscriber is on before the amount
+  (`soldAt`, `LEGACY_CENTS`): $97 was "Agency" (`pro`) and is now Growth.
+- `npm run test:allowances` (pure, real SQLite with every migration via
+  `node:sqlite`); `npm run test:allowancese2e` (wrangler :8991, fresh D1 in
+  `.wrangler-allowances`, needs a `VITE_BASE=/` build). Seeded journeys that
+  make more than a trial allows (video e2e, site reels) raise the account's
+  allowance first.
+
 ## Sending email — one door
 
 A mailbox sends either through **its own SMTP server** or through a
