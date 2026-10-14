@@ -163,7 +163,7 @@ export interface Suggestion { options: string[]; pick: string[]; why: string; pl
 export async function suggestAnswers(p: {
   prompt: string;
   business: { companyName?: string; description?: string; website?: string };
-  questions: { id: string; prompt: string; help?: string; many?: boolean }[];
+  questions: { id: string; prompt: string; help?: string; many?: boolean; options?: string[] }[];
   answers: Record<string, unknown>;
 }): Promise<{ ok: boolean; noAi: boolean; suggestions: Record<string, Suggestion>; error: string }> {
   const r = await call('suggest', p);

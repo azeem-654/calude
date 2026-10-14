@@ -351,6 +351,8 @@ export interface Contactable {
   live?: boolean;
   /** When the site was read. */
   checkedAt?: string;
+  /** What the business says it does, in its own words (its page description) — read on a fresh visit only. */
+  about?: string;
 }
 
 /*
@@ -483,6 +485,7 @@ export async function findContacts(env: Env, website: string, fresh = false): Pr
   const base = website.replace(/\/+$/, '');
   const emails = new Set<string>();
   let live = false;
+  let about = '';
   const queue = [base];
   const tried = new Set<string>();
   const MAX_PAGES = 4;
@@ -501,6 +504,7 @@ export async function findContacts(env: Env, website: string, fresh = false): Pr
       queue.push(...contactLinks(page.html, base), `${base}/contact`, `${base}/contact-us`, `${base}/about`);
     }
     const { title, text } = readable(page.html);
+    if (url === base) about = aboutOf(page.html, text);
     for (const e of harvest(`${text}\n${title}\n${unmask(page.html.slice(0, 400_000))}`, host)) emails.add(e);
   }
 
@@ -511,5 +515,27 @@ export async function findContacts(env: Env, website: string, fresh = false): Pr
     'INSERT OR REPLACE INTO crm_prospect_contacts (host, emails, mx, expires_at, created_at) VALUES (?,?,?,?,?)',
   ).bind(host, [...emails].join(','), mx === true ? 1 : mx === false ? 0 : -1, now + CACHE_SECONDS, at).run();
 
-  return { emails: [...emails], mx, live, checkedAt: at };
+  return { emails: [...emails], mx, live, checkedAt: at, ...(about ? { about } : {}) };
+}
+
+/**
+ * What a business says it does, in a line — for the AI Autopilot wizard's
+ * first leads, so the customer can judge the kind of business without opening
+ * every site. Its own words only: the page's description, else the first
+ * sentence of its text that reads like one. Never written by a model, so it
+ * cannot describe a business as something it is not.
+ */
+export function aboutOf(html: string, text: string): string {
+  const meta = (name: string) => {
+    const re = new RegExp(`<meta[^>]+(?:name|property)=["']${name}["'][^>]*content=["']([^"']{20,400})["']`, 'i');
+    const re2 = new RegExp(`<meta[^>]+content=["']([^"']{20,400})["'][^>]*(?:name|property)=["']${name}["']`, 'i');
+    return (re.exec(html)?.[1] ?? re2.exec(html)?.[1] ?? '').trim();
+  };
+  const decode = (s: string) => s.replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
+  let line = decode(meta('description') || meta('og:description'));
+  if (!line) {
+    line = (text.split(/(?<=[.!?])\s+/).find(x => x.length >= 50 && x.length <= 260 && /\b(we|our|is|are|offer|provide|help|specialis|specializ)\b/i.test(x) && !/cookie|javascript|privacy|©/i.test(x)) ?? '').trim();
+  }
+  line = line.replace(/\s+/g, ' ').trim();
+  return line.length > 200 ? `${line.slice(0, 199).replace(/\s+\S*$/, '')}…` : line;
 }

@@ -23,6 +23,35 @@ export const SEP: Record<string, string> = { prospectTrades: ', ', topics: ', ',
 const sepOf = (id: string) => SEP[id] ?? '; ';
 export const partsOf = (id: string, v: string) => v.split(sepOf(id).trim()).map(x => x.trim()).filter(Boolean);
 
+/**
+ * A choice question with no fixed "Let AI decide" answer — "Who do you want
+ * to hear from?", "Where are the contacts?". The AI picks one of its own
+ * options for this request; until it answers (or without it) the option the
+ * request's own words point to, else the first, said as such.
+ */
+export const isOpenChoice = (q: Question) =>
+  (q.type === 'single' || q.type === 'multi') && !!q.options?.length && q.aiDecides === undefined && q.id !== 'contactList';
+
+const WORD = /[a-z][a-z'-]{2,}/g;
+const STEMS = (t: string) => new Set((t.toLowerCase().match(WORD) ?? []).map(w => w.replace(/(ies|es|s)$/, '')));
+function choiceIdea(q: Question, text: string): Ideas {
+  const have = STEMS(text);
+  const opts = q.options ?? [];
+  let best = -1; let score = 0;
+  opts.forEach((o, i) => {
+    const words = [...STEMS(`${o.label} ${o.hint ?? ''}`)].filter(w => w.length > 3);
+    const n = words.filter(w => have.has(w)).length;
+    if (n > score) { score = n; best = i; }
+  });
+  const pick = opts[best >= 0 ? best : 0];
+  return {
+    options: opts.map(o => o.label),
+    pick: [pick.label],
+    why: best >= 0 ? `Your request points to “${pick.label}”.` : `The usual choice for a project like this — change it if yours is different.`,
+    placeholder: '',
+  };
+}
+
 /* One AI request per screen per visit. */
 const asked = new Map<string, Promise<Record<string, Ideas>>>();
 
@@ -37,14 +66,16 @@ export interface IdeaInputs {
  * AI's when it comes. `busy` while the AI is being asked.
  */
 export function useIdeas(questions: Question[], inputs: IdeaInputs): { ideas: Record<string, Ideas>; busy: boolean; byAi: boolean } {
-  const qs = questions.filter(q => IDEA_QUESTIONS.has(q.id));
+  const qs = questions.filter(q => IDEA_QUESTIONS.has(q.id) || isOpenChoice(q));
   const ids = qs.map(q => q.id).join(',');
   /* The offline ideas depend on what has been answered (a place found on the
      previous screen narrows "nearby"); the AI's are asked once per screen. */
   const local = useMemo(() => {
     const out: Record<string, Ideas> = {};
     for (const q of qs) {
-      const i = ideasFor(q.id, { prompt: inputs.prompt, description: inputs.business.description, answers: inputs.answers });
+      const i = isOpenChoice(q)
+        ? choiceIdea(q, `${inputs.prompt} ${inputs.business.description ?? ''}`)
+        : ideasFor(q.id, { prompt: inputs.prompt, description: inputs.business.description, answers: inputs.answers });
       if (i) out[q.id] = i;
     }
     return out;
@@ -60,7 +91,9 @@ export function useIdeas(questions: Question[], inputs: IdeaInputs): { ideas: Re
       p = suggestAnswers({
         prompt: inputs.prompt,
         business: inputs.business,
-        questions: qs.map(q => ({ id: q.id, prompt: q.prompt, help: q.help, many: true })),
+        questions: qs.map(q => (isOpenChoice(q)
+          ? { id: q.id, prompt: q.prompt, help: q.help, many: q.type === 'multi', options: (q.options ?? []).map(o => o.label) }
+          : { id: q.id, prompt: q.prompt, help: q.help, many: true })),
         answers: inputs.answers,
       }).then(r => r.suggestions);
       asked.set(key, p);

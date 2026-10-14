@@ -59,7 +59,7 @@ export default function FirstLeads({ trades, places, perDay, onCorrect }: {
     const live = () => me === run.current;
     let cur: Step[] = [
       { key: 'search', label: `Searching the internet for ${trade} in ${place}`, state: 'now' },
-      { key: 'read', label: 'Reading their websites for contact details', state: 'todo' },
+      { key: 'read', label: 'Reading their websites — what they do and how to reach them', state: 'todo' },
       { key: 'check', label: 'Checking every email address', state: 'todo' },
     ];
     const mark = (k: Step['key'], patch: Partial<Step>) => { cur = cur.map(s => (s.key === k ? { ...s, ...patch } : s)); if (live()) setSteps(cur); };
@@ -165,6 +165,10 @@ export default function FirstLeads({ trades, places, perDay, onCorrect }: {
                   {p.category && <span>{p.category}</span>}
                   {p.address && <span><MapPin size={11} /> {p.address}</span>}
                 </span>
+                {/* What they do, in their own words — so the kind of business can be judged without opening every site. */}
+                {found[p.website]?.about
+                  ? <span className="np-lead-about">{found[p.website]!.about}</span>
+                  : p.website && busy && !found[p.website] ? <span className="np-lead-about" data-wait="1">Reading what they do…</span> : null}
               </span>
               <span className="np-lead-contact">
                 {email ? (

@@ -65,7 +65,7 @@ export interface IntakeReq {
   mime?: string;
   language?: string;
   /* suggest */
-  questions?: { id?: string; prompt?: string; help?: string; many?: boolean }[];
+  questions?: { id?: string; prompt?: string; help?: string; many?: boolean; options?: string[] }[];
   answers?: Record<string, unknown>;
   /* write_emails */
   business?: { companyName?: string; description?: string; audience?: string; offer?: string; website?: string; tone?: string };
@@ -481,7 +481,11 @@ export async function understand(env: Env, key: string, accountId: string, d: In
 async function suggest(key: string, d: IntakeReq): Promise<Response> {
   const request = clip(d.prompt, 2000);
   const qs = (d.questions ?? []).slice(0, 6)
-    .map(q => ({ id: clip(q.id, 40), prompt: clip(q.prompt, 200), help: clip(q.help, 300), many: q.many === true }))
+    .map(q => ({
+      id: clip(q.id, 40), prompt: clip(q.prompt, 200), help: clip(q.help, 300), many: q.many === true,
+      /* A choice question: the answer must be one of these, never a new one. */
+      choices: (Array.isArray(q.options) ? q.options : []).map(o => clip(o, 90)).filter(Boolean).slice(0, 12),
+    }))
     .filter(q => /^[A-Za-z0-9_-]{1,40}$/.test(q.id) && q.prompt);
   if (!qs.length) return fail('Nothing to suggest for.');
   const answers = JSON.stringify(d.answers ?? {}).slice(0, 6000);
@@ -498,7 +502,7 @@ async function suggest(key: string, d: IntakeReq): Promise<Response> {
     'pick: the option(s) you would choose (1 for single, up to 3 for MANY), each one of your options. why: one sentence, to the customer, saying why — referring to their request. placeholder: one short example answer for the empty box, starting with "e.g. ".',
     'Kinds of business to find are plain business categories a directory lists ("dentists", "real estate agents"), plural, no places. Places are towns or cities with their state or country ("Miami, Florida").',
     '',
-    ...qs.map(q => `- ${q.id}${q.many ? ' (MANY)' : ''}: ${q.prompt}${q.help ? ` — ${q.help}` : ''}`),
+    ...qs.map(q => `- ${q.id}${q.many ? ' (MANY)' : ''}: ${q.prompt}${q.help ? ` — ${q.help}` : ''}${q.choices.length ? ` CHOOSE ONLY FROM: ${q.choices.map(c => JSON.stringify(c)).join(', ')} (options = these exactly)` : ''}`),
     '',
     'Return JSON only: {"<id>":{"options":[],"pick":[],"why":"","placeholder":""}, …}',
   ].filter(Boolean).join('\n');
@@ -511,7 +515,8 @@ async function suggest(key: string, d: IntakeReq): Promise<Response> {
   for (const q of qs) {
     const r = raw[q.id] && typeof raw[q.id] === 'object' ? raw[q.id] as Record<string, unknown> : null;
     if (!r) continue;
-    const options = [...new Set((Array.isArray(r.options) ? r.options : []).map(x => clip(x, 90)).filter(Boolean))].slice(0, 8);
+    const options = q.choices.length ? q.choices
+      : [...new Set((Array.isArray(r.options) ? r.options : []).map(x => clip(x, 90)).filter(Boolean))].slice(0, 8);
     if (!options.length) continue;
     const pick = (Array.isArray(r.pick) ? r.pick : [r.pick]).map(x => clip(x, 90)).filter(x => options.includes(x)).slice(0, q.many ? 3 : 1);
     out[q.id] = { options, pick: pick.length ? pick : [options[0]], why: clip(r.why, 260), placeholder: clip(r.placeholder, 100) };

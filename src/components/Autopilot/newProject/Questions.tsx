@@ -22,7 +22,7 @@ import { PlacesField, TradesField, tradesOf } from './ProspectFields';
 import { LayoutField, ThemeField, ColourField, LogoField, BackgroundField, type LogoFieldState, type BackgroundState } from './DesignFields';
 import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
-import { SuggestChips, useIdeas, type IdeaInputs } from './Suggest';
+import { SuggestChips, useIdeas, isOpenChoice, type IdeaInputs } from './Suggest';
 import type { Ideas } from '../../../services/answerIdeas';
 
 /** The ideas for one screen, as Field reads them. */
@@ -252,7 +252,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
   const idea = ideas.ideas[q.id];
   /* Suggested answers for a typed question; picking one is the customer's
      answer, "Let AI decide" is the AI's — said as "chosen for you". */
-  const chips = idea || (ideas.busy && q.type === 'text') ? (
+  const chips = (idea || (ideas.busy && q.type === 'text')) && !isOpenChoice(q) ? (
     <SuggestChips id={q.id} value={Array.isArray(val) ? val.join('; ') : String(val ?? '')} ideas={idea} busy={ideas.busy} fromAi={ideas.byAi}
       onChange={(v, decided) => answer(q.id, v.trim() ? v : null, decided ? 'default' : 'you')} />
   ) : null;
@@ -487,8 +487,19 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
               </button>
             );
           })}
-          {aiButton}
+          {aiButton ?? (idea && (
+            /* No fixed default for this one: the AI (or the request's own words) picks, and says why. */
+            <button type="button" className="np-opt" data-ai="1" aria-pressed={byAi}
+              onClick={() => {
+                if (byAi) { answer(q.id, null); return; }
+                const values = idea.pick.map(l => (q.options ?? []).find(o => o.label === l)?.value).filter((v): v is string => !!v);
+                if (values.length) answer(q.id, q.type === 'multi' ? values : values[0], 'default');
+              }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI decide</span>
+            </button>
+          ))}
         </div>
+        {byAi && idea && !aiButton && idea.why && <span className="np-suggest-why"><b>Why:</b> {idea.why}</span>}
         {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
         {q.id === 'emailStyle' && <EmailStyleExample style={String(vals[0] ?? aiValue ?? 'researched')} company={company} offer={said('offer')} />}
         {/* Our booking page, shown and set up the moment it is picked — not on another screen later. */}
