@@ -279,6 +279,14 @@ check("B cannot overwrite A's portfolio by id", !hijackPortfolio.ok, JSON.string
   await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', accent: 'red;background:url(//x)', points: [{ icon: '"><script>', title: '<b>x</b>' }] } });
   const bClean = (await api('booking.php', { action: 'config', slug: `b-${run}` })).data.config ?? {};
   check('A booking page keeps only a hex colour and a listed icon', bClean.accent === '' && bClean.points?.[0]?.icon === 'check', JSON.stringify([bClean.accent, bClean.points]));
+  /* A testimonial's photo is an upload like the others: B cannot put A's on B's page, nor upload into A's. */
+  const aQuote = await put(A.token, A.acct, 'testimonial', PNG);
+  const bQuote = await put(B.token, A.acct, 'testimonial', PNG);
+  check("B cannot upload a testimonial photo into A's booking page", !bQuote.data.success && bQuote.status === 403, JSON.stringify(bQuote.data));
+  await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', theme: '</style><script>', testimonial: { quote: 'Great work', name: 'Pat', photoUrl: aQuote.data.url } } });
+  const bQ = (await api('booking.php', { action: 'config', slug: `b-${run}` })).data.config ?? {};
+  check("B's page cannot show A's testimonial photo, and keeps only a known theme", aQuote.data.success && bQ.testimonial?.name === 'Pat' && bQ.testimonial?.photoUrl === '' && bQ.theme === '', JSON.stringify([bQ.testimonial, bQ.theme]));
+  if (aQuote.data.url) await api('booking-media.php', { action: 'clear', token: A.token, accountId: A.acct, kind: 'testimonial' });
 }
 
 console.log('\nPublic surfaces');

@@ -54,10 +54,11 @@ import {
 } from '../../../services/booking';
 import { allZones, offsetLabel, slugProblem, slugify, videoEmbedOf } from '../../../services/bookingTime';
 import {
-  ACCENT_SWATCHES, BOOKING_ICONS, cleanHex, DEFAULT_ACCENT, MAX_DISCUSS, MAX_POINTS, MAX_TAGS, POINTS_TITLE, type BookingIcon, type BookingPoint,
+  ACCENT_SWATCHES, BOOKING_ICONS, BOOKING_THEMES, cleanHex, cleanRatio, DEFAULT_THEME, helpLink, inkOn, LEGACY_THEME, logoToneOf,
+  MAX_DISCUSS, MAX_POINTS, MAX_TAGS, POINTS_TITLE, SERIF_STACK, themeOf, type BookingIcon, type BookingPoint,
 } from '../../../services/bookingContent';
 import { loadOnboarding } from '../../../services/onboarding';
-import BookingCard, { accentStyle } from '../../Scheduling/BookingCard';
+import BookingCard, { accentStyle, themeRoot } from '../../Scheduling/BookingCard';
 import { BOOKING_ICON, PointIcon } from '../../Scheduling/bookingIcons';
 import './bookingSetup.css';
 
@@ -134,6 +135,44 @@ async function shrink(file: Blob, side: number, type: 'image/jpeg' | 'image/png'
   }
 }
 
+/**
+ * What a logo is like, from its pixels: the average lightness of its visible
+ * ink, whether it has see-through parts, and its shape. The page uses it only
+ * to decide whether a plate goes behind the logo (`logoPlate`) and whether it
+ * is a wordmark — so a dark mark on a transparent ground does not vanish on a
+ * dark theme, and a square mark is not drawn the width of a wordmark.
+ */
+async function measureLogo(blob: Blob): Promise<{ lum: number; transparent: boolean; ratio: number }> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('unreadable'));
+      i.src = url;
+    });
+    const w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+    const k = Math.min(1, 96 / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('unreadable');
+    ctx.drawImage(img, 0, 0, cw, ch);
+    const px = ctx.getImageData(0, 0, cw, ch).data;
+    let sum = 0, seen = 0, clear = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3];
+      if (a < 200) clear++;
+      if (a > 40) { sum += (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255; seen++; }
+    }
+    const total = px.length / 4;
+    return { lum: seen ? sum / seen : 0.5, transparent: clear / total > 0.03, ratio: w / h };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export default function BookingSetup({ business, website, autoPublish = true }: {
   business?: string;
   /** The business's website, when the screen showing this knows it; else the workspace profile's. */
@@ -202,33 +241,45 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
   const slugRefused = pub === 'refused' && pubError.field === 'booking.slug';
 
   /* ── Pictures and the clip ── */
-  const [media, setMedia] = useState<Record<BookingMediaKind, { busy?: boolean; error?: string }>>({ photo: {}, logo: {}, video: {} });
+  const [media, setMedia] = useState<Record<BookingMediaKind, { busy?: boolean; error?: string }>>({ photo: {}, logo: {}, video: {}, testimonial: {} });
   const setM = (k: BookingMediaKind, v: { busy?: boolean; error?: string }) => setMedia(m => ({ ...m, [k]: v }));
-  const URL_KEY: Record<BookingMediaKind, 'photoUrl' | 'logoUrl' | 'videoFileUrl'> = { photo: 'photoUrl', logo: 'logoUrl', video: 'videoFileUrl' };
+  /* Where each upload's address goes. The testimonial's photo lives inside the testimonial. */
+  const placeMedia = (kind: BookingMediaKind, url: string, extra: Partial<ScheduleAvailability> = {}) => {
+    if (kind === 'testimonial') { updateSchedule({ testimonial: { quote: '', name: '', role: '', ...(schedule.testimonial ?? {}), photoUrl: url } }); return; }
+    const key = kind === 'photo' ? 'photoUrl' : kind === 'logo' ? 'logoUrl' : 'videoFileUrl';
+    updateSchedule({ [key]: url, ...extra } as Partial<ScheduleAvailability>);
+  };
   /** A picture or clip onto the server; true when it is on the page. */
   const uploadBlob = async (kind: BookingMediaKind, file: Blob): Promise<boolean> => {
     if (!signedIn) { setM(kind, { error: 'Sign in to upload — the file is kept on the server, not in this browser.' }); return false; }
     setM(kind, { busy: true });
     let blob: Blob = file;
+    let extra: Partial<ScheduleAvailability> = {};
     if (kind === 'video') {
       if (file.size > VIDEO_MAX_MB * 1048576) {
         setM(kind, { error: `That clip is ${(file.size / 1048576).toFixed(1)} MB. Keep it under ${VIDEO_MAX_MB} MB — about a minute — or paste a YouTube, Vimeo or Loom link instead.` });
         return false;
       }
     } else {
-      try { blob = await shrink(file, kind === 'logo' ? 600 : 512, kind === 'logo' ? 'image/png' : 'image/jpeg'); }
+      /* A photo is drawn in a circle up to ~150px, so 640px keeps it sharp on
+         a 3× phone screen and still well inside the server's 800px/400 KB. */
+      try { blob = await shrink(file, kind === 'logo' ? 600 : 640, kind === 'logo' ? 'image/png' : 'image/jpeg'); }
       catch { setM(kind, { error: 'That picture could not be read here — use a JPEG or PNG.' }); return false; }
+      if (kind === 'logo') {
+        const m = await measureLogo(blob).catch(() => null);
+        if (m) extra = { logoTone: logoToneOf(m), logoRatio: cleanRatio(m.ratio) };
+      }
     }
     const r = await uploadBookingMedia(kind, blob);
     if (!r.ok) { setM(kind, { error: r.error }); return false; }
     setM(kind, {});
-    updateSchedule({ [URL_KEY[kind]]: r.url } as Partial<typeof schedule>);
+    placeMedia(kind, r.url, extra);
     return true;
   };
   const upload = async (kind: BookingMediaKind, file: File | undefined) => { if (file) await uploadBlob(kind, file); };
   const remove = async (kind: BookingMediaKind) => {
     setM(kind, { busy: true });
-    updateSchedule({ [URL_KEY[kind]]: '' } as Partial<typeof schedule>);
+    placeMedia(kind, '', kind === 'logo' ? { logoTone: '', logoRatio: 0 } : {});
     const ok = signedIn ? await clearBookingMedia(kind) : true;
     setM(kind, ok ? {} : { error: 'Taken off the page, but the file could not be deleted just now.' });
   };
@@ -255,7 +306,20 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
 
   /* ── The page's colour ── */
   const brandColour = useMemo(() => cleanHex(loadOnboarding().profile?.brandColor), []);
-  const accent = cleanHex(schedule.accent) || DEFAULT_ACCENT;
+  const theme = themeOf(schedule.theme);
+  const accent = cleanHex(schedule.accent) || theme.accent;
+  /* A page with no theme yet: a new one starts in the owner's reference
+     look; one already made up keeps the look it had ('light'), so nothing a
+     visitor sees changes until the owner picks. */
+  useEffect(() => {
+    if (schedule.theme) return;
+    const fresh = isDefault(schedule.description, DEFAULT_DESCRIPTIONS) && !schedule.tagline?.trim() && !(schedule.points?.length || schedule.bullets?.length)
+      && !schedule.logoUrl && !schedule.photoUrl;
+    updateSchedule({ theme: fresh ? DEFAULT_THEME : LEGACY_THEME });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule.theme]);
+  const setQuote = (patch: Partial<NonNullable<ScheduleAvailability['testimonial']>>) =>
+    updateSchedule({ testimonial: { quote: '', name: '', role: '', photoUrl: '', ...(schedule.testimonial ?? {}), ...patch } });
   const swatches = useMemo(() => [...new Set([...(brandColour ? [brandColour] : []), ...ACCENT_SWATCHES])], [brandColour]);
 
   /* ── Filled in from the website ── */
@@ -367,8 +431,8 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
   const previewCfg = useMemo(() => ({ ...schedule, businessName: name }), [schedule, name]);
   const noBusy = useMemo(() => [], []);
 
-  const mediaBox = (kind: 'photo' | 'logo', label: string, hint: string) => {
-    const src = kind === 'photo' ? schedule.photoUrl : schedule.logoUrl;
+  const mediaBox = (kind: 'photo' | 'logo' | 'testimonial', label: string, hint: string) => {
+    const src = kind === 'photo' ? schedule.photoUrl : kind === 'logo' ? schedule.logoUrl : schedule.testimonial?.photoUrl;
     const st = media[kind];
     return (
       <div className="bks-drop" data-field={`booking.${kind}`}>
@@ -554,21 +618,86 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
           </div>
 
           <div className="bks-group">
-            <h4>Colour</h4>
-            <div className="bks-field" data-field="booking.accent">
-              <span className="bks-label">The page's colour <small className="bks-soft">— the header band, the chosen day and time</small></span>
-              <div className="bks-swatches" role="group" aria-label="Page colour">
-                {swatches.map(c => (
-                  <button key={c} type="button" className="bks-swatch" style={{ background: c }} aria-pressed={accent === c}
-                    aria-label={c === brandColour ? `Your brand colour ${c}` : `Colour ${c}`} title={c === brandColour ? 'Your brand colour' : c}
-                    onClick={() => updateSchedule({ accent: c })}>{accent === c && <Check size={13} color={c === '#ffffff' ? '#000' : '#fff'} />}</button>
+            <h4>Look</h4>
+            <div className="bks-field" data-field="booking.theme">
+              <span className="bks-label">Colour theme <small className="bks-soft">— the page's ground, cards, words and headings</small></span>
+              <div className="bks-themes" role="group" aria-label="Colour theme">
+                {BOOKING_THEMES.map(t => (
+                  <button key={t.id} type="button" className="bks-theme" aria-pressed={theme.id === t.id} aria-label={`${t.label} theme`}
+                    onClick={() => updateSchedule({ theme: t.id })}>
+                    <span className="bks-theme-pic" aria-hidden="true" style={{ background: t.glow ? `radial-gradient(60px 40px at 100% 0%, ${t.glow}55, transparent 70%), ${t.bg}` : t.bg }}>
+                      <span style={{ background: t.card, borderColor: t.line }}>
+                        <i style={{ background: t.band === 'solid' ? (cleanHex(schedule.accent) || t.accent) : t.text, opacity: t.band === 'solid' ? 1 : .85, fontFamily: t.serif ? SERIF_STACK : undefined }}>{t.band === 'solid' ? '' : 'Aa'}</i>
+                        <em style={{ background: t.line }} /><em style={{ background: t.line, width: '60%' }} />
+                      </span>
+                      <span style={{ background: t.card, borderColor: t.line }}>
+                        <b style={{ background: cleanHex(schedule.accent) || t.accent }} /><em style={{ background: t.line }} /><em style={{ background: t.line }} />
+                      </span>
+                    </span>
+                    <span className="bks-theme-words"><b>{t.label}</b><small>{t.hint}</small></span>
+                  </button>
                 ))}
-                <label className="bks-swatch bks-swatch-pick" title="Pick any colour" data-on={!swatches.includes(accent) ? '1' : undefined} style={!swatches.includes(accent) ? { background: accent } : undefined}>
-                  <input type="color" value={accent} aria-label="Pick any colour" onChange={e => updateSchedule({ accent: cleanHex(e.target.value) })} />
-                  {swatches.includes(accent) && <Plus size={13} />}
-                </label>
               </div>
             </div>
+            <div className="bks-field" data-field="booking.accent">
+              <span className="bks-label">Accent colour <small className="bks-soft">— the chosen day and time, ticks and icons</small></span>
+              <div className="bks-swatches" role="group" aria-label="Page colour">
+                <button type="button" className="bks-swatch bks-swatch-theme" style={{ background: theme.accent }} aria-pressed={!cleanHex(schedule.accent)}
+                  aria-label={`The theme's own colour ${theme.accent}`} title="The theme's own colour"
+                  onClick={() => updateSchedule({ accent: '' })}>{!cleanHex(schedule.accent) && <Check size={13} color={inkOn(theme.accent)} />}</button>
+                {swatches.map(c => (
+                  <button key={c} type="button" className="bks-swatch" style={{ background: c }} aria-pressed={cleanHex(schedule.accent) === c}
+                    aria-label={c === brandColour ? `Your brand colour ${c}` : `Colour ${c}`} title={c === brandColour ? 'Your brand colour' : c}
+                    onClick={() => updateSchedule({ accent: c })}>{cleanHex(schedule.accent) === c && <Check size={13} color={inkOn(c)} />}</button>
+                ))}
+                <label className="bks-swatch bks-swatch-pick" title="Pick any colour" data-on={cleanHex(schedule.accent) && !swatches.includes(accent) ? '1' : undefined}
+                  style={cleanHex(schedule.accent) && !swatches.includes(accent) ? { background: accent } : undefined}>
+                  <input type="color" value={accent} aria-label="Pick any colour" onChange={e => updateSchedule({ accent: cleanHex(e.target.value) })} />
+                  {!(cleanHex(schedule.accent) && !swatches.includes(accent)) && <Plus size={13} />}
+                </label>
+              </div>
+              <small className="bks-hint">The words on it are always set in black or white, whichever reads.</small>
+            </div>
+          </div>
+
+          <div className="bks-group">
+            <h4>A testimonial <small className="bks-soft" style={{ textTransform: 'none', letterSpacing: 0 }}>— optional</small></h4>
+            <small className="bks-hint">Only your own customer's words, as they said them — nothing is filled in for you, and the page shows none until you add one.</small>
+            <label className="bks-field">
+              <span>What they said</span>
+              <textarea className="bks-input" data-field="booking.testimonialQuote" rows={3} maxLength={400} value={schedule.testimonial?.quote ?? ''}
+                onChange={e => setQuote({ quote: e.target.value })} placeholder="Their words, exactly" />
+            </label>
+            <div className="bks-two">
+              <label className="bks-field">
+                <span>Their name</span>
+                <input className="bks-input" data-field="booking.testimonialName" maxLength={80} value={schedule.testimonial?.name ?? ''}
+                  onChange={e => setQuote({ name: e.target.value })} placeholder="Name" />
+              </label>
+              <label className="bks-field">
+                <span>Role or company</span>
+                <input className="bks-input" data-field="booking.testimonialRole" maxLength={80} value={schedule.testimonial?.role ?? ''}
+                  onChange={e => setQuote({ role: e.target.value })} placeholder="Optional" />
+              </label>
+            </div>
+            {mediaBox('testimonial', 'Their photo', 'Optional — with their permission.')}
+            {(schedule.testimonial?.quote?.trim() && !schedule.testimonial?.name?.trim()) && <small className="bks-warn"><AlertTriangle size={12} /> Add their name — a quote without one is not shown.</small>}
+            {(schedule.testimonial?.quote || schedule.testimonial?.name || schedule.testimonial?.photoUrl) && (
+              <button type="button" className="bks-btn" data-danger="" style={{ justifySelf: 'start' }}
+                onClick={() => { if (schedule.testimonial?.photoUrl) void remove('testimonial'); updateSchedule({ testimonial: null }); }}><Trash2 size={12} /> Remove the testimonial</button>
+            )}
+          </div>
+
+          <div className="bks-group">
+            <h4>Need help?</h4>
+            <label className="bks-field">
+              <span>Where "Need help?" goes <small className="bks-soft">— your email or a page on your website</small></span>
+              <input className="bks-input" data-field="booking.help" maxLength={300} value={schedule.help ?? ''} aria-invalid={!!schedule.help?.trim() && !helpLink(schedule.help)}
+                onChange={e => updateSchedule({ help: e.target.value })} placeholder="hello@yourbusiness.com" />
+              {schedule.help?.trim() && !helpLink(schedule.help)
+                ? <small className="bks-bad"><AlertTriangle size={12} /> Use an email address or an https:// page — otherwise no link is shown.</small>
+                : <small className="bks-hint">{schedule.help?.trim() ? 'Shown under the times.' : 'Leave empty and the page shows no help link.'}</small>}
+            </label>
           </div>
 
           <div className="bks-group">
@@ -680,7 +809,7 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
             {pub === 'live' && <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#5b46e5', display: 'inline-flex', gap: 4, alignItems: 'center' }}>Open the live page <ExternalLink size={11} /></a>}
           </div>
           <div className="bks-frame" ref={frameRef} data-view={view} style={{ height: fit.height || undefined }}>
-            <div ref={pageRef} className="bkp" data-preview="" data-noinvert=""
+            <div ref={pageRef} className="bkp" data-preview="" data-noinvert="" {...themeRoot(schedule)}
               style={{ ...accentStyle(schedule), width: view === 'desktop' ? DESKTOP_W : PHONE_W, transform: `translateX(${fit.left}px) scale(${fit.scale})`, transformOrigin: 'top left' }}>
               <BookingCard cfg={previewCfg} businessName={name} busy={noBusy} preview />
             </div>

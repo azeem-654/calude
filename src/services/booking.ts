@@ -9,7 +9,7 @@ import { API_BASE } from './apiBase';
 import { customerBusinessName, getActiveAccountId } from './tenancy';
 import { getSession } from './auth';
 import { withoutTwilio } from './legacyTwilio';
-import { cleanHex, pointsOf, type AutofillText } from './bookingContent';
+import { cleanHex, cleanTestimonial, pointsOf, type AutofillText } from './bookingContent';
 
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -77,6 +77,12 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       tagline: schedule.tagline ?? '',
       hostRole: schedule.hostRole ?? '',
       accent: cleanHex(schedule.accent),
+      theme: schedule.theme ?? '',
+      logoTone: schedule.logoTone ?? '',
+      logoRatio: schedule.logoRatio ?? 0,
+      help: schedule.help ?? '',
+      /* Only a whole one, as typed; the server checks it again. */
+      testimonial: cleanTestimonial(schedule.testimonial),
       eventTypes: schedule.eventTypes ?? [],
     },
     private: {
@@ -130,7 +136,7 @@ export async function autofillBookingPage(url: string, business: string): Promis
   return { ok: true, result: res as unknown as BookingAutofill };
 }
 
-export type BookingMediaKind = 'photo' | 'logo' | 'video';
+export type BookingMediaKind = 'photo' | 'logo' | 'video' | 'testimonial';
 
 /**
  * Owner: upload the page's photo, logo or clip as its raw bytes. The server
@@ -173,8 +179,9 @@ export async function clearBookingMedia(kind: BookingMediaKind): Promise<boolean
  * business entirely. Returns `notFound` so the page can say so rather than
  * showing somebody else's availability.
  */
+export interface BookingDelivery { confirms: boolean; meet: boolean }
 export async function fetchPublicConfig(slug?: string, accountId?: string): Promise<
-  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string } | { notFound: true } | null
+  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string; delivery?: BookingDelivery } | { notFound: true } | null
 > {
   /* By workspace only for a guest's manage link, which names its booking and
      so its workspace; a visitor arriving cold is found by slug. */
@@ -185,6 +192,7 @@ export async function fetchPublicConfig(slug?: string, accountId?: string): Prom
   return {
     config: res.config as Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] },
     accountId: res.accountId as string | undefined,
+    delivery: res.delivery && typeof res.delivery === 'object' ? res.delivery as BookingDelivery : undefined,
   };
 }
 

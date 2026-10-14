@@ -40,9 +40,10 @@ export const BOOKING_IMAGE_MAX_SIDE = 800;
    small enough that every visitor opening the page is not made to wait. */
 export const BOOKING_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
-type Kind = 'photo' | 'logo' | 'video';
-const KINDS: Kind[] = ['photo', 'logo', 'video'];
-const FIELD: Record<Kind, string> = { photo: 'booking.photo', logo: 'booking.logo', video: 'booking.video' };
+/* `testimonial`: the photo of the customer the owner quotes — a picture like the others. */
+type Kind = 'photo' | 'logo' | 'video' | 'testimonial';
+const KINDS: Kind[] = ['photo', 'logo', 'video', 'testimonial'];
+const FIELD: Record<Kind, string> = { photo: 'booking.photo', logo: 'booking.logo', video: 'booking.video', testimonial: 'booking.testimonialPhoto' };
 
 /** The public address of a file. Relative: the page that shows it is on this origin. */
 export const bookingMediaUrl = (key: string): string => `/api/booking-media.php?k=${key}`;
@@ -119,7 +120,7 @@ export async function handleBookingMedia(req: Request, env: Env): Promise<Respon
   /* ── Owner: upload, the raw file as the body ── */
   if (url.searchParams.get('action') === 'upload') {
     const kind = String(url.searchParams.get('kind') ?? '') as Kind;
-    if (!KINDS.includes(kind)) return fail('Upload a photo, a logo or a video.');
+    if (!KINDS.includes(kind)) return fail('Upload a photo, a logo, a testimonial photo or a video.');
     const field = FIELD[kind];
     const user = await userFromToken(env.DB, bearer(req, url));
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });

@@ -27,7 +27,8 @@ import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
 import { clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
 import { ownMediaUrl } from './bookingMedia';
 import {
-  autofillPrompt, cleanAutofill, cleanHex, cleanLines, clipText, pageFacts, plainFill, pointsOf, MAX_DISCUSS, MAX_TAGS,
+  autofillPrompt, cleanAutofill, cleanHex, cleanLines, cleanLogoTone, cleanRatio, cleanTestimonial, cleanTheme, clipText, helpLink,
+  pageFacts, plainFill, pointsOf, MAX_DISCUSS, MAX_TAGS,
   type AutofillText, type PhotoCandidate,
 } from '../lib/bookingContent';
 import { adoptSiteTestOrigin, fetchPage, readable } from '../lib/readSite';
@@ -270,6 +271,19 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     pub.tagline = clip(pub.tagline, 120);
     pub.hostRole = clip(pub.hostRole, 60);
     pub.accent = cleanHex(pub.accent);
+    /* The look: a theme the page knows ('' keeps the look pages had before
+       themes), and what the logo is like — measured in the owner's browser,
+       only ever choosing whether a plate goes behind it. */
+    pub.theme = cleanTheme(pub.theme);
+    pub.logoTone = cleanLogoTone(pub.logoTone);
+    pub.logoRatio = cleanRatio(pub.logoRatio);
+    /* "Need help?" is drawn only with somewhere real to go. */
+    pub.help = helpLink(pub.help) ? clip(pub.help, 300) : '';
+    /* A testimonial is the owner's own customer's words, typed by the owner:
+       kept only whole (a quote and a name), its photo only if it is this
+       workspace's own upload. */
+    const quote = cleanTestimonial(pub.testimonial);
+    pub.testimonial = quote ? { ...quote, photoUrl: await ownMediaUrl(env, accountId, 'testimonial', quote.photoUrl) } : null;
     pub.imageUrl = pictureUrl(pub.imageUrl);
     pub.photoUrl = await ownMediaUrl(env, accountId, 'photo', pub.photoUrl);
     pub.logoUrl = await ownMediaUrl(env, accountId, 'logo', pub.logoUrl);
@@ -466,7 +480,20 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     if (!row) {
       return json({ success: false, notFound: true, error: 'There is no booking page at that address.', message: 'There is no booking page at that address.' });
     }
-    return json({ success: true, accountId: row.account_id, config: JSON.parse(row.public || '{}') });
+    /* What the page may promise about after booking, read now rather than
+       stored: a confirmation email only if this workspace can send one and
+       has not switched it off, a Google Meet link only with a calendar
+       connected. The page words its last line from these. */
+    let confirms = false;
+    let meet = false;
+    try {
+      const priv = await env.DB.prepare('SELECT private FROM crm_booking_config WHERE account_id = ?').bind(row.account_id).first<{ private: string }>();
+      let auto: Record<string, unknown> = {};
+      try { auto = (JSON.parse(priv?.private || '{}') as { automations?: Record<string, unknown> }).automations ?? {}; } catch { /* defaults */ }
+      confirms = auto.confirmEmail !== false && canSend(await loadMailbox(env, row.account_id));
+      meet = !!(await env.DB.prepare("SELECT 1 AS n FROM crm_calendar_connections WHERE account_id = ? AND status = 'connected' LIMIT 1").bind(row.account_id).first());
+    } catch { /* unknown: promise nothing */ }
+    return json({ success: true, accountId: row.account_id, config: JSON.parse(row.public || '{}'), delivery: { confirms, meet } });
   }
 
   /* ── Visitor: which slots are already taken ── */

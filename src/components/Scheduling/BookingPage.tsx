@@ -20,10 +20,10 @@ import type { Booking, EventType, ScheduleAvailability } from '../../types';
 import {
   fetchPublicConfig, fetchBookedRange, createRemoteBooking,
   getRemoteBooking, cancelRemoteBooking, rescheduleRemoteBooking,
-  buildIcs, googleCalendarUrl,
+  buildIcs, googleCalendarUrl, type BookingDelivery,
 } from '../../services/booking';
 import { browserZone, clockLabel, dayWords, utcToWall, wallToUtc, zoneCity, type Busy, type Slot } from '../../services/bookingTime';
-import BookingCard, { accentStyle, type PageConfig } from './BookingCard';
+import BookingCard, { themeRoot, type PageConfig } from './BookingCard';
 import './bookingPage.css';
 
 type Step = 'event' | 'calendar' | 'confirmed' | 'manage' | 'cancelled';
@@ -66,6 +66,7 @@ export default function BookingPage() {
   const [pageAccount, setPageAccount] = useState('');
   const [emailed, setEmailed] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const [delivery, setDelivery] = useState<BookingDelivery | undefined>(undefined);
 
   /* Load the published config; fall back to this browser's local schedule.
 
@@ -79,6 +80,7 @@ export default function BookingPage() {
       if (!alive) return;
       if (res && 'notFound' in res) { setUnknownLink(true); return; }
       if (res?.accountId) setPageAccount(res.accountId);
+      if (res && 'delivery' in res) setDelivery(res.delivery);
       setRemoteCfg(res?.config ?? null);
     });
     if (m && m.includes('.')) {
@@ -126,7 +128,7 @@ export default function BookingPage() {
 
   if (unknownLink) {
     return (
-      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
+      <div className="bkp" {...rootAttrs} {...themeRoot(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             <div className="bkp-tick" data-bad=""><X size={28} /></div>
@@ -139,7 +141,7 @@ export default function BookingPage() {
   }
 
   if (remoteCfg === 'loading') {
-    return <div className="bkp" {...rootAttrs} style={accentStyle(cfg)} aria-busy="true"><p className="bkp-foot">Loading…</p></div>;
+    return <div className="bkp" {...rootAttrs} {...themeRoot(cfg)} aria-busy="true"><p className="bkp-foot">Loading…</p></div>;
   }
 
   const finalizeLocalRecords = (s: Slot, guest: { name: string; email: string; phone: string; notes: string }, zone: string) => {
@@ -228,7 +230,7 @@ export default function BookingPage() {
     const at = b ? instantOf(b) : null;
     const zone = browserZone();
     return (
-      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
+      <div className="bkp" {...rootAttrs} {...themeRoot(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             {!b ? (
@@ -267,7 +269,7 @@ export default function BookingPage() {
 
   if (step === 'cancelled') {
     return (
-      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
+      <div className="bkp" {...rootAttrs} {...themeRoot(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             <div className="bkp-tick" data-bad=""><X size={28} /></div>
@@ -290,7 +292,7 @@ export default function BookingPage() {
       setTimeout(() => URL.revokeObjectURL(url), 800);
     };
     return (
-      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
+      <div className="bkp" {...rootAttrs} {...themeRoot(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done">
             <div className="bkp-tick"><Check size={30} /></div>
@@ -320,7 +322,7 @@ export default function BookingPage() {
   /* ── Meeting types ── */
   if (step === 'event') {
     return (
-      <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
+      <div className="bkp" {...rootAttrs} {...themeRoot(cfg)}>
         <main className="bkp-card" data-narrow="">
           <div className="bkp-done" style={{ justifyItems: 'stretch', textAlign: 'left' }}>
             {cfg.logoUrl && <img className="bkp-logo" src={cfg.logoUrl} alt="" />}
@@ -342,9 +344,9 @@ export default function BookingPage() {
   }
 
   return (
-    <div className="bkp" {...rootAttrs} style={accentStyle(cfg)}>
+    <div className="bkp" {...rootAttrs} {...themeRoot(cfg)}>
       <BookingCard
-        cfg={cfg} businessName={businessName} eventType={eventType} busy={busy}
+        cfg={cfg} businessName={businessName} eventType={eventType} busy={busy} delivery={delivery}
         onRange={onRange}
         onBook={rescheduling ? undefined : onBook}
         onReschedule={rescheduling ? onReschedule : undefined}
