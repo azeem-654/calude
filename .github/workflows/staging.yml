@@ -173,6 +173,9 @@ jobs:
       - name: Test booking times across time zones
         run: npm run test:bookingtz
 
+      - name: Test booking page content and the website fill
+        run: npm run test:bookingfill
+
       # Video Studio's rules: what an edit keeps, captions through cuts,
       # cleanup that never cuts a number or a "not", distinct Shorts, real PNGs.
       - name: Test Video Studio's rules

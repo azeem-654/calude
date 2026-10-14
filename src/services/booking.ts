@@ -9,6 +9,7 @@ import { API_BASE } from './apiBase';
 import { customerBusinessName, getActiveAccountId } from './tenancy';
 import { getSession } from './auth';
 import { withoutTwilio } from './legacyTwilio';
+import { cleanHex, pointsOf, type AutofillText } from './bookingContent';
 
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -67,7 +68,15 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       hostName: schedule.hostName ?? '',
       /* Said on the page beside the photo when no host name is set. */
       businessName: customerBusinessName(),
-      bullets: (schedule.bullets ?? []).map(b => b.trim()).filter(Boolean),
+      /* Points with their icons; `bullets` (plain lines) is what pages
+         published before icons kept, and is still read as ticks. */
+      points: pointsOf(schedule.points, schedule.bullets),
+      pointsTitle: schedule.pointsTitle ?? '',
+      discuss: (schedule.discuss ?? []).map(b => b.trim()).filter(Boolean),
+      tags: (schedule.tags ?? []).map(b => b.trim()).filter(Boolean),
+      tagline: schedule.tagline ?? '',
+      hostRole: schedule.hostRole ?? '',
+      accent: cleanHex(schedule.accent),
       eventTypes: schedule.eventTypes ?? [],
     },
     private: {
@@ -98,6 +107,27 @@ export async function checkBookingSlug(token: string, slug: string): Promise<{ a
   const res = await call({ action: 'slug_check', token, accountId: getActiveAccountId() ?? '', slug });
   if (!res || !res.success) return null;
   return { available: res.available === true, reason: res.reason as string | undefined, yours: res.yours === true };
+}
+
+/** What reading the business's website proposed for the page. Nothing is saved by asking. */
+export interface BookingAutofill {
+  from: string;
+  ai: { used: boolean; why: string };
+  fill: Partial<AutofillText> & { videoUrl?: string };
+  logo: { dataUrl: string; from: string } | null;
+  photo: { dataUrl: string; from: string; what: string } | null;
+  notes: string[];
+}
+
+/**
+ * Owner: read their website for the booking page (worker/src/routes/booking.ts
+ * `autofill`). The refusal comes back with the box it is about.
+ */
+export async function autofillBookingPage(url: string, business: string): Promise<{ ok: true; result: BookingAutofill } | { ok: false; error: string; field?: string }> {
+  const res = await call({ action: 'autofill', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '', url, business });
+  if (!res) return { ok: false, error: 'The server could not be reached, so the website was not read.' };
+  if (!res.success) return { ok: false, error: String(res.error ?? 'The website could not be read.'), field: typeof res.field === 'string' ? res.field : undefined };
+  return { ok: true, result: res as unknown as BookingAutofill };
 }
 
 export type BookingMediaKind = 'photo' | 'logo' | 'video';

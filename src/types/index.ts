@@ -1,4 +1,5 @@
 import type { ContentSource } from './provenance';
+import type { BookingPoint } from '../../worker/src/lib/bookingContent';
 
 export interface Contact {
   id: string;
@@ -214,8 +215,25 @@ export interface ScheduleAvailability {
   videoFileUrl?: string;
   /** Whose diary this is, as the page says it ("Dr Amira Lee"); the business name when empty. */
   hostName?: string;
-  /** What the visitor gets from the meeting, one line each (at most eight). */
+  /**
+   * What the visitor gets from the meeting, one line each — the page before
+   * points had icons. Read as ticks (`pointsOf`); the editor now writes `points`.
+   */
   bullets?: string[];
+  /** The page's points: an icon from a fixed list, a bold line and a small line (at most eight). */
+  points?: BookingPoint[];
+  /** The heading over the points; "This call is for you if you want to:" when empty. */
+  pointsTitle?: string;
+  /** "What we can discuss" — short topics, ticked (at most eight). */
+  discuss?: string[];
+  /** Topic pills under the host (at most four). */
+  tags?: string[];
+  /** One line under the business's name in the header band. */
+  tagline?: string;
+  /** The host's role beside their name ("Founder"). */
+  hostRole?: string;
+  /** The page's colour, `#rrggbb`; a deep green when empty. */
+  accent?: string;
   /** Bookable meeting types; when present visitors pick one first. */
   eventTypes?: EventType[];
   automations?: SchedulingAutomations;

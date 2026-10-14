@@ -25,6 +25,28 @@
 const MAX_BYTES = 400_000;
 const MAX_HOPS = 3;
 
+/*
+ * Tests only: a `*.test` host is fetched from a local mock instead.
+ *
+ * `.test` is reserved (RFC 2606) — no public resolver answers it, so no real
+ * site can ever be redirected by this, and the fence above still checks the
+ * address as typed. The origin comes from the deployment (`SITE_TEST_ORIGIN`,
+ * a `wrangler dev --var`), never from a request. Unset, nothing changes.
+ */
+let TEST_ORIGIN = '';
+export function adoptSiteTestOrigin(env: { SITE_TEST_ORIGIN?: string }): void {
+  TEST_ORIGIN = String(env.SITE_TEST_ORIGIN ?? '').trim().replace(/\/+$/, '');
+}
+/** Where a checked address is actually asked for. */
+export function wireUrl(url: string): string {
+  if (!TEST_ORIGIN) return url;
+  try {
+    const u = new URL(url);
+    if (u.hostname.endsWith('.test')) return `${TEST_ORIGIN}${u.pathname}${u.search}`;
+  } catch { /* not an address: the caller's own check refuses it */ }
+  return url;
+}
+
 /** Refused before we ask for it. */
 export function urlProblem(raw: string): string {
   let u: URL;
@@ -129,7 +151,7 @@ export async function fetchPage(raw: string): Promise<SitePage> {
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
     let res: Response;
     try {
-      res = await fetch(url, {
+      res = await fetch(wireUrl(url), {
         /* Manual, so every hop is checked. Following automatically would let a
            public host redirect us somewhere the first check refused. */
         redirect: 'manual',

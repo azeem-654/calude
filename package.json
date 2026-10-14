@@ -56,6 +56,7 @@
     "test:sources": "npx --yes tsx test/prospectSources.test.mts",
     "test:bookingtz": "npx --yes tsx test/bookingTime.test.mts",
     "test:bookingpage": "node test/bookingPage.e2e.mjs",
+    "test:bookingfill": "npx --yes tsx test/bookingFill.test.mts",
     "test:sourcese2e": "node test/prospectSources.e2e.mjs",
     "test:isolation": "node test/isolation.e2e.mjs",
     "test:reeltour": "node test/reelTour.e2e.mjs",

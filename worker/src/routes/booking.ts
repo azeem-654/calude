@@ -26,6 +26,13 @@ import { loadMailbox } from './mailbox';
 import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
 import { clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
 import { ownMediaUrl } from './bookingMedia';
+import {
+  autofillPrompt, cleanAutofill, cleanHex, cleanLines, clipText, pageFacts, plainFill, pointsOf, MAX_DISCUSS, MAX_TAGS,
+  type AutofillText, type PhotoCandidate,
+} from '../lib/bookingContent';
+import { adoptSiteTestOrigin, fetchPage, readable } from '../lib/readSite';
+import { fetchImage, logoFromPage } from '../lib/brandLogo';
+import { aiBudget, askGeminiParts, loadAiKey, type AiPart } from '../lib/ai';
 
 interface BookingBody {
   action?: string;
@@ -48,7 +55,14 @@ interface BookingBody {
   eventTypeId?: string;
   from?: string;
   to?: string;
+  url?: string;
+  business?: string;
 }
+
+/* A photo fetched for the editor to shrink: larger than a logo, because a
+   site's pictures are full-size, but still read to a cap. */
+const PHOTO_FETCH_CAP = 3_000_000;
+const GEMINI_IMAGE = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/;
 
 const SLUG_OK = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -244,7 +258,18 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     pub.description = clip(pub.description, 1500);
     pub.hostName = clip(pub.hostName, 80);
     pub.businessName = clip(pub.businessName, 120);
-    pub.bullets = (Array.isArray(pub.bullets) ? pub.bullets : []).map(b => clip(b, 160)).filter(Boolean).slice(0, 8);
+    /* Points carry an icon from a fixed list; a page from an older editor
+       sends plain strings in `bullets`, which become ticks. `bullets` is kept
+       as the points' lines for anything that still reads it. */
+    const points = pointsOf(pub.points, pub.bullets);
+    pub.points = points;
+    pub.bullets = points.map(p => p.title);
+    pub.pointsTitle = clip(pub.pointsTitle, 80);
+    pub.discuss = cleanLines(pub.discuss, MAX_DISCUSS, 100);
+    pub.tags = cleanLines(pub.tags, MAX_TAGS, 28);
+    pub.tagline = clip(pub.tagline, 120);
+    pub.hostRole = clip(pub.hostRole, 60);
+    pub.accent = cleanHex(pub.accent);
     pub.imageUrl = pictureUrl(pub.imageUrl);
     pub.photoUrl = await ownMediaUrl(env, accountId, 'photo', pub.photoUrl);
     pub.logoUrl = await ownMediaUrl(env, accountId, 'logo', pub.logoUrl);
@@ -272,6 +297,108 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
                                              private = excluded.private, updated_at = excluded.updated_at`,
     ).bind(accountId, slug || null, JSON.stringify(pub), JSON.stringify(priv ?? {}), nowIso()).run();
     return ok({ slug });
+  }
+
+  /* ── Owner: fill the page in from the business's website ──
+     Read with the same fence as every other site read (lib/readSite.ts):
+     every hop checked, the body capped, no private addresses. What the site
+     states is read without AI (lib/bookingContent.ts `pageFacts`); the AI,
+     when there is one, proposes the words — and every field it returns is
+     checked before it leaves here. Nothing is saved: the editor shows it,
+     and the owner keeps or changes it. Pictures come back as data for the
+     editor to shrink and upload through /api/booking-media.php, where their
+     bytes are checked like any upload — so the page never shows an image
+     from somebody else's server. */
+  if (action === 'autofill') {
+    const user = await userFromToken(env.DB, d.token);
+    if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
+    const accountId = String(d.accountId ?? '').trim();
+    if (!accountId) return fail('A workspace is required.');
+    if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to change.', 403);
+    const limit = await rateLimit(env, { what: 'booking-fill', who: accountId, max: 20, windowSeconds: 3600 });
+    if (!limit.allowed) return fail('That is a lot of website reads in an hour — try again later, or fill the page in by hand.', 429, { field: 'booking.website' });
+
+    adoptSiteTestOrigin(env);
+    const raw = clip(d.url, 400);
+    const target = /^https?:\/\//i.test(raw) ? raw : raw ? `https://${raw}` : '';
+    if (!target) return fail('Give your website address first.', 200, { field: 'booking.website' });
+    const page = await fetchPage(target);
+    if (!page.ok) return fail(page.error, 200, { field: 'booking.website' });
+
+    const facts = pageFacts(page.html, page.url);
+    const { text } = readable(page.html);
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const notes: string[] = [];
+
+    /* The logo, as the wizard finds it. */
+    const logo = await logoFromPage(page.html, page.url).catch(() => null);
+    if (!logo?.ok) notes.push('No logo is marked on the site — upload yours.');
+
+    /* A photo: the first candidate that loads. One the site labels as a
+       person is used as it is; the link-preview picture only if the AI,
+       shown it, says it is a person. */
+    let photo: { dataUrl: string; from: string; why: string; marked: boolean } | null = null;
+    for (const c of facts.photos.slice(0, 3) as PhotoCandidate[]) {
+      const img = await fetchImage(c.url, PHOTO_FETCH_CAP).catch(() => null);
+      if (img?.ok && !/^data:image\/(svg|x-icon)/.test(img.dataUrl)) { photo = { dataUrl: img.dataUrl, from: img.url, why: c.why, marked: c.marked }; break; }
+    }
+
+    /* The AI's part. Each reason it was not used is said by name. */
+    let ai: { used: boolean; why: string } = { used: false, why: '' };
+    let fill: Partial<AutofillText> = {};
+    let photoIsPerson: boolean | null = null;
+    let photoWhat = '';
+    const business = clip(d.business, 120);
+    if (words < 40) {
+      ai.why = 'There are almost no words on that page (it is probably built in the browser), so there was nothing for the AI to read.';
+    } else {
+      const over = await aiBudget(env, accountId);
+      const key = over ? null : await loadAiKey(env, accountId);
+      if (over) ai.why = over;
+      else if (!key) ai.why = 'No AI is available on this install, so only what the site states directly was filled in.';
+      else {
+        const inline = photo ? GEMINI_IMAGE.exec(photo.dataUrl) : null;
+        const parts: AiPart[] = [{ text: autofillPrompt({ url: page.url, title: facts.title, siteName: facts.siteName, text: text.slice(0, 10_000), business, withPhoto: !!inline }) }];
+        if (inline) parts.push({ inlineData: { mimeType: inline[1], data: inline[2] } });
+        const r = await askGeminiParts(key, parts, 0.3, { timeoutMs: 30_000 });
+        let parsed: Record<string, unknown> | null = null;
+        if (r.ok) { try { parsed = JSON.parse(r.text) as Record<string, unknown>; } catch { parsed = null; } }
+        if (!parsed) ai.why = r.ok ? 'The AI answered with something that could not be used, so only what the site states directly was filled in.' : `The AI could not be reached (${clipText(r.error, 140)}), so only what the site states directly was filled in.`;
+        else {
+          ai = { used: true, why: '' };
+          fill = cleanAutofill(parsed, text);
+          if (inline) { photoIsPerson = parsed.photoIsPerson === true; photoWhat = clipText(String(parsed.photoWhat ?? '').replace(/[<>{}]/g, ''), 60); }
+        }
+      }
+    }
+    /* Without the AI: the site's own description, as it wrote it. */
+    const plain = plainFill(facts);
+    if (!fill.description && plain.description) fill.description = plain.description;
+    if (!fill.tagline && plain.tagline) fill.tagline = plain.tagline;
+
+    /* The photo decision. */
+    if (photo && photoIsPerson === false) {
+      notes.push(`The picture found (${photo.why}) does not show a person, so it was not used as your photo.`);
+      photo = null;
+    } else if (photo && !photo.marked && photoIsPerson !== true) {
+      notes.push(`The site has a preview picture, but nothing says it shows a person${ai.used ? '' : ' and the AI was not there to look'}, so it was not used as your photo.`);
+      photo = null;
+    } else if (!photo) {
+      notes.push('No photo of a person is marked on the site — upload one of yourself.');
+    }
+    const video = facts.videos[0] ?? '';
+    if (!video) notes.push('No YouTube, Vimeo or Loom video is on that page.');
+    if (!ai.used && !fill.description) notes.push('The site has no description tag to take a description from.');
+
+    return json({
+      success: true,
+      from: page.url,
+      ai,
+      fill: { ...fill, videoUrl: video },
+      logo: logo?.ok ? { dataUrl: logo.dataUrl, from: logo.url } : null,
+      photo: photo ? { dataUrl: photo.dataUrl, from: photo.from, what: photoIsPerson && photoWhat ? photoWhat : photo.why } : null,
+      notes,
+    });
   }
 
   /* ── Owner: is this address free? ──
