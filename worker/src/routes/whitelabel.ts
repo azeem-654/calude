@@ -32,6 +32,7 @@ import {
   checkCustomHostname, cnameTarget, createCustomHostname,
   deleteCustomHostname, saasCreds, saveSaasCreds,
 } from '../lib/cloudflareSaas';
+import { check as allowance, refusalBody } from '../lib/allowanceStore';
 
 interface Req {
   token?: string;
@@ -238,6 +239,11 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
     }
 
     if (RESERVED.has(hostname)) return fail('That address is reserved.');
+
+    /* Branded login addresses are a plan allowance (lib/allowances.ts): the
+       number a price card promises is the number this refuses at. */
+    const room = await allowance(env, accountId, 'login_addresses');
+    if (!room.ok) return fail(room.message, 402, refusalBody(room));
 
     const taken = await env.DB.prepare('SELECT account_id FROM crm_custom_domains WHERE hostname = ?')
       .bind(hostname).first<{ account_id: string }>();

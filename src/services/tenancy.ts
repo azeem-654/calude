@@ -11,9 +11,9 @@
  *
  * installTenantStorage() MUST run before any module reads storage (see main.tsx).
  */
-import { PLAN_DEFS, featureLines } from '../../worker/src/lib/allowances';
+import { PLAN_DEFS, SOLD_PLANS, featureLines } from '../../worker/src/lib/allowances';
 
-export type PlanId = 'starter' | 'growth' | 'pro' | 'agency' | 'custom';
+export type PlanId = 'starter' | 'growth' | 'pro' | 'custom' | 'agency';
 export type AccountStatus = 'active' | 'trial' | 'paused' | 'cancelled';
 
 export interface Plan {
@@ -38,7 +38,7 @@ export interface Plan {
  * a sub-account is itself an agency to the workspaces it opens, sets their
  * price, and puts its own name on them.
  */
-export const PLANS: Plan[] = PLAN_DEFS.map(p => ({
+const asPlan = (p: (typeof PLAN_DEFS)[number]): Plan => ({
   id: p.id,
   name: p.name,
   price: p.monthlyCents / 100,
@@ -46,8 +46,12 @@ export const PLANS: Plan[] = PLAN_DEFS.map(p => ({
   color: p.color,
   features: featureLines(p),
   limits: { resell: p.limits.sub_accounts },
-}));
-export function planById(id: PlanId): Plan { return PLANS.find(p => p.id === id) ?? PLANS[0]; }
+});
+/** The three plans checkout sells — what the trial bar and Plan & billing offer. */
+export const PLANS: Plan[] = SOLD_PLANS(PLAN_DEFS).map(asPlan);
+/* Every plan, Custom and the legacy one included, so a record naming one still finds it. */
+const EVERY_PLAN: Plan[] = PLAN_DEFS.map(asPlan);
+export function planById(id: PlanId): Plan { return EVERY_PLAN.find(p => p.id === id) ?? PLANS[0]; }
 
 export interface Branding {
   appName?: string;         // white-label product name shown in the nav/login

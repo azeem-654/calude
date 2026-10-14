@@ -9,12 +9,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
 import {
-  INCLUDED, LEGACY_CENTS, METERS, METER_IDS, OWNER_LIMITS, PLAN_DEFS, TRIAL_LIMITS, UNLIMITED, annualSaving, applyOverrides, cleanLimit,
-  effectivePlans, featureLines, fill, formatLimit, limitsFor, periodEnd, periodOf, planByAmount, refusalText, soldAt, upgradeFor, verdict, meterOf,
+  CARD_PLANS, CUSTOM_OFFER, INCLUDED, LEGACY_CENTS, METERS, METER_IDS, OWNER_LIMITS, PLAN_DEFS, SOLD_PLANS, TRIAL_LIMITS, UNLIMITED, annualSaving,
+  applyOverrides, cleanLimit, comparison, effectivePlans, featureLines, fill, formatLimit, limitsFor, periodEnd, periodOf, planByAmount, planDef,
+  refusalText, soldAt, upgradeFor, verdict, meterOf,
 } from '../worker/src/lib/allowances';
 import { check, counted, readAll, record, roomFor, standingOf, take } from '../worker/src/lib/allowanceStore';
 import { handleAllowances } from '../worker/src/routes/allowances';
-import { PLAN_RESELL } from '../worker/src/lib/db';
+import { PLAN_RESELL, sessionKey } from '../worker/src/lib/db';
 
 let pass = 0, fail = 0;
 const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else fail++; console.log(`${c ? '  ✓' : '  ✗'} ${n}${c ? '' : ` — ${JSON.stringify(d).slice(0, 400)}`}`); };
@@ -22,21 +23,27 @@ const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else fai
 /* ── The rules ── */
 console.log('Rules');
 ok('every plan names every meter', PLAN_DEFS.every(p => METER_IDS.every(id => typeof p.limits[id] === 'number')) && METER_IDS.every(id => typeof TRIAL_LIMITS[id] === 'number'));
-ok('plans are in ascending price', PLAN_DEFS.every((p, i) => i === 0 || p.monthlyCents > PLAN_DEFS[i - 1].monthlyCents));
-ok('no plan allows less than the one below it', PLAN_DEFS.every((p, i) => i === 0 || METER_IDS.every(id => p.limits[id] < 0 || (PLAN_DEFS[i - 1].limits[id] >= 0 && p.limits[id] >= PLAN_DEFS[i - 1].limits[id]))));
+const SOLD = SOLD_PLANS(), CARDS = CARD_PLANS();
+ok('exactly three priced plans, then Custom', SOLD.map(p => p.id).join() === 'starter,growth,pro' && CARDS.map(p => p.id).join() === 'starter,growth,pro,custom');
+ok('Custom has no price; the legacy plan is on no card', planDef('custom')!.monthlyCents === 0 && !CARDS.some(p => p.kind === 'legacy'));
+ok('plans are in ascending price', SOLD.every((p, i) => i === 0 || p.monthlyCents > SOLD[i - 1].monthlyCents));
+ok('no plan allows less than the one below it (Custom last)', CARDS.every((p, i) => i === 0 || METER_IDS.every(id => p.limits[id] < 0 || (CARDS[i - 1].limits[id] >= 0 && p.limits[id] >= CARDS[i - 1].limits[id]))));
+ok('a legacy Agency subscriber keeps unlimited projects and sub-accounts', limitsFor('plan', 'agency').autopilot_projects === UNLIMITED && limitsFor('plan', 'agency').sub_accounts === UNLIMITED && limitsFor('plan', 'agency').ai_shorts === 1000);
 ok('the trial allows no more than Starter, except where it is equal', METER_IDS.every(id => TRIAL_LIMITS[id] <= PLAN_DEFS[0].limits[id]));
-ok('yearly is ten months (two free)', PLAN_DEFS.every(p => p.annualCents === p.monthlyCents * 10 && annualSaving(p) === p.monthlyCents * 2));
-ok('every price is distinct, so an amount names one plan', new Set(PLAN_DEFS.flatMap(p => [p.monthlyCents, p.annualCents])).size === PLAN_DEFS.length * 2);
+ok('yearly is ten months (two free)', SOLD.every(p => p.annualCents === p.monthlyCents * 10 && annualSaving(p) === p.monthlyCents * 2));
+ok('every price is distinct, so an amount names one plan', new Set(SOLD.flatMap(p => [p.monthlyCents, p.annualCents])).size === SOLD.length * 2);
 ok('the owner is unlimited on every meter', METER_IDS.every(id => OWNER_LIMITS[id] === UNLIMITED) && limitsFor('owner', 'starter') === OWNER_LIMITS);
 ok('a trial — running or ended — gets the trial numbers', limitsFor('trial', 'agency').ai_shorts === TRIAL_LIMITS.ai_shorts && limitsFor('ended', 'pro').autopilot_projects === TRIAL_LIMITS.autopilot_projects);
 ok('a plan gets its own numbers', limitsFor('plan', 'growth').ai_shorts === 100 && limitsFor('plan', 'agency').autopilot_projects === UNLIMITED);
-ok('an unknown plan is held to Starter', limitsFor('plan', 'custom').ai_shorts === PLAN_DEFS[0].limits.ai_shorts);
+ok('an unknown plan is held to Starter', limitsFor('plan', 'mystery').ai_shorts === PLAN_DEFS[0].limits.ai_shorts);
+ok('a customer given Custom gets Custom\'s numbers', limitsFor('plan', 'custom').ai_shorts === planDef('custom')!.limits.ai_shorts);
 ok('an owner change wins, a bad one is ignored', limitsFor('plan', 'starter', { starter: { ai_shorts: 45, social_posts: -7 as never } }).ai_shorts === 45 && limitsFor('plan', 'starter', { starter: { social_posts: -7 } }).social_posts === 60);
 ok('limits are whole numbers from 0, or -1', cleanLimit('12') === 12 && cleanLimit(-1) === -1 && cleanLimit(-2) === null && cleanLimit(1.5) === null && cleanLimit('') === null && cleanLimit(true) === null);
 ok('verdict: room, none, unlimited', verdict(29, 30).ok && !verdict(30, 30).ok && verdict(30, 30).left === 0 && !verdict(25, 30, 6).ok && verdict(1e9, UNLIMITED).ok);
 ok('fill: a bar, and none for unlimited', fill({ used: 15, limit: 30 }) === 0.5 && fill({ used: 99, limit: UNLIMITED }) === 0 && fill({ used: 40, limit: 30 }) === 1);
 ok('the plan that raises Shorts above Starter is Growth', upgradeFor('ai_shorts', { kind: 'plan', planId: 'starter' })?.id === 'growth');
 ok('from the trial, the first plan', upgradeFor('autopilot_projects', { kind: 'trial', planId: 'starter' })?.id === 'starter');
+ok('above Pro, Custom raises it', upgradeFor('ai_shorts', { kind: 'plan', planId: 'pro' })?.id === 'custom' && upgradeFor('login_addresses', { kind: 'plan', planId: 'pro' })?.id === 'custom');
 ok('nothing raises an unlimited meter', upgradeFor('autopilot_projects', { kind: 'plan', planId: 'agency' }) === null && upgradeFor('ai_shorts', { kind: 'owner', planId: '' }) === null);
 ok('formatLimit says Unlimited', formatLimit(UNLIMITED) === 'Unlimited' && formatLimit(1500) === '1,500' && formatLimit(300, meterOf('video_minutes')) === '300 min');
 
@@ -57,21 +64,31 @@ ok('a workflow refusal is about the one project', /This project already has 6 of
 /* ── One table: the site, Plan & billing and the server ── */
 console.log('One table');
 const n = (v: number) => v < 0 ? 'Unlimited' : v.toLocaleString('en-US');
-ok('price cards are generated from the limits', PLAN_DEFS.every(p => {
+ok('price cards are generated from the limits', SOLD.every(p => {
   const lines = featureLines(p).join(' | ');
-  return (['ai_shorts', 'long_videos', 'social_posts', 'blog_articles', 'ai_emails', 'prospects_found', 'ai_requests', 'autopilot_projects', 'workflows_per_project', 'sub_accounts'] as const)
+  return (['ai_shorts', 'long_videos', 'social_posts', 'blog_articles', 'ai_emails', 'prospects_found', 'ai_requests', 'autopilot_projects', 'workflows_per_project', 'sub_accounts', 'login_addresses'] as const)
     .every(id => lines.includes(n(p.limits[id])));
-}), PLAN_DEFS.map(p => featureLines(p)));
+}), SOLD.map(p => featureLines(p)));
+ok('every card says white-label', SOLD.every(p => featureLines(p).some(l => /^White-label/.test(l))) && INCLUDED.some(l => /White-label/.test(l)));
+ok('Custom\'s card offers what is agreed, not a price', CUSTOM_OFFER.length >= 4);
+const groups = comparison();
+const rows = groups.flatMap(g => g.rows);
+ok('the comparison carries every meter, for every card', METERS.every(m => rows.some(r => r.label === m.label || r.note === m.counted)) && rows.every(r => CARDS.every(p => p.id in r.values)));
+ok('…with each plan\'s own number', SOLD.every(p => rows.find(r => r.note === meterOf('ai_shorts')!.counted)!.values[p.id] === `${n(p.limits.ai_shorts)} / mo`));
+ok('…white-label and reselling as rows of their own', groups.some(g => g.name === 'White-label and reselling' && g.rows.length >= 5));
+ok('…and Custom as agreed, never an invented number', rows.find(r => r.note === meterOf('ai_shorts')!.counted)!.values.custom === 'Set to fit');
 ok('…and change when the owner changes a number', featureLines(effectivePlans({ growth: { ai_shorts: 123 } })[1]).some(l => l.includes('123 AI Shorts')));
 ok('the server\'s sub-account table is the plan table', PLAN_DEFS.every(p => PLAN_RESELL[p.id] === p.limits.sub_accounts));
 ok('an amount names its plan and period', planByAmount(4900)?.id === 'starter' && planByAmount(197000)?.interval === 'year' && planByAmount(14900) === null);
-ok('the old prices still belong to the plans that charged them', soldAt('pro', 9700) && soldAt('agency', 14900) && !soldAt('starter', 9700) && (LEGACY_CENTS.pro ?? []).includes(9700));
-const site = readFileSync(new URL('../src/components/Site/PricingSection.tsx', import.meta.url), 'utf8');
+ok('Agency is no longer sold by amount', planByAmount(29700) === null && planByAmount(297000) === null);
+ok('the old prices still belong to the plans that charged them', soldAt('pro', 9700) && soldAt('agency', 14900) && soldAt('agency', 29700) && soldAt('agency', 297000) && !soldAt('starter', 9700) && (LEGACY_CENTS.pro ?? []).includes(9700));
+ok('Custom is never matched to an amount', !soldAt('custom', 0) && planByAmount(0) === null);
+const site = readFileSync(new URL('../src/components/Site/PricingParts.tsx', import.meta.url), 'utf8');
 const billing = readFileSync(new URL('../src/components/Billing/ClientBilling.tsx', import.meta.url), 'utf8');
 const tenancy = readFileSync(new URL('../src/services/tenancy.ts', import.meta.url), 'utf8');
-ok('the site draws its cards from the table and the server', /featureLines\(p\)/.test(site) && /fetchPlans\(\)/.test(site) && !/\$\d{2,}/.test(site.replace(/\$\{/g, '')));
-ok('Plan & billing too', /featureLines\(p\)/.test(billing) && /fetchPlans\(\)/.test(billing) && !/PLANS\b/.test(billing.replace(/PLAN_DEFS/g, '')));
-ok('the app\'s plan list is derived, not written out again', /PLAN_DEFS\.map/.test(tenancy) && !/price: [1-9]\d*/.test(tenancy));
+ok('the site draws its cards and comparison from the table and the server', /featureLines\(p\)/.test(site) && /comparison\(plans\)/.test(site) && /fetchPlans\(\)/.test(site) && !/\$\d{2,}/.test(site.replace(/\$\{/g, '')));
+ok('Plan & billing too, selling the three', /featureLines\(p\)/.test(billing) && /fetchPlans\(\)/.test(billing) && /SOLD_PLANS\(table\.plans\)/.test(billing));
+ok('the app\'s plan list is derived, not written out again', /SOLD_PLANS\(PLAN_DEFS\)/.test(tenancy) && !/price: [1-9]\d*/.test(tenancy));
 ok('what every plan includes is said once', INCLUDED.length >= 4 && !PLAN_DEFS.some(p => 'extras' in p));
 ok('every meter says where it is counted', METERS.every(m => m.counted.length > 20));
 
@@ -154,6 +171,33 @@ const changed = await post({ action: 'plans' });
 ok('an owner\'s change reaches the public table', changed.plans.find((p: { id: string }) => p.id === 'growth').limits.ai_shorts === 150 && changed.changed.includes('growth'));
 ok('…and the limits the server holds', (await standingOf(env, 'acct-paid')).limits.ai_shorts === 150);
 ok('applyOverrides keeps the rest', applyOverrides(PLAN_DEFS[1].limits, { ai_shorts: 150 }).social_posts === PLAN_DEFS[1].limits.social_posts);
+
+
+/* The owner gives a customer Custom; a customer cannot. */
+user('custom@pc.test', 'acct-custom', later); ws('acct-custom', 'custom@pc.test');
+const ownerTok = 'owner-test-token', custTok = 'cust-test-token';
+const exp = Math.floor(Date.now() / 1000) + 3600;
+sql.prepare('INSERT INTO crm_sessions (token, email, expires_at, created_at) VALUES (?, ?, ?, ?)').run(await sessionKey(ownerTok), 'owner@pc.test', exp, now);
+sql.prepare('INSERT INTO crm_sessions (token, email, expires_at, created_at) VALUES (?, ?, ?, ?)').run(await sessionKey(custTok), 'trial@pc.test', exp, now);
+ok('a customer cannot give a plan', (await post({ action: 'grant_plan', token: custTok, email: 'custom@pc.test', planId: 'custom' })).code === 'not_owner');
+ok('…nor give one to a stranger', (await post({ action: 'grant_plan', token: ownerTok, email: 'nobody@pc.test', planId: 'custom' })).field === 'grant.email');
+const given = await post({ action: 'grant_plan', token: ownerTok, email: 'custom@pc.test', planId: 'custom' });
+const cs = await standingOf(env, 'acct-custom');
+ok('the owner gives Custom, and its numbers hold', given.success && cs.kind === 'plan' && cs.planId === 'custom' && cs.limits.autopilot_projects === UNLIMITED, [given, cs.kind, cs.planId]);
+ok('…a given plan is not a trial', cs.trial?.kind === 'paid');
+ok('…and is listed', (await post({ action: 'grants', token: ownerTok })).grants.some((g: { email: string; planId: string }) => g.email === 'custom@pc.test' && g.planId === 'custom'));
+ok('…and removed by hand', (await post({ action: 'grant_plan', token: ownerTok, email: 'custom@pc.test', planId: '' })).success && (await standingOf(env, 'acct-custom')).kind === 'trial');
+
+/* The Custom form. */
+const bad = await post({ action: 'enquire', name: 'Kim', email: 'not an address', message: 'We run forty clinics' });
+ok('an enquiry without a reply address is refused by its box', bad.field === 'enquiry.email', bad);
+const okq = await post({ action: 'enquire', name: 'Kim Lee', email: 'kim@clinics.test', company: 'Clinics Co', needs: ['limits', 'setup', 'nonsense'], message: 'We run forty clinics and want each as a sub-account.' });
+const stored = sql.prepare("SELECT * FROM crm_enquiries WHERE email = 'kim@clinics.test'").all() as { needs: string; emailed: string }[];
+ok('an enquiry is stored for the owner, with only known needs', okq.success && stored.length === 1 && stored[0].needs === '["limits","setup"]', [okq, stored]);
+ok('…and says it was not emailed when no mailbox can send', stored[0].emailed === 'skipped' || stored[0].emailed === 'failed', stored[0]);
+const bot = await post({ action: 'enquire', name: 'Bot', email: 'bot@x.test', message: 'buy cheap things now', url: 'http://spam.test' });
+ok('a filled honeypot is thanked and stores nothing', bot.success && (sql.prepare("SELECT COUNT(*) AS n FROM crm_enquiries WHERE email = 'bot@x.test'").get() as { n: number }).n === 0);
+ok('only the owner reads enquiries', (await post({ action: 'enquiries', token: custTok })).code === 'not_owner' && (await post({ action: 'enquiries', token: ownerTok })).enquiries.length === 1);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

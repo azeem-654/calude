@@ -15,7 +15,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Loader, SlidersHorizontal } from 'lucide-react';
 import {
-  METERS, PLAN_DEFS, TRIAL_LIMITS, dollars, fetchPlans, saveLimits, type Limits, type MeterId, type PlanTable,
+  METERS, PLAN_DEFS, TRIAL_LIMITS, dollars, fetchEnquiries, fetchGrants, fetchPlans, grantPlan, markEnquiryDone, saveLimits,
+  type Enquiry, type Grant, type Limits, type MeterId, type PlanTable,
 } from '../../services/allowances';
 
 const INK = '#17191c';
@@ -36,7 +37,8 @@ export default function PlanLimits() {
   const cols: Col[] = useMemo(() => table ? [
     { id: 'trial', name: 'Free trial', price: '7 days', base: TRIAL_LIMITS, now: table.trial.limits },
     ...table.plans.map(p => ({
-      id: p.id, name: p.name, price: `$${dollars(p.monthlyCents)}/mo`,
+      id: p.id, name: p.kind === 'legacy' ? `${p.name} (no longer sold)` : p.name,
+      price: p.kind === 'custom' ? 'given by hand' : `$${dollars(p.monthlyCents)}/mo`,
       base: PLAN_DEFS.find(d => d.id === p.id)!.limits, now: p.limits,
     })),
   ] : [], [table]);
@@ -117,8 +119,96 @@ export default function PlanLimits() {
             Sub-accounts are fixed on a customer’s plan when they pay, so a change there reaches new purchases. Everything
             else applies to everybody on the plan at once. You are never limited.
           </p>
+          <Grants plans={table.plans.map(p => ({ id: p.id, name: p.name }))} />
+          <Enquiries />
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Give a customer a plan by hand — how a Custom plan is given, or a plan
+ * agreed outside checkout. A plan the processor set is the processor's; this
+ * removes only what was given here.
+ */
+function Grants({ plans }: { plans: { id: string; name: string }[] }) {
+  const [list, setList] = useState<Grant[] | null>(null);
+  const [email, setEmail] = useState('');
+  const [plan, setPlan] = useState('custom');
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = () => { void fetchGrants().then(setList); };
+  useEffect(load, []);
+
+  async function grant(to: string, planId: string) {
+    setNote(null);
+    const r = await grantPlan(to, planId);
+    if (!r.success) { setNote({ ok: false, text: r.error || 'Could not do that.' }); return; }
+    setNote({ ok: true, text: planId ? `${to} is on ${plans.find(p => p.id === planId)?.name ?? planId}.` : `${to}’s hand-given plan was removed.` });
+    setEmail(''); load();
+  }
+
+  return (
+    <div style={{ marginTop: 22, borderTop: `1px solid ${LINE}`, paddingTop: 16 }} data-grants>
+      <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: INK }}>Give a customer a plan</h3>
+      <p style={{ margin: '4px 0 10px', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+        How a Custom plan is given (its numbers are the Custom column above), or any plan agreed outside checkout.
+        A plan given here is never changed by a payment or a cancellation; remove it here.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input data-field="grant.email" aria-label="Customer email" placeholder="customer@example.com" value={email} onChange={e => setEmail(e.target.value)}
+          style={{ flex: '1 1 220px', minWidth: 0, padding: '7px 10px', border: `1px solid ${LINE}`, borderRadius: 8, fontSize: 13 }} />
+        <select data-field="grant.plan" aria-label="Plan" value={plan} onChange={e => setPlan(e.target.value)} style={{ padding: '7px 10px', border: `1px solid ${LINE}`, borderRadius: 8, fontSize: 13 }}>
+          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <button type="button" disabled={!email.trim()} onClick={() => void grant(email.trim(), plan)}
+          style={{ border: 'none', borderRadius: 999, padding: '7px 14px', background: INK, color: '#c8f24d', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Give plan</button>
+      </div>
+      {note && <p role={note.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, margin: '8px 0 0', color: note.ok ? '#065f46' : '#991b1b' }}>{note.text}</p>}
+      {list && list.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '10px 0 0', display: 'grid', gap: 6, fontSize: 12.5 }}>
+          {list.map(g => (
+            <li key={g.email} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b style={{ color: INK }}>{g.email}</b> <span style={{ color: MUTED }}>{plans.find(p => p.id === g.planId)?.name ?? g.planId}</span>
+              <button type="button" onClick={() => void grant(g.email, '')} style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 999, padding: '2px 10px', fontSize: 12, cursor: 'pointer' }}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** What visitors asked for on the public pricing page's Custom form. */
+function Enquiries() {
+  const [list, setList] = useState<Enquiry[] | null | undefined>(undefined);
+  useEffect(() => { void fetchEnquiries().then(setList); }, []);
+  const open = (list ?? []).filter(e => !e.handledAt);
+  return (
+    <div style={{ marginTop: 22, borderTop: `1px solid ${LINE}`, paddingTop: 16 }} data-enquiries>
+      <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: INK }}>Custom plan enquiries {list ? <span style={{ color: MUTED, fontWeight: 600 }}>· {open.length} open</span> : null}</h3>
+      <p style={{ margin: '4px 0 10px', fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+        From the Custom form on the pricing page. Each is also emailed to you when your install mailbox can send.
+      </p>
+      {list === null && <p style={{ fontSize: 12.5, color: MUTED }}>Could not read them just now.</p>}
+      {list && !list.length && <p style={{ fontSize: 12.5, color: MUTED }}>None yet.</p>}
+      <div style={{ display: 'grid', gap: 8 }}>
+        {(list ?? []).slice(0, 30).map(e => (
+          <div key={e.id} data-enquiry-row style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: '10px 12px', opacity: e.handledAt ? 0.55 : 1, fontSize: 13 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <b style={{ color: INK }}>{e.name}</b>{e.company && <span style={{ color: MUTED }}>{e.company}</span>}
+              <a href={`mailto:${e.email}?subject=${encodeURIComponent('Your Custom plan enquiry')}`} style={{ color: INK }}>{e.email}</a>
+              <span style={{ color: MUTED, fontSize: 12 }}>{new Date(e.createdAt).toLocaleString()}</span>
+            </div>
+            {e.needs.length > 0 && <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>{e.needs.join(' · ')}</div>}
+            <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', color: '#3f4247', lineHeight: 1.5, overflowWrap: 'anywhere' }}>{e.message}</p>
+            {!e.handledAt && (
+              <button type="button" onClick={() => void markEnquiryDone(e.id).then(() => fetchEnquiries().then(setList))}
+                style={{ marginTop: 6, border: `1px solid ${LINE}`, background: '#fff', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer' }}>Mark handled</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

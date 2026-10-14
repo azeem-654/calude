@@ -44,7 +44,8 @@ export type MeterId =
   | 'autopilot_projects' | 'workflows_per_project' | 'sub_accounts'
   | 'ai_requests' | 'social_posts' | 'blog_articles' | 'ai_emails'
   | 'prospects_found'
-  | 'long_videos' | 'ai_shorts' | 'video_minutes' | 'render_minutes' | 'video_storage_gb';
+  | 'long_videos' | 'ai_shorts' | 'video_minutes' | 'render_minutes' | 'video_storage_gb'
+  | 'login_addresses';
 
 export type MeterKind = 'count' | 'monthly' | 'standing';
 
@@ -89,6 +90,8 @@ export const METERS: Meter[] = [
     counted: 'The length of every video rendered, re-renders included.' },
   { id: 'video_storage_gb', label: 'Video storage', one: 'GB', kind: 'standing', group: 'Video', unit: 'GB',
     counted: 'Recordings and rendered files kept. Deleting a project frees it.' },
+  { id: 'login_addresses', label: 'Branded login addresses', one: 'login address', kind: 'count', group: 'Workspace',
+    counted: 'Addresses your clients sign in at under your brand — a free subdomain or your own domain. Removing one frees its place.' },
 ];
 
 export const meterOf = (id: string): Meter | undefined => METERS.find(m => m.id === id);
@@ -96,14 +99,32 @@ export const METER_IDS = METERS.map(m => m.id);
 
 export type Limits = Record<MeterId, number>;
 
-export type PlanKey = 'starter' | 'growth' | 'pro' | 'agency';
-export const PLAN_KEYS: PlanKey[] = ['starter', 'growth', 'pro', 'agency'];
+/*
+ * ── The packages ──
+ *
+ * Three priced, self-serve plans and Custom, which has no price: it is agreed
+ * with the customer, and the install owner gives it to them by hand (Sign-ups
+ * & trials → Plans & allowances → Give a customer a plan). docs/PRICING.md has
+ * the market comparison and the cost per unit these were set against.
+ *
+ * Plan ids are the ones `crm_plans` already holds. `agency` is no longer sold
+ * — it was "Network" ($149), then briefly "Agency" ($297) — and is kept, with
+ * the allowance its subscribers bought, as a legacy plan: never on a card,
+ * never at checkout, still enforced and still renewed (LEGACY_CENTS).
+ */
+export type PlanKey = 'starter' | 'growth' | 'pro' | 'custom' | 'agency';
+export const PLAN_KEYS: PlanKey[] = ['starter', 'growth', 'pro', 'custom', 'agency'];
+
+/** `self` is bought at checkout; `custom` is agreed and given by hand; `legacy` is kept for who has it. */
+export type PlanKind = 'self' | 'custom' | 'legacy';
 
 export interface PlanDef {
   id: PlanKey;
   name: string;
+  kind: PlanKind;
   /** Who it is for, one line. */
   tagline: string;
+  /** 0 for Custom: there is no list price. */
   monthlyCents: number;
   /** Billed once a year — ten months' price, two free. */
   annualCents: number;
@@ -111,63 +132,85 @@ export interface PlanDef {
   featured?: boolean;
   color: string;
   limits: Limits;
+  /** How we help on this plan — service, not software, and said as such. */
+  support: string;
 }
 
-/*
- * The packages. docs/PRICING.md has the market comparison and the cost per
- * unit these were set against; change them together.
- *
- * Plan ids are the ones `crm_plans` already holds. `pro` and `agency` were
- * once sold as "Agency" ($97) and "Network" ($149) — LEGACY_CENTS below keeps
- * those subscribers on the plan they bought when a renewal arrives at the old
- * price.
- */
 export const PLAN_DEFS: PlanDef[] = [
   {
-    id: 'starter', name: 'Starter', color: '#3e63dd',
+    id: 'starter', name: 'Starter', kind: 'self', color: '#3e63dd',
     tagline: 'One business putting its marketing on autopilot.',
     monthlyCents: 4_900, annualCents: 49_000,
+    support: 'In-app help: chat, tickets and screen sharing',
     limits: {
       autopilot_projects: 3, workflows_per_project: 6, sub_accounts: 2,
       ai_requests: 1_500, social_posts: 60, blog_articles: 8, ai_emails: 300,
       prospects_found: 500,
       long_videos: 5, ai_shorts: 30, video_minutes: 300, render_minutes: 400, video_storage_gb: 25,
+      login_addresses: 1,
     },
   },
   {
-    id: 'growth', name: 'Growth', color: '#8b5cf6', featured: true,
+    id: 'growth', name: 'Growth', kind: 'self', color: '#8b5cf6', featured: true,
     tagline: 'A growing business, or a freelancer with a few clients.',
     monthlyCents: 9_700, annualCents: 97_000,
+    support: 'In-app help: chat, tickets and screen sharing',
     limits: {
       autopilot_projects: 10, workflows_per_project: 12, sub_accounts: 5,
       ai_requests: 5_000, social_posts: 200, blog_articles: 30, ai_emails: 1_500,
       prospects_found: 2_000,
       long_videos: 15, ai_shorts: 100, video_minutes: 900, render_minutes: 1_200, video_storage_gb: 100,
+      login_addresses: 5,
     },
   },
   {
-    id: 'pro', name: 'Pro', color: '#0f766e',
-    tagline: 'An agency running AI marketing for its clients.',
+    id: 'pro', name: 'Pro', kind: 'self', color: '#0f766e',
+    tagline: 'An agency running AI marketing for its clients, under its own brand.',
     monthlyCents: 19_700, annualCents: 197_000,
+    support: 'In-app help, answered first',
     limits: {
-      autopilot_projects: 30, workflows_per_project: 25, sub_accounts: 15,
-      ai_requests: 15_000, social_posts: 600, blog_articles: 100, ai_emails: 5_000,
-      prospects_found: 6_000,
-      long_videos: 40, ai_shorts: 300, video_minutes: 2_400, render_minutes: 3_000, video_storage_gb: 250,
+      autopilot_projects: 40, workflows_per_project: 25, sub_accounts: 25,
+      ai_requests: 20_000, social_posts: 800, blog_articles: 120, ai_emails: 6_000,
+      prospects_found: 8_000,
+      long_videos: 50, ai_shorts: 400, video_minutes: 3_000, render_minutes: 4_000, video_storage_gb: 300,
+      login_addresses: 25,
     },
   },
   {
-    id: 'agency', name: 'Agency', color: '#17191c',
-    tagline: 'A network of clients, without counting workspaces.',
-    monthlyCents: 29_700, annualCents: 297_000,
+    /* The numbers are where a Custom plan starts; the owner changes them on
+       Plans & allowances. Never sold at checkout. */
+    id: 'custom', name: 'Custom', kind: 'custom', color: '#17191c',
+    tagline: 'More than Pro, or something Pro does not do — agreed with you.',
+    monthlyCents: 0, annualCents: 0,
+    support: 'An onboarding call, done-for-you setup and a named contact',
     limits: {
       autopilot_projects: UNLIMITED, workflows_per_project: 40, sub_accounts: UNLIMITED,
       ai_requests: 40_000, social_posts: 2_000, blog_articles: 300, ai_emails: 15_000,
       prospects_found: 20_000,
       long_videos: 100, ai_shorts: 1_000, video_minutes: 6_000, render_minutes: 8_000, video_storage_gb: 750,
+      login_addresses: 100,
+    },
+  },
+  {
+    /* Not sold. Its subscribers keep what they bought. */
+    id: 'agency', name: 'Agency', kind: 'legacy', color: '#17191c',
+    tagline: 'No longer offered — kept for the subscribers who have it.',
+    monthlyCents: 29_700, annualCents: 297_000,
+    support: 'In-app help, answered first',
+    limits: {
+      autopilot_projects: UNLIMITED, workflows_per_project: 40, sub_accounts: UNLIMITED,
+      ai_requests: 40_000, social_posts: 2_000, blog_articles: 300, ai_emails: 15_000,
+      prospects_found: 20_000,
+      long_videos: 100, ai_shorts: 1_000, video_minutes: 6_000, render_minutes: 8_000, video_storage_gb: 750,
+      login_addresses: UNLIMITED,
     },
   },
 ];
+
+/** The plans a card shows: the three priced ones, then Custom. */
+export const CARD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind !== 'legacy');
+/** The plans checkout sells. */
+export const SOLD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind === 'self');
 
 /**
  * What every plan includes. Nothing here is gated by plan in the product, so
@@ -178,9 +221,21 @@ export const INCLUDED: string[] = [
   'CRM, pipelines and one inbox',
   'Funnels, websites, forms and a shop',
   'Booking page in your visitors’ time zones',
-  'White-label: your name and logo',
+  'White-label: your name, logo and colours on every workspace',
   'Business directory search and free email checks',
   'Sends from your own mailbox — nothing goes until you approve it',
+];
+
+/**
+ * What Custom offers beyond numbers: service the owner gives by hand, listed
+ * only on Custom, which has no checkout and starts with a conversation.
+ */
+export const CUSTOM_OFFER: string[] = [
+  'Any allowance raised to fit — projects, Shorts, prospects, sub-accounts',
+  'Done-for-you setup of your first projects and workflows',
+  'An onboarding call and a named contact',
+  'Integrations scoped and quoted for you',
+  'Invoiced billing on request',
 ];
 
 /**
@@ -193,13 +248,18 @@ export const TRIAL_LIMITS: Limits = {
   ai_requests: 300, social_posts: 20, blog_articles: 3, ai_emails: 50,
   prospects_found: 100,
   long_videos: 2, ai_shorts: 10, video_minutes: 90, render_minutes: 120, video_storage_gb: 5,
+  login_addresses: 1,
 };
 export const TRIAL_NAME = 'Free trial';
 
 export const OWNER_LIMITS: Limits = Object.fromEntries(METER_IDS.map(id => [id, UNLIMITED])) as Limits;
 
-/** Prices a plan was sold at before these packages, by plan id. */
-export const LEGACY_CENTS: Partial<Record<PlanKey, number[]>> = { pro: [9_700], agency: [14_900] };
+/**
+ * Prices a plan was sold at before, by plan id — so a renewal at an old price
+ * stays on the plan it bought: $97 was "Agency" (`pro`) before it was Growth's
+ * price; $149 was "Network" and $297 a month or $2,970 a year "Agency" (`agency`).
+ */
+export const LEGACY_CENTS: Partial<Record<PlanKey, number[]>> = { pro: [9_700], agency: [14_900, 29_700, 297_000] };
 
 export const planDef = (id: string): PlanDef | undefined => PLAN_DEFS.find(p => p.id === id);
 export const isPlanKey = (id: string): id is PlanKey => (PLAN_KEYS as string[]).includes(id);
@@ -256,8 +316,11 @@ export function upgradeFor(meter: MeterId, current: { kind: StandingKind; planId
   if (current.kind === 'owner') return null;
   const have = limitsFor(current.kind, current.planId, Object.fromEntries(plans.map(p => [p.id, p.limits])) as Overrides)[meter];
   if (isUnlimited(have)) return null;
-  const from = current.kind === 'plan' ? Math.max(0, plans.findIndex(p => p.id === current.planId)) : -1;
-  for (const p of plans.slice(from + 1)) {
+  const ladder = CARD_PLANS(plans);
+  const at = ladder.findIndex(p => p.id === current.planId);
+  /* A legacy plan sits at the top of what is sold; from it, only Custom raises anything. */
+  const from = current.kind !== 'plan' ? -1 : at >= 0 ? at : ladder.length - 2;
+  for (const p of ladder.slice(from + 1)) {
     if (isUnlimited(p.limits[meter]) || p.limits[meter] > have) return p;
   }
   return null;
@@ -323,6 +386,89 @@ export function featureLines(p: Pick<PlanDef, 'limits'>): string[] {
     `${n(L.prospects_found, 'prospect', 'prospects')} found for you a month`,
     `${n(L.ai_requests, 'AI request', 'AI requests')} a month`,
     isUnlimited(L.sub_accounts) ? 'Unlimited client sub-accounts' : `${num(L.sub_accounts)} client sub-account${L.sub_accounts === 1 ? '' : 's'}`,
+    `White-label, with ${n(L.login_addresses, 'branded login address', 'branded login addresses')}`,
+  ];
+}
+
+/* ── The full comparison ─────────────────────────────────────────────────── */
+
+/** A cell: a number or words, `true` (included) or `false` (not included). */
+export type Cell = string | boolean;
+export interface CompareRow { label: string; note?: string; values: Record<string, Cell> }
+export interface CompareGroup { name: string; rows: CompareRow[] }
+
+/** Said once under the table, where a row carries its number. */
+export const COMPARE_NOTES: string[] = [
+  'Monthly allowances start again on the 1st (UTC) and are shared by every workspace you run.',
+  'Custom’s numbers are agreed with you; the ones shown on the plan are where they start.',
+  'Your own domain for client logins needs one DNS record and is offered once it is switched on for this platform; the free yourname.protectedcentral.com address works from the first day.',
+];
+
+/**
+ * Every allowance and feature, plan by plan — generated from the plan table,
+ * so the comparison on the site cannot say a number the server does not hold.
+ * Features listed as included on every plan are ones the product does not
+ * gate by plan.
+ */
+export function comparison(plans: PlanDef[] = CARD_PLANS()): CompareGroup[] {
+  const meter = (id: MeterId, label?: string): CompareRow => {
+    const m = meterOf(id)!;
+    return {
+      label: label ?? m.label, note: m.counted,
+      values: Object.fromEntries(plans.map(p => [p.id,
+        p.kind === 'custom' && !isUnlimited(p.limits[id]) ? 'Set to fit'
+          : isUnlimited(p.limits[id]) ? 'Unlimited'
+            : `${formatLimit(p.limits[id], m)}${m.kind === 'monthly' ? ' / mo' : ''}`])),
+    };
+  };
+  const all = (label: string, note?: string): CompareRow => ({ label, ...(note ? { note } : {}), values: Object.fromEntries(plans.map(p => [p.id, true])) });
+  const each = (label: string, f: (p: PlanDef) => Cell, note?: string): CompareRow => ({ label, ...(note ? { note } : {}), values: Object.fromEntries(plans.map(p => [p.id, f(p)])) });
+  return [
+    { name: 'AI Autopilot', rows: [
+      meter('autopilot_projects', 'Projects at once'),
+      meter('workflows_per_project'),
+      meter('ai_requests'),
+      meter('social_posts', 'Social posts written for you'),
+      meter('blog_articles', 'Blog articles written for you'),
+      meter('ai_emails', 'Campaign emails written for you'),
+      all('Emails researched from each prospect’s own website'),
+      all('Nothing sends until you approve it'),
+    ] },
+    { name: 'AI Prospecting', rows: [
+      meter('prospects_found', 'Prospects found for you daily'),
+      all('Live business-directory search'),
+      all('Free email checks (format, domain, mail server)'),
+      all('A tested search connected to a project'),
+    ] },
+    { name: 'AI Video Studio', rows: [
+      meter('long_videos'),
+      meter('ai_shorts'),
+      meter('video_minutes'),
+      meter('render_minutes'),
+      meter('video_storage_gb'),
+      all('Captions, thumbnails, chapters and licensed music'),
+    ] },
+    { name: 'Sell, book and send', rows: [
+      all('CRM, pipelines and one inbox'),
+      all('Websites and funnels'),
+      all('A shop, paid into your own Stripe or Creem'),
+      all('Booking page in your visitors’ time zones'),
+      all('Email from your own mailbox or provider'),
+    ] },
+    { name: 'White-label and reselling', rows: [
+      all('Your name, logo and colours on every workspace'),
+      meter('login_addresses'),
+      all('A free yourname.protectedcentral.com login address'),
+      all('Your own domain for client logins', 'Needs one DNS record; offered once switched on for this platform.'),
+      meter('sub_accounts', 'Client sub-accounts'),
+      all('Charge clients on your own Stripe or Creem, at your price'),
+      all('Client report links without your prices or contacts'),
+    ] },
+    { name: 'Help', rows: [
+      each('Support', p => p.support),
+      each('Done-for-you setup', p => p.kind === 'custom'),
+      each('Integrations built for you', p => p.kind === 'custom' ? 'Scoped and quoted' : false),
+    ] },
   ];
 }
 
@@ -339,7 +485,7 @@ export type Interval = 'month' | 'year';
 /** The plan a payment of this amount is, when it is exactly one plan's price. */
 export function planByAmount(cents: number | undefined, plans: PlanDef[] = PLAN_DEFS): { id: PlanKey; interval: Interval } | null {
   if (!cents) return null;
-  for (const p of plans) {
+  for (const p of SOLD_PLANS(plans)) {
     if (p.monthlyCents === cents) return { id: p.id, interval: 'month' };
     if (p.annualCents === cents) return { id: p.id, interval: 'year' };
   }
@@ -349,7 +495,7 @@ export function planByAmount(cents: number | undefined, plans: PlanDef[] = PLAN_
 /** Has this plan ever been sold at this amount? */
 export const soldAt = (id: string, cents: number | undefined): boolean => {
   const p = planDef(id);
-  return !!p && !!cents && (p.monthlyCents === cents || p.annualCents === cents || (LEGACY_CENTS[p.id] ?? []).includes(cents));
+  return !!p && !!cents && ((p.kind === 'self' && (p.monthlyCents === cents || p.annualCents === cents)) || (LEGACY_CENTS[p.id] ?? []).includes(cents));
 };
 
 /* ── The read the screens draw ───────────────────────────────────────────── */

@@ -32,7 +32,7 @@
  * gets paid for everybody.
  */
 import { addr, body, fail, json } from '../lib/http';
-import { LEGACY_CENTS, PLAN_DEFS, limitsFor, planByAmount, soldAt } from '../lib/allowances';
+import { LEGACY_CENTS, SOLD_PLANS, limitsFor, planByAmount, soldAt } from '../lib/allowances';
 import { loadOverrides } from '../lib/allowanceStore';
 import {
   agencyBucketFor, canAccess, dataGet, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
@@ -86,7 +86,9 @@ const isOwner = (user: SessionUser) => user.accountId === null && user.role === 
  * charged, and changing one is a release.
  */
 const PLAN_CENTS: Record<string, { name: string; cents: number; annualCents: number }> = Object.fromEntries(
-  PLAN_DEFS.map(p => [p.id, { name: p.name, cents: p.monthlyCents, annualCents: p.annualCents }]),
+  /* The three priced plans only: Custom is agreed by hand and has no price,
+     and a legacy plan is renewed, never bought again. */
+  SOLD_PLANS().map(p => [p.id, { name: p.name, cents: p.monthlyCents, annualCents: p.annualCents }]),
 );
 
 async function loadRow(env: Env): Promise<Row | null> {

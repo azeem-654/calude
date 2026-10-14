@@ -236,6 +236,9 @@ check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name 
   check("B cannot read A's usage", !usage.ok && usage.status === 403, JSON.stringify(usage.data));
   const raise = await api('allowances.php', { action: 'set_limits', token: B.token, planId: 'trial', limits: { autopilot_projects: -1 } });
   const raised = d1rows("SELECT COUNT(*) AS n FROM crm_plan_limits WHERE plan_id = 'trial' AND meter = 'autopilot_projects' AND value = -1")[0];
+  const grantSelf = await api('allowances.php', { action: 'grant_plan', token: B.token, email: B.email ?? '', planId: 'custom' });
+  const reads = await api('allowances.php', { action: 'enquiries', token: B.token });
+  check('A customer cannot give themselves a plan or read enquiries', !grantSelf.ok && grantSelf.data.code === 'not_owner' && !reads.ok && reads.data.code === 'not_owner', JSON.stringify([grantSelf.data, reads.data]));
   check('A customer cannot change what a plan allows', !raise.ok && raise.data.code === 'not_owner' && Number(raised?.n) === 0, JSON.stringify([raise.data, raised]));
 }
 if (productId) {

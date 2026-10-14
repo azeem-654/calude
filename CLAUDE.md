@@ -170,15 +170,23 @@ the chargeback and the customs declaration.
 ## Plans and allowances — one table, counted on the server
 
 `worker/src/lib/allowances.ts` (pure, no imports; the browser re-exports it as
-`services/allowances.ts`) is **the** package table: Starter $49 / Growth $97 /
-Pro $197 / Agency $297 a month, yearly at ten months, plus the trial's
-numbers, for thirteen meters (projects, workflows per project, sub-accounts,
-AI requests, posts, articles, AI emails, prospects found, recordings, AI
-Shorts, video/render minutes, storage). Checkout (`PLAN_CENTS` in
-routes/billing.ts, `interval: 'year'` on both processors), `PLAN_RESELL`, the
-site's price cards (`Site/PricingSection.tsx`, numbers from `featureLines`),
-Plan & billing and the trial bar all read it — never write a plan's number or
-price anywhere else. docs/PRICING.md has the market research and costs.
+`services/allowances.ts`) is **the** package table: three priced plans
+(`kind: 'self'` — Starter $49 / Growth $97 / Pro $197 a month, yearly at ten
+months), **Custom** (`kind: 'custom'`, no price, given by hand) and `agency`
+(`kind: 'legacy'`, never shown or sold, kept with what its subscribers bought),
+plus the trial's numbers, for fourteen meters (projects, workflows per
+project, sub-accounts, branded login addresses, AI requests, posts, articles,
+AI emails, prospects found, recordings, AI Shorts, video/render minutes,
+storage). Checkout (`PLAN_CENTS` from `SOLD_PLANS`, `interval: 'year'` on both
+processors), `PLAN_RESELL`, the site's cards (`Site/PricingParts.tsx`: lines
+from `featureLines`, **Show full details** and `/pricing`'s table from
+`comparison()`), Plan & billing and the trial bar all read it — never write a
+plan's number, price or feature tick anywhere else. `/pricing`
+(`Site/PricingPage.tsx`, routed on every host) has the comparison (sticky
+header; one plan at a time under 760px), white-label, billing answers and the
+Custom form (`enquire` → `crm_enquiries`, migration 0075, read and answered on
+Sign-ups & trials, where `grant_plan` gives a plan by hand).
+docs/PRICING.md has the market research, costs and what white-label means.
 
 - **The allowance is the subscriber's** (workspace owner's email), pooled over
   every workspace they own. Install owner: unlimited, still counted. Trial (and
@@ -198,7 +206,10 @@ price anywhere else. docs/PRICING.md has the market research and costs.
   `set_limits` (install owner; `crm_plan_limits`, edited on Sign-ups & trials →
   Plans & allowances). Prices are not editable on a screen.
 - A renewal is matched to the plan the subscriber is on before the amount
-  (`soldAt`, `LEGACY_CENTS`): $97 was "Agency" (`pro`) and is now Growth.
+  (`soldAt`, `LEGACY_CENTS`): $97 was "Agency" (`pro`) and is now Growth;
+  $149/$297/$2,970 are `agency`. A feature on every plan is listed once
+  (`INCLUDED`), never as what a higher plan adds; white-label's countable part
+  (`login_addresses`) is refused at `whitelabel.php add`.
 - `npm run test:allowances` (pure, real SQLite with every migration via
   `node:sqlite`); `npm run test:allowancese2e` (wrangler :8991, fresh D1 in
   `.wrangler-allowances`, needs a `VITE_BASE=/` build). Seeded journeys that

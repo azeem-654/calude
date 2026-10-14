@@ -127,3 +127,27 @@ export async function checkAllowance(meter: MeterId, need = 1, projectId = ''): 
 /** Is this answer from any /api/*.php route a plan-allowance refusal? */
 export const isAllowanceRefusal = (r: { success?: boolean; code?: string } | null | undefined): boolean =>
   !!r && r.success === false && r.code === 'allowance';
+
+/* ── The Custom plan: enquiries, and plans given by hand ── */
+
+export type EnquiryNeed = 'limits' | 'setup' | 'integrations' | 'invoice' | 'other';
+
+/** The Custom tier's form. Needs no session — the public pricing page sends it. */
+export async function sendEnquiry(e: { name: string; email: string; company: string; needs: EnquiryNeed[]; message: string; url?: string }): Promise<Answer<Record<string, unknown>>> {
+  return call('enquire', e, false);
+}
+
+export interface Enquiry { id: string; name: string; email: string; company: string; needs: EnquiryNeed[]; message: string; emailed: string; handledAt: string | null; createdAt: string }
+export async function fetchEnquiries(): Promise<Enquiry[] | null> {
+  const r = await call<{ enquiries: Enquiry[] }>('enquiries');
+  return r.success ? r.enquiries : null;
+}
+export const markEnquiryDone = (id: string) => call('enquiry_done', { id });
+
+export interface Grant { email: string; planId: string; at: string }
+export async function fetchGrants(): Promise<Grant[] | null> {
+  const r = await call<{ grants: Grant[] }>('grants');
+  return r.success ? r.grants : null;
+}
+/** Give a customer a plan by hand ('' takes a hand-given one away). */
+export const grantPlan = (email: string, planId: string) => call('grant_plan', { email, planId });
