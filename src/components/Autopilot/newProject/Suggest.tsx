@@ -33,7 +33,9 @@ export const isOpenChoice = (q: Question) =>
   (q.type === 'single' || q.type === 'multi') && !!q.options?.length && q.aiDecides === undefined && q.id !== 'contactList';
 
 const WORD = /[a-z][a-z'-]{2,}/g;
-const STEMS = (t: string) => new Set((t.toLowerCase().match(WORD) ?? []).map(w => w.replace(/(ies|es|s)$/, '')));
+/* Words that say nothing about which option is meant — "a list I have" is not chosen by "I have 10,000 customers". */
+const STOP = new Set(['have', 'with', 'that', 'this', 'your', 'from', 'will', 'them', 'they', 'want', 'more', 'also', 'into', 'ones', 'each', 'every', 'about', 'would', 'what', 'when', 'just', 'some', 'like', 'make', 'create', 'need', 'help', 'their', 'there', 'then', 'than', 'only', 'other']);
+const STEMS = (t: string) => new Set((t.toLowerCase().match(WORD) ?? []).filter(w => !STOP.has(w)).map(w => w.replace(/(ies|es|s)$/, '')));
 function choiceIdea(q: Question, text: string): Ideas {
   const have = STEMS(text);
   const opts = q.options ?? [];

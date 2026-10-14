@@ -492,7 +492,9 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
             <button type="button" className="np-opt" data-ai="1" aria-pressed={byAi}
               onClick={() => {
                 if (byAi) { answer(q.id, null); return; }
-                const values = idea.pick.map(l => (q.options ?? []).find(o => o.label === l)?.value).filter((v): v is string => !!v);
+                let values = idea.pick.map(l => (q.options ?? []).find(o => o.label === l)?.value).filter((v): v is string => !!v);
+                /* Never a dead end: "a contact list I have" with no lists in the workspace becomes "already in Protected Central". */
+                if (q.id === 'contactSource' && values[0] === 'list' && !listChoices().lists.length) values = ['crm'];
                 if (values.length) answer(q.id, q.type === 'multi' ? values : values[0], 'default');
               }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI decide</span>

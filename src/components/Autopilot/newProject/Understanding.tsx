@@ -35,7 +35,17 @@ const FACT_NAME: Record<string, string> = {
   contactCount: 'How many people', productCount: 'Products', socialOutputs: 'Each post', approval: 'Approval',
 };
 
-export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, onCorrect, correcting = false, correction, portfolios, lists = [], openGroups = [] }: {
+/* What a project can do as well, one press each — each is a ready-made
+   solution whose own questions are then asked. */
+const ADDONS: { key: string; label: string; hint: string }[] = [
+  { key: 'social-growth', label: 'Daily social media posts', hint: 'Image posts in your brand for Instagram, Facebook and LinkedIn, ready to publish' },
+  { key: 'video-content', label: 'AI Shorts from your videos', hint: 'Upload a recording — get cleaned video, Shorts, captions and thumbnails' },
+  { key: 'blog-seo', label: 'SEO blog articles', hint: 'An article every week, written for what your buyers search for' },
+];
+
+export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, onToggleAddon, onCorrect, correcting = false, correction, portfolios, lists = [], openGroups = [] }: {
+  /** Add or take away one of the extras (a whole ready-made solution) beside the main one. */
+  onToggleAddon?: (key: string) => void;
   portfolios: { id: string; name: string }[];
   /** The workspace's contact lists, so a chosen one is named rather than shown as an id. */
   lists?: { id: string; name: string }[];
@@ -149,6 +159,26 @@ export default function Understanding({ stages, state, finished, questionCount, 
               )}
             </div>
           </section>
+
+          {onToggleAddon && (
+            <section className="np-addons" aria-label="Add more to this project">
+              <span className="np-eyebrow"><Sparkles size={13} /> ALSO HAVE AI AUTOPILOT DO THIS — OPTIONAL</span>
+              <div className="np-addon-row">
+                {ADDONS.filter(a => a.key !== state.solutionKeys[0]).map(a => {
+                  const on = state.solutionKeys.includes(a.key);
+                  return (
+                    <button key={a.key} type="button" className="np-addon" aria-pressed={on} onClick={() => onToggleAddon(a.key)}>
+                      <span className="np-addon-check">{on ? <CheckCircle2 size={16} /> : <Circle size={16} />}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <b>{a.label}</b>
+                        <small>{a.hint}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {facts.length > 0 && (
             <section className="np-known" aria-label="What I already know">

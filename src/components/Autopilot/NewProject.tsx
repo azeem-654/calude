@@ -932,6 +932,16 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                 <Understanding
                   stages={stages} state={state} finished={understood} portfolios={ws.portfolios} lists={lists}
                   onCorrect={t => void correct(t)} correcting={correcting} correction={correction}
+                  onToggleAddon={key => setState(s => {
+                    if (!s) return s;
+                    const on = s.solutionKeys.includes(key);
+                    const keys = on ? s.solutionKeys.filter(k => k !== key) : [...s.solutionKeys.filter(k => k !== CUSTOM), key];
+                    if (!keys.length) return s;
+                    /* What the request already says about the added solution's questions is read again for it. */
+                    const fresh = on ? {} : extractKnown(s.prompt, keys, ws, files, links);
+                    const known = { ...fresh, ...s.known };
+                    return withPreset({ ...s, solutionKeys: keys, known, strength: keys.length > 1 ? 'partial' : s.strength });
+                  })}
                   openGroups={state ? [...new Set(allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).map(q => q.group))] : []}
                   questionCount={state ? allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).length : 0}
                   onChangeSolution={keys => setState(s => {
@@ -989,7 +999,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                         <ResultPreview bp={bp} brand={brandWords}
                           palette={resolveTheme(said('theme') || DEFAULT_THEME, said('brandColor'), said('designStyle'))}
                           logo={said('logo') === 'none' ? '' : shownLogo.dataUrl}
-                          templateId={said('pageTemplate')} pageLayout={said('pageLayout')} audience={said('audience') || String(profileDraft?.audience ?? '')} />
+                          templateId={said('pageTemplate')} pageLayout={said('pageLayout')} audience={said('audience') || String(profileDraft?.audience ?? '')}
+                          emailLayout={said('emailLayout')} booking={bp.requirements.includes('bookingPage')} />
                       </div>
                     );
                   })()}

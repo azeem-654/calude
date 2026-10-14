@@ -393,3 +393,34 @@
 .np-email-ex mark { background: #f1effe; color: #4c39d1; font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; margin-right: 4px; white-space: nowrap; }
 .np-lead-about { display: block; margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: #334155; }
 .np-lead-about[data-wait='1'] { color: #8b93a3; font-style: italic; }
+
+/* ── Blueprint: the page at full width, the emails whole ── */
+.np-browser { border: 1px solid #e2e6ee; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 10px 30px -18px rgba(15, 23, 42, 0.35); }
+.np-browser-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #f5f6f9; border-bottom: 1px solid #e6e9f0; }
+.np-browser-bar span { width: 9px; height: 9px; border-radius: 50%; background: #d7dbe3; }
+.np-browser-bar em { margin-left: 8px; font-style: normal; font-size: 11.5px; color: #6b7280; font-weight: 600; }
+.np-wide-view { overflow-y: auto; overflow-x: hidden; background: #fff; overscroll-behavior: contain; }
+.np-full-scrim { position: fixed; inset: 0; z-index: 2000; background: rgba(15, 17, 22, 0.62); display: grid; place-items: center; padding: 16px; }
+.np-full-card { width: min(1400px, 100%); background: #fff; border-radius: 16px; overflow: hidden; display: grid; }
+.np-full-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid #e6e9f0; }
+.np-mail { border: 1px solid #e2e6ee; border-radius: 14px; overflow: hidden; background: #fff; }
+.np-mail-head { display: grid; gap: 3px; padding: 12px 16px; border-bottom: 1px solid #eef0f4; font-size: 13px; color: #334155; background: #fafbfc; }
+.np-mail-head b { display: inline-block; width: 62px; color: #8b93a3; font-weight: 700; font-size: 12px; }
+.np-mail-head small { color: #8b93a3; font-size: 11.5px; }
+.np-mail-body { background: #fff; }
+.np-mail-body[data-framed='1'] { background: #f4f5f7; padding: 16px; }
+.np-mail-body[data-framed='1'] .np-mail-text { background: #fff; border-radius: 0 0 10px 10px; }
+.np-mail-band { padding: 14px 20px; border-radius: 10px 10px 0 0; }
+.np-mail-text { padding: 18px 20px; font-size: 14.5px; line-height: 1.65; color: #1f2937; max-width: 680px; }
+.np-mail-text p { margin: 0 0 12px; white-space: pre-wrap; }
+.np-merge { background: #eef2ff; color: #3730a3; border-radius: 4px; padding: 0 3px; }
+
+/* ── Add-ons on the understood screen ── */
+.np-addons { display: grid; gap: 10px; }
+.np-addon-row { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.np-addon { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px 13px; border-radius: 14px; border: 1.5px solid #e6e9f0; background: #fff; cursor: pointer; font: inherit; }
+.np-addon b { display: block; font-size: 13.5px; color: #17191c; }
+.np-addon small { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.4; }
+.np-addon-check { color: #c3c9d4; flex-shrink: 0; margin-top: 1px; }
+.np-addon[aria-pressed='true'] { border-color: #5b46e5; background: #f6f4ff; }
+.np-addon[aria-pressed='true'] .np-addon-check { color: #5b46e5; }
